@@ -2,9 +2,10 @@
   "requests": [
     {
       "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-suite-app-rr-1",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-suite-app",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "backingBranch": "release/contract-suite-app-rr-1",
       "sources": [
         {
           "kind": "BRANCH",
@@ -91,6 +92,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -168,7 +170,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-000000000007",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+              "detail": "SUCCESS on release/contract-suite-app-rr-1",
               "runId": "00000000-0000-4000-8000-000000000007"
             }
           ],
@@ -192,9 +194,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
+      "qualifiedId": "contract-service-rr-3",
       "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
+      "backingBranch": "release/contract-service-rr-3",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000006",
@@ -225,6 +228,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -252,7 +256,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-00000000000a",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000008",
+              "detail": "SUCCESS on release/contract-service-rr-3",
               "runId": "00000000-0000-4000-8000-00000000000a"
             }
           ],
@@ -266,9 +270,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
+      "qualifiedId": "contract-service-rr-2",
       "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000b",
+      "backingBranch": "release/contract-service-rr-2",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000005",
@@ -299,6 +304,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -326,7 +332,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-00000000000c",
               "state": "FAILED",
-              "detail": "FAILURE on release/00000000-0000-4000-8000-00000000000b",
+              "detail": "FAILURE on release/contract-service-rr-2",
               "runId": "00000000-0000-4000-8000-00000000000c"
             }
           ],
@@ -340,9 +346,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
+      "qualifiedId": "contract-frontend-rr-3",
       "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000d",
+      "backingBranch": "release/contract-frontend-rr-3",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -385,7 +392,7 @@
       ],
       "automations": null,
       "conflict": {
-        "target": "release/00000000-0000-4000-8000-00000000000d",
+        "target": "release/contract-frontend-rr-3",
         "conflicts": [
           {
             "path": "src/theme.css",
@@ -401,6 +408,7 @@
       },
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -445,9 +453,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-00000000000f",
+      "qualifiedId": "contract-frontend-rr-2",
       "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000f",
+      "backingBranch": "release/contract-frontend-rr-2",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -492,6 +501,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": true,
@@ -519,7 +529,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-000000000010",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-00000000000f",
+              "detail": "SUCCESS on release/contract-frontend-rr-2",
               "runId": "00000000-0000-4000-8000-000000000010"
             }
           ],
@@ -543,9 +553,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-000000000011",
+      "qualifiedId": "contract-frontend-rr-1",
       "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000011",
+      "backingBranch": "release/contract-frontend-rr-1",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -595,6 +606,7 @@
       "conflict": null,
       "version": "2026.101.100200",
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": "0000000000000000000000000000000000000014",
       "mergedToMainAt": null,
       "retryable": false,
@@ -667,7 +679,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-000000000014",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000011",
+              "detail": "SUCCESS on release/contract-frontend-rr-1",
               "runId": "00000000-0000-4000-8000-000000000014"
             }
           ],
@@ -701,9 +713,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-000000000015",
+      "qualifiedId": "contract-service-rr-1",
       "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000015",
+      "backingBranch": "release/contract-service-rr-1",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000001",
@@ -734,6 +747,7 @@
       "conflict": null,
       "version": "2026.101.100100",
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -761,7 +775,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-000000000016",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000015",
+              "detail": "SUCCESS on release/contract-service-rr-1",
               "runId": "00000000-0000-4000-8000-000000000016"
             }
           ],

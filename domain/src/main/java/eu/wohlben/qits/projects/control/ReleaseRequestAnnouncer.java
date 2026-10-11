@@ -52,11 +52,14 @@ public interface ReleaseRequestAnnouncer {
    * @param projectId the project the repository belongs to, or null where it has none
    * @param repoId the repository's storage id — the git host's key, and qits-ci's
    * @param repoName the repository's public name at the time of the change, or null
-   * @param releaseRequestId the request's id, which is also the tail of its backing branch
-   * @param backingBranch {@code release/<id>} — the branch the fold landed on
+   * @param releaseRequestId the request's id — the internal key
+   * @param releaseRequestQualifiedId the request's logical id, {@code <repo>-rr-<n>} (qits-1158)
+   * @param backingBranch the request's stored backing branch — the branch the fold landed on
    * @param mergedSha the tip of the fold: what to build, gate and release
-   * @param changedAt when the merge landed — the event's {@code occurredAt}, not the moment the
-   *     announcement is made
+   * @param changedAt when the change this announces happened — the event's {@code occurredAt}: the
+   *     merge landing for {@link #PRE_RUN_PENDING}, the pre-run passing for {@link #PRE_RUN_DONE}.
+   *     Never an earlier write's time: a consumer's catch-up pages by {@code occurredAt} and never
+   *     reads below its watermark, so a back-dated event can be lost (qits-1177)
    * @param priority the request's <b>effective</b> priority at the moment of the fold — the max
    *     over its named branch sources, as the constant's own name. Nullable, and an implementation
    *     must publish without it rather than refuse: nothing acts on it yet, and a fold must never
@@ -78,6 +81,7 @@ public interface ReleaseRequestAnnouncer {
       String repoId,
       String repoName,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String backingBranch,
       String mergedSha,
       Instant changedAt,

@@ -191,7 +191,7 @@
               "matchers": [
                 {
                   "match": "type",
-                  "min": 1
+                  "min": 0
                 }
               ]
             },
@@ -498,7 +498,7 @@
               "matchers": [
                 {
                   "match": "type",
-                  "min": 1
+                  "min": 0
                 }
               ]
             },

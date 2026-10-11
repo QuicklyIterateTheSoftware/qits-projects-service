@@ -159,7 +159,7 @@ public class ReleaseConvergenceTest {
         .body("sources.implicit", contains(false, false, false));
     assertEquals(
         List.of("refs/heads/main", "refs/heads/alpha", "refs/heads/beta"),
-        merger.foldsOf("refs/heads/release/" + first).get(1).sources(),
+        merger.foldsOf(BackingBranches.ref(first)).get(1).sources(),
         "the joiner is content, so the request is folded again with it in");
     assertNotEquals(
         firstFold, mergedShaOf(wrapperRepoId, first), "and the gates are re-armed onto the new fold");
@@ -183,7 +183,7 @@ public class ReleaseConvergenceTest {
         .body("sources.find { it.name == 'beta' }.addedBy", equalTo("grace"));
     assertEquals(
         List.of("refs/heads/main", "refs/heads/alpha", "refs/heads/beta"),
-        merger.foldsOf("refs/heads/release/" + first).get(1).sources(),
+        merger.foldsOf(BackingBranches.ref(first)).get(1).sources(),
         "the joiner is content, so the request is folded again with it in");
   }
 

@@ -36,12 +36,13 @@ public interface ReleaseExecutor {
    * flow needs the request's own identity and its source set, and an eight-argument signature that
    * grew two more would be the kind nobody can read a call site of.
    *
-   * @param requestId the release request — its own id, and the tail of {@link #backingBranch}
+   * @param requestId the release request's id — the internal key
+   * @param qualifiedId the same request's logical id, {@code <repo>-rr-<n>}, for texts (qits-1158)
    * @param repoId the repository's storage id, the git host's key
    * @param projectId the project the repository belongs to, or null
    * @param repoName the repository's registered name, or null. Rides onto {@code SCMRelease}, where
    *     it is the coordinate a committed CI selection can address.
-   * @param backingBranch {@code release/<id>} — <b>what is released</b>: the fold, not any one
+   * @param backingBranch the request's stored backing branch — <b>what is released</b>: the fold, not any one
    *     participant
    * @param mergedSha the fold the gates evaluated. The manifests are read at this commit and the
    *     bump lands on top of it.
@@ -59,6 +60,7 @@ public interface ReleaseExecutor {
    */
   record Release(
       String requestId,
+      String qualifiedId,
       String repoId,
       String projectId,
       String repoName,

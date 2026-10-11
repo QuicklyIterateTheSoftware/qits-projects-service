@@ -1,9 +1,10 @@
 {
   "request": {
     "id": "00000000-0000-4000-8000-000000000003",
+    "qualifiedId": "contract-service-rr-1",
     "repoId": "00000000-0000-4000-8000-000000000002",
     "repoName": "contract-service",
-    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "backingBranch": "release/contract-service-rr-1",
     "sources": [
       {
         "kind": "BRANCH",
@@ -51,6 +52,7 @@
     "conflict": null,
     "version": null,
     "supersededBy": null,
+    "supersededByQualifiedId": null,
     "releasedSha": null,
     "mergedToMainAt": null,
     "retryable": false,

@@ -160,6 +160,45 @@ class ConsumerInteractionsTest {
         response.path("matchingRules").path("body").path("$[*].id").path("matchers").path(0).path("match").asText());
   }
 
+  /**
+   * Variance inside nested objects of array elements: a field null in one element matches type or
+   * null, and an array empty in one element matches zero or more (qits-1152, the agent references'
+   * {@code removedAt} and {@code branches}).
+   */
+  @Test
+  void aNestedNullAndANestedEmptyArrayAreAllowedInEveryElement() throws Exception {
+    ConsumerRow entries =
+        row(
+            "listEntries",
+            "GET",
+            "/fixture/api/entries",
+            Map.of(),
+            null,
+            List.of(
+                "$.entries[*].item.name",
+                "$.entries[*].item.doneAt",
+                "$.entries[*].item.parts[*].label"),
+            200,
+            (base, p) -> {
+              JsonNode body = MAPPER.readTree(get(base + "/fixture/api/entries").body());
+              assertTrue(body.path("entries").isArray());
+            });
+    ConsumerPactsTest.run(FIXTURE, entries);
+    JsonNode rules =
+        pactOf(entries).path("interactions").path(0).path("response").path("matchingRules").path("body");
+    JsonNode doneAt = rules.path("$.entries[*].item.doneAt");
+    assertTrue(doneAt.toString().contains("null"), "type or null: " + doneAt);
+    assertTrue(doneAt.toString().contains("regex"), "and still the instant's regex: " + doneAt);
+    assertEquals(
+        0,
+        rules.path("$.entries[*].item.parts").path("matchers").path(0).path("min").asInt(-1),
+        "an array empty in one element may be empty: " + rules);
+    assertEquals(
+        1,
+        rules.path("$.entries").path("matchers").path(0).path("min").asInt(),
+        "an array never empty keeps at least one");
+  }
+
   @Test
   void aStatusOnlyRowBindsNoBodyAndSendsItsOwnRequest() throws Exception {
     ConsumerRow rename =

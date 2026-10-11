@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.type.StandardBasicTypes;
@@ -23,11 +24,11 @@ import org.hibernate.type.StandardBasicTypes;
  *
  * <h2>What a frame may write, and what it may not</h2>
  *
- * <p>A frame writes {@link WorkEntity#agentActivityAt}, {@link WorkEntity#agentWaitingSince} and
- * {@link WorkEntity#agentWaitingCause} and nothing else. It never touches {@link WorkEntity#blocked},
+ * <p>A frame writes {@link WorkEntity#agentActivityAt}, {@link WorkEntity#agentWaitingSince},
+ * {@link WorkEntity#agentWaitingCause} and {@link WorkEntity#agentWaitingOn} and nothing else. It never touches {@link WorkEntity#blocked},
  * {@link WorkEntity#blockedBy} or {@link WorkEntity#blockedReason} — session activity is not a
  * statement anybody made — it writes no audit row and no comment, and it does <b>not</b> move {@code
- * updated_at}: the write is one native {@code UPDATE} of the three columns rather than a dirty
+ * updated_at}: the write is one native {@code UPDATE} of those columns rather than a dirty
  * managed row, because a session reports at every turn and a row whose "last changed" moved every
  * time an agent stopped typing would say nothing about the work.
  *
@@ -56,12 +57,23 @@ public class AgentWaitingService {
    *     derives nothing, or a frame older than the row's activity)
    * @param wasEffective whether the derived block stood before the frame
    * @param effective whether it stands after it
+   * @param wasWaitingOn the declared wait the session waited on before the frame, or null
+   *     (qits-1153)
    */
-  public record Frame(WorkEntity entity, boolean applied, boolean wasEffective, boolean effective) {
+  public record Frame(
+      WorkEntity entity,
+      boolean applied,
+      boolean wasEffective,
+      boolean effective,
+      String wasWaitingOn) {
 
-    /** Whether the derived block's effectiveness moved — what a caller announces on. */
+    /**
+     * Whether what the entity reads as moved — the derived block's effectiveness, or the declared
+     * wait it is waiting on — which is what a caller announces on.
+     */
     public boolean changed() {
-      return wasEffective != effective;
+      return wasEffective != effective
+          || !Objects.equals(wasWaitingOn, EntityBlockState.waitingOn(entity));
     }
   }
 
@@ -70,6 +82,8 @@ public class AgentWaitingService {
    *
    * @param waiting whether the session is now waiting for a person
    * @param cause what it says it is waiting for, or null
+   * @param waitingOn the label of the declared wait it is waiting on, or null (qits-1153); kept only
+   *     while {@code waiting}, and a waiting frame without it clears it
    * @param at when the session stamped the frame; null or in the future reads as {@code now}
    * @param now this process's clock, passed in so a test can stand anywhere on it
    * @param skew how much older than the row's activity a frame may be and still apply
@@ -80,6 +94,7 @@ public class AgentWaitingService {
       String id,
       boolean waiting,
       String cause,
+      String waitingOn,
       Instant at,
       Instant now,
       Duration skew,
@@ -99,9 +114,10 @@ public class AgentWaitingService {
           // native UPDATE below is the whole write, and updated_at stays where the work left it.
           em.detach(row);
           boolean was = EntityBlockState.agentWaitingEffective(row, now, debounce);
+          String wasOn = EntityBlockState.waitingOn(row);
           if (!derives.test(row)
               || (row.agentActivityAt != null && stamped.isBefore(row.agentActivityAt.minus(skew)))) {
-            return new Frame(row, false, was, was);
+            return new Frame(row, false, was, was, wasOn);
           }
           Instant activity =
               row.agentActivityAt == null || stamped.isAfter(row.agentActivityAt)
@@ -110,28 +126,54 @@ public class AgentWaitingService {
           Instant since =
               !waiting ? null : row.agentWaitingSince != null ? row.agentWaitingSince : stamped;
           String said = waiting && cause != null && !cause.isBlank() ? cause.trim() : null;
+          String on = !waiting ? null : declaredWait(cause, waitingOn);
           // Typed binds: a null bound untyped reaches postgres as bytea, which no timestamptz takes.
           em.createNativeQuery(
                   "update entity set agent_activity_at = ?1, agent_waiting_since = ?2,"
-                      + " agent_waiting_cause = ?3 where id = ?4")
+                      + " agent_waiting_cause = ?3, agent_waiting_on = ?5 where id = ?4")
               .unwrap(NativeQuery.class)
               .setParameter(1, activity, StandardBasicTypes.INSTANT)
               .setParameter(2, since, StandardBasicTypes.INSTANT)
               .setParameter(3, said, StandardBasicTypes.STRING)
               .setParameter(4, row.id, StandardBasicTypes.STRING)
+              .setParameter(5, on, StandardBasicTypes.STRING)
               .executeUpdate();
           row.agentActivityAt = activity;
           row.agentWaitingSince = since;
           row.agentWaitingCause = said;
+          row.agentWaitingOn = on;
           return new Frame(
-              row, true, was, EntityBlockState.agentWaitingEffective(row, now, debounce));
+              row, true, was, EntityBlockState.agentWaitingEffective(row, now, debounce), wasOn);
         });
   }
 
   /**
+   * The cause qits-workspaces sends while the agent waits on declared waits (qits-1153), with their
+   * labels joined by {@code "; "} in {@code waitingOn}. The other wait causes ({@code WaitMatched},
+   * {@code WaitTimedOut}, {@code WaitCancelled}) are ordinary reports.
+   */
+  public static final String DECLARED_WAIT_CAUSE = "Wait";
+
+  /** Said when a {@value #DECLARED_WAIT_CAUSE} frame names no label. */
+  public static final String UNNAMED_DECLARED_WAIT = "a declared wait";
+
+  /**
+   * The declared wait a waiting frame names, or null for a wait for a person: its {@code waitingOn},
+   * else {@link #UNNAMED_DECLARED_WAIT} for a {@value #DECLARED_WAIT_CAUSE} frame without one — that
+   * cause never derives a block.
+   */
+  static String declaredWait(String cause, String waitingOn) {
+    if (waitingOn != null && !waitingOn.isBlank()) {
+      return waitingOn.trim();
+    }
+    return cause != null && DECLARED_WAIT_CAUSE.equals(cause.trim()) ? UNNAMED_DECLARED_WAIT : null;
+  }
+
+  /**
    * Every row whose agent wait began in {@code (after, upTo]} — the sweep's question: with {@code
-   * upTo = now - debounce}, the rows whose derived block became effective since the last pass. Read
-   * in a transaction of its own, so what it answers is what is committed.
+   * upTo = now - debounce}, the rows whose derived block became effective since the last pass. A
+   * wait on a declared wait derives no block, so it is not among them (qits-1153). Read in a
+   * transaction of its own, so what it answers is what is committed.
    */
   public List<WorkEntity> waitingSince(Instant after, Instant upTo) {
     return reads.hold(
@@ -142,7 +184,10 @@ public class AgentWaitingService {
                     () ->
                         entities
                             .find(
-                                "agentWaitingSince > ?1 and agentWaitingSince <= ?2", after, upTo)
+                                "agentWaitingSince > ?1 and agentWaitingSince <= ?2"
+                                    + " and agentWaitingOn is null",
+                                after,
+                                upTo)
                             .list()));
   }
 }

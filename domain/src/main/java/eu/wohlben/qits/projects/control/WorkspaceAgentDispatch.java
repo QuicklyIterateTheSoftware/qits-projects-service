@@ -6,16 +6,15 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * A workspace with a coding agent already running in it, asked for on a branch of one repository —
- * the seam behind the "Assign agent" button on a ticket.
+ * A coding agent for one work item, asked for on the project's wrapper — the seam behind the
+ * "Dispatch" button on a ticket or an epic.
  *
  * <h2>Why this exists at all</h2>
  *
- * <p>A ticket names work and names no repository, so the thing that can act on one is an aggregate
- * workspace over the whole estate: the wrapper's branch with every submodule branched alongside it.
- * qits-workspaces is the only context that can make one, and the only context that can launch an
- * agent into it. Nothing here can do either, and nothing on the bus can ask for them — a dispatch is
- * a request with an outcome somebody is waiting on, not a fact to announce.
+ * <p>Since qits-1152 an <b>agent</b> is scoped to a work item and works in its own worktree inside
+ * a workspace; the workspace is only a slot that hosts agents. qits-workspaces is the only context
+ * that can make an agent and place it. Nothing here can, and nothing on the bus can ask for it — a
+ * dispatch is a request with an outcome somebody is waiting on, not a fact to announce.
  *
  * <h2>The outcome matters, and that is the whole difference from {@link ReleasedBranchWorkspaces}</h2>
  *
@@ -28,7 +27,7 @@ import java.util.List;
  * A WARN and a hopeful empty would leave a ticket saying an agent is on it when none is.
  *
  * <p>It is <b>not</b> idempotent in the way a resolution is, and the far side is what makes that
- * safe: a second dispatch onto the same branch adopts the workspace that is already there, which is
+ * safe: a second dispatch for the same work item adopts the agent that is already there, which is
  * what {@link Dispatch#fresh()} and {@code agentLaunch} report back. Nothing here retries — a
  * dispatch is one press of one button, and a person can press it again.
  *
@@ -50,38 +49,36 @@ import java.util.List;
 public interface WorkspaceAgentDispatch {
 
   /**
-   * What qits-workspaces answered, narrowed to what this side acts on.
+   * What qits-workspaces answered, narrowed to what this side acts on (qits-1152: the answer names
+   * an <b>agent</b>, which lives in a workspace once it is placed).
    *
-   * @param workspaceRowId the workspace's row id at qits-workspaces — the SPA composes the link to
-   *     it from this and the repository id, so it is the one field the door exists to return
-   * @param fresh whether the workspace was created by this call, or adopted because it was already
-   *     standing on the branch
-   * @param agentLaunch {@code SCHEDULED} when an agent was started for this dispatch, {@code
-   *     SKIPPED_RUNNING} when one was already working in that workspace. A string rather than an
-   *     enum: it is the far side's vocabulary, and a value this side has never heard of must reach
-   *     the ticket thread rather than fail the dispatch.
-   * @param agentIdentity the principal the dispatched agent's own calls carry (qits-887) — the
-   *     commissioned client id on a DIRECT workspace, the workspace token's subject on a RUNNER one.
-   *     <b>{@code null} when the far side named none</b>: a fresh workspace answers before its
-   *     container is commissioned, and a qits-workspaces older than the field omits it. Never a
-   *     secret. It is what an entity's assignee records, see {@link #assignee()}.
+   * @param agentId the agent's id at qits-workspaces — the one member a dispatch cannot do without
+   * @param workspaceRowId the row id of the workspace the agent was placed in, or {@code null} while
+   *     it is QUEUED for a free slot. With the repository id it composes the SPA's link
+   * @param repositoryId the wrapper the agent works on, as qits-workspaces names it
+   * @param fresh whether the agent was created by this call, or adopted because the work item
+   *     already had an ACTIVE one
+   * @param agentLaunch {@code SCHEDULED}, {@code SKIPPED_RUNNING} or {@code QUEUED}. A string rather
+   *     than an enum: it is the far side's vocabulary, and a value this side has never heard of must
+   *     reach the ticket thread rather than fail the dispatch.
+   * @param agentIdentity the principal the dispatched agent's own calls carry (qits-887). <b>{@code
+   *     null} when the far side named none</b>. Never a secret. It is what an entity's assignee
+   *     records, see {@link #assignee()}.
    */
-  record Dispatch(long workspaceRowId, boolean fresh, String agentLaunch, String agentIdentity) {
-
-    /** A dispatch whose far side named no agent identity. */
-    public Dispatch(long workspaceRowId, boolean fresh, String agentLaunch) {
-      this(workspaceRowId, fresh, agentLaunch, null);
-    }
+  record Dispatch(
+      String agentId,
+      Long workspaceRowId,
+      String repositoryId,
+      boolean fresh,
+      String agentLaunch,
+      String agentIdentity) {
 
     /**
      * Who is on the work, as an entity's assignee records it (qits-887): the agent identity, or —
-     * when the far side named none — {@code workspace <workspaceRowId>}, so the field still says
-     * where the agent is rather than nothing.
+     * when the far side named none — {@code agent <agentId>}, so the field still says who it is.
      */
     public String assignee() {
-      return agentIdentity == null || agentIdentity.isBlank()
-          ? "workspace " + workspaceRowId
-          : agentIdentity;
+      return agentIdentity == null || agentIdentity.isBlank() ? "agent " + agentId : agentIdentity;
     }
   }
 
@@ -153,6 +150,11 @@ public interface WorkspaceAgentDispatch {
       return new Subject(null, epicId, null, null, null, false);
     }
 
+    /** The work item's row id whatever its archetype: what qits-workspaces keys agents by. */
+    public String workId() {
+      return ticketId != null ? ticketId : epicId;
+    }
+
     /**
      * The same subject, also named by its qualified id. A wither rather than a third argument on the
      * factories, so the two same-typed row ids still cannot be swapped by position and a caller with
@@ -172,124 +174,103 @@ public interface WorkspaceAgentDispatch {
   }
 
   /**
-   * Make (or adopt) the workspace on {@code branch} and launch an agent in it.
+   * Make (or adopt) the work item's agent and place it in a workspace (qits-1152). One ACTIVE agent
+   * per work item: a second dispatch adopts the one there.
    *
-   * @param repositoryId the <b>catalog</b> repository id — this service's row id, which is what
-   *     qits-workspaces keys its {@code repository_id} by. For a ticket this is the project's
-   *     wrapper, because a ticket names no repository.
-   * @param branch the branch to stand the workspace on, created at the repository's default branch
-   *     if it does not exist
-   * @param gitRefs the Git refs an agent in this workspace may push: exact refs, each {@code
-   *     refs/heads/…} (plan contract C4). Sent as {@code gitRefs}. {@code null} sends nothing, and
-   *     qits-workspaces then allows only the workspace's own branch. Computed by {@code
-   *     WorkBranches}, together with {@code branch}.
-   * @param branchTree whether the submodules are branched alongside the wrapper — true for the
-   *     whole-estate aggregate a ticket needs
-   * @param subject what the workspace is for — see {@link Subject}. There is deliberately no
-   *     {@code preamble} beside it: the workspace's goal is a person's prose, and neither door here
-   *     has a person's prose to send.
+   * @param repositoryId the <b>catalog</b> repository id of the project's wrapper — this service's
+   *     row id, which is what qits-workspaces keys its {@code repository_id} by
+   * @param wrapperBranch the branch the agent's wrapper worktree stands on, {@code
+   *     <prefix>/<qualified id>} from {@code WorkBranches}. The agent names its submodule branches
+   *     {@code <wrapperBranch>-<its choice>}; qits-workspaces derives the refs it may push from this
+   * @param subject what the agent is for — see {@link Subject}. Its {@link Subject#workId()} keys
+   *     the agent
    * @param instruction the agent's first turn
    * @return what the far side made or adopted
    * @throws DomainException when the dispatch could not be made — 502 for a far side that refused,
    *     was unreachable or answered unreadably, 503 for a hop with no address or no credential
    */
   Dispatch dispatchAgent(
-      String repositoryId,
-      String branch,
-      List<String> gitRefs,
-      boolean branchTree,
-      Subject subject,
-      String instruction);
+      String repositoryId, String wrapperBranch, Subject subject, String instruction);
+
+  /** A branch an agent pushed, in one repository (qits-1152). */
+  record Branch(String repositoryId, String branch) {}
 
   /**
-   * A workspace over there that names one of our rows as its subject — the {@link Subject} read
-   * back — <b>live or resolved</b>, carrying which it is.
+   * An agent over there that works on one of our rows — the {@link Subject} read back, in any
+   * state (qits-1152).
    *
-   * <p>{@link #status} is the far side's own word and travels as a {@code String} for {@link
-   * Dispatch#agentLaunch}'s reason: it is qits-workspaces' vocabulary, and a value this side has
-   * never heard of must reach a reader rather than fail a lookup that decorates a page. The three it
-   * spells today are {@code ACTIVE}, {@code INTEGRATED} and {@code ABANDONED}.
+   * <p>{@link #state} and {@link #runState} are the far side's own words and travel as strings for
+   * {@link Dispatch#agentLaunch}'s reason. {@code state} is {@link #ACTIVE}, {@link #OBSOLETE} (its
+   * branches were released; it waits for cleanup) or {@code REMOVED}; {@code runState} is {@code
+   * QUEUED}, {@code RUNNING} or {@code YIELDED}.
    *
-   * @param workspaceRowId the workspace's row id at qits-workspaces
-   * @param repositoryId the repository it belongs to; the pair composes the link, exactly as on
-   *     {@link Dispatch}
-   * @param workspaceId the workspace's display label
-   * @param branch the branch it owns — {@code ticket/<slug>} or {@code epic/<slug>} for a dispatch
-   * @param ticketId the ticket it is for, or {@code null}
-   * @param epicId the epic it is for, or {@code null}
-   * @param status the far side's resolution status — {@link #ACTIVE} while the workspace and its
-   *     container still stand, {@code INTEGRATED} or {@code ABANDONED} once it is resolved. Never
-   *     null: an implementation that was told nothing reports {@link #ACTIVE}
-   * @param resolvedAt when the workspace was resolved, or {@code null} while it is live
+   * @param agentId the agent's id at qits-workspaces
+   * @param workspaceRowId the workspace it is placed in, or {@code null} while QUEUED
+   * @param repositoryId the wrapper it works on; with the row id it composes the link
+   * @param workId the work item's row id
+   * @param entityId the work item's qualified id, or {@code null}
+   * @param wrapperBranch the branch its wrapper worktree stands on
+   * @param branches every (repository, branch) it pushed, the wrapper's among them when it pushed
+   *     there; never null
+   * @param state never null: an implementation that was told nothing reports {@link #ACTIVE}
+   * @param runState the far side's run state, or {@code null}
+   * @param createdAt when it was created, or {@code null}
+   * @param removedAt when it was removed, or {@code null} while it is not
    */
-  record Reference(
-      long workspaceRowId,
+  record Agent(
+      String agentId,
+      Long workspaceRowId,
       String repositoryId,
-      String workspaceId,
-      String branch,
-      String ticketId,
-      String epicId,
-      String status,
-      Instant resolvedAt) {
+      String workId,
+      String entityId,
+      String wrapperBranch,
+      List<Branch> branches,
+      String state,
+      String runState,
+      Instant createdAt,
+      Instant removedAt) {
 
-    /**
-     * The one status word that means a container is standing and an agent can be spoken to. Every
-     * reader that needs a <em>live</em> workspace compares against this and says why it is doing so;
-     * see {@link #workspacesReferencing}.
-     */
+    /** The agent works on its item: it can be spoken to and its branches are not released yet. */
     public static final String ACTIVE = "ACTIVE";
+
+    /** Its branches were released; it stays until the cleanup check removes it. */
+    public static final String OBSOLETE = "OBSOLETE";
+
+    public Agent {
+      branches = branches == null ? List.of() : List.copyOf(branches);
+      state = state == null || state.isBlank() ? ACTIVE : state;
+    }
+
+    public boolean active() {
+      return ACTIVE.equals(state);
+    }
   }
 
   /**
-   * Which workspaces name these tickets and epics — <b>every</b> one of them, live or resolved, each
-   * carrying its own {@link Reference#status}.
+   * Which agents work on these work items — <b>every</b> one of them, in any state, each carrying
+   * its own {@link Agent#state}.
    *
    * <h2>Derived per read, stored nowhere</h2>
    *
-   * <p>A ticket does not point at a workspace and must not: a pointer has to be cleared when the
-   * workspace is integrated or discarded, and one that is only ever written disables its own button
-   * forever and links to a row nobody can open. The workspace is the thing that comes and goes, so
-   * the workspace carries the reference and this is a query over those references. Zero, one or
-   * several; the rows are what the links point at.
+   * <p>A work item does not point at an agent and must not: the agent is the thing that comes and
+   * goes, so the agent carries the reference and this is a query over those references.
    *
    * <h2>The list is not filtered, and every reader decides what to make of it</h2>
    *
-   * <p>This used to answer <em>live</em> workspaces alone, and the liveness rule was stated as the
-   * far side's to define with nothing here re-deciding it. <b>That is no longer what comes back.</b>
-   * A ticket keeps a link to where its work happened after that workspace is integrated or
-   * abandoned — the transcripts, the diff and the thread are the record of the change, and a
-   * reference that vanished the moment somebody tidied up took the only way back to them with it. So
-   * the far side answers every workspace that names the subject and says which kind each is, and the
-   * decision moves here, once per reader, in the open.
-   *
-   * <p><b>A reader that wants only live workspaces must filter on {@code status ==
-   * Reference.ACTIVE} itself</b>, and must say why in a comment where it does. That is not
-   * ceremony: the readers divide cleanly into two and the difference is what a wrong answer costs.
-   * A <em>read</em> decorating a page wants them all — a resolved workspace is a link worth drawing,
-   * greyed or not. A <em>write</em> — anything that speaks to an agent, delivers a turn, or asks for
-   * the release of the branch a workspace stands on — wants {@link Reference#ACTIVE} and nothing
-   * else, because a resolved workspace has no container to speak to and, quite possibly, no branch
-   * left to release.
-   *
-   * <p>The count therefore no longer decides a button on its own: a ticket whose only workspace is
-   * abandoned has nobody on it, and "Assign agent" is offered again.
+   * <p>A <em>read</em> decorating a page wants them all — a removed agent is a link worth drawing,
+   * greyed or not. A <em>write</em> — anything that speaks to an agent or asks for the release of its
+   * branches — wants {@link Agent#active()} and nothing else, and must say why in a comment where it
+   * filters.
    *
    * <h2>The failure contract is the opposite of {@link #dispatchAgent}'s, on purpose</h2>
    *
-   * <p>That verb is a person pressing a button and waiting, so a failure has to reach them and it
-   * throws. This one <b>decorates a read</b> — a project's tickets panel, an epics board — and a
-   * lookup that threw would take a whole page down because a sibling service was restarting. <b>So
-   * an implementation must never throw: it warns and answers empty.</b> Empty is also the honest
-   * degraded answer, because it is exactly what this returned before the feature existed — every
-   * button live, which is the behaviour a reader already knows.
+   * <p>This one <b>decorates a read</b>, and a lookup that threw would take a whole page down
+   * because a sibling service was restarting. <b>So an implementation must never throw: it warns
+   * and answers empty.</b> Batched because the caller may be one listing asking about every row on
+   * it.
    *
-   * <p>Batched for the same reason: the caller is one listing asking about every row on it, and a
-   * call per row would put a network hop inside a loop over a page.
-   *
-   * @param ticketIds the tickets asked about; may be empty
-   * @param epicIds the epics asked about; may be empty. Both empty answers empty without a call
-   * @return every workspace naming any of them, live or resolved, in no particular order; never
-   *     null, and never filtered by status
+   * @param workIds the work items' row ids; empty answers empty without a call
+   * @return every agent working on any of them, in no particular order; never null
    */
-  List<Reference> workspacesReferencing(Collection<String> ticketIds, Collection<String> epicIds);
+  List<Agent> agentsFor(Collection<String> workIds);
 }

@@ -36,6 +36,10 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * merged sha, and the execution arm performs the release once it is READY. See {@code
  * control/ReleaseRequests} for the state machine, which this controller only fronts.
  *
+ * <p><b>{@code {requestId}} is the uuid or the qualified id</b> (qits-1158), {@code <repo>-rr-<n>}
+ * in any case, looked up within {@code {repoId}}. Every route resolves it first, through {@code
+ * ReleaseRequests.resolveId}, and works on the uuid from there.
+ *
  * <p><b>Named sources are caller-managed; implicit ones are not.</b> A create names one branch and
  * implies {@code main}; {@code POST …/{requestId}/sources} adds more. The released tags are derived
  * from what the repository has in flight, are reported in every read, and cannot be added or dropped
@@ -222,6 +226,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       AddReleaseRequestSource body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
     return new AddReleaseRequestSource.Response(
@@ -260,6 +265,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       SetReleaseSourcePriority body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     return new SetReleaseSourcePriority.Response(
         releaseRequests.updateSourcePriority(
@@ -304,6 +310,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       WithdrawReleaseRequest body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     String actor = identity.isAnonymous() ? null : identity.getPrincipal().getName();
     return new WithdrawReleaseRequest.Response(
@@ -350,6 +357,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       ApproveReleaseRequest body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return new ApproveReleaseRequest.Response(
         releaseRequests.approve(
             requestId,
@@ -391,6 +399,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       DeclineReleaseRequest body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return new DeclineReleaseRequest.Response(
         releaseRequests.decline(
             requestId,
@@ -435,6 +444,7 @@ public class ReleaseRequestController {
               + " repository is not approval-gated; only an unknown request is a 404.")
   public ListReleaseRequestApprovals.Response approvals(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return new ListReleaseRequestApprovals.Response(releaseRequests.approvals(requestId));
   }
 
@@ -471,6 +481,7 @@ public class ReleaseRequestController {
   @Operation(operationId = "getReleaseRequest", summary = "One release request")
   public GetReleaseRequest.Response get(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return new GetReleaseRequest.Response(releaseRequests.get(requestId));
   }
 
@@ -504,6 +515,7 @@ public class ReleaseRequestController {
               + " genuinely added nothing.")
   public ReleaseRequestCommitsDto commits(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseRequests.mergedCommits(repoId, requestId);
   }
 
@@ -524,6 +536,7 @@ public class ReleaseRequestController {
               + " with truncated set and the total in detail.")
   public ReleaseRequestChangesDto changes(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseRequests.foldChanges(repoId, requestId);
   }
 
@@ -542,6 +555,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       @QueryParam("path") @NotBlank String path) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseRequests.foldFileDiff(repoId, requestId, path);
   }
 
@@ -568,6 +582,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       @QueryParam("path") @NotBlank String path) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseRequests.foldSubmoduleChanges(repoId, requestId, path);
   }
 
@@ -590,6 +605,7 @@ public class ReleaseRequestController {
       @PathParam("requestId") String requestId,
       @QueryParam("path") @NotBlank String path,
       @QueryParam("file") @NotBlank String file) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseRequests.foldSubmoduleFileDiff(repoId, requestId, path, file);
   }
 
@@ -608,6 +624,7 @@ public class ReleaseRequestController {
               + " with an empty list and no detail at all.")
   public ReleaseArtifactsDto artifacts(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return releaseArtifacts.of(repoId, requestId);
   }
 
@@ -680,6 +697,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       @PathParam("phase") String phase) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return new RerunReleasePipelinePhase.Response(
         releaseRequests.rerunPhase(repoId, requestId, phase));
   }
@@ -720,6 +738,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       @PathParam("kind") String kind) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.ACCEPTED)
         .entity(
             new RerunReleaseRequestAutomation.Response(
@@ -769,6 +788,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       WaiveReleaseRequestAutomations body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
     String actor = decider();
     return new WaiveReleaseRequestAutomations.Response(
         releaseRequests.waiveAutomations(
@@ -812,7 +832,12 @@ public class ReleaseRequestController {
     requireAgentProject(repoId);
     if (!repoId.equals(releaseRequests.get(requestId).repoId())) {
       throw new DomainException(
-          403, "Release request " + requestId + " is not a request of repository " + repoId + ".");
+          403,
+          "Release request "
+              + releaseRequests.get(requestId).qualifiedId()
+              + " is not a request of repository "
+              + repoId
+              + ".");
     }
   }
 

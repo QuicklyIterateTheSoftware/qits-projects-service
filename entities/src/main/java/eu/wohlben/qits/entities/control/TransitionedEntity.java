@@ -89,6 +89,9 @@ import java.util.List;
  *     not blocked, and on an explicit block set before the reason was stored
  * @param blockedBy who set the explicit block; null and left off the wire otherwise, a derived block
  *     included — nobody set it
+ * @param waitingOn the label of the declared wait the agent session is waiting on (qits-1153): the
+ *     entity reads "waiting on" it, and it derives no block. Null and left off the wire otherwise,
+ *     and on a feature and a task
  */
 public record TransitionedEntity(
     String id,
@@ -120,7 +123,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) List<String> acceptanceCriteria,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn) {
 
   /**
    * The same entity, told what it is called in a commit subject: the value is resolved in {@code
@@ -157,7 +161,8 @@ public record TransitionedEntity(
         acceptanceCriteria,
         blockSource,
         blockReason,
-        blockedBy);
+        blockedBy,
+        waitingOn);
   }
 
   /**
@@ -216,7 +221,8 @@ public record TransitionedEntity(
         criteriaOf(row),
         block == null ? null : block.source(),
         block == null ? null : block.reason(),
-        block == null ? null : block.blockedBy());
+        block == null ? null : block.blockedBy(),
+        block == null ? null : block.waitingOn());
   }
 
   /**
@@ -258,7 +264,8 @@ public record TransitionedEntity(
         read.acceptanceCriteria(),
         read.blockSource(),
         read.blockReason(),
-        read.blockedBy());
+        read.blockedBy(),
+        read.waitingOn());
   }
 
   /**
@@ -299,7 +306,8 @@ public record TransitionedEntity(
         criteriaOf(row),
         block == null ? null : block.source(),
         block == null ? null : block.reason(),
-        block == null ? null : block.blockedBy());
+        block == null ? null : block.blockedBy(),
+        block == null ? null : block.waitingOn());
   }
 
   /**

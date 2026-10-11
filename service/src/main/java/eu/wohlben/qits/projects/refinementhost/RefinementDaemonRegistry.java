@@ -3,9 +3,7 @@ package eu.wohlben.qits.projects.refinementhost;
 import eu.wohlben.qits.projects.control.TechnicalProcess;
 import eu.wohlben.qits.workspacedaemon.protocol.Ack;
 import eu.wohlben.qits.workspacedaemon.protocol.AgentActivity;
-import eu.wohlben.qits.workspacedaemon.protocol.BootstrapOutcome;
-import eu.wohlben.qits.workspacedaemon.protocol.BootstrapStep;
-import eu.wohlben.qits.workspacedaemon.protocol.Bootstrapped;
+import eu.wohlben.qits.workspacedaemon.protocol.AgentBranchPushed;
 import eu.wohlben.qits.workspacedaemon.protocol.CommandChunk;
 import eu.wohlben.qits.workspacedaemon.protocol.CommandExit;
 import eu.wohlben.qits.workspacedaemon.protocol.ConfigView;
@@ -14,7 +12,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.workspacedaemon.protocol.Describe;
 import eu.wohlben.qits.workspacedaemon.protocol.DescribeConfig;
-import eu.wohlben.qits.workspacedaemon.protocol.EditorState;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
 import eu.wohlben.qits.workspacedaemon.protocol.Heartbeat;
 import eu.wohlben.qits.workspacedaemon.protocol.Hello;
@@ -22,7 +19,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.OpenStream;
 import eu.wohlben.qits.workspacedaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.workspacedaemon.protocol.Provisioned;
 import eu.wohlben.qits.workspacedaemon.protocol.PullBranch;
-import eu.wohlben.qits.workspacedaemon.protocol.RunBootstrap;
 import eu.wohlben.qits.workspacedaemon.protocol.RunCommand;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceChanged;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceInfo;
@@ -64,9 +60,8 @@ import org.jboss.logging.Logger;
  *       daemon that cannot provision usually drops its socket right after saying so.
  * </ul>
  *
- * <p>Everything else the daemon can say — bootstrap frames (autorun is off, so only the benign
- * {@code Bootstrapped}), service transitions (autostart is off), config views, command frames with
- * other correlation ids — is dropped without ceremony: a daemon must not be able to break its own
+ * <p>Everything else the daemon can say — service transitions (autostart is off), config views,
+ * command frames with other correlation ids — is dropped without ceremony: a daemon must not be able to break its own
  * control socket by saying something this host has no view for.
  */
 @ApplicationScoped
@@ -429,18 +424,13 @@ public class RefinementDaemonRegistry {
    *   <li>{@link Provisioned}, {@link ProvisionFailed} — the result of a provision <em>this service
    *       asked for</em>. Counting them would make every freshly provisioned container immune for a
    *       whole quiet window on nothing but its own creation.
-   *   <li>{@link BootstrapStep}, {@link BootstrapOutcome}, {@link Bootstrapped} — the same
-   *       automated lifecycle one stage further on. Autorun is off for refinements, so only the
-   *       benign {@code Bootstrapped} is expected at all, and an automated bootstrap is not
-   *       somebody using the container either way.
-   *   <li>{@link EditorState} — the supervised web editor's lifecycle, and a refinement host has no
-   *       editor surface for it to answer. It arrives only because the same image serves
-   *       qits-workspaces.
+   *   <li>{@link AgentBranchPushed} — a workspace agent's push (qits-1152). A refinement container
+   *       runs no workspace agents, so the frame does not arrive here.
    *   <li>{@link WorkspaceInfo}, {@link ConfigView} — replies to a {@link Describe} / {@link
    *       DescribeConfig} <b>this host sent</b>. A reply to our own question is this service
    *       talking to itself.
    *   <li>{@link Ack}, {@link RunCommand}, {@link Describe}, {@link DescribeConfig}, {@link
-   *       RunBootstrap}, {@link PullBranch}, {@link OpenStream} — <b>host→daemon frames, which
+   *       PullBranch}, {@link OpenStream} — <b>host→daemon frames, which
    *       never arrive here at all.</b> They are the outbound half of the protocol (the daemon only
    *       ever handles them; it constructs none of them), so they are named purely for the record.
    *       A supervised process's lifecycle frame and any other subtype this host does not name fall
@@ -463,17 +453,13 @@ public class RefinementDaemonRegistry {
       case GitStatus ignored -> false;
       case Provisioned ignored -> false;
       case ProvisionFailed ignored -> false;
-      case BootstrapStep ignored -> false;
-      case BootstrapOutcome ignored -> false;
-      case Bootstrapped ignored -> false;
-      case EditorState ignored -> false;
+      case AgentBranchPushed ignored -> false;
       case WorkspaceInfo ignored -> false;
       case ConfigView ignored -> false;
       case Ack ignored -> false;
       case RunCommand ignored -> false;
       case Describe ignored -> false;
       case DescribeConfig ignored -> false;
-      case RunBootstrap ignored -> false;
       case PullBranch ignored -> false;
       case OpenStream ignored -> false;
       default -> false;
@@ -511,15 +497,7 @@ public class RefinementDaemonRegistry {
       case CommandChunk chunk -> onCommandChunk(refinementId, chunk);
       case Provisioned provisioned -> onProvisioned(refinementId, provisioned);
       case ProvisionFailed failed -> onProvisionFailed(refinementId, failed);
-      case EditorState ignored -> {
-        // Deliberately nothing. The frame announces the supervised web editor's lifecycle, and a
-        // refinement host has no editor surface to gate with it: there is no editor proxy and no
-        // splash here, so the state has nothing to answer. It arrives at all only because the same
-        // qits-workspace-daemon image serves qits-workspaces, where it IS the capability
-        // announcement. Named explicitly rather than left to the default arm so that dropping it is
-        // a decision this file records, not an accident of the catch-all.
-      }
-      // Everything else — bootstrap frames, service transitions, config views, command exits,
+      // Everything else — service transitions, config views, command exits,
       // echoes of host->daemon requests — is dropped rather than treated as an error.
       default -> LOG.tracef("dropped a %s frame for refinement %s", message.getClass(), refinementId);
     }

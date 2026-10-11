@@ -162,9 +162,9 @@ class WorkStatusApiTest {
   }
 
   /**
-   * An agent moving an epic is refused — an epic's status is {@code qits:admin} alone — and nothing
-   * is written. The forwarded agent carries no project claim either, so the message is what
-   * tells the epic's rule from the binding: the epic's refusal comes first.
+   * An agent moving an epic gets past the epic's rule since qits-1174 and meets the binding: the
+   * forwarded agent carries no project claim, so it covers no project, and nothing is written. The
+   * through-case, with a claim, is {@code EntityAgentBoundsTest}'s.
    */
   @Test
   void anAgentMovingAnEpicIsA403AndNothingMoves() {
@@ -173,7 +173,7 @@ class WorkStatusApiTest {
 
     move(asForwardedAgent(), epic, "REFINED")
         .statusCode(403)
-        .body("message", containsString("qits:admin alone"));
+        .body("message", containsString("its own project"));
     statusOf(epic, "REPORTED");
 
     // And an id naming nothing is still a 404 for the agent: the row is resolved first.

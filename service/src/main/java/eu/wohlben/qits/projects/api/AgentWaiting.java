@@ -37,6 +37,17 @@ import org.jboss.logging.Logger;
  * qits.projects.agent-waiting.skew} — frames race, and every transition stamps that activity so one
  * sent before the move cannot re-derive a block at the new status.
  *
+ * <h2>A wait the agent declared is not a block (qits-1153)</h2>
+ *
+ * <p>An agent can declare what it waits on (a release request, a work item's status, a CI run);
+ * qits-workspaces holds the wait and wakes the agent when it happens. While the session's latest
+ * frame names such a wait ({@code waitingOn}, its label), the session is not waiting for a person:
+ * no block is derived, and the entity reads "waiting on <label>" ({@link
+ * EntityBlockState#waitingOn}) at once, with no debounce. qits-workspaces sends it with cause
+ * {@code Wait}, the open waits' labels joined by {@code "; "}; a {@code Wait} frame without a label
+ * still derives no block. {@code WaitMatched}, {@code WaitTimedOut} and {@code WaitCancelled} are
+ * ordinary reports, and so is any other frame without {@code waitingOn}.
+ *
  * <h2>When it is said</h2>
  *
  * <p>A wait is not a block until it has stood for {@code qits.projects.agent-waiting.debounce}, so
@@ -72,17 +83,30 @@ public class AgentWaiting {
    * One session frame about {@code entity}. Never refuses a known entity: an ignored frame is as
    * much an answer as an applied one, and the session has nothing to do about either.
    *
+   * @param waitingOn the label of the declared wait the session is waiting on, or null (qits-1153)
    * @param at when the session stamped the frame, or null for now
    */
-  public void report(WorkEntity entity, boolean waiting, String cause, String sessionId, Instant at) {
+  public void report(
+      WorkEntity entity,
+      boolean waiting,
+      String cause,
+      String waitingOn,
+      String sessionId,
+      Instant at) {
     Instant now = Instant.now();
     AgentWaitingService.Frame frame =
-        rows.record(entity.id, waiting, cause, at, now, skew, EntityBlocks::blockable);
+        rows.record(entity.id, waiting, cause, waitingOn, at, now, skew, EntityBlocks::blockable);
     LOG.debugf(
-        "Agent session %s on %s %s: waiting=%s, %s",
-        sessionId, entity.archetype, entity.id, waiting, frame.applied() ? "applied" : "ignored");
+        "Agent session %s on %s %s: waiting=%s on=%s, %s",
+        sessionId,
+        entity.archetype,
+        entity.id,
+        waiting,
+        waitingOn,
+        frame.applied() ? "applied" : "ignored");
     if (frame.changed()) {
-      // An ended wait that was a block, or a late frame whose wait is already past the debounce.
+      // An ended wait that was a block, a late frame whose wait is already past the debounce, or a
+      // declared wait that started, changed or ended.
       announce(frame.entity());
     }
   }

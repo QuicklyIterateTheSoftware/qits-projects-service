@@ -41,6 +41,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class ProjectReleaseRequestsTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   @Inject FakeActiveBuilds activeBuilds;
 
   @Inject RecordingReleaseExecutor executor;
@@ -178,6 +180,7 @@ public class ProjectReleaseRequestsTest {
               row.createdAt = when;
               row.armedAt = when;
               row.updatedAt = when;
+              row.name(releaseRequestNumbers.next(row.repoId));
               row.persist();
               return row.id;
             });

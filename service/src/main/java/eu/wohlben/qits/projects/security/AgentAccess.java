@@ -84,7 +84,11 @@ public final class AgentAccess {
 
   /**
    * True when the token may push {@code branch}: {@code refs/heads/<branch>} equals an entry of its
-   * {@code git_refs}, or lies under an entry that ends in {@code /*}. No claim covers nothing.
+   * {@code git_refs}, or starts with what precedes an entry's one trailing {@code *} and is longer
+   * than it (qits-1152). {@code refs/heads/external/*} covers what lies under {@code external/};
+   * {@code refs/heads/ticket/qits-1-*} covers {@code ticket/qits-1-fix}, the names an agent picks
+   * beside its wrapper branch. A {@code *} anywhere else makes the entry cover nothing. No claim
+   * covers nothing.
    */
   public static boolean coversBranch(SecurityIdentity identity, String branch) {
     if (branch == null || branch.isBlank()) {
@@ -92,14 +96,19 @@ public final class AgentAccess {
     }
     String ref = HEADS + branch.trim();
     for (String entry : gitRefs(identity)) {
-      if (entry.equals(ref)) {
-        return true;
-      }
-      if (entry.endsWith("/*")) {
-        String prefix = entry.substring(0, entry.length() - 1);
-        if (ref.length() > prefix.length() && ref.startsWith(prefix)) {
+      int star = entry.indexOf('*');
+      if (star < 0) {
+        if (entry.equals(ref)) {
           return true;
         }
+        continue;
+      }
+      if (star != entry.length() - 1) {
+        continue; // a `*` that is not the last character is not a pattern this reads
+      }
+      String prefix = entry.substring(0, star);
+      if (ref.length() > prefix.length() && ref.startsWith(prefix)) {
+        return true;
       }
     }
     return false;

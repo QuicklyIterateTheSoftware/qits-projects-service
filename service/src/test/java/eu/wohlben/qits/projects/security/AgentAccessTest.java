@@ -60,6 +60,34 @@ class AgentAccessTest {
     assertFalse(AgentAccess.coversBranch(agent, " "));
   }
 
+  /** An agent's scope (qits-1152): its wrapper branch, and every name that branch starts. */
+  @Test
+  void aTrailingStarCoversWhatStartsWithWhatPrecedesIt() {
+    SecurityIdentity agent =
+        AgentTokens.token(
+            Map.of(
+                "git_refs",
+                List.of("refs/heads/ticket/qits-1002", "refs/heads/ticket/qits-1002-*")),
+            AGENT);
+
+    assertTrue(AgentAccess.coversBranch(agent, "ticket/qits-1002"));
+    assertTrue(AgentAccess.coversBranch(agent, "ticket/qits-1002-fix-totals"));
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1002-"), "the star matches something");
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-10020"));
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1003-fix"));
+  }
+
+  @Test
+  void aStarThatIsNotLastCoversNothing() {
+    SecurityIdentity agent =
+        AgentTokens.token(
+            Map.of("git_refs", List.of("refs/heads/*/own", "refs/heads/ticket/**")), AGENT);
+
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/own"));
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/x"));
+    assertFalse(AgentAccess.coversBranch(agent, "*/own"));
+  }
+
   /** What quarkus-oidc hands back for a JSON array claim. */
   @Test
   void gitRefsAreReadFromAJsonArray() {

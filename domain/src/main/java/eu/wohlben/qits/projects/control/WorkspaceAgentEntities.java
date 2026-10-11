@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 /**
- * The agent in the workspace standing on a branch is told the work it is on as it now stands — its
+ * A work item's agent (found by the work item's id, qits-1152) is told the work it is on as it now stands — its
  * title, its status and whether it is blocked — delivered after the fact and waited on by nobody
  * (qits-614 for the flag, qits-617 for the other two).
  *
@@ -29,7 +29,7 @@ package eu.wohlben.qits.projects.control;
  * that could not be told must never turn a block that happened into a 500. Absent implementation, no
  * address, no machine credential, an unreachable or refusing qits-workspaces, a qits-workspaces old
  * enough not to have the door at all (a 404 on the old door as well — see the adapter) and an answer that will not parse are <b>one
- * behaviour</b>: one WARN naming the branch and the reason, and a normal return.
+ * behaviour</b>: one WARN naming the work item and the reason, and a normal return.
  *
  * <p>It is cheaper to lose than a turn. A signal nobody delivered costs a session name its accuracy
  * until the next one: the values are on the row and on every board, and the next dispatch onto the
@@ -63,58 +63,16 @@ package eu.wohlben.qits.projects.control;
 public interface WorkspaceAgentEntities {
 
   /**
-   * Tell the workspace standing on {@code branch} what the work it is on now is: its title, its
-   * status and its blocked flag, all three as the row holds them.
+   * Tell the ACTIVE agent of {@code workId} its work item's title, status and block flag.
    *
-   * <p><b>Never throws.</b> See the class javadoc. A branch with no workspace on it is the ordinary
-   * answer for an entity nobody dispatched an agent onto, and is not worth a log line above DEBUG.
+   * <p><b>Never throws</b>; see the class javadoc.
    *
-   * @param repositoryId the <b>catalog</b> repository id qits-workspaces keys {@code repository_id}
-   *     by — for a ticket or an epic, the project's wrapper, as for {@link
-   *     WorkspaceAgentTurns#deliver}
-   * @param branch the branch the workspace stands on — {@code ticket/<slug>} or {@code epic/<slug>}
-   * @param title the entity's title as it stands on the row
-   * @param status the entity's status as stored — the {@code EntityStatus} name, {@code REFINED},
-   *     which the far side maps to the square's colour; never a rendered label
-   * @param blocked what the flag now is on the entity's row
+   * @param workId the work item's row id, which qits-workspaces keys agents by
+   * @param title the row's title as it stands now
+   * @param status the row's status enum name as it stands now
+   * @param blocked whether the row reads as blocked now (the effective flag, qits-895)
+   * @param blockSource {@code EXPLICIT}, {@code AGENT_WAITING} or {@code BOTH} while blocked, else
+   *     {@code null}
    */
-  void changed(String repositoryId, String branch, String title, String status, boolean blocked);
-
-  /**
-   * {@link #changed(String, String, String, String, boolean)}, naming the work item too
-   * (qits-112): qits-workspaces finds the workspace bound to {@code workId} first and falls back to
-   * the branch. A port that knows no work id ignores it.
-   *
-   * @param workId the work item's entity id, or {@code null}
-   */
-  default void changed(
-      String workId,
-      String repositoryId,
-      String branch,
-      String title,
-      String status,
-      boolean blocked) {
-    changed(repositoryId, branch, title, status, blocked);
-  }
-
-  /**
-   * {@link #changed(String, String, String, String, String, boolean)}, carrying the effective
-   * block's SOURCE too (qits-895): {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or {@code "BOTH"}
-   * ({@code entities.control.EntityBlockState}), and {@code null} while {@code blocked} is false. A
-   * port that knows no source ignores it, which is why the default delegates down rather than up —
-   * an implementation written before this overload existed keeps compiling and keeps sending the
-   * four it already sent.
-   *
-   * @param blockSource the effective block's source, or {@code null} when not blocked
-   */
-  default void changed(
-      String workId,
-      String repositoryId,
-      String branch,
-      String title,
-      String status,
-      boolean blocked,
-      String blockSource) {
-    changed(workId, repositoryId, branch, title, status, blocked);
-  }
+  void changed(String workId, String title, String status, boolean blocked, String blockSource);
 }

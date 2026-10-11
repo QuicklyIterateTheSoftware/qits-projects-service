@@ -38,6 +38,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class MainFinalizationTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   @Inject eu.wohlben.qits.projects.bus.DeploymentActiveListener deployments;
 
   @Inject ReleaseFinalization finalization;
@@ -53,6 +55,8 @@ public class MainFinalizationTest {
   @Inject RecordingReleaseRequestAnnouncer announcer;
 
   @Inject RecordingQaRunCancellations cancellations;
+
+  @Inject RecordingReleaseRequestStateAnnouncer states;
 
   private String repoId;
   private String projectId;
@@ -134,7 +138,7 @@ public class MainFinalizationTest {
     String tag = freshTag();
     QuarkusTransaction.requiringNew().run(() -> pendingTag(tag));
     String id = create("work");
-    String backing = "refs/heads/release/" + id;
+    String backing = BackingBranches.ref(id);
     assertTrue(
         merger.foldsOf(backing).get(0).sources().contains("refs/tags/" + tag),
         "while the tag is in flight, the request folds it in — that is the premise");
@@ -317,6 +321,11 @@ public class MainFinalizationTest {
         .get(base() + "/" + requestId)
         .then()
         .body("request.state", org.hamcrest.Matchers.equalTo("FINALIZED"));
+    List<String> moves = states.movesOf(requestId);
+    assertEquals(
+        "RELEASED>FINALIZED",
+        moves.get(moves.size() - 1),
+        "the finalization is announced as a state change (qits-1153): " + moves);
     assertTrue(
         cancellations.cancelledRequests().contains(requestId),
         "the runs of a finished request have nothing left to report to: "
@@ -369,6 +378,7 @@ public class MainFinalizationTest {
               released.armedAt = Instant.now();
               released.createdAt = Instant.now();
               released.updatedAt = Instant.now();
+              released.name(releaseRequestNumbers.next(released.repoId));
               released.persist();
               pendingTag(tag).releaseRequestId = requestId;
             });

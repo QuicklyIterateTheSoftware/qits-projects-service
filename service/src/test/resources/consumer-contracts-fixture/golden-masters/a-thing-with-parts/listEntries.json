@@ -1,0 +1,22 @@
+{
+  "entries": [
+    {
+      "item": {
+        "name": "first",
+        "doneAt": null,
+        "parts": [
+          {
+            "label": "a"
+          }
+        ]
+      }
+    },
+    {
+      "item": {
+        "name": "second",
+        "doneAt": "2026-01-01T00:00:00Z",
+        "parts": []
+      }
+    }
+  ]
+}

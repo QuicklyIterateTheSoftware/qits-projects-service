@@ -20,7 +20,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * (qits-895) — the source of the derived block. Every rule is {@link AgentWaiting}'s.
  *
  * <pre>
- *   POST /work/{qualifiedId}/agent-waiting   {waiting, cause, sessionId, at}   → 204
+ *   POST /work/{qualifiedId}/agent-waiting   {waiting, cause, sessionId, at, waitingOn?}   → 204
  * </pre>
  *
  * <p>{@code qits:system} alone: the caller is the platform side that watches a session's hooks
@@ -55,6 +55,12 @@ public class WorkAgentWaitingController {
       @Schema(description = "The reporting session, for the log") String sessionId,
       @Schema(
               description =
+                  "The label of the declared wait the session is waiting on (qits-1153). While the"
+                      + " latest frame carries it, the entity reads as waiting on it and is not"
+                      + " derived blocked; absent is a wait for a person")
+          String waitingOn,
+      @Schema(
+              description =
                   "When the session stamped the frame, epoch milliseconds; absent reads as now. A"
                       + " frame older than the entity's last activity is ignored")
           Long at) {}
@@ -66,7 +72,8 @@ public class WorkAgentWaitingController {
       description =
           "A session that stays waiting past the debounce makes the entity read as blocked"
               + " (blockSource AGENT_WAITING) without setting its explicit block; waiting=false"
-              + " clears it. Ignored for a status that starts no phase, a feature or a task, and a"
+              + " clears it. A frame naming waitingOn (a declared wait's label) derives no block:"
+              + " the entity reads waitingOn instead. Ignored for a status that starts no phase, a feature or a task, and a"
               + " frame older than the entity's last activity. Never refuses a dispatch.")
   @APIResponse(responseCode = "204", description = "The frame was taken (or ignored)")
   @APIResponse(responseCode = "400", description = "No waiting value")
@@ -80,6 +87,7 @@ public class WorkAgentWaitingController {
         ids.resolve(qualifiedId),
         report.waiting(),
         report.cause(),
+        report.waitingOn(),
         report.sessionId(),
         report.at() == null ? null : Instant.ofEpochMilli(report.at()));
     return Response.noContent().build();

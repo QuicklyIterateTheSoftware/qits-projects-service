@@ -41,7 +41,8 @@ import java.util.regex.Pattern;
  *   <li>under {@code frozen.instants}: an ISO-8601 regex ({@link #ISO_INSTANT});
  *   <li>any other leaf: a type match; {@code null} exactly where the recording holds only null;
  *   <li>a non-empty array: "at least one element like this", the template merged from every
- *       recorded element (a field null or absent in some element matches type-or-null). This
+ *       recorded element (a field null or absent in some element matches type-or-null, at any
+ *       depth; an array empty in some element matches "zero or more like this"). This
  *       service reads each element in a loop, so neither the count nor the order is its business;
  *   <li>an empty array: empty, exactly, because there is nothing to build a template from.
  * </ul>
@@ -282,7 +283,7 @@ public final class ConsumerInteractions {
         fillObject(nested, value, child, childPath, op, nullable);
         nested.closeObject();
       } else if (value.isArray()) {
-        array(target, name, value, child, childPath, op);
+        array(target, name, value, child, childPath, op, nullable.mayBeEmpty(childPath));
       } else {
         leaf(target, name, value, childPath, op, nullable.contains(childPath));
       }
@@ -290,7 +291,13 @@ public final class ConsumerInteractions {
   }
 
   private static void array(
-      PactDslJsonBody target, String name, JsonNode value, Need need, String path, ConsumerGoldenMasters.Recorded op) {
+      PactDslJsonBody target,
+      String name,
+      JsonNode value,
+      Need need,
+      String path,
+      ConsumerGoldenMasters.Recorded op,
+      boolean mayBeEmpty) {
     if (value.isEmpty()) {
       target.array(name).closeArray();
       return;
@@ -299,14 +306,16 @@ public final class ConsumerInteractions {
     String elementPath = path + "[*]";
     JsonNode template = merge(value, elementPath, nullable);
     Need element = need.whole ? Need.WHOLE : need.element(path, op);
+    // Empty in some recorded element: the provider answers no element there, so zero is allowed.
+    int min = mayBeEmpty ? 0 : 1;
     if (template.isObject()) {
-      PactDslJsonBody body = target.minArrayLike(name, 1);
+      PactDslJsonBody body = target.minArrayLike(name, min, 1);
       fillObject(body, template, element, elementPath, op, nullable);
       ((PactDslJsonArray) body.closeObject()).closeArray();
     } else if (template.isArray()) {
       throw unsupported(op, elementPath, "an array of arrays");
     } else {
-      target.minArrayLike(name, 1, rootLeaf(template, elementPath, op), 1);
+      target.minArrayLike(name, min, rootLeaf(template, elementPath, op), 1);
     }
   }
 
@@ -362,8 +371,9 @@ public final class ConsumerInteractions {
 
   /**
    * Every element of {@code array} merged into one template: field union, a leaf's first non-null
-   * example, and the path of each field that is null or absent in some element noted in {@code
-   * nullable}. Nested arrays keep their first non-empty value.
+   * example, and — at any depth — the path of each field that is null or absent in some element
+   * noted in {@code nullable}, and of each array that is empty in some element. Nested arrays keep
+   * their first non-empty value.
    */
   private static JsonNode merge(JsonNode array, String elementPath, Nullable nullable) {
     JsonNode merged = null;
@@ -371,18 +381,33 @@ public final class ConsumerInteractions {
       merged = merged == null ? element.deepCopy() : mergeTwo(merged, element, elementPath, nullable);
     }
     if (merged != null && merged.isObject()) {
-      // A field absent from the first element but present later was added by mergeTwo; a field
-      // present first and absent later was marked there too.
       for (JsonNode element : array) {
-        for (Iterator<String> it = merged.fieldNames(); it.hasNext(); ) {
-          String name = it.next();
-          if (!element.has(name) || element.get(name).isNull()) {
-            nullable.add(elementPath + "." + name);
-          }
-        }
+        markVariance(merged, element, elementPath, nullable);
       }
     }
     return merged;
+  }
+
+  /**
+   * Compare one element against the merged template, field by field and into nested objects: a
+   * field null or absent there is nullable, a non-empty template array that is empty there may be
+   * empty.
+   */
+  private static void markVariance(
+      JsonNode template, JsonNode element, String path, Nullable nullable) {
+    for (Iterator<Map.Entry<String, JsonNode>> it = template.fields(); it.hasNext(); ) {
+      Map.Entry<String, JsonNode> field = it.next();
+      String childPath = path + "." + field.getKey();
+      JsonNode want = field.getValue();
+      JsonNode have = element.get(field.getKey());
+      if (have == null || have.isNull()) {
+        nullable.add(childPath);
+      } else if (want.isObject() && have.isObject()) {
+        markVariance(want, have, childPath, nullable);
+      } else if (want.isArray() && !want.isEmpty() && have.isArray() && have.isEmpty()) {
+        nullable.addEmpty(childPath);
+      }
+    }
   }
 
   private static JsonNode mergeTwo(JsonNode into, JsonNode next, String path, Nullable nullable) {
@@ -432,9 +457,13 @@ public final class ConsumerInteractions {
             + " is " + what);
   }
 
-  /** Paths whose value is null or absent in some element of their array. */
+  /**
+   * Paths whose value is null or absent in some element of their array, and paths of arrays that
+   * are empty in some element.
+   */
   private static final class Nullable {
     private final java.util.Set<String> paths = new java.util.HashSet<>();
+    private final java.util.Set<String> empty = new java.util.HashSet<>();
 
     void add(String path) {
       paths.add(path);
@@ -442,6 +471,14 @@ public final class ConsumerInteractions {
 
     boolean contains(String path) {
       return paths.contains(path);
+    }
+
+    void addEmpty(String path) {
+      empty.add(path);
+    }
+
+    boolean mayBeEmpty(String path) {
+      return empty.contains(path);
     }
   }
 

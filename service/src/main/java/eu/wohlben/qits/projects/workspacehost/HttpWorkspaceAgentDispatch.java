@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -36,15 +35,19 @@ import org.jboss.logging.Logger;
  *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
  *   Content-Type: application/json
  *
- *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;",
- *    "gitRefs": ["refs/heads/ticket/&lt;slug&gt;"], "branchTree": true,
- *    "ticketId": "…", "entityId": "qits-617", "entityTitle": "…",
+ *   {"repositoryId": "…", "wrapperBranch": "ticket/qits-617",
+ *    "workId": "…", "entityId": "qits-617", "entityTitle": "…",
  *    "entityStatus": "REFINED", "entityBlocked": false,
- *    "instruction": "&lt;the agent's first turn&gt;"}
+ *    "ticketId": "…", "instruction": "&lt;the agent's first turn&gt;"}
  *
- *   -&gt; 200 {"workspace": {"id": 41, …}, "fresh": true,
- *           "agentLaunch": "SCHEDULED"|"SKIPPED_RUNNING", "technicalProcessId": "…"|null}
+ *   -&gt; 200 {"agent": {"agentId": "…", "workspaceRowId": 41|null, "repositoryId": "…", …},
+ *           "fresh": true, "agentLaunch": "SCHEDULED"|"SKIPPED_RUNNING"|"QUEUED",
+ *           "agentIdentity": "…"|null}
  * </pre>
+ *
+ * <p>qits-1152: no {@code branch}, {@code branchTree} or {@code gitRefs} any more. The far side
+ * keys the agent by {@code workId}, stands its wrapper worktree on {@code wrapperBranch} and derives
+ * the refs it may push from it.
  *
  * <p>Anything that is not a 200 is a dispatch that did not happen.
  *
@@ -98,9 +101,8 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
 
   /**
-   * The bound on the whole exchange, and it is generous on purpose: the far side cuts the branch and
-   * <b>pushes every submodule's branch synchronously</b> before it answers, so a wide estate is tens
-   * of seconds of git and not a hung request.
+   * The bound on the whole exchange, and it is generous: the far side may create a workspace and
+   * commission credentials before it answers.
    */
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
@@ -125,12 +127,8 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
 
   @Override
   public Dispatch dispatchAgent(
-      String repositoryId,
-      String branch,
-      List<String> gitRefs,
-      boolean branchTree,
-      Subject subject,
-      String instruction) {
+      String repositoryId, String wrapperBranch, Subject subject, String instruction) {
+    String branch = wrapperBranch;
     String base =
         address()
             .orElseThrow(
@@ -151,38 +149,19 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
 
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("repositoryId", repositoryId);
-    body.put("branch", branch);
-    // The refs an agent in this workspace may push (plan contract C4). Left off when unset: then
-    // qits-workspaces allows only the workspace's own branch. An older qits-workspaces ignores it.
-    if (gitRefs != null) {
-      body.put("gitRefs", gitRefs);
+    body.put("wrapperBranch", wrapperBranch);
+    // The work item, whatever its archetype: qits-workspaces keys the agent by it (qits-1152).
+    if (subject != null && subject.workId() != null) {
+      body.put("workId", subject.workId());
     }
-    body.put("branchTree", branchTree);
-    // What the workspace is for, and no goal: a dispatch has no prose of its own to state, and the
-    // far side leaves a `preamble` it is not sent alone. Only the member that is set is sent —
-    // an explicit null would be this hop stating a subject it does not have.
-    if (subject != null && subject.ticketId() != null) {
-      body.put("ticketId", subject.ticketId());
-    }
-    if (subject != null && subject.epicId() != null) {
-      body.put("epicId", subject.epicId());
-    }
-    // One id for the work item whatever its archetype (qits-112): qits-workspaces binds the
-    // workspace to it and answers the item's ACTIVE workspace before it looks at the branch. An
-    // older qits-workspaces ignores it and takes the ticket or epic id instead.
-    if (subject != null && (subject.ticketId() != null || subject.epicId() != null)) {
-      body.put("workId", subject.ticketId() != null ? subject.ticketId() : subject.epicId());
-    }
-    // The row as a person names it — `qits-614` — for the far side's session names (qits-614). Under
-    // `entityId`, the wire name qits-workspaces reads; omitted, never null, when it was not rendered.
-    // A label only: an older qits-workspaces ignores it and the dispatch is the same dispatch.
+    // The row as a person names it — `qits-614` — for the far side's session names (qits-614);
+    // omitted, never null, when it was not rendered. A label only.
     if (subject != null && subject.qualifiedId() != null) {
       body.put("entityId", subject.qualifiedId());
     }
     // The rest of the session name, `<status square> <id> <title>` (qits-617): the title and the
     // status enum's name, each omitted when unknown, and the blocked flag that pales the square. The
-    // dispatch seeds them; every later change reaches the standing workspace through
-    // HttpWorkspaceAgentEntities. Labels only, and an older qits-workspaces ignores all three.
+    // dispatch seeds them; every later change reaches the agent through HttpWorkspaceAgentEntities.
     if (subject != null && subject.title() != null) {
       body.put("entityTitle", subject.title());
     }
@@ -191,6 +170,14 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     }
     if (subject != null) {
       body.put("entityBlocked", subject.blocked());
+    }
+    // Which archetype the work item is, for the far side's links. Only the member that is set is
+    // sent — an explicit null would be this hop stating a subject it does not have.
+    if (subject != null && subject.ticketId() != null) {
+      body.put("ticketId", subject.ticketId());
+    }
+    if (subject != null && subject.epicId() != null) {
+      body.put("epicId", subject.epicId());
     }
     body.put("instruction", instruction);
 
@@ -219,31 +206,26 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   }
 
   /**
-   * The read back: {@code GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…}, both
-   * parameters repeating, answering {@code {"entries":[{"workspace":{…}}]}}.
+   * The read back: {@code GET /workspaces/api/agent-dispatches/references?workId=…}, repeating,
+   * answering {@code {"entries":[{"agent":{…}}]}} (qits-1152).
    *
-   * <p>It answers <b>every</b> workspace naming the subject now, resolved ones included, each with
-   * its own {@code status} and {@code resolvedAt}. Nothing is filtered here — the port's javadoc is
-   * the rule and it puts that decision on each reader, in the open.
+   * <p>It answers <b>every</b> agent of the work items, removed ones included, each with its own
+   * {@code state}. Nothing is filtered here — the port's javadoc puts that decision on each reader.
    *
    * <p><b>The path is under {@code agent-dispatches} and that is load-bearing, not tidy.</b> It sat
-   * under {@code /workspaces/api/workspaces/references} for one release and answered **403** to
+   * under {@code /workspaces/api/workspaces/references} for one release and answered <b>403</b> to
    * every call this class made: that far-side class is {@code @RolesAllowed("qits:admin")}, a
    * person's door, and this hop presents a machine bearer, which carries {@code qits:system}. The
-   * contract below turned each 403 into an empty list — correctly, by its own rules — so the feature
-   * was deployed, inert, and silent. The dispatch door's class states both roles, so the reference
-   * it writes is read back through it.
+   * contract below turned each 403 into an empty list, so the feature was deployed, inert, and
+   * silent.
    *
-   * <p><b>Nothing here throws, and that is the port's contract rather than this class being
-   * lenient.</b> A missing address, a missing credential, a far side that is away, a non-200 and an
-   * answer that will not parse all come out the same way: one WARN and an empty list. The caller is
-   * a tickets panel being drawn, and the degraded answer — every button live, no link — is exactly
-   * what the platform did before this read existed.
+   * <p><b>Nothing here throws, and that is the port's contract.</b> A missing address, a missing
+   * credential, a far side that is away, a non-200 and an answer that will not parse all come out
+   * the same way: one WARN and an empty list.
    */
   @Override
-  public List<Reference> workspacesReferencing(
-      Collection<String> ticketIds, Collection<String> epicIds) {
-    String query = query(ticketIds, epicIds);
+  public List<Agent> agentsFor(Collection<String> workIds) {
+    String query = query(workIds);
     if (query.isEmpty()) {
       return List.of(); // asked about no rows — no call to make
     }
@@ -251,7 +233,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     Optional<String> authorization = bearer.authorization();
     if (base.isEmpty() || authorization.isEmpty()) {
       LOG.debugf(
-          "No %s for qits-workspaces, so no workspace references are read",
+          "No %s for qits-workspaces, so no agents are read",
           base.isEmpty() ? "address" : "machine credential");
       return List.of();
     }
@@ -267,86 +249,88 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() != 200) {
         LOG.warnf(
-            "qits-workspaces answered %s to a workspace-reference lookup; reporting none: %s",
+            "qits-workspaces answered %s to an agent lookup; reporting none: %s",
             response.statusCode(), response.body());
         return List.of();
       }
-      return references(response.body());
+      return agents(response.body());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      LOG.warn("Interrupted while reading workspace references; reporting none");
+      LOG.warn("Interrupted while reading agents; reporting none");
       return List.of();
     } catch (Exception e) {
-      LOG.warnf("Could not read workspace references, so none are reported: %s", e.toString());
+      LOG.warnf("Could not read agents, so none are reported: %s", e.toString());
       return List.of();
     }
   }
 
   /**
-   * The query string, with every blank and duplicate id dropped — a blank would ask about a row that
-   * cannot exist, and the same id twice would ask the same question twice. Empty means there is
-   * nothing to ask.
+   * The query string, with every blank and duplicate id dropped. Empty means there is nothing to
+   * ask.
    */
-  private static String query(Collection<String> ticketIds, Collection<String> epicIds) {
-    return Stream.concat(
-            named("ticketId", ticketIds).stream(), named("epicId", epicIds).stream())
+  private static String query(Collection<String> workIds) {
+    if (workIds == null) {
+      return "";
+    }
+    return workIds.stream()
+        .filter(id -> id != null && !id.isBlank())
+        .distinct()
+        .map(id -> "workId=" + URLEncoder.encode(id, StandardCharsets.UTF_8))
         .collect(Collectors.joining("&"));
   }
 
-  private static List<String> named(String parameter, Collection<String> ids) {
-    if (ids == null) {
-      return List.of();
-    }
-    return ids.stream()
-        .filter(id -> id != null && !id.isBlank())
-        .distinct()
-        .map(id -> parameter + "=" + URLEncoder.encode(id, StandardCharsets.UTF_8))
-        .toList();
-  }
-
   /**
-   * The entries, read as {@code Map}s like everything else this class exchanges. An entry missing
-   * the pair a link is composed from is skipped rather than carried as a half-row: a reference the
-   * browser cannot turn into an address is worse than one it never heard about.
-   *
-   * <p><b>{@code status} and {@code resolvedAt} are read leniently, and the {@code ACTIVE} default
-   * is the only protection either side of this hop has against the deploy order slipping.</b> The
-   * far side answers every workspace naming the subject now, live or resolved, and says which each
-   * is — but this service and qits-workspaces are released separately and the ordering is not
-   * guaranteed, so a qits-workspaces that predates the change answers rows with no {@code status}
-   * member at all. Reading that as an empty or null status would make every reference fail a live
-   * reader's {@code ACTIVE} filter, which is the whole of {@link
-   * eu.wohlben.qits.projects.api.PhaseAdvance}'s release ask and would silently stop asking
-   * for anything. An absent or blank word therefore means {@link Reference#ACTIVE} — the only
-   * thing an older far side could ever have been answering, since it returned live workspaces
-   * alone. A {@code resolvedAt} that is absent, null or unparseable is simply {@code null}, which
-   * is what a live workspace carries anyway.
+   * The entries, read as {@code Map}s like everything else this class exchanges. An entry with no
+   * agent id or no repository id is skipped rather than carried as a half-row: nobody can link to it
+   * or act on it.
    */
-  private static List<Reference> references(String responseBody) throws Exception {
+  private static List<Agent> agents(String responseBody) throws Exception {
     Map<?, ?> answer = MAPPER.readValue(responseBody, Map.class);
     if (!(answer.get("entries") instanceof List<?> entries)) {
       return List.of();
     }
-    List<Reference> references = new ArrayList<>();
+    List<Agent> agents = new ArrayList<>();
     for (Object entry : entries) {
-      if (!(entry instanceof Map<?, ?> wrapper)
-          || !(wrapper.get("workspace") instanceof Map<?, ?> row)
-          || !(row.get("workspaceRowId") instanceof Number rowId)
-          || !(row.get("repositoryId") instanceof String repositoryId)) {
-        continue;
+      if (entry instanceof Map<?, ?> wrapper && wrapper.get("agent") instanceof Map<?, ?> row) {
+        Agent agent = agent(row);
+        if (agent != null) {
+          agents.add(agent);
+        }
       }
-      references.add(
-          new Reference(
-              rowId.longValue(),
-              repositoryId,
-              string(row.get("workspaceId")),
-              string(row.get("branch")),
-              string(row.get("ticketId")),
-              string(row.get("epicId")),
-              status(row.get("status")),
-              instant(row.get("resolvedAt"))));
     }
-    return List.copyOf(references);
+    return List.copyOf(agents);
+  }
+
+  /** One {@code agent} object, or {@code null} when it lacks the agent or repository id. */
+  private static Agent agent(Map<?, ?> row) {
+    if (!(row.get("agentId") instanceof String agentId)
+        || agentId.isBlank()
+        || !(row.get("repositoryId") instanceof String repositoryId)) {
+      return null;
+    }
+    List<Branch> branches = new ArrayList<>();
+    if (row.get("branches") instanceof List<?> pushed) {
+      for (Object item : pushed) {
+        if (item instanceof Map<?, ?> branch
+            && branch.get("repositoryId") instanceof String repo
+            && branch.get("branch") instanceof String name
+            && !name.isBlank()) {
+          branches.add(new Branch(repo, name));
+        }
+      }
+    }
+    return new Agent(
+        agentId,
+        row.get("workspaceRowId") instanceof Number rowId ? rowId.longValue() : null,
+        repositoryId,
+        string(row.get("workId")),
+        string(row.get("entityId")),
+        string(row.get("wrapperBranch")),
+        branches,
+        string(row.get("state")),
+        string(row.get("runState")),
+        instant(row.get("createdAt")),
+        instant(row.get("removedAt")));
   }
 
   private static String string(Object value) {
@@ -354,19 +338,8 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   }
 
   /**
-   * The far side's own status word, defaulting to {@link Reference#ACTIVE}. See the method above for
-   * why the default is load-bearing rather than tidy. A word this side has never heard of is carried
-   * through untouched — it is qits-workspaces' vocabulary, not this hop's.
-   */
-  private static String status(Object value) {
-    String word = string(value);
-    return word == null || word.isBlank() ? Reference.ACTIVE : word;
-  }
-
-  /**
-   * An ISO instant, or {@code null} — which is what a live workspace carries. Unparseable is null
-   * too: this read may never throw, and a resolution time nobody can read is worth less than the
-   * reference it hangs off.
+   * An ISO instant, or {@code null}. Unparseable is null too: this read may never throw, and a time
+   * nobody can read is worth less than the agent it hangs off.
    */
   private static Instant instant(Object value) {
     String text = string(value);
@@ -376,7 +349,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     try {
       return Instant.parse(text);
     } catch (DateTimeParseException e) {
-      LOG.debugf("Unreadable resolvedAt on a workspace reference, reporting none: %s", text);
+      LOG.debugf("Unreadable time on an agent, reporting none: %s", text);
       return null;
     }
   }
@@ -392,9 +365,9 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   }
 
   /**
-   * The answer, read as a {@code Map}. The workspace's row id is the one member the caller cannot do
-   * without — the SPA's link is composed from it — so an answer carrying no readable id is a failed
-   * dispatch and not a dispatch with a hole in it.
+   * The answer, read as a {@code Map}. The agent's id is the one member the caller cannot do
+   * without, so an answer carrying no readable agent is a failed dispatch and not a dispatch with a
+   * hole in it. The workspace row id is null while the agent is QUEUED for a slot.
    */
   private Dispatch read(String branch, String responseBody) {
     Map<?, ?> answer;
@@ -403,24 +376,30 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     } catch (Exception e) {
       throw failed(branch, "qits-workspaces answered something unreadable: " + e);
     }
-    Object workspace = answer.get("workspace");
-    if (!(workspace instanceof Map<?, ?> row) || !(row.get("id") instanceof Number id)) {
-      throw failed(branch, "qits-workspaces answered no workspace id: " + responseBody);
+    if (!(answer.get("agent") instanceof Map<?, ?> row)
+        || !(row.get("agentId") instanceof String agentId)
+        || agentId.isBlank()) {
+      throw failed(branch, "qits-workspaces answered no agent id: " + responseBody);
     }
+    Long workspaceRowId =
+        row.get("workspaceRowId") instanceof Number id ? id.longValue() : null;
     boolean fresh = Boolean.TRUE.equals(answer.get("fresh"));
     Object launch = answer.get("agentLaunch");
-    // qits-887: who the agent's own calls are made as. Null before the container is commissioned,
-    // and absent from a qits-workspaces older than the field — both read as "named none", never as a
-    // failed dispatch: the workspace is real either way.
+    // qits-887: who the agent's own calls are made as. Null or absent reads as "named none", never
+    // as a failed dispatch: the agent is real either way.
     Object identity = answer.get("agentIdentity");
-    String agentIdentity =
-        identity instanceof String text && !text.isBlank() ? text : null;
+    String agentIdentity = identity instanceof String text && !text.isBlank() ? text : null;
     LOG.infof(
-        "qits-workspaces dispatched an agent onto %s in workspace %s (fresh=%s, launch=%s,"
+        "qits-workspaces dispatched agent %s onto %s in workspace %s (fresh=%s, launch=%s,"
             + " identity=%s)",
-        branch, id.longValue(), fresh, launch, agentIdentity);
+        agentId, branch, workspaceRowId, fresh, launch, agentIdentity);
     return new Dispatch(
-        id.longValue(), fresh, launch == null ? null : launch.toString(), agentIdentity);
+        agentId,
+        workspaceRowId,
+        string(row.get("repositoryId")),
+        fresh,
+        launch == null ? null : launch.toString(),
+        agentIdentity);
   }
 
   private static DomainException failed(String branch, String reason) {

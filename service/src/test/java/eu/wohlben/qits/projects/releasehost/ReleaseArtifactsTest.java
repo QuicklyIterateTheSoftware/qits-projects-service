@@ -48,6 +48,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class ReleaseArtifactsTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   @Inject RecordingReleaseGitHost gitHost;
 
   @Inject FakeReleaseDecisions decisions;
@@ -543,6 +545,7 @@ public class ReleaseArtifactsTest {
               request.createdAt = Instant.now();
               request.armedAt = request.createdAt;
               request.updatedAt = request.createdAt;
+              request.name(releaseRequestNumbers.next(request.repoId));
               request.persist();
               return request.id;
             });

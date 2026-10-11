@@ -312,7 +312,7 @@ public class AutoReleaseTest {
     // 2 + 3. The bump, committed onto the BACKING BRANCH — the fold, not any one participant.
     assertEquals(1, gitHost.commits().size(), "one commit, and it is the last one before the tag");
     RecordingReleaseGitHost.Commit commit = gitHost.commits().get(0);
-    assertEquals("refs/heads/release/" + id, commit.ref());
+    assertEquals(BackingBranches.ref(id), commit.ref());
     assertEquals("release(" + version + "): the thing works now", commit.message());
     assertEquals(
         java.util.Set.of("pom.xml", "domain/pom.xml"),
@@ -333,7 +333,7 @@ public class AutoReleaseTest {
     // RELEASED, so they may trail the state this test awaited by a moment.
     awaitDeletions(2);
     assertEquals(
-        List.of("work", "release/" + id),
+        List.of("work", BackingBranches.of(id)),
         gitHost.deletedBranches(),
         "the named source and the backing branch, and nothing else");
     assertFalse(gitHost.deletedBranches().contains("main"));
@@ -343,7 +343,7 @@ public class AutoReleaseTest {
     RecordingReleaseAnnouncer.Announced announced = releases.announced().get(0);
     assertEquals(projectId, announced.projectId());
     assertEquals(repoId, announced.repoId());
-    assertEquals("release/" + id, announced.branch(), "what was released is the fold's branch");
+    assertEquals(BackingBranches.of(id), announced.branch(), "what was released is the fold's branch");
     assertEquals(version, announced.version());
     assertNotNull(announced.occurredAt());
     // The coordinate that makes this event checkoutable, and it is the BUMP commit rather than the
@@ -757,7 +757,7 @@ public class AutoReleaseTest {
     List<RecordingBackingBranchMerger.Fold> folds = merger.folds();
     assertTrue(
         folds.subList(foldsAtTheGate.get(), folds.size()).stream()
-            .noneMatch(fold -> fold.target().equals("refs/heads/release/" + id)),
+            .noneMatch(fold -> fold.target().equals(BackingBranches.ref(id))),
         "nothing re-folded the released request");
     assertTrue(
         gitHost.addressed().stream()

@@ -30,13 +30,18 @@ import java.util.UUID;
  * own; {@code repoName} and {@code projectId} ride along for a consumer that shows a person what is
  * happening, and either may be null — a repository can have no alias and no project.
  *
- * <p><b>{@code backingBranch} is carried rather than derived.</b> It is {@code release/} +
- * {@code releaseRequestId} today, and a consumer could compose it — but the naming convention is
- * this service's to change and a consumer that composed it would silently break when it did.
+ * <p><b>{@code backingBranch} is carried rather than derived.</b> It is stored on the request:
+ * {@code release/<releaseRequestQualifiedId>} since qits-1158, {@code release/<releaseRequestId>}
+ * on an older request. A consumer that composed it would now be wrong, which is why it never may.
  *
- * <p><b>{@code changedAt} is when the merge landed</b>, not the moment {@code publish()} was called
- * — the two differ by however long the announcement took to be made, and the one that belongs in an
- * event log is when the thing happened.
+ * <p><b>{@code releaseRequestQualifiedId} is the id people read</b> (qits-1158): {@code
+ * <repoName>-rr-<n>}, frozen at creation. {@code releaseRequestId} stays the key. Additive.
+ *
+ * <p><b>{@code changedAt} is when the announced change happened</b> — the merge landing for a
+ * {@code PENDING} event, the pre-run passing for a {@code DONE} one — not the moment {@code
+ * publish()} was called. It must never be an earlier write's time: the DONE event once carried the
+ * fold's time, minutes in the past, and a consumer whose catch-up watermark had moved on never read
+ * it (qits-1177).
  *
  * <p><b>{@code priority} is the request's effective priority at the moment of the fold</b> — the max
  * over its named branch sources ({@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code HIGH}, {@code
@@ -109,7 +114,8 @@ public record ReleaseRequestChanged(
     Instant changedAt,
     String priority,
     List<String> downstreamTechnicalComponents,
-    String preRun)
+    String preRun,
+    String releaseRequestQualifiedId)
     implements QitsEvent {
 
   public ReleaseRequestChanged {
@@ -124,6 +130,7 @@ public record ReleaseRequestChanged(
       String repoId,
       String repoName,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String backingBranch,
       String mergedSha,
       Instant changedAt,
@@ -136,6 +143,33 @@ public record ReleaseRequestChanged(
         repoId,
         repoName,
         releaseRequestId,
+        backingBranch,
+        mergedSha,
+        changedAt,
+        priority,
+        downstreamTechnicalComponents,
+        preRun,
+        releaseRequestQualifiedId);
+  }
+
+  /** The shape before {@code releaseRequestQualifiedId}: an absent key. */
+  public ReleaseRequestChanged(
+      String projectId,
+      String repoId,
+      String repoName,
+      String releaseRequestId,
+      String backingBranch,
+      String mergedSha,
+      Instant changedAt,
+      String priority,
+      List<String> downstreamTechnicalComponents,
+      String preRun) {
+    this(
+        projectId,
+        repoId,
+        repoName,
+        releaseRequestId,
+        null,
         backingBranch,
         mergedSha,
         changedAt,

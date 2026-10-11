@@ -229,6 +229,7 @@ erDiagram
   release_request {
     string id PK "not null"
     instant armed_at "not null"
+    string backing_branch "not null"
     uuid causation_id
     string conflict_detail
     instant created_at "not null"
@@ -236,8 +237,10 @@ erDiagram
     instant gate_ticket_closed_at
     string gate_ticket_id
     string merged_sha
+    long number "not null"
     string project_id
     string qa_announced_sha
+    string qualified_id "not null"
     string rejecting_run_id
     string repo_id "not null"
     string repo_name

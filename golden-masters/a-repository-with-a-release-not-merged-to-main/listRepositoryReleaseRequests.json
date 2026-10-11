@@ -2,9 +2,10 @@
   "requests": [
     {
       "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-service-rr-3",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "backingBranch": "release/contract-service-rr-3",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -44,6 +45,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -78,9 +80,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
+      "qualifiedId": "contract-service-rr-2",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000004",
+      "backingBranch": "release/contract-service-rr-2",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -125,6 +128,7 @@
       "conflict": null,
       "version": "2026.101.100400",
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0104",
       "mergedToMainAt": null,
       "retryable": false,
@@ -169,9 +173,10 @@
     },
     {
       "id": "00000000-0000-4000-8000-000000000005",
+      "qualifiedId": "contract-service-rr-1",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000005",
+      "backingBranch": "release/contract-service-rr-1",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -216,6 +221,7 @@
       "conflict": null,
       "version": "2026.101.100100",
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0101",
       "mergedToMainAt": "2026-01-01T00:00:00Z",
       "retryable": false,

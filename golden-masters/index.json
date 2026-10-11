@@ -843,10 +843,7 @@
               "$.request.createdAt",
               "$.request.updatedAt"
             ],
-            "strings": [
-              "$.request.backingBranch",
-              "$.request.conflict.target"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -938,12 +935,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -1027,9 +1022,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -1721,10 +1714,8 @@
               "$.requests[*].updatedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch",
               "$.requests[*].qualityGates[*].detail",
-              "$.requests[*].qualityGates[*].checks[*].name",
-              "$.requests[*].qualityGates[*].checks[*].detail"
+              "$.requests[*].qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -1795,14 +1786,11 @@
               "$.requests[*].pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch",
               "$.requests[*].automations[*].runId",
               "$.requests[*].qualityGates[*].checks[*].runId",
               "$.requests[*].qualityGates[*].detail",
               "$.requests[*].qualityGates[*].checks[*].name",
-              "$.requests[*].qualityGates[*].checks[*].detail",
-              "$.requests[*].detail",
-              "$.requests[*].conflict.target"
+              "$.requests[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -1828,10 +1816,8 @@
               "$.request.updatedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -1931,7 +1917,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -1987,7 +1975,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -2043,7 +2033,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -2099,7 +2091,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -2177,10 +2171,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2227,9 +2219,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -2270,9 +2260,7 @@
             "instants": [
               "$.commits[*].date"
             ],
-            "strings": [
-              "$.foldParents[*].ref"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -2316,12 +2304,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2364,12 +2350,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2453,9 +2437,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -2537,12 +2519,10 @@
               "$.requests[*].pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch",
               "$.requests[*].automations[*].runId",
               "$.requests[*].qualityGates[*].checks[*].runId",
               "$.requests[*].qualityGates[*].detail",
-              "$.requests[*].qualityGates[*].checks[*].name",
-              "$.requests[*].qualityGates[*].checks[*].detail"
+              "$.requests[*].qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2573,12 +2553,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2607,10 +2585,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2652,7 +2628,6 @@
               "$.request.pipeline.phases[*].startedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId"
             ],
@@ -2678,7 +2653,6 @@
               "$.request.pipeline.phases[*].startedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId"
             ],
@@ -2839,12 +2813,10 @@
               "$.request.updatedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -2928,9 +2900,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -3018,12 +2988,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3059,9 +3027,7 @@
               "$.request.createdAt",
               "$.request.updatedAt"
             ],
-            "strings": [
-              "$.request.backingBranch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -3099,11 +3065,9 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.detail",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3150,9 +3114,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -3218,11 +3180,9 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.detail",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3261,10 +3221,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3311,9 +3269,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -3379,10 +3335,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3419,12 +3373,10 @@
               "$.request.updatedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3448,12 +3400,10 @@
               "$.requests[*].updatedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch",
               "$.requests[*].automations[*].runId",
               "$.requests[*].qualityGates[*].checks[*].runId",
               "$.requests[*].qualityGates[*].detail",
-              "$.requests[*].qualityGates[*].checks[*].name",
-              "$.requests[*].qualityGates[*].checks[*].detail"
+              "$.requests[*].qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3508,10 +3458,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3558,9 +3506,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -3639,10 +3585,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -3701,7 +3645,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -4033,9 +3979,7 @@
               "$.request.createdAt",
               "$.request.updatedAt"
             ],
-            "strings": [
-              "$.request.backingBranch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -4069,9 +4013,7 @@
               "$.requests[*].updatedAt",
               "$.requests[*].mergedToMainAt"
             ],
-            "strings": [
-              "$.requests[*].backingBranch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -4104,9 +4046,7 @@
               "$.requests[*].createdAt",
               "$.requests[*].updatedAt"
             ],
-            "strings": [
-              "$.requests[*].backingBranch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -4252,6 +4192,55 @@
           "path": "/projects/api/work/{qualifiedId}/dispatch",
           "status": 200,
           "file": "a-ticket-its-agent-is-waiting-on/getWorkDispatch.json",
+          "frozen": {
+            "ids": [
+              "$.state.entityId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ticket its agent waits on a declared wait",
+      "slug": "a-ticket-its-agent-waits-on-a-declared-wait",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-its-agent-waits-on-a-declared-wait/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWorkDispatch",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/dispatch",
+          "status": 200,
+          "file": "a-ticket-its-agent-waits-on-a-declared-wait/getWorkDispatch.json",
           "frozen": {
             "ids": [
               "$.state.entityId"
@@ -4422,8 +4411,10 @@
           "path": "/projects/api/work/{ticketId}/agent-waiting",
           "body": {
             "waiting": true,
-            "cause": "Stop",
-            "sessionId": "contract-session"
+            "cause": "Wait",
+            "sessionId": "contract-session",
+            "at": 1234,
+            "waitingOn": "release-request 42; ci-run 7"
           },
           "status": 204,
           "file": "a-ticket-with-a-dispatched-agent/reportWorkAgentWaiting.json",
@@ -4651,10 +4642,8 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -4701,9 +4690,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -4809,12 +4796,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch",
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
-              "$.request.qualityGates[*].checks[*].name",
-              "$.request.qualityGates[*].checks[*].detail"
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }
@@ -4898,9 +4883,7 @@
             "instants": [
               "$.builds[*].finishedAt"
             ],
-            "strings": [
-              "$.builds[*].branch"
-            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -5480,7 +5463,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },

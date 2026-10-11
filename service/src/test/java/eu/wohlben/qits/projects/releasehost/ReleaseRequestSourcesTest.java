@@ -211,7 +211,7 @@ public class ReleaseRequestSourcesTest {
         .get(base() + "/" + id)
         .then()
         .statusCode(200)
-        .body("request.backingBranch", equalTo("release/" + id))
+        .body("request.backingBranch", equalTo(BackingBranches.of(id)))
         .body("request.sources.name", contains("main", "work"))
         .body("request.sources.ref", contains("refs/heads/main", "refs/heads/work"))
         .body("request.sources.implicit", contains(false, false))
@@ -220,7 +220,7 @@ public class ReleaseRequestSourcesTest {
     // main first, because the order sources are added in is the order they become parents.
     assertEquals(
         List.of("refs/heads/main", "refs/heads/work"),
-        merger.foldsOf("refs/heads/release/" + id).get(0).sources());
+        merger.foldsOf(BackingBranches.ref(id)).get(0).sources());
   }
 
   @Test
@@ -230,7 +230,7 @@ public class ReleaseRequestSourcesTest {
     given().get(base() + "/" + id).then().body("request.sources.name", contains("main"));
     assertEquals(
         List.of("refs/heads/main"),
-        merger.foldsOf("refs/heads/release/" + id).get(0).sources());
+        merger.foldsOf(BackingBranches.ref(id)).get(0).sources());
   }
 
   @Test
@@ -248,14 +248,14 @@ public class ReleaseRequestSourcesTest {
 
     assertEquals(
         List.of("refs/heads/main", "refs/heads/work", "refs/heads/work-two"),
-        merger.foldsOf("refs/heads/release/" + id).get(1).sources());
+        merger.foldsOf(BackingBranches.ref(id)).get(1).sources());
     assertNotEquals(first, mergedShaOf(id), "a new source is new content, so a new fold");
   }
 
   @Test
   public void addingTheSameSourceTwiceIsAddingItOnceAndFoldsNothing() {
     String id = create("work");
-    int foldsAfterCreate = merger.foldsOf("refs/heads/release/" + id).size();
+    int foldsAfterCreate = merger.foldsOf(BackingBranches.ref(id)).size();
 
     given()
         .contentType(ContentType.JSON)
@@ -267,7 +267,7 @@ public class ReleaseRequestSourcesTest {
 
     assertEquals(
         foldsAfterCreate,
-        merger.foldsOf("refs/heads/release/" + id).size(),
+        merger.foldsOf(BackingBranches.ref(id)).size(),
         "an idempotent add asks the git host for nothing");
   }
 
@@ -304,7 +304,7 @@ public class ReleaseRequestSourcesTest {
     // And it really is folded in: the fold is a superset of the release already in flight.
     assertTrue(
         merger
-            .foldsOf("refs/heads/release/" + id)
+            .foldsOf(BackingBranches.ref(id))
             .get(0)
             .sources()
             .contains("refs/tags/2026.901.120000"));
@@ -397,7 +397,7 @@ public class ReleaseRequestSourcesTest {
   public void restatingASourcesPriorityMovesTheMaxAndNothingElse() {
     String id = create("work");
     String merged = mergedShaOf(id);
-    int foldsAfterCreate = merger.foldsOf("refs/heads/release/" + id).size();
+    int foldsAfterCreate = merger.foldsOf(BackingBranches.ref(id)).size();
     announcer.reset();
 
     setPriority(id, "work", "BLOCKING")
@@ -409,7 +409,7 @@ public class ReleaseRequestSourcesTest {
 
     assertEquals(
         foldsAfterCreate,
-        merger.foldsOf("refs/heads/release/" + id).size(),
+        merger.foldsOf(BackingBranches.ref(id)).size(),
         "a priority is not content: the git host is asked for nothing");
     assertEquals(merged, mergedShaOf(id), "and the request still gates the fold it was gating");
     assertEquals(List.of(), announcer.announcedFor(id), "so there is nothing to announce");
@@ -510,7 +510,7 @@ public class ReleaseRequestSourcesTest {
     assertEquals(projectId, event.projectId());
     assertEquals(repoId, event.repoId());
     assertEquals(id, event.releaseRequestId());
-    assertEquals("release/" + id, event.backingBranch());
+    assertEquals(BackingBranches.of(id), event.backingBranch());
     assertEquals(mergedShaOf(id), event.mergedSha(), "what a consumer builds is the fold's tip");
 
     announcer.reset();
@@ -530,7 +530,7 @@ public class ReleaseRequestSourcesTest {
     headMoved("work");
 
     assertEquals(
-        2, merger.foldsOf("refs/heads/release/" + id).size(), "the fold was attempted all the same");
+        2, merger.foldsOf(BackingBranches.ref(id)).size(), "the fold was attempted all the same");
     assertEquals(List.of(), announcer.announcedFor(id), "unchanged is not a change");
     assertEquals(merged, mergedShaOf(id), "and the request still points at the same fold");
   }
@@ -562,7 +562,7 @@ public class ReleaseRequestSourcesTest {
 
     merger.answer(
         BackingBranchMerger.Outcome.conflict(
-            "refs/heads/release/" + id,
+            BackingBranches.ref(id),
             List.of(
                 new BackingBranchMerger.Conflict(
                     "pom.xml", "refs/heads/work", "abc1234", "content"))));
@@ -572,7 +572,7 @@ public class ReleaseRequestSourcesTest {
         .get(base() + "/" + id)
         .then()
         .body("request.state", equalTo("CONFLICTED"))
-        .body("request.conflict.target", equalTo("refs/heads/release/" + id))
+        .body("request.conflict.target", equalTo(BackingBranches.ref(id)))
         .body("request.conflict.conflicts[0].path", equalTo("pom.xml"))
         .body("request.conflict.conflicts[0].head", equalTo("refs/heads/work"))
         .body("request.conflict.conflicts[0].headSha", equalTo("abc1234"))
@@ -588,19 +588,19 @@ public class ReleaseRequestSourcesTest {
     String id = create("work");
     merger.answer(
         BackingBranchMerger.Outcome.conflict(
-            "refs/heads/release/" + id,
+            BackingBranches.ref(id),
             List.of(
                 new BackingBranchMerger.Conflict(
                     "pom.xml", "refs/heads/work", "abc1234", "content"))));
     headMoved("work");
     assertEquals("CONFLICTED", stateOf(id));
-    int foldsWhenConflicted = merger.foldsOf("refs/heads/release/" + id).size();
+    int foldsWhenConflicted = merger.foldsOf(BackingBranches.ref(id)).size();
 
     // A conflict answers the same on every knock: the sweep must not re-fold it, which is the
     // unbounded-loop defect this aggregate already paid for once.
     releaseRequests.sweep();
     releaseRequests.sweep();
-    assertEquals(foldsWhenConflicted, merger.foldsOf("refs/heads/release/" + id).size());
+    assertEquals(foldsWhenConflicted, merger.foldsOf(BackingBranches.ref(id)).size());
 
     // Something changed: the push that resolves it clears the state, the detail and the event.
     announcer.reset();
@@ -632,7 +632,7 @@ public class ReleaseRequestSourcesTest {
   @Test
   public void aGitlinkConflictBetweenTwoReleasesIsDecidedByOneExtraFold() {
     String id = create("work");
-    String target = "refs/heads/release/" + id;
+    String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
     seedMember();
 
@@ -670,7 +670,7 @@ public class ReleaseRequestSourcesTest {
   @Test
   public void aGitlinkConflictThisServiceCannotDecideIsStillAPersonsAfterOneFold() {
     String id = create("work");
-    String target = "refs/heads/release/" + id;
+    String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
     seedMember();
 
@@ -705,7 +705,7 @@ public class ReleaseRequestSourcesTest {
   @Test
   public void versionPinsTheGitHostDecidedAreRecordedOnTheRequest() {
     String id = create("work");
-    String target = "refs/heads/release/" + id;
+    String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
 
     List<String> logged = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -776,7 +776,7 @@ public class ReleaseRequestSourcesTest {
   @Test
   public void aPomTheGitHostCouldNotDecideStaysConflictedAfterOneFold() {
     String id = create("work");
-    String target = "refs/heads/release/" + id;
+    String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
 
     merger.answer(
@@ -949,7 +949,7 @@ public class ReleaseRequestSourcesTest {
 
     // The waiting request is now a superset of the release in flight: the tag joined its sources
     // and it was re-folded on its own backing branch.
-    awaitFoldContaining("refs/heads/release/" + waiting, "refs/tags/2026.831.90000");
+    awaitFoldContaining(BackingBranches.ref(waiting), "refs/tags/2026.831.90000");
     given()
         .get(base() + "/" + waiting)
         .then()
@@ -959,7 +959,7 @@ public class ReleaseRequestSourcesTest {
     // And the released one is not re-folded by its own release.
     assertEquals(
         1,
-        merger.foldsOf("refs/heads/release/" + shipping).size(),
+        merger.foldsOf(BackingBranches.ref(shipping)).size(),
         "a settled request is not re-folded");
   }
 
@@ -978,7 +978,7 @@ public class ReleaseRequestSourcesTest {
     activeBuilds.answer(Optional.of(1));
 
     int foldsBefore =
-        awaitFoldContaining("refs/heads/release/" + waiting, "refs/tags/2026.831.90000").size();
+        awaitFoldContaining(BackingBranches.ref(waiting), "refs/tags/2026.831.90000").size();
     String foldedWith = mergedShaOf(waiting);
     announcer.reset();
 
@@ -990,7 +990,7 @@ public class ReleaseRequestSourcesTest {
 
     assertEquals(
         foldsBefore + 1,
-        merger.foldsOf("refs/heads/release/" + waiting).size(),
+        merger.foldsOf(BackingBranches.ref(waiting)).size(),
         "leaving the set is a real trigger and the request is re-folded");
     assertTrue(
         !merger.lastFold().sources().contains("refs/tags/2026.831.90000"),

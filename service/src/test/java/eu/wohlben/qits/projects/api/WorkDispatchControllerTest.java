@@ -232,6 +232,18 @@ public class WorkDispatchControllerTest {
     return dispatchEntities.fresh(entityId).preApprovedBy;
   }
 
+  /** The ACTIVE agent of {@code workId}, having pushed {@code branch} in the wrapper. */
+  private static WorkspaceAgentDispatch.Agent pushed(
+      long rowId, String wrapperId, String workId, String branch) {
+    return RecordingWorkspaceAgentDispatch.active(
+        "agent-" + rowId,
+        rowId,
+        wrapperId,
+        workId,
+        branch,
+        new WorkspaceAgentDispatch.Branch(wrapperId, branch));
+  }
+
   /** The bodies on an entity's thread, oldest first — the thread every archetype has (qits-551). */
   private List<String> threadOf(String entityId) {
     return asAdmin("dana")
@@ -304,13 +316,15 @@ public class WorkDispatchControllerTest {
     assertEquals("refine", press(epicId, "PHASE"));
     RecordingWorkspaceAgentDispatch.Dispatched refine = dispatch.lastCall();
     assertTrue(refine.instruction().contains("Refine epic \""), refine.instruction());
-    assertEquals("epic/walk-the-epic", refine.branch());
+    assertEquals("epic/" + qualifiedIdOf(projectId, epicId), refine.wrapperBranch());
     assertEquals(epicId, refine.subject().epicId(), "the workspace names the epic it is for");
     assertNull(refine.subject().ticketId());
     // The press is recorded on the epic's own thread, as a ticket's always was (qits-551).
     assertEquals(
         List.of(
-            "Dispatched a coding agent to workspace `epic/walk-the-epic` for the refine phase."
+            "Dispatched a coding agent onto `epic/"
+                + qualifiedIdOf(projectId, epicId)
+                + "` for the refine phase."
                 + " Assignee: `ws-agent-41`."
                 + " This run stops after that phase: the next one starts when somebody presses"
                 + " again."),
@@ -341,8 +355,8 @@ public class WorkDispatchControllerTest {
   }
 
   /**
-   * <b>Same status, same path, different words.</b> Both stand on the project's wrapper with the
-   * whole estate branched, both start the refine phase, and each is told what refining it means.
+   * <b>Same status, same path, different words.</b> Both stand on the project's wrapper, both start
+   * the refine phase, and each is told what refining it means.
    */
   @Test
   public void anEpicAndATicketAtTheSameStatusTakeTheSamePathWithDifferentPromptText() {
@@ -357,9 +371,8 @@ public class WorkDispatchControllerTest {
 
     assertEquals(wrapperIdOf(projectId), ticketRun.repositoryId());
     assertEquals(ticketRun.repositoryId(), epicRun.repositoryId(), "both stand on the wrapper");
-    assertTrue(ticketRun.branchTree() && epicRun.branchTree(), "both branch the whole estate");
-    assertEquals("ticket/same-path-ticket", ticketRun.branch());
-    assertEquals("epic/same-path-epic", epicRun.branch());
+    assertEquals("ticket/" + qualifiedIdOf(projectId, ticketId), ticketRun.wrapperBranch());
+    assertEquals("epic/" + qualifiedIdOf(projectId, epicId), epicRun.wrapperBranch());
     assertEquals(ticketId, ticketRun.subject().ticketId());
     assertEquals(epicId, epicRun.subject().epicId());
     // Each also named as a person names it, <project-slug>-<number> (qits-614): the label the far
@@ -408,10 +421,9 @@ public class WorkDispatchControllerTest {
     press(epicId, "FLOW");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     String wrapperId = wrapperIdOf(projectId);
-    dispatch.willReference(
-        RecordingWorkspaceAgentDispatch.live(
-            11L, wrapperId, "ws-t", "ticket/flow-ticket", ticketId, null),
-        RecordingWorkspaceAgentDispatch.live(12L, wrapperId, "ws-e", "epic/flow-epic", null, epicId));
+    dispatch.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-11", 11L, wrapperId, ticketId, "ticket/t"),
+        RecordingWorkspaceAgentDispatch.active("agent-12", 12L, wrapperId, epicId, "epic/e"));
     transitions.reset();
 
     transitionTicket(ticketId, "REFINED");
@@ -432,7 +444,7 @@ public class WorkDispatchControllerTest {
 
     transitionTicket(ticketId, "IMPLEMENTED");
     assertEquals(2, turns.calls().size(), "the flow carried the ticket on");
-    assertEquals("ticket/flow-ticket", turns.lastCall().branch());
+    assertEquals(ticketId, turns.lastCall().workId());
     // The verify turn was spoken, so the verification started (qits-749): the ticket is moved on
     // to VERIFYING with no second turn.
     assertEquals("VERIFYING", statusOf(Archetype.TICKET, ticketId));
@@ -451,8 +463,7 @@ public class WorkDispatchControllerTest {
     transitionEpic(epicId, "IMPLEMENTED");
     assertEquals(4, turns.calls().size(), "and the epic, through the epic's own transition door");
     assertEquals("VERIFYING", statusOf(Archetype.EPIC, epicId));
-    assertEquals("epic/flow-epic", turns.lastCall().branch());
-    assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
+    assertEquals(epicId, turns.lastCall().workId());
     assertTrue(turns.lastCall().text().contains("Verify epic \""), turns.lastCall().text());
     String epicQualified = qualifiedIdOf(projectId, epicId);
     assertTrue(
@@ -482,11 +493,9 @@ public class WorkDispatchControllerTest {
     }
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     String wrapperId = wrapperIdOf(projectId);
-    dispatch.willReference(
-        RecordingWorkspaceAgentDispatch.live(
-            21L, wrapperId, "ws-t", "ticket/machine-flow-ticket", ticketId, null),
-        RecordingWorkspaceAgentDispatch.live(
-            22L, wrapperId, "ws-e", "epic/machine-flow-epic", null, epicId));
+    dispatch.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-21", 21L, wrapperId, ticketId, "ticket/t"),
+        RecordingWorkspaceAgentDispatch.active("agent-22", 22L, wrapperId, epicId, "epic/e"));
 
     transitionTicket(ticketId, "REFINED");
     transitionEpic(epicId, "REFINED");
@@ -697,11 +706,9 @@ public class WorkDispatchControllerTest {
     String flow = createTicket(projectId, "Released flow");
     press(oneShot, "PHASE");
     press(flow, "FLOW");
-    dispatch.willReference(
-        RecordingWorkspaceAgentDispatch.live(
-            7L, wrapperId, "ws-a", "ticket/released-one-shot", oneShot, null),
-        RecordingWorkspaceAgentDispatch.live(
-            8L, wrapperId, "ws-b", "ticket/released-flow", flow, null));
+    dispatch.willFind(
+        pushed(7L, wrapperId, oneShot, "ticket/" + qualifiedIdOf(projectId, oneShot)),
+        pushed(8L, wrapperId, flow, "ticket/" + qualifiedIdOf(projectId, flow)));
 
     for (String ticketId : List.of(oneShot, flow)) {
       transitionTicket(ticketId, "REFINED");
@@ -716,8 +723,9 @@ public class WorkDispatchControllerTest {
     List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
     assertEquals(1, requests.size(), "the wrapper's one open request carries both: " + requests);
     List<String> sources = sourceNamesOf(requests.get(0));
-    assertTrue(sources.contains("ticket/released-one-shot"), "the one-phase run: " + sources);
-    assertTrue(sources.contains("ticket/released-flow"), "and the flow: " + sources);
+    assertTrue(
+        sources.contains("ticket/" + qualifiedIdOf(projectId, oneShot)), "the one-phase run: " + sources);
+    assertTrue(sources.contains("ticket/" + qualifiedIdOf(projectId, flow)), "and the flow: " + sources);
   }
 
   /** An epic reaching VERIFIED asks for its own branch, titled as the epic, in PHASE mode too. */
@@ -729,28 +737,29 @@ public class WorkDispatchControllerTest {
     transitionEpic(epicId, "REFINED");
     transitionEpic(epicId, "READY_FOR_DEV");
     press(epicId, "PHASE");
-    dispatch.willReference(
-        RecordingWorkspaceAgentDispatch.live(
-            9L, wrapperId, "ws-e", "epic/released-epic", null, epicId));
+    dispatch.willFind(
+        pushed(9L, wrapperId, epicId, "epic/" + qualifiedIdOf(projectId, epicId)));
 
     transitionEpic(epicId, "IMPLEMENTED");
     transitionEpic(epicId, "VERIFIED");
 
     List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
     assertEquals(1, requests.size(), requests.toString());
-    assertTrue(sourceNamesOf(requests.get(0)).contains("epic/released-epic"));
+    String branch = "epic/" + qualifiedIdOf(projectId, epicId);
+    assertTrue(sourceNamesOf(requests.get(0)).contains(branch));
     assertEquals("Epic released-epic: Released epic", requests.get(0).get("summary"));
     assertTrue(
         threadOf(epicId).stream()
             .anyMatch(
                 body ->
                     body.startsWith(
-                        "Asked for the release of `epic/released-epic`: the epic now waits on"
-                            + " release request ")),
+                        "Asked for the release of `"
+                            + branch
+                            + "` (release request ")),
         "the epic's thread names the request it now waits on: " + threadOf(epicId));
     assertTrue(
-        dispatch.lookups().stream().anyMatch(looked -> looked.epicIds().contains(epicId)),
-        "the epic is looked up at the workspaces port by epic id");
+        dispatch.lookups().stream().anyMatch(looked -> looked.workIds().contains(epicId)),
+        "the epic is looked up at the workspaces port by its work id");
   }
 
   // ---- the door itself ------------------------------------------------------------------------
@@ -936,7 +945,8 @@ public class WorkDispatchControllerTest {
     assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
     transitionTicket(ticketId, "REFINED");
     transitionTicket(ticketId, "READY_FOR_DEV");
-    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(52L, false, "SCHEDULED", "ws-agent-52"));
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-52", 52L, null, false, "SCHEDULED", "ws-agent-52"));
     assertEquals("implement", press(ticketId, "PHASE"));
     assertEquals("ws-agent-52", assigneeOf(ticketId), "the implement press's agent, not mallory");
   }
@@ -951,7 +961,8 @@ public class WorkDispatchControllerTest {
     String ticketId = createTicket(projectId, "Executor ticket");
     transitionTicket(ticketId, "REFINED");
     transitionTicket(ticketId, "READY_FOR_DEV");
-    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(63L, true, "SCHEDULED", "ws-agent-63"));
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-63", 63L, null, true, "SCHEDULED", "ws-agent-63"));
 
     EntityDispatch.Outcome outcome =
         entityDispatch.dispatch(ticketId, DispatchMode.FLOW, "campaign c-1", "implement");
@@ -961,20 +972,21 @@ public class WorkDispatchControllerTest {
   }
 
   /**
-   * <b>No identity, the workspace instead</b>: a fresh workspace answers before its container is
-   * commissioned (and an older qits-workspaces never names one), so the field says which workspace
-   * the agent is in rather than nothing.
+   * <b>No identity, the agent id instead</b>: a fresh agent may answer before it is commissioned,
+   * so the field says which agent is on it rather than nothing.
    */
   @Test
-  public void aDispatchNamingNoAgentFallsBackToTheWorkspace() {
+  public void aDispatchNamingNoIdentityFallsBackToTheAgentId() {
     String projectId = createProject("Dispatch Assignee Fallback");
     String epicId = createEpic(projectId, "Uncommissioned");
-    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, true, "SCHEDULED", null));
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-77", 77L, null, true, "SCHEDULED", null));
 
     press(epicId, "FLOW");
 
-    assertEquals("workspace 77", assigneeOf(epicId));
-    assertTrue(threadOf(epicId).get(0).contains("Assignee: `workspace 77`"), threadOf(epicId).toString());
+    assertEquals("agent agent-77", assigneeOf(epicId));
+    assertTrue(
+        threadOf(epicId).get(0).contains("Assignee: `agent agent-77`"), threadOf(epicId).toString());
   }
 
   /** <b>A refused press writes nothing</b>, and neither does one whose far side failed. */
@@ -984,7 +996,8 @@ public class WorkDispatchControllerTest {
     String ticketId = createTicket(projectId, "Hold still");
     press(ticketId, "PHASE");
     transitionTicket(ticketId, "REFINED");
-    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(88L, true, "SCHEDULED", "ws-agent-88"));
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-88", 88L, null, true, "SCHEDULED", "ws-agent-88"));
 
     pressRefused(ticketId, "PHASE", "waits for a person to schedule it");
     assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));

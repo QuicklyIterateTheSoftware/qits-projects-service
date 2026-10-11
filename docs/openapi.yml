@@ -1276,6 +1276,8 @@ components:
           type: string
         mode:
           $ref: "#/components/schemas/DispatchMode"
+        agentId:
+          type: string
         workspaceRowId:
           type: integer
           format: int64
@@ -1313,6 +1315,8 @@ components:
         blockReason:
           type: string
         blockedBy:
+          type: string
+        waitingOn:
           type: string
     EntityProperty:
       type: string
@@ -1391,6 +1395,8 @@ components:
         blockReason:
           type: string
         blockedBy:
+          type: string
+        waitingOn:
           type: string
     EntityTransition:
       type: object
@@ -2079,6 +2085,8 @@ components:
       properties:
         id:
           type: string
+        qualifiedId:
+          type: string
         repoId:
           type: string
         repoName:
@@ -2129,6 +2137,8 @@ components:
         version:
           type: string
         supersededBy:
+          type: string
+        supersededByQualifiedId:
           type: string
         releasedSha:
           type: string
@@ -2741,6 +2751,8 @@ components:
           type: string
         blockedBy:
           type: string
+        waitingOn:
+          type: string
     UUID:
       type: string
       format: uuid
@@ -2801,6 +2813,11 @@ components:
         sessionId:
           type: string
           description: "The reporting session, for the log"
+        waitingOn:
+          type: string
+          description: "The label of the declared wait the session is waiting on (qits-1153).\
+            \ While the latest frame carries it, the entity reads as waiting on it\
+            \ and is not derived blocked; absent is a wait for a person"
         at:
           type: integer
           format: int64
@@ -3250,7 +3267,9 @@ components:
           description: "A feature's or task's implementing marker (ISO-8601 instant):\
             \ when its implementation was started. Cannot be cleared. Moves only while\
             \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
-            \ status to IMPLEMENTING when it is not already there or further."
+            \ status to IMPLEMENTING when it is not already there or further. On a\
+            \ task it also stamps the task's feature the first time, and moves an\
+            \ epic still READY_FOR_DEV to IMPLEMENTING."
         acceptanceCriteria:
           type:
           - array
@@ -3300,6 +3319,8 @@ components:
     WorkspaceReferenceDto:
       type: object
       properties:
+        agentId:
+          type: string
         workspaceRowId:
           type: integer
           format: int64
@@ -4418,6 +4439,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:agent
   /projects/api/refinements/{id}/designs/{designId}:
     put:
       parameters:
@@ -4458,6 +4480,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:agent
     get:
       parameters:
       - name: designId
@@ -7093,9 +7116,10 @@ paths:
         person
       description: "A session that stays waiting past the debounce makes the entity\
         \ read as blocked (blockSource AGENT_WAITING) without setting its explicit\
-        \ block; waiting=false clears it. Ignored for a status that starts no phase,\
-        \ a feature or a task, and a frame older than the entity's last activity.\
-        \ Never refuses a dispatch."
+        \ block; waiting=false clears it. A frame naming waitingOn (a declared wait's\
+        \ label) derives no block: the entity reads waitingOn instead. Ignored for\
+        \ a status that starts no phase, a feature or a task, and a frame older than\
+        \ the entity's last activity. Never refuses a dispatch."
       operationId: reportWorkAgentWaiting
       parameters:
       - name: qualifiedId
@@ -8241,9 +8265,10 @@ paths:
         \ status, by the same path as the archetype's own transition and under its\
         \ roles: an agent may move a ticket, a campaign, a feature or a task of its\
         \ own project, a platform service (qits:system) one of any project, and an\
-        \ epic is qits:admin alone. A feature or a task moves only once its epic is\
-        \ past REPORTED, and its scheduling (to READY_FOR_DEV, or back) is the epic's.\
-        \ Answers the entity in the merged shape, with statusBefore."
+        \ epic is qits:admin's, or an agent's of its own project, which may not supersede\
+        \ it. A feature or a task moves only once its epic is past REPORTED, and its\
+        \ scheduling (to READY_FOR_DEV, or back) is the epic's. Answers the entity\
+        \ in the merged shape, with statusBefore."
       operationId: setWorkStatus
       parameters:
       - name: qualifiedId
@@ -8267,16 +8292,16 @@ paths:
         "400":
           description: No target
         "403":
-          description: "An agent moving an epic, or an entity outside its own project;\
-            \ nothing is written"
+          description: "A platform service moving an epic, or an agent moving an entity\
+            \ outside its own project; nothing is written"
         "404":
           description: No entity with this id
         "409":
           description: "A move the lifecycle does not allow, a target naming no status,\
-            \ a feature or a task whose epic is still REPORTED, or a quality gate\
-            \ refusing a forward move — ACCEPTANCE_CRITERIA, or PERSON_APPROVAL for\
-            \ REFINED to READY_FOR_DEV by a caller this service did not verify as\
-            \ a person"
+            \ an agent superseding an epic, a feature or a task whose epic is still\
+            \ REPORTED, or a quality gate refusing a forward move — ACCEPTANCE_CRITERIA,\
+            \ or PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller this service\
+            \ did not verify as a person"
         "401":
           description: Not Authorized
       tags:
@@ -8323,4 +8348,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1007.35430
+  version: 2026.1010.113250

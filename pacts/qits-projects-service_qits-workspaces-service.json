@@ -18,13 +18,13 @@
         }
       },
       "description": "ReleaseRequests.resolveWorkspacesOnReleasedBranches: resolveReleasedBranch",
-      "key": "a42c710e",
+      "key": "bdc89c67",
       "pending": false,
       "providerStates": [
         {
-          "name": "a workspace standing on a released branch",
+          "name": "an agent owning a released branch",
           "params": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "branch": "ticket/contract-00000001-10-totals",
             "repositoryId": "00000000-0000-4000-8000-000000000015",
             "sha": "0123456789abcdef0123456789abcdef01234567",
             "version": "2026.101.120000"
@@ -34,7 +34,7 @@
       "request": {
         "body": {
           "content": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "branch": "ticket/contract-00000001-10-totals",
             "commit": "0123456789abcdef0123456789abcdef01234567",
             "result": "released as 2026.101.120000",
             "target": "2026.101.120000"
@@ -125,8 +125,10 @@
       "response": {
         "body": {
           "content": {
-            "resolved": true,
-            "workspaceId": 1
+            "agentIds": [
+              "00000000-0000-4000-8000-0000000000a1"
+            ],
+            "resolved": true
           },
           "contentType": "application/json",
           "encoded": false
@@ -138,19 +140,29 @@
         },
         "matchingRules": {
           "body": {
+            "$.agentIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.agentIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.resolved": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            },
-            "$.workspaceId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
                 }
               ]
             }
@@ -186,38 +198,40 @@
         }
       },
       "description": "dispatchWork: dispatchAgent",
-      "key": "ca5a5940",
+      "key": "58069bf6",
       "pending": false,
       "providerStates": [
         {
-          "name": "a repository with a branch for a ticket",
+          "name": "a wrapper repository and a ticket to dispatch",
           "params": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
             "repositoryId": "00000000-0000-4000-8000-000000000014",
             "ticketId": "00000000-0000-4000-8000-000000000001",
-            "ticketQualifiedId": "contract-00000001-10"
+            "ticketQualifiedId": "contract-00000001-10",
+            "wrapperBranch": "ticket/contract-00000001-10"
           }
         }
       ],
       "request": {
         "body": {
           "content": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
-            "branchTree": false,
             "entityBlocked": false,
+            "entityId": "contract-00000001-10",
+            "entityStatus": "REFINED",
+            "entityTitle": "Fix it",
             "instruction": "implement",
             "repositoryId": "00000000-0000-4000-8000-000000000014",
             "ticketId": "00000000-0000-4000-8000-000000000001",
-            "workId": "00000000-0000-4000-8000-000000000001"
+            "workId": "00000000-0000-4000-8000-000000000001",
+            "wrapperBranch": "ticket/contract-00000001-10"
           },
           "contentType": "application/json",
           "encoded": false
         },
         "generators": {
           "body": {
-            "$.branch": {
+            "$.entityId": {
               "dataType": "STRING",
-              "expression": "${branch}",
+              "expression": "${ticketQualifiedId}",
               "type": "ProviderState"
             },
             "$.repositoryId": {
@@ -234,6 +248,11 @@
               "dataType": "STRING",
               "expression": "${ticketId}",
               "type": "ProviderState"
+            },
+            "$.wrapperBranch": {
+              "dataType": "STRING",
+              "expression": "${wrapperBranch}",
+              "type": "ProviderState"
             }
           }
         },
@@ -244,7 +263,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.branch": {
+            "$.entityId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -275,6 +294,14 @@
                   "match": "type"
                 }
               ]
+            },
+            "$.wrapperBranch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
             }
           }
         },
@@ -284,12 +311,14 @@
       "response": {
         "body": {
           "content": {
-            "agentIdentity": "contract-workspace-token-subject",
-            "agentLaunch": "SCHEDULED",
-            "fresh": true,
-            "workspace": {
-              "id": 1
-            }
+            "agent": {
+              "agentId": "00000000-0000-4000-8000-000000000100",
+              "repositoryId": "00000000-0000-4000-8000-000000000014",
+              "workspaceRowId": null
+            },
+            "agentIdentity": "contract-agent-token-subject",
+            "agentLaunch": "QUEUED",
+            "fresh": true
           },
           "contentType": "application/json",
           "encoded": false
@@ -301,6 +330,24 @@
         },
         "matchingRules": {
           "body": {
+            "$.agent.agentId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.agent.repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.agentIdentity": {
               "combine": "AND",
               "matchers": [
@@ -322,14 +369,6 @@
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            },
-            "$.workspace.id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
                 }
               ]
             }
@@ -365,28 +404,20 @@
         }
       },
       "description": "getWorkDispatch: listAgentDispatchReferences",
-      "key": "90ffa44d",
+      "key": "1539f88e",
       "pending": false,
       "providerStates": [
         {
-          "name": "a project with workspaces bound to work items",
+          "name": "a project with agents bound to work items",
           "params": {
-            "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "bugTicketQualifiedId": "contract-00000001-10",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "improvementTicketQualifiedId": "contract-00000001-11",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "repositoryId": "00000000-0000-4000-8000-000000000013",
-            "taskId": "00000000-0000-4000-8000-000000000011"
+            "bugTicketId": "00000000-0000-4000-8000-000000000001"
           }
         }
       ],
       "request": {
         "generators": {
           "query": {
-            "ticketId": {
+            "workId": {
               "dataType": "RAW",
               "expression": "${bugTicketId}",
               "type": "ProviderState"
@@ -396,7 +427,7 @@
         "method": "GET",
         "path": "/workspaces/api/agent-dispatches/references",
         "query": {
-          "ticketId": [
+          "workId": [
             "00000000-0000-4000-8000-000000000001"
           ]
         }
@@ -406,15 +437,23 @@
           "content": {
             "entries": [
               {
-                "workspace": {
-                  "branch": "ticket/invoice-totals-are-off-by-one-cent",
-                  "epicId": null,
+                "agent": {
+                  "agentId": "00000000-0000-4000-8000-0000000000a1",
+                  "branches": [
+                    {
+                      "branch": "ticket/contract-00000001-10-totals",
+                      "repositoryId": "00000000-0000-4000-8000-000000000015"
+                    }
+                  ],
+                  "createdAt": "2026-01-01T00:00:00Z",
+                  "entityId": "contract-00000001-10",
+                  "removedAt": "2026-01-01T00:00:00Z",
                   "repositoryId": "00000000-0000-4000-8000-000000000013",
-                  "resolvedAt": "2026-01-01T00:00:00Z",
-                  "status": "ABANDONED",
-                  "ticketId": "00000000-0000-4000-8000-000000000001",
-                  "workspaceId": "ticket-invoice-totals-are-off-by-one-cent",
-                  "workspaceRowId": 1
+                  "runState": "RUNNING",
+                  "state": "ACTIVE",
+                  "workId": "00000000-0000-4000-8000-000000000001",
+                  "workspaceRowId": 1,
+                  "wrapperBranch": "ticket/contract-00000001-10"
                 }
               }
             ]
@@ -438,15 +477,7 @@
                 }
               ]
             },
-            "$.entries[*].workspace.branch": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.entries[*].workspace.repositoryId": {
+            "$.entries[*].agent.agentId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -455,7 +486,33 @@
                 }
               ]
             },
-            "$.entries[*].workspace.resolvedAt": {
+            "$.entries[*].agent.branches": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.entries[*].agent.branches[*].branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].agent.branches[*].repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.entries[*].agent.createdAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -464,7 +521,7 @@
                 }
               ]
             },
-            "$.entries[*].workspace.status": {
+            "$.entries[*].agent.entityId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -472,7 +529,19 @@
                 }
               ]
             },
-            "$.entries[*].workspace.ticketId": {
+            "$.entries[*].agent.removedAt": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.entries[*].agent.repositoryId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -481,7 +550,7 @@
                 }
               ]
             },
-            "$.entries[*].workspace.workspaceId": {
+            "$.entries[*].agent.runState": {
               "combine": "AND",
               "matchers": [
                 {
@@ -489,11 +558,36 @@
                 }
               ]
             },
-            "$.entries[*].workspace.workspaceRowId": {
+            "$.entries[*].agent.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].agent.workId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.entries[*].agent.workspaceRowId": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "number"
+                }
+              ]
+            },
+            "$.entries[*].agent.wrapperBranch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
@@ -529,16 +623,13 @@
         }
       },
       "description": "setWorkStatus: markAgentDispatchEntity",
-      "key": "e68e8a9b",
+      "key": "db3f5d31",
       "pending": false,
       "providerStates": [
         {
-          "name": "a workspace standing on a ticket's branch",
+          "name": "an agent working on a ticket",
           "params": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
-            "repositoryId": "00000000-0000-4000-8000-000000000013",
-            "ticketId": "00000000-0000-4000-8000-000000000001",
-            "ticketQualifiedId": "contract-00000001-10"
+            "ticketId": "00000000-0000-4000-8000-000000000001"
           }
         }
       ],
@@ -546,8 +637,6 @@
         "body": {
           "content": {
             "blocked": false,
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
-            "repositoryId": "00000000-0000-4000-8000-000000000013",
             "status": "IMPLEMENTING",
             "title": "Fix it",
             "workId": "00000000-0000-4000-8000-000000000001"
@@ -557,16 +646,6 @@
         },
         "generators": {
           "body": {
-            "$.branch": {
-              "dataType": "STRING",
-              "expression": "${branch}",
-              "type": "ProviderState"
-            },
-            "$.repositoryId": {
-              "dataType": "STRING",
-              "expression": "${repositoryId}",
-              "type": "ProviderState"
-            },
             "$.workId": {
               "dataType": "STRING",
               "expression": "${ticketId}",
@@ -581,22 +660,6 @@
         },
         "matchingRules": {
           "body": {
-            "$.branch": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.repositoryId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.workId": {
               "combine": "AND",
               "matchers": [
@@ -613,8 +676,8 @@
       "response": {
         "body": {
           "content": {
-            "applied": false,
-            "workspaceId": 1
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
+            "applied": false
           },
           "contentType": "application/json",
           "encoded": false
@@ -626,19 +689,20 @@
         },
         "matchingRules": {
           "body": {
+            "$.agentId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.applied": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            },
-            "$.workspaceId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
                 }
               ]
             }
@@ -674,25 +738,20 @@
         }
       },
       "description": "transitionWork: deliverAgentTurn",
-      "key": "60c27810",
+      "key": "55734aa6",
       "pending": false,
       "providerStates": [
         {
-          "name": "a workspace standing on a ticket's branch",
+          "name": "an agent working on a ticket",
           "params": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
-            "repositoryId": "00000000-0000-4000-8000-000000000013",
-            "ticketId": "00000000-0000-4000-8000-000000000001",
-            "ticketQualifiedId": "contract-00000001-10"
+            "ticketId": "00000000-0000-4000-8000-000000000001"
           }
         }
       ],
       "request": {
         "body": {
           "content": {
-            "branch": "ticket/invoice-totals-are-off-by-one-cent",
             "compactFirst": false,
-            "repositoryId": "00000000-0000-4000-8000-000000000013",
             "text": "go on",
             "workId": "00000000-0000-4000-8000-000000000001"
           },
@@ -701,16 +760,6 @@
         },
         "generators": {
           "body": {
-            "$.branch": {
-              "dataType": "STRING",
-              "expression": "${branch}",
-              "type": "ProviderState"
-            },
-            "$.repositoryId": {
-              "dataType": "STRING",
-              "expression": "${repositoryId}",
-              "type": "ProviderState"
-            },
             "$.workId": {
               "dataType": "STRING",
               "expression": "${ticketId}",
@@ -725,22 +774,6 @@
         },
         "matchingRules": {
           "body": {
-            "$.branch": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.repositoryId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.workId": {
               "combine": "AND",
               "matchers": [
@@ -757,10 +790,11 @@
       "response": {
         "body": {
           "content": {
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
             "delivered": false,
-            "detail": "this workspace is queued for a workspace runner; the text will be delivered, or launched with, once a runner takes it and its daemon answers",
-            "launched": false,
-            "workspaceId": 1
+            "detail": "The agent starts with this as its turn once its workspace's daemon answers.",
+            "launched": true,
+            "resumed": false
           },
           "contentType": "application/json",
           "encoded": false
@@ -772,6 +806,15 @@
         },
         "matchingRules": {
           "body": {
+            "$.agentId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.delivered": {
               "combine": "AND",
               "matchers": [
@@ -796,11 +839,11 @@
                 }
               ]
             },
-            "$.workspaceId": {
+            "$.resumed": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "number"
+                  "match": "type"
                 }
               ]
             }

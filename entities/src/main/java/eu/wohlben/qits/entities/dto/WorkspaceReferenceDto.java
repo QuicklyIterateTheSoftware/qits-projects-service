@@ -12,21 +12,32 @@ package eu.wohlben.qits.entities.dto;
  * used to drop off the moment it was integrated or abandoned, which took the link to where the work
  * actually happened — the transcripts, the diff, the session — with it. So the row keeps its place
  * and carries the word instead, and the reader draws it for what it is. Nothing here is a claim that
- * somebody is working: a list of one {@code ABANDONED} workspace means nobody is on it.
+ * somebody is working: a list of one {@code REMOVED} agent means nobody is on it.
  *
  * <p><b>Why this record lives in the entities module.</b> It is data and nothing else — the module
  * still depends on no context that knows what a workspace is, and the lookup that fills it happens a
  * layer up, where crossing is allowed. Putting the shape beside the DTO that carries it keeps the
  * read model in one place.
  *
- * @param workspaceRowId the workspace's row id at qits-workspaces
- * @param repositoryId the repository it belongs to. The pair is the whole address: that application
- *     routes a workspace as {@code repositories/{repositoryId}/workspaces/{workspaceRowId}}
- * @param workspaceId the workspace's label — what a link says when it names one
- * @param branch the branch it owns
- * @param status the far side's resolution status — {@code ACTIVE}, {@code INTEGRATED} or {@code
- *     ABANDONED}. A string and not an enum: it is qits-workspaces' vocabulary, and a word this
- *     platform has never heard of must reach the browser rather than fail the read that carries it
+ * <p>Since qits-1152 each row is an <b>agent</b> of the work item: agents are keyed by work item and
+ * live in a workspace once placed. The shape kept its name and members so the browser's reading of
+ * it did not move; {@code agentId} is new.
+ *
+ * @param agentId the agent's id at qits-workspaces
+ * @param workspaceRowId the row id of the workspace the agent is placed in, or {@code null} while it
+ *     is QUEUED for a slot
+ * @param repositoryId the wrapper repository. The pair is the address: that application routes a
+ *     workspace as {@code repositories/{repositoryId}/workspaces/{workspaceRowId}}
+ * @param workspaceId a label for a link — the work item's qualified id, or {@code null}
+ * @param branch the agent's wrapper branch
+ * @param status the agent's state — {@code ACTIVE}, {@code OBSOLETE} or {@code REMOVED}. A string and
+ *     not an enum: it is qits-workspaces' vocabulary, and a word this platform has never heard of
+ *     must reach the browser rather than fail the read that carries it
  */
 public record WorkspaceReferenceDto(
-    long workspaceRowId, String repositoryId, String workspaceId, String branch, String status) {}
+    String agentId,
+    Long workspaceRowId,
+    String repositoryId,
+    String workspaceId,
+    String branch,
+    String status) {}

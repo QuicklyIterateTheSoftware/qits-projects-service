@@ -11,7 +11,8 @@ import java.time.Instant;
  * EntityCatalogService#listByProjectWithoutDescription}) nor answers it. The REST detail ({@code GET
  * /projects/api/work/{qualifiedId}}) and the MCP {@code get_entity} answer it. See {@link
  * TransitionedEntity} for each component — {@code blocked} is the effective block there and here,
- * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895).
+ * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895), and {@code
+ * waitingOn} beside it (qits-1153).
  */
 public record EntitySummary(
     String id,
@@ -41,7 +42,8 @@ public record EntitySummary(
     @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn) {
 
   public static EntitySummary of(TransitionedEntity e) {
     return new EntitySummary(
@@ -72,6 +74,7 @@ public record EntitySummary(
         e.blocked(),
         e.blockSource(),
         e.blockReason(),
-        e.blockedBy());
+        e.blockedBy(),
+        e.waitingOn());
   }
 }

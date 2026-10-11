@@ -86,6 +86,7 @@ erDiagram
     string id PK "not null"
     instant agent_activity_at
     string agent_waiting_cause
+    string agent_waiting_on
     instant agent_waiting_since
     enum archetype "not null"
     string assignee

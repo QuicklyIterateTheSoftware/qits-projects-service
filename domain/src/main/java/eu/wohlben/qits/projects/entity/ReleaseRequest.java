@@ -21,7 +21,7 @@ import org.hibernate.annotations.DynamicUpdate;
  * <p><b>A request is an OCTOPUS MERGE of N sources, not a branch head.</b> Its participants are the
  * named branches on {@link ReleaseRequestSource} ({@code main} is implied by every create) plus the
  * repository's released tags not yet merged to {@code main} ({@link ReleasedTagPendingMerge}) —
- * folded into a backing branch of the request's own, {@code release/<id>}, by qits-githost's merge
+ * folded into a backing branch of the request's own, {@link #backingBranch}, by qits-githost's merge
  * primitive. {@link #mergedSha} is the tip of that fold: the one sha that is the whole of what would
  * be released, and therefore the one thing the gates evaluate and the execution is pinned to.
  *
@@ -63,7 +63,7 @@ import org.hibernate.annotations.DynamicUpdate;
  *
  * <p><b>This state machine IS the release pipeline's, and there is no second one.</b> A release is
  * one pipeline of three phases with gates between them — the QA run at {@code
- * release/<id>@mergedSha}, the publish run at {@code <version>@commitSha}, and the deployment of
+ * <backing branch>@mergedSha}, the publish run at {@code <version>@commitSha}, and the deployment of
  * that version — and the states above are how far along it this request has got. So {@code RELEASED}
  * is <b>mid-pipeline</b>: the QA phase passed and the tag was cut, and two phases are still to
  * happen. {@code FINALIZED} is the end of all three. <b>No state was added for the pipeline and none
@@ -161,23 +161,55 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   /** The prefix of every request's backing branch. Storage, in the sense that git refs are. */
   public static final String BACKING_BRANCH_PREFIX = "release/";
 
+  /** What sits between the repository name and the number in a {@link #qualifiedId}. */
+  public static final String QUALIFIED_ID_INFIX = "-rr-";
+
   /**
-   * The branch qits-githost folds this request's sources into — {@code release/<id>}, derived and
-   * never stored, because the id already is the name and a column would be a second answer.
+   * The branch qits-githost folds this request's sources into (qits-1158). Stored: a request made
+   * since qits-1158 folds onto {@code release/<qualifiedId>}, an older one onto {@code
+   * release/<id>}, and nothing may derive the one from the other.
    */
   public String backingBranch() {
-    return backingBranchOf(id);
+    return backingBranch;
   }
 
-  /** The same derivation where only the id is in hand. */
-  public static String backingBranchOf(String requestId) {
-    return BACKING_BRANCH_PREFIX + requestId;
+  /** {@code <repoName>-rr-<number>}, or the uuid where the repository has no name. */
+  public static String qualifiedIdOf(String repoName, long number, String id) {
+    return repoName == null || repoName.isBlank() ? id : repoName + QUALIFIED_ID_INFIX + number;
+  }
+
+  /**
+   * Give a fresh row its logical id and the backing branch named after it. The one place a
+   * request's {@link #number}, {@link #qualifiedId} and {@link #backingBranch} are first written.
+   */
+  public void name(long number) {
+    this.number = number;
+    this.qualifiedId = qualifiedIdOf(repoName, number, id);
+    this.backingBranch = BACKING_BRANCH_PREFIX + qualifiedId;
   }
 
   @Id public String id;
 
   @Column(name = "repo_id", nullable = false)
   public String repoId;
+
+  /**
+   * The per-repository number (qits-1158), allocated by {@code ReleaseRequestNumbers}: unique within
+   * the repository, never reused, gaps allowed. Frozen at creation.
+   */
+  @Column(nullable = false)
+  public Long number;
+
+  /**
+   * The logical id people read and type, {@code <repoName at creation>-rr-<number>}. Frozen at
+   * creation: a rename of the repository does not rewrite it. The {@link #id} stays the key.
+   */
+  @Column(name = "qualified_id", nullable = false)
+  public String qualifiedId;
+
+  /** See {@link #backingBranch()}. */
+  @Column(name = "backing_branch", nullable = false)
+  public String backingBranch;
 
   /** The public address pair, for the execution door. Null on a repository with no name. */
   @Column(name = "project_id")

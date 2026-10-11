@@ -48,8 +48,8 @@ class HttpWorkspaceAgentDispatchTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody =
       new AtomicReference<>(
-          "{\"workspace\":{\"id\":41,\"branch\":\"ticket/x\"},\"fresh\":true,"
-              + "\"agentLaunch\":\"SCHEDULED\",\"technicalProcessId\":\"tp-1\"}");
+          "{\"agent\":{\"agentId\":\"agent-1\",\"workspaceRowId\":41,"
+              + "\"repositoryId\":\"repo-1\"},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\"}");
 
   @AfterEach
   void stopServer() {
@@ -96,6 +96,9 @@ class HttpWorkspaceAgentDispatchTest {
     return against(base, null, Optional.of("Bearer machine-token"));
   }
 
+  private static final WorkspaceAgentDispatch.Subject TICKET =
+      WorkspaceAgentDispatch.Subject.ticket("t");
+
   @Test
   void aDispatchIsPostedWithTheWholeAskOnTheBody() throws Exception {
     String base = startServer();
@@ -104,13 +107,13 @@ class HttpWorkspaceAgentDispatchTest {
         against(base)
             .dispatchAgent(
                 "repo-1",
-                "ticket/puce-button",
-                List.of("refs/heads/ticket/puce-button"),
-                true,
+                "ticket/qits-7",
                 WorkspaceAgentDispatch.Subject.ticket("t-7"),
                 "Work on it.");
 
+    assertEquals("agent-1", made.agentId());
     assertEquals(41L, made.workspaceRowId());
+    assertEquals("repo-1", made.repositoryId());
     assertTrue(made.fresh());
     assertEquals("SCHEDULED", made.agentLaunch());
 
@@ -121,16 +124,14 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals("Bearer machine-token", request.auth());
     Map<?, ?> body = MAPPER.readValue(request.body(), Map.class);
     assertEquals("repo-1", body.get("repositoryId"));
-    assertEquals("ticket/puce-button", body.get("branch"));
-    assertEquals(
-        List.of("refs/heads/ticket/puce-button"),
-        body.get("gitRefs"),
-        "the refs the agent may push travel as a JSON array (plan contract C4)");
-    assertEquals(Boolean.TRUE, body.get("branchTree"));
+    assertEquals("ticket/qits-7", body.get("wrapperBranch"));
+    assertEquals("t-7", body.get("workId"));
     assertEquals("t-7", body.get("ticketId"));
     assertEquals("Work on it.", body.get("instruction"));
-    // Only what the dispatch is about travels. No goal, because this door has no prose of its own —
-    // and no `epicId: null`, because an explicit null is this hop stating a subject it has not got.
+    // qits-1152: the far side derives the agent's refs and cuts no branch tree.
+    assertFalse(body.containsKey("branch"), "the old member is gone");
+    assertFalse(body.containsKey("branchTree"), "the old member is gone");
+    assertFalse(body.containsKey("gitRefs"), "the far side derives the refs");
     assertFalse(body.containsKey("preamble"), "a dispatch states a goal nobody authored");
     assertFalse(body.containsKey("epicId"), "the member that is unset is left off the body");
     assertFalse(
@@ -143,38 +144,29 @@ class HttpWorkspaceAgentDispatchTest {
 
   /**
    * The agent identity (qits-887) is read off the answer when the far side names one, and an answer
-   * that names none — {@code null} before the container is commissioned, or no member at all from a
-   * qits-workspaces older than the field — is a dispatch with no identity, never a failed one. The
-   * assignee then falls back to the workspace.
+   * that names none is a dispatch with no identity, never a failed one. The assignee then falls back
+   * to the agent. A QUEUED agent has no workspace yet.
    */
   @Test
   void theAgentIdentityIsReadAndItsAbsenceTolerated() throws Exception {
     String base = startServer();
     HttpWorkspaceAgentDispatch adapter = against(base);
-    WorkspaceAgentDispatch.Subject subject = WorkspaceAgentDispatch.Subject.ticket("t-7");
 
     responseBody.set(
-        "{\"workspace\":{\"id\":41},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\","
-            + "\"agentIdentity\":\"ws-client-41\"}");
-    WorkspaceAgentDispatch.Dispatch named =
-        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
+        "{\"agent\":{\"agentId\":\"a-41\",\"workspaceRowId\":41},\"fresh\":true,"
+            + "\"agentLaunch\":\"SCHEDULED\",\"agentIdentity\":\"ws-client-41\"}");
+    WorkspaceAgentDispatch.Dispatch named = adapter.dispatchAgent("repo-1", "ticket/x", TICKET, "i");
     assertEquals("ws-client-41", named.agentIdentity());
     assertEquals("ws-client-41", named.assignee());
 
     responseBody.set(
-        "{\"workspace\":{\"id\":42},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\","
-            + "\"agentIdentity\":null}");
-    WorkspaceAgentDispatch.Dispatch uncommissioned =
-        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
-    assertNull(uncommissioned.agentIdentity());
-    assertEquals("workspace 42", uncommissioned.assignee());
-
-    responseBody.set(
-        "{\"workspace\":{\"id\":43},\"fresh\":false,\"agentLaunch\":\"SKIPPED_RUNNING\"}");
-    WorkspaceAgentDispatch.Dispatch older =
-        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
-    assertNull(older.agentIdentity(), "an older qits-workspaces omits the member");
-    assertEquals("workspace 43", older.assignee());
+        "{\"agent\":{\"agentId\":\"a-42\",\"workspaceRowId\":null},\"fresh\":true,"
+            + "\"agentLaunch\":\"QUEUED\",\"agentIdentity\":null}");
+    WorkspaceAgentDispatch.Dispatch queued = adapter.dispatchAgent("repo-1", "ticket/x", TICKET, "i");
+    assertNull(queued.agentIdentity());
+    assertNull(queued.workspaceRowId(), "a queued agent stands in no workspace yet");
+    assertEquals("QUEUED", queued.agentLaunch());
+    assertEquals("agent a-42", queued.assignee());
   }
 
   /**
@@ -188,9 +180,7 @@ class HttpWorkspaceAgentDispatchTest {
     against(base)
         .dispatchAgent(
             "repo-1",
-            "ticket/x",
-            null,
-            true,
+            "ticket/qits-617",
             WorkspaceAgentDispatch.Subject.ticket("t-7")
                 .withQualifiedId("qits-617")
                 .withEntityState("Session names carry the status", "REFINED", true),
@@ -203,54 +193,32 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals(Boolean.TRUE, body.get("entityBlocked"));
   }
 
-  /**
-   * The qualified id travels as {@code entityId} beside the row id (qits-614) — the label the far
-   * side's daemon names the agent's sessions by. Checked for an epic too, because the member is the
-   * subject's and not either archetype's.
-   */
+  /** One work id whatever the archetype: the ticket's or the epic's own row id. */
   @Test
-  void theQualifiedIdTravelsAsEntityId() throws Exception {
+  void theWorkIdIsTheRowIdOfEitherArchetype() throws Exception {
     String base = startServer();
 
     against(base)
         .dispatchAgent(
             "repo-1",
-            "ticket/x",
-            null,
-            true,
+            "ticket/qits-614",
             WorkspaceAgentDispatch.Subject.ticket("t-7").withQualifiedId("qits-614"),
             "i");
     against(base)
         .dispatchAgent(
             "repo-1",
-            "epic/y",
-            null,
-            true,
+            "epic/qits-615",
             WorkspaceAgentDispatch.Subject.epic("e-9").withQualifiedId("qits-615"),
             "i");
 
     Map<?, ?> ticket = MAPPER.readValue(received.get(0).body(), Map.class);
-    assertEquals("t-7", ticket.get("ticketId"));
+    assertEquals("t-7", ticket.get("workId"));
     assertEquals("qits-614", ticket.get("entityId"));
     Map<?, ?> epic = MAPPER.readValue(received.get(1).body(), Map.class);
+    assertEquals("e-9", epic.get("workId"));
     assertEquals("e-9", epic.get("epicId"));
     assertEquals("qits-615", epic.get("entityId"));
-    // One work id whatever the archetype (qits-112): the ticket's or the epic's own id.
-    assertEquals("t-7", ticket.get("workId"));
-    assertEquals("e-9", epic.get("workId"));
     assertFalse(epic.containsKey("ticketId"));
-  }
-
-  /** No refs given: the member is left off, and qits-workspaces allows the workspace's own branch. */
-  @Test
-  void noRefsLeaveTheMemberOffTheBody() throws Exception {
-    String base = startServer();
-
-    against(base)
-        .dispatchAgent("repo-1", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i");
-
-    Map<?, ?> body = MAPPER.readValue(received.get(0).body(), Map.class);
-    assertFalse(body.containsKey("gitRefs"), "an explicit null would state a scope nobody computed");
   }
 
   @Test
@@ -258,7 +226,7 @@ class HttpWorkspaceAgentDispatchTest {
     String base = startServer();
 
     against(null, base, Optional.of("Bearer machine-token"))
-        .dispatchAgent("repo-1", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i");
+        .dispatchAgent("repo-1", "ticket/x", TICKET, "i");
 
     assertEquals(1, received.size(), "an unset own key falls back to the release path's address");
   }
@@ -270,7 +238,7 @@ class HttpWorkspaceAgentDispatchTest {
             DomainException.class,
             () ->
                 against(null, "", Optional.of("Bearer machine-token"))
-                    .dispatchAgent("repo-1", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
+                    .dispatchAgent("repo-1", "ticket/x", TICKET, "i"));
     assertEquals(503, failure.statusCode());
   }
 
@@ -281,7 +249,7 @@ class HttpWorkspaceAgentDispatchTest {
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base, null, Optional.empty()).dispatchAgent("r", "b", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
+            () -> against(base, null, Optional.empty()).dispatchAgent("r", "b", TICKET, "i"));
 
     assertEquals(503, failure.statusCode());
     assertTrue(received.isEmpty(), "a call this service cannot authenticate is one it does not make");
@@ -291,29 +259,29 @@ class HttpWorkspaceAgentDispatchTest {
   void aRefusalIs502() throws Exception {
     String base = startServer();
     status.set(409);
-    responseBody.set("{\"message\":\"branch is taken\"}");
+    responseBody.set("{\"message\":\"refused\"}");
 
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base).dispatchAgent("r", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
+            () -> against(base).dispatchAgent("r", "ticket/x", TICKET, "i"));
 
     assertEquals(502, failure.statusCode());
     assertTrue(failure.getMessage().contains("409"), failure.getMessage());
   }
 
   @Test
-  void anAnswerWithNoWorkspaceIdIs502() throws Exception {
+  void anAnswerWithNoAgentIdIs502() throws Exception {
     String base = startServer();
-    responseBody.set("{\"fresh\":true,\"agentLaunch\":\"SCHEDULED\"}");
+    responseBody.set("{\"agent\":{\"workspaceRowId\":41},\"fresh\":true}");
 
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base).dispatchAgent("r", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
+            () -> against(base).dispatchAgent("r", "ticket/x", TICKET, "i"));
 
     assertEquals(502, failure.statusCode());
-    assertTrue(failure.getMessage().contains("no workspace id"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("no agent id"), failure.getMessage());
   }
 
   @Test
@@ -323,7 +291,7 @@ class HttpWorkspaceAgentDispatchTest {
             DomainException.class,
             () ->
                 against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
-                    .dispatchAgent("r", "ticket/x", null, true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
+                    .dispatchAgent("r", "ticket/x", TICKET, "i"));
 
     assertEquals(502, failure.statusCode());
   }
@@ -331,25 +299,37 @@ class HttpWorkspaceAgentDispatchTest {
   // --- the read back ---------------------------------------------------------------------------
 
   @Test
-  void aLookupAsksOnceWithEveryIdAndReadsTheEntriesBack() throws Exception {
+  void aLookupAsksOnceWithEveryWorkIdAndReadsTheAgentsBack() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
-            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
-            + "\"epicId\":null,\"status\":\"ACTIVE\",\"resolvedAt\":null}}]}");
+        "{\"entries\":[{\"agent\":{\"agentId\":\"a-1\",\"workspaceRowId\":41,"
+            + "\"repositoryId\":\"repo-1\",\"workId\":\"t-7\",\"entityId\":\"qits-7\","
+            + "\"wrapperBranch\":\"ticket/qits-7\",\"branches\":["
+            + "{\"repositoryId\":\"repo-1\",\"branch\":\"ticket/qits-7\"},"
+            + "{\"repositoryId\":\"repo-2\",\"branch\":\"ticket/qits-7-totals\"}],"
+            + "\"state\":\"ACTIVE\",\"runState\":\"RUNNING\","
+            + "\"createdAt\":\"2026-10-10T09:00:00Z\",\"removedAt\":null}}]}");
 
-    List<WorkspaceAgentDispatch.Reference> found =
-        against(base).workspacesReferencing(List.of("t-7", "t-8", "t-7"), List.of("e-1"));
+    List<WorkspaceAgentDispatch.Agent> found =
+        against(base).agentsFor(List.of("t-7", "t-8", "t-7", "e-1"));
 
     assertEquals(1, found.size());
-    WorkspaceAgentDispatch.Reference reference = found.get(0);
-    assertEquals(41L, reference.workspaceRowId());
-    assertEquals("repo-1", reference.repositoryId());
-    assertEquals("ticket-puce", reference.workspaceId());
-    assertEquals("ticket/puce", reference.branch());
-    assertEquals("t-7", reference.ticketId());
-    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, reference.status());
-    assertNull(reference.resolvedAt(), "a live workspace has not been resolved");
+    WorkspaceAgentDispatch.Agent agent = found.get(0);
+    assertEquals("a-1", agent.agentId());
+    assertEquals(41L, agent.workspaceRowId());
+    assertEquals("repo-1", agent.repositoryId());
+    assertEquals("t-7", agent.workId());
+    assertEquals("qits-7", agent.entityId());
+    assertEquals("ticket/qits-7", agent.wrapperBranch());
+    assertEquals(
+        List.of(
+            new WorkspaceAgentDispatch.Branch("repo-1", "ticket/qits-7"),
+            new WorkspaceAgentDispatch.Branch("repo-2", "ticket/qits-7-totals")),
+        agent.branches());
+    assertTrue(agent.active());
+    assertEquals("RUNNING", agent.runState());
+    assertEquals(Instant.parse("2026-10-10T09:00:00Z"), agent.createdAt());
+    assertNull(agent.removedAt());
 
     assertEquals(1, received.size(), "a page of rows is one call, never one call per row");
     Received request = received.get(0);
@@ -359,15 +339,15 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals("/workspaces/api/agent-dispatches/references", request.path());
     assertEquals("Bearer machine-token", request.auth());
     // Every id asked about, each once — the repeat is dropped rather than asked twice.
-    assertEquals("ticketId=t-7&ticketId=t-8&epicId=e-1", request.query());
+    assertEquals("workId=t-7&workId=t-8&workId=e-1", request.query());
   }
 
   @Test
   void askingAboutNoRowsMakesNoCallAtAll() throws Exception {
     String base = startServer();
 
-    assertTrue(against(base).workspacesReferencing(List.of(), List.of()).isEmpty());
-    assertTrue(against(base).workspacesReferencing(List.of("  "), List.of()).isEmpty());
+    assertTrue(against(base).agentsFor(List.of()).isEmpty());
+    assertTrue(against(base).agentsFor(List.of("  ")).isEmpty());
 
     assertTrue(received.isEmpty(), "a question about no rows was still asked over the network");
   }
@@ -382,100 +362,60 @@ class HttpWorkspaceAgentDispatchTest {
     String base = startServer();
 
     status.set(503);
-    assertTrue(against(base).workspacesReferencing(List.of("t-7"), List.of()).isEmpty());
+    assertTrue(against(base).agentsFor(List.of("t-7")).isEmpty());
 
     status.set(200);
     responseBody.set("not json at all");
-    assertTrue(against(base).workspacesReferencing(List.of("t-7"), List.of()).isEmpty());
+    assertTrue(against(base).agentsFor(List.of("t-7")).isEmpty());
 
     // Nothing listening, no address, and no credential — the three the dispatch answers 502/503 to.
     assertTrue(
-        against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
-            .workspacesReferencing(List.of("t-7"), List.of())
-            .isEmpty());
-    assertTrue(
-        against(null, "", Optional.of("Bearer t"))
-            .workspacesReferencing(List.of("t-7"), List.of())
-            .isEmpty());
-    assertTrue(
-        against(base, null, Optional.empty())
-            .workspacesReferencing(List.of("t-7"), List.of())
-            .isEmpty());
+        against("http://127.0.0.1:1", null, Optional.of("Bearer t")).agentsFor(List.of("t-7")).isEmpty());
+    assertTrue(against(null, "", Optional.of("Bearer t")).agentsFor(List.of("t-7")).isEmpty());
+    assertTrue(against(base, null, Optional.empty()).agentsFor(List.of("t-7")).isEmpty());
   }
 
   /**
-   * <b>A resolved workspace is read back whole, status and resolution time included.</b> The far
-   * side answers every workspace that names the subject now, not the live ones alone, so that a
-   * ticket keeps a link to where its work happened — and the words that say which is which have to
-   * survive the wire, because the readers that must not act on a resolved workspace have nothing
-   * else to go on.
+   * <b>An obsolete agent is read back whole</b>, state and removal time included — the readers that
+   * must not act on one have nothing else to go on. An unreadable time costs the time, never the
+   * agent; an absent or blank state reads as ACTIVE.
    */
   @Test
-  void aResolvedWorkspaceCarriesItsStatusAndTheTimeItWasResolved() throws Exception {
+  void theStateAndTimesSurviveTheWireAndABlankStateIsActive() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
-            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
-            + "\"status\":\"INTEGRATED\",\"resolvedAt\":\"2026-09-20T09:30:00Z\"}},"
-            + "{\"workspace\":{\"workspaceRowId\":42,\"repositoryId\":\"repo-1\","
-            + "\"workspaceId\":\"ticket-puce-2\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
-            + "\"status\":\"ABANDONED\",\"resolvedAt\":\"not a time at all\"}}]}");
+        "{\"entries\":[{\"agent\":{\"agentId\":\"a-1\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\",\"state\":\"REMOVED\",\"removedAt\":\"2026-09-20T09:30:00Z\"}},"
+            + "{\"agent\":{\"agentId\":\"a-2\",\"repositoryId\":\"repo-1\",\"workId\":\"t-7\","
+            + "\"state\":\"OBSOLETE\",\"removedAt\":\"not a time at all\"}},"
+            + "{\"agent\":{\"agentId\":\"a-3\",\"repositoryId\":\"repo-1\",\"workId\":\"t-7\","
+            + "\"state\":\"  \"}}]}");
 
-    List<WorkspaceAgentDispatch.Reference> found =
-        against(base).workspacesReferencing(List.of("t-7"), List.of());
+    List<WorkspaceAgentDispatch.Agent> found = against(base).agentsFor(List.of("t-7"));
 
-    assertEquals(2, found.size(), "nothing is filtered here — the port puts that on each reader");
-    assertEquals("INTEGRATED", found.get(0).status());
-    assertEquals(Instant.parse("2026-09-20T09:30:00Z"), found.get(0).resolvedAt());
-    // An unreadable time costs the time and never the reference: this read may not throw, and the
-    // status is the half a caller actually decides on.
-    assertEquals("ABANDONED", found.get(1).status());
-    assertNull(found.get(1).resolvedAt());
+    assertEquals(3, found.size(), "nothing is filtered here — the port puts that on each reader");
+    assertEquals("REMOVED", found.get(0).state());
+    assertEquals(Instant.parse("2026-09-20T09:30:00Z"), found.get(0).removedAt());
+    assertEquals("OBSOLETE", found.get(1).state());
+    assertNull(found.get(1).removedAt());
+    assertFalse(found.get(1).active());
+    assertTrue(found.get(2).active(), "blank is ACTIVE");
+    assertEquals(List.of(), found.get(2).branches(), "no branches member is no branches");
+    assertNull(found.get(2).workspaceRowId(), "a queued agent has no workspace");
   }
 
-  /**
-   * <b>An older qits-workspaces defaults to ACTIVE, and that default is the only protection either
-   * side has against the deploy order slipping.</b> This service and qits-workspaces release
-   * separately and nothing orders them, so this service can perfectly well be live first — and a
-   * qits-workspaces that predates the change answers rows with no {@code status} member at all.
-   * Reading that as a blank status would fail every {@code ACTIVE} filter downstream, which would
-   * silently stop {@code PhaseAdvance} asking for any release whatsoever. ACTIVE is also the
-   * honest reading: an older far side answered live workspaces and nothing else.
-   */
+  /** An agent nobody can link to or act on is skipped, rather than carried with a hole in it. */
   @Test
-  void aFarSideThatNamesNoStatusIsReadAsActive() throws Exception {
+  void anEntryMissingTheAgentOrRepositoryIdIsSkipped() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
-            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\"}},"
-            + "{\"workspace\":{\"workspaceRowId\":42,\"repositoryId\":\"repo-1\","
-            + "\"workspaceId\":\"ticket-mauve\",\"branch\":\"ticket/mauve\",\"ticketId\":\"t-8\","
-            + "\"status\":\"   \",\"resolvedAt\":null}}]}");
+        "{\"entries\":[{\"agent\":{\"repositoryId\":\"repo-1\",\"workId\":\"t-7\"}},"
+            + "{\"agent\":{\"agentId\":\"a-9\",\"workId\":\"t-7\"}},"
+            + "{\"agent\":{\"agentId\":\"a-12\",\"repositoryId\":\"repo-1\",\"workId\":\"t-7\"}}]}");
 
-    List<WorkspaceAgentDispatch.Reference> found =
-        against(base).workspacesReferencing(List.of("t-7", "t-8"), List.of());
-
-    assertEquals(2, found.size());
-    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, found.get(0).status(), "absent is ACTIVE");
-    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, found.get(1).status(), "blank is ACTIVE");
-    assertNull(found.get(0).resolvedAt());
-    assertNull(found.get(1).resolvedAt());
-  }
-
-  /** A row a link cannot be composed from is skipped, rather than carried with a hole in it. */
-  @Test
-  void anEntryMissingThePairALinkNeedsIsSkipped() throws Exception {
-    String base = startServer();
-    responseBody.set(
-        "{\"entries\":[{\"workspace\":{\"repositoryId\":\"repo-1\",\"ticketId\":\"t-7\"}},"
-            + "{\"workspace\":{\"workspaceRowId\":9,\"ticketId\":\"t-7\"}},"
-            + "{\"workspace\":{\"workspaceRowId\":12,\"repositoryId\":\"repo-1\","
-            + "\"ticketId\":\"t-7\"}}]}");
-
-    List<WorkspaceAgentDispatch.Reference> found =
-        against(base).workspacesReferencing(List.of("t-7"), List.of());
+    List<WorkspaceAgentDispatch.Agent> found = against(base).agentsFor(List.of("t-7"));
 
     assertEquals(1, found.size());
-    assertEquals(12L, found.get(0).workspaceRowId());
+    assertEquals("a-12", found.get(0).agentId());
   }
 }

@@ -147,6 +147,36 @@ class HttpReleaseRequestAutomationsTest {
    * qits-1133: the trigger says which state words this side reads beyond the original seven, so
    * qits-maintenance may answer WAITING and NOT_APPLICABLE to it and to nobody older.
    */
+  /**
+   * qits-1158: the trigger tells the far side the stored backing branch and the qualified id; the
+   * uuid stays in the path. The older form leaves both keys out, and qits-maintenance reads them
+   * back instead.
+   */
+  @Test
+  void theTriggerCarriesTheBackingBranchAndTheQualifiedId() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .request(
+            "qits-landing-app",
+            "rr-1",
+            "qits-landing-app-rr-7",
+            "release/qits-landing-app-rr-7",
+            FOLD,
+            null,
+            null,
+            List.of("ticket/x"),
+            null);
+    trigger(against(base), null);
+
+    assertEquals("/maintenance/api/release-requests/rr-1/automations", received.get(0).path());
+    JsonNode body = MAPPER.readTree(received.get(0).body());
+    assertEquals("release/qits-landing-app-rr-7", body.get("backingBranch").asText());
+    assertEquals("qits-landing-app-rr-7", body.get("qualifiedId").asText());
+    JsonNode older = MAPPER.readTree(received.get(1).body());
+    assertTrue(!older.has("backingBranch") && !older.has("qualifiedId"), older.toString());
+  }
+
   @Test
   void theTriggerSaysItAcceptsWaitingAndNotApplicable() throws Exception {
     String base = startServer();

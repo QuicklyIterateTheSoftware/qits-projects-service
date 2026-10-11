@@ -305,7 +305,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
 
   private static String summaryOf(Release release) {
     return release.summary() == null || release.summary().isBlank()
-        ? "release request " + release.requestId()
+        ? "release request " + release.qualifiedId()
         : release.summary();
   }
 
@@ -350,7 +350,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
    * <p>{@code release.requestId()} rides out beside it as the event's {@code releaseRequestId} — the
    * key the publish phase of a release pipeline is recognised by. It is supplied here rather than
    * left to be parsed back out of {@code backingBranch}: {@link #deleteConsumedBranches} deletes
-   * that ref moments later, so {@code release/<id>} names nothing by the time a consumer reads the
+   * that ref moments later, so the backing branch names nothing by the time a consumer reads the
    * event, while the id itself still resolves against this service.
    */
   private void announce(Release release, String version, String tagged, Instant releasedAt) {
@@ -368,6 +368,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
               version,
               tagged,
               release.requestId(),
+              release.qualifiedId(),
               releasedAt,
               release.priority());
     } catch (RuntimeException e) {
