@@ -197,7 +197,7 @@
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1002.70617</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1011.185745</qits.arch-rules.version>
 
         <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
              java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
