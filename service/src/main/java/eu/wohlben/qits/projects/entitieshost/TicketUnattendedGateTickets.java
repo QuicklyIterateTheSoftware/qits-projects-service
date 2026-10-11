@@ -388,7 +388,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     text.append("| | |\n|---|---|\n");
     row(text, "Repository", code(named(rejection)));
     row(text, "Repository id", code(rejection.repoId()));
-    row(text, "Release request", code(rejection.requestId()));
+    row(text, "Release request", code(rejection.qualifiedId()));
     row(
         text,
         "Branches folded",
@@ -414,7 +414,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
         + " for the fold "
         + code(rejection.mergedSha())
         + " of release request "
-        + code(rejection.requestId())
+        + code(rejection.qualifiedId())
         + ".\n\n> "
         + rejection.detail();
   }

@@ -36,7 +36,8 @@ import org.jboss.logging.Logger;
  *   POST {maintenance-url}/maintenance/api/release-requests/&lt;requestId&gt;/automations
  *   {"repository":"qits-landing-app","foldSha":"&lt;sha&gt;","previousFoldSha":"&lt;sha&gt;"|null,
  *    "changedSincePrevious":["src/app/x.ts"]|null,"sourceBranches":["ticket/x"],"workItem":null,
- *    "accepts":["WAITING","NOT_APPLICABLE"]}
+ *    "accepts":["WAITING","NOT_APPLICABLE"],
+ *    "backingBranch":"release/qits-landing-app-rr-7","qualifiedId":"qits-landing-app-rr-7"}
  *   -&gt; 200 {"requestId":"…","foldSha":"&lt;sha&gt;",
  *           "automations":[{"kind":"screenshot-baselines","label":"Screenshot baselines",
  *                           "state":"RUNNING","detail":"…","bumpId":"…","runIds":["…"],
@@ -136,6 +137,29 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       List<String> changedSincePrevious,
       List<String> sourceBranches,
       String workItem) {
+    return request(
+        repositoryName,
+        requestId,
+        null,
+        null,
+        foldSha,
+        previousFoldSha,
+        changedSincePrevious,
+        sourceBranches,
+        workItem);
+  }
+
+  @Override
+  public Optional<Answer> request(
+      String repositoryName,
+      String requestId,
+      String qualifiedId,
+      String backingBranch,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      String workItem) {
     if (!configured()) {
       return Optional.empty();
     }
@@ -159,6 +183,13 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       ArrayNode branches = body.putArray("sourceBranches");
       (sourceBranches == null ? List.<String>of() : sourceBranches).forEach(branches::add);
       body.put("workItem", workItem);
+      // Optional on the far side, which reads them back from this service when absent (qits-1158).
+      if (backingBranch != null) {
+        body.put("backingBranch", backingBranch);
+      }
+      if (qualifiedId != null) {
+        body.put("qualifiedId", qualifiedId);
+      }
       ArrayNode accepts = body.putArray("accepts");
       ACCEPTS.forEach(accepts::add);
       HttpResponse<String> response =

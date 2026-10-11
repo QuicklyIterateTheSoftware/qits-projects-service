@@ -42,7 +42,7 @@ class HttpWorkspaceAgentTurnsTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody =
       new AtomicReference<>(
-          "{\"workspaceId\":41,\"delivered\":true,\"launched\":false,\"detail\":\"told it\"}");
+          "{\"agentId\":\"a-41\",\"delivered\":true,\"launched\":false,\"detail\":\"told it\"}");
 
   @AfterEach
   void stopServer() {
@@ -93,7 +93,7 @@ class HttpWorkspaceAgentTurnsTest {
     String base = startServer();
 
     WorkspaceAgentTurns.Turn turn =
-        against(base).deliver("repo-1", "ticket/puce-button", "The ticket is REFINED now.");
+        against(base).deliver("w-1", "The ticket is REFINED now.");
 
     assertEquals(WorkspaceAgentTurns.Outcome.DELIVERED, turn.outcome());
     assertEquals("told it", turn.detail());
@@ -108,8 +108,7 @@ class HttpWorkspaceAgentTurnsTest {
     assertEquals("Bearer machine-token", request.auth());
     assertEquals(
         Map.of(
-            "repositoryId", "repo-1",
-            "branch", "ticket/puce-button",
+            "workId", "w-1",
             "text", "The ticket is REFINED now.",
             "compactFirst", false),
         MAPPER.readValue(request.body(), Map.class));
@@ -120,30 +119,30 @@ class HttpWorkspaceAgentTurnsTest {
   void aLaunchIsReportedAsALaunchAndNotAsADelivery() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"workspaceId\":41,\"delivered\":true,\"launched\":true,\"detail\":\"started one\"}");
+        "{\"agentId\":\"a-41\",\"delivered\":true,\"launched\":true,\"detail\":\"started one\"}");
 
-    WorkspaceAgentTurns.Turn turn = against(base).deliver("repo-1", "ticket/x", "go");
+    WorkspaceAgentTurns.Turn turn = against(base).deliver("w-1", "go");
 
     assertEquals(WorkspaceAgentTurns.Outcome.LAUNCHED, turn.outcome());
     assertTrue(turn.spoken());
   }
 
   /**
-   * The ordinary answer for a ticket nobody has dispatched an agent onto: a 200, a null workspace
-   * id, and a sentence. The door never creates a workspace, so this is not a failure.
+   * The ordinary answer for a ticket nobody has dispatched an agent onto: a 200, a null agent
+   * id, and a sentence. The door never creates an agent, so this is not a failure.
    */
   @Test
-  void noWorkspaceOnTheBranchIsAnOrdinaryAnswerAndNotAFailure() throws Exception {
+  void noAgentIsAnOrdinaryAnswerAndNotAFailure() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"workspaceId\":null,\"delivered\":false,\"launched\":false,"
-            + "\"detail\":\"no workspace stands on ticket/x\"}");
+        "{\"agentId\":null,\"delivered\":false,\"launched\":false,"
+            + "\"detail\":\"the work item has no agent\"}");
 
     WorkspaceAgentTurns.Turn turn =
-        assertDoesNotThrow(() -> against(base).deliver("repo-1", "ticket/x", "go"));
+        assertDoesNotThrow(() -> against(base).deliver("w-1", "go"));
 
-    assertEquals(WorkspaceAgentTurns.Outcome.NO_WORKSPACE, turn.outcome());
-    assertEquals("no workspace stands on ticket/x", turn.detail());
+    assertEquals(WorkspaceAgentTurns.Outcome.NO_AGENT, turn.outcome());
+    assertEquals("the work item has no agent", turn.detail());
     assertEquals(1, received.size(), "and it was asked exactly once");
   }
 
@@ -154,7 +153,7 @@ class HttpWorkspaceAgentTurnsTest {
     responseBody.set("{\"message\":\"the harness is gone\"}");
 
     WorkspaceAgentTurns.Turn turn =
-        assertDoesNotThrow(() -> against(base).deliver("repo-1", "ticket/x", "go"));
+        assertDoesNotThrow(() -> against(base).deliver("w-1", "go"));
 
     assertEquals(WorkspaceAgentTurns.Outcome.COULD_NOT, turn.outcome());
     assertTrue(turn.detail().contains("500"), turn.detail());
@@ -168,7 +167,7 @@ class HttpWorkspaceAgentTurnsTest {
 
     assertEquals(
         WorkspaceAgentTurns.Outcome.COULD_NOT,
-        assertDoesNotThrow(() -> against(base).deliver("repo-1", "ticket/x", "go")).outcome());
+        assertDoesNotThrow(() -> against(base).deliver("w-1", "go")).outcome());
   }
 
   /** A workspace that neither took the text nor launched: this side cannot claim it was told. */
@@ -176,11 +175,11 @@ class HttpWorkspaceAgentTurnsTest {
   void anAnswerClaimingNeitherDeliveryNorLaunchIsNotADelivery() throws Exception {
     String base = startServer();
     responseBody.set(
-        "{\"workspaceId\":41,\"delivered\":false,\"launched\":false,\"detail\":\"busy\"}");
+        "{\"agentId\":\"a-41\",\"delivered\":false,\"launched\":false,\"detail\":\"busy\"}");
 
     assertEquals(
         WorkspaceAgentTurns.Outcome.COULD_NOT,
-        against(base).deliver("repo-1", "ticket/x", "go").outcome());
+        against(base).deliver("w-1", "go").outcome());
   }
 
   @Test
@@ -190,7 +189,7 @@ class HttpWorkspaceAgentTurnsTest {
         assertDoesNotThrow(
             () ->
                 against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
-                    .deliver("repo-1", "ticket/x", "go"));
+                    .deliver("w-1", "go"));
 
     assertEquals(WorkspaceAgentTurns.Outcome.COULD_NOT, turn.outcome());
   }
@@ -202,10 +201,10 @@ class HttpWorkspaceAgentTurnsTest {
 
     assertEquals(
         WorkspaceAgentTurns.Outcome.COULD_NOT,
-        against(null, null, Optional.of("Bearer t")).deliver("repo-1", "ticket/x", "go").outcome());
+        against(null, null, Optional.of("Bearer t")).deliver("w-1", "go").outcome());
     assertEquals(
         WorkspaceAgentTurns.Outcome.COULD_NOT,
-        against("  ", "", Optional.of("Bearer t")).deliver("repo-1", "ticket/x", "go").outcome());
+        against("  ", "", Optional.of("Bearer t")).deliver("w-1", "go").outcome());
 
     assertTrue(received.isEmpty(), "a switched-off hop dials nothing: " + received);
     assertTrue(base.startsWith("http://"), "the server was up, so an attempt would have landed");
@@ -219,7 +218,7 @@ class HttpWorkspaceAgentTurnsTest {
     assertEquals(
         WorkspaceAgentTurns.Outcome.DELIVERED,
         against(null, base, Optional.of("Bearer machine-token"))
-            .deliver("repo-1", "ticket/x", "go")
+            .deliver("w-1", "go")
             .outcome());
     assertEquals(1, received.size(), "an unset own key falls back to the release path's address");
   }
@@ -231,18 +230,22 @@ class HttpWorkspaceAgentTurnsTest {
 
     assertEquals(
         WorkspaceAgentTurns.Outcome.COULD_NOT,
-        against(base, null, Optional.empty()).deliver("repo-1", "ticket/x", "go").outcome());
+        against(base, null, Optional.empty()).deliver("w-1", "go").outcome());
 
     assertTrue(received.isEmpty(), "an uncredentialed hop dials nothing: " + received);
   }
 
-  /** With a work id, the body carries it, so qits-workspaces finds the workspace by it (qits-112). */
+  /** A yielded agent restarted with its session to take the turn is its own outcome (qits-1152). */
   @Test
-  void aTurnNamingItsWorkItemCarriesTheWorkId() throws Exception {
+  void aResumeIsReportedAsAResume() throws Exception {
     String base = startServer();
+    responseBody.set(
+        "{\"agentId\":\"a-41\",\"delivered\":true,\"launched\":false,\"resumed\":true,"
+            + "\"detail\":\"resumed it\"}");
 
-    against(base).deliver("w-1", "repo-1", "ticket/puce-button", "go");
+    WorkspaceAgentTurns.Turn turn = against(base).deliver("w-1", "go");
 
-    assertEquals("w-1", MAPPER.readValue(received.get(0).body(), Map.class).get("workId"));
+    assertEquals(WorkspaceAgentTurns.Outcome.RESUMED, turn.outcome());
+    assertTrue(turn.spoken());
   }
 }

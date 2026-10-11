@@ -243,27 +243,20 @@ public class RefinementService {
   }
 
   /**
-   * The third refusal of {@link #findOrCreate}: an ACTIVE workspace names this entity. Only ACTIVE
-   * counts — the port answers integrated and abandoned workspaces too, and a resolved one has no
-   * container and no agent in it, so it collides with nothing. The references are also matched back
-   * to this entity's id rather than trusted to be about it: the answer is a list over whatever was
-   * asked, and a check that refuses somebody else's work would be the worse bug.
+   * The third refusal of {@link #findOrCreate}: the entity has an ACTIVE agent (qits-1152). Only
+   * ACTIVE counts — the port answers OBSOLETE and REMOVED agents too, and their work is over, so they
+   * collide with nothing. The agents are also matched back to this entity's id rather than trusted
+   * to be about it: a check that refuses somebody else's work would be the worse bug.
    */
   private void refuseWhileDispatched(WorkEntity entity, String noun) {
     if (workspaces.isUnsatisfied()) {
       return; // no workspaces context: nothing can be dispatched here, so nothing is running
     }
-    boolean ticket = entity.archetype == Archetype.TICKET;
-    List<WorkspaceAgentDispatch.Reference> found =
-        workspaces
-            .get()
-            .workspacesReferencing(
-                ticket ? List.of(entity.id) : List.of(), ticket ? List.of() : List.of(entity.id));
-    Optional<WorkspaceAgentDispatch.Reference> live =
-        found.stream()
+    Optional<WorkspaceAgentDispatch.Agent> live =
+        workspaces.get().agentsFor(List.of(entity.id)).stream()
             // A write-side reader, so ACTIVE alone: see the port's javadoc for why this is ours.
-            .filter(ref -> WorkspaceAgentDispatch.Reference.ACTIVE.equals(ref.status()))
-            .filter(ref -> entity.id.equals(ticket ? ref.ticketId() : ref.epicId()))
+            .filter(WorkspaceAgentDispatch.Agent::active)
+            .filter(agent -> entity.id.equals(agent.workId()))
             .findFirst();
     if (live.isPresent()) {
       throw new DomainException(
@@ -271,13 +264,13 @@ public class RefinementService {
           capitalized(noun)
               + " "
               + entity.id
-              + " has a dispatched agent working it in workspace "
-              + live.get().workspaceId()
-              + " (on "
-              + live.get().branch()
+              + " has a dispatched agent working it ("
+              + live.get().agentId()
+              + ", on "
+              + live.get().wrapperBranch()
               + "), so a refinement room will not be opened beside it — two authors on one draft"
-              + " would overwrite each other. Let that run finish, or integrate or abandon the"
-              + " workspace, then refine.");
+              + " would overwrite each other. Let that run finish, or discard the agent, then"
+              + " refine.");
     }
   }
 

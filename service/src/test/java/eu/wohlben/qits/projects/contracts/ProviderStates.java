@@ -49,6 +49,8 @@ import java.util.function.Supplier;
 @ApplicationScoped
 public class ProviderStates {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String TWO_PROJECTS_EXIST = "two projects exist";
   public static final String NO_PROJECTS_EXIST = "no projects exist";
@@ -147,6 +149,13 @@ public class ProviderStates {
    * nobody blocked (qits-895): the derived block, {@code blockSource: AGENT_WAITING}.
    */
   public static final String A_TICKET_ITS_AGENT_IS_WAITING_ON = "a ticket its agent is waiting on";
+
+  /**
+   * A REPORTED ticket whose agent session waits on a declared wait (qits-1153): no derived block,
+   * {@code waitingOn} set to the wait's label.
+   */
+  public static final String A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT =
+      "a ticket its agent waits on a declared wait";
   public static final String A_CAMPAIGN_WITH_MEMBERS_TO_EDIT = "a campaign with members to edit";
   public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
   public static final String A_REPORTED_TICKET = "a reported ticket";
@@ -397,6 +406,8 @@ public class ProviderStates {
     states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_COMMENT, this::aTicketWithAComment);
     states.put(A_TICKET_ITS_AGENT_IS_WAITING_ON, this::aTicketItsAgentIsWaitingOn);
+    states.put(
+        A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT, this::aTicketItsAgentWaitsOnADeclaredWait);
     states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
     states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
     TICKET_IN_STATUS.forEach(
@@ -1133,6 +1144,27 @@ public class ProviderStates {
         work.get(Archetype.TICKET, ticket),
         true,
         "Stop",
+        null,
+        "contract-session",
+        java.time.Instant.now().minusSeconds(120));
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
+        List.of(token));
+  }
+
+  /**
+   * {@link #A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT}: the same session frame two minutes ago,
+   * naming a declared wait — past the debounce, and still not blocked.
+   */
+  private Setup aTicketItsAgentWaitsOnADeclaredWait() {
+    String token = token();
+    Project project = project(token, A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT);
+    String ticket = ticket(project, "Export waits for its release");
+    agentWaiting.report(
+        work.get(Archetype.TICKET, ticket),
+        true,
+        "Wait",
+        "release-request 42; ci-run 7",
         "contract-session",
         java.time.Instant.now().minusSeconds(120));
     return new Setup(
@@ -2443,6 +2475,8 @@ public class ProviderStates {
                   row.createdAt = when;
                   row.armedAt = when;
                   row.updatedAt = when;
+                  // Named first, so a customizer that reads the backing branch sees it.
+                  row.name(releaseRequestNumbers.next(row.repoId));
                   more.accept(row);
                   row.persist();
                   return row.id;
@@ -2506,7 +2540,10 @@ public class ProviderStates {
               verdict.repoId = repoId;
               verdict.projectId = project.id;
               verdict.repoName = repoName;
-              verdict.branch = ReleaseRequest.backingBranchOf(requestId);
+              verdict.branch =
+                  ReleaseRequest.<ReleaseRequest>findByIdOptional(requestId)
+                      .map(ReleaseRequest::backingBranch)
+                      .orElse(ReleaseRequest.BACKING_BRANCH_PREFIX + requestId);
               verdict.commitSha = sha;
               verdict.status = status;
               verdict.finishedAt = SEEDED_AT.plusSeconds(60L * minute);
@@ -2705,6 +2742,7 @@ public class ProviderStates {
                   row.createdAt = when;
                   row.armedAt = when;
                   row.updatedAt = when;
+                  row.name(releaseRequestNumbers.next(row.repoId));
                   row.persist();
                   if (ciVerdict != null) {
                     CommitBuildStatus verdict = new CommitBuildStatus();

@@ -59,6 +59,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class ReleaseRequestFoldDiffTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   @Inject ReleaseRequests releaseRequests;
 
   @Inject RepositoryService repositoryService;
@@ -284,7 +286,7 @@ public class ReleaseRequestFoldDiffTest {
     assertEquals(2, refolded.size());
     assertEquals(first, refolded.get(0).sha());
     assertEquals("PREVIOUS_FOLD", refolded.get(0).role());
-    assertEquals("refs/heads/release/" + requestId, refolded.get(0).ref());
+    assertEquals(BackingBranches.ref(requestId), refolded.get(0).ref());
     assertEquals("SOURCE", refolded.get(1).role());
     assertEquals("lane-two", refolded.get(1).source());
     assertEquals("refs/heads/lane-two", refolded.get(1).ref());
@@ -812,6 +814,7 @@ public class ReleaseRequestFoldDiffTest {
               row.createdAt = Instant.now();
               row.armedAt = row.createdAt;
               row.updatedAt = row.createdAt;
+              row.name(releaseRequestNumbers.next(row.repoId));
               row.persist();
             });
     requestIds.add(id);

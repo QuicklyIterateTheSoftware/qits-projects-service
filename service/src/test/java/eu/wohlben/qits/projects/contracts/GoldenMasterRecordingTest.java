@@ -644,6 +644,17 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_TICKET_ITS_AGENT_IS_WAITING_ON,
             "getWorkDispatch",
             "/projects/api/work/{qualifiedId}/dispatch"));
+    // A declared wait (qits-1153): not blocked, past the debounce, and waitingOn names it.
+    all.add(
+        read(
+            ProviderStates.A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
+    all.add(
+        read(
+            ProviderStates.A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT,
+            "getWorkDispatch",
+            "/projects/api/work/{qualifiedId}/dispatch"));
     all.add(read(ProviderStates.A_TICKET_WITH_A_COMMENT, "getWork", "/projects/api/work/{qualifiedId}"));
     all.add(
         read(
@@ -943,7 +954,8 @@ class GoldenMasterRecordingTest {
             ProviderStates.THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA,
             "getWorkArchetypeSchema",
             "/projects/api/work/archetypes/TICKET/schemas/transition"));
-    // Keyed by the entity id, as qits-workspaces sends it; 204 and no body.
+    // Keyed by the entity id, as qits-workspaces sends it; 204 and no body. The frame names a
+    // declared wait (qits-1153), the fullest shape the relay sends.
     all.add(
         new Interaction(
             ProviderStates.A_TICKET_WITH_A_DISPATCHED_AGENT,
@@ -953,7 +965,8 @@ class GoldenMasterRecordingTest {
             204,
             null,
             null,
-            "{\"waiting\":true,\"cause\":\"Stop\",\"sessionId\":\"contract-session\"}"));
+            "{\"waiting\":true,\"cause\":\"Wait\",\"sessionId\":\"contract-session\","
+                + "\"at\":1234,\"waitingOn\":\"release-request 42; ci-run 7\"}"));
     // A real run, as the orchestrator's schedule makes it; the five pin sources pin nothing.
     all.add(
         write(

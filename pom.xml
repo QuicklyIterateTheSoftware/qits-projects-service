@@ -218,7 +218,7 @@
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
-        <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
+        <qits.workspaces-service-pacts-qits-projects-service.version>2026.1011.50559</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1010.174213</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1010.92756</qits.platform-access-cli-pacts-qits-projects-service.version>
@@ -399,8 +399,8 @@
                 <!-- Test scope at every declaration site: a consumer's pact, verified by
                      ConsumerPactVerificationTest. -->
                 <groupId>eu.wohlben.qits</groupId>
-                <artifactId>qits-workspaces-pacts-qits-projects</artifactId>
-                <version>${qits.workspaces-pacts-qits-projects.version}</version>
+                <artifactId>qits-workspaces-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.workspaces-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site: a consumer's pact, verified by

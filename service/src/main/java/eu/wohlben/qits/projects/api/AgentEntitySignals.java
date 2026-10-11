@@ -10,7 +10,6 @@ import eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
-import java.util.Optional;
 import org.jboss.logging.Logger;
 
 /**
@@ -50,11 +49,11 @@ import org.jboss.logging.Logger;
  * <h2>The two targets, and why both are asked</h2>
  *
  * <p>An entity's agent stands in one of two places, and nothing here knows which without asking:
- * the <b>workspace</b> on its {@code ticket/<slug>} or {@code epic/<slug>} branch, which
- * qits-workspaces runs ({@link WorkspaceAgentEntities}), and the <b>refinement</b> container this
+ * the <b>agent</b> qits-workspaces runs for the work item, found by its id (qits-1152, {@link
+ * WorkspaceAgentEntities}), and the <b>refinement</b> container this
  * service runs for it ({@link RefinementAgentEntities}). Both are asked, the workspace first: it is
  * where the implement and verify phases run, and a refinement is the rarer case. Asking a target
- * that has nothing standing costs one cheap answer — a {@code workspaceId: null}, an empty indexed
+ * that has nothing standing costs one cheap answer — an {@code agentId: null}, an empty indexed
  * read — and asking only one would leave the other's session reading a stale entity.
  *
  * <h2>Only a ticket and an epic</h2>
@@ -77,15 +76,12 @@ import org.jboss.logging.Logger;
  *
  * <p>Each target bounds its own exchange to a few seconds and folds every failure into one WARN;
  * this class adds a belt over both, because the port says it must not throw and a port bug must
- * still not turn a recorded write into a 500. A project with no wrapper has no workspace branch to
- * address and asks only the refinement.
+ * still not turn a recorded write into a 500.
  */
 @ApplicationScoped
 public class AgentEntitySignals implements RetitleAnnouncer {
 
   private static final Logger LOG = Logger.getLogger(AgentEntitySignals.class);
-
-  @Inject EntityWorkspaces workspaces;
 
   /**
    * Optional, like every port here, and <b>absent is a supported configuration</b>: no workspace is
@@ -169,29 +165,14 @@ public class AgentEntitySignals implements RetitleAnnouncer {
       return;
     }
     try {
-      Optional<EntityWorkspaces.Target> target = workspaces.find(entity);
-      if (target.isEmpty()) {
-        LOG.debugf(
-            "%s %s's project has no wrapper repository, so no workspace is told it changed",
-            entity.archetype, entity.id);
-        return;
-      }
-      workspaceEntities
-          .get()
-          .changed(
-              entity.id,
-              target.get().repositoryId(),
-              target.get().branch(),
-              entity.title,
-              entity.status,
-              blocked,
-              blockSource);
+      // Keyed by the work item (qits-1152): the far side finds its ACTIVE agent, whatever branch it
+      // stands on.
+      workspaceEntities.get().changed(entity.id, entity.title, entity.status, blocked, blockSource);
     } catch (RuntimeException e) {
-      // The port says it must not throw; a throw is a port bug (or a catalog read that failed), and
-      // neither may touch a write that is already recorded.
+      // The port says it must not throw; a throw is a port bug, and it may not touch a write that is
+      // already recorded.
       LOG.warnf(
-          e, "Could not tell the workspace of %s %s its entity changed", entity.archetype,
-          entity.id);
+          e, "Could not tell the agent of %s %s its entity changed", entity.archetype, entity.id);
     }
   }
 }

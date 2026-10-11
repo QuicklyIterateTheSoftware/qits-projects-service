@@ -4,9 +4,10 @@
     "archetype": "EPIC",
     "phase": "implement",
     "mode": "FLOW",
+    "agentId": "agent-41",
     "workspaceRowId": 41,
     "repositoryId": "00000000-0000-4000-8000-000000000003",
-    "branch": "epic/work-item-actions",
+    "branch": "epic/contract-00000001-1",
     "fresh": true,
     "agentLaunch": "SCHEDULED",
     "assignee": "ws-agent-41"

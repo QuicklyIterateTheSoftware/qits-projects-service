@@ -150,7 +150,7 @@ public class ReleasePipelineReportingTest {
   public void theQaPhaseRunsAndThenSucceeds() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
-    String backing = ReleaseRequest.backingBranchOf(id);
+    String backing = backingOf(id);
 
     Instant queued = Instant.parse("2026-09-16T10:00:00Z");
     transitionAt("run-qa", "RELEASE_REQUEST", backing, "QUEUED", queued);
@@ -197,7 +197,7 @@ public class ReleasePipelineReportingTest {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     String merged = mergedShaOf(id);
-    String backing = ReleaseRequest.backingBranchOf(id);
+    String backing = backingOf(id);
     // Unique ids: commit_build_status is keyed on the run and nothing empties it between tests.
     String first = "run-qa-1-" + UUID.randomUUID();
     String retry = "run-qa-2-" + UUID.randomUUID();
@@ -241,7 +241,7 @@ public class ReleasePipelineReportingTest {
   public void aSupersededFoldsCancelArrivingAfterTheNewRunStartsLeavesTheQaPhaseWithTheNewRun() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
-    String backing = ReleaseRequest.backingBranchOf(id);
+    String backing = backingOf(id);
     String fold = mergedShaOf(id);
     String old = "run-old-" + UUID.randomUUID();
     String current = "run-new-" + UUID.randomUUID();
@@ -263,7 +263,7 @@ public class ReleasePipelineReportingTest {
   public void aSupersededFoldsCancelArrivingBeforeTheNewRunStartsHandsTheQaPhaseOver() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
-    String backing = ReleaseRequest.backingBranchOf(id);
+    String backing = backingOf(id);
     String fold = mergedShaOf(id);
     String old = "run-old-" + UUID.randomUUID();
     String current = "run-new-" + UUID.randomUUID();
@@ -289,7 +289,7 @@ public class ReleasePipelineReportingTest {
   public void thePublishPhaseAppearsOnceTheTagExists() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
-    String backing = ReleaseRequest.backingBranchOf(id);
+    String backing = backingOf(id);
     transitionAt(
         "run-qa", "RELEASE_REQUEST", backing, "SUCCESS", Instant.parse("2026-09-16T10:00:00Z"));
     assertEquals(
@@ -329,7 +329,7 @@ public class ReleasePipelineReportingTest {
     transitionAt(
         "run-qa",
         "RELEASE_REQUEST",
-        ReleaseRequest.backingBranchOf(id),
+        backingOf(id),
         "SUCCESS",
         Instant.parse("2026-09-16T10:00:00Z"));
 
@@ -367,7 +367,7 @@ public class ReleasePipelineReportingTest {
     transitionAt(
         "run-qa",
         "RELEASE_REQUEST",
-        ReleaseRequest.backingBranchOf(id),
+        backingOf(id),
         "SUCCESS",
         Instant.parse("2026-09-16T10:00:00Z"));
     verdict("BuildSuccessful", mergedShaOf(id));
@@ -716,7 +716,7 @@ public class ReleasePipelineReportingTest {
     transitionAt(
         "run-qa",
         "RELEASE_REQUEST",
-        ReleaseRequest.backingBranchOf(id),
+        backingOf(id),
         "SUCCESS",
         Instant.parse("2026-09-16T10:00:00Z"));
     verdict("BuildSuccessful", mergedShaOf(id));
@@ -785,7 +785,8 @@ public class ReleasePipelineReportingTest {
     if ("RELEASE_REQUEST".equals(phase)
         && branch != null
         && branch.startsWith(ReleaseRequest.BACKING_BRANCH_PREFIX)) {
-      String folded = mergedShaOf(branch.substring(ReleaseRequest.BACKING_BRANCH_PREFIX.length()));
+      String owner = idOfBackingBranch(branch);
+      String folded = owner == null ? null : mergedShaOf(owner);
       if (folded != null) {
         sha = folded;
       }
@@ -846,6 +847,21 @@ public class ReleasePipelineReportingTest {
             null,
             null,
             null));
+  }
+
+  /** The request's stored backing branch (qits-1158). */
+  private String backingOf(String id) {
+    return string(id, "request.backingBranch");
+  }
+
+  private static String idOfBackingBranch(String branch) {
+    return io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                ReleaseRequest.<ReleaseRequest>find("backingBranch", branch)
+                    .firstResultOptional()
+                    .map(row -> row.id)
+                    .orElse(null));
   }
 
   private String stateOf(String id) {

@@ -41,6 +41,18 @@
           "status": 204,
           "file": "a-thing-with-parts/renameThing.json",
           "frozen": { "ids": [], "instants": [], "strings": [] }
+        },
+        {
+          "operationId": "listEntries",
+          "method": "GET",
+          "path": "/fixture/api/entries",
+          "status": 200,
+          "file": "a-thing-with-parts/listEntries.json",
+          "frozen": {
+            "ids": [],
+            "instants": ["$.entries[*].item.doneAt"],
+            "strings": []
+          }
         }
       ]
     }

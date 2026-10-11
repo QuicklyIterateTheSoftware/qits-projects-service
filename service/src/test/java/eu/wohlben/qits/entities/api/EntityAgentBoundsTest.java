@@ -18,6 +18,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -41,7 +42,7 @@ import org.junit.jupiter.api.function.Executable;
 
 /**
  * An agent at the entity write doors: it writes the rows of its own project, is refused everywhere
- * else, and never moves an epic through its lifecycle or deletes anything a tool does not delete.
+ * else, never supersedes an epic, and never deletes anything a tool does not delete.
  *
  * <p><b>Two layers, tested where each can be reached — the split {@code
  * ReleaseRequestAgentBoundsTest} explains and this class inherits.</b> The <b>binding</b> reads the
@@ -550,19 +551,56 @@ class EntityAgentBoundsTest {
   }
 
   /**
-   * <b>The status door keeps the epic a person's</b> (qits-548): an agent bound to the epic's own
-   * project — the binding would let it through — is refused by the epic's rule, and the epic does
-   * not move. A person moves it.
+   * <b>An agent moves an epic of its own project</b> (qits-1174): the claim the retired {@code
+   * transition_epic} MCP tool made, now on the status door. It is recorded as a machine's move,
+   * under the agent's own name.
    */
   @Test
-  void anAgentMovingItsOwnEpicIsRefused() {
-    ForbiddenException refusal =
-        assertThrows(
-            ForbiddenException.class,
-            () -> work(AGENT).setStatus(rows.epicQualifiedId(), to("REFINED")));
-    assertEquals(403, refusal.statusCode());
+  void anAgentMovesItsOwnEpic() {
+    var moved = work(AGENT).setStatus(rows.epicQualifiedId(), to("REFINED"));
+    assertEquals("REFINED", moved.status());
+    assertEquals("REFINED", statusOf(rows.epicId()));
+  }
+
+  /** The row's status, read in a transaction of its own (see {@link #titleOf}). */
+  private String statusOf(String id) {
+    return QuarkusTransaction.requiringNew().call(() -> workEntities.find(id).status);
+  }
+
+  /** And only of its own project: another project's epic is the binding's 403, and stays put. */
+  @Test
+  void anAgentMovingAnotherProjectsEpicIsRefused() {
+    refused(() -> work(AGENT).setStatus(rows.foreignEpicId(), to("REFINED")));
+    refused(() -> work(FOREIGN_AGENT).setStatus(rows.epicQualifiedId(), to("REFINED")));
+    assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.foreignEpicId()).status);
     assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.epicId()).status);
-    assertEquals("REFINED", work(OPERATOR).setStatus(rows.epicId(), to("REFINED")).status());
+  }
+
+  /**
+   * A supersede is an operation on a plan, not an agent's claim: refused in its own project with the
+   * message the MCP tool gave, and nothing is written.
+   */
+  @Test
+  void anAgentSupersedingItsOwnEpicIsRefused() {
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> work(AGENT).setStatus(rows.epicQualifiedId(), to("SUPERSEDED")));
+    assertEquals(409, refusal.statusCode());
+    assertTrue(refusal.getMessage().startsWith("SUPERSEDED is an operation on a plan"));
+    assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.epicId()).status);
+    assertEquals(null, workEntities.get(Archetype.EPIC, rows.epicId()).supersededByEntityId);
+  }
+
+  /** A person and an admin workspace's agent move an epic of any project, exactly as before. */
+  @Test
+  void anAdminMovesAnyEpicAsBefore() {
+    // One move per epic: a second move in this thread would read the first epic as it was.
+    assertEquals("REFINED", work(OPERATOR).setStatus(rows.foreignEpicId(), to("REFINED")).status());
+    assertEquals(
+        "REFINED", work(ADMIN_AGENT_OPERATOR).setStatus(rows.epicId(), to("REFINED")).status());
+    assertEquals("REFINED", statusOf(rows.foreignEpicId()));
+    assertEquals("REFINED", statusOf(rows.epicId()));
   }
 
   /**
@@ -622,6 +660,7 @@ class EntityAgentBoundsTest {
     refused(() -> work(caller).patch(rows.taskId(), retitle("Not yours")));
     refused(() -> work(caller).delete(rows.taskId()));
     refused(() -> work(caller).setStatus(ticket, to("REFINED")));
+    refused(() -> work(caller).setStatus(rows.epicQualifiedId(), to("REFINED")));
     refused(() -> work(caller).setBlocked(ticket, new WorkController.WorkBlockRequest(true, "x")));
     refused(() -> workThreads(caller).add(ticket, remark("not yours")));
     refused(() -> workThreads(caller).add(rows.epicQualifiedId(), remark("not yours")));

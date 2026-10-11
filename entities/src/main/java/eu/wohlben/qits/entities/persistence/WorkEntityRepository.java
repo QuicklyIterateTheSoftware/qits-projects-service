@@ -58,7 +58,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
-                + " e.agentWaitingCause"
+                + " e.agentWaitingCause, e.agentWaitingOn"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -94,6 +94,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.blockedReason = (String) c[22];
     row.agentWaitingSince = (Instant) c[23];
     row.agentWaitingCause = (String) c[24];
+    row.agentWaitingOn = (String) c[25];
     return row;
   }
 

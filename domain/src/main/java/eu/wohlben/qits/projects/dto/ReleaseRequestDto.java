@@ -12,6 +12,11 @@ import java.util.List;
  * request, whether the sweep keeps retrying the execution or the refusal stands until something
  * re-arms it.
  *
+ * <p><b>{@code qualifiedId} is the id people read</b> (qits-1158): {@code <repoName>-rr-<n>},
+ * frozen at creation, unique within the repository. Every door that takes a request id accepts it
+ * as well as {@code id}, which stays the internal key. {@code supersededByQualifiedId} is the same
+ * for {@code supersededBy}.
+ *
  * <p><b>{@code RELEASED} IS NOT THE END, and a caller that treats it as one is wrong about two
  * things at once.</b> A release is a tag; what it released has still to publish, to deploy and to
  * reach {@code main}, and only {@code FINALIZED} says all of that happened. So a RELEASED request is
@@ -27,7 +32,8 @@ import java.util.List;
  * reaches {@code main} inside the successor rather than under its own name.
  *
  * <p><b>A request is a merge of {@code sources}, not a branch head.</b> {@code backingBranch} is
- * {@code release/<id>} — the ref the git host folds them into — and {@code mergedSha} is the tip of
+ * the ref the git host folds them into, stored on the request: {@code release/<qualifiedId>} since
+ * qits-1158, {@code release/<id>} on an older request — and {@code mergedSha} is the tip of
  * that fold: what the gates evaluate and what an execution is pinned to. {@code mergedSha} is
  * <b>null until the first fold lands</b>, and null on a CONFLICTED request whose first fold never
  * did; a caller reads that as "nothing is gated yet", never as "nothing to release".
@@ -141,6 +147,7 @@ import java.util.List;
  */
 public record ReleaseRequestDto(
     String id,
+    String qualifiedId,
     String repoId,
     String repoName,
     String backingBranch,
@@ -163,6 +170,7 @@ public record ReleaseRequestDto(
     MergeConflictDto conflict,
     String version,
     String supersededBy,
+    String supersededByQualifiedId,
     String releasedSha,
     Instant mergedToMainAt,
     boolean retryable,

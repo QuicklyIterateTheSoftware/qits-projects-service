@@ -2,9 +2,10 @@
   "requests": [
     {
       "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-service-rr-2",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "backingBranch": "release/contract-service-rr-2",
       "sources": [
         {
           "kind": "RELEASED_TAG",
@@ -49,6 +50,7 @@
       "conflict": null,
       "version": "2026.101.100400",
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0104",
       "mergedToMainAt": null,
       "retryable": false,

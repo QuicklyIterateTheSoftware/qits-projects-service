@@ -26,7 +26,8 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       Instant changedAt,
       String priority,
       List<String> downstreamTechnicalComponents,
-      String preRun) {}
+      String preRun,
+      String releaseRequestQualifiedId) {}
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
@@ -67,6 +68,7 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String repoId,
       String repoName,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String backingBranch,
       String mergedSha,
       Instant changedAt,
@@ -87,6 +89,7 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
             changedAt,
             priority,
             downstreamTechnicalComponents,
-            preRun));
+            preRun,
+            releaseRequestQualifiedId));
   }
 }

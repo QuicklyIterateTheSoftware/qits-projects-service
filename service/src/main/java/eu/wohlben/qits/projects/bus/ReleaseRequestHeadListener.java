@@ -31,7 +31,7 @@ import org.jboss.logging.Logger;
  * announces a push. None of them feeds a loop:
  *
  * <ul>
- *   <li>A <b>fold</b> onto {@code release/<id>} names a branch no request can hold as a source — a
+ *   <li>A <b>fold</b> onto a {@code release/} backing branch names a branch no request can hold as a source — a
  *       {@code release/} branch is refused at create and join — so it matches nothing.
  *   <li>The <b>version commit</b> lands on that same backing branch, and the <b>tag</b> is an {@code
  *       SCMPublishTag} this listener does not read.

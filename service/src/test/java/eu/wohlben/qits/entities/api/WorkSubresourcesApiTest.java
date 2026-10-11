@@ -451,8 +451,8 @@ class WorkSubresourcesApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Work Workspaces");
     String ticket = EntityFixtures.ticket(project.id());
     String other = EntityFixtures.ticket(project.id());
-    workspaces.willReference(
-        RecordingWorkspaceAgentDispatch.live(41, "wrapper", "ws-41", "ticket/x", ticket, null));
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-41", 41, "wrapper", ticket, "ticket/x"));
 
     given()
         .when()
@@ -460,7 +460,8 @@ class WorkSubresourcesApiTest {
         .then()
         .statusCode(200)
         .body("workspaces", hasSize(1))
-        .body("workspaces[0].workspaceId", equalTo("ws-41"));
+        .body("workspaces[0].agentId", equalTo("agent-41"))
+        .body("workspaces[0].workspaceRowId", equalTo(41));
     given()
         .when()
         .get(WORK + EntityFixtures.qualifiedId(other) + "/workspaces")

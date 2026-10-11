@@ -45,7 +45,7 @@ public interface ReleaseAnnouncer {
    * @param repoId the repository's storage id — the git host's key
    * @param repoName the repository's registered name, or null. <b>The field a committed CI
    *     selection can address</b>, which the id is not: a row id is minted per platform instance.
-   * @param branch the branch that was released — the request's backing branch, {@code release/<id>}
+   * @param branch the branch that was released — the request's stored backing branch
    * @param version the release stamp, {@code YYYY.MMDD.HHMMSS}, which is also the tag's name
    * @param commitSha <b>what the tag points at</b> — {@link ReleaseExecutor.Outcome#releasedSha()},
    *     the version-bump commit, or the fold itself where nothing renders a version. Nullable, and
@@ -56,6 +56,8 @@ public interface ReleaseAnnouncer {
    *     release/<id>} out of {@code branch} above: that branch is deleted by the same operation that
    *     creates the tag, so the id is the durable half of the pair. Nullable, and an implementation
    *     publishes without it rather than refusing, like {@code commitSha}.
+   * @param releaseRequestQualifiedId the same request's logical id, {@code <repo>-rr-<n>}
+   *     (qits-1158), for texts; nullable like {@code releaseRequestId}
    * @param occurredAt when the tag was accepted, which is when the release happened
    * @param priority what this release was worth to whoever asked for it — the max over the
    *     request's named branch sources, computed at release time so a late escalation reaches the
@@ -71,6 +73,7 @@ public interface ReleaseAnnouncer {
       String version,
       String commitSha,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority);
 }

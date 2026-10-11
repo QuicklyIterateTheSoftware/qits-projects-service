@@ -27,39 +27,34 @@ import org.jboss.logging.Logger;
  *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
  *   Content-Type: application/json
  *
- *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;",
- *    "title": "…", "status": "REFINED", "blocked": true, "blockSource": "AGENT_WAITING"}
+ *   {"workId": "…", "title": "…", "status": "REFINED", "blocked": true,
+ *    "blockSource": "AGENT_WAITING"}
  *
- *   -&gt; 200 {"workspaceId": 41,   "applied": true}
- *   -&gt; 200 {"workspaceId": null, "applied": false}
+ *   -&gt; 200 {"agentId": "…", "applied": true}
+ *   -&gt; 200 {"agentId": null, "applied": false}
  * </pre>
  *
- * <p><b>{@code workspaceId: null} is the ordinary answer</b>, for {@link HttpWorkspaceAgentTurns}'
- * reason one door over: no workspace stands on that branch, so there is no session to rename, and
- * the door never creates one. It is a DEBUG line.
+ * <p><b>{@code agentId: null} is the ordinary answer</b>, for {@link HttpWorkspaceAgentTurns}'
+ * reason one door over: the work item has no ACTIVE agent (qits-1152: agents are keyed by work
+ * item), so there is no session to rename, and the door never creates one. It is a DEBUG line.
  *
  * <p><b>{@code blockSource} (qits-895) is the effective block's source</b> —
  * {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or
  * {@code "BOTH"} — carried so the far side can name a session "waiting" rather than "blocked"
- * where that is all that stands. It is omitted whenever {@code blocked} is false, and whenever the
- * caller passed none (the two narrower overloads this class also implements, which an older caller
- * of this port still compiles against): an older qits-workspaces that does not read the key is
- * unaffected either way.
+ * where that is all that stands. It is omitted whenever the caller passed none.
  *
  * <h2>A 404 OR A 405 on {@code /entity} is retried once, on {@code /blocked}</h2>
  *
  * <p>qits-workspaces releases before this service and serves {@code /entity} by then, so on a
  * converged estate the fallback never runs. It is here because the two release independently and a
  * rollback of the far side is still a far side without the door: then {@code /entity} answers 404,
- * and the same exchange goes to {@code /blocked} with {@code {"repositoryId", "branch", "blocked"}}
- * — the flag, which is the half of the name that door ever knew. <b>405 counts the same as 404</b>:
+ * and the same body goes to {@code /blocked}, which takes the same shape since qits-1152. <b>405 counts the same as 404</b>:
  * measured live 2026-10-01 against a workspace-daemon container on 2026.1001.72420, a daemon older
  * than {@code /agents/entity} answers a method it does not recognise for that sub-path with 405
  * rather than 404, because its router rejects the method before it ever resolves the path
  * (qits-617) — treating only 404 as "the far side predates this door" left that answer falling
- * through to the generic non-2xx WARN below instead of the fallback. The title and status are lost
- * on that path and only that path, and the next signal against a current far side restores them. A
- * 404 or 405 on {@code /blocked} too is a far side older than both, and is the one WARN.
+ * through to the generic non-2xx WARN below instead of the fallback. A 404 or 405 on {@code
+ * /blocked} too is a far side older than both, and is the one WARN.
  *
  * <p><b>The path sits under {@code agent-dispatches}</b>, beside {@code delivery}, for the reason
  * that class gives and paid a release to learn: that is where the far side's {@code qits:system}
@@ -119,78 +114,41 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   @Override
   public void changed(
-      String repositoryId, String branch, String title, String status, boolean blocked) {
-    changed(null, repositoryId, branch, title, status, blocked, null);
-  }
-
-  @Override
-  public void changed(
-      String workId,
-      String repositoryId,
-      String branch,
-      String title,
-      String status,
-      boolean blocked) {
-    changed(workId, repositoryId, branch, title, status, blocked, null);
-  }
-
-  @Override
-  public void changed(
-      String workId,
-      String repositoryId,
-      String branch,
-      String title,
-      String status,
-      boolean blocked,
-      String blockSource) {
+      String workId, String title, String status, boolean blocked, String blockSource) {
     String what = describe(title, status, blocked);
     Optional<String> base = address();
     if (base.isEmpty()) {
-      couldNot(branch, what, "no address for qits-workspaces is configured");
+      couldNot(workId, what, "no address for qits-workspaces is configured");
       return;
     }
     Optional<String> authorization = bearer.authorization();
     if (authorization.isEmpty()) {
-      couldNot(branch, what, "no machine bearer for qits-workspaces is available");
+      couldNot(workId, what, "no machine bearer for qits-workspaces is available");
       return;
     }
     try {
       Map<String, Object> body = new LinkedHashMap<>();
-      body.put("repositoryId", repositoryId);
-      body.put("branch", branch);
+      body.put("workId", workId);
       body.put("title", title);
       body.put("status", status);
       body.put("blocked", blocked);
-      // The work item, which qits-workspaces finds the workspace by before the branch (qits-112).
-      // Omitted when unknown; an older qits-workspaces ignores it.
-      if (workId != null) {
-        body.put("workId", workId);
-      }
       // The effective block's source (qits-895): EXPLICIT, AGENT_WAITING or BOTH. Omitted while not
-      // blocked, or when the caller does not know it; an older qits-workspaces ignores it.
+      // blocked, or when the caller does not know it.
       if (blockSource != null) {
         body.put("blockSource", blockSource);
       }
       HttpResponse<String> response = post(base.get() + ENTITY_PATH, authorization.get(), body);
       if (response.statusCode() == 404 || response.statusCode() == 405) {
-        // A qits-workspaces older than the entity door: tell it the one value it knows. 405 is the
-        // same absence read a different way — an older router rejecting the method before it
-        // resolves the path (qits-617).
-        Map<String, Object> flag = new LinkedHashMap<>();
-        flag.put("repositoryId", repositoryId);
-        flag.put("branch", branch);
-        flag.put("blocked", blocked);
-        if (workId != null) {
-          flag.put("workId", workId);
-        }
+        // A qits-workspaces older than the entity door. 405 is the same absence read a different
+        // way — an older router rejecting the method before it resolves the path (qits-617).
         LOG.debugf(
-            "qits-workspaces has no %s yet (status %s); telling %s only that it is blocked=%s",
-            ENTITY_PATH, response.statusCode(), branch, blocked);
-        response = post(base.get() + BLOCKED_PATH, authorization.get(), flag);
+            "qits-workspaces has no %s yet (status %s); telling %s on %s instead",
+            ENTITY_PATH, response.statusCode(), workId, BLOCKED_PATH);
+        response = post(base.get() + BLOCKED_PATH, authorization.get(), body);
       }
       if (response.statusCode() / 100 != 2) {
         couldNot(
-            branch,
+            workId,
             what,
             "qits-workspaces answered "
                 + response.statusCode()
@@ -201,13 +159,13 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
                 + response.body());
         return;
       }
-      read(branch, what, response.body());
+      read(workId, what, response.body());
     } catch (InterruptedException e) {
       // Never swallow the interrupt: this may run on a worker a shutdown interrupts.
       Thread.currentThread().interrupt();
-      couldNot(branch, what, "interrupted");
+      couldNot(workId, what, "interrupted");
     } catch (Exception e) {
-      couldNot(branch, what, e.toString());
+      couldNot(workId, what, e.toString());
     }
   }
 
@@ -229,25 +187,25 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   }
 
   /**
-   * The answer, read only to say what happened in the log. {@code workspaceId: null} is "nobody
-   * stands on that branch" and is DEBUG; an id is INFO; a body that will not parse is the WARN,
-   * because this side cannot say the values landed.
+   * The answer, read only to say what happened in the log. {@code agentId: null} is "the work item
+   * has no agent" and is DEBUG; an id is INFO; a body that will not parse is the WARN, because this
+   * side cannot say the values landed.
    */
-  private static void read(String branch, String what, String responseBody) {
+  private static void read(String workId, String what, String responseBody) {
     Map<?, ?> answer;
     try {
       answer = MAPPER.readValue(responseBody, Map.class);
     } catch (Exception e) {
-      couldNot(branch, what, "qits-workspaces answered something unreadable: " + e);
+      couldNot(workId, what, "qits-workspaces answered something unreadable: " + e);
       return;
     }
-    if (!(answer.get("workspaceId") instanceof Number workspaceId)) {
-      LOG.debugf("No workspace stands on %s, so nobody was told its work is %s", branch, what);
+    if (!(answer.get("agentId") instanceof String agentId) || agentId.isBlank()) {
+      LOG.debugf("Work item %s has no agent, so nobody was told its work is %s", workId, what);
       return;
     }
     LOG.infof(
-        "Told workspace %s on %s that its work is %s (applied: %s)",
-        workspaceId.longValue(), branch, what, answer.get("applied"));
+        "Told agent %s that its work %s is %s (applied: %s)",
+        agentId, workId, what, answer.get("applied"));
   }
 
   /** The new key, then the release path's — {@link HttpWorkspaceAgentTurns}' order and reason. */
@@ -258,10 +216,10 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   }
 
   /** The one WARN. Every way this can go wrong comes through here. */
-  private static void couldNot(String branch, String what, String reason) {
+  private static void couldNot(String workId, String what, String reason) {
     LOG.warnf(
-        "Could not tell the workspace on %s that its work is %s: %s. The entity stands as written;"
+        "Could not tell the agent of %s that its work is %s: %s. The entity stands as written;"
             + " only the agent session's name lags behind it.",
-        branch, what, reason);
+        workId, what, reason);
   }
 }

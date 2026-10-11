@@ -131,8 +131,8 @@ class AgentReadAccessTest {
           // one-entity form (PUT, the PUT-shaped transition at the entity's address), and the
           // thread's comment and edit (qits-969). The status door admits the agent because a
           // ticket's and a campaign's moves are on its surface (transition_ticket, the campaign
-          // tools); for an EPIC it refuses the agent in its body, as the epic's own transition door
-          // did before qits-976 deleted it.
+          // tools). An EPIC's move is admitted too since qits-1174 (transition_epic's claim), bound
+          // to the agent's project and refused SUPERSEDED in the door's body.
           "WorkController.create",
           "WorkController.put",
           "WorkController.patch",
@@ -192,23 +192,33 @@ class AgentReadAccessTest {
    */
   private static final Set<String> RUNNER_AGENT_WRITES = Set.of("DeskRunnerController.healthcheck");
 
+  /**
+   * <b>The refinement design writes an agent reaches</b> (qits-1174): adding and rewriting a design,
+   * what the retired {@code put_design} MCP tool did. Bound to the project of the refinement's entity
+   * by {@code EntitiesAgentAccess}. The delete is not here: no tool ever deleted a design.
+   */
+  private static final Set<String> DESIGN_AGENT_WRITES =
+      Set.of("RefinementDesignController.add", "RefinementDesignController.update");
+
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
       union(
           union(
-              union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
-              CAMPAIGN_AGENT_WRITES),
-          RUNNER_AGENT_WRITES);
+              union(
+                  union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
+                  CAMPAIGN_AGENT_WRITES),
+              RUNNER_AGENT_WRITES),
+          DESIGN_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a
    * comment is on neither surface, for the reason the ticket section of {@code CLAUDE.md} gives: an
    * agent that could delete what it disagrees with could erase the record of its own mistake.
    *
-   * <p>An epic's lifecycle move and an epic's or a ticket's delete stay a person's too, but inside
-   * the door rather than in its role list — {@code WorkController.setStatus} and {@code
-   * WorkController.delete} admit the agent for the kinds whose moves and deletes are tools, and
-   * refuse it the rest in their bodies (the work suites pin those 403s).
+   * <p>An epic's supersede and an epic's or a ticket's delete stay a person's too, but inside the
+   * door rather than in its role list — {@code WorkController.setStatus} and {@code
+   * WorkController.delete} admit the agent for the moves and deletes that were tools, and refuse it
+   * the rest in their bodies (the work suites pin those refusals).
    */
   private static final Set<String> ADMIN_ONLY_WRITES =
       Set.of(

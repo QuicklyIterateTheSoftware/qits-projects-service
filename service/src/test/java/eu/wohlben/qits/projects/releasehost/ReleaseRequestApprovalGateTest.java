@@ -50,6 +50,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class ReleaseRequestApprovalGateTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   /** The default of {@code qits.projects.release-requests.unattended-requesters}. */
   private static final String ROBOT = "dev-qits-maintenance";
 
@@ -709,6 +711,7 @@ public class ReleaseRequestApprovalGateTest {
               row.createdAt = Instant.now();
               row.armedAt = row.createdAt;
               row.updatedAt = row.createdAt;
+              row.name(releaseRequestNumbers.next(row.repoId));
               row.persist();
             });
     requestIds.add(id);

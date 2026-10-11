@@ -88,6 +88,36 @@ class EntityBlockStateTest {
     assertEquals(EntityBlockState.EXPLICIT, state.source());
   }
 
+  /** A session waiting on a declared wait is not waiting for a person: no block (qits-1153). */
+  @Test
+  void aWaitOnADeclaredWaitIsNoBlockAndSaysWhatItWaitsOn() {
+    WorkEntity row = row(false, NOW.minusSeconds(300));
+    row.agentWaitingOn = "release of qits-ci-service";
+    EntityBlockState state = EntityBlockState.of(row, NOW, DEBOUNCE);
+    assertFalse(state.blocked());
+    assertNull(state.source());
+    assertEquals("release of qits-ci-service", state.waitingOn());
+    assertFalse(EntityBlockState.agentWaitingEffective(row, NOW, DEBOUNCE));
+  }
+
+  /** An explicit block stands beside a declared wait; the derived one does not. */
+  @Test
+  void anExplicitBlockStandsBesideADeclaredWait() {
+    WorkEntity row = row(true, NOW.minusSeconds(300));
+    row.agentWaitingOn = "ci run 42";
+    EntityBlockState state = EntityBlockState.of(row, NOW, DEBOUNCE);
+    assertEquals(EntityBlockState.EXPLICIT, state.source());
+    assertEquals("ci run 42", state.waitingOn());
+  }
+
+  /** The label counts only while the session waits. */
+  @Test
+  void aLabelWithNoWaitIsNotRead() {
+    WorkEntity row = row(false, null);
+    row.agentWaitingOn = "stale";
+    assertNull(EntityBlockState.of(row, NOW, DEBOUNCE).waitingOn());
+  }
+
   @Test
   void theShippedDebounceIsSixtySeconds() {
     assertEquals(Duration.ofSeconds(60), EntityBlockState.debounce());

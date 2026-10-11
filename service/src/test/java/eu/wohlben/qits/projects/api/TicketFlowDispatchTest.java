@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  * since qits-976), REST-level and end to end against the recording port.
  *
  * <p>What it pins is the half of the flow this service actually owns: <b>what is asked for</b> — the
- * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and
+ * wrapper's row id, {@code ticket/<qualified id>}, the ticket's id and
  * the turn the ticket's <b>status</b> picked — and <b>what the ticket is left saying</b> afterwards.
  * The dispatch itself is qits-workspaces' and is not simulated here, and the three templates'
  * sentences are {@link PhasePromptsTest}'s.
@@ -55,6 +55,11 @@ public class TicketFlowDispatchTest {
   @Inject RecordingWorkspaceAgentDispatch dispatch;
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
+
+  /** Where the wrapper branch is derived, so the asked branch can be asserted. */
+  @Inject EntityWorkspaces addresses;
+
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService entities;
 
   /** The row as the dispatch path reads it, fresh — for the pre-approval (qits-1075). */
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
@@ -151,6 +156,11 @@ public class TicketFlowDispatchTest {
    * where the door resolves the {@code <slug>-<slug>} name — so the assertion below is about the
    * row and not about the lookup.
    */
+  /** The ticket's wrapper branch, {@code ticket/<qualified id>} (qits-1152). */
+  private String branchOf(String ticketId) {
+    return "ticket/" + addresses.qualifiedIdOf(entities.find(ticketId));
+  }
+
   private String wrapperIdOf(String projectId) {
     return projects
         .findWrapper(projectId)
@@ -170,8 +180,9 @@ public class TicketFlowDispatchTest {
         .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
+        .body("dispatch.agentId", equalTo("agent-41"))
         .body("dispatch.workspaceRowId", equalTo(41))
-        .body("dispatch.branch", equalTo("ticket/login-button-is-the-wrong-colour"))
+        .body("dispatch.branch", equalTo(branchOf(ticketId)))
         .body("dispatch.repositoryId", notNullValue())
         .body("dispatch.fresh", equalTo(true))
         .body("dispatch.agentLaunch", equalTo("SCHEDULED"));
@@ -181,12 +192,8 @@ public class TicketFlowDispatchTest {
         wrapperIdOf(projectId),
         asked.repositoryId(),
         "a ticket names no repository, so the dispatch stands on the project's wrapper");
-    assertEquals("ticket/login-button-is-the-wrong-colour", asked.branch());
-    assertTrue(asked.branchTree(), "the aggregate workspace is the whole point for a ticket");
-    assertEquals(
-        java.util.List.of("refs/heads/ticket/login-button-is-the-wrong-colour"),
-        asked.gitRefs(),
-        "a ticket's agent may push its own branch and nothing else");
+    assertEquals(branchOf(ticketId), asked.wrapperBranch());
+    assertTrue(asked.wrapperBranch().matches("ticket/[a-z0-9-]+-\\d+"), asked.wrapperBranch());
 
     // The subject is a FIELD and the goal is left empty: the workspace names the ticket it is for,
     // and no copy of a row that goes on moving is frozen into its preamble.
@@ -213,7 +220,7 @@ public class TicketFlowDispatchTest {
         .body("entries[0].comment.author", equalTo("mallory"))
         .body(
             "entries[0].comment.body",
-            containsString("Dispatched a coding agent to workspace `ticket/"))
+            containsString("Dispatched a coding agent onto `ticket/"))
         .body(
             "entries[0].comment.body",
             containsString("for the refine phase"));
@@ -307,7 +314,7 @@ public class TicketFlowDispatchTest {
         "a ticket past the work starts no workspace at all, so nothing is asked of the port");
 
     // The one comment on this thread is the lifecycle's own — the walk through VERIFIED says that
-    // no workspace was standing on the branch, so no release was asked for. The refused dispatch
+    // no agent was working on it, so no release was asked for. The refused dispatch
     // added nothing to it.
     asAdmin("mallory")
         .when()
@@ -317,7 +324,7 @@ public class TicketFlowDispatchTest {
         .body("entries.size()", equalTo(1))
         .body(
             "entries[0].comment.body",
-            equalTo("No workspace is standing on `ticket/all-over`, so no release was asked for."));
+            equalTo("No agent is working on this ticket, so no release was asked for."));
   }
 
   /** VERIFIED is the other status that starts nothing: a person closes it, an agent does not. */
@@ -408,7 +415,8 @@ public class TicketFlowDispatchTest {
   public void aSecondDispatchThatFoundAnAgentAlreadyWorkingSaysThatInstead() {
     String projectId = createProject("Dispatch Again");
     String ticketId = createTicket(projectId, "Second press", "IMPROVEMENT", "Press it twice.");
-    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, false, "SKIPPED_RUNNING"));
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-77", 77L, null, false, "SKIPPED_RUNNING", null));
 
     asAdmin("mallory")
         .body(FLOW)

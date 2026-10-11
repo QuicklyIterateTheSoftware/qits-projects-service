@@ -32,104 +32,100 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
 
   /** One dispatch, exactly as the door asked for it. */
   public record Dispatched(
-      String repositoryId,
-      String branch,
-      List<String> gitRefs,
-      boolean branchTree,
-      Subject subject,
-      String instruction) {}
+      String repositoryId, String wrapperBranch, Subject subject, String instruction) {}
 
   private final List<Dispatched> calls = new ArrayList<>();
 
-  /**
-   * The agent identity the default answer names (qits-887) — what a commissioned workspace's agent
-   * calls as. A test of the fallback scripts an answer without one.
-   */
+  /** The agent identity the default answer names (qits-887), so an assignee is predictable. */
   public static final String DEFAULT_AGENT = "ws-agent-41";
 
-  private Dispatch scripted = new Dispatch(41L, true, "SCHEDULED", DEFAULT_AGENT);
+  /** The agent id the default answer names. */
+  public static final String DEFAULT_AGENT_ID = "agent-41";
+
+  private Dispatch scripted = defaultAnswer();
 
   private DomainException failure;
 
+  private static Dispatch defaultAnswer() {
+    return new Dispatch(DEFAULT_AGENT_ID, 41L, null, true, "SCHEDULED", DEFAULT_AGENT);
+  }
+
   @Override
   public synchronized Dispatch dispatchAgent(
-      String repositoryId,
-      String branch,
-      List<String> gitRefs,
-      boolean branchTree,
-      Subject subject,
-      String instruction) {
-    calls.add(new Dispatched(repositoryId, branch, gitRefs, branchTree, subject, instruction));
+      String repositoryId, String wrapperBranch, Subject subject, String instruction) {
+    calls.add(new Dispatched(repositoryId, wrapperBranch, subject, instruction));
     if (failure != null) {
       throw failure;
     }
     return scripted;
   }
 
-  /** One reference lookup, exactly as the read door asked for it. */
-  public record Looked(List<String> ticketIds, List<String> epicIds) {}
+  /** One agent lookup, as a reader asked it. */
+  public record Looked(List<String> workIds) {}
 
   private final List<Looked> lookups = new ArrayList<>();
 
-  private List<Reference> references = List.of();
+  private List<Agent> agents = List.of();
 
-  /**
-   * The read half. It never throws, which is the port's contract and not this fake being kind: a
-   * lookup that failed would take down the listing it decorates, so an implementation warns and
-   * answers empty. A test that wants that case scripts {@link #willReference} with nothing.
-   */
   @Override
-  public synchronized List<Reference> workspacesReferencing(
-      Collection<String> ticketIds, Collection<String> epicIds) {
-    lookups.add(new Looked(List.copyOf(ticketIds), List.copyOf(epicIds)));
-    return references;
+  public synchronized List<Agent> agentsFor(Collection<String> workIds) {
+    lookups.add(new Looked(List.copyOf(workIds)));
+    return agents;
   }
 
+  /** Every lookup, oldest first. */
   public synchronized List<Looked> lookups() {
     return List.copyOf(lookups);
   }
 
-  /**
-   * What the next lookup answers, whatever it is asked about.
-   *
-   * <p><b>A resolved workspace is a legitimate scripted answer and not an error case.</b> The port
-   * answers every workspace naming the subject now, integrated and abandoned ones included, each
-   * carrying its {@link Reference#status} — so a test that means "somebody is on this" has to script
-   * {@link #live}, and one that means "the work happened and was tidied away" scripts {@link
-   * #resolved}. The two factories exist so no test has to spell the status word inline and get it
-   * subtly wrong.
-   */
-  public synchronized void willReference(Reference... found) {
-    this.references = List.of(found);
+  /** Answer every later lookup with these agents, whatever it asked about. */
+  public synchronized void willFind(Agent... found) {
+    this.agents = List.of(found);
   }
 
-  /** A workspace still standing, with a container an agent can be spoken to in. */
-  public static Reference live(
+  /** An ACTIVE agent on {@code wrapperBranch}, with the branches it pushed. */
+  public static Agent active(
+      String agentId,
       long rowId,
       String repositoryId,
-      String workspaceId,
-      String branch,
-      String ticketId,
-      String epicId) {
-    return new Reference(
-        rowId, repositoryId, workspaceId, branch, ticketId, epicId, Reference.ACTIVE, null);
+      String workId,
+      String wrapperBranch,
+      Branch... pushed) {
+    return new Agent(
+        agentId,
+        rowId,
+        repositoryId,
+        workId,
+        null,
+        wrapperBranch,
+        List.of(pushed),
+        Agent.ACTIVE,
+        "RUNNING",
+        null,
+        null);
   }
 
-  /**
-   * A workspace that was integrated or abandoned: still named by the row, and no longer anywhere —
-   * no container to speak to, and quite possibly no branch left.
-   */
-  public static Reference resolved(
+  /** An agent in {@code state} — OBSOLETE or REMOVED — removed at {@code removedAt}. */
+  public static Agent inState(
+      String agentId,
       long rowId,
       String repositoryId,
-      String workspaceId,
-      String branch,
-      String ticketId,
-      String epicId,
-      String status,
-      Instant resolvedAt) {
-    return new Reference(
-        rowId, repositoryId, workspaceId, branch, ticketId, epicId, status, resolvedAt);
+      String workId,
+      String wrapperBranch,
+      String state,
+      Instant removedAt) {
+    return new Agent(
+        agentId,
+        rowId,
+        repositoryId,
+        workId,
+        null,
+        wrapperBranch,
+        List.of(),
+        state,
+        null,
+        null,
+        removedAt);
   }
 
   public synchronized List<Dispatched> calls() {
@@ -143,26 +139,20 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     return calls.get(calls.size() - 1);
   }
 
-  /** What the next dispatch answers. */
   public synchronized void willAnswer(Dispatch dispatch) {
     this.scripted = dispatch;
     this.failure = null;
   }
 
-  /** The far side refused, was unreachable, or answered nothing readable. */
   public synchronized void willFailWith(DomainException exception) {
     this.failure = exception;
   }
 
-  /**
-   * Forgets everything recorded and restores the default answer. {@code @QuarkusTest} shares one
-   * application — and so one instance of this bean — across a class.
-   */
   public synchronized void reset() {
     calls.clear();
     lookups.clear();
-    references = List.of();
-    scripted = new Dispatch(41L, true, "SCHEDULED", DEFAULT_AGENT);
+    agents = List.of();
+    scripted = defaultAnswer();
     failure = null;
   }
 }

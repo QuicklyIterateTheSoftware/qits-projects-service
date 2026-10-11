@@ -8,6 +8,8 @@ import static org.hamcrest.Matchers.nullValue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
@@ -238,5 +240,76 @@ class WorkPatchApiTest {
         .body("assignee", nullValue())
         .body("ticketType", equalTo("IMPROVEMENT"))
         .body("title", equalTo("The title"));
+  }
+
+  /**
+   * A scheduled epic with one feature and two tasks: REFINED, then READY_FOR_DEV by a verified
+   * person (qits-887). Answers {epic, feature, task, otherTask}.
+   */
+  private static String[] scheduledPlan() {
+    String projectId = EntityFixtures.project("Marker Project").id();
+    String repositoryId = EntityFixtures.repository(projectId);
+    String epicId = EntityFixtures.epic(projectId);
+    String featureId = EntityFixtures.feature(epicId);
+    String taskId = EntityFixtures.task(featureId, repositoryId);
+    String otherTaskId = EntityFixtures.task(featureId, repositoryId);
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV"}) {
+      WorkRequests.status(
+              () ->
+                  given()
+                      .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+              epicId,
+              target)
+          .then()
+          .statusCode(200);
+    }
+    return new String[] {epicId, featureId, taskId, otherTaskId};
+  }
+
+  /**
+   * <b>A task's implementing marker does what {@code mark_task_implementing} does</b> (qits-1174):
+   * the task is stamped with the time given and moves to IMPLEMENTING, its feature is stamped the
+   * first time and moves too, and the epic moves from READY_FOR_DEV to IMPLEMENTING. A second task
+   * marked later leaves the feature's first time alone.
+   */
+  @Test
+  void aTasksImplementingMarkerStartsItsFeatureAndItsEpic() {
+    String[] plan = scheduledPlan();
+    String epicId = plan[0];
+    String featureId = plan[1];
+
+    patch(plan[2], Map.of("implementingAt", "2026-07-25T10:15:30Z"))
+        .statusCode(200)
+        .body("implementingAt", equalTo("2026-07-25T10:15:30Z"))
+        .body("status", equalTo("IMPLEMENTING"));
+
+    ticket(featureId)
+        .body("implementingAt", equalTo("2026-07-25T10:15:30Z"))
+        .body("status", equalTo("IMPLEMENTING"));
+    ticket(epicId).body("status", equalTo("IMPLEMENTING"));
+
+    patch(plan[3], Map.of("implementingAt", "2026-07-26T08:00:00Z"))
+        .statusCode(200)
+        .body("implementingAt", equalTo("2026-07-26T08:00:00Z"))
+        .body("status", equalTo("IMPLEMENTING"));
+    ticket(featureId).body("implementingAt", equalTo("2026-07-25T10:15:30Z"));
+    ticket(epicId).body("status", equalTo("IMPLEMENTING"));
+  }
+
+  /**
+   * <b>A task's implemented marker is {@code mark_task_implemented}</b> (qits-1174): the task is
+   * stamped and moves to IMPLEMENTED; nothing above it moves.
+   */
+  @Test
+  void aTasksImplementedMarkerMovesTheTaskAlone() {
+    String[] plan = scheduledPlan();
+
+    patch(plan[2], Map.of("implementedAt", "2026-07-25T10:15:30Z"))
+        .statusCode(200)
+        .body("implementedAt", equalTo("2026-07-25T10:15:30Z"))
+        .body("status", equalTo("IMPLEMENTED"));
+
+    ticket(plan[1]).body("status", equalTo("READY_FOR_DEV"));
+    ticket(plan[0]).body("status", equalTo("READY_FOR_DEV"));
   }
 }

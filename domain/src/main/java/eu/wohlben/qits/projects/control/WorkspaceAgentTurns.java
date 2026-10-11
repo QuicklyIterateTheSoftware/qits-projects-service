@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.control;
 
 /**
- * Something said to the agent in the workspace standing on a branch — one turn, delivered after the
- * fact and waited on by nobody.
+ * Something said to a work item's agent — one turn, delivered after the fact and waited on by
+ * nobody. The agent is found by the work item's id (qits-1152).
  *
  * <h2>Why this exists at all</h2>
  *
@@ -37,7 +37,7 @@ package eu.wohlben.qits.projects.control;
  *
  * <p>Unlike {@link ReleasedBranchWorkspaces#branchReleased}, which answers nothing, this one returns
  * {@link Outcome} — because there is a reader for it: the caller stamps the ticket's thread, and
- * "the agent on this branch was told" and "no workspace stands on this branch" are different
+ * "the agent was told" and "the work item has no agent" are different
  * sentences for a person reading it later. <b>That return may not become a decision.</b> Nothing
  * retries on it, nothing fails on it, and {@link Outcome#COULD_NOT} is not an error to propagate —
  * it is the WARN, said again where a comment can carry it. A caller that branched on it would have
@@ -62,19 +62,21 @@ package eu.wohlben.qits.projects.control;
 public interface WorkspaceAgentTurns {
 
   /**
-   * What happened to the turn, as far as the far side said. Four values and no fifth: a caller has
+   * What happened to the turn, as far as the far side said. Five values and no sixth: a caller has
    * one sentence to write, and a vocabulary it can exhaust is what keeps that sentence honest.
    */
   enum Outcome {
-    /** An agent was already running in the workspace and the text was handed to it. */
+    /** The agent's harness was running and the text was handed to it. */
     DELIVERED,
-    /** No agent was running, so one was launched to take the turn. */
+    /** No harness was running, so one was launched to take the turn. */
     LAUNCHED,
+    /** The agent had yielded its slot; it was resumed with its session to take the turn. */
+    RESUMED,
     /**
-     * No workspace stands on that branch. <b>Not a failure</b> — the far side never creates one, so
+     * The work item has no ACTIVE agent. <b>Not a failure</b> — the far side never creates one, so
      * this is the honest answer for a ticket nobody has dispatched an agent onto yet.
      */
-    NO_WORKSPACE,
+    NO_AGENT,
     /**
      * The turn was not delivered and this side could not find out whether it ever could be: no
      * address, no credential, an unreachable or refusing far side, an unreadable answer. The WARN
@@ -99,35 +101,22 @@ public interface WorkspaceAgentTurns {
 
     /** Whether the text reached an agent, however it got there. */
     public boolean spoken() {
-      return outcome == Outcome.DELIVERED || outcome == Outcome.LAUNCHED;
+      return outcome == Outcome.DELIVERED
+          || outcome == Outcome.LAUNCHED
+          || outcome == Outcome.RESUMED;
     }
   }
 
   /**
-   * Say {@code text} to the agent in the workspace standing on {@code branch}.
+   * Say {@code text} to the ACTIVE agent of {@code workId}.
    *
    * <p><b>Never throws.</b> See the class javadoc: this is told after a transition that has already
    * been recorded, and no failure here may reach the caller as one.
    *
-   * @param repositoryId the <b>catalog</b> repository id — this service's row id, which is what
-   *     qits-workspaces keys its {@code repository_id} by. For a ticket this is the project's
-   *     wrapper, because a ticket names no repository
-   * @param branch the branch the workspace stands on — {@code ticket/<slug>} for a ticket's phases
+   * @param workId the work item's row id, which qits-workspaces keys agents by
    * @param text the turn, as prose. It is the agent's next instruction, so it is written for a model
    *     to act on rather than for a person to read
    * @return what happened, {@link Outcome#COULD_NOT} included; advisory, and never null
    */
-  Turn deliver(String repositoryId, String branch, String text);
-
-  /**
-   * {@link #deliver(String, String, String)}, naming the work item too (qits-112). qits-workspaces
-   * finds the workspace bound to {@code workId} first and falls back to the branch, so a slug that
-   * changed since the dispatch still reaches the right workspace. A port that knows no work id
-   * ignores it.
-   *
-   * @param workId the work item's entity id, or {@code null}
-   */
-  default Turn deliver(String workId, String repositoryId, String branch, String text) {
-    return deliver(repositoryId, branch, text);
-  }
+  Turn deliver(String workId, String text);
 }

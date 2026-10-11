@@ -1,162 +1,98 @@
 package eu.wohlben.qits.entities.control;
 
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Function;
 
 /**
- * The branch that planned work happens on, and the Git refs an agent on that branch may push.
- *
- * <p>This is the one place that computes both, so a ref never drifts from its branch. The branch
- * names are the ones in AGENTS.md, "Branch naming":
+ * The branch a work item's agent stands on in the project's wrapper (qits-1152, decision D9 of
+ * {@code agent-workspace-decoupling-plan.md}):
  *
  * <pre>
- *   ticket/&lt;ticket&gt;
- *   epic/&lt;epic&gt;
- *   feature/&lt;epic&gt;/&lt;feature&gt;
- *   task/&lt;epic&gt;/&lt;feature&gt;/&lt;task&gt;
+ *   ticket/&lt;qualified id&gt;     e.g. ticket/qits-1002
+ *   epic/&lt;qualified id&gt;       e.g. epic/qits-1001
  * </pre>
  *
- * <p>Each segment is the row's {@code slug}. A slug never changes after create, so the refs of a
- * row never change either.
+ * <p>The prefix is the archetype's, as before; the rest is the row's qualified id ({@code
+ * <project-slug>-<number>}), no longer its slug. So every branch says which work item its changes
+ * came from. In each submodule it changes, the agent names its own branch {@code
+ * <wrapper branch>-<its choice>} ({@link #AGENT_SEPARATOR}); qits-workspaces derives the agent's
+ * push scope from the wrapper branch, {@link #agentRefs}.
  *
- * <p>The refs are exact refs ({@code refs/heads/<branch>}), never {@code /*} patterns: qits-workspaces
- * removes one exact ref from an epic's list when a sub-workspace takes that branch, and it cannot do
- * that to a pattern. See {@code principal-bound-git-refs-plan.md}, contracts C1 and C4.
+ * <p><b>Across projects {@code ticket/a-1-*} would cover {@code ticket/a-1-5}</b> (project {@code
+ * a-1}'s ticket 5), and that is accepted (D28): an agent's token is bound to its own project's
+ * repositories, and a repository belongs to one project. Inside one project every qualified id is
+ * {@code <slug>-<number>}, so {@code <id>-…} names one work item's branches only.
  *
- * <p><b>It reads merged {@link WorkEntity} rows now, and not one branch name moved.</b> It used to
- * take the four old shapes; a feature and a task carry their parent <em>beside</em> the row as a
- * {@link Nested} rather than on it, because the parent is an {@code entity_membership} row. That is
- * the only change: the segments are still each row's {@code slug}, the order is still the epic then
- * each feature followed by its tasks, and {@code WorkBranchesTest} asserts every literal it always
- * did — which is what says the branch names an agent is given did not move by one byte.
+ * <p>Only a ticket and an epic have a branch. A feature or a task is worked on by its epic's agent,
+ * and a campaign orders work rather than being worked on (qits-411).
  *
- * <p>This is still a <b>pure derivation</b> over slugs and parent ids: no repository, no query, no
- * table. It is handed what the caller has already read.
+ * <p>A <b>pure derivation</b>: no repository, no query. The caller renders the qualified id and
+ * hands it in, because the project's slug is not on the row.
  */
 public final class WorkBranches {
 
   /** Every ref an agent may push is a branch. */
   public static final String HEADS = "refs/heads/";
 
+  /** Between the wrapper branch and the name an agent picks in a submodule. */
+  public static final String AGENT_SEPARATOR = "-";
+
   private WorkBranches() {}
 
   /**
-   * A branch and the Git refs an agent that works on it may push.
+   * The wrapper branch of {@code entity}'s agent.
    *
-   * @param branch the branch the workspace stands on
-   * @param gitRefs exact refs, each {@code refs/heads/…}, with no duplicates, in a stable order
+   * @param entity a {@code TICKET} or {@code EPIC} row
+   * @param qualifiedId the row's {@code <project-slug>-<number>}
+   * @throws IllegalArgumentException for any other archetype, or a blank qualified id
    */
-  public record Scope(String branch, List<String> gitRefs) {
-    public Scope {
-      gitRefs = List.copyOf(gitRefs);
+  public static String of(WorkEntity entity, String qualifiedId) {
+    String prefix =
+        switch (entity.archetype) {
+          case TICKET -> "ticket/";
+          case EPIC -> "epic/";
+          case CAMPAIGN ->
+              throw new IllegalArgumentException(
+                  "campaign "
+                      + entity.id
+                      + " has no branch — a campaign orders work, it is not worked on");
+          case FEATURE, TASK ->
+              throw new IllegalArgumentException(
+                  entity.archetype + " " + entity.id + " has no branch of its own — its epic's agent"
+                      + " works on it");
+        };
+    if (qualifiedId == null || qualifiedId.isBlank()) {
+      throw new IllegalArgumentException(
+          entity.archetype + " " + entity.id + " has no qualified id to name its branch by");
     }
+    return prefix + qualifiedId;
   }
 
   /**
-   * A ticket's agent may push its own branch and nothing else.
-   *
-   * @param ticket a {@code TICKET} row — a root, so there is no parent to state
+   * The refs an agent on {@code wrapperBranch} may push: the branch itself and every {@code
+   * <wrapperBranch>-<name>}. qits-workspaces states the same pair; it is spelled here so this side
+   * can check a branch against it ({@link #isAgentBranch}).
    */
-  public static Scope ticket(WorkEntity ticket) {
-    refuseCampaign(ticket);
-    return own("ticket/" + ticket.slug);
+  public static List<String> agentRefs(String wrapperBranch) {
+    return List.of(ref(wrapperBranch), ref(wrapperBranch + AGENT_SEPARATOR + "*"));
   }
 
   /**
-   * A task's agent may push its own branch and nothing else.
-   *
-   * @param epic the {@code EPIC} row at the top of the branch name
-   * @param feature the task's feature, with the epic its membership edge names
-   * @param task the task, with the feature its membership edge names
+   * Whether {@code branch} lies in the scope of the agent on {@code wrapperBranch}: the wrapper
+   * branch itself, or {@code <wrapperBranch>-<at least one character>}. It reads names only; whether
+   * the branch's repository belongs to the work item's project is the caller's check.
    */
-  public static Scope task(WorkEntity epic, Nested feature, Nested task) {
-    refuseCampaign(epic);
-    refuseCampaign(task.entity());
-    return own(taskBranch(epic, feature, task));
-  }
-
-  /**
-   * An epic's agent may push the epic branch plus every feature branch and every task branch of
-   * that epic.
-   *
-   * <p>The order is: the epic, then each feature followed by its tasks, in the order the lists are
-   * given. Call it on a frozen epic (REFINED): then no feature or task can be added, and the
-   * list is complete.
-   *
-   * @param epic the {@code EPIC} row
-   * @param features the epic's features, each with the parent its membership edge names
-   * @param tasksOf the tasks of one feature, each with its own parent
-   */
-  public static Scope epic(
-      WorkEntity epic, List<Nested> features, Function<Nested, List<Nested>> tasksOf) {
-    refuseCampaign(epic);
-    String branch = epicBranch(epic);
-    Set<String> refs = new LinkedHashSet<>();
-    refs.add(ref(branch));
-    for (Nested feature : features) {
-      refs.add(ref(featureBranch(epic, feature)));
-      for (Nested task : tasksOf.apply(feature)) {
-        refs.add(ref(taskBranch(epic, feature, task)));
-      }
+  public static boolean isAgentBranch(String wrapperBranch, String branch) {
+    if (wrapperBranch == null || wrapperBranch.isBlank() || branch == null) {
+      return false;
     }
-    return new Scope(branch, List.copyOf(refs));
+    String prefix = wrapperBranch + AGENT_SEPARATOR;
+    return branch.equals(wrapperBranch)
+        || (branch.startsWith(prefix) && branch.length() > prefix.length());
   }
 
   /** The ref of a branch: {@code refs/heads/<branch>}. */
   public static String ref(String branch) {
     return HEADS + branch;
-  }
-
-  /**
-   * <b>A campaign has no branch</b> (qits-411). It orders work that stands on branches of its own and
-   * is started through its executor, never dispatched into a workspace — so a campaign handed here
-   * is a caller that has taken it for the work it gathers, and naming a {@code ticket/…} or {@code
-   * epic/…} branch after it would point an agent at a branch nobody will ever merge.
-   */
-  private static void refuseCampaign(WorkEntity row) {
-    if (row.archetype == Archetype.CAMPAIGN) {
-      throw new IllegalArgumentException(
-          "campaign " + row.id + " has no branch — a campaign orders work, it is not worked on");
-    }
-  }
-
-  private static Scope own(String branch) {
-    return new Scope(branch, List.of(ref(branch)));
-  }
-
-  private static String epicBranch(WorkEntity epic) {
-    return "epic/" + epic.slug;
-  }
-
-  private static String featureBranch(WorkEntity epic, Nested feature) {
-    requireChild(epic.id, feature.parentId(), "feature " + feature.entity().id, "epic " + epic.id);
-    return "feature/" + epic.slug + "/" + feature.entity().slug;
-  }
-
-  private static String taskBranch(WorkEntity epic, Nested feature, Nested task) {
-    requireChild(epic.id, feature.parentId(), "feature " + feature.entity().id, "epic " + epic.id);
-    requireChild(
-        feature.entity().id,
-        task.parentId(),
-        "task " + task.entity().id,
-        "feature " + feature.entity().id);
-    return "task/" + epic.slug + "/" + feature.entity().slug + "/" + task.entity().slug;
-  }
-
-  /**
-   * A row given with the wrong parent would name a branch of some other work.
-   *
-   * <p>The child's parent is read off its {@link Nested#parentId} — the {@code entity_membership}
-   * edge — where it used to be read off a column. Same question, same refusal, same message.
-   */
-  private static void requireChild(String parentId, String childsParentId, String child, String parent) {
-    if (!Objects.equals(parentId, childsParentId)) {
-      throw new IllegalArgumentException(child + " is not part of " + parent);
-    }
   }
 }

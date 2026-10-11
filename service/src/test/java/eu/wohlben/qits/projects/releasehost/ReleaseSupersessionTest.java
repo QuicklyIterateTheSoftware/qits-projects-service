@@ -61,6 +61,8 @@ public class ReleaseSupersessionTest {
 
   @Inject RecordingQaRunCancellations cancellations;
 
+  @Inject RecordingReleaseRequestStateAnnouncer states;
+
   private String repoId;
   private String projectId;
 
@@ -112,6 +114,9 @@ public class ReleaseSupersessionTest {
     String successor = create("work-b");
 
     assertEquals("OBSOLETE", stateOf(earlier));
+    assertTrue(
+        states.movesOf(earlier).contains("RELEASED>OBSOLETE"),
+        "the supersession is announced as a state change (qits-1153): " + states.movesOf(earlier));
     assertEquals(
         successor,
         given().get(base() + "/" + earlier).then().extract().path("request.supersededBy"),
@@ -149,7 +154,7 @@ public class ReleaseSupersessionTest {
     String successor = create("work-b");
 
     List<String> sources =
-        merger.foldsOf("refs/heads/release/" + successor).get(0).sources();
+        merger.foldsOf(BackingBranches.ref(successor)).get(0).sources();
     assertTrue(
         sources.contains("refs/tags/" + tag),
         "the superseded release is an implicit source of what supersedes it: " + sources);
@@ -182,7 +187,7 @@ public class ReleaseSupersessionTest {
     assertEquals("OBSOLETE", stateOf(requestA), "a superseded request is not resurrected");
 
     String requestC = create("work-c");
-    List<String> sources = merger.foldsOf("refs/heads/release/" + requestC).get(0).sources();
+    List<String> sources = merger.foldsOf(BackingBranches.ref(requestC)).get(0).sources();
     assertTrue(
         sources.stream().noneMatch(source -> source.startsWith("refs/tags/")),
         "nothing main already holds is folded in again: " + sources);
@@ -211,7 +216,7 @@ public class ReleaseSupersessionTest {
     assertNull(rowOf(tagA).mergedAt, "an unanswered question stamps nothing");
 
     String requestC = create("work-c");
-    List<String> sources = merger.foldsOf("refs/heads/release/" + requestC).get(0).sources();
+    List<String> sources = merger.foldsOf(BackingBranches.ref(requestC)).get(0).sources();
     assertTrue(
         sources.contains("refs/tags/" + tagA),
         "so it is still an implicit source of what comes next: " + sources);

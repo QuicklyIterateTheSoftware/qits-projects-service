@@ -1,7 +1,5 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.control.WorkBranches;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -12,39 +10,27 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.jboss.logging.Logger;
 
 /**
- * Where an entity's agent stands: the repository a workspace is made on, the branch it works from
- * and the refs it may push, resolved once for everybody who has to name them. It was {@code
- * TicketWorkspaces} until qits-394 widened the one dispatch path to epics.
+ * Where an entity's agent stands: the repository it is dispatched on and the wrapper branch it works
+ * from, resolved once for everybody who has to name them. It was {@code TicketWorkspaces} until
+ * qits-394 widened the one dispatch path to epics.
  *
- * <h2>Why this is a class and not six lines in each caller</h2>
+ * <h2>The agent is found by its work item, the branch is only named</h2>
  *
- * <p>Two flows address the same workspace. {@link EntityDispatch} stands one up on a press, and
- * {@link PhaseAdvance} speaks to the one already standing when a transition is recorded — and they
- * have to arrive at <b>the same address</b>, or the second talks to a branch the first never made
- * and the hand-off between phases silently stops working. That address is derived rather than
- * stored (the project's wrapper by name, the branch by the entity's slug), so "the same" is only
- * true while one piece of code computes it.
+ * <p>Since qits-1152 qits-workspaces keys an agent by the work item's id: every later call — a
+ * turn, an entity signal, a lookup — names the work item and never the branch. The branch is
+ * computed here for the dispatch, which tells the agent where to stand, and for the sentences a
+ * thread is told. It comes from {@link WorkBranches}: {@code ticket/<qualified id>} or {@code
+ * epic/<qualified id>}.
  *
  * <h2>The wrapper is the project, and neither archetype names a repository</h2>
  *
- * <p>A ticket is filed against work and not against a component; an epic spans the estate and its
- * <em>tasks</em> name repositories, one each, with no one of them the epic is about. So both stand
- * on the project's <b>wrapper</b> with {@code branchTree} — the rule "The wrapper is the project" in
- * AGENTS.md. The branch and its refs come from {@link WorkBranches}, the one place that computes
- * both: {@code ticket/<slug>} pushing its own branch, or {@code epic/<slug>} pushing the epic branch
- * plus every feature and task branch of the epic as it stands when the address is resolved.
- *
- * <p><b>An epic's refs are read at resolution time</b>, which for a dispatch at REPORTED is before
- * refinement has finished writing the tree. The epic's agent works on {@code epic/<slug>}, which is
- * always in the list; a feature or task branch minted by refinement after the press is not, until
- * the next press re-resolves it. Stated rather than fixed: qits-workspaces fixes a workspace's refs
- * at creation, and widening them later is a change to that service.
+ * <p>A ticket is filed against work and not against a component; an epic spans the estate. So both
+ * stand on the project's <b>wrapper</b> — the rule "The wrapper is the project" in AGENTS.md.
  *
  * <h2>Two verbs, because a missing wrapper means different things to the two callers</h2>
  *
@@ -62,26 +48,18 @@ class EntityWorkspaces {
 
   @Inject RepositoryService repositories;
 
-  /** An epic's features and tasks name the branches its agent may push. */
-  @Inject WorkEntityService entities;
-
   /**
-   * An entity's workspace address.
+   * An entity's agent address.
    *
    * @param wrapper the project's wrapper repository, whose {@code id} is the <b>catalog</b> id
-   *     qits-workspaces keys workspaces by
-   * @param scope the branch and its exact refs, from {@link WorkBranches}
+   *     qits-workspaces keys agents' repositories by
+   * @param branch the wrapper branch, from {@link WorkBranches}
    */
-  record Target(Repository wrapper, WorkBranches.Scope scope) {
+  record Target(Repository wrapper, String branch) {
 
-    /** The catalog repository id both workspace doors are addressed by. */
+    /** The catalog repository id the dispatch is addressed by. */
     String repositoryId() {
       return wrapper.id;
-    }
-
-    /** {@code ticket/<slug>} or {@code epic/<slug>} — the branch every phase runs on. */
-    String branch() {
-      return scope.branch();
     }
   }
 
@@ -104,26 +82,31 @@ class EntityWorkspaces {
                             + " has no wrapper repository ("
                             + wrapperName
                             + "), so there is nothing to dispatch an agent onto."));
-    return new Target(wrapper, scopeOf(entity));
+    String qualifiedId = qualifiedIdOf(entity);
+    if (qualifiedId == null) {
+      throw new DomainException(
+          409,
+          capitalised(entity)
+              + " "
+              + entity.id
+              + " has no qualified id, so there is no branch to dispatch an agent onto.");
+    }
+    return new Target(wrapper, WorkBranches.of(entity, qualifiedId));
   }
 
-  /** The address, or <b>empty</b> where the project has no wrapper. For a caller with nobody to refuse. */
+  /**
+   * The address, or <b>empty</b> where the project has no wrapper or the row no qualified id. For a
+   * caller with nobody to refuse.
+   */
   Optional<Target> find(WorkEntity entity) {
     Project project = projects.get(entity.projectId);
-    return repositories
-        .findByProjectAndName(project.id, ProjectService.wrapperName(project))
-        .map(wrapper -> new Target(wrapper, scopeOf(entity)));
-  }
-
-  /** The branch alone, with no catalog read — for the release ask, which has its own repository. */
-  static String branchOf(WorkEntity entity) {
-    return switch (entity.archetype) {
-      case TICKET -> WorkBranches.ticket(entity).branch();
-      case EPIC -> WorkBranches.epic(entity, List.of(), feature -> List.of())
-          .branch();
-      case FEATURE, TASK, CAMPAIGN ->
-          throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
-    };
+    Optional<Repository> wrapper =
+        repositories.findByProjectAndName(project.id, ProjectService.wrapperName(project));
+    String qualifiedId = wrapper.isEmpty() ? null : qualifiedIdOf(entity);
+    if (qualifiedId == null) {
+      return Optional.empty();
+    }
+    return Optional.of(new Target(wrapper.get(), WorkBranches.of(entity, qualifiedId)));
   }
 
   /**
@@ -179,16 +162,8 @@ class EntityWorkspaces {
     };
   }
 
-  private WorkBranches.Scope scopeOf(WorkEntity entity) {
-    return switch (entity.archetype) {
-      case TICKET -> WorkBranches.ticket(entity);
-      case EPIC ->
-          WorkBranches.epic(
-              entity,
-              entities.listChildren(Archetype.FEATURE, entity.id),
-              feature -> entities.listChildren(Archetype.TASK, feature.entity().id));
-      case FEATURE, TASK, CAMPAIGN ->
-          throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
-    };
+  private static String capitalised(WorkEntity entity) {
+    String noun = entity.archetype.name().toLowerCase(java.util.Locale.ROOT);
+    return Character.toUpperCase(noun.charAt(0)) + noun.substring(1);
   }
 }

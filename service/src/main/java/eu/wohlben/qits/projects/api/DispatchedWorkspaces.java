@@ -7,14 +7,11 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * Which workspaces name a ticket or an epic — {@code GET /work/{qualifiedId}/workspaces}: one lookup
- * against the workspaces port.
+ * Which agents work on a ticket or an epic, and in which workspace — {@code GET
+ * /work/{qualifiedId}/workspaces}: one lookup against the workspaces port, by work id (qits-1152).
  *
  * <h2>Why it sits in {@code projects.api} and is called from {@code entities.api}</h2>
  *
@@ -45,52 +42,31 @@ public class DispatchedWorkspaces {
    * ticket and an epic are dispatched onto a branch, so every other archetype has none.
    */
   public List<WorkspaceReferenceDto> referencing(WorkEntity entity) {
-    boolean ticket = entity.archetype == Archetype.TICKET;
-    if ((!ticket && entity.archetype != Archetype.EPIC) || dispatch.isUnsatisfied()) {
+    boolean dispatched =
+        entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;
+    if (!dispatched || dispatch.isUnsatisfied()) {
       return List.of();
     }
-    return byRow(
-            dispatch
-                .get()
-                .workspacesReferencing(
-                    ticket ? List.of(entity.id) : List.of(),
-                    ticket ? List.of() : List.of(entity.id)),
-            ticket
-                ? WorkspaceAgentDispatch.Reference::ticketId
-                : WorkspaceAgentDispatch.Reference::epicId)
-        .getOrDefault(entity.id, List.of());
+    return dispatch.get().agentsFor(List.of(entity.id)).stream()
+        // Matched back to this row: an agent of another row must never become a link on this one.
+        .filter(agent -> entity.id.equals(agent.workId()))
+        .map(DispatchedWorkspaces::reference)
+        .toList();
   }
 
   /**
-   * The references grouped by the row they name. A reference whose id is null under the chosen
-   * accessor is dropped — it answered the other half of a question this call did not ask.
-   *
-   * <p><b>Nothing is dropped for being resolved.</b> This is a read decorating a page, and the whole
-   * reason the port stopped filtering is that a ticket should keep a link to where its work happened
-   * after the workspace is integrated or abandoned. The status travels with each row so the browser
-   * can draw the difference; deciding what it means is the reader's, per the port's javadoc, and a
-   * reader that needs a <em>live</em> workspace says so itself.
+   * One agent as the wire's reference (qits-1152): the workspace it is placed in, its wrapper branch
+   * and its state. <b>Nothing is dropped for being OBSOLETE or REMOVED</b>: this is a read
+   * decorating a page, and a work item keeps a link to where its work happened. The state travels
+   * with each row so the browser can draw the difference.
    */
-  private static Map<String, List<WorkspaceReferenceDto>> byRow(
-      List<WorkspaceAgentDispatch.Reference> references,
-      java.util.function.Function<WorkspaceAgentDispatch.Reference, String> rowId) {
-    Map<String, List<WorkspaceReferenceDto>> grouped = new HashMap<>();
-    for (WorkspaceAgentDispatch.Reference reference : references) {
-      String id = rowId.apply(reference);
-      if (id == null) {
-        continue;
-      }
-      grouped
-          .computeIfAbsent(id, key -> new ArrayList<>())
-          .add(
-              new WorkspaceReferenceDto(
-                  reference.workspaceRowId(),
-                  reference.repositoryId(),
-                  reference.workspaceId(),
-                  reference.branch(),
-                  reference.status()));
-    }
-    grouped.replaceAll((key, value) -> List.copyOf(value));
-    return grouped;
+  private static WorkspaceReferenceDto reference(WorkspaceAgentDispatch.Agent agent) {
+    return new WorkspaceReferenceDto(
+        agent.agentId(),
+        agent.workspaceRowId(),
+        agent.repositoryId(),
+        agent.entityId(),
+        agent.wrapperBranch(),
+        agent.state());
   }
 }

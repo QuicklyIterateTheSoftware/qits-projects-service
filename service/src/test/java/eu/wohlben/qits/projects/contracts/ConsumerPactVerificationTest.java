@@ -191,6 +191,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_TICKET_ITS_AGENT_IS_WAITING_ON);
   }
 
+  @State(ProviderStates.A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT)
+  Map<String, String> aTicketItsAgentWaitsOnADeclaredWait() {
+    return states.params(ProviderStates.A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT);
+  }
+
   @State(ProviderStates.A_TICKET_WITH_A_COMMENT)
   Map<String, String> aTicketWithAComment() {
     return states.params(ProviderStates.A_TICKET_WITH_A_COMMENT);

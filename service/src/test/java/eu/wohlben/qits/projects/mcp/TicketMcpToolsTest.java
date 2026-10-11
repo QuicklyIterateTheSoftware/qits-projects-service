@@ -986,7 +986,7 @@ public class TicketMcpToolsTest {
         response -> assertFalse(response.isError(), text(response)));
 
     assertEquals(1, turns.calls().size(), "the agent's claim is what starts the next phase");
-    assertEquals("ticket/refined-by-its-own-agent", turns.lastCall().branch());
+    assertEquals(ticketId, turns.lastCall().workId());
     assertTrue(
         turns.lastCall().text().contains("Verify ticket \""),
         "IMPLEMENTED starts verification: " + turns.lastCall().text());

@@ -49,6 +49,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class ReleaseRequestFlowTest {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   @Inject BuildStatusListener listener;
 
   @Inject eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener headListener;
@@ -242,7 +244,7 @@ public class ReleaseRequestFlowTest {
     RecordingReleaseExecutor.Released call = executor.calls().get(0);
     assertEquals(repoId, call.repoId());
     assertEquals(projectId, call.projectId());
-    assertEquals("release/" + id, call.branch(), "what is released is the backing branch");
+    assertEquals(BackingBranches.of(id), call.branch(), "what is released is the backing branch");
     assertEquals(merged, call.expectedSha(), "the door is pinned to the fold the gates evaluated");
     given()
         .get(base() + "/" + id)
@@ -324,7 +326,7 @@ public class ReleaseRequestFlowTest {
     String id = create("work");
     given()
         .contentType(ContentType.JSON)
-        .body("{\"branch\":\"release/" + id + "\"}")
+        .body("{\"branch\":\"" + BackingBranches.of(id) + "\"}")
         .post(base() + "/" + id + "/sources")
         .then()
         .statusCode(400)
@@ -788,8 +790,8 @@ public class ReleaseRequestFlowTest {
 
     // A shared trigger, two folds, each onto its OWN backing branch: one request's re-merge never
     // touches a sibling's.
-    assertEquals(1, merger.foldsOf("refs/heads/release/" + first).size());
-    assertEquals(1, merger.foldsOf("refs/heads/release/" + second).size());
+    assertEquals(1, merger.foldsOf(BackingBranches.ref(first)).size());
+    assertEquals(1, merger.foldsOf(BackingBranches.ref(second)).size());
     assertEquals(2, merger.folds().size(), "and nothing else was folded");
   }
 
@@ -957,6 +959,7 @@ public class ReleaseRequestFlowTest {
               row.summary = "nothing has happened to this one yet";
               row.createdAt = Instant.now();
               row.updatedAt = Instant.now();
+              row.name(releaseRequestNumbers.next(row.repoId));
               row.persist();
             });
 
@@ -967,7 +970,7 @@ public class ReleaseRequestFlowTest {
         .body("requests.size()", equalTo(1))
         .body("requests[0].id", equalTo(id))
         .body("requests[0].state", equalTo("PENDING"))
-        .body("requests[0].backingBranch", equalTo("release/" + id))
+        .body("requests[0].backingBranch", equalTo(BackingBranches.of(id)))
         .body("requests[0].sources.size()", equalTo(0))
         .body("requests[0].repoName", nullValue())
         .body("requests[0].mergedSha", nullValue())

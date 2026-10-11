@@ -56,6 +56,8 @@ public interface UnattendedGateTickets {
    * A red verdict on an unattended request, as much as a ticket needs to name it.
    *
    * @param requestId the release request that was rejected — the address of the thing that stopped
+   * @param qualifiedId the same request's logical id ({@code <repo>-rr-<n>}), the one the ticket
+   *     shows (qits-1158)
    * @param projectId the project the ticket is filed on; a request whose repository has no project
    *     row has nowhere to file and is skipped by the caller
    * @param repoId the catalog repository id, for a reader who has to ask another service about it
@@ -72,6 +74,7 @@ public interface UnattendedGateTickets {
    */
   record Rejection(
       String requestId,
+      String qualifiedId,
       String projectId,
       String repoId,
       String repoName,
@@ -103,6 +106,9 @@ public interface UnattendedGateTickets {
    * deployment, and a later release can still overtake it — so there is still a request for the
    * ticket to be about. What closes the ticket is {@link #ended}, when the request does. The comment
    * says as much, so a reader of the thread knows the close is coming rather than owed by them.
+   *
+   * <p>{@code requestId} here and in {@link #ended} is the request's <b>qualified id</b> (qits-1158):
+   * both only write sentences a person reads.
    *
    * <p>Never throws.
    */
@@ -146,7 +152,7 @@ public interface UnattendedGateTickets {
    *
    * @param ending how the request ended
    * @param detail what the ending names: the version (the tag) for FINALIZED, the successor request's
-   *     id for OBSOLETE, and null or a short reason for WITHDRAWN
+   *     qualified id for OBSOLETE, and null or a short reason for WITHDRAWN
    * @return true when there is nothing more to do — the ticket is now closed, was already closed, is
    *     gone, or is no longer the platform's to close; false on a failure worth retrying, which
    *     leaves the request unstamped for the sweep to visit again

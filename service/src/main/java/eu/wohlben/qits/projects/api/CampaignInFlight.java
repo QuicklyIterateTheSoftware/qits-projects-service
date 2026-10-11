@@ -16,11 +16,10 @@ import org.jboss.logging.Logger;
  * layer decides when the caller states none (qits-413). The {@code entities} module cannot decide
  * it: half of the answer is a workspace, which lives in another service.
  *
- * <p>In flight means <b>the member is IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED or DONE</b>, or <b>an ACTIVE workspace
- * stands on its branch</b> — the same {@link WorkspaceAgentDispatch#workspacesReferencing} lookup
- * {@link PhaseAdvance} makes, with the branch from {@link EntityWorkspaces#branchOf}, and the same
- * branch-and-ACTIVE filter: a workspace on some other branch is somebody else's work, and a resolved
- * one on this branch is work that is over.
+ * <p>In flight means <b>the member is IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED or DONE</b>,
+ * or <b>it has an ACTIVE agent</b> — the same {@link WorkspaceAgentDispatch#agentsFor} lookup
+ * {@link PhaseAdvance} makes, by work id, and the same ACTIVE filter: an OBSOLETE or REMOVED agent
+ * is work that is over.
  *
  * <p><b>Never throws.</b> An absent port, an absent answer and a port that threw all mean "nobody is
  * standing on it", which is the not-in-flight answer; the explicit value always wins over all of
@@ -57,18 +56,10 @@ public class CampaignInFlight {
     if (dispatch.isUnsatisfied()) {
       return false;
     }
-    String branch = EntityWorkspaces.branchOf(member);
-    boolean ticket = member.archetype == Archetype.TICKET;
     try {
-      return dispatch
-          .get()
-          .workspacesReferencing(
-              ticket ? List.of(member.id) : List.of(), ticket ? List.of() : List.of(member.id))
-          .stream()
-          .anyMatch(
-              reference ->
-                  branch.equals(reference.branch())
-                      && WorkspaceAgentDispatch.Reference.ACTIVE.equals(reference.status()));
+      // ACTIVE only: an OBSOLETE or REMOVED agent is work that is over.
+      return dispatch.get().agentsFor(List.of(member.id)).stream()
+          .anyMatch(agent -> agent.active() && member.id.equals(agent.workId()));
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not look up the workspaces of %s: the port threw", member.id);
       return false;

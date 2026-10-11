@@ -51,7 +51,8 @@ package eu.wohlben.qits.projects.control;
 public interface ReleasedBranchWorkspaces {
 
   /**
-   * The branch was released and is gone on the git host; resolve whatever workspace stood on it.
+   * The branch was released and is gone on the git host; the far side marks every agent that owns
+   * it (its wrapper branch, or a branch it pushed) OBSOLETE, so its cleanup can run (qits-1152).
    *
    * <p>Never throws. Answers nothing, on purpose: the caller has already released and there is no
    * outcome here it could act on.

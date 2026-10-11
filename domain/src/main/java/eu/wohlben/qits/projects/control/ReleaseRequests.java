@@ -382,6 +382,12 @@ public class ReleaseRequests {
 
   @Inject Instance<ReleaseRequestAnnouncer> announcers;
 
+  /** Every state write goes through it, so every real change is announced (qits-1153). */
+  @Inject ReleaseRequestStates states;
+
+  /** Allocates each new request's per-repository number (qits-1158). */
+  @Inject ReleaseRequestNumbers numbers;
+
   @Inject Instance<QaRunCancellations> cancellations;
 
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
@@ -564,6 +570,7 @@ public class ReleaseRequests {
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
     List<Obsoleted> overtaken = new ArrayList<>();
+    AtomicReference<String> qualified = new AtomicReference<>();
     String id =
         QuarkusTransaction.requiringNew()
             .call(
@@ -598,6 +605,7 @@ public class ReleaseRequests {
                       }
                     }
                     open.updatedAt = Instant.now();
+                    qualified.set(open.qualifiedId);
                     return open.id;
                   }
                   ReleaseRequest fresh = new ReleaseRequest();
@@ -605,9 +613,11 @@ public class ReleaseRequests {
                   fresh.repoId = repoId;
                   fresh.projectId = projectId;
                   fresh.repoName = repoName;
+                  // Its own transaction: a create that rolls back leaves a gap (qits-1158).
+                  fresh.name(numbers.next(repoId));
                   fresh.summary = summary.trim();
                   fresh.requester = requester;
-                  fresh.state = ReleaseRequest.State.PENDING;
+                  states.move(fresh, ReleaseRequest.State.PENDING);
                   fresh.createdAt = Instant.now();
                   fresh.armedAt = fresh.createdAt;
                   fresh.updatedAt = fresh.createdAt;
@@ -626,11 +636,12 @@ public class ReleaseRequests {
                     addSourceRow(fresh.id, named, requester, orDefault(stated));
                   }
                   overtaken.addAll(obsolete(repoId, fresh));
+                  qualified.set(fresh.qualifiedId);
                   return fresh.id;
                 });
     for (Obsoleted earlier : overtaken) {
       stopFinalizing(earlier);
-      cancel(repoId, earlier.requestId(), "was superseded by release request " + id);
+      cancel(repoId, earlier.requestId(), "was superseded by release request " + qualified.get());
       closeGateTicket(
           earlier.requestId(),
           earlier.gateTicketId(),
@@ -640,6 +651,25 @@ public class ReleaseRequests {
     }
     remerge(id, why.get());
     return get(id);
+  }
+
+  /**
+   * <b>The one place a door's {@code {requestId}} is read</b> (qits-1158): the request's uuid, or its
+   * qualified id ({@code <repo>-rr-<n>}, any case) within {@code repoId}. Answers the uuid every verb
+   * below takes; a reference that names nothing comes back unchanged, so the verb answers its own
+   * 404 as it always did.
+   */
+  public String resolveId(String repoId, String reference) {
+    if (reference == null || reference.isBlank()) {
+      return reference;
+    }
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                requests
+                    .findByReference(repoId, reference)
+                    .map(row -> row.id)
+                    .orElse(reference));
   }
 
   /**
@@ -682,11 +712,11 @@ public class ReleaseRequests {
       if (earlier.id.equals(successor.id)) {
         continue;
       }
-      earlier.state = ReleaseRequest.State.OBSOLETE;
+      states.move(earlier, ReleaseRequest.State.OBSOLETE);
       earlier.supersededBy = successor.id;
       earlier.detail =
           "Superseded by release request "
-              + successor.id
+              + successor.qualifiedId
               + (earlier.version == null
                   ? ", which was asked for before this one finalized"
                   : ", which folds " + earlier.version + " in and releases past it");
@@ -840,7 +870,7 @@ public class ReleaseRequests {
                           () ->
                               new NotFoundException(
                                   "Release request "
-                                      + requestId
+                                      + row.qualifiedId
                                       + " has no named source "
                                       + named));
               if (source.priority == wanted) {
@@ -873,7 +903,7 @@ public class ReleaseRequests {
             .call(
                 () -> {
                   ReleaseRequest row = requireOpenForChange(id);
-                  row.state = ReleaseRequest.State.WITHDRAWN;
+                  states.move(row, ReleaseRequest.State.WITHDRAWN);
                   row.detail =
                       (reason == null || reason.isBlank())
                           ? "Withdrawn by " + (actor == null ? "an operator" : actor)
@@ -1008,7 +1038,7 @@ public class ReleaseRequests {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " needs no approval, so there is nothing here"
                         + " to "
                         + verb(decision)
@@ -1018,7 +1048,7 @@ public class ReleaseRequests {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " has not been folded yet, so there is no content to "
                         + verb(decision)
                         + ".");
@@ -1027,7 +1057,7 @@ public class ReleaseRequests {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " is on "
                         + row.mergedSha
                         + " now, not "
@@ -1086,7 +1116,7 @@ public class ReleaseRequests {
       throw new DomainException(
           409,
           "Release request "
-              + row.id
+              + row.qualifiedId
               + " has passed its gates and is being released; there is nothing left to "
               + verb(decision)
               + ".");
@@ -1095,7 +1125,7 @@ public class ReleaseRequests {
       throw new DomainException(
           409,
           "Release request "
-              + row.id
+              + row.qualifiedId
               + " is already "
               + row.state
               + "; a request that has concluded cannot be "
@@ -1152,7 +1182,7 @@ public class ReleaseRequests {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " is "
                         + row.state
                         + "; there is no automations gate left to waive.");
@@ -1161,19 +1191,19 @@ public class ReleaseRequests {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " is held by no automations gate, so there is nothing here to waive.");
               }
               if (row.mergedSha == null) {
                 throw new DomainException(
                     409,
-                    "Release request " + id + " has not been folded yet, so there is no fold to waive.");
+                    "Release request " + row.qualifiedId + " has not been folded yet, so there is no fold to waive.");
               }
               if (!row.mergedSha.equals(fold)) {
                 throw new DomainException(
                     409,
                     "Release request "
-                        + id
+                        + row.qualifiedId
                         + " is on "
                         + row.mergedSha
                         + " now, not "
@@ -1397,7 +1427,7 @@ public class ReleaseRequests {
       throw new DomainException(
           409,
           "Release request "
-              + row.id
+              + row.qualifiedId
               + " has not released, so there is no version to deploy: the deployment phase begins at"
               + " the tag.");
     }
@@ -2120,7 +2150,7 @@ public class ReleaseRequests {
                         left.isEmpty()
                             || left.stream().allMatch(s -> s.name.equals(mainOf(repoId)));
                     if (empty) {
-                      open.state = ReleaseRequest.State.WITHDRAWN;
+                      states.move(open, ReleaseRequest.State.WITHDRAWN);
                       open.detail = "Withdrawn: the branch was deleted";
                       open.retryable = false;
                       open.updatedAt = Instant.now();
@@ -2312,7 +2342,7 @@ public class ReleaseRequests {
                     .filter(request -> request.state == ReleaseRequest.State.RELEASED)
                     .ifPresent(
                         request -> {
-                          request.state = ReleaseRequest.State.FINALIZED;
+                          states.move(request, ReleaseRequest.State.FINALIZED);
                           request.detail = null;
                           request.retryable = false;
                           request.updatedAt = now;
@@ -2446,7 +2476,7 @@ public class ReleaseRequests {
                   LOG.infof(
                       "Release request %s is reconsidered at %s: %s (run %s)",
                       id, shortSha(row.mergedSha), why, row.rejectingRunId);
-                  row.state = ReleaseRequest.State.PENDING;
+                  states.move(row, ReleaseRequest.State.PENDING);
                   row.rejectingRunId = null;
                   row.detail = null;
                   row.updatedAt = Instant.now();
@@ -2532,6 +2562,7 @@ public class ReleaseRequests {
    */
   private record Folded(
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String projectId,
       String repoId,
       String repoName,
@@ -2574,6 +2605,8 @@ public class ReleaseRequests {
         String repoName,
         List<String> refs,
         String summary,
+        String qualifiedId,
+        String backingBranch,
         boolean stillOpen) {}
     Ask ask =
         QuarkusTransaction.requiringNew()
@@ -2581,7 +2614,7 @@ public class ReleaseRequests {
                 () -> {
                   ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
                   if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
-                    return new Ask(null, null, null, List.of(), null, false);
+                    return new Ask(null, null, null, List.of(), null, null, null, false);
                   }
                   // The project is read here rather than at the conflict, because by then the only
                   // transaction going is one this thread is deliberately not in; a conflict is rare
@@ -2601,17 +2634,19 @@ public class ReleaseRequests {
                       row.repoName,
                       refsOf(sources.listByRequest(id), implicitFor(row.repoId)),
                       row.summary,
+                      row.qualifiedId,
+                      row.backingBranch(),
                       true);
                 });
     if (!ask.stillOpen()) {
       return;
     }
-    String target = "refs/heads/" + ReleaseRequest.backingBranchOf(id);
+    String target = "refs/heads/" + ask.backingBranch();
     if (!mergers.isResolvable()) {
       note(id, "No git host is configured; the sources for this request cannot be folded");
       return;
     }
-    String message = "Release request " + id + ": " + ask.summary();
+    String message = "Release request " + ask.qualifiedId() + ": " + ask.summary();
     BackingBranchMerger.Outcome outcome =
         fold(
             id,
@@ -2855,7 +2890,7 @@ public class ReleaseRequests {
               row.updatedAt = now;
               switch (outcome.result()) {
                 case CONFLICT -> {
-                  row.state = ReleaseRequest.State.CONFLICTED;
+                  states.move(row, ReleaseRequest.State.CONFLICTED);
                   row.detail =
                       "The sources could not be folded ("
                           + why
@@ -2883,7 +2918,7 @@ public class ReleaseRequests {
                   }
                   // The fold is possible again and the tip is the answer, but it is the SAME tip —
                   // nothing new to build. Back to PENDING against what is already there.
-                  row.state = ReleaseRequest.State.PENDING;
+                  states.move(row, ReleaseRequest.State.PENDING);
                   row.detail = "The conflict is resolved; the fold is unchanged";
                   row.mergedSha = outcome.sha();
                   if (!ledger.verdictsOf(row.repoId, row.mergedSha).isEmpty()) {
@@ -2902,6 +2937,7 @@ public class ReleaseRequests {
                   // superseded is null because nothing moved, so no run is cancelled either.
                   return new Folded(
                       row.id,
+                      row.qualifiedId,
                       row.projectId,
                       row.repoId,
                       row.repoName,
@@ -2922,6 +2958,7 @@ public class ReleaseRequests {
                   rearm(row, why);
                   return new Folded(
                       row.id,
+                      row.qualifiedId,
                       row.projectId,
                       row.repoId,
                       row.repoName,
@@ -2950,8 +2987,8 @@ public class ReleaseRequests {
   }
 
   /** The one place a request changes sha: gates invalidated, PENDING again, the window restarted. */
-  private static void rearm(ReleaseRequest open, String why) {
-    open.state = ReleaseRequest.State.PENDING;
+  private void rearm(ReleaseRequest open, String why) {
+    states.move(open, ReleaseRequest.State.PENDING);
     open.detail = "Re-armed onto " + shortSha(open.mergedSha) + " (" + why + ")";
     open.version = null;
     open.retryable = false;
@@ -3009,6 +3046,7 @@ public class ReleaseRequests {
               folded.repoId(),
               folded.repoName(),
               folded.releaseRequestId(),
+              folded.releaseRequestQualifiedId(),
               folded.backingBranch(),
               folded.mergedSha(),
               folded.changedAt(),
@@ -3205,6 +3243,7 @@ public class ReleaseRequests {
                     qaAnnouncement.set(
                         new Folded(
                             row.id,
+                            row.qualifiedId,
                             row.projectId,
                             row.repoId,
                             row.repoName,
@@ -3236,7 +3275,7 @@ public class ReleaseRequests {
                           .findFirst()
                           .orElse(null);
                   if (red != null) {
-                    row.state = ReleaseRequest.State.REJECTED;
+                    states.move(row, ReleaseRequest.State.REJECTED);
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
                     // of exactly this run is what may take the rejection back, and reading an id
                     // back out of prose is a parser standing in for a column. See
@@ -3255,6 +3294,7 @@ public class ReleaseRequests {
                       unattended.set(
                           new UnattendedGateTickets.Rejection(
                               row.id,
+                              row.qualifiedId,
                               row.projectId,
                               row.repoId,
                               row.repoName,
@@ -3338,7 +3378,7 @@ public class ReleaseRequests {
                       return false;
                     }
                     if (decision.decision == ReleaseRequestApproval.Decision.DECLINED) {
-                      row.state = ReleaseRequest.State.REJECTED;
+                      states.move(row, ReleaseRequest.State.REJECTED);
                       // NO rejecting run, and the null is load-bearing rather than incidental: it
                       // is what stops a CI verdict from ever undoing a person's no. A decline is
                       // answered by a push or by the same person changing their mind, and no run
@@ -3354,7 +3394,7 @@ public class ReleaseRequests {
                     }
                     // APPROVED: fall through, exactly as a green verdict does.
                   }
-                  row.state = ReleaseRequest.State.READY;
+                  states.move(row, ReleaseRequest.State.READY);
                   row.detail = null;
                   // Every gate passed, so whatever run once rejected this fold is history: the
                   // column is cleared wherever the request leaves REJECTED, and this is one of the
@@ -3618,7 +3658,11 @@ public class ReleaseRequests {
       String detail) {
     boolean done;
     try {
-      done = gateTickets.get().ended(ticketId, requestId, repoName, ending, detail);
+      // The ticket is read by people, so it names requests by their qualified ids (qits-1158).
+      String shownDetail =
+          ending == UnattendedGateTickets.Ending.OBSOLETE ? qualifiedIdOf(detail) : detail;
+      done =
+          gateTickets.get().ended(ticketId, qualifiedIdOf(requestId), repoName, ending, shownDetail);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not reach the ending.
       LOG.warnf(
@@ -3730,6 +3774,7 @@ public class ReleaseRequests {
                   List<ReleaseRequestSource> named = sources.listByRequest(row.id);
                   return new ReleaseExecutor.Release(
                       row.id,
+                      row.qualifiedId,
                       row.repoId,
                       row.projectId,
                       row.repoName,
@@ -3884,7 +3929,7 @@ public class ReleaseRequests {
       return;
     }
     try {
-      gateTickets.get().released(ticketId, ask.requestId(), ask.repoName(), version);
+      gateTickets.get().released(ticketId, ask.qualifiedId(), ask.repoName(), version);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not touch a settled release.
       LOG.warnf(
@@ -3936,7 +3981,7 @@ public class ReleaseRequests {
                     .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                     .ifPresent(
                         row -> {
-                          row.state = state;
+                          states.move(row, state);
                           row.detail = detail;
                           row.retryable = retryable;
                           if (version != null) {
@@ -4616,6 +4661,7 @@ public class ReleaseRequests {
     }
     return new ReleaseRequestDto(
         row.id,
+        row.qualifiedId,
         row.repoId,
         repoName,
         row.backingBranch(),
@@ -4638,6 +4684,9 @@ public class ReleaseRequests {
         conflictOf(row),
         row.version,
         row.supersededBy,
+        row.supersededBy == null
+            ? null
+            : requests.findByIdOptional(row.supersededBy).map(next -> next.qualifiedId).orElse(null),
         released == null ? null : released.releasedSha,
         released == null ? null : released.mergedAt,
         row.retryable,
@@ -4736,7 +4785,7 @@ public class ReleaseRequests {
             .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
             .orElseThrow(() -> new NotFoundException("Release request not found: " + id));
     if (!ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
-      throw new DomainException(409, "Release request " + id + " is already " + row.state);
+      throw new DomainException(409, "Release request " + row.qualifiedId + " is already " + row.state);
     }
     return row;
   }
@@ -4805,6 +4854,19 @@ public class ReleaseRequests {
       LOG.warnf("Release request %s has an unreadable conflict detail: %s", row.id, e.toString());
       return null;
     }
+  }
+
+  /**
+   * The qualified id of the request {@code id} names (qits-1158), for a sentence a person reads; the
+   * input itself where no such request exists. Its own short read, so it is safe outside a
+   * transaction.
+   */
+  private String qualifiedIdOf(String id) {
+    if (id == null || id.isBlank()) {
+      return id;
+    }
+    return QuarkusTransaction.requiringNew()
+        .call(() -> requests.findByIdOptional(id).map(row -> row.qualifiedId).orElse(id));
   }
 
   private static String shortSha(String sha) {

@@ -47,10 +47,7 @@ class EntityBlockApiTest {
    * the epic's title ({@link EntityFixtures#epic} names every epic "The plan") and the given status.
    */
   private Told told(String projectId, String epicId, String status, boolean blocked) {
-    String slug = given().get("/projects/api/work/" + epicId).then().extract().path("slug");
-    return new Told(
-        projects.findWrapper(projectId).orElseThrow().id, "epic/" + slug, "The plan", status,
-        blocked);
+    return new Told(epicId, "The plan", status, blocked, blocked ? "EXPLICIT" : null);
   }
 
   private static ValidatableResponse setBlocked(String id, boolean blocked, String reason) {
@@ -286,7 +283,7 @@ class EntityBlockApiTest {
     assertEquals(2, agents.calls().size());
   }
 
-  /** A ticket is told on its own branch, the same way. */
+  /** A ticket's agent is told by its work id, the same way. */
   @Test
   void aTicketsAgentsAreTold() {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Ticket");
@@ -296,8 +293,7 @@ class EntityBlockApiTest {
 
     assertEquals(1, agents.calls().size());
     Told only = agents.calls().get(0);
-    assertEquals(projects.findWrapper(project.id()).orElseThrow().id, only.repositoryId());
-    assertEquals(true, only.branch().startsWith("ticket/"), only.branch());
+    assertEquals(ticket, only.workId());
     assertEquals("The ticket", only.title());
     assertEquals("REPORTED", only.status());
     assertEquals(true, only.blocked());
@@ -397,7 +393,7 @@ class EntityBlockApiTest {
 
     assertEquals(1, agents.calls().size(), "one signal for the one ticket: " + agents.calls());
     Told only = agents.calls().get(0);
-    assertEquals(true, only.branch().startsWith("ticket/"), only.branch());
+    assertEquals(ticket, only.workId());
     assertEquals("The ticket, restated", only.title());
     assertEquals("REPORTED", only.status());
     assertEquals(false, only.blocked());
@@ -419,7 +415,7 @@ class EntityBlockApiTest {
 
     assertEquals(1, agents.calls().size(), "only the edit that changed the title: " + agents.calls());
     Told only = agents.calls().get(0);
-    assertEquals(true, only.branch().startsWith("epic/"), only.branch());
+    assertEquals(epic, only.workId());
     assertEquals("The sharper plan", only.title());
     assertEquals("REPORTED", only.status());
   }

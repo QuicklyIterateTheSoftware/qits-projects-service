@@ -25,7 +25,8 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String commitSha,
       String releaseRequestId,
       Instant occurredAt,
-      String priority) {}
+      String priority,
+      String releaseRequestQualifiedId) {}
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
@@ -46,6 +47,7 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String version,
       String commitSha,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority) {
     announced.add(
@@ -58,6 +60,7 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
             commitSha,
             releaseRequestId,
             occurredAt,
-            priority));
+            priority,
+            releaseRequestQualifiedId));
   }
 }

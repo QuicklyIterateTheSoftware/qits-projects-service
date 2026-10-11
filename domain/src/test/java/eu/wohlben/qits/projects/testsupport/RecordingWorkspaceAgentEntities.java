@@ -25,7 +25,7 @@ public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   /** One signal, exactly as the caller sent it. */
   public record Told(
-      String repositoryId, String branch, String title, String status, boolean blocked) {}
+      String workId, String title, String status, boolean blocked, String blockSource) {}
 
   private final List<Told> calls = new ArrayList<>();
 
@@ -33,8 +33,8 @@ public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   @Override
   public synchronized void changed(
-      String repositoryId, String branch, String title, String status, boolean blocked) {
-    calls.add(new Told(repositoryId, branch, title, status, blocked));
+      String workId, String title, String status, boolean blocked, String blockSource) {
+    calls.add(new Told(workId, title, status, blocked, blockSource));
     if (failure != null) {
       throw failure;
     }
@@ -44,9 +44,9 @@ public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
     return List.copyOf(calls);
   }
 
-  /** Every signal sent to {@code branch}, oldest first. */
-  public synchronized List<Told> callsOn(String branch) {
-    return calls.stream().filter(told -> told.branch().equals(branch)).toList();
+  /** Every signal sent to the agent of {@code workId}, oldest first. */
+  public synchronized List<Told> callsOn(String workId) {
+    return calls.stream().filter(told -> told.workId().equals(workId)).toList();
   }
 
   /** A port bug: an implementation that throws although its contract forbids it. */

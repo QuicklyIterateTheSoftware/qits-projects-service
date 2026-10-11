@@ -306,6 +306,16 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String agentWaitingCause;
 
   /**
+   * <b>The label of the declared wait the session is waiting on</b>, or {@code null} (qits-1153).
+   * While it is set, the session is not waiting for a person: the derived block does not stand and
+   * the entity reads "waiting on" this label ({@code EntityBlockState#waitingOn}). Set and cleared
+   * with {@link #agentWaitingSince}.
+   */
+  @JsonIgnore
+  @Column(name = "agent_waiting_on")
+  public String agentWaitingOn;
+
+  /**
    * <b>The newest session frame applied to this row, or its last transition</b> (qits-895). A frame
    * stamped earlier than this, less a skew tolerance, is ignored: frames race, and one sent before a
    * transition must not re-derive a block at the status the transition moved to — which is why
