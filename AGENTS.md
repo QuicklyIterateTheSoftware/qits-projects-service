@@ -1552,7 +1552,7 @@ cleared with it — a frame without it, `waiting=false`, an unblock and every st
 set the session waits on the platform, not on a person: `EntityBlockState` derives no block from the
 wait (the sweep skips the row too), and `waitingOn` (NON_NULL, no debounce) is on
 `TransitionedEntity`, `EntitySummary` and `EntityDispatchStateDto`. A frame that starts, changes or
-ends it is announced at once. The campaign DTOs and the MCP records do not carry it yet.
+ends it is announced at once. The campaign DTOs do not carry it yet.
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
