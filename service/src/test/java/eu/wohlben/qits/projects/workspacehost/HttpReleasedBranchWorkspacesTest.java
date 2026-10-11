@@ -1,11 +1,9 @@
 package eu.wohlben.qits.projects.workspacehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -18,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpReleasedBranchWorkspaces} against a local server standing in for qits-workspaces —
@@ -71,7 +72,7 @@ class HttpReleasedBranchWorkspacesTest {
   }
 
   private HttpReleasedBranchWorkspaces against(String base, Optional<String> authorization) {
-    HttpReleasedBranchWorkspaces workspaces = new HttpReleasedBranchWorkspaces();
+    HttpReleasedBranchWorkspaces workspaces = new HttpReleasedBranchWorkspaces(QitsHttpClients.of(OpenTelemetry.noop(), null));
     workspaces.workspacesUrl = Optional.ofNullable(base);
     workspaces.bearer = () -> authorization;
     return workspaces;

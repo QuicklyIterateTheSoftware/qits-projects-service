@@ -1,11 +1,9 @@
 package eu.wohlben.qits.projects.workspacehost;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -18,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpWorkspaceAgentEntities} against a local server standing in for qits-workspaces —
@@ -87,7 +88,7 @@ class HttpWorkspaceAgentEntitiesTest {
 
   private HttpWorkspaceAgentEntities against(
       String base, String fallback, Optional<String> authorization) {
-    HttpWorkspaceAgentEntities blocks = new HttpWorkspaceAgentEntities();
+    HttpWorkspaceAgentEntities blocks = new HttpWorkspaceAgentEntities(QitsHttpClients.of(OpenTelemetry.noop(), null));
     blocks.workspacesUrl = Optional.ofNullable(base);
     blocks.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     blocks.bearer = () -> authorization;

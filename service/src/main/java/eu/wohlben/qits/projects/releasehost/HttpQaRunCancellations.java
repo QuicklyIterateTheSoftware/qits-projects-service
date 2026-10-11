@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.QaRunCancellations;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -58,13 +59,17 @@ public class HttpQaRunCancellations implements QaRunCancellations {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.ci-url")
   Optional<String> ciUrl;
 
   @Inject IdpCiBearer bearer;
+
+  @Inject
+  public HttpQaRunCancellations(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
+  }
 
   @Override
   public void cancelRunsOf(String repoId, String releaseRequestId) {

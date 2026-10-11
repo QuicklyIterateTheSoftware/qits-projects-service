@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.workspacehost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.arc.DefaultBean;
@@ -87,7 +88,9 @@ import org.jboss.logging.Logger;
  * creates a container, and a call this service cannot authenticate is one it does not make.
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static, so a native image does not get
- * an {@code HttpClientFacade} in its build-time heap; {@code NativeImageContractTest} pins that.
+ * an {@code HttpClientFacade} in its build-time heap; {@code NativeImageContractTest} pins that. It
+ * is wrapped with {@link QitsHttpClients}, which opens a CLIENT span and stamps {@code
+ * X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -113,7 +116,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    */
   private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(3);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   /** This service's address for qits-workspaces. Unset falls back to the key below. */
   @ConfigProperty(name = "qits.projects.workspaces-url")
@@ -124,6 +127,11 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   Optional<String> releaseWorkspacesUrl;
 
   @Inject WorkspacesBearer bearer;
+
+  @Inject
+  public HttpWorkspaceAgentDispatch(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public Dispatch dispatchAgent(

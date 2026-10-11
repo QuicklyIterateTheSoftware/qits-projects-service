@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.GitHostBearer;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import io.quarkus.arc.DefaultBean;
@@ -74,7 +75,8 @@ import org.jboss.logging.Logger;
  * fresh calver and ask again.
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static — the native-image rule {@code
- * HttpGitHostRepositories} carries.
+ * HttpGitHostRepositories} carries. It is wrapped with {@link QitsHttpClients}, which opens a
+ * CLIENT span and stamps {@code X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -91,13 +93,17 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   private static final Map<String, String> AUTHOR =
       Map.of("name", "qits-projects", "email", "qits-projects@qits.internal");
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.githost-url")
   Optional<String> githostUrl;
 
   @Inject GitHostBearer bearer;
+
+  @Inject
+  public HttpReleaseGitHost(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+  }
 
   // -----------------------------------------------------------------------------------------------
   // Reads

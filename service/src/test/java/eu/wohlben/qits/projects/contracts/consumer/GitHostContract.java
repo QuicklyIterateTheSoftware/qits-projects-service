@@ -1,12 +1,7 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.ConfiguredGitHostAddress;
@@ -15,9 +10,15 @@ import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.releasehost.HttpBackingBranchMerger;
 import eu.wohlben.qits.projects.releasehost.HttpReleaseGitHost;
 import eu.wohlben.qits.projects.wiring.HttpGitHostRepositories;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <b>What qits-projects asks qits-githost</b> (ticket qits-1149): the repository lifecycle on
@@ -40,7 +41,7 @@ final class GitHostContract {
   private static HttpGitHostRepositories repositories(String base) {
     ConfiguredGitHostAddress address = Fields.with(new ConfiguredGitHostAddress(), "gitHostUrl", base);
     return Fields.with(
-        new HttpGitHostRepositories(),
+        new HttpGitHostRepositories(QitsHttpClients.of(OpenTelemetry.noop(), null)),
         "gitHost", address,
         "gitHostBearer", BEARER,
         "objectMapper", new ObjectMapper(),
@@ -48,11 +49,11 @@ final class GitHostContract {
   }
 
   private static HttpReleaseGitHost releaseHost(String base) {
-    return Fields.with(new HttpReleaseGitHost(), "githostUrl", Optional.of(base), "bearer", BEARER);
+    return Fields.with(new HttpReleaseGitHost(QitsHttpClients.of(OpenTelemetry.noop(), null)), "githostUrl", Optional.of(base), "bearer", BEARER);
   }
 
   private static HttpBackingBranchMerger merger(String base) {
-    return Fields.with(new HttpBackingBranchMerger(), "githostUrl", Optional.of(base), "bearer", BEARER);
+    return Fields.with(new HttpBackingBranchMerger(QitsHttpClients.of(OpenTelemetry.noop(), null)), "githostUrl", Optional.of(base), "bearer", BEARER);
   }
 
   private static ConsumerRow row(

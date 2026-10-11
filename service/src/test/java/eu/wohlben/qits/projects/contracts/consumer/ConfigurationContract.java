@@ -1,13 +1,14 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.confighost.ConfigurationBearer;
 import eu.wohlben.qits.projects.confighost.HttpMcpCredentials;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * <b>What qits-projects asks qits-configuration</b> (ticket qits-1149): the entries of the {@code
@@ -41,7 +42,7 @@ final class ConfigurationContract {
                   assertEquals(
                       Optional.of(true),
                       Fields.with(
-                              new HttpMcpCredentials(),
+                              new HttpMcpCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null)),
                               "configurationUrl", Optional.of(base),
                               "configurationEnv", Optional.of(p.get("env")),
                               "bearer", BEARER)

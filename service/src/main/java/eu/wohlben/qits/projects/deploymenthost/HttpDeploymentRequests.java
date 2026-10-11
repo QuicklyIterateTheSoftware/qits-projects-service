@@ -2,9 +2,11 @@ package eu.wohlben.qits.projects.deploymenthost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.DeploymentRequests;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -72,11 +74,15 @@ public class HttpDeploymentRequests implements DeploymentRequests {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.deployments-url")
   Optional<String> deploymentsUrl;
+
+  @Inject
+  public HttpDeploymentRequests(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
+  }
 
   @Override
   public Optional<List<DeploymentRequestView>> forRelease(String repoId, String version) {

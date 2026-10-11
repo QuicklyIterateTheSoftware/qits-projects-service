@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.confighost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.AgentMcpCatalog;
 import eu.wohlben.qits.projects.control.McpCredentials;
 import io.quarkus.arc.DefaultBean;
@@ -67,7 +68,9 @@ import org.jboss.logging.Logger;
  * @RegisterForReflection} to survive a native image and a tree walk needs nothing.
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static: a static one is built at
- * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap.
+ * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap. It
+ * is wrapped with {@link QitsHttpClients}, which opens a CLIENT span and stamps {@code
+ * X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -85,7 +88,7 @@ public class HttpMcpCredentials implements McpCredentials {
   /** The bound on the whole exchange. A container provision waits on it, so it is short. */
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.agent-mcp.configuration-url")
   Optional<String> configurationUrl;
@@ -94,6 +97,11 @@ public class HttpMcpCredentials implements McpCredentials {
   Optional<String> configurationEnv;
 
   @Inject ConfigurationBearer bearer;
+
+  @Inject
+  public HttpMcpCredentials(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public Optional<String> value(String key) {

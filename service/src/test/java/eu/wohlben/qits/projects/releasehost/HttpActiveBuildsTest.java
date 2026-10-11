@@ -1,10 +1,8 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -15,6 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpActiveBuilds} against a local server standing in for qits-ci — plain JUnit over a
@@ -55,7 +56,7 @@ class HttpActiveBuildsTest {
   }
 
   private HttpActiveBuilds against(String base) {
-    HttpActiveBuilds probe = new HttpActiveBuilds();
+    HttpActiveBuilds probe = new HttpActiveBuilds(QitsHttpClients.of(OpenTelemetry.noop(), null));
     probe.ciUrl = Optional.ofNullable(base);
     probe.bearer = new IdpCiBearer();
     return probe;

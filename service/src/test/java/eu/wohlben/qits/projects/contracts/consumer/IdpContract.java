@@ -1,20 +1,21 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.idphost.IdpRefinementCredentials;
 import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
 import eu.wohlben.qits.projects.idphost.IdpSessionIntrospection;
 import eu.wohlben.qits.projects.idphost.IdpTokens;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <b>What qits-projects asks qits-idp</b> (ticket qits-1149): commissioned tokens and clients
@@ -32,7 +33,7 @@ final class IdpContract {
 
   private static IdpTokens tokens(String base) {
     return Fields.with(
-        new IdpTokens(),
+        new IdpTokens(QitsHttpClients.of(OpenTelemetry.noop(), null)),
         "objectMapper", new ObjectMapper(),
         "tokensEnabled", true,
         "authServerUrl", base + "/idp",
@@ -43,7 +44,7 @@ final class IdpContract {
 
   private static IdpRunnerCommissioner commissioner(String base) {
     return Fields.with(
-        new IdpRunnerCommissioner(),
+        new IdpRunnerCommissioner(QitsHttpClients.of(OpenTelemetry.noop(), null)),
         "objectMapper", new ObjectMapper(),
         "tokens", tokens(base),
         "tokensEnabled", true,
@@ -56,7 +57,7 @@ final class IdpContract {
 
   private static IdpRefinementCredentials refinements(String base) {
     return Fields.with(
-        new IdpRefinementCredentials(),
+        new IdpRefinementCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null)),
         "objectMapper", new ObjectMapper(),
         "tokensEnabled", true,
         "authServerUrl", base + "/idp",
@@ -205,7 +206,7 @@ final class IdpContract {
               (base, p) ->
                   assertTrue(
                       Fields.with(
-                              new IdpSessionIntrospection(),
+                              new IdpSessionIntrospection(QitsHttpClients.of(OpenTelemetry.noop(), null)),
                               "objectMapper", new ObjectMapper(),
                               "tokensEnabled", true,
                               "authServerUrl", base + "/idp",

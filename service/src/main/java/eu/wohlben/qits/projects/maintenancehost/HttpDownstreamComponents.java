@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.maintenancehost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.DownstreamComponents;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -74,7 +75,8 @@ import org.jboss.logging.Logger;
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static: a static one is built at
  * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap.
- * {@code NativeImageContractTest} pins that.
+ * {@code NativeImageContractTest} pins that. It is wrapped with {@link QitsHttpClients}, which opens
+ * a CLIENT span and stamps {@code X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -96,12 +98,17 @@ public class HttpDownstreamComponents implements DownstreamComponents {
   /** The bound on the whole exchange. An announcement waits on it, so it is deliberately short. */
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.maintenance-url")
   Optional<String> maintenanceUrl;
 
   @Inject MaintenanceBearer bearer;
+
+  @Inject
+  public HttpDownstreamComponents(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public Optional<List<String>> downstreamOf(String repoId, String repoName) {

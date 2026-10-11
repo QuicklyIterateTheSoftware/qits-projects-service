@@ -1,11 +1,9 @@
 package eu.wohlben.qits.projects.deploymenthost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.DeploymentRequests;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -18,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpDeploymentRequests} against a local server standing in for qits-deployments — plain
@@ -76,7 +77,7 @@ class HttpDeploymentRequestsTest {
   }
 
   private HttpDeploymentRequests against(String base) {
-    HttpDeploymentRequests requests = new HttpDeploymentRequests();
+    HttpDeploymentRequests requests = new HttpDeploymentRequests(QitsHttpClients.of(OpenTelemetry.noop(), null));
     requests.deploymentsUrl = Optional.ofNullable(base);
     return requests;
   }

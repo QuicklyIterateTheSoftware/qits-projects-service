@@ -1,9 +1,6 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -12,9 +9,13 @@ import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.workspacehost.WorkspacesBearer;
+import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * <b>What qits-projects asks qits-workspaces</b> (ticket qits-1149, reshaped by qits-1152):
@@ -80,7 +81,7 @@ final class WorkspacesContract {
               Trigger.operation("dispatchWork"),
               (base, p) -> {
                 WorkspaceAgentDispatch.Dispatch dispatch =
-                    workspaces(new HttpWorkspaceAgentDispatch(), base)
+                    workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
                         .dispatchAgent(
                             p.get("repositoryId"),
                             p.get("wrapperBranch"),
@@ -120,7 +121,7 @@ final class WorkspacesContract {
               Trigger.operation("getWorkDispatch"),
               (base, p) ->
                   assertFalse(
-                      workspaces(new HttpWorkspaceAgentDispatch(), base)
+                      workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
                           .agentsFor(List.of(p.get("bugTicketId")))
                           .isEmpty()),
               "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
@@ -141,7 +142,7 @@ final class WorkspacesContract {
               200,
               Trigger.operation("setWorkStatus"),
               (base, p) ->
-                  workspaces(new HttpWorkspaceAgentEntities(), base)
+                  workspaces(new HttpWorkspaceAgentEntities(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
                       .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", false, null),
               "param ticketId; POST .../agent-dispatches/entity answering 200 with agentId and"
                   + " applied"),
@@ -159,7 +160,7 @@ final class WorkspacesContract {
               Trigger.operation("transitionWork"),
               (base, p) -> {
                 WorkspaceAgentTurns.Turn turn =
-                    workspaces(new HttpWorkspaceAgentTurns(), base).deliver(p.get("ticketId"), "go on");
+                    workspaces(new HttpWorkspaceAgentTurns(QitsHttpClients.of(OpenTelemetry.noop(), null)), base).deliver(p.get("ticketId"), "go on");
                 assertNotEquals(WorkspaceAgentTurns.Outcome.NO_AGENT, turn.outcome(), turn.detail());
                 assertFalse(turn.detail().isBlank(), "the answer carries its detail");
               },
@@ -181,7 +182,7 @@ final class WorkspacesContract {
               Trigger.schedule("ReleaseRequests.resolveWorkspacesOnReleasedBranches"),
               (base, p) ->
                   Fields.with(
-                          new HttpReleasedBranchWorkspaces(),
+                          new HttpReleasedBranchWorkspaces(QitsHttpClients.of(OpenTelemetry.noop(), null)),
                           "workspacesUrl", Optional.of(base),
                           "bearer", BEARER)
                       .branchReleased(

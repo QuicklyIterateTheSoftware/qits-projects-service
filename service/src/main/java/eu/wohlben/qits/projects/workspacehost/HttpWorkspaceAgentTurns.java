@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.workspacehost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -82,7 +83,8 @@ import org.jboss.logging.Logger;
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static: a static one is built at
  * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap.
- * {@code NativeImageContractTest} pins that.
+ * {@code NativeImageContractTest} pins that. It is wrapped with {@link QitsHttpClients}, which
+ * opens a CLIENT span and stamps {@code X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -111,9 +113,14 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
   @ConfigProperty(name = "qits.projects.release-requests.workspaces-url")
   Optional<String> releaseWorkspacesUrl;
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject WorkspacesBearer bearer;
+
+  @Inject
+  public HttpWorkspaceAgentTurns(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public Turn deliver(String workId, String text) {

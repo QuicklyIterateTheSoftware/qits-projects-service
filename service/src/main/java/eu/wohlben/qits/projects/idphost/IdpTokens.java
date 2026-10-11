@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -50,7 +51,7 @@ public class IdpTokens {
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   /** A commissioned token. {@code token} is the value, answered once and never logged. */
   public record Issued(String tokenId, String token, String subject) {
@@ -79,6 +80,11 @@ public class IdpTokens {
 
   @ConfigProperty(name = "qits.projects.agent-credentials.request-timeout")
   Duration requestTimeout;
+
+  @Inject
+  public IdpTokens(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   /** Whether this process can commission at all: the switch is on and a secret is configured. */
   public boolean enabled() {

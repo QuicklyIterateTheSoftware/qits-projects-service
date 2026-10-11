@@ -1,12 +1,10 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -19,6 +17,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * {@link HttpReleaseGitHost}'s three writes against a local server standing in for qits-githost —
@@ -70,7 +71,7 @@ class HttpReleaseGitHostTest {
   }
 
   private HttpReleaseGitHost against(String base) {
-    HttpReleaseGitHost host = new HttpReleaseGitHost();
+    HttpReleaseGitHost host = new HttpReleaseGitHost(QitsHttpClients.of(OpenTelemetry.noop(), null));
     host.githostUrl = Optional.ofNullable(base);
     host.bearer = () -> Optional.of("machine-token");
     return host;

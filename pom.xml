@@ -194,6 +194,13 @@
              on neither. -->
         <qits.integrations-quarkus.version>2026.1002.70617</qits.integrations-quarkus.version>
 
+        <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
+             java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
+             stamps X-Qits-Caller. Released separately from qits-arch-rules/qits-db-core above and
+             pinned on its own property because it ships out of the same reactor but is consumed by
+             every class that still hand-rolls an HttpClient, not only test-scoped tooling. -->
+        <qits.http-core.version>2026.1011.185745</qits.http-core.version>
+
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
              service/target/userstories/ — the proof doubling as documentation, network diagram
@@ -338,6 +345,14 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-db-core</artifactId>
                 <version>${qits.integrations-quarkus.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Compile scope, and it ships: QitsHttpClients is injected everywhere an internal
+                     HttpClient is built, and the server-side filters that record an inbound
+                     X-Qits-Caller need to be on the classpath of the module serving JAX-RS. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-http-core</artifactId>
+                <version>${qits.http-core.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site, like qits-arch-rules. -->
