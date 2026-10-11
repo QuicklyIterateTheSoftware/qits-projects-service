@@ -3,8 +3,10 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.control.GitExecutor;
 import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -19,6 +21,7 @@ import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,12 +36,11 @@ public class GcApiTest {
 
   private static final String DOOR = "/projects/api/gc/tags";
 
-  /** Six empty answers — well-formed and pinning nothing. */
+  /** Five empty answers — well-formed and pinning nothing. */
   private static final String PINS =
       """
       {"deployments": {"pins": []}, "ciDaemon": {}, "dependencies": {"pins": []},
-       "configuredImages": {"pins": []}, "workspaceLaunches": {"pins": []},
-       "projectLaunches": {"pins": []}}
+       "workspaceLaunches": {"pins": []}, "projectLaunches": {"pins": []}}
       """;
 
   @Inject ProjectService projectService;
@@ -111,6 +113,18 @@ public class GcApiTest {
         .then()
         .statusCode(400)
         .body(containsString("pins.ciDaemon"));
+  }
+
+  /** An older orchestrator still sends {@code configuredImages}; it is ignored, not a pin. */
+  @Test
+  public void aMemberOutsideTheFiveSourcesIsIgnored() throws Exception {
+    String pins =
+        PINS.replace(
+            "\"ciDaemon\": {},", "\"ciDaemon\": {}, \"configuredImages\": {\"pins\": [{\"version\": \"2026.930.1\"}]},");
+    GcController.CollectTagsRequest request =
+        new GcController.CollectTagsRequest(true, new ObjectMapper().readTree(pins));
+
+    assertEquals(Set.of(), GcController.pinnedVersions(request));
   }
 
   @Test

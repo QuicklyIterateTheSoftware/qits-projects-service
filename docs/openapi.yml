@@ -2618,7 +2618,6 @@ components:
       - deployments
       - ciDaemon
       - dependencies
-      - configuredImages
       - workspaceLaunches
       - projectLaunches
       properties:
@@ -2628,8 +2627,6 @@ components:
           description: GET /ci/api/daemon
         dependencies:
           description: GET /maintenance/api/pins
-        configuredImages:
-          description: GET /configuration/api/pins
         workspaceLaunches:
           description: GET /workspaces/api/pins
         projectLaunches:

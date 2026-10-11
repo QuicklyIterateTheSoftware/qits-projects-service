@@ -967,7 +967,7 @@ class GoldenMasterRecordingTest {
             null,
             "{\"waiting\":true,\"cause\":\"Wait\",\"sessionId\":\"contract-session\","
                 + "\"at\":1234,\"waitingOn\":\"release-request 42; ci-run 7\"}"));
-    // A real run, as the orchestrator's schedule makes it; the six pin sources pin nothing.
+    // A real run, as the orchestrator's schedule makes it; the five pin sources pin nothing.
     all.add(
         write(
             ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS,
@@ -975,8 +975,8 @@ class GoldenMasterRecordingTest {
             "POST",
             "/projects/api/gc/tags",
             "{\"dryRun\":false,\"pins\":{\"deployments\":{\"pins\":[]},\"ciDaemon\":{},"
-                + "\"dependencies\":{\"pins\":[]},\"configuredImages\":{\"pins\":[]},"
-                + "\"workspaceLaunches\":{\"pins\":[]},\"projectLaunches\":{\"pins\":[]}}}"));
+                + "\"dependencies\":{\"pins\":[]},\"workspaceLaunches\":{\"pins\":[]},"
+                + "\"projectLaunches\":{\"pins\":[]}}}"));
     return List.copyOf(all);
   }
 

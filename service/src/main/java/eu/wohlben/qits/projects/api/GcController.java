@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import eu.wohlben.qits.projects.control.TagCollector;
 import eu.wohlben.qits.projects.control.TagKeepRule;
 import eu.wohlben.qits.projects.dto.TagCollectionReportDto;
@@ -24,14 +26,14 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <p><b>The pins are an input, not a lookup</b> — the pattern qits-configuration's {@code POST
  * /configuration/api/gc/entries} set (qits-593): qits-platform-orchestrator holds a credential for
- * every peer, reads the six pin sources and embeds each answer verbatim under {@code pins}. Their
+ * every peer, reads the five pin sources and embeds each answer verbatim under {@code pins}. Their
  * schemas are not modelled here. Every string anywhere in them that is a release version is a pin
  * ({@link TagKeepRule#pinnedVersions}), which over-keeps a version that appears in a field nobody
  * meant as one, and that is the safe direction.
  *
  * <p><b>Fail closed on the document's shape, though.</b> A missing source is not "that source pins
  * nothing", and reading it that way would delete every release it pins. So {@code pins} and every one
- * of its six members must be present and be an object or an array, or the answer is 400 and nothing
+ * of its five members must be present and be an object or an array, or the answer is 400 and nothing
  * is judged.
  *
  * <p>What may be deleted is decided in {@link TagKeepRule} and done by {@link TagCollector}; a dry
@@ -47,15 +49,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @Consumes(MediaType.APPLICATION_JSON)
 public class GcController {
 
-  /** The six pin sources, by the member name the caller embeds each answer under. */
+  /**
+   * The five pin sources, by the member name the caller embeds each answer under. Any other member
+   * is ignored: an older orchestrator still sends {@code configuredImages}, which pins nothing.
+   */
   static final List<String> PIN_SOURCES =
-      List.of(
-          "deployments",
-          "ciDaemon",
-          "dependencies",
-          "configuredImages",
-          "workspaceLaunches",
-          "projectLaunches");
+      List.of("deployments", "ciDaemon", "dependencies", "workspaceLaunches", "projectLaunches");
 
   @Inject TagCollector collector;
 
@@ -63,11 +62,10 @@ public class GcController {
    * The request; unknown fields are tolerated, which is Quarkus' Jackson default.
    *
    * @param dryRun judge and report, delete nothing
-   * @param pins the six pin answers, verbatim: {@code deployments} ({@code GET
+   * @param pins the five pin answers, verbatim: {@code deployments} ({@code GET
    *     /deployments/api/pins}), {@code ciDaemon} ({@code GET /ci/api/daemon}), {@code dependencies}
-   *     ({@code GET /maintenance/api/pins}), {@code configuredImages} ({@code GET
-   *     /configuration/api/pins}), {@code workspaceLaunches} ({@code GET /workspaces/api/pins}) and
-   *     {@code projectLaunches} ({@code GET /projects/api/pins})
+   *     ({@code GET /maintenance/api/pins}), {@code workspaceLaunches} ({@code GET
+   *     /workspaces/api/pins}) and {@code projectLaunches} ({@code GET /projects/api/pins})
    */
   public record CollectTagsRequest(
       boolean dryRun, @Schema(implementation = PinSources.class, required = true) JsonNode pins) {}
@@ -81,7 +79,6 @@ public class GcController {
       @Schema(required = true, description = "GET /deployments/api/pins") Object deployments,
       @Schema(required = true, description = "GET /ci/api/daemon") Object ciDaemon,
       @Schema(required = true, description = "GET /maintenance/api/pins") Object dependencies,
-      @Schema(required = true, description = "GET /configuration/api/pins") Object configuredImages,
       @Schema(required = true, description = "GET /workspaces/api/pins") Object workspaceLaunches,
       @Schema(required = true, description = "GET /projects/api/pins") Object projectLaunches) {}
 
@@ -98,12 +95,13 @@ public class GcController {
     return collector.collect(pinnedVersions(request), request.dryRun());
   }
 
-  /** Every version the six sources name; refused whole if any source is absent or not a document. */
+  /** Every version the five sources name; refused whole if any source is absent or not a document. */
   static Set<String> pinnedVersions(CollectTagsRequest request) {
     if (request == null || request.pins() == null || !request.pins().isObject()) {
       throw new BadRequestException(
-          "pins is required: an object embedding the six pin sources " + PIN_SOURCES);
+          "pins is required: an object embedding the five pin sources " + PIN_SOURCES);
     }
+    ObjectNode sources = JsonNodeFactory.instance.objectNode();
     for (String source : PIN_SOURCES) {
       JsonNode answer = request.pins().get(source);
       if (answer == null || !(answer.isObject() || answer.isArray())) {
@@ -113,7 +111,8 @@ public class GcController {
                 + " is required and must be the source's answer, an object or an array;"
                 + " nothing was judged");
       }
+      sources.set(source, answer);
     }
-    return TagKeepRule.pinnedVersions(request.pins());
+    return TagKeepRule.pinnedVersions(sources);
   }
 }
