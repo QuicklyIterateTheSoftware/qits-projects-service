@@ -221,7 +221,7 @@
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1011.50559</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1011.75606</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1011.74208</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1011.55759</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1011.81658</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1011.81454</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance and qits-events record
