@@ -1369,6 +1369,8 @@ components:
           type: string
         supersededBy:
           type: string
+        outcome:
+          $ref: "#/components/schemas/WorkOutcome"
         repositoryId:
           type: string
         implementedAt:
@@ -1429,6 +1431,8 @@ components:
           type: array
           items:
             type: string
+        outcome:
+          $ref: "#/components/schemas/WorkOutcome"
     Entry:
       type: object
       properties:
@@ -2720,6 +2724,8 @@ components:
           type: string
         supersededBy:
           type: string
+        outcome:
+          $ref: "#/components/schemas/WorkOutcome"
         repositoryId:
           type: string
         implementedAt:
@@ -3208,6 +3214,15 @@ components:
           type: integer
           format: int32
           description: "The new position, 0-based."
+    WorkOutcome:
+      type: string
+      enum:
+      - DUPLICATE
+      - RESOLVED_ELSEWHERE
+      - SUPERSEDED
+      - OBSOLETE
+      - INVALID
+      - WONT_DO
     WorkPatch:
       type: object
       description: "A JSON merge patch (RFC 7396) of one work entity. An absent property\
@@ -3298,7 +3313,8 @@ components:
       type: object
       required:
       - target
-      description: "A lifecycle move: the status to move to."
+      description: "A lifecycle move: the status to move to, and — for a move into\
+        \ DROPPED — why the work is closed and what answers for it."
       properties:
         target:
           type: string
@@ -3308,6 +3324,29 @@ components:
             \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
             \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
             \ IMPLEMENTING or VERIFYING."
+        outcome:
+          type:
+          - string
+          - "null"
+          description: "Why the work is closed: required with a move into DROPPED\
+            \ and refused with any other move. DUPLICATE — another item asks for the\
+            \ same thing; RESOLVED_ELSEWHERE — another item's change resolved it;\
+            \ SUPERSEDED — replaced by a successor; OBSOLETE — the subject went away\
+            \ by itself; INVALID — it never was a problem; WONT_DO — a decision was\
+            \ taken not to do it (scratch and probe items too). Reopening (DROPPED\
+            \ to REPORTED) clears it."
+          anyOf:
+          - $ref: "#/components/schemas/WorkOutcome"
+          - type: "null"
+        supersededBy:
+          type:
+          - string
+          - "null"
+          description: "The item that answers for the drop, by qualified id (<projectSlug>-<n>)\
+            \ or UUID: required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED,\
+            \ refused with OBSOLETE, INVALID or WONT_DO and with any move not into\
+            \ DROPPED. It must name an item of the same project, never the item itself.\
+            \ Reopening clears it."
     WorkWorkspaces:
       type: object
       description: The workspaces a dispatch stood on a work entity's branch.
@@ -4279,8 +4318,10 @@ paths:
       summary: List a project's work of every archetype
       description: "The project's whole planning tree, flat: each root oldest first,\
         \ its descendants depth-first in position order. Optionally narrowed to one\
-        \ archetype, one status, and the direct children of one parent (qualified\
-        \ id or UUID). The project is its id or its slug."
+        \ archetype, one status, the direct children of one parent (qualified id or\
+        \ UUID), one drop outcome, and the items naming one entity (qualified id or\
+        \ UUID) as their supersededBy — what that entity closed as a duplicate, resolved\
+        \ elsewhere or superseded. The project is its id or its slug."
       operationId: listProjectWork
       parameters:
       - name: project
@@ -4292,11 +4333,23 @@ paths:
         in: query
         schema:
           type: string
+      - description: "Only the DROPPED items closed with this outcome: DUPLICATE,\
+          \ RESOLVED_ELSEWHERE, SUPERSEDED, OBSOLETE, INVALID or WONT_DO."
+        schema:
+          $ref: "#/components/schemas/WorkOutcome"
+        name: outcome
+        in: query
       - name: parent
         in: query
         schema:
           type: string
       - name: status
+        in: query
+        schema:
+          type: string
+      - description: Only the items naming this entity (qualified id or UUID) as their
+          supersededBy.
+        name: supersededBy
         in: query
         schema:
           type: string
@@ -4308,9 +4361,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkList"
         "400":
-          description: An archetype or a status naming none
+          description: "An archetype, a status or an outcome naming none"
         "404":
-          description: "No such project, or no such parent"
+          description: "No such project, no such parent, or no such supersededBy entity"
         "401":
           description: Not Authorized
         "403":
@@ -8293,7 +8346,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransitionedEntity"
         "400":
-          description: No target
+          description: "No target; a move into DROPPED without an outcome; an outcome\
+            \ or a supersededBy on a move not into DROPPED; DUPLICATE, RESOLVED_ELSEWHERE\
+            \ or SUPERSEDED without supersededBy; OBSOLETE, INVALID or WONT_DO with\
+            \ one; or a supersededBy naming no item, an item of another project, or\
+            \ the item itself. Each names the rule"
         "403":
           description: "A platform service moving an epic, or an agent moving an entity\
             \ outside its own project; nothing is written"
