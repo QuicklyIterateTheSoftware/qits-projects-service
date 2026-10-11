@@ -888,6 +888,37 @@ public class ReleaseRequestFlowTest {
     assertTrue(!fresh.equals(id), "a withdrawn request is never converged on");
   }
 
+  /**
+   * A main-only request (qits-1167): the git host makes no merge commit, it creates the backing
+   * branch at {@code main}'s head. That branch is "fully merged", so a merged-branch sweep deleted
+   * it, and the pre-run's fetch of it failed. The deletion re-folds the request, which recreates the
+   * branch at the same sha: no re-arm, no second announcement.
+   */
+  @Test
+  public void aMainOnlyFoldWhoseBackingBranchIsDeletedIsFoldedAgainAtTheSameSha() {
+    activeBuilds.answer(Optional.of(1));
+    String head = sha();
+    merger.answer(
+        eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.fastForward(head, List.of()));
+    String id = create("main");
+    String target = BackingBranches.ref(id);
+    assertEquals(List.of("refs/heads/main"), merger.lastFold().sources(), "main is the only source");
+    assertEquals(target, merger.lastFold().target());
+    assertEquals(head, mergedShaOf(id), "the fold is main's head itself");
+    int announced = announcer.announcedFor(id).size();
+    merger.reset();
+    merger.answer(
+        eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.fastForward(head, List.of()));
+
+    branchDeleted(BackingBranches.of(id));
+
+    assertEquals(1, merger.foldsOf(target).size(), "the deletion folds the request again");
+    assertEquals("PENDING", stateOf(id), "its own branch is no source, so nothing is withdrawn");
+    assertEquals(head, mergedShaOf(id));
+    assertEquals(
+        announced, announcer.announcedFor(id).size(), "the same sha is announced no second time");
+  }
+
   @Test
   public void anOperatorWithdrawsAMootRequestAndTerminalOnesRefuse() {
     executor.answer(ReleaseExecutor.Outcome.refused("409: ALREADY_INTEGRATED"));

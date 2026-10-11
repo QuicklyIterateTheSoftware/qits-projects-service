@@ -2133,8 +2133,32 @@ public class ReleaseRequests {
    * release consumed like any other deletion, but {@link #execute} asks for them only once the
    * request is RELEASED, and RELEASED is outside {@code findUnreleasedByBranches} — so they match
    * nothing, and a release can never be withdrawn or re-folded by the branches it consumed.
+   *
+   * <p><b>An open request's own backing branch is folded again</b> (qits-1167). A fold that equals
+   * {@code main}'s head — every main-only request, and any request whose sources {@code main}
+   * already contains — puts the backing branch at a commit {@code main} holds, so a merged-branch
+   * sweep reads it as done and deletes it. The request still needs it: the pre-run automations and
+   * QA fetch it, and the release commits onto it. The re-fold creates it again at the same sha, so
+   * nothing re-arms and nothing is announced twice.
    */
   public void onBranchDeleted(String repoId, String branch) {
+    String ownBranch =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests
+                        .findByBackingBranch(repoId, branch)
+                        .filter(row -> ReleaseRequestRepository.UNRELEASED.contains(row.state))
+                        .map(row -> row.id)
+                        .orElse(null));
+    if (ownBranch != null) {
+      LOG.infof(
+          "The backing branch %s of open release request %s was deleted; folding again to"
+              + " recreate it",
+          branch, ownBranch);
+      remerge(ownBranch, "its backing branch " + branch + " was deleted");
+      return;
+    }
     record Affected(String id, boolean withdrawn, String gateTicketId, String repoName) {}
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
