@@ -53,6 +53,26 @@ class AutomationsGateTest {
     assertEquals("run-screenshots", answer.checks().get(1).runId());
   }
 
+  /** NOT_APPLICABLE and DEFERRED (qits-1178) are listed on the request and are no check here. */
+  @Test
+  void aKindThatDoesNotApplyOrThatQaChecksIsNoCheck() {
+    GateEvaluation answer =
+        gate.evaluate(
+            subject(
+                configured(),
+                notRequired(),
+                automations(
+                    ReleaseGates.State.PASSED,
+                    automation("estate-pins", "Estate pins", "FRESH", null),
+                    automation("screenshots", "Screenshot baselines", "DEFERRED", "checked by QA"),
+                    automation("diagram", "Entity diagram", "NOT_APPLICABLE", "no entities")),
+                List.of(),
+                null));
+    assertEquals(
+        List.of("Estate pins"), answer.checks().stream().map(GateCheck::name).toList());
+    assertNull(answer.detail());
+  }
+
   @Test
   void aWaiverSaysSo() {
     GateEvaluation answer =

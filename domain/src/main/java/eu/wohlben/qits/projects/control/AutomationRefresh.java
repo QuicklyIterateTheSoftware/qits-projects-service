@@ -47,7 +47,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>How an answer becomes a note</h2>
  *
- * <p>Every entry FRESH or NOT_APPLICABLE (an empty list included) is {@link
+ * <p>Every entry FRESH, NOT_APPLICABLE or DEFERRED (an empty list included) is {@link
  * AutomationLedger.State#FRESH}; any FAILED
  * is FAILED; any UNKNOWN, or a word this side has never heard of, is UNKNOWN; and anything still
  * moving — REQUESTED, RUNNING, COMMITTED (a commit that re-folds the request, so this fold never
@@ -295,7 +295,7 @@ public class AutomationRefresh {
     boolean pending = false;
     for (AutomationLedger.Automation entry : entries) {
       switch (entry.state()) {
-        case "FRESH", AutomationLedger.NOT_APPLICABLE -> {}
+        case "FRESH", AutomationLedger.NOT_APPLICABLE, AutomationLedger.DEFERRED -> {}
         case "FAILED" -> failed = true;
         // WAITING (qits-1133): a DERIVED kind waiting for the SOURCE kinds to be fresh — moving.
         case "REQUESTED", "RUNNING", "COMMITTED", "SUPERSEDED", "WAITING" -> pending = true;

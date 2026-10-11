@@ -151,9 +151,25 @@ public class AutomationLedger {
    */
   public static final String NOT_APPLICABLE = "NOT_APPLICABLE";
 
-  /** True for a state that holds nothing back: FRESH, or NOT_APPLICABLE. */
+  /**
+   * The far side's word for a kind that QA checks instead (qits-1178): the fold's QA run generates
+   * the output and fails when it is stale, so nothing runs before QA. It holds nothing back, like
+   * {@link #NOT_APPLICABLE}. qits-maintenance sends it only to a caller that lists it in {@code
+   * accepts}.
+   */
+  public static final String DEFERRED = "DEFERRED";
+
+  /** The sentence a {@link #DEFERRED} entry shows when the far side sends none. */
+  public static final String DEFERRED_SENTENCE = "checked by QA";
+
+  /** True for a kind that is no part of the pre-run: NOT_APPLICABLE, or DEFERRED. */
+  public static boolean notInPreRun(String state) {
+    return NOT_APPLICABLE.equals(state) || DEFERRED.equals(state);
+  }
+
+  /** True for a state that holds nothing back: FRESH, NOT_APPLICABLE or DEFERRED. */
   public static boolean holdsNothing(String state) {
-    return "FRESH".equals(state) || NOT_APPLICABLE.equals(state);
+    return "FRESH".equals(state) || notInPreRun(state);
   }
 
   private final Map<String, Note> notes = new ConcurrentHashMap<>();

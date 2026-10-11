@@ -55,12 +55,13 @@ public class AutomationsGate implements ReleaseGate {
   public GateEvaluation evaluate(GateSubject subject) {
     GateSubject.Automations facts = subject.automations();
     ReleaseGates.State state = facts.state() == null ? ReleaseGates.State.PENDING : facts.state();
-    // A kind that does not apply is listed on the request, and is no part of this gate.
+    // A kind that does not apply, or that QA checks (DEFERRED), is listed on the request, and is no
+    // part of this gate.
     List<ReleaseAutomationDto> rows =
         facts.rows() == null
             ? List.of()
             : facts.rows().stream()
-                .filter(row -> !AutomationLedger.NOT_APPLICABLE.equals(row.state()))
+                .filter(row -> !AutomationLedger.notInPreRun(row.state()))
                 .toList();
     List<GateCheck> checks =
         rows.stream()
