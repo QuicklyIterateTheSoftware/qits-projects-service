@@ -39,9 +39,8 @@ import org.jboss.logging.Logger;
  *       {@code SERVICES_AUTOSTART} switch, are retired estate-wide since qits-947.)
  *   <li><b>The dial-home addresses are this service's</b>: the control socket, the proxy base and
  *       the auth audience all name qits-projects.
- *   <li><b>One extra MCP server beside {@code repository}</b>: observability, the same pair a
- *       repository-scope launch wires in a workspace. Actions is deliberately absent — there is no
- *       actions surface on this route and the daemon fails an ACTIONS launch saying so.
+ *   <li><b>One platform MCP server</b>: the central {@code qits} server (qits-1174). This service
+ *       serves no MCP server of its own any more, and no observability or actions server is wired.
  * </ul>
  *
  * <p>{@code Recreate.ifChanged} on <b>both</b> arms, the workspaces reading: an unchanged spec is a
@@ -215,16 +214,6 @@ public class RefinementContainerFactory {
       defaultValue = "http://githost.dev.internal:8080")
   String containerGitUrl;
 
-  /** The observability MCP server a repository-scope launch attaches beside {@code repository}. */
-  @ConfigProperty(
-      name = "qits.projects.refinement-observability-mcp-url",
-      defaultValue = "http://dev-qits-observability:8080/observability/mcp")
-  String observabilityMcpUrl;
-
-  /** The one other MCP server: this service's own {@code repository} server, the epic tools. */
-  @ConfigProperty(name = "qits.projects.agent-mcp-url")
-  Optional<String> agentMcpUrl;
-
   /**
    * The central {@code qits} MCP server (qits-630) — the same key the project agent's factory reads,
    * because it is the same server. Blank composes {@code
@@ -376,13 +365,9 @@ public class RefinementContainerFactory {
     // ever awaits one). Deliberate, and load-bearing for the tab set.
     env.put("QITS_WORKSPACE_DAEMON_BOOTSTRAP_AUTORUN", "false");
     env.put("QITS_WORKSPACE_DAEMON_API_TOKEN", daemonApiToken);
-    // The two MCP servers a refinement launch may attach: this service's repository server (the
-    // epic, ticket, dossier and design tools — the reason the container exists) and observability.
-    // No actions server, on purpose: there is no actions surface on this route.
-    env.put("QITS_REPOSITORY_MCP_URL", repositoryMcpUrl());
-    env.put("QITS_OBSERVABILITY_MCP_URL", observabilityMcpUrl);
-    // And the central qits server (qits-630), which the workspace daemon adds on every surface that
-    // has it on. Scoped by the caller's bearer, so it carries no ids.
+    // The one platform MCP server, the central qits server (qits-630, qits-1174): the work, dossier
+    // and design tools a refinement session drafts through. The workspace daemon adds it on every
+    // surface that has it on. Scoped by the caller's bearer, so it carries no ids.
     env.put("QITS_PLATFORM_MCP_URL", platformMcpUrl());
     credential.ifPresent(
         pair -> {
@@ -469,12 +454,6 @@ public class RefinementContainerFactory {
     // EXPLICIT lifetime + ifChanged: stoppable only by its verbs, its volume is what it comes back
     // to, and an image bump is applied at wake — the workspaces contract, carried over.
     return new EnsureRequest(spec, Policy.explicitLifetime(), Recreate.ifChanged);
-  }
-
-  private String repositoryMcpUrl() {
-    return agentMcpUrl
-        .filter(url -> !url.isBlank())
-        .orElseGet(() -> "http://" + ownHost + ":" + ownPort + "/projects/mcp");
   }
 
   String platformMcpUrl() {

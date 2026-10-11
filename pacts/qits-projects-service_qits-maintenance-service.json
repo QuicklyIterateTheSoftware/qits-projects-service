@@ -18,15 +18,17 @@
         }
       },
       "description": "AutomationRefresh.attempt: listReleaseRequestAutomations",
-      "key": "90a41d34",
+      "key": "64870b06",
       "pending": false,
       "providerStates": [
         {
           "name": "a release request with automations",
           "params": {
+            "backingBranch": "release/contract-service-rr-1",
             "branch": "feature/export",
             "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
             "kind": "screenshot-baselines",
+            "qualifiedId": "contract-service-rr-1",
             "repoName": "contract-service",
             "repositoryId": "00000000-0000-4000-8000-000000000001",
             "requestId": "00000000-0000-4000-8000-000000000002"
@@ -269,15 +271,17 @@
         }
       },
       "description": "AutomationRefresh.attempt: triggerReleaseRequestAutomations",
-      "key": "64917bfc",
+      "key": "387469ce",
       "pending": false,
       "providerStates": [
         {
           "name": "a release request with automations",
           "params": {
+            "backingBranch": "release/contract-service-rr-1",
             "branch": "feature/export",
             "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
             "kind": "screenshot-baselines",
+            "qualifiedId": "contract-service-rr-1",
             "repoName": "contract-service",
             "repositoryId": "00000000-0000-4000-8000-000000000001",
             "requestId": "00000000-0000-4000-8000-000000000002"
@@ -292,9 +296,11 @@
               "NOT_APPLICABLE",
               "DEFERRED"
             ],
+            "backingBranch": "release/contract-service-rr-1",
             "changedSincePrevious": null,
             "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
             "previousFoldSha": null,
+            "qualifiedId": "contract-service-rr-1",
             "repository": "contract-service",
             "sourceBranches": [
               "feature/export"
@@ -306,9 +312,19 @@
         },
         "generators": {
           "body": {
+            "$.backingBranch": {
+              "dataType": "STRING",
+              "expression": "${backingBranch}",
+              "type": "ProviderState"
+            },
             "$.foldSha": {
               "dataType": "STRING",
               "expression": "${foldSha}",
+              "type": "ProviderState"
+            },
+            "$.qualifiedId": {
+              "dataType": "STRING",
+              "expression": "${qualifiedId}",
               "type": "ProviderState"
             },
             "$.repository": {
@@ -335,7 +351,23 @@
         },
         "matchingRules": {
           "body": {
+            "$.backingBranch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.foldSha": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.qualifiedId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -577,15 +609,17 @@
         }
       },
       "description": "rerunReleaseRequestAutomation: runReleaseRequestAutomation",
-      "key": "ff6d5335",
+      "key": "d3504107",
       "pending": false,
       "providerStates": [
         {
           "name": "a release request with a failed automation",
           "params": {
+            "backingBranch": "release/contract-service-rr-1",
             "branch": "feature/export",
             "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
             "kind": "screenshot-baselines",
+            "qualifiedId": "contract-service-rr-1",
             "repoName": "contract-service",
             "repositoryId": "00000000-0000-4000-8000-000000000001",
             "requestId": "00000000-0000-4000-8000-000000000002"

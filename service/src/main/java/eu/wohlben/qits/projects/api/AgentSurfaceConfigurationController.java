@@ -58,7 +58,7 @@ public class AgentSurfaceConfigurationController {
 
   /** One MCP attachment as the editor sets it — the server and its narrowing, and nothing else. */
   public record McpAttachmentRequest(
-      @Schema(description = "repository, observability or actions") String server,
+      @Schema(description = "qits, the one built-in server") String server,
       boolean narrowProject,
       boolean narrowRepository,
       boolean narrowWorkspace,
@@ -94,7 +94,7 @@ public class AgentSurfaceConfigurationController {
   public record SurfaceListResponse(
       @Schema(description = "Every known surface, resolved; shipped defaults where no row exists.")
           List<AgentSurfaceConfigurationDto> surfaces,
-      @Schema(description = "The MCP servers this platform can attach — the reserved keys.")
+      @Schema(description = "The MCP servers this platform can attach: qits.")
           List<String> builtInServers) {}
 
   /** One revision of a surface's configuration. */

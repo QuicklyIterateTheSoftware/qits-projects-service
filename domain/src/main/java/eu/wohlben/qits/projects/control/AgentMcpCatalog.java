@@ -83,15 +83,15 @@ public final class AgentMcpCatalog {
       throw new BadRequestException("A catalog key is required");
     }
     String trimmed = key.trim();
-    if (AgentSurfaceDefaults.BUILT_IN_SERVERS.contains(trimmed.toLowerCase(Locale.ROOT))) {
+    if (AgentSurfaceDefaults.RESERVED_SERVER_KEYS.contains(trimmed.toLowerCase(Locale.ROOT))) {
       throw new BadRequestException(
           "`"
               + trimmed
               + "` is a reserved MCP server key ("
-              + String.join(", ", AgentSurfaceDefaults.BUILT_IN_SERVERS)
-              + " belong to this platform). An external entry under one of those names would"
-              + " silently replace the platform's own server in the rendered mcpServers object, and"
-              + " the session would look normal while talking to somebody else's server.");
+              + String.join(", ", AgentSurfaceDefaults.RESERVED_SERVER_KEYS)
+              + " belong to this platform, now or before). An external entry under one of those"
+              + " names would silently replace the platform's own server in the rendered mcpServers"
+              + " object, or be refused by a harness that still reserves it.");
     }
     if (!CATALOG_KEY.matcher(trimmed).matches()) {
       throw new BadRequestException(

@@ -46,8 +46,8 @@ import org.jboss.logging.Logger;
  * which is context about a release and not a phase started.
  *
  * <p><b>Epics.</b> Both lifecycle archetypes come through here: {@code POST /work/{qualifiedId}/status}
- * ({@code WorkEntityDoors.move}) for either, {@code transition_ticket} for a ticket and {@code
- * transition_epic} for an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
+ * ({@code WorkEntityDoors.move}) for either; an agent reaches it through the {@code qits} MCP
+ * server's {@code work_status}. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
  * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
  * it is looked up at the workspaces port by epic id, and its release request is titled "Epic
  * &lt;slug&gt;: …". An epic is blocked as a ticket is (qits-592, {@link EntityBlocks}), and a
@@ -60,7 +60,7 @@ import org.jboss.logging.Logger;
  *
  * <p>A ticket's three phases run in one workspace, separated by a context reset rather than by a
  * container ({@link WorkspaceAgentTurns}). So the moment an agent claims a phase — its own {@code
- * transition_ticket} call — is the moment this service knows something that workspace does not, and
+ * work_status} call — is the moment this service knows something that workspace does not, and
  * this class is what says it. Nobody presses anything between implement and verify: implement ends,
  * the ticket is IMPLEMENTED, and the verify turn arrives in the session the agent is already in.
  * <b>Refine is the exception since qits-887</b>: it ends at REFINED, which starts nothing and waits
@@ -191,10 +191,9 @@ import org.jboss.logging.Logger;
  * <p>It needs {@code domain} — the project, the wrapper and the port — and the entities jar depends on
  * {@code domain} nowhere. The <em>service</em> layer may cross, which is the crossing {@code
  * WorkDispatchController} already makes, and the package name is where that crossing is declared.
- * It is {@code public} for one narrow reason: both transition surfaces are outside this package
- * ({@code eu.wohlben.qits.entities.api.WorkEntityDoors} and {@code
- * eu.wohlben.qits.projects.mcp.TicketMcpTools} and its epic twin), and the alternative — a copy
- * per surface — is the drift this class exists to prevent. {@link PhasePrompts} stays package-private and is read
+ * It is {@code public} for one narrow reason: the transition surface is outside this package
+ * ({@code eu.wohlben.qits.entities.api.WorkEntityDoors}), and the alternative — a copy per surface
+ * — is the drift this class exists to prevent. {@link PhasePrompts} stays package-private and is read
  * from here, which is the whole reason this class is in that package rather than beside either
  * caller.
  *
@@ -279,16 +278,9 @@ public class PhaseAdvance {
    * already recorded, and nothing here may turn a move that happened into an error for the caller.
    * Both call sites wrap it anyway; that belt is theirs and this one is ours.
    *
-   * <p><b>The signature takes {@code changedBy}, where the epic wrote {@code
-   * afterTransition(WorkEntity)}.</b> The comment is stamped from the caller's identity exactly as the
-   * transition itself is, and the two surfaces do not resolve identity the same way: {@code
-   * EntitiesPrincipal.changedBy} answers {@code null} for an unnamed caller, while {@code
-   * TicketMcpTools.changedBy()} answers its own {@code AGENT} fallback, because a tool call arriving
-   * without a forwarded user is still an agent doing the work. Injecting {@code SecurityIdentity}
-   * here would silently pick the first of those for both surfaces, so the thread would attribute an
-   * agent's own hand-off to nobody. Passing the value in means the stamp on this comment is the same
-   * string the transition's audit row carries, whichever door it came through, and it keeps this bean
-   * out of the request context entirely.
+   * <p><b>The signature takes {@code changedBy}</b>, resolved by the surface that took the
+   * transition. The stamp on this comment is then the same string the transition's audit row
+   * carries, and it keeps this bean out of the request context entirely.
    *
    * @param entity the moved row <b>as it is after the move</b> — a campaign, a feature and a task
    *     return at once (qits-763); for a ticket or an epic the new status is the input

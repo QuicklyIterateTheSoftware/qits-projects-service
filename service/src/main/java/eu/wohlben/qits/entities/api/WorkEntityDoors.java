@@ -736,8 +736,7 @@ public class WorkEntityDoors {
    * root's delete — an epic's, a ticket's — is {@code qits:admin} alone, as the deleted {@code DELETE
    * /epics/{id}} and {@code DELETE /tickets/{id}} were (deleting is on no agent's surface: an agent
    * that could delete what it disagrees with could erase the record of its own mistake); a feature's
-   * and a task's admit the agent bound to its project, as {@code remove_feature}/{@code remove_task}
-   * do over MCP. No door has ever deleted a campaign: it is dropped, through its status. The project
+   * and a task's admit the agent bound to its project. No door has ever deleted a campaign: it is dropped, through its status. The project
    * is read before the write — afterwards there is no row to read it from.
    */
   public void delete(SecurityIdentity identity, WorkEntity row) {

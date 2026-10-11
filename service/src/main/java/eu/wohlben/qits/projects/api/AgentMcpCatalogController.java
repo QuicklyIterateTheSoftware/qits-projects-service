@@ -23,8 +23,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * <b>The external MCP server catalog</b>: servers this platform does not own, defined once and
  * attached per surface.
  *
- * <p>Beside the three servers a surface toggles ({@code repository}, {@code observability}, {@code
- * actions}) an operator may define others: a key, a display name, a URL, an optional header name
+ * <p>Beside the one server a surface toggles ({@code qits}) an operator may define others: a key, a display name, a URL, an optional header name
  * with the qits-configuration key holding its value, and the tools pre-approved on it. Defined once
  * and attached many times, from {@link AgentSurfaceConfigurationController}'s write body — a server
  * is not re-entered, with its token, for each of eight surfaces.
@@ -38,10 +37,10 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * <p><b>Three refusals, each closing a silent failure:</b>
  *
  * <ul>
- *   <li>A <b>reserved key</b> — {@code repository}, {@code observability}, {@code actions} — is a
- *       400, because both harnesses render the attached servers into one {@code key → config} object
- *       and an external entry under one of those names would displace a platform server. The session
- *       would look entirely normal and be talking to somebody else's server.
+ *   <li>A <b>reserved key</b> — {@code qits}, and the retired {@code repository}, {@code
+ *       observability}, {@code actions} — is a 400, because both harnesses render the attached
+ *       servers into one {@code key → config} object and an external entry under one of those names
+ *       would displace a platform server, or be refused by a harness that still reserves it.
  *   <li>A <b>non-http(s) URL</b> is a 400. Kimi carries servers over ACP as {@code (key, url,
  *       tools)} with nowhere to put a stdio command, and a stdio server would need its binary inside
  *       the workspace image anyway.
@@ -96,7 +95,9 @@ public class AgentMcpCatalogController {
   /** The listing body. */
   public record CatalogListResponse(
       List<AgentMcpCatalogEntryDto> entries,
-      @Schema(description = "Keys an entry may not claim — the platform's own servers.")
+      @Schema(
+              description =
+                  "Keys an entry may not claim: the platform's own server and the retired ones.")
           List<String> reservedKeys,
       @Schema(
               description =
@@ -111,7 +112,7 @@ public class AgentMcpCatalogController {
   public CatalogListResponse list() {
     return new CatalogListResponse(
         catalog.listAll(),
-        eu.wohlben.qits.projects.control.AgentSurfaceDefaults.BUILT_IN_SERVERS,
+        eu.wohlben.qits.projects.control.AgentSurfaceDefaults.RESERVED_SERVER_KEYS,
         AgentMcpCatalog.CREDENTIAL_APPLICATION);
   }
 

@@ -137,7 +137,7 @@ turns "which subject does this change belong to" from a guess into a recorded fa
 **Per project rather than global**, so the numbers stay small enough to read and the qualified form
 carries its own scope. The qualifier is the **project's slug** (`qits`), which lives in `domain`'s
 `project` table and is therefore resolved at the surface rather than stored here; `entity` holds the
-bare number and `project_id`. **Putting the two together — on the DTOs, on the MCP returns and in a
+bare number and `project_id`. **Putting the two together — on the DTOs, in the agent tools' answers and in a
 commit subject — is done**, and "The qualified form, and where it is rendered" below is the record
 of it. This section is what makes the id exist and be allocated correctly.
 
@@ -325,26 +325,16 @@ Every response path carries the field: both project listings, both creates, the 
 updates, both lifecycle transitions (the epic's successor included), the feature and task listings
 and creates, and the multi-entity transition's whole map.
 
-### MCP returns carry `qualifiedId` ONLY, never the bare number
+### Agent answers carry `qualifiedId`, never the bare number
 
-Every entity-shaped record on the `repository` server gained one field and only one:
-`EpicMcpTools.{EpicSummary, EpicDetail, FeatureSummary, FeatureDetail, TaskSummary, TaskDetail,
-TaskImplemented}` and `TicketMcpTools.{TicketSummary, TicketDetail}`. `EntityMcpTools` answers
-`TransitionedEntity` and qualifies it on both tools. **`DossierMcpTools`' pages and `DossierFigure`
-are not entities in the merged table and gained nothing.**
+The central `qits` MCP server answers with the REST DTOs. (Until qits-1174 the `repository` MCP
+server had its own records, which carried `qualifiedId` only.) The REST DTOs carry both fields,
+because the SPA sorts, filters and links on the number.
 
-The reason is the surface's purpose. **An agent that is shown a bare number will hand-prefix it, and
-it will get the qualifier wrong** — the repository's name, the epic's slug, its own project when the
-id came from somebody else's. The surface that exists so an id can be written into a commit subject
-should only ever hand out the form that belongs in one. The REST DTOs carry both because the SPA
-needs the datum as well as the rendering: it sorts, filters and links on the number and is not the
-thing that types a commit message.
-
-The slug is resolved **once per tool call** — `ProjectScopeGuard.scopedProjectSlug()`, the precedent
-that class already sets for an MCP class reaching `domain`'s `ProjectService` — and handed into the
-`summarize(…)`/detail builders, never asked per row. **No tool was added, renamed or reshaped**, so
-`RepositoryMcpToolsTest.exposesExactlyTheRepositoryContextToolset` and the three MCP suites pass
-with their assertions unchanged.
+**An agent that is shown a bare number will hand-prefix it, and it will get the qualifier wrong** —
+the repository's name, the epic's slug, its own project when the id came from somebody else's. The
+id that belongs in a commit subject is the `qualifiedId`, so the tool descriptions and the phase
+prompts tell the agent to use that field.
 
 ## Reading it back: the commit-subject parser
 
@@ -368,7 +358,7 @@ subject does not name a VERIFIED entity — so **the entity, its archetype and i
 one lookup**. That consumer is not built here. The lookup hits `uq_entity_project_number` directly,
 through `WorkEntityRepository.findByProjectAndNumber`; the two reads are in two separate
 transactions because the two datasources are local and non-XA and Narayana enlists one such resource
-per transaction, which is the rule `EpicMcpTools` already states.
+per transaction, which is the rule `WorkEntityService` follows.
 
 ### The grammar
 
@@ -414,7 +404,7 @@ two projects whose runs both start at 1.
 ### Measuring a branch against it (qits-302)
 
 `GET /projects/api/repositories/{repoId}/commit-subjects?branch=&limit=` (`qits:admin`,
-`qits:agent`, `qits:system`) and the MCP tool `measureCommitSubjects` answer "of the newest `limit`
+`qits:agent`, `qits:system`) and the central server's `repositories_commit-subjects` tool answer "of the newest `limit`
 commits on this branch (default the repository's main branch, 100, at most 1000), how many name a
 subject, and which do not". `service/…/entitieshost/CommitSubjectCompliance` asks `reference` above
 and nothing else, and puts each commit in exactly one class, in this order:
@@ -447,7 +437,7 @@ Nothing on the SPA was touched (it is a separate repository). What it will find,
 | --- | --- |
 | `EpicDto`, `TicketDto` | `number` (`long`), `qualifiedId` (`String`, e.g. `qits-1337`) |
 | `FeatureDto`, `TaskDto` | `projectId`, `number`, `qualifiedId` |
-| `TransitionedEntity` (the transition's answer map and `list_entities`) | `number`, `qualifiedId` |
+| `TransitionedEntity` (the transition's answer map) | `number`, `qualifiedId` |
 
 `qualifiedId` is the string to render and to offer for copying; `number` is the datum to sort,
 filter and search on. `qualifiedId` is **nullable** and a client must treat it so: it is null
@@ -533,7 +523,7 @@ table is the source of truth for every value a caller sees and for every rule ei
 applies: the status a transition is judged against, the slugs a create mints around, the two
 listings the board draws, and the `createdAt`/`updatedAt` a write answers with. Nothing above them
 moved by one byte — `EpicDto` and `TicketDto` keep every field, in order, under the same JSON names;
-the five epic and ticket controllers, both mappers, the MCP tools, `DossierService` and
+the five epic and ticket controllers, both mappers, `DossierService` and
 `EpicsTopicHints` are untouched; and every route, status code and error body is what it was.
 
 What made that possible at the time was that the two services still **returned** `Epic` and `Ticket`,
@@ -554,7 +544,7 @@ shipped" below, which is the record of the second half and of the one consequenc
 `FeatureService` and `TaskService` read and write `entity` + `entity_membership`. They answered
 `Feature` and `Task` as detached `WorkEntityProjections` — the identical device the two roots used,
 for the identical reason — so `FeatureDto`, `TaskDto`, `FeatureController`, `TaskController`,
-`EpicController`, `EpicsTopicHints`, `EpicMcpTools` and `EpicDispatchController` were untouched and
+`EpicController`, `EpicsTopicHints` and `EpicDispatchController` were untouched and
 every route, status code and error body is what it was. They answer `control/Nested` — the merged row
 beside its parent's id — since the cleanup; the three merged columns are read back under their old
 names at the DTO boundary instead, in `mapper/WorkEntityMapper`, which is where
@@ -751,7 +741,7 @@ Three things were checked and left exactly as they are. Each is recorded because
 - **The whole service-side dispatch and phase-prompt path** — `TicketUnattendedGateTickets`,
   `TicketPhasePrompts`, `TicketPhaseAdvance`, `TicketDispatchController`, `EpicDispatchController`,
   `TicketWorkspaces`, `DispatchedWorkspaces`, `EpicResolutions`, `RefinementService`,
-  `DossierFigures`, `EpicMcpTools`, `TicketMcpTools`, `DossierMcpTools`. Every one of them goes
+  `DossierFigures`. Every one of them goes
   through `EpicService`/`TicketService`/`FeatureService`/`TaskService`/`DossierService` and passed
   projections around; **none touches a legacy repository or a Panache static call**. The campaign
   epic drives that path automatically later, so it matters that a reader can see it was checked
@@ -838,7 +828,7 @@ create actually make now. `EntitiesTestSupport.wipe()` clears the two new tables
 **The descendants' cutover moved no fixture and changed no assertion at all.** Both doubles already
 sever the merged table, which is now the read and the write a feature or a task makes too;
 `FeatureServiceTest`, `TaskServiceTest`, `EpicServiceTest`, `EpicLifecycleTest`, `EpicApiTest`,
-`EpicLifecycleApiTest`, `EpicMcpToolsTest` and `EpicPlanningIT` all pass exactly as written. What was
+`EpicLifecycleApiTest` and `EpicPlanningIT` all pass exactly as written. What was
 added is `UnifiedDescendantsTest`, for the four things that are genuinely new and were previously
 impossible to get wrong: a listing's order, a middle sibling's removal leaving dense positions, the
 two-hop walk to a task's epic, and the `Nesting`-not-consulted-for-`dependsOn` negative.
@@ -1175,93 +1165,58 @@ what is advertised and what is enforced. It is closed: the concession is deleted
 declared, and every list here is a demand the server actually makes. See "The `IMPETUS` question,
 settled".
 
-### The agent surface: ONE tool, `transition_entities`
+### The agent surface: ONE tool, `work_transition`
 
-The same operation on the `repository` MCP server (`/projects/mcp`, still named `repository` —
-qits-workspace-daemon addresses it by name and nothing about the declaration moved):
+The central `qits` MCP server serves the same operation as `work_transition` with `--map`, which
+calls `POST /work/transition`. (Until qits-1174 it was `transition_entities` on the `repository`
+server.) The argument is a map of entities, each with its full target state:
 
-    transition_entities(entities: { "<id>": { archetype, membership: {parent, position},
-                                             title, description, status, ticketType, impetus,
-                                             assignee, repositoryId, implementedAt, dependsOn } })
+    work_transition --map { "<id>": { archetype, membership: {parent, position},
+                                      title, description, status, ticketType, impetus,
+                                      assignee, repositoryId, implementedAt, dependsOn } }
       -> { "<id>": <the post-state> }
 
 **It is one tool because it has to be.** An agent restructuring a refinement through several
-single-entity tool calls is precisely the sequence of illegal intermediate states this design rules
-out, so a tool that could only move one entity would reintroduce at the agent surface the exact
-problem the endpoint exists to prevent. There is deliberately no single-entity spelling, and
-`EntityMcpToolsTest.exposesOneTransitionToolTakingAMap` asserts the absence as well as the presence.
+single-entity calls is precisely the sequence of illegal intermediate states this design rules
+out. There is deliberately no single-entity spelling for a restructure; a plain edit is a map of
+one, or `work_update`.
 
-**It is `service/…/projects/mcp/EntityMcpTools`, a class of its own**, and that is
-`EntityTransitionController`'s argument one layer up: the unified entity is the noun, so hanging the
-tool off `EpicMcpTools` or `TicketMcpTools` would file it under one of the two ends it moves
-between, and an agent looking for "how do I restructure this plan" would have to know the answer
-before finding it. The REST surface answers that with a resource of its own; the MCP surface answers
-it with a tool class of its own, in the same package and on the same server as its three neighbours.
-
-Everything else is the house pattern applied again: scope from the `X-QITS-Project` header and never
-from an argument, `@WrapBusinessError` so the refusal arrives as a readable tool error rather than a
-JSON-RPC protocol error, both SSE topics fired after the write, no `@Transactional` (two persistence
-units, non-XA). Two rules are this tool's own:
+Two rules belong to the door:
 
 - **Every entity the request NAMES must be in the caller's project** — every key of the map *and*
   every `membership.parent`, whether or not that parent is itself an entry. One belonging to another
-  project reads as not found, the rule the epic and ticket surfaces already apply. A parent is
-  checked for the same reason a key is: a reparent onto somebody else's epic is a cross-project reach
-  expressed as a membership.
-- **An id that names nothing at all is NOT refused by the tool.** It falls through to
+  project reads as not found. A parent is checked for the same reason a key is: a reparent onto
+  somebody else's epic is a cross-project reach expressed as a membership.
+- **An id that names nothing at all is NOT refused at the scope check.** It falls through to
   `EntityTransitionService` and is collected with every other complaint into one refusal. Refusing it
-  at the scope check would hand the model one wrong id per round trip, which is the failure mode the
-  collected violations exist to avoid — and worse here than anywhere else, because the fixes are
-  moves.
+  early would hand the model one wrong id per round trip, which is the failure mode the collected
+  violations exist to avoid — and worse here than anywhere else, because the fixes are moves.
 
-`transition_entities` is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, on the strongest reading
-in that list: it restates part of the plan *in full*, so an unattended run steered by an untrusted
-commit message could re-archetype, re-parent and clear properties across a whole tree in one call.
+A read-only surface does not get `work_transition`: it restates part of the plan *in full*, so an
+unattended run steered by an untrusted commit message could re-archetype, re-parent and clear
+properties across a whole tree in one call.
 
 **The description is the deliverable.** An agent only ever sees that string, so it states, in this
 order and in the imperative: the value is the entity's full target state and not a diff; an omitted
 property is cleared, and what that costs on a demotion; every id must already exist — create first,
-then transition, nothing is created or deleted here; **a plain edit is a map of one**, said outright
-because otherwise agents keep reaching for the older per-entity tools out of habit and this one only
-ever gets used for exotic moves; and that a rejection naming missing properties **is the archetype
-gate**, whose fix is to supply them rather than to retry. Those sentences are pinned by a test, so a
-later edit that drops one fails the build.
+then transition, nothing is created or deleted here; and that a rejection naming missing properties
+**is the archetype gate**, whose fix is to supply them rather than to retry.
 
-### The read side had to keep up, and it is an ADDITION
+### The read side: `work_list`
 
 **Whatever tool an agent uses to see the tree must show archetype and membership, or it cannot
-construct a valid request** — an entry is judged against its *target* archetype and names its parent,
-and `get_epic`, `list_epics`, `get_ticket` and `list_tickets` report neither.
+construct a valid request** — an entry is judged against its *target* archetype and names its parent.
 
-The answer is a **new read tool, `list_entities`**, on the same class: the project's whole planning
-tree as one flat list, each entry carrying archetype, parent and position, roots first and each
-followed by its descendants in order. **No existing tool changed name or shape**, which the epic
-requires — an agent mid-refinement must not be able to tell this shipped, and `EpicMcpToolsTest`,
-`TicketMcpToolsTest` and `DossierMcpToolsTest` pass with their assertions unchanged. The
-additive-field route was available and was not taken: a new field on `EpicDetail` would still leave
-`list_tickets` and `get_ticket` blind, and `EpicDetail`'s nesting is the epic-shaped tree the merged
-model exists not to be the only reading of.
-
-**It answers `TransitionedEntity`**, the transition's own answer shape, so the read and the write
-speak one vocabulary: an entry read there is an entry restatable here. Flat rather than nested
-because the membership is a property of the row now — a nested answer would have to pick one shape
-per archetype again.
+`work_list` answers the project's whole planning tree as one flat list, each entry carrying
+archetype, parent and position, roots first and each followed by its descendants in order. It
+reads `GET /work`, which answers `EntitySummary` built from the catalog's `TransitionedEntity` rows
+(the transition's own answer shape, without the description), so an entry read there is an entry
+restatable in `work_transition`. Flat rather than nested because the membership is a property of
+the row now — a nested answer would have to pick one shape per archetype again.
 
 Behind it is `entities/…/control/EntityCatalogService`: `listByProject` and `byIds`, each a bulk row
 read plus a bulk edge read (**two queries, never one per row**) wrapped in `ReadPatience` like every
-other list read in the module. It adds a reading and changes none — the four per-archetype services
-keep every method, shape and caller.
-
-### `exposesNoTransitionTool` does not collide, and that was checked
-
-`EpicMcpToolsTest.exposesNoTransitionTool` asserts that no tool named `transition_epic`,
-`supersede_epic` or `mark_epic_implemented` exists. It matches on **those three exact names**, not on
-a name containing "transition", so `transition_entities` does not trip it and the test passes
-unmodified — and its claim is untouched in substance: an epic **lifecycle** move is still a person's
-press in the UI, and an **archetype** transition is a different operation that happens to share a
-word. `transition_ticket` carries the same ambiguity (it *is* a lifecycle move, and is the one the
-cleanup feature owes a note). Nothing was weakened to make room; the new test states the distinction
-where a reader of either will find it.
+other list read in the module.
 
 ## The `IMPETUS` question, settled
 
@@ -1772,10 +1727,9 @@ post-state. The two share a word and nothing else.
 **The routes the SPA no longer calls are kept deliberately**, as a retained follow-up rather than as
 dead code: `POST /projects/{id}/epics`, `DELETE /epics/{id}`, `POST /epics/{id}/features`, `PUT` and
 `DELETE /features/{id}`, `POST /features/{id}/tasks`, and `PUT` and `DELETE /tasks/{id}`. They are
-still reached by this repository's own REST suite, and the MCP planning tools (`propose_epic`,
-`add_feature`, `update_feature`, `remove_feature`, `add_task`, `update_task`, `remove_task`,
-`mark_task_implemented`) call the same services those routes call — so the create and delete paths
-are live code with live callers whatever the browser does. Retiring an endpoint is a contract change
+still reached by this repository's own REST suite, and the central server's planning tools
+(`work_create`, `work_update`, `work_delete`) call the same services those routes call — so the
+create and delete paths are live code with live callers whatever the browser does. Retiring an endpoint is a contract change
 against a generated client and belongs to a task that says so.
 
 ### The evidence, and where it is kept
@@ -1821,7 +1775,7 @@ last task of the epic and it was deliberately last: a rename touching nearly eve
 change most likely to hide a real regression, so it does not share a commit with V13's deletion of
 the four old entities — that shipped on its own, after the verification door ran clean.
 
-**It is a rename and nothing else.** No route, no DTO field, no JSON name, no MCP tool, no table, no
+**It is a rename and nothing else.** No route, no DTO field, no JSON name, no table, no
 column, no migration and no deployment variable moved. `docs/openapi.yml` is byte-identical, which
 is the check: a diff there would have meant something was changed that should not have been.
 
@@ -1838,12 +1792,6 @@ is the check: a diff there would have meant something was changed that should no
 **What was checked and deliberately left, because "not mentioned" and "checked and correct" are
 indistinguishable to a later reader:**
 
-- **Every MCP tool keeps its name and shape** — `list_epics`, `get_epic`, `propose_epic`,
-  `update_epic`, the ticket, feature, task and dossier tools, and the `transition_entities` /
-  `list_entities` pair this epic added. They are called by name from prompts written down outside
-  this repository; renaming them breaks every one of those silently, for no gain here. They are
-  deprecated in their own epic, and leaving them untouched is the shorter path to the same end. The
-  server is still `@McpServer("repository")`, which qits-workspace-daemon addresses by name.
 - **Every REST route, DTO field and JSON name** — `/projects/api/epics/…` and
   `/projects/api/tickets/…` were the deployed contract and the SPA called them. (No longer a
   constraint: qits-976 deleted both route families in favour of `/work`.)
@@ -1866,9 +1814,9 @@ indistinguishable to a later reader:**
   `AgentSurfaceDefaults.PROJECT_EPICS`/`PROJECT_TICKETS` constants outright, once nothing launched or
   held them.
 
-**Two transitions now mean two different things, and both say so in code.** `transition_ticket` is a
-**lifecycle** move (one ticket, one adjacent step, `entity.status` alone, judged by
-`TicketLifecycle`); `transition_entities`/`EntityTransitionService` is an **archetype** move (what
+**Two transitions now mean two different things, and both say so in code.** `work_status` is a
+**lifecycle** move (one entity, one adjacent step, `entity.status` alone); `work_transition` and
+`EntityTransitionService` are an **archetype** move (what
 kind a row is and whose child it is). They share a word and share nothing else, so each carries a
 javadoc note naming the other — without it every future reader conflates them.
 
@@ -2109,7 +2057,7 @@ status said what had been ACHIEVED and never what was being done — no `IN_PROG
 status a person maintains. IMPLEMENTING is not one: **the platform sets it** — at the dispatch press
 (`EntityDispatch`, FLOW and PHASE alike, the campaign executor's press included), on the FLOW
 hand-off when the implement turn is spoken after refine lands REFINED (`PhaseAdvance`), and at an
-agent's first `mark_task_implementing` on a REFINED epic — and what it records, *an implementation
+agent's first `implementingAt` marker on a REFINED epic — and what it records, *an implementation
 was started*, does not go stale. The implement phase leaves it by the same move to IMPLEMENTED it
 always made. So the rule now reads: a status names what has been achieved, or a fact the platform
 recorded. V7 keeps the old sentence (an applied migration is never edited); V22's header carries the
@@ -2125,7 +2073,7 @@ IMPLEMENTED (rework) it pushes the implement turn.
 
 **Features and tasks keep no status; they get a marker beside `implemented_at`.** V22 adds a nullable
 `implementing_at timestamptz` (`IMPLEMENTING_AT` in the registry; `implementingAt` on a task and on
-the merged shape, `implementingOn` on a feature). `mark_task_implementing` stamps a task (and its
+the merged shape, `implementingOn` on a feature). `work_update` with `implementingAt` on a task stamps it (and its
 feature, the first time) when unset, is idempotent, is accepted while the epic is REFINED or
 IMPLEMENTING (`EntityLifecycle.requireBeingImplemented`, which was `requireRefined`), and moves a
 REFINED epic to IMPLEMENTING. Entering IMPLEMENTING on the epic stamps nothing beneath it; entering
@@ -2172,9 +2120,9 @@ applies to it with the words moved one phase on:
 eight words as an epic and a ticket, over the same graph, so a task is verified on its own instead of
 when its epic is — the sibling drag that made every task VERIFIED the moment its epic was. The
 markers stay as history next to the status, and every door that writes one moves the status in the
-same transaction (`mark_task_implementing` → IMPLEMENTING, `implementedAt` → IMPLEMENTED). An epic
+same transaction (`implementingAt` → IMPLEMENTING, `implementedAt` → IMPLEMENTED). An epic
 carries its pieces on three moves only — REPORTED → REFINED, back, and to IMPLEMENTED — and a piece's
-own move (`POST /entities/{id}/status`, `transition_task`) is refused while its epic is REPORTED. No
+own move (`POST /work/{id}/status`, `work_status`) is refused while its epic is REPORTED. No
 phase runs on a piece (`Archetypes.isPlanPiece`); nothing derives a parent from its children.
 
 V24 backfilled every existing row — `implemented_at` → IMPLEMENTED, else `implementing_at` →
@@ -2196,7 +2144,7 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
   IMPLEMENTING → REFINED are gone: **IMPLEMENTING has no BACK move**, the way out of started work is
   DROP. There is no READY_FOR_DEV → REPORTED (it falls out of one-step BACK).
 - **The task markers** move while the epic is READY_FOR_DEV or IMPLEMENTING (`requireBeingImplemented`),
-  and the first `mark_task_implementing` moves a READY_FOR_DEV epic to IMPLEMENTING.
+  and the first `implementingAt` marker moves a READY_FOR_DEV epic to IMPLEMENTING.
 - **A campaign keeps READY_FOR_DEV** (decision 19) and still elides IMPLEMENTING and VERIFYING. Its
   lifecycle is now derived as *the walk with the elided states removed* — FORWARD to the next kept
   state, BACK to the previous kept one, DROP/REOPEN unchanged — rather than by closing one SKIP over
@@ -2232,13 +2180,13 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
 | the multi-entity transition | `entities/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/entities/api/WorkController.java` (`POST /projects/api/work/transition`, over `WorkEntityDoors.transition`; `EntityTransitionController` was deleted by qits-976) |
 | the registry, served | `entities/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/entities/api/WorkArchetypesController.java` — `GET /projects/api/work/archetypes`, `qits:admin` + `qits:agent` (`EntityArchetypesController` at `/entities/archetypes` was deleted by qits-976) |
 | the merged read | `entities/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
-| the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
+| the agent surface | the central `qits` MCP server (qits-platform-access-mcp-service) — `work_transition` + `work_list`, over `POST /work/transition` and `GET /work`; the `repository` server's `EntityMcpTools` was deleted by qits-1174 |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
 | the commit-subject parser | `service/…/projects/entitieshost/CommitSubjectEntities.java` — the only reader of the grammar; `entities/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
 | the verification door — **DELETED WHOLE BY V13** | was `entities/…/migration/` (`package-info.java` carried the deletion instruction; `MigrationVerification.java` the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge) and `service/…/entities/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone. Its one clean run against live data survives it, at `docs/migration-verification-2026-09-20.json` |
 | the create axis | `entities/…/control/Demand.java` — `AT_CREATE`/`ON_UPDATE`, a parameter of `Archetypes.validate` at every call site; `ArchetypeSpec.requiredAtCreate`/`requiredFor`. `ImpetusConcession.java` is **deleted**; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `entities/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/entities/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/entities/api/EntityTransitionApiTest.java`, `service/src/test/…/entities/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/entitieshost/CommitSubjectEntitiesTest.java` |
+| tests | `entities/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/entities/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/entities/api/EntityTransitionApiTest.java`, `service/src/test/…/entities/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/entitieshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

@@ -207,7 +207,7 @@ public class TicketFlowDispatchTest {
         "the status picks the phase, and a new ticket's phase is refinement: "
             + asked.instruction());
     assertTrue(
-        asked.instruction().contains("transition_ticket to REFINED"),
+        asked.instruction().contains("to REFINED with work_status"),
         "and the phase ends with its own claim");
     assertTrue(asked.instruction().contains(ticketId), "and where to read the ticket itself");
 

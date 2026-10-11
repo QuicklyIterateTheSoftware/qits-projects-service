@@ -299,7 +299,6 @@ public class FrontDeskSpecs {
     env.put("QITS_DOMAIN", d);
     env.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
     env.put("QITS_GIT_AUTH_HOST", host("githost", d));
-    env.put("QITS_REPOSITORY_MCP_URL", "https://" + host("projects", d) + "/projects/mcp");
     env.put("QITS_PLATFORM_MCP_URL", "https://" + host("mcp", d) + "/mcp");
     if (identity != null) {
       identity.forEach(env::put);

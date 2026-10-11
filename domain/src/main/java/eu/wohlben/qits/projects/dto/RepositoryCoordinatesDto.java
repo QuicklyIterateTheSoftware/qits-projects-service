@@ -19,9 +19,7 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  * picks any of them. Deriving it from the name's role suffix at the far end would be this service's
  * {@link RepositoryArchetype#fromRepositoryName} reimplemented in another repository, free to drift
  * from the stored column; asking {@code GET /repositories/{repoId}} once per row would be a request
- * per repository to learn one enum. The MCP surface reached the same conclusion first — {@code
- * mcp/RepositoryMcpTools.RepositorySummary} has carried the archetype in its listing all along —
- * so REST is catching up rather than breaking new ground.
+ * per repository to learn one enum.
  *
  * @param id the opaque row id — the storage key this service and qits-githost share. Never shown to
  *     a person and never an address.

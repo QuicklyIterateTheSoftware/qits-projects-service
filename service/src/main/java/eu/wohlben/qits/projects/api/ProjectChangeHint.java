@@ -5,7 +5,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 /**
  * A payload-free "something changed, re-read it" signal for one project's live channel — the
  * projects flavour of qits-workspaces' {@code WorkspaceChangeHint}. Fired at every epic mutation
- * choke-point (the REST controllers and the epic MCP tools) and delivered over CDI async events to
+ * choke-point (the REST controllers) and delivered over CDI async events to
  * {@link ProjectEventBroadcaster}, which pushes the {@link Topic} name to subscribed browsers.
  *
  * <p>The hint carries no data: the frontend reacts by re-fetching through the unchanged REST

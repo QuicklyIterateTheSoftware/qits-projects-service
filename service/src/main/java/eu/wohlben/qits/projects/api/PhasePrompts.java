@@ -48,13 +48,13 @@ import java.util.Optional;
  * <ol>
  *   <li><b>Nothing copied from a tool description or from the flow brief.</b> What a status means,
  *       which moves are legal, what a block does and how a release request works are stated where
- *       the agent meets them — {@code transition_ticket}/{@code transition_epic}, {@code
- *       block_entity}, {@code /workspace/docs/development-flow.md} — and a second copy here is one
+ *       the agent meets them — the {@code qits} MCP server's {@code work_status} and {@code
+ *       work_block}, {@code /workspace/docs/development-flow.md} — and a second copy here is one
  *       free to drift from the first. A template carries only what is specific to its phase: what
  *       to produce, where to write it, and the one or two mistakes that phase is prone to.
- *   <li><b>One ending, for every phase and archetype.</b> Either the forward transition — {@code
- *       transition_ticket to <next>} or {@code transition_epic to <next>}, the agent's claim that the
- *       phase is done — or {@code block_entity} with what is missing or what was found. There is no
+ *   <li><b>One ending, for every phase and archetype.</b> Either the forward move — {@code move it
+ *       to <next> with work_status}, the agent's claim that the phase is done — or {@code
+ *       work_block} with what is missing or what was found. There is no
  *       "leave the status where it is and comment" arm: a comment is read only by whoever opens the
  *       thread, while everything that hands out work reads the status and the flag, so an
  *       unfinished phase that only commented went on advertising itself as ready work.
@@ -68,7 +68,7 @@ import java.util.Optional;
  *
  * <p>What each template still says is what the phase gets wrong without it. Refine: <em>do not
  * implement</em>, with its reason (the implement phase is a separate session that starts from what
- * is written), and the result goes into the description ({@code update_ticket}) or the epic's
+ * is written), and the result goes into the description ({@code work_update}) or the epic's
  * tree and dossier — a dossier page only for what prose cannot hold on a ticket. Implement: comment
  * as the work goes; a contradiction goes on the thread, not into the brief it contradicts; done is
  * released and deployed, not merged and not green; and <em>do not integrate the workspace</em>,
@@ -78,8 +78,8 @@ import java.util.Optional;
  * be reproduced on demand — that order is the design, since the code-reading arm is always the one
  * an agent can finish in one turn — and the thread says which was done. An epic's implement turn
  * also makes the move to IMPLEMENTED conditional on every task being marked, because that move
- * stamps every unmarked task, and asks for {@code mark_task_implementing} as each task starts, so
- * the board shows which of them are under way (qits-749).
+ * stamps every unmarked task, and asks for the {@code implementingAt} marker ({@code work_update})
+ * as each task starts, so the board shows which of them are under way (qits-749).
  *
  * <p>Every turn names its entity by <b>qualified id</b> ({@code qits-297}) beside the slug and the
  * row id, and both implement turns give the commit-subject convention with that id written in
@@ -92,29 +92,14 @@ import java.util.Optional;
  * the continue-or-stop bit the press recorded ({@code WorkEntity.dispatchContinues}), read by {@link
  * PhaseAdvance}.
  *
- * <h2>Two seams have to hold, or all of these are dead letters</h2>
+ * <h2>The tools are the {@code qits} MCP server's, and one seam has to hold</h2>
  *
- * <p>qits-workspace-daemon's {@code AgentLaunchService} lists {@code transition_ticket} in its
- * {@code TICKET_RESOLUTION_TOOLS} bucket, so the tool exists for a kimi session too — there {@code
- * enabledTools} is the whole tool surface rather than a pre-approval, and a tool that is not listed
- * does not exist for that session. And a dispatch keeps connecting <em>without</em> the {@code
- * agentReadOnly=true} marker — it goes through the daemon's {@code launchChat}, which never sets it
- * — so {@link eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} does not hide the entity
- * writes from an unattended run. If a dispatch ever starts marking itself read-only, every
- * transition and every block below goes silent along with it.
- *
- * <p><b>These templates name tools that bucket does <em>not</em> list</b>: {@code update_ticket},
- * {@code put_dossier_page}, {@code block_entity} and {@code unblock_entity} (qits-592), {@code
- * transition_epic} (qits-394), the epic tree writes the epic refine template names, and the dossier
- * reads. {@code add_comment} and {@code update_comment} are in {@code TICKET_THREAD_TOOLS} (qits-551),
- * and {@code mark_task_implemented}, {@code get_epic} and {@code list_epics} are already listed.
- * {@code mark_task_implementing} (qits-749) is in {@code AgentSurfaceDefaults}' copy beside its
- * sibling, and joins the daemon's bucket in that repository's own release.
- * Every surface ships CLAUDE with {@code SKIP_PERMISSIONS} today, so an unlisted tool is still
- * reachable and the sentences are actionable as they stand. A surface moved to <b>kimi</b> needs
- * them added to qits-workspace-daemon's bucket and to {@code AgentSurfaceDefaults}' copy of it on
- * the same day, or the phases have been told to write — and to block — with tools that do not exist
- * for them.
+ * <p>Every tool named here is a command of the central {@code qits} server (qits-1174), named by its
+ * command path joined with {@code _}: {@code work_details}, {@code work_update}, {@code
+ * work_status}, {@code work_block}, {@code work_create}, {@code work_comment_create}, {@code
+ * work_dossier_list} and {@code work_dossier_put}. A dispatch must keep connecting <em>without</em>
+ * the {@code agentReadOnly=true} marker: with it, the central server serves only its read tools, and
+ * every transition and every block below goes silent.
  *
  * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
  *
@@ -281,20 +266,19 @@ final class PhasePrompts {
         + ticket.slug
         + ", id "
         + ticket.id
-        + "). Read it with get_ticket: the impetus is the report and the thread is the rest."
+        + "). Read it with work_details: the impetus is the report and the thread is the rest."
         + " Investigate past the impetus. For a BUG, find the root cause and a reproduction. For an"
         + " IMPROVEMENT, make the case against what the code does now. For a MAINTENANCE ticket,"
         + " find why its named run failed. Write the result into the ticket's description with"
-        + " update_ticket. Use put_dossier_page (ticketId "
-        + ticket.id
-        + ") only for what prose cannot hold. Write its acceptanceCriteria with update_ticket:"
-        + " short checkable statements, each one line, at most one '.', fewer than 20 spaces. Do not"
-        + " implement anything: the implement phase is a separate session that starts from what"
-        + " you write. When someone else could implement from the ticket alone, transition_ticket"
-        + " to "
+        + " work_update. Use work_dossier_put only for what prose cannot hold. Write its"
+        + " acceptanceCriteria with work_update: short checkable statements, each one line, at most"
+        + " one '.', fewer than 20 spaces. Do not implement anything: the implement phase is a"
+        + " separate session that starts from what you write. When someone else could implement"
+        + " from the ticket alone, move it to "
         + end(Phase.REFINE)
+        + " with work_status"
         + afterRefined(ticket, ". That ends this run: a person schedules it next.")
-        + " If you cannot get there, block_entity with what is missing.";
+        + " If you cannot get there, call work_block with what is missing.";
   }
 
   /**
@@ -330,16 +314,16 @@ final class PhasePrompts {
         + ticket.slug
         + ", id "
         + ticket.id
-        + "). Read it with get_ticket: its description, plus any dossier page it points at, is the"
-        + " brief. Comment with add_ticket_comment as the work goes. If the brief turns out wrong,"
-        + " say so on the thread and do not rewrite it. Done means released and deployed, not"
-        + " merged and not green."
+        + "). Read it with work_details: its description, plus any dossier page it points at, is"
+        + " the brief. Comment with work_comment_create as the work goes. If the brief turns out"
+        + " wrong, say so on the thread and do not rewrite it. Done means released and deployed,"
+        + " not merged and not green."
         + commitSubjects(q)
         + " Do not integrate the workspace, because verification runs here"
-        + " next. Once the change is live, transition_ticket to "
+        + " next. Once the change is live, move it to "
         + end(Phase.IMPLEMENT)
-        + ". If you cannot get"
-        + " there, block_entity with what is missing.";
+        + " with work_status. If you cannot get"
+        + " there, call work_block with what is missing.";
   }
 
   /**
@@ -361,13 +345,13 @@ final class PhasePrompts {
         + ticket.slug
         + ", id "
         + ticket.id
-        + "). Read it with get_ticket, then check on the live platform that what it reported no"
+        + "). Read it with work_details, then check on the live platform that what it reported no"
         + " longer occurs. Fall back to reading the change only if the situation cannot be"
-        + " reproduced on demand. Say on the thread with add_ticket_comment which of the two you"
-        + " did. If it holds, transition_ticket to "
+        + " reproduced on demand. Say on the thread with work_comment_create which of the two you"
+        + " did. If it holds, move it to "
         + end(Phase.VERIFY)
-        + "; closing is a person's move. If it"
-        + " still occurs, or you could not check, block_entity with what you found.";
+        + " with work_status; closing is a person's move. If it"
+        + " still occurs, or you could not check, call work_block with what you found.";
   }
 
   // ---- the three epic templates -------------------------------------------------------------
@@ -391,31 +375,28 @@ final class PhasePrompts {
         + epic.slug
         + ", id "
         + epic.id
-        + "). Read it with get_epic and read its dossier. Investigate the code it touches. Make the"
-        + " description argue the change (update_epic). Break the work into features and tasks"
-        + " (add_feature, add_task), each task naming one repository and its dependsOn links. Put"
-        + " the paths, names and exact values in the dossier (put_dossier_page, epicId "
-        + epic.id
-        + "). Record decisions and open questions on its thread with add_comment (entityId "
-        + epic.id
-        + "). Do not implement anything: the implement phase is a separate session that starts from"
-        + " what you write. Write its acceptanceCriteria with update_epic: short checkable"
-        + " statements, each one line, at most one '.', fewer than 20 spaces. When every task could be"
-        + " built from the epic alone, transition_epic to "
+        + "). Read it and its dossier (work_details, work_dossier_list). Investigate the code it"
+        + " touches. Make the description argue the change (work_update). Break the work into"
+        + " features and tasks (work_create), each task naming one repository and its dependsOn"
+        + " links. Put paths, names and exact values in the dossier (work_dossier_put). Record decisions and open questions on its thread with"
+        + " work_comment_create. Do not implement anything: the implement phase is a separate"
+        + " session that starts from what you write. Write its acceptanceCriteria with work_update:"
+        + " short checkable statements, each one line, at most one '.', fewer than 20 spaces. When"
+        + " every task could be built from the epic alone, move it to "
         + end(Phase.REFINE)
-        + ", which freezes the scope"
+        + " with work_status, which freezes the scope"
         + afterRefined(epic, " and ends this run: a person schedules it next.")
-        + " If you cannot get there, block_entity with what is missing.";
+        + " If you cannot get there, call work_block with what is missing.";
   }
 
   /**
    * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#READY_FOR_DEV} or {@link
    * EntityStatus#IMPLEMENTING}. The tree and dossier are frozen, so corrections go on the thread.
-   * Tasks in {@code dependsOn} order, each marked with {@code mark_task_implementing} as it starts
-   * and {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record —
-   * since qits-763 each marker moves the task's own status too; landed means released and deployed,
-   * one release request per repository. A task confirmed live may be verified on its own with
-   * {@code transition_task}, which the turn says because the old reading (a task is verified when its
+   * Tasks in {@code dependsOn} order, each marked with {@code implementingAt} as it starts and
+   * {@code implementedAt} as it lands ({@code work_update}) so a run that dies halfway leaves a true
+   * record — since qits-763 each marker moves the task's own status too; landed means released and
+   * deployed, one release request per repository. A task confirmed live may be verified on its own
+   * with {@code work_status}, which the turn says because the old reading (a task is verified when its
    * epic is) is the one an agent would otherwise assume. The claim to IMPLEMENTED is conditional on
    * every task being marked because the move carries any task still unmarked to IMPLEMENTED.
    */
@@ -428,21 +409,19 @@ final class PhasePrompts {
         + epic.slug
         + ", id "
         + epic.id
-        + "). Read it with get_epic: its tree and dossier are the brief. Both are read-only now:"
-        + " record progress and corrections on its thread with add_comment (entityId "
-        + epic.id
-        + ") as the work goes. Work the tasks in dependsOn order: mark_task_implementing when you"
-        + " start one, mark_task_implemented as it lands; each moves that task's status. Landed"
-        + " means released and deployed, through a release request per repository, not merged and"
-        + " not green. Verify a task on its own: once it is confirmed live, transition_task it to"
-        + " VERIFIED."
+        + "). Read it with work_details: its tree and dossier are the brief. Both are read-only now:"
+        + " record progress and corrections on its thread with work_comment_create as the work"
+        + " goes. Work the tasks in dependsOn order: work_update its implementingAt to now when you"
+        + " start one, and its implementedAt as it lands; each moves its status. Landed means"
+        + " released and deployed, through a release request per repository, not merged and not"
+        + " green. Verify a task on its own: once it is live, move it to VERIFIED (work_status)."
         + commitSubjects(q)
         + " Do not integrate the"
-        + " workspace, because verification runs here next. When every task is marked,"
-        + " transition_epic to "
+        + " workspace, because verification runs here next. When every task is marked, move the"
+        + " epic to "
         + end(Phase.IMPLEMENT)
-        + "; that move carries any unmarked task to IMPLEMENTED. If you cannot get"
-        + " there, block_entity with what is missing.";
+        + " with work_status; that move carries any unmarked task to IMPLEMENTED. If you cannot get"
+        + " there, call work_block with what is missing.";
   }
 
   /**
@@ -462,14 +441,13 @@ final class PhasePrompts {
         + epic.slug
         + ", id "
         + epic.id
-        + "). Read it with get_epic, then check on the live platform, feature by feature, that what"
-        + " it promised holds. Fall back to reading the change only if a behaviour cannot be"
-        + " reproduced on demand. Record on its thread with add_comment (entityId "
-        + epic.id
-        + ") what you confirmed and how. If it holds, transition_epic to "
+        + "). Read it with work_details, then check on the live platform, feature by feature, that"
+        + " what it promised holds. Fall back to reading the change only if a behaviour cannot be"
+        + " reproduced on demand. Record on its thread with work_comment_create what you confirmed"
+        + " and how. If it holds, move it to "
         + end(Phase.VERIFY)
-        + "; closing is a"
-        + " person's move. If something does not hold, or you could not check, block_entity with"
+        + " with work_status; closing is a"
+        + " person's move. If something does not hold, or you could not check, call work_block with"
         + " what you found.";
   }
 }

@@ -8,15 +8,12 @@ import io.quarkus.security.identity.SecurityIdentity;
  * <b>What an agent may write on the entity surface: the rows of its own project, and nothing
  * else.</b>
  *
- * <p>The membership rule is not invented here — it reads off the MCP surface. A write route in this
- * package admits {@code qits:agent} exactly where the {@code repository} MCP server already exposes
- * a tool performing that same write, because that server serves an agent with no credential at all:
- * refusing at the REST door what is handed over unauthenticated one package away was an
- * inconsistency, not a boundary. Every write no tool serves — an epic's supersede, and the four
- * deletes — stays {@code qits:admin}. Since qits-1174 an agent's epic move ({@code
- * transition_epic}'s claim) and its refinement design writes ({@code put_design}'s, in {@code
- * RefinementDesignController}) are admitted too, because the MCP server that served them is
- * retiring.
+ * <p>A write route in this package admits {@code qits:agent} where an agent's work needs that
+ * write: the ones the retired {@code repository} MCP server served, which the central {@code qits}
+ * server now reaches through these doors with the agent's own bearer (qits-1174). That includes an
+ * epic's status move and the refinement design writes (in {@code RefinementDesignController}).
+ * Every other write — an epic's supersede, and the deletes of an epic or a ticket — stays {@code
+ * qits:admin}.
  *
  * <p><b>One shared helper rather than a copy per controller.</b> Fourteen routes across nine classes
  * bind the same claim to the same question, and the binding is three lines of which the middle one

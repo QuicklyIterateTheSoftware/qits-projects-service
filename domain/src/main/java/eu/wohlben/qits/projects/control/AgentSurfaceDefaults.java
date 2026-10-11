@@ -19,19 +19,15 @@ import java.util.stream.Stream;
  * (which is a value and not an absence — the epics desk steers with nothing, deliberately) and so
  * does {@code project.work}, the one desk that replaced both (qits-403), every
  * surface carries skip-permissions because that is what every launch does unconditionally today, and
- * each attaches exactly the MCP servers its host daemon's {@code serversFor} attaches at the scope
- * that surface launches with. Everything downstream of here assumes "configured" and "hardcoded" are
+ * each attaches the one platform MCP server, {@code qits} (qits-1174). Everything downstream of here assumes "configured" and "hardcoded" are
  * the same thing on day one.
  *
  * <p><b>Where each value was read from</b>, so the next person can check rather than trust:
  *
  * <ul>
- *   <li>{@code qits-projects-daemon/qits-coding-agents/…/agents/AgentLaunchService.java} — the
- *       tickets prompt, the projects-side repository tool list, this daemon's {@code
- *       serversFor}, the bootstrap turn, and {@code skipPermissions()} on all three render paths.
- *   <li>{@code qits-workspace-daemon/qits-coding-agents/…/agents/AgentLaunchService.java} — the
- *       workspace-side repository tool list (its reads plus the three named write exceptions), the
- *       observability and actions lists, and that daemon's {@code serversFor}.
+ *   <li>{@code qits-coding-agents/…/agents/AgentLaunchService.java} — the composed-run prompt, the
+ *       bootstrap turn, and {@code skipPermissions()} on all three render paths.
+ *   <li>{@code qits-projects-daemon/…/ControlSocket.java} — the projects daemon's bootstrap turn.
  *   <li>{@code projects-daemon/…/DaemonAgentDefaults} and its {@code application.properties} —
  *       {@code CLAUDE} as the harness nobody configured otherwise, and {@code
  *       qits.agent.activity-tracking-enabled=true}.
@@ -79,8 +75,8 @@ public final class AgentSurfaceDefaults {
    * #neutralDefault} rather than 404ing) — which is why {@code AgentSurfaceDefaultsTest} pins the
    * literal.
    *
-   * <p><b>It ships as the epics desk shipped</b> — an empty system prompt, the one project-narrowed
-   * {@code repository} server — because the merged desk inherits the refinement surface's
+   * <p><b>It ships as the epics desk shipped</b> — an empty system prompt — because the merged desk
+   * inherits the refinement surface's
    * configuration, not the triage one's. V30 copied the stored {@code project.epics} row onto this
    * key for the same reason, so an estate that had edited the epics desk carried the edit across
    * before that row was retired (qits-404).
@@ -127,148 +123,44 @@ public final class AgentSurfaceDefaults {
           TICKET_DISPATCH);
 
   // ---------------------------------------------------------------------------------------------
-  // The platform's own MCP servers
+  // The platform's own MCP server
   // ---------------------------------------------------------------------------------------------
-
-  /** qits-projects' server: repositories, epics, tickets. */
-  public static final String SERVER_REPOSITORY = "repository";
-
-  /** qits-observability's server, renamed from {@code repository} when both services claimed it. */
-  public static final String SERVER_OBSERVABILITY = "observability";
-
-  /** The action-library server. No surface attaches it today; the {@code ACTIONS} scope does. */
-  public static final String SERVER_ACTIONS = "actions";
 
   /**
    * The central platform-access server — the {@code qits} CLI served over MCP (qits-630), one
-   * process at {@code <env>-qits-platform-access-mcp-service}. Unlike the other three it takes no
-   * narrowing and no read-only mark: it is scoped by the caller's bearer, not by its url, so a
-   * session can do through it exactly what its credential may do and nothing more. That is also why
-   * it is on for <b>every</b> surface, the composed runs included. Its key is mirrored in
-   * qits-coding-agents' {@code AgentConfigurationDocument.RESERVED_SERVER_KEYS}.
+   * process at {@code <env>-qits-platform-access-mcp-service}, and since qits-1174 the <b>only</b>
+   * platform MCP server an agent gets. It takes no narrowing: it is scoped by the caller's bearer,
+   * not by its url, so a session can do through it exactly what its credential may do. The
+   * read-only mark does apply: the harness appends {@code agentReadOnly=true} to its url, and the
+   * server then serves only its read tools. Its key is mirrored in qits-coding-agents' {@code
+   * AgentConfigurationDocument.RESERVED_SERVER_KEYS}.
    */
   public static final String SERVER_QITS = "qits";
 
   /**
-   * The four reserved server keys. An external catalog entry claiming one of these would silently
-   * displace a platform server in the rendered {@code mcpServers} object, which is why it is a
-   * validation and never a merge. The editor draws its built-in toggles from this list too (the
-   * surface listing answers it as {@code builtInServers}), so a key added here shows up there with
-   * no SPA change.
+   * The built-in servers a surface can attach. The editor draws its built-in toggles from this list
+   * (the surface listing answers it as {@code builtInServers}), so a key added here shows up there
+   * with no SPA change.
    */
-  public static final List<String> BUILT_IN_SERVERS =
-      List.of(SERVER_REPOSITORY, SERVER_OBSERVABILITY, SERVER_ACTIONS, SERVER_QITS);
-
-  // ---------------------------------------------------------------------------------------------
-  // The tool pre-approval lists, copied from the two daemons
-  // ---------------------------------------------------------------------------------------------
+  public static final List<String> BUILT_IN_SERVERS = List.of(SERVER_QITS);
 
   /**
-   * The projects daemon's {@code READ_ONLY_REPOSITORY_TOOLS} — its whole {@code repository}
-   * pre-approval, reads only. Twelve ids, and the snake_case half is not a slip: the epic and ticket
-   * tools declare those names on this service's own MCP server and the id must match character for
-   * character or the pre-approval matches nothing.
+   * The per-service servers qits-1174 retired: qits-projects' own {@code repository} server,
+   * {@code observability} and {@code actions}. No surface may attach them, and V42 deleted every
+   * stored attachment to them.
    */
-  public static final List<String> PROJECTS_REPOSITORY_TOOLS =
-      List.of(
-          "mcp__repository__listRepositories",
-          "mcp__repository__listBranches",
-          "mcp__repository__listCommits",
-          "mcp__repository__listCommitChanges",
-          "mcp__repository__getCommitFileDiff",
-          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
-          "mcp__repository__measureCommitSubjects",
-          "mcp__repository__listActions",
-          "mcp__repository__taskPrompt",
-          "mcp__repository__list_epics",
-          "mcp__repository__get_epic",
-          "mcp__repository__list_tickets",
-          "mcp__repository__get_ticket");
+  public static final List<String> RETIRED_SERVERS =
+      List.of("repository", "observability", "actions");
 
   /**
-   * The workspace daemon's {@code REPOSITORY_TOOLS} — its reads, then the three named write
-   * exceptions concatenated in the order that daemon concatenates them.
-   *
-   * <p>It is a longer and <em>differently ordered</em> list than {@link
-   * #PROJECTS_REPOSITORY_TOOLS} for the same server key, which is precisely why the pre-approval
-   * lists are stored per attachment rather than as one constant keyed by server: the two daemons
-   * disagree, deliberately and with reasons written down in each bucket's javadoc, and a single
-   * constant could not seed both faithfully.
+   * The keys an external catalog entry may not claim: the built-in server and the retired ones. An
+   * entry under a built-in key would silently displace the platform's server in the rendered {@code
+   * mcpServers} object. The retired keys stay reserved because a harness or an old document may
+   * still treat them as the platform's own, and qits-coding-agents refuses an external entry under
+   * any of them; a key accepted here would then break the launch.
    */
-  public static final List<String> WORKSPACE_REPOSITORY_TOOLS =
-      Stream.of(
-              List.of(
-                  "mcp__repository__listRepositories",
-                  "mcp__repository__listBranches",
-                  "mcp__repository__listWorkspaces",
-                  "mcp__repository__listCommits",
-                  "mcp__repository__listCommitChanges",
-                  "mcp__repository__getCommitFileDiff",
-                  // qits-302: a read added on this side; the daemons' copies do not list it yet.
-                  "mcp__repository__measureCommitSubjects",
-                  "mcp__repository__listActions",
-                  "mcp__repository__taskPrompt",
-                  "mcp__repository__list_tickets",
-                  "mcp__repository__get_ticket",
-                  "mcp__repository__list_epics",
-                  "mcp__repository__get_epic"),
-              // TICKET_THREAD_TOOLS — commenting is additive and a comment stays editable. The
-              // general pair joined the ticket pair with qits-551, when every entity got a thread.
-              List.of(
-                  "mcp__repository__add_ticket_comment",
-                  "mcp__repository__update_ticket_comment",
-                  "mcp__repository__add_comment",
-                  "mcp__repository__update_comment"),
-              // TICKET_RESOLUTION_TOOLS — the dispatch is told to resolve its ticket once released.
-              List.of("mcp__repository__transition_ticket"),
-              // TASK_IMPLEMENTATION_TOOLS — the epic dispatch marks tasks as the work starts
-              // (qits-749) and as it lands.
-              List.of(
-                  "mcp__repository__mark_task_implementing",
-                  "mcp__repository__mark_task_implemented"))
-          .flatMap(List::stream)
-          .toList();
-
-  /** The workspace daemon's {@code READ_ONLY_OBSERVABILITY_TOOLS} — the five telemetry reads. */
-  public static final List<String> OBSERVABILITY_TOOLS =
-      List.of(
-          "mcp__observability__telemetryErrors",
-          "mcp__observability__telemetryTrace",
-          "mcp__observability__telemetrySlowSpans",
-          "mcp__observability__telemetrySearchLogs",
-          "mcp__observability__telemetryMetrics");
-
-  /**
-   * The workspace daemon's {@code READ_ONLY_ACTION_TOOLS}. No surface attaches the {@code actions}
-   * server today — only the {@code ACTIONS} scope does, and no surface launches at that scope — so
-   * this list is here as the shipped pre-approval for an operator who attaches it, not as part of
-   * any seed.
-   */
-  public static final List<String> ACTION_TOOLS =
-      List.of(
-          "mcp__actions__listGlobalActions",
-          "mcp__actions__getGlobalAction",
-          "mcp__actions__listRepositoryActions",
-          "mcp__actions__getRepositoryAction");
-
-  /**
-   * The shipped pre-approval for a built-in server, or an empty list for a key nobody ships.
-   *
-   * <p>{@link #SERVER_QITS} ships an empty list on purpose. An empty attachment list defers to the
-   * daemon's own for that server, and on Claude the library pre-approves {@code mcp__qits__*}
-   * wherever {@code qits} is attached regardless of what the attachment carries; a wildcard stored
-   * here would reach Kimi's {@code enabledTools} as a bare {@code *}, a list of tool names in which
-   * nothing says a {@code *} means "all".
-   */
-  public static List<String> shippedToolsFor(String serverKey) {
-    return switch (serverKey == null ? "" : serverKey) {
-      case SERVER_REPOSITORY -> PROJECTS_REPOSITORY_TOOLS;
-      case SERVER_OBSERVABILITY -> OBSERVABILITY_TOOLS;
-      case SERVER_ACTIONS -> ACTION_TOOLS;
-      case SERVER_QITS -> List.of();
-      default -> List.of();
-    };
-  }
+  public static final List<String> RESERVED_SERVER_KEYS =
+      Stream.concat(RETIRED_SERVERS.stream(), BUILT_IN_SERVERS.stream()).toList();
 
   // ---------------------------------------------------------------------------------------------
   // The prompts
@@ -311,12 +203,12 @@ public final class AgentSurfaceDefaults {
 
   /**
    * The projects daemon's {@code TASK_PROMPT_BOOTSTRAP} — the one-sentence turn {@code
-   * epic.autonomous} is seeded with. It carries the user's authority while the {@code taskPrompt}
-   * MCP tool carries the content, which is the whole point of the push→fetch inversion.
+   * epic.autonomous} is seeded with. It carries the user's authority while the work item, read
+   * through the {@code qits} server's {@code work_details} tool, carries the content.
    */
   public static final String PROJECT_TASK_PROMPT_BOOTSTRAP =
-      "Fetch the current task prompt for this project with the taskPrompt tool, then implement what"
-          + " it describes.";
+      "Read the work item for this project with the qits MCP server's work_details tool, then"
+          + " implement what it describes.";
 
   /**
    * The workspace daemon's {@code TASK_PROMPT_BOOTSTRAP}, which says "workspace" where the projects
@@ -325,57 +217,23 @@ public final class AgentSurfaceDefaults {
    * pushes on the day the store ships.
    */
   public static final String WORKSPACE_TASK_PROMPT_BOOTSTRAP =
-      "Fetch the current task prompt for this workspace with the taskPrompt tool, then implement"
-          + " what it describes.";
+      "Read the work item this workspace is for with the qits MCP server's work_details tool, then"
+          + " implement what it describes.";
 
   // ---------------------------------------------------------------------------------------------
   // The seed
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * The projects daemon's {@code repository} server at {@code PROJECT} scope: {@code
-   * ?projectId=<id>}, no narrowing beyond it, so the session sees every repository in the project.
+   * The central {@code qits} server, the one platform server on every surface (qits-630,
+   * qits-1174): no narrowing, because the bearer on each call scopes it (see {@link #SERVER_QITS}),
+   * and an empty tool list, because on Claude the library pre-approves {@code mcp__qits__*} wherever
+   * {@code qits} is attached; a wildcard stored here would reach Kimi's {@code enabledTools} as a
+   * bare {@code *}. {@code readOnly} is the unattended fence: the harness appends {@code
+   * agentReadOnly=true} and the server then serves only its read tools.
    */
-  private static AgentMcpAttachmentDto projectScopedRepository(boolean readOnly) {
-    return new AgentMcpAttachmentDto(
-        SERVER_REPOSITORY, true, false, false, readOnly, PROJECTS_REPOSITORY_TOOLS);
-  }
-
-  /**
-   * The projects daemon's {@code repository} server at {@code REPOSITORY} scope: {@code
-   * ?projectId=<id>&repositoryId=<name>}, narrowed to the one repository the container checked out.
-   */
-  private static AgentMcpAttachmentDto repositoryScopedRepository(boolean readOnly) {
-    return new AgentMcpAttachmentDto(
-        SERVER_REPOSITORY, true, true, false, readOnly, PROJECTS_REPOSITORY_TOOLS);
-  }
-
-  /**
-   * The workspace daemon's pair at {@code REPOSITORY} scope — the shape all four human workspace
-   * surfaces and the dispatch launch with. {@code repository} carries all three narrowings; {@code
-   * observability} carries two and no {@code projectId}, because that service has no notion of one
-   * and its tool filter hides everything unless both of its narrowings are present.
-   *
-   * <p>The {@code actions} server is deliberately absent. It is attached only at the {@code ACTIONS}
-   * scope — the "configure this repository" session — and no surface in the vocabulary launches at
-   * that scope, so seeding it here would attach a server no session attaches today.
-   */
-  private static List<AgentMcpAttachmentDto> workspacePair(boolean readOnly) {
-    return List.of(
-        new AgentMcpAttachmentDto(
-            SERVER_REPOSITORY, true, true, true, readOnly, WORKSPACE_REPOSITORY_TOOLS),
-        new AgentMcpAttachmentDto(
-            SERVER_OBSERVABILITY, false, true, true, readOnly, OBSERVABILITY_TOOLS),
-        qits());
-  }
-
-  /**
-   * The central {@code qits} server, last on every surface (qits-630): no narrowing and no read-only
-   * mark, because the bearer on each call scopes it — see {@link #SERVER_QITS}. V33 appends the same
-   * attachment to every stored surface that predates it.
-   */
-  private static AgentMcpAttachmentDto qits() {
-    return new AgentMcpAttachmentDto(SERVER_QITS, false, false, false, false, List.of());
+  private static List<AgentMcpAttachmentDto> qits(boolean readOnly) {
+    return List.of(new AgentMcpAttachmentDto(SERVER_QITS, false, false, false, readOnly, List.of()));
   }
 
   private static AgentSurfaceConfigurationDto surface(
@@ -432,22 +290,19 @@ public final class AgentSurfaceDefaults {
 
   private static Map<String, AgentSurfaceConfigurationDto> shipped() {
     Map<String, AgentSurfaceConfigurationDto> map = new LinkedHashMap<>();
-    // The one front desk ships as the epics desk did: the merged desk inherits the refinement
-    // surface's configuration, and the library's shipped prompt for PROJECT_WORK is empty too.
-    map.put(
-        PROJECT_WORK,
-        surface(PROJECT_WORK, true, "", "", List.of(projectScopedRepository(false), qits())));
+    // The one front desk ships as the epics desk did: an empty prompt, like the library's.
+    map.put(PROJECT_WORK, surface(PROJECT_WORK, true, "", "", qits(false)));
     // The four workspace surfaces send byte-identical launch requests today — which is the whole
     // reason the surface had to become a value that travels before any of this could be configured.
     // They are seeded identically here, and that identity is what an editor can now break.
-    map.put(EPIC_CHAT, surface(EPIC_CHAT, true, "", "", workspacePair(false)));
-    map.put(EPIC_AGENT, surface(EPIC_AGENT, false, "", "", workspacePair(false)));
-    map.put(WORKSPACE_CHAT, surface(WORKSPACE_CHAT, true, "", "", workspacePair(false)));
-    map.put(WORKSPACE_AGENT, surface(WORKSPACE_AGENT, false, "", "", workspacePair(false)));
+    map.put(EPIC_CHAT, surface(EPIC_CHAT, true, "", "", qits(false)));
+    map.put(EPIC_AGENT, surface(EPIC_AGENT, false, "", "", qits(false)));
+    map.put(WORKSPACE_CHAT, surface(WORKSPACE_CHAT, true, "", "", qits(false)));
+    map.put(WORKSPACE_AGENT, surface(WORKSPACE_AGENT, false, "", "", qits(false)));
     // The two composed runs: a chat steered by the one orchestration prompt both of them ship, with
-    // the bootstrap turn pushed over stdin and every server url read-only marked, so this service's
-    // own ReadOnlyRepositoryToolFilter hides the mutating tools. The prompt is shared and the
-    // bootstrap turn is not — see COMPOSED_RUN_PROMPT for why that split is the right one.
+    // the bootstrap turn pushed over stdin and the qits url read-only marked, so the central server
+    // serves only its read tools. The prompt is shared and the bootstrap turn is not — see
+    // COMPOSED_RUN_PROMPT for why that split is the right one.
     map.put(
         EPIC_AUTONOMOUS,
         surface(
@@ -455,7 +310,7 @@ public final class AgentSurfaceDefaults {
             true,
             COMPOSED_RUN_PROMPT,
             PROJECT_TASK_PROMPT_BOOTSTRAP,
-            List.of(repositoryScopedRepository(true), qits())));
+            qits(true)));
     map.put(
         TICKET_DISPATCH,
         surface(
@@ -463,7 +318,7 @@ public final class AgentSurfaceDefaults {
             true,
             COMPOSED_RUN_PROMPT,
             WORKSPACE_TASK_PROMPT_BOOTSTRAP,
-            workspacePair(true)));
+            qits(true)));
     return Map.copyOf(map);
   }
 
@@ -485,8 +340,8 @@ public final class AgentSurfaceDefaults {
    * prompts, no servers, and the permission mode every launch uses today.
    *
    * <p><b>No MCP servers, and that is the conservative choice rather than an oversight.</b> This
-   * service cannot know what an unknown surface is addressing, and attaching the {@code repository}
-   * server speculatively would hand a session tools against a scope nobody chose. A session with no
+   * service cannot know what an unknown surface is for, and attaching the {@code qits} server
+   * speculatively would hand a session tools nobody chose. A session with no
    * servers is a session that can still be talked to; one with the wrong servers is not obviously
    * anything.
    */

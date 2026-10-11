@@ -147,6 +147,17 @@ class GoldenMasterMachineryTest {
     assertEquals(List.of(), freezer.idPaths());
   }
 
+  /** qits-1185: a version bump that changes a token's length must not change the recording. */
+  @Test
+  void aUniqueTokenFreezesToTheSameWidthWhateverItsLength() throws Exception {
+    for (String version : List.of("2026.1010.154418", "2026.1011.82728")) {
+      Freezer freezer = new Freezer().uniqueTokens(List.of(version));
+      assertEquals(
+          "{\"version\":\"00000001\"}",
+          freezer.freeze(json("{\"version\":\"" + version + "\"}")).toString());
+    }
+  }
+
   @Test
   void aKeyThatIsNotAPlainIdentifierIsBracketed() throws Exception {
     Freezer freezer = new Freezer();

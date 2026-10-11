@@ -30,10 +30,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  *
  * <h2>Why this class exists rather than the rule being written at each door</h2>
  *
- * <p>Several surfaces perform this write — {@code POST /work/{qualifiedId}/blocked} ({@code
- * WorkEntityDoors.block}), {@code mcp/CommentMcpTools}' {@code block_entity} pair and
- * {@code mcp/TicketMcpTools}' {@code block_ticket} pair — exactly as several surfaces perform a
- * transition, and a rule written at each would be free to drift. What is written here is all of the
+ * <p>The write has had several surfaces — today {@code POST /work/{qualifiedId}/blocked} ({@code
+ * WorkEntityDoors.block}), which the {@code qits} MCP server's {@code work_block} and {@code
+ * work_unblock} reach — and a rule written at each would be free to drift. What is written here is all of the
  * rule: a reason is required to block and not to unblock, only a status that starts a phase may be
  * blocked, and what happened is said on the entity's own thread. Each door keeps only what is
  * genuinely its own — the id it accepts, the agent binding, the hint and the shape it answers.

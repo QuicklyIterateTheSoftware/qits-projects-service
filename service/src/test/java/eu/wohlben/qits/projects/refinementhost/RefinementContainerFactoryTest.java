@@ -71,11 +71,11 @@ public class RefinementContainerFactoryTest {
     assertFalse(env.containsKey("QITS_WORKSPACE_DAEMON_SERVICES_AUTOSTART"));
     assertFalse(env.containsKey("QITS_WORKSPACE_DAEMON_SERVICE_PROXY_BASE"));
     assertFalse(env.get("QITS_WORKSPACE_DAEMON_API_TOKEN").isBlank());
-    // Two MCP servers, and no actions server — there is no actions surface on this route.
-    assertEquals("http://dev-qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
-    assertTrue(env.get("QITS_OBSERVABILITY_MCP_URL").endsWith("/observability/mcp"));
+    // One platform MCP server (qits-1174): none of the retired per-service ones.
+    assertFalse(env.containsKey("QITS_REPOSITORY_MCP_URL"));
+    assertFalse(env.containsKey("QITS_OBSERVABILITY_MCP_URL"));
     assertFalse(env.containsKey("QITS_ACTIONS_MCP_URL"));
-    // And the central qits server (qits-630), composed from the environment's `dev` arm under test.
+    // The central qits server (qits-630), composed from the environment's `dev` arm under test.
     assertEquals(
         "http://dev-qits-platform-access-mcp-service:8080/mcp", env.get("QITS_PLATFORM_MCP_URL"));
     // The shared credential home, under the daemon's own qits.workspace.-prefixed key.

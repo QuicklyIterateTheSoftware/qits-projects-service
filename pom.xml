@@ -30,7 +30,7 @@
          the mandatory -Dqits.variant=oauth|forwardauth|local auth profiles. -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-projects</artifactId>
-    <version>2026.1011.111954</version>
+    <version>2026.1011.145806</version>
     <packaging>pom</packaging>
     <name>qits-projects</name>
 
@@ -218,8 +218,8 @@
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
-        <qits.workspaces-service-pacts-qits-projects-service.version>2026.1011.50559</qits.workspaces-service-pacts-qits-projects-service.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1011.75606</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.workspaces-service-pacts-qits-projects-service.version>2026.1011.125318</qits.workspaces-service-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1011.133808</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1011.74208</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1011.81658</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1011.81454</qits.maintenance-service-pacts-qits-projects-service.version>
@@ -232,7 +232,7 @@
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1010.133955</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1011.50559</qits.workspaces-golden-masters.version>
-        <qits.maintenance-golden-masters.version>2026.1010.124627</qits.maintenance-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
@@ -244,8 +244,8 @@
         <qits.maven.repository.url>https://registry.qits.wohlben.eu/artifacts/maven/maven</qits.maven.repository.url>
 
         <!-- The container ITs need docker and a built qits/workspace image, which a fresh clone has
-             not got — and the ones that survived the cut here are the MCP/task-prompt delivery ITs
-             that drive a real container. `mvn verify` must be green without them. -->
+             not got — and the ones here drive a real container. `mvn verify` must be green
+             without them. -->
         <skipITs>true</skipITs>
         <!-- Surefire's @{argLine} has no value unless something (jacoco/quarkus) sets it. -->
         <argLine/>

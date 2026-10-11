@@ -583,7 +583,8 @@ components:
           type: array
           items:
             type: string
-          description: Keys an entry may not claim — the platform's own servers.
+          description: "Keys an entry may not claim: the platform's own server and\
+            \ the retired ones."
         credentialApplication:
           type: string
           description: "The qits-configuration application every credentialKey lives\
@@ -1694,7 +1695,7 @@ components:
       properties:
         server:
           type: string
-          description: "repository, observability or actions"
+          description: "qits, the one built-in server"
         narrowProject:
           type: boolean
         narrowRepository:
@@ -2564,7 +2565,7 @@ components:
           type: array
           items:
             type: string
-          description: The MCP servers this platform can attach — the reserved keys.
+          description: "The MCP servers this platform can attach: qits."
     SurfaceUpdateRequest:
       type: object
       properties:

@@ -34,27 +34,17 @@ import org.junit.jupiter.api.Test;
  * <p>Where each expectation came from, for whoever checks it:
  *
  * <ul>
- *   <li>{@code qits-projects-daemon/qits-coding-agents/src/main/java/eu/wohlben/qits/projectsdaemon/agents/AgentLaunchService.java}
- *       — {@code TASK_PROMPT_BOOTSTRAP} (:83), {@code READ_ONLY_REPOSITORY_TOOLS} (:111), {@code
- *       TICKETS_DESK_PROMPT} (:142), {@code renderChat}/{@code renderAutonomousChat}/{@code
- *       renderInteractive}'s {@code skipPermissions()} (:529, :598, :629), {@code
- *       systemPromptFor} (:650), {@code serversFor} (:690).
- *   <li>{@code qits-workspace-daemon/qits-coding-agents/src/main/java/eu/wohlben/qits/workspacedaemon/agents/AgentLaunchService.java}
- *       — {@code TASK_PROMPT_BOOTSTRAP} (:84), {@code READ_ONLY_ACTION_TOOLS} (:94), {@code
- *       READ_ONLY_REPOSITORY_TOOLS} (:118), {@code TICKET_THREAD_TOOLS} (:155), {@code
- *       TICKET_RESOLUTION_TOOLS} (:182), {@code TASK_IMPLEMENTATION_TOOLS} (:217), {@code
- *       REPOSITORY_TOOLS} (:224), {@code READ_ONLY_OBSERVABILITY_TOOLS} (:243), {@code serversFor}
- *       (:736).
- *   <li>{@code projects-daemon/src/main/java/eu/wohlben/qits/projectsdaemon/DaemonAgentDefaults.java}
- *       (:25) and {@code application.properties} (:104-105) — the CLAUDE fallback and activity
- *       tracking on.
- *   <li>{@code AgentLaunchService.claudeChatProtocol} (projects :540, workspace :622) — remote
- *       control on every Claude chat, over the SDK control channel, and on no interactive launch.
- *   <li>{@code eu.wohlben.qits:qits-coding-agents} — {@code
- *       AgentLaunchService.COMPOSED_RUN_PROMPT}, surfaced as {@code
+ *   <li>{@code eu.wohlben.qits:qits-coding-agents} — {@code AgentLaunchService.TASK_PROMPT_BOOTSTRAP}
+ *       (the workspace daemon's bootstrap turn), {@code skipPermissions()} on every render path, and
+ *       {@code AgentLaunchService.COMPOSED_RUN_PROMPT}, surfaced as {@code
  *       AgentSurfaceConfigurations.shippedSystemPrompt}: the one orchestration prompt both composed
- *       runs ship. No line is named because the copy is tracked against the constant rather than
- *       against a coordinate — that library is where the prompt is edited, and this is the copy.
+ *       runs ship.
+ *   <li>{@code qits-projects-daemon}'s {@code ControlSocket.TASK_PROMPT_BOOTSTRAP} — the projects
+ *       daemon's bootstrap turn.
+ *   <li>{@code projects-daemon/src/main/java/eu/wohlben/qits/projectsdaemon/DaemonAgentDefaults.java}
+ *       and {@code application.properties} — the CLAUDE fallback and activity tracking on.
+ *   <li>{@code AgentLaunchService.claudeChatProtocol} — remote control on every Claude chat, over the
+ *       SDK control channel, and on no interactive launch.
  * </ul>
  */
 public class AgentSurfaceDefaultsTest {
@@ -63,74 +53,17 @@ public class AgentSurfaceDefaultsTest {
   // The literals, copied from the daemons
   // -------------------------------------------------------------------------------------------
 
-  /** Copied from the projects daemon, character for character. */
-  private static final List<String> PROJECTS_REPOSITORY_TOOLS =
-      List.of(
-          "mcp__repository__listRepositories",
-          "mcp__repository__listBranches",
-          "mcp__repository__listCommits",
-          "mcp__repository__listCommitChanges",
-          "mcp__repository__getCommitFileDiff",
-          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
-          "mcp__repository__measureCommitSubjects",
-          "mcp__repository__listActions",
-          "mcp__repository__taskPrompt",
-          "mcp__repository__list_epics",
-          "mcp__repository__get_epic",
-          "mcp__repository__list_tickets",
-          "mcp__repository__get_ticket");
-
-  /** Copied from the workspace daemon: its reads, then its three named write exceptions. */
-  private static final List<String> WORKSPACE_REPOSITORY_TOOLS =
-      List.of(
-          "mcp__repository__listRepositories",
-          "mcp__repository__listBranches",
-          "mcp__repository__listWorkspaces",
-          "mcp__repository__listCommits",
-          "mcp__repository__listCommitChanges",
-          "mcp__repository__getCommitFileDiff",
-          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
-          "mcp__repository__measureCommitSubjects",
-          "mcp__repository__listActions",
-          "mcp__repository__taskPrompt",
-          "mcp__repository__list_tickets",
-          "mcp__repository__get_ticket",
-          "mcp__repository__list_epics",
-          "mcp__repository__get_epic",
-          "mcp__repository__add_ticket_comment",
-          "mcp__repository__update_ticket_comment",
-          "mcp__repository__add_comment",
-          "mcp__repository__update_comment",
-          "mcp__repository__transition_ticket",
-          "mcp__repository__mark_task_implementing",
-          "mcp__repository__mark_task_implemented");
-
-  private static final List<String> OBSERVABILITY_TOOLS =
-      List.of(
-          "mcp__observability__telemetryErrors",
-          "mcp__observability__telemetryTrace",
-          "mcp__observability__telemetrySlowSpans",
-          "mcp__observability__telemetrySearchLogs",
-          "mcp__observability__telemetryMetrics");
-
-  private static final List<String> ACTION_TOOLS =
-      List.of(
-          "mcp__actions__listGlobalActions",
-          "mcp__actions__getGlobalAction",
-          "mcp__actions__listRepositoryActions",
-          "mcp__actions__getRepositoryAction");
-
   /**
    * The projects daemon's bootstrap turn. Note the workspace daemon's says "workspace" where this
    * says "project" — two constants in two repositories, and the divergence is preserved.
    */
   private static final String PROJECT_BOOTSTRAP =
-      "Fetch the current task prompt for this project with the taskPrompt tool, then implement what"
-          + " it describes.";
+      "Read the work item for this project with the qits MCP server's work_details tool, then"
+          + " implement what it describes.";
 
   private static final String WORKSPACE_BOOTSTRAP =
-      "Fetch the current task prompt for this workspace with the taskPrompt tool, then implement"
-          + " what it describes.";
+      "Read the work item this workspace is for with the qits MCP server's work_details tool, then"
+          + " implement what it describes.";
 
   /**
    * The composed runs' orchestration prompt as the library's text block renders it — the same block,
@@ -213,28 +146,37 @@ public class AgentSurfaceDefaultsTest {
     assertEquals(AgentSurfaceDefaults.SURFACES.size(), AgentSurfaceDefaults.SHIPPED.size());
   }
 
+  /** qits-1174: one built-in server; the retired keys stay reserved for the catalog. */
   @Test
-  public void theReservedServerKeysAreTheFourPlatformServers() {
+  public void qitsIsTheOneBuiltInServerAndTheRetiredKeysStayReserved() {
+    assertEquals(List.of("qits"), AgentSurfaceDefaults.BUILT_IN_SERVERS);
+    assertEquals(
+        List.of("repository", "observability", "actions"), AgentSurfaceDefaults.RETIRED_SERVERS);
     assertEquals(
         List.of("repository", "observability", "actions", "qits"),
-        AgentSurfaceDefaults.BUILT_IN_SERVERS);
+        AgentSurfaceDefaults.RESERVED_SERVER_KEYS);
   }
 
-  /** The bare attachment every surface carries last: no narrowing, no mark, no tool list. */
+  /** The bare attachment: no narrowing, no mark, no tool list. */
   private static final AgentMcpAttachmentDto QITS =
       new AgentMcpAttachmentDto("qits", false, false, false, false, List.of());
 
+  /** The same attachment with the unattended fence: the central server serves only reads. */
+  private static final AgentMcpAttachmentDto QITS_READ_ONLY =
+      new AgentMcpAttachmentDto("qits", false, false, false, true, List.of());
+
   /**
-   * qits-630: the central {@code qits} server is on for every shipped surface, last, and bare — the
-   * bearer on each call scopes it, so there is nothing for a narrowing or a read-only mark to say.
+   * qits-1174: every shipped surface attaches the central {@code qits} server and nothing else. The
+   * bearer on each call scopes it, so there is nothing for a narrowing to say.
    */
   @Test
-  public void everyShippedSurfaceAttachesTheQitsServerLastAndBare() {
+  public void everyShippedSurfaceAttachesOnlyTheQitsServer() {
     for (String surface : AgentSurfaceDefaults.SURFACES) {
       List<AgentMcpAttachmentDto> servers = AgentSurfaceDefaults.SHIPPED.get(surface).mcpServers();
-      assertEquals(QITS, servers.get(servers.size() - 1), surface + ": qits is on, and last");
+      assertEquals(1, servers.size(), surface + ": one platform server");
+      assertEquals("qits", servers.get(0).server(), surface);
+      assertEquals(List.of(), servers.get(0).allowedTools(), surface + ": the daemon's own list");
     }
-    assertEquals(List.of(), AgentSurfaceDefaults.shippedToolsFor("qits"));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -284,8 +226,7 @@ public class AgentSurfaceDefaultsTest {
 
   /**
    * {@code project.work} ships as the epics desk it replaced did — an empty system prompt (a value,
-   * not an absence: the desk steers with nothing, deliberately) and the one project-narrowed {@code
-   * repository} server at {@code PROJECT} scope. The epics desk itself, and its literal, are gone
+   * not an absence: the desk steers with nothing, deliberately). The epics desk itself, and its literal, are gone
    * (qits-404); this is the surface that carries the answer forward now.
    */
   @Test
@@ -295,12 +236,7 @@ public class AgentSurfaceDefaultsTest {
     assertNotNull(work.systemPrompt(), "empty, never null — the merged desk steers with nothing");
     assertEquals("", work.systemPrompt(), "not the tickets desk's prompt");
     assertEquals("", work.initialPrompt());
-    assertEquals(
-        List.of(
-            new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS),
-            QITS),
-        work.mcpServers(),
-        "one project-narrowed repository server at PROJECT scope, then qits");
+    assertEquals(List.of(QITS), work.mcpServers());
   }
 
   // -------------------------------------------------------------------------------------------
@@ -312,34 +248,13 @@ public class AgentSurfaceDefaultsTest {
    * today the workspace daemon cannot tell these four apart at all.
    */
   @Test
-  public void theFourWorkspaceSurfacesShipTheRepositoryAndObservabilityPair() {
-    List<AgentMcpAttachmentDto> expected =
-        List.of(
-            new AgentMcpAttachmentDto(
-                "repository", true, true, true, false, WORKSPACE_REPOSITORY_TOOLS),
-            new AgentMcpAttachmentDto(
-                "observability", false, true, true, false, OBSERVABILITY_TOOLS),
-            QITS);
+  public void theFourWorkspaceSurfacesShipTheBareQitsServer() {
     for (String surface : List.of("epic.chat", "epic.agent", "workspace.chat", "workspace.agent")) {
       AgentSurfaceConfigurationDto shipped = AgentSurfaceDefaults.SHIPPED.get(surface);
-      assertEquals(expected, shipped.mcpServers(), surface + ": serversFor(REPOSITORY)");
+      assertEquals(List.of(QITS), shipped.mcpServers(), surface);
       assertEquals("", shipped.systemPrompt(), surface + ": the workspace daemon has no desk axis");
       assertEquals("", shipped.initialPrompt(), surface + ": the caller composes its own first turn");
     }
-  }
-
-  /**
-   * The {@code actions} server is attached by no surface, and its absence is asserted rather than
-   * assumed: it is wired only at the {@code ACTIONS} scope — the "configure this repository"
-   * session — and no surface in the vocabulary launches at that scope.
-   */
-  @Test
-  public void noSurfaceAttachesTheActionsServerThoughItsShippedToolsExist() {
-    assertTrue(
-        AgentSurfaceDefaults.SHIPPED.values().stream()
-            .flatMap(s -> s.mcpServers().stream())
-            .noneMatch(a -> "actions".equals(a.server())));
-    assertEquals(ACTION_TOOLS, AgentSurfaceDefaults.shippedToolsFor("actions"));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -366,27 +281,20 @@ public class AgentSurfaceDefaultsTest {
   }
 
   @Test
-  public void theTwoComposedRunsCarryTheirBootstrapTurnAndReadOnlyMarkedServers() {
+  public void theTwoComposedRunsCarryTheirBootstrapTurnAndAReadOnlyMarkedQitsServer() {
     AgentSurfaceConfigurationDto autonomous = AgentSurfaceDefaults.SHIPPED.get("epic.autonomous");
     assertEquals(PROJECT_BOOTSTRAP, autonomous.initialPrompt());
     assertEquals(
-        List.of(
-            new AgentMcpAttachmentDto("repository", true, true, false, true, PROJECTS_REPOSITORY_TOOLS),
-            QITS),
+        List.of(QITS_READ_ONLY),
         autonomous.mcpServers(),
-        "launchAutonomous renders at REPOSITORY scope with every url read-only marked");
+        "an unattended run: the qits url is read-only marked");
 
     AgentSurfaceConfigurationDto dispatch = AgentSurfaceDefaults.SHIPPED.get("ticket.dispatch");
     assertEquals(
         WORKSPACE_BOOTSTRAP,
         dispatch.initialPrompt(),
         "the workspace daemon's constant says 'workspace' where the projects one says 'project'");
-    assertTrue(
-        dispatch.mcpServers().stream()
-            .filter(a -> !"qits".equals(a.server()))
-            .allMatch(AgentMcpAttachmentDto::readOnly),
-        "both of the pair are read-only marked on an autonomous run; qits takes no mark, the"
-            + " library leaves its url alone and the bearer is the fence");
+    assertEquals(List.of(QITS_READ_ONLY), dispatch.mcpServers());
   }
 
   // -------------------------------------------------------------------------------------------

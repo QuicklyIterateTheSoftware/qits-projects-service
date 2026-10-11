@@ -126,7 +126,7 @@ public class PhasePromptsTest {
           EntityStatus.REPORTED, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED
         }) {
       String prompt = promptFor(status);
-      assertTrue(prompt.contains("id tkt-123)") && prompt.contains("get_ticket"), status + ": " + prompt);
+      assertTrue(prompt.contains("id tkt-123)") && prompt.contains("work_details"), status + ": " + prompt);
       assertTrue(prompt.contains("Login button is the wrong colour"), status + ": " + prompt);
       assertTrue(prompt.contains("login-button-is-the-wrong-colour"), status + ": " + prompt);
     }
@@ -155,10 +155,10 @@ public class PhasePromptsTest {
   public void refineWritesItsResultIntoTheDescription() {
     String prompt = promptFor(EntityStatus.REPORTED);
     assertTrue(
-        prompt.contains("into the ticket's description with update_ticket"),
+        prompt.contains("into the ticket's description with work_update"),
         "the field and the tool that writes it: " + prompt);
     assertTrue(
-        prompt.contains("put_dossier_page (ticketId tkt-123) only for what prose cannot hold"),
+        prompt.contains("work_dossier_put only for what prose cannot hold"),
         "with the dossier as the bounded exception: " + prompt);
   }
 
@@ -170,8 +170,8 @@ public class PhasePromptsTest {
   public void bothRefineTurnsNameTheAcceptanceCriteriaTheirToolAndTheItemRules() {
     String ticket = promptFor(EntityStatus.REPORTED);
     String epic = epicPromptFor(EntityStatus.REPORTED);
-    assertTrue(ticket.contains("Write its acceptanceCriteria with update_ticket"), ticket);
-    assertTrue(epic.contains("Write its acceptanceCriteria with update_epic"), epic);
+    assertTrue(ticket.contains("Write its acceptanceCriteria with work_update"), ticket);
+    assertTrue(epic.contains("Write its acceptanceCriteria with work_update"), epic);
     for (String turn : new String[] {ticket, epic}) {
       assertTrue(
           turn.contains("each one line, at most one '.', fewer than 20 spaces"),
@@ -248,8 +248,8 @@ public class PhasePromptsTest {
   @Test
   public void implementCommentsAsTheWorkGoesAndKeepsTheBrief() {
     String prompt = promptFor(EntityStatus.READY_FOR_DEV);
-    assertTrue(prompt.contains("Comment with add_ticket_comment as the work goes"), prompt);
-    assertFalse(prompt.contains("update_ticket_comment"), prompt);
+    assertTrue(prompt.contains("Comment with work_comment_create as the work goes"), prompt);
+    assertFalse(prompt.contains("work_comment_update"), prompt);
     assertTrue(
         prompt.contains("say so on the thread and do not rewrite it"),
         "a contradiction goes on the thread, not into the brief it disagrees with: " + prompt);
@@ -271,7 +271,7 @@ public class PhasePromptsTest {
     assertTrue(onThePlatform < byReading, "the fallback comes second: " + prompt);
     assertTrue(prompt.contains("cannot be reproduced on demand"), prompt);
     assertTrue(
-        prompt.contains("Say on the thread with add_ticket_comment which of the two you did"),
+        prompt.contains("Say on the thread with work_comment_create which of the two you did"),
         "the thread says which arm was used, since they are different evidence: " + prompt);
   }
 
@@ -284,11 +284,11 @@ public class PhasePromptsTest {
   public void verifyBlocksOnFailureAndLeavesClosingToAPerson() {
     String prompt = promptFor(EntityStatus.IMPLEMENTED);
     assertTrue(
-        prompt.contains("If it still occurs, or you could not check, block_entity with what you"
+        prompt.contains("If it still occurs, or you could not check, call work_block with what you"
             + " found"),
         prompt);
     assertTrue(prompt.contains("closing is a person's move"), prompt);
-    assertFalse(prompt.contains("transition_ticket to DONE"), "an agent never closes a ticket");
+    assertFalse(prompt.contains("to DONE"), "an agent never closes a ticket");
     assertFalse(prompt.contains("REFINED"), "no route back to REFINED at all: " + prompt);
   }
 
@@ -296,7 +296,7 @@ public class PhasePromptsTest {
 
   /**
    * Each template names exactly <b>one</b> transition, and it is its own phase's forward claim. The
-   * check is on the {@code transition_ticket to X} form, so a second transition of any kind —
+   * check is on the {@code to X with work_status} form, so a second transition of any kind —
    * backward included — fails it.
    */
   @Test
@@ -311,13 +311,12 @@ public class PhasePromptsTest {
 
   private static void assertNamesExactlyOneForwardTarget(
       String prompt, String noun, String target) {
-    String tool = "transition_" + noun;
     assertEquals(
         1,
-        occurrences(prompt, tool),
+        occurrences(prompt, " with work_status"),
         "exactly one transition, the forward claim: " + prompt);
     for (EntityStatus status : EntityStatus.values()) {
-      String claim = tool + " to " + status.name();
+      String claim = "to " + status.name() + " with work_status";
       boolean isOwn = status.name().equals(target);
       assertEquals(
           isOwn,
@@ -329,7 +328,7 @@ public class PhasePromptsTest {
 
   /**
    * <b>One ending for every phase of both archetypes</b> (qits-592): the forward transition, or
-   * {@code block_entity}. There is no "leave the status where it is" arm and no comment-only arm —
+   * {@code work_block}. There is no "leave the status where it is" arm and no comment-only arm —
    * a comment is invisible to everything that hands out work, so a phase that only commented went on
    * advertising itself as ready.
    */
@@ -338,11 +337,10 @@ public class PhasePromptsTest {
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
       String turn = prompt(entity).orElseThrow();
       String noun = entity.archetype == Archetype.TICKET ? "ticket" : "epic";
-      assertTrue(turn.contains("block_entity with what"), entity.status + " " + noun + ": " + turn);
+      assertTrue(turn.contains("work_block with what"), entity.status + " " + noun + ": " + turn);
       assertTrue(
-          turn.contains("transition_" + noun + " to " + forwardOf(entity.status)),
+          turn.contains("to " + forwardOf(entity.status) + " with work_status"),
           entity.status + " " + noun + ": " + turn);
-      assertFalse(turn.contains("block_ticket"), "the generic door, for both archetypes: " + turn);
       assertFalse(turn.contains("leave the " + noun), "no leave-it-where-it-is arm: " + turn);
       assertFalse(turn.contains("reversible"), "reversibility is the tool's to say: " + turn);
     }
@@ -366,7 +364,7 @@ public class PhasePromptsTest {
               .next();
       assertEquals(PhasePrompts.phaseOf(entity).orElseThrow().word(), served.phase());
       assertTrue(
-          prompt(entity).orElseThrow().contains("transition_" + noun + " to " + served.endsIn()),
+          prompt(entity).orElseThrow().contains("to " + served.endsIn() + " with work_status"),
           entity.status + " " + noun);
     }
   }
@@ -562,9 +560,9 @@ public class PhasePromptsTest {
       assertFalse(
           ticketRun.instruction().equals(epicRun.instruction()),
           "but the words are the archetype's own at " + status);
-      assertTrue(epicRun.instruction().contains("get_epic"), epicRun.instruction());
-      assertFalse(epicRun.instruction().contains("get_ticket"), epicRun.instruction());
-      assertFalse(ticketRun.instruction().contains("transition_epic"), ticketRun.instruction());
+      assertTrue(epicRun.instruction().contains(" epic \""), epicRun.instruction());
+      assertFalse(epicRun.instruction().contains(" ticket \""), epicRun.instruction());
+      assertFalse(ticketRun.instruction().contains(" epic \""), ticketRun.instruction());
     }
   }
 
@@ -598,37 +596,41 @@ public class PhasePromptsTest {
     String turn = epicPromptFor(EntityStatus.REPORTED);
     assertTrue(turn.contains("Refine epic \"Planning domain\""), turn);
     for (String tool :
-        new String[] {"update_epic", "add_feature", "add_task", "put_dossier_page, epicId epc-9"}) {
+        new String[] {
+          "(work_update)", "(work_create)", "(work_dossier_put)", "work_dossier_list"
+        }) {
       assertTrue(turn.contains(tool), "the refine phase is told to write with " + tool + ": " + turn);
     }
     assertTrue(turn.contains("each task naming one repository and its dependsOn links"), turn);
     assertTrue(turn.contains("Do not implement anything"), turn);
-    assertTrue(turn.contains("transition_epic to REFINED, which freezes the scope"), turn);
+    assertTrue(turn.contains("move it to REFINED with work_status, which freezes the scope"), turn);
   }
 
   /**
    * The epic implement turn: the frozen brief with corrections on the thread, dependsOn order,
-   * mark_task_implementing as each starts and mark_task_implemented as each lands — each moving the
-   * task's own status (qits-763) — a task verified on its own with transition_task, released per
+   * implementingAt as each starts and implementedAt as each lands (work_update) — each moving the
+   * task's own status (qits-763) — a task verified on its own with work_status, released per
    * repository, no integration, and the claim to IMPLEMENTED — which carries every unmarked task.
    */
   @Test
   public void theEpicImplementTurnMarksReleasesAndClaimsImplemented() {
     String turn = epicPromptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(turn.contains("Implement epic \"Planning domain\""), turn);
-    assertTrue(turn.contains("get_epic: its tree and dossier are the brief"), turn);
+    assertTrue(turn.contains("work_details: its tree and dossier are the brief"), turn);
     assertTrue(turn.contains("Both are read-only now"), turn);
-    assertTrue(turn.contains("add_comment (entityId epc-9) as the work goes"), turn);
+    assertTrue(turn.contains("work_comment_create as the work goes"), turn);
     assertTrue(turn.contains("in dependsOn order"), turn);
-    assertTrue(turn.contains("mark_task_implementing when you start one"), turn);
-    assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
-    assertTrue(turn.contains("each moves that task's status"), turn);
+    assertTrue(turn.contains("work_update its implementingAt to now when you start one"), turn);
+    assertTrue(turn.contains("its implementedAt as it lands"), turn);
+    assertTrue(turn.contains("each moves its status"), turn);
     assertTrue(turn.contains("Verify a task on its own"), turn);
-    assertTrue(turn.contains("transition_task it to VERIFIED"), turn);
+    assertTrue(turn.contains("once it is live, move it to VERIFIED (work_status)"), turn);
     assertTrue(turn.contains("released and deployed, through a release request per repository"), turn);
     assertTrue(turn.contains("not merged and not green"), turn);
     assertTrue(turn.contains("Do not integrate the workspace"), turn);
-    assertTrue(turn.contains("When every task is marked, transition_epic to IMPLEMENTED"), turn);
+    assertTrue(
+        turn.contains("When every task is marked, move the epic to IMPLEMENTED with work_status"),
+        turn);
     assertTrue(turn.contains("carries any unmarked task to IMPLEMENTED"), turn);
   }
 
@@ -652,15 +654,16 @@ public class PhasePromptsTest {
         turn.indexOf("check on the live platform, feature by feature")
             < turn.indexOf("Fall back to reading the change"),
         "reproducing comes first and the fallback second: " + turn);
-    assertTrue(turn.contains("transition_epic to VERIFIED; closing is a person's move"), turn);
-    assertTrue(turn.contains("If something does not hold, or you could not check, block_entity"), turn);
-    assertTrue(turn.contains("add_comment (entityId epc-9)"), turn);
+    assertTrue(turn.contains("to VERIFIED with work_status; closing is a person's move"), turn);
+    assertTrue(
+        turn.contains("If something does not hold, or you could not check, call work_block"), turn);
+    assertTrue(turn.contains("work_comment_create"), turn);
     assertFalse(turn.contains("REFINED"), "no route back to REFINED: " + turn);
   }
 
   /**
    * <b>An epic's findings go on its thread, never into a report</b> (qits-551): every epic phase
-   * names {@code add_comment} against the epic's own id.
+   * names {@code work_comment_create} on its thread.
    */
   @Test
   public void everyEpicTemplateRecordsOnTheThreadAndNeverInAReport() {
@@ -670,8 +673,8 @@ public class PhasePromptsTest {
         }) {
       String turn = epicPromptFor(status);
       assertTrue(
-          turn.contains("add_comment (entityId epc-9)"),
-          status + " must name add_comment on the epic's own thread: " + turn);
+          turn.contains("on its thread with work_comment_create"),
+          status + " must name work_comment_create on the epic's own thread: " + turn);
       assertFalse(turn.contains("in your report"), status + ": " + turn);
     }
   }

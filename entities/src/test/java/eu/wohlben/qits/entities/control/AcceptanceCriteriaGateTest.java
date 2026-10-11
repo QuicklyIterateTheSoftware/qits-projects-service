@@ -55,7 +55,7 @@ class AcceptanceCriteriaGateTest extends EntitiesTestSupport {
               + " acceptance criteria"),
           refusal.getMessage());
       assertTrue(
-          refusal.getMessage().contains(archetype == Archetype.EPIC ? "update_epic" : "update_ticket"),
+          refusal.getMessage().contains("work_update"),
           refusal.getMessage());
       assertEquals("REPORTED", status(archetype, id));
     }

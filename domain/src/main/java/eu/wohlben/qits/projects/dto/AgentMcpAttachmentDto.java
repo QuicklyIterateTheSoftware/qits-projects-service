@@ -3,14 +3,14 @@ package eu.wohlben.qits.projects.dto;
 import java.util.List;
 
 /**
- * One of the platform's own MCP servers as a surface attaches it: which server, how narrow its url
- * is, whether it is read-only marked, and the tools pre-approved on it.
+ * The platform's own MCP server as a surface attaches it: which server, how narrow its url is,
+ * whether it is read-only marked, and the tools pre-approved on it.
  *
- * <p>The three narrowing flags render in one canonical order — {@code projectId}, {@code
- * repositoryId}, {@code workspaceId} — because that is the order both daemons build their urls in
- * today and the rendered command line is asserted as a literal on both harnesses.
+ * <p>The three narrowing flags are part of the configuration document's wire shape. {@code qits},
+ * the one built-in server since qits-1174, is scoped by the caller's bearer and ships with all
+ * three off.
  *
- * @param server {@code repository}, {@code observability} or {@code actions}
+ * @param server {@code qits}
  * @param narrowProject append {@code projectId=<the project>}
  * @param narrowRepository append {@code repositoryId=<the repository>}
  * @param narrowWorkspace append {@code workspaceId=<the workspace>}

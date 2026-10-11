@@ -32,15 +32,14 @@ import java.util.Optional;
  *
  * <p>Resolution names no "current project": {@code other-7} is project {@code other}'s entity 7
  * wherever it is asked. The door that binds a caller to a project compares afterwards, in its own
- * words — the REST binding's 403, the MCP scope's "not found in this project".
+ * words — the REST binding's 403.
  *
  * <h2>Two databases, two transactions</h2>
  *
  * <p>The slug is in {@code domain}'s {@code project} table and the {@code (project_id, number)}
  * pair in {@code entities}' {@code entity} table, two local (non-XA) datasources, and Narayana
- * enlists only one such resource per transaction — the rule {@code EpicMcpTools} states for the
- * MCP tools. Each read is {@code requiringNew}, so this is callable from a request thread, an MCP
- * tool and a plain worker thread with no request scope alike.
+ * enlists only one such resource per transaction. Each read is {@code requiringNew}, so this is
+ * callable from a request thread and a plain worker thread with no request scope alike.
  */
 @ApplicationScoped
 public class EntityIdResolver {
