@@ -308,16 +308,16 @@ public class ReleaseRequestPreRunTest {
   }
 
   // -----------------------------------------------------------------------------------------
-  // A failed automation holds
+  // A failed automation rejects
   // -----------------------------------------------------------------------------------------
 
   /**
-   * A failed automation holds — PENDING, no DONE, no rejection — even beside a red verdict, which at
-   * a sha whose pre-run is not done answers no QA run this request asked for. A waiver is one way
-   * on, and it announces DONE.
+   * A failed automation rejects (qits-1199) — no DONE, rejected by the automations and not by the
+   * build — even beside a red verdict, which at a sha whose pre-run is not done answers no QA run
+   * this request asked for. A waiver is one way on: it reopens the fold and announces DONE.
    */
   @Test
-  public void aFailedAutomationHoldsWithNoQaUntilAWaiver() {
+  public void aFailedAutomationRejectsWithNoQaUntilAWaiver() {
     automations.answer(repoName, SCREENSHOTS, "FAILED");
     String id = create("work");
     String merged = mergedShaOf(id);
@@ -327,7 +327,7 @@ public class ReleaseRequestPreRunTest {
     releaseRequests.sweep();
 
     JsonPath held = request(id);
-    assertEquals("PENDING", held.getString("state"), "held, never rejected");
+    assertEquals("REJECTED", held.getString("state"), "rejected by the automations");
     assertEquals("FAILED", held.getString("preRun.state"));
     assertEquals(
         "Screenshot baselines failed at "

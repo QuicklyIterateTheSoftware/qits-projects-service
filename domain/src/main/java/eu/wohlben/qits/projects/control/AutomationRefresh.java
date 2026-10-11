@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -341,10 +342,21 @@ public class AutomationRefresh {
    * about — one that is gone, settled or not folded yet — and returning null rather than an empty
    * answer matters: nothing is written to the ledger for those, so nothing has to be cleaned up for
    * them either.
+   *
+   * <p><b>A request the automations REJECTED is still asked about</b> (qits-1199): it is rejected at
+   * the fold it is on, and a re-run of the failed kind is answered at that same fold, so the
+   * re-read is the only way the sweep learns the rejection has been answered. Any other REJECTED
+   * request — a red build, a person's decline — is none of this feature's business.
    */
+  private static boolean asksAbout(ReleaseRequest row) {
+    return row.state == ReleaseRequest.State.PENDING
+        || (row.state == ReleaseRequest.State.REJECTED
+            && AutomationsGate.KIND.equals(row.rejectingGate));
+  }
+
   private Facts gather(String requestId) {
     ReleaseRequest row = requests.findByIdOptional(requestId).orElse(null);
-    if (row == null || row.state != ReleaseRequest.State.PENDING || row.mergedSha == null) {
+    if (row == null || row.mergedSha == null || !asksAbout(row)) {
       return null;
     }
     Repository repository = repositories.findByIdOptional(row.repoId).orElse(null);

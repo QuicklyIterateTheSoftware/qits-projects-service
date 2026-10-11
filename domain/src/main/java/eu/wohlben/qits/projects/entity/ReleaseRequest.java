@@ -34,7 +34,8 @@ import org.hibernate.annotations.DynamicUpdate;
  * and re-arms nothing.
  *
  * <p>The state machine: {@code PENDING → READY → RELEASED → FINALIZED}; {@code PENDING → REJECTED}
- * when a verdict is red; {@code READY → FAILED → READY} around a mechanical execution failure
+ * when a verdict is red, when a person declines, or when the pre-run's automations FAILED at the
+ * fold with none still in flight (qits-1199, {@link #rejectingGate}); {@code READY → FAILED → READY} around a mechanical execution failure
  * — retried by the sweep only while {@link #retryable} says asking again can change the answer;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to
@@ -50,6 +51,8 @@ import org.hibernate.annotations.DynamicUpdate;
  * re-consideration therefore moves the state and nothing else: same fold, same window, same
  * approval, and {@link #rejectingRunId} is what says whether this rejection is the kind a run can
  * answer at all. The re-merge is still the re-arm and is still the only thing that moves a fold.
+ * An automation's rejection is reopened the same way, at the same fold, when a re-run comes back
+ * fresh or a person waives the fold — {@link #rejectingGate} is what says it is that kind.
  *
  * <p><b>RELEASED IS NOT THE END, and that is the change ticket b27384a3 made.</b> The tag being cut
  * used to finish a request: a publish run that failed afterwards had nothing holding it open, and a
@@ -278,10 +281,10 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /**
    * The run whose red verdict rejected this request, and <b>null on every rejection that is not a
-   * build's</b> — which today means null on a rejection a person made by declining the approval.
+   * build's</b> — a person's decline, and an automation's failure ({@link #rejectingGate}).
    *
-   * <p><b>It is the discriminator, and it is a column because REJECTED has two causes (ticket
-   * qits-309).</b> A {@code qits ci retry} re-fires a run at the same fold, so a green retry is the
+   * <p><b>It is the discriminator, and it is a column because REJECTED has more than one cause
+   * (ticket qits-309; a third, the pre-run, since qits-1199).</b> A {@code qits ci retry} re-fires a run at the same fold, so a green retry is the
    * answer to a red verdict and has to be able to take the rejection back — the fold never moved, so
    * there is no push to re-arm it with. But the other cause of REJECTED is somebody saying no, and a
    * CI event must never undo a human decision. Admitting REJECTED to the verdict path wholesale
@@ -302,6 +305,20 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "rejecting_run_id")
   public String rejectingRunId;
+
+  /**
+   * The gate that rejected this request when it was <b>not</b> a CI run or a person: {@code
+   * "automations"} ({@code AutomationsGate.KIND}) when the pre-run FAILED at {@link #mergedSha}, and
+   * null on every other row (V43, qits-1199).
+   *
+   * <p>The second discriminator beside {@link #rejectingRunId}, for that column's reason: a rejection
+   * is reopened only by evidence about its own cause. An automation's is reopened at the same fold —
+   * not re-armed — by the sweep or the re-run door once the note at the fold is no longer FAILED, or
+   * by a person's waiver of the fold; neither may ever reopen a red build or a decline, which carry
+   * null here. Cleared wherever {@link #rejectingRunId} is.
+   */
+  @Column(name = "rejecting_gate")
+  public String rejectingGate;
 
   /**
    * On a FAILED request: whether the sweep retries the execution. The executor classifies — a

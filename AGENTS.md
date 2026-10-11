@@ -1164,10 +1164,15 @@ started four release builds for one change. Now:
   write that failed is logged and dropped — so the remaining window is a crash between the stamp's
   commit and the publish, or that silent drop: either loses one DONE (never duplicates it) until a
   push or re-run re-folds.
-- **A failed automation holds** — PENDING, no DONE, no rejection — until a push re-folds, a re-run
-  comes back fresh (the sweep's re-read) or a person waives the fold. A CI verdict at a sha whose
-  pre-run is not done answers no QA this request asked for and is not read; the qits-760 "red beside
-  failed automations rejects" arm is gone with that.
+- **A failed automation REJECTS** (qits-1199) — no DONE, `rejecting_gate = automations` (V43),
+  the ledger note kept so the gate and `automations[]` still show the failure, no unattended-gate
+  ticket — once no kind at the fold is still REQUESTED, RUNNING or COMMITTED (a failure beside one
+  still moving holds PENDING, as UNKNOWN and no note do). A push re-arms it; a re-run that comes back
+  fresh or is running again reopens it at the same fold (the sweep's REJECTED arm re-reads, and so
+  does the re-run door at once); a person's waiver of the fold reopens it. None of the three reopens
+  a red build or a decline. A CI verdict at a sha whose pre-run is not done answers no QA this
+  request asked for and is not read; the qits-760 "red beside failed automations rejects" arm is
+  gone with that.
 - **Moves:** a source moving during the pre-run re-folds and restarts it (PENDING at the new sha);
   one moving during QA cancels QA (`cancel`) and restarts the pre-run rather than going straight to
   QA.
@@ -1178,7 +1183,8 @@ started four release builds for one change. Now:
 - **On the wire** (additive): `ReleaseRequestDto.preRun = {state}` — `PENDING`, `RUNNING` (a kind
   REQUESTED, RUNNING, or COMMITTED and not yet folded), `FAILED`, `PASSED`, `WAIVED`; the automations
   list carries `WAITING` as it came; the pipeline's QA phase reads `WAITING_FOR_PRE_RUN` (no run) on a
-  PENDING request whose pre-run is neither PASSED nor WAIVED, which also draws the block; the
+  PENDING request (or one the automations REJECTED, qits-1199) whose pre-run is neither PASSED nor
+  WAIVED, which also draws the block; the
   automations gate sits at `between = PRE_RUN_QA` / `position = pre-run-qa`, ahead of CI.
 - **qits-maintenance's doors need nothing new.** A main-only request is `POST
   …/repositories/{repoId}/release-requests` with `{"branch":"main","summary":…,"priority":"LOWEST"}`

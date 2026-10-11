@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.control.gate.LegacyGates;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
@@ -191,8 +192,13 @@ import org.jboss.logging.Logger;
  * sweep; what remains unrecoverable is a process dying between the stamp's commit and the publish,
  * or {@code QitsEventBus} swallowing an event it could neither deliver nor put in its outbox (it
  * logs and never throws, so this side cannot see it) — those lose one DONE until the next re-fold.
- * So in {@link #evaluate} the automations gate is asked FIRST, ahead of the CI gate. A failed automation holds the request PENDING — it is not rejected —
- * until a push re-folds it, a re-run comes back fresh, or a person waives the fold. A source moving
+ * So in {@link #evaluate} the automations gate is asked FIRST, ahead of the CI gate. <b>A failed
+ * automation REJECTS the request</b> (qits-1199), as a red CI gate does, once nothing at the fold is
+ * still in flight — with {@code rejecting_gate = automations} (V43) and the note kept, so the gate
+ * and the automations rows go on showing the failure. Three things answer it: a push re-arms it; a
+ * re-run that comes back fresh (or is running again) reopens it at the same fold — the sweep's
+ * re-read, or the re-run door's own; and a person's waiver of the fold reopens it. None of the three
+ * ever reopens a red build or a decline ({@link #reopenAutomationRejection}). A source moving
  * during the pre-run re-folds and restarts it; one moving during QA cancels QA ({@link #cancel}) and
  * restarts the pre-run rather than going straight back to QA.
  *
@@ -1223,6 +1229,9 @@ public class ReleaseRequests {
                   "Release request %s: the automations gate was waived at %s by %s: %s",
                   id, shortSha(row.mergedSha), waiver.actor, waiver.reason);
             });
+    // A request the automations REJECTED at this fold is reopened by the waiver (qits-1199); a red
+    // build or a decline is not, and the evaluation below then leaves it where it is.
+    reopenAutomationRejection(id, "its automations were waived at this fold");
     evaluate(id, null);
     return get(id);
   }
@@ -1270,6 +1279,7 @@ public class ReleaseRequests {
     }
     if (run.wasAccepted()) {
       LOG.infof("Release request %s: %s was asked to run again (%s)", id, kind, run.id());
+      reopenAfterRerun(id);
       return run.id();
     }
     if (run.wasRefused()) {
@@ -1283,6 +1293,22 @@ public class ReleaseRequests {
             + kind
             + " again"
             + (run.detail() == null ? "." : ": " + run.detail()));
+  }
+
+  /**
+   * After a re-run was accepted: re-read the automations and, where the automations had rejected the
+   * request and the re-read shows the failure answered, reopen it at this fold (qits-1199) — the
+   * sweep's arm, made at once. Best effort: the run was accepted and nothing here may fail the call.
+   */
+  private void reopenAfterRerun(String id) {
+    try {
+      refreshAutomations(id, null);
+      if (reopenAutomationRejection(id, "a failed automation was asked to run again")) {
+        evaluate(id);
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Release request %s: could not reconsider it after a re-run; the sweep will", id);
+    }
   }
 
   /**
@@ -2502,6 +2528,7 @@ public class ReleaseRequests {
                       id, shortSha(row.mergedSha), why, row.rejectingRunId);
                   states.move(row, ReleaseRequest.State.PENDING);
                   row.rejectingRunId = null;
+                  row.rejectingGate = null;
                   row.detail = null;
                   row.updatedAt = Instant.now();
                   return true;
@@ -2509,6 +2536,56 @@ public class ReleaseRequests {
     if (reopened) {
       evaluate(id, verdictSha);
     }
+  }
+
+  /**
+   * Put a request the <b>automations</b> rejected back in front of its gates at the fold it already
+   * has (qits-1199) — {@link #reconsider}'s twin, and for its reasons not a re-arm: same fold, same
+   * approval, same window. The caller evaluates afterwards.
+   *
+   * <p>Only a REJECTED row whose {@link ReleaseRequest#rejectingGate} is the automations gate, under
+   * the row lock, and only on evidence about that cause: the note at the fold is no longer FAILED
+   * (FRESH, or PENDING because a re-run is in flight) or a person waived the fold. An UNKNOWN note,
+   * or none, is no news and the rejection stands. A red build and a decline carry no rejecting gate,
+   * so nothing here can reopen either — which is what makes a waiver on one a no-op.
+   *
+   * @return whether the request was reopened
+   */
+  private boolean reopenAutomationRejection(String id, String why) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              ReleaseRequest row =
+                  requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
+              if (row == null
+                  || row.state != ReleaseRequest.State.REJECTED
+                  || !AutomationsGate.KIND.equals(row.rejectingGate)
+                  || row.mergedSha == null) {
+                return false;
+              }
+              AutomationLedger.State noted =
+                  automationLedger
+                      .noteFor(row.id)
+                      .filter(note -> row.mergedSha.equals(note.foldSha()))
+                      .map(AutomationLedger.Note::state)
+                      .orElse(null);
+              boolean answered =
+                  noted == AutomationLedger.State.FRESH
+                      || noted == AutomationLedger.State.PENDING
+                      || waivers.latestFor(row.id, row.mergedSha).isPresent();
+              if (!answered) {
+                return false;
+              }
+              LOG.infof(
+                  "Release request %s is reconsidered at %s: %s",
+                  id, shortSha(row.mergedSha), why);
+              states.move(row, ReleaseRequest.State.PENDING);
+              row.rejectingGate = null;
+              row.rejectingRunId = null;
+              row.detail = null;
+              row.updatedAt = Instant.now();
+              return true;
+            });
   }
 
   /**
@@ -2529,7 +2606,9 @@ public class ReleaseRequests {
    * re-arm the request with — so without this arm a green retry would leave the request rejected
    * whenever the verdict's own path did not reach it. It is not a re-evaluation of every rejection:
    * a rejection nothing superseded is answered by a push exactly as it always was, and a rejection a
-   * person made names no run and is never touched here.
+   * person made names no run and is never touched here. A rejection the <b>automations</b> made
+   * (qits-1199) is the second question: its automations are re-read at the fold, and a note no
+   * longer FAILED, or a waiver, reopens it ({@link #reopenAutomationRejection}).
    *
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
@@ -2566,7 +2645,14 @@ public class ReleaseRequests {
           // superseded because a retry is the only thing that ever deletes a row. A human decline
           // names no run at all, so it is not asked about and can never be re-opened here — which
           // is the same discrimination the event path makes, made from the other end.
-          if (row.rejectingRunId != null && !ledger.stands(row.rejectingRunId)) {
+          if (AutomationsGate.KIND.equals(row.rejectingGate)) {
+            // AN AUTOMATION'S REJECTION (qits-1199) is answered at this fold by a re-run, which
+            // the re-read below learns, or by a waiver. A push re-arms it through the fold, as any.
+            refreshAutomations(row.id, null);
+            if (reopenAutomationRejection(row.id, "its automations are no longer failed")) {
+              evaluate(row.id);
+            }
+          } else if (row.rejectingRunId != null && !ledger.stands(row.rejectingRunId)) {
             reconsider(row.id, row.mergedSha, "the run that rejected it no longer stands");
           }
         }
@@ -2848,6 +2934,27 @@ public class ReleaseRequests {
   }
 
   /**
+   * Whether the note about exactly this fold is FAILED with <b>nothing still in flight</b> — no kind
+   * REQUESTED, RUNNING or COMMITTED (qits-1199). That is a rejection; a failure beside a kind still
+   * moving is a hold, because what is moving may yet re-fold the request.
+   */
+  private boolean automationsFailedAndSettled(ReleaseRequest row) {
+    return automationLedger
+        .noteFor(row.id)
+        .filter(note -> row.mergedSha.equals(note.foldSha()))
+        .filter(note -> note.state() == AutomationLedger.State.FAILED)
+        .filter(
+            note ->
+                note.automations().stream()
+                    .noneMatch(
+                        entry ->
+                            "REQUESTED".equals(entry.state())
+                                || "RUNNING".equals(entry.state())
+                                || "COMMITTED".equals(entry.state())))
+        .isPresent();
+  }
+
+  /**
    * Ask qits-ci to stop this request's in-flight runs, because they can no longer settle anything:
    * the fold they were started for was superseded, or the request itself has concluded (RELEASED —
    * the branch they were building is deleted the moment the tag lands — or WITHDRAWN).
@@ -3020,6 +3127,7 @@ public class ReleaseRequests {
     // Leaving the id would let a retry of a long-dead run answer a rejection about a different sha
     // — and the ledger's rows for the old fold are kept, so the run really can come back.
     open.rejectingRunId = null;
+    open.rejectingGate = null;
     open.armedAt = Instant.now();
     open.updatedAt = open.armedAt;
   }
@@ -3241,9 +3349,20 @@ public class ReleaseRequests {
                   // far as this request is concerned, does not exist. It comes before the approval
                   // gate for the reason it always did — a person approves a specific fold, and asking
                   // them to sign off content an automation is about to rewrite would invalidate their
-                  // answer the moment the commit lands. A FAILED automation holds too, and is not a
-                  // rejection: a push, a re-run that comes back fresh or a waiver moves it on.
+                  // answer the moment the commit lands. A FAILED automation with nothing at the fold
+                  // still in flight REJECTS (qits-1199), like a red CI run: a push re-arms it, a
+                  // re-run that comes back fresh or a waiver reopens it at this fold. The note is
+                  // NOT forgotten — the gate and the automations rows read their FAILED off it — and
+                  // no unattended-gate ticket is filed: the automation's own run is the record.
                   if (automationsApply(row.repoId) && !automationsPassed(row)) {
+                    if (automationsFailedAndSettled(row)) {
+                      states.move(row, ReleaseRequest.State.REJECTED);
+                      row.rejectingGate = AutomationsGate.KIND;
+                      row.rejectingRunId = null;
+                      row.detail = automationDetail(row);
+                      row.updatedAt = Instant.now();
+                      return false;
+                    }
                     waiting(row, automationDetail(row));
                     automationsHeld.set(true);
                     return false;
@@ -3310,6 +3429,7 @@ public class ReleaseRequests {
                     // ReleaseRequest.rejectingRunId, and note the decline arm below deliberately
                     // leaves it null — that is the whole discrimination.
                     row.rejectingRunId = red.runId();
+                    row.rejectingGate = null;
                     row.detail =
                         "Run "
                             + red.runId()
@@ -3412,6 +3532,7 @@ public class ReleaseRequests {
                       // answered by a push or by the same person changing their mind, and no run
                       // that could be retried had anything to do with it.
                       row.rejectingRunId = null;
+                      row.rejectingGate = null;
                       row.detail = declinedDetail(decision);
                       row.updatedAt = Instant.now();
                       // NO unattended-gate ticket, and that is the whole difference from a red
@@ -3428,6 +3549,7 @@ public class ReleaseRequests {
                   // column is cleared wherever the request leaves REJECTED, and this is one of the
                   // three places it does.
                   row.rejectingRunId = null;
+                  row.rejectingGate = null;
                   row.updatedAt = Instant.now();
                   return true;
                 });
@@ -4330,8 +4452,11 @@ public class ReleaseRequests {
             row.mergedSha,
             reach,
             // QA waits for the pre-run (qits-1133): only a request still before its tag, on a
-            // fold, whose automations are not fresh or waived there.
-            row.state == ReleaseRequest.State.PENDING
+            // fold, whose automations are not fresh or waived there — PENDING, or REJECTED by the
+            // automations themselves (qits-1199), where no QA was ever asked for either.
+            (row.state == ReleaseRequest.State.PENDING
+                    || (row.state == ReleaseRequest.State.REJECTED
+                        && AutomationsGate.KIND.equals(row.rejectingGate)))
                 && row.mergedSha != null
                 && !automations.preRunDone()),
         evaluated.stream().map(ReleaseGateEvaluator::toDto).toList(),

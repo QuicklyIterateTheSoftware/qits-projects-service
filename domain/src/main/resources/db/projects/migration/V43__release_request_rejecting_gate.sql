@@ -1,0 +1,19 @@
+-- A FAILED AUTOMATION REJECTS THE REQUEST (qits-1199), and this column says which gate did it.
+--
+-- Until now a release request whose pre-run automation failed stayed PENDING, with only `detail`
+-- and the automations gate saying FAILED; every board and every `qits wait release-request` read it
+-- as still in progress. It is REJECTED now, like a red CI gate — and a push, a re-run that comes
+-- back fresh, or a waiver of the fold must bring it back. REJECTED therefore has three causes, and
+-- the second discriminator beside rejecting_run_id (V26) is what tells the sweep, the re-run door
+-- and the waiver which rejections are theirs to reopen:
+--
+--   'automations'  the pre-run failed at the current fold (AutomationsGate.KIND)
+--   null           every other rejection: a red CI run (rejecting_run_id names it) or a person's
+--                  decline (both null)
+--
+-- A plain word with no check constraint and no foreign key, the platform's usual reasoning for an
+-- open set. Cleared wherever the request leaves REJECTED, exactly where rejecting_run_id is.
+--
+-- NOTHING IS BACKFILLED: no request was ever rejected by an automation before this column existed,
+-- so null is the true answer for every existing row.
+alter table release_request add column rejecting_gate varchar(32);

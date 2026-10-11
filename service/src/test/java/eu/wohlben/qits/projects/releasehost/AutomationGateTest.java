@@ -406,23 +406,133 @@ public class AutomationGateTest {
   }
 
   /**
-   * A red automation run holds: a person's turn (push, re-run or waive), never a rejection — beside
-   * a red verdict too, see {@link #aRedVerdictBesideFailedAutomationsHoldsUntilAPush}.
+   * <b>A red automation run rejects</b> (qits-1199), as a red CI gate does — with the automations
+   * gate as the rejecting one, no rejecting run, and the note kept so the gate and the rows go on
+   * showing the failure. A person's turn: push, re-run or waive.
    */
   @Test
-  public void aFailedAutomationHoldsAndIsNotRejected() {
+  public void aFailedAutomationRejects() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
 
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
     verdict(plainRepoId, merged);
 
-    JsonPath held = request(plainRepoId, id);
-    assertEquals("PENDING", held.getString("state"), "held, not rejected");
+    JsonPath rejected = request(plainRepoId, id);
+    assertEquals("REJECTED", rejected.getString("state"), "rejected, not held");
+    assertEquals("automations", rejectingGateOf(id));
+    assertNull(rejectingRunIdOf(id), "no run of qits-ci rejected it");
     assertEquals(
         "Screenshot baselines failed at " + merged.substring(0, 10) + "; push, re-run, or waive this fold",
-        held.getString("detail"));
-    assertEquals("FAILED", gateState(held, "AUTOMATIONS"));
+        rejected.getString("detail"));
+    assertEquals("FAILED", gateState(rejected, "AUTOMATIONS"));
+    assertEquals(List.of(SCREENSHOTS), rejected.getList("automations.kind"), "the rows survive");
+    assertEquals(List.of("FAILED"), rejected.getList("automations.state"));
+    assertNull(rejected.getString("gateTicketId"), "no unattended-gate ticket for it");
+    assertEquals(0, executor.calls().size());
+
+    releaseRequests.sweep(); // re-read, still failed: the rejection stands
+    assertEquals("REJECTED", stateOf(plainRepoId, id));
+    assertEquals(merged, mergedShaOf(plainRepoId, id));
+  }
+
+  /**
+   * A re-run of the failed kind that comes back fresh reopens the rejection at the SAME fold — not
+   * a re-arm — and the request then releases on its verdict like any other.
+   */
+  @Test
+  public void aReRunThatComesBackFreshReopensTheRejectionAtTheSameFold() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    awaitState(plainRepoId, id, "REJECTED");
+
+    // The re-run is pressed while the far side still reads the old failure: nothing reopens yet.
+    given()
+        .contentType(ContentType.JSON)
+        .body("{}")
+        .post(base(plainRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+        .then()
+        .statusCode(202);
+    assertEquals("REJECTED", stateOf(plainRepoId, id));
+
+    // It ends having moved nothing: fresh at this very fold, which the sweep re-reads.
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep();
+    awaitState(plainRepoId, id, "PENDING");
+    assertEquals(merged, mergedShaOf(plainRepoId, id), "reopened at the same fold");
+    assertNull(rejectingGateOf(id));
+    assertEquals(1, automations.askedAbout(id).size(), "re-read, never re-triggered");
+
+    verdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "RELEASED");
+    assertEquals(1, executor.calls().size());
+    assertEquals(merged, executor.calls().get(0).expectedSha());
+  }
+
+  /** The re-run door re-reads at once: a re-run already running reopens the rejection there. */
+  @Test
+  public void aReRunStillRunningReopensTheRejectionThroughTheDoor() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    awaitState(plainRepoId, id, "REJECTED");
+
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{}")
+        .post(base(plainRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+        .then()
+        .statusCode(202);
+
+    JsonPath reopened = request(plainRepoId, id);
+    assertEquals("PENDING", reopened.getString("state"));
+    assertEquals(merged, reopened.getString("mergedSha"));
+    assertEquals(
+        "Waiting for automations at " + merged.substring(0, 10) + ": Screenshot baselines running",
+        reopened.getString("detail"));
+    assertNull(rejectingGateOf(id));
+  }
+
+  /**
+   * A waiver of the fold reopens an automation's rejection, and the request releases — here the
+   * sweep's arm, for a waiver it finds; the door's own reopen is {@code
+   * ReleaseRequestApprovalDoorTest}'s.
+   */
+  @Test
+  public void aWaiverReopensAnAutomationRejectionAndReleases() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "REJECTED");
+
+    waive(id, merged);
+    releaseRequests.sweep();
+
+    awaitState(plainRepoId, id, "RELEASED");
+    assertNull(rejectingGateOf(id));
+    assertEquals(merged, executor.calls().get(0).expectedSha());
+  }
+
+  /** A waiver is no answer to a red build: a CI rejection stays exactly where it was. */
+  @Test
+  public void aWaiverDoesNotReopenACiRejection() {
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    redVerdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "REJECTED");
+    String run = rejectingRunIdOf(id);
+    assertTrue(run != null);
+
+    waive(id, merged);
+    releaseRequests.sweep();
+
+    assertEquals("REJECTED", stateOf(plainRepoId, id), "a red build is not the automations'");
+    assertEquals(run, rejectingRunIdOf(id));
+    assertNull(rejectingGateOf(id));
     assertEquals(0, executor.calls().size());
   }
 
@@ -499,14 +609,13 @@ public class AutomationGateTest {
   }
 
   /**
-   * <b>qits-760, superseded by qits-1133.</b> A red verdict beside automations that have already
-   * FAILED used to reject, because nothing was in flight. Now QA is not even asked for until the
-   * pre-run passes, so a verdict at a fold whose automations failed answers no run this request
-   * started: the request HOLDS, never rejected, saying the automation failed — and a push (an
-   * automation re-run's own branch joining included) re-folds it, which is one of the three ways on.
+   * <b>qits-760, superseded by qits-1133 and qits-1199.</b> QA is not even asked for until the
+   * pre-run passes, so a red verdict at a fold whose automations failed answers no run this request
+   * started and is not read: the request is REJECTED by the AUTOMATIONS, not by the build — no
+   * rejecting run — and a push (an automation re-run's own branch joining included) re-arms it.
    */
   @Test
-  public void aRedVerdictBesideFailedAutomationsHoldsUntilAPush() {
+  public void aRedVerdictBesideFailedAutomationsRejectsByTheAutomationsUntilAPush() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
@@ -516,7 +625,8 @@ public class AutomationGateTest {
     releaseRequests.sweep();
 
     JsonPath held = request(plainRepoId, id);
-    assertEquals("PENDING", held.getString("state"), "the pre-run holds; the verdict is not read");
+    assertEquals("REJECTED", held.getString("state"), "the pre-run rejects; the verdict is not read");
+    assertEquals("automations", rejectingGateOf(id));
     assertNull(rejectingRunIdOf(id));
     assertEquals(
         "Screenshot baselines failed at " + merged.substring(0, 10) + "; push, re-run, or waive this fold",
@@ -528,24 +638,28 @@ public class AutomationGateTest {
     releaseRequests.addSource(id, "maintenance/automations/screenshot-baselines/x", "maint", null);
     awaitFoldToMove(plainRepoId, id, merged);
     awaitState(plainRepoId, id, "PENDING");
+    assertNull(rejectingGateOf(id), "the re-arm clears the rejecting gate");
     assertTrue(
         request(plainRepoId, id).getString("detail").startsWith("Waiting for automations at "),
         "the pre-run restarted on the new fold");
   }
 
-  /** A push to a source branch re-folds a request held by a failed automation. */
+  /** A push to a source branch re-arms a request a failed automation rejected. */
   @Test
-  public void aPushMovesARequestHeldByAFailedAutomation() {
+  public void aPushReArmsARequestRejectedByAFailedAutomation() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
     redVerdict(plainRepoId, merged);
-    assertEquals("PENDING", stateOf(plainRepoId, id), "held, not rejected");
+    assertEquals("REJECTED", stateOf(plainRepoId, id), "rejected by the automations");
+    assertEquals("automations", rejectingGateOf(id));
 
+    automations.answer(plainName, SCREENSHOTS, "RUNNING"); // the push starts it again
     headMoved(plainRepoId, "work");
     awaitFoldToMove(plainRepoId, id, merged);
     awaitState(plainRepoId, id, "PENDING");
     assertNull(rejectingRunIdOf(id));
+    assertNull(rejectingGateOf(id), "the re-arm clears the rejecting gate");
   }
 
   // -----------------------------------------------------------------------------------------
@@ -580,7 +694,7 @@ public class AutomationGateTest {
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
     verdict(plainRepoId, merged);
-    assertEquals("PENDING", stateOf(plainRepoId, id));
+    assertEquals("REJECTED", stateOf(plainRepoId, id), "the automations rejected it");
 
     waive(id, merged);
     JsonPath waived = request(plainRepoId, id);
@@ -609,7 +723,8 @@ public class AutomationGateTest {
     releaseRequests.sweep();
 
     JsonPath held = request(plainRepoId, id);
-    assertEquals("PENDING", held.getString("state"), "the waiver named a fold this one is not");
+    assertEquals("REJECTED", held.getString("state"), "the waiver named a fold this one is not");
+    assertEquals(secondFold, held.getString("mergedSha"));
     assertEquals("FAILED", gateState(held, "AUTOMATIONS"));
     assertEquals(0, executor.calls().size());
   }
@@ -738,6 +853,11 @@ public class AutomationGateTest {
   private String rejectingRunIdOf(String id) {
     return QuarkusTransaction.requiringNew()
         .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).rejectingRunId);
+  }
+
+  private String rejectingGateOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).rejectingGate);
   }
 
   /** One waiver, straight into the table — the door's own suite is where the door is tested. */

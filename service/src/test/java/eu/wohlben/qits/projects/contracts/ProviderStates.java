@@ -2282,14 +2282,20 @@ public class ProviderStates {
         phaseRunWithId(run, id, service, "RELEASE_REQUEST", "FAILED", 11, 12);
       }
       case A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION -> {
+        // REJECTED by the automations since qits-1199, as the gate leaves it: the state keeps its
+        // name because consumers' pacts name it, and a waiver of the fold reopens it.
         repoId = estate;
         fold = estateFold;
         id =
             releaseRow(
-                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
-                row ->
-                    row.detail =
-                        "Waiting for automations at " + shortSha(fold) + ": Estate pins failed");
+                project, estate, "contract-suite-app", estateSummary, State.REJECTED, 10, fold,
+                row -> {
+                  row.rejectingGate = "automations";
+                  row.detail =
+                      "Estate pins failed at "
+                          + shortSha(fold)
+                          + "; push, re-run, or waive this fold";
+                });
         estateSources(id);
         verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
         phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);

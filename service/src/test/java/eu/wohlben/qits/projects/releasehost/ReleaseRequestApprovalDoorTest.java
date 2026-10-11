@@ -488,7 +488,10 @@ public class ReleaseRequestApprovalDoorTest {
   // The automations waiver (epic qits-978)
   // -----------------------------------------------------------------------------------------
 
-  /** A person waives the fold they are looking at, and the request releases on the press. */
+  /**
+   * A person waives the fold they are looking at, and the request — which the failed automation
+   * REJECTED (qits-1199) — is reopened at that fold and releases on the press.
+   */
   @Test
   public void aPersonsWaiverReleasesTheHeldFold() {
     String id = create(admin(), automationRepoId, "wohlben");
@@ -504,6 +507,43 @@ public class ReleaseRequestApprovalDoorTest {
     awaitState(automationRepoId, id, "RELEASED");
     assertEquals(1, waivers(id).size());
     assertEquals("ada", waivers(id).get(0).actor, "the verified person's name");
+  }
+
+  /**
+   * A waiver answers the automations and nothing else (qits-1199): on a request a red BUILD
+   * rejected it is recorded, and the rejection stays exactly where it was.
+   */
+  @Test
+  public void aPersonsWaiverDoesNotReopenARedBuild() {
+    automations.answer(automationRepoName, SCREENSHOTS, "FRESH");
+    String id = create(admin(), automationRepoId, "wohlben");
+    String merged = mergedShaOf(automationRepoId, id);
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "BuildFailed",
+            Instant.now(),
+            "{\"branch\":\"work\",\"commitSha\":\""
+                + merged
+                + "\",\"repoId\":\""
+                + automationRepoId
+                + "\",\"runId\":\"run-"
+                + UUID.randomUUID()
+                + "\",\"outcome\":\"FAILED\"}",
+            null,
+            null,
+            null));
+    awaitState(automationRepoId, id, "REJECTED");
+
+    admin()
+        .body("{\"foldSha\":\"" + merged + "\",\"reason\":\"not the automations' fault\"}")
+        .post(base(automationRepoId) + "/" + id + "/automations/waivers")
+        .then()
+        .statusCode(200)
+        .body("request.state", org.hamcrest.Matchers.equalTo("REJECTED"));
+
+    assertEquals("REJECTED", stateOf(automationRepoId, id));
+    assertEquals(0, executor.calls().size());
   }
 
   /** A waiver is a sign-off: an agent — or asserted headers alone — may not give one. */
@@ -524,7 +564,7 @@ public class ReleaseRequestApprovalDoorTest {
         .statusCode(403);
 
     assertEquals(List.of(), waivers(id));
-    assertEquals("PENDING", stateOf(automationRepoId, id));
+    assertEquals("REJECTED", stateOf(automationRepoId, id));
   }
 
   /** A push landed while the page was open: the waiver names a fold the request has left. */
@@ -707,13 +747,13 @@ public class ReleaseRequestApprovalDoorTest {
 
   /**
    * A green verdict on {@link #automationRepoId}, after which only its scripted red automation
-   * holds the request — the fixture {@link #aPersonsWaiverReleasesTheHeldFold} and the rerun tests
-   * below all start from.
+   * stands in the way — and since qits-1199 it REJECTS the request — the fixture {@link
+   * #aPersonsWaiverReleasesTheHeldFold} and the rerun tests below all start from.
    */
   private String held(String id) {
     String merged = mergedShaOf(automationRepoId, id);
     verdict(automationRepoId, merged);
-    assertEquals("PENDING", stateOf(automationRepoId, id));
+    assertEquals("REJECTED", stateOf(automationRepoId, id));
     return merged;
   }
 

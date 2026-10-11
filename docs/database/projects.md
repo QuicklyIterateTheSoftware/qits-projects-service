@@ -241,6 +241,7 @@ erDiagram
     string project_id
     string qa_announced_sha
     string qualified_id "not null"
+    string rejecting_gate
     string rejecting_run_id
     string repo_id "not null"
     string repo_name
