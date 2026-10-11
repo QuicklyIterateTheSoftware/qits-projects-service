@@ -6,10 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.workspacedaemon.protocol.Ack;
+import eu.wohlben.qits.workspacedaemon.protocol.AgentBranchPushed;
 import eu.wohlben.qits.workspacedaemon.protocol.AgentActivity;
-import eu.wohlben.qits.workspacedaemon.protocol.BootstrapOutcome;
-import eu.wohlben.qits.workspacedaemon.protocol.BootstrapStep;
-import eu.wohlben.qits.workspacedaemon.protocol.Bootstrapped;
 import eu.wohlben.qits.workspacedaemon.protocol.CommandChunk;
 import eu.wohlben.qits.workspacedaemon.protocol.CommandExit;
 import eu.wohlben.qits.workspacedaemon.protocol.ConfigView;
@@ -18,7 +16,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.workspacedaemon.protocol.Describe;
 import eu.wohlben.qits.workspacedaemon.protocol.DescribeConfig;
-import eu.wohlben.qits.workspacedaemon.protocol.EditorState;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
 import eu.wohlben.qits.workspacedaemon.protocol.Heartbeat;
 import eu.wohlben.qits.workspacedaemon.protocol.Hello;
@@ -26,7 +23,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.OpenStream;
 import eu.wohlben.qits.workspacedaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.workspacedaemon.protocol.Provisioned;
 import eu.wohlben.qits.workspacedaemon.protocol.PullBranch;
-import eu.wohlben.qits.workspacedaemon.protocol.RunBootstrap;
 import eu.wohlben.qits.workspacedaemon.protocol.RunCommand;
 import eu.wohlben.qits.workspacedaemon.protocol.Stream;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceChanged;
@@ -150,11 +146,7 @@ class RefinementDaemonRegistryTest {
     verdicts.put(new GitStatus(WORKSPACE, false, "abc1234"), false);
     verdicts.put(new Provisioned(WORKSPACE, "abc1234"), false);
     verdicts.put(new ProvisionFailed(WORKSPACE, "could not clone"), false);
-    verdicts.put(new BootstrapStep(WORKSPACE, "maven", BootstrapStep.Phase.EXECUTE), false);
-    verdicts.put(
-        new BootstrapOutcome(WORKSPACE, "maven", BootstrapOutcome.Result.SUCCEEDED, 0), false);
-    verdicts.put(new Bootstrapped(WORKSPACE, true), false);
-    verdicts.put(new EditorState(EditorState.State.RUNNING), false);
+    verdicts.put(new AgentBranchPushed("agent-1", "repo-1", "main", "abc1234"), false);
     verdicts.put(new WorkspaceInfo(WORKSPACE, "repo-1", "main", null, "abc1234", true), false);
     verdicts.put(new ConfigView(WORKSPACE, "yaml", "{}", null), false);
     // The host->daemon half. None of these ever arrives on this socket — the daemon constructs no
@@ -163,12 +155,11 @@ class RefinementDaemonRegistryTest {
     verdicts.put(new RunCommand("cmd-1", List.of("ls"), "/workspace", Map.of()), false);
     verdicts.put(new Describe(WORKSPACE), false);
     verdicts.put(new DescribeConfig(WORKSPACE), false);
-    verdicts.put(new RunBootstrap(WORKSPACE, null), false);
     verdicts.put(new PullBranch(WORKSPACE, "main"), false);
     verdicts.put(new OpenStream("nonce-1", "/api"), false);
 
     assertEquals(
-        23,
+        19,
         verdicts.size(),
         "one case per permit of DaemonMessage — a frame added to the protocol is a decision to make"
             + " here as well as in evidencesUse");
