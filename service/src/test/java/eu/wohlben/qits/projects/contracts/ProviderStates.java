@@ -2475,8 +2475,9 @@ public class ProviderStates {
                   row.createdAt = when;
                   row.armedAt = when;
                   row.updatedAt = when;
-                  more.accept(row);
+                  // Named first, so a customizer that reads the backing branch sees it.
                   row.name(releaseRequestNumbers.next(row.repoId));
+                  more.accept(row);
                   row.persist();
                   return row.id;
                 });
