@@ -31,8 +31,10 @@ import java.util.regex.Pattern;
  *       string (the JSON text of an audit snapshot) is frozen in place, and that string's path goes
  *       in {@link #stringPaths}.
  *   <li><b>Unique tokens.</b> A random token a state had to put into a name to keep it unique (a
- *       project slug is unique service-wide) becomes the same-length hex counter {@code 0…0N},
- *       numbered by first appearance.
+ *       project slug is unique service-wide) becomes the hex counter {@code 0000000N}, numbered
+ *       by first appearance. It is always {@value #TOKEN_WIDTH} digits, whatever the token's
+ *       length: a token can be a volatile value (an image version), and a version bump that
+ *       changes its length must not change the recording.
  *   <li><b>Keys.</b> A member name holding a unique token — a map keyed by qualified id, as {@code
  *       POST /work/transition} answers — is frozen through the same token mapping, so it reads as
  *       the frozen param does. The object's path goes in {@link #keyPaths} (the index's {@code
@@ -56,6 +58,9 @@ public final class Freezer {
       Pattern.compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})");
 
   static final String FROZEN_INSTANT = "2026-01-01T00:00:00Z";
+
+  /** The width of a frozen unique token, independent of the token it replaces. */
+  static final int TOKEN_WIDTH = 8;
 
   private static final Pattern PLAIN_KEY = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
@@ -218,7 +223,7 @@ public final class Freezer {
       }
       String frozen = tokens.get(earliest);
       if (frozen == null) {
-        frozen = String.format("%0" + earliest.length() + "x", ++tokenCount);
+        frozen = String.format("%0" + TOKEN_WIDTH + "x", ++tokenCount);
         tokens.put(earliest, frozen);
       }
       out.append(value, from, at).append(frozen);
