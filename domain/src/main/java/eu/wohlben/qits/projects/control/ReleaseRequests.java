@@ -3211,7 +3211,11 @@ public class ReleaseRequests {
                             row.backingBranch(),
                             row.mergedSha,
                             null,
-                            row.armedAt,
+                            // NOW, not row.armedAt: this announces the pre-run passing, which can
+                            // be minutes after the fold. An event stamped with the fold's time
+                            // lands below a consumer's catch-up watermark and is never swept
+                            // (qits-1177).
+                            Instant.now(),
                             effectivePriorityOf(row.id).name()));
                   }
                   // THE GATE SET, and everything below is a member of it. Read from the repository's

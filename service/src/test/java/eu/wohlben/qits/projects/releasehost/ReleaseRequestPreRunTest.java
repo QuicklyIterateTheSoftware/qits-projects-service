@@ -189,6 +189,30 @@ public class ReleaseRequestPreRunTest {
     awaitState(id, "RELEASED");
   }
 
+  /**
+   * qits-1177: the DONE event carries the time the pre-run passed, not the fold's. Stamped with the
+   * fold's time it landed minutes below qits-ci's catch-up watermark and was never read.
+   */
+  @Test
+  public void theDoneAnnouncementCarriesTheTimeThePreRunPassed() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+
+    String id = create("work");
+    Instant folded = announcer.announcedFor(id).get(0).changedAt();
+    sleep();
+
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    Instant passing = Instant.now();
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+
+    assertEquals(List.of("PENDING", "DONE"), preRuns(id));
+    Instant done = announcer.announcedFor(id).get(1).changedAt();
+    assertTrue(
+        !done.isBefore(passing),
+        "DONE must carry the moment the pre-run passed (" + done + "), not the fold's " + folded);
+  }
+
   /** A pre-run already settled when the fold lands — FRESH on the spot — is one DONE, no PENDING. */
   @Test
   public void aPreRunFreshOnTheSpotIsOneDoneAndNoPending() {

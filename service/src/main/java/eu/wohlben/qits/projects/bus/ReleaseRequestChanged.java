@@ -34,9 +34,11 @@ import java.util.UUID;
  * {@code releaseRequestId} today, and a consumer could compose it — but the naming convention is
  * this service's to change and a consumer that composed it would silently break when it did.
  *
- * <p><b>{@code changedAt} is when the merge landed</b>, not the moment {@code publish()} was called
- * — the two differ by however long the announcement took to be made, and the one that belongs in an
- * event log is when the thing happened.
+ * <p><b>{@code changedAt} is when the announced change happened</b> — the merge landing for a
+ * {@code PENDING} event, the pre-run passing for a {@code DONE} one — not the moment {@code
+ * publish()} was called. It must never be an earlier write's time: the DONE event once carried the
+ * fold's time, minutes in the past, and a consumer whose catch-up watermark had moved on never read
+ * it (qits-1177).
  *
  * <p><b>{@code priority} is the request's effective priority at the moment of the fold</b> — the max
  * over its named branch sources ({@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code HIGH}, {@code
