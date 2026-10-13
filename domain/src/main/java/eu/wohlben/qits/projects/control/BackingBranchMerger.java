@@ -9,7 +9,8 @@ import java.util.List;
  * <p>A port in the house shape: {@code Instance}-resolved, absent supported. A deployment with no
  * git-host address leaves every request standing with a detail that says why, which is a visible
  * stall the sweep re-tries rather than a silent one. <b>An implementation must not throw</b>: every
- * answer is an {@link Outcome}, and {@link Result#UNREACHABLE} carries the reason.
+ * answer is an {@link Outcome}, and {@link Result#UNREACHABLE} carries the reason (or {@link
+ * Result#MISSING_SOURCE} the ref, when the reason is a source the git host does not have).
  *
  * <p><b>It speaks refs and nothing else.</b> The git host owns no vocabulary about releases and this
  * port keeps it that way: no version, no request id, no notion of what {@code release/<id>} is for.
@@ -139,9 +140,12 @@ public interface BackingBranchMerger {
    * with no content behind it (a pending tag leaving the set, a duplicate delivery) free.
    *
    * <p>{@link Result#CONFLICT} is the git host's 409: no ref moved, and {@link Outcome#conflicts}
-   * names the paths and the head that introduced each. {@link Result#UNREACHABLE} is everything
-   * else — an unconfigured address, a timeout, a 5xx, a refusal nobody predicted — which is a fact
-   * about the moment and not about the request, so the sweep asks again.
+   * names the paths and the head that introduced each. {@link Result#MISSING_SOURCE} is the git
+   * host's {@code 404 no-such-source} (qits-1221): no ref moved, and {@link Outcome#detail} is the
+   * source ref it could not resolve — a fact about the request's sources, not about the moment, which
+   * answers the same on every knock until that ref exists again. {@link Result#UNREACHABLE} is
+   * everything else — an unconfigured address, a timeout, a 5xx, any other 404, a refusal nobody
+   * predicted — which is a fact about the moment and not about the request, so the sweep asks again.
    *
    * <p>{@link Outcome#resolved} names the paths a directive decided, as the host reports them back.
    * It is empty for every fold that carried none, which is almost all of them; a caller that asked
@@ -210,6 +214,15 @@ public interface BackingBranchMerger {
           Result.CONFLICT, null, List.of(), List.copyOf(conflicts), target, List.of(), List.of());
     }
 
+    /**
+     * The git host could not resolve {@code source}, one of the refs it was asked to fold (its
+     * {@code 404 no-such-source}, qits-1221). {@link #detail} is that ref as the git host named it.
+     */
+    public static Outcome missingSource(String source) {
+      return new Outcome(
+          Result.MISSING_SOURCE, null, List.of(), List.of(), source, List.of(), List.of());
+    }
+
     public static Outcome unreachable(String detail) {
       return new Outcome(
           Result.UNREACHABLE, null, List.of(), List.of(), detail, List.of(), List.of());
@@ -253,6 +266,8 @@ public interface BackingBranchMerger {
     FAST_FORWARD,
     UNCHANGED,
     CONFLICT,
+    /** A source ref the git host does not have — definitive until it exists again (qits-1221). */
+    MISSING_SOURCE,
     UNREACHABLE
   }
 

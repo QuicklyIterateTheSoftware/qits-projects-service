@@ -43,8 +43,11 @@ import org.jboss.logging.Logger;
  * anonymous request the git host would answer 401 to.
  *
  * <p><b>Never throws, and every answer is classified.</b> The three success words map to the port's
- * three; a {@code 409 merge-conflict} is the conflict with its paths forwarded unchanged; and every
- * other answer — {@code ref-moved}, a 404, a 5xx, a timeout, an unconfigured address — is {@link
+ * three; a {@code 409 merge-conflict} is the conflict with its paths forwarded unchanged; a {@code
+ * 404 no-such-source} is {@link BackingBranchMerger.Outcome#missingSource} with the ref the git host
+ * named (qits-1221) — a source that does not exist answers the same on every knock, so it is a fact
+ * about the request and not the moment; and every other answer — {@code ref-moved}, any other 404
+ * ({@code no-such-repository} included), a 5xx, a timeout, an unconfigured address — is {@link
  * BackingBranchMerger.Outcome#unreachable}, a fact about the moment that the sweep asks again about.
  * {@code ref-moved} lands there deliberately: it means a concurrent writer moved the backing branch,
  * and the answer to that is to fold again, not to stop.
@@ -146,6 +149,16 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       if (response.statusCode() == 200) {
         return success(response.body());
       }
+      if (response.statusCode() == 404) {
+        // Only the one 404 that names a source is definitive (qits-1221). A missing repository is
+        // a registration this side may yet catch up with, and a 404 with no body nothing here can
+        // read — both stay facts about the moment.
+        JsonNode answer = readOrNull(response.body());
+        if (answer != null && "no-such-source".equals(answer.path("error").asText(""))) {
+          String source = text(answer, "detail");
+          return Outcome.missingSource(source == null ? "a source" : source);
+        }
+      }
       if (response.statusCode() == 409) {
         JsonNode answer = MAPPER.readTree(response.body());
         if ("merge-conflict".equals(answer.path("error").asText(""))) {
@@ -236,6 +249,15 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
   private static String text(JsonNode node, String field) {
     JsonNode value = node.path(field);
     return value.isMissingNode() || value.isNull() ? null : value.asText();
+  }
+
+  /** A body that is JSON, or null — a 404 from a proxy in front of the git host need not be. */
+  private static JsonNode readOrNull(String body) {
+    try {
+      return body == null || body.isBlank() ? null : MAPPER.readTree(body);
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   private static void putIfPresent(Map<String, Object> body, String key, String value) {

@@ -35,7 +35,10 @@ import org.hibernate.annotations.DynamicUpdate;
  *
  * <p>The state machine: {@code PENDING → READY → RELEASED → FINALIZED}; {@code PENDING → REJECTED}
  * when a verdict is red, when a person declines, or when the pre-run's automations FAILED at the
- * fold with none still in flight (qits-1199, {@link #rejectingGate}); {@code READY → FAILED → READY} around a mechanical execution failure
+ * fold with none still in flight (qits-1199, {@link #rejectingGate}); {@code → REJECTED} from any
+ * unreleased state when a source does not exist on the git host and so cannot be folded (qits-1221,
+ * {@code rejectingGate = fold}), lifted by the next fold that succeeds — at the same sha a reopen,
+ * at a new one a re-arm; {@code READY → FAILED → READY} around a mechanical execution failure
  * — retried by the sweep only while {@link #retryable} says asking again can change the answer;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to
@@ -308,8 +311,11 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /**
    * The gate that rejected this request when it was <b>not</b> a CI run or a person: {@code
-   * "automations"} ({@code AutomationsGate.KIND}) when the pre-run FAILED at {@link #mergedSha}, and
-   * null on every other row (V43, qits-1199).
+   * "automations"} ({@code AutomationsGate.KIND}) when the pre-run FAILED at {@link #mergedSha};
+   * {@code "fold"} ({@code FoldFailure.KIND}, qits-1221) when the git host could not fold the sources
+   * because one of them does not exist; and null on every other row (V43, qits-1199). A fold
+   * rejection is lifted only by a fold that succeeds — a push of the missing source — and never by
+   * the sweep, a re-run or a waiver.
    *
    * <p>The second discriminator beside {@link #rejectingRunId}, for that column's reason: a rejection
    * is reopened only by evidence about its own cause. An automation's is reopened at the same fold —
