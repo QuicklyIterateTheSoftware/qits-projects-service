@@ -198,6 +198,9 @@
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
         <qits.arch-rules.version>2026.1011.185745</qits.arch-rules.version>
+        <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
+             and published no db-core. -->
+        <qits.db-core.version>2026.1002.70617</qits.db-core.version>
 
         <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
              java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
@@ -349,7 +352,7 @@
                      module whose datasource names it. -->
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-db-core</artifactId>
-                <version>${qits.integrations-quarkus.version}</version>
+                <version>${qits.db-core.version}</version>
             </dependency>
             <dependency>
                 <!-- Compile scope, and it ships: QitsHttpClients is injected everywhere an internal
