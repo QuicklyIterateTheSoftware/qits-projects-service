@@ -20,7 +20,9 @@ import eu.wohlben.qits.projects.bus.EntityTransitioned;
 import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
+import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -71,6 +73,13 @@ public class PhaseAdvanceTest {
   @Inject RecordingEntityTransitionAnnouncer transitions;
 
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
+  /**
+   * The git host a VERIFIED ask puts each pushed branch to first (qits-1220): a branch it was not
+   * told about answers {@code no-such-branch}, so every agent here that pushed something has its
+   * branch staged as there ({@link #onTheGitHost}).
+   */
+  @Inject RecordingReleaseGitHost gitHost;
 
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
@@ -174,6 +183,7 @@ public class PhaseAdvanceTest {
   /** The ticket's ACTIVE agent over at qits-workspaces, having pushed {@code branch} there. */
   private WorkspaceAgentDispatch.Agent standingOn(
       String repositoryId, String branch, String ticketId) {
+    onTheGitHost(repositoryId, branch);
     return RecordingWorkspaceAgentDispatch.active(
         "agent-7",
         7L,
@@ -181,6 +191,34 @@ public class PhaseAdvanceTest {
         ticketId,
         branch,
         new WorkspaceAgentDispatch.Branch(repositoryId, branch));
+  }
+
+  /**
+   * Stage {@code branch} as present on the git host, at a head of its own that nothing contains —
+   * a pushed branch that is not released yet, which is what every ask here is about (qits-1220).
+   */
+  private String onTheGitHost(String repositoryId, String branch) {
+    String sha = "head-of-" + repositoryId + "-" + branch;
+    gitHost.headOf(repositoryId, branch, sha);
+    return sha;
+  }
+
+  /** Stage {@code branch} as released and deleted: the git host answers {@code no-such-branch}. */
+  private void goneFromTheGitHost(String repositoryId, String branch) {
+    gitHost.headUnreadable(
+        repositoryId,
+        branch,
+        ReleaseGitHost.Answer.failed(
+            "qits-githost answered 404: {\"error\":\"no-such-branch\",\"detail\":\"refs/heads/"
+                + branch
+                + "\"}"));
+  }
+
+  /** Stage {@code branch} as released: its head is in the repository's default branch already. */
+  private void releasedOnTheGitHost(String repositoryId, String branch) {
+    String head = onTheGitHost(repositoryId, branch);
+    gitHost.headOf(repositoryId, "main", "main-of-" + repositoryId);
+    gitHost.containsCommit(repositoryId, head, "main-of-" + repositoryId);
   }
 
   /**
@@ -1045,6 +1083,8 @@ public class PhaseAdvanceTest {
             branch,
             new WorkspaceAgentDispatch.Branch(wrapperId, branch),
             new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
+    onTheGitHost(wrapperId, branch);
+    onTheGitHost(componentId, branch + "-totals");
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1090,6 +1130,7 @@ public class PhaseAdvanceTest {
             new WorkspaceAgentDispatch.Branch(wrapperId, branch + "0-lookalike"),
             new WorkspaceAgentDispatch.Branch(foreignWrapper, branch + "-elsewhere"),
             new WorkspaceAgentDispatch.Branch(wrapperId, branch + "-fine")));
+    onTheGitHost(wrapperId, branch + "-fine");
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1131,6 +1172,161 @@ public class PhaseAdvanceTest {
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertTrue(said.startsWith("The agent pushed no branches, so no release was asked for."), said);
     assertTrue(said.contains("`release/hijack`"), said);
+  }
+
+  // --- and a branch that is gone or already released is not asked for (qits-1220) -----------
+
+  /**
+   * <b>A pushed branch the git host no longer has is not asked for</b> (qits-1220). The agent's
+   * list still names a branch an earlier release shipped and deleted; asking for it opened
+   * qits-projects-service-rr-261, whose fold died on {@code 404 no-such-source}. The branch that is
+   * still there is asked for as ever, and the thread names the one passed over.
+   */
+  @Test
+  void aBranchTheGitHostNoLongerHasIsNotAskedFor() {
+    String projectId = createProject("Advance Release Gone");
+    String ticketId = createTicket(projectId, "Shipped before");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-gone-service", null).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-shipped"),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch)));
+    goneFromTheGitHost(componentId, branch + "-shipped");
+    onTheGitHost(wrapperId, branch);
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertTrue(releaseRequestsOf(componentId).isEmpty(), "the deleted branch was not asked for");
+    List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
+    assertEquals(1, wrapper.size(), wrapper.toString());
+    assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(said.startsWith("Asked for the release of `" + branch + "`"), said);
+    assertTrue(
+        said.endsWith(
+            " Not asked for, because they no longer exist on the git host: `"
+                + branch
+                + "-shipped`."),
+        said);
+  }
+
+  /**
+   * <b>A pushed branch whose head is already released is not asked for</b> (qits-1220): its head
+   * is contained in the repository's default branch, so a request would release nothing new.
+   */
+  @Test
+  void aBranchWhoseHeadIsAlreadyReleasedIsNotAskedFor() {
+    String projectId = createProject("Advance Release Already");
+    String ticketId = createTicket(projectId, "Released already");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-already-service", null).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-done"),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch)));
+    releasedOnTheGitHost(componentId, branch + "-done");
+    onTheGitHost(wrapperId, branch);
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertTrue(releaseRequestsOf(componentId).isEmpty(), "the released branch was not asked for");
+    assertEquals(1, releaseRequestsOf(wrapperId).size());
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(
+        said.endsWith(" Not asked for, because they are already released: `" + branch + "-done`."),
+        said);
+  }
+
+  /**
+   * <b>Nothing left to release opens no request</b> (qits-1220): every in-scope branch is gone or
+   * released, so the ticket moves on with one sentence, in the shape of the "pushed no branches"
+   * one, naming what was passed over.
+   */
+  @Test
+  void anItemWithNothingLeftToReleaseAsksForNothing() {
+    String projectId = createProject("Advance Release Nothing Left");
+    String ticketId = createTicket(projectId, "All shipped");
+    String wrapperId = wrapperIdOf(projectId);
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "-first"),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch)));
+    goneFromTheGitHost(wrapperId, branch + "-first");
+    releasedOnTheGitHost(wrapperId, branch);
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "nothing was left, so none was asked for");
+    assertEquals(
+        "Nothing was left to release, so no release was asked for. The ticket is VERIFIED and"
+            + " nothing is running on it. Not asked for, because they are already released: `"
+            + branch
+            + "`. Not asked for, because they no longer exist on the git host: `"
+            + branch
+            + "-first`.",
+        thread(ticketId).get(thread(ticketId).size() - 1));
+  }
+
+  /**
+   * <b>A git host that cannot answer is "cannot tell", and the branch is asked for</b> — the
+   * regression guard on qits-1220's other side: a release is never dropped on a flaky moment, so an
+   * unreachable host asks exactly as before the check existed.
+   */
+  @Test
+  void aGitHostThatCannotAnswerStillAsks() {
+    String projectId = createProject("Advance Release Host Down");
+    String ticketId = createTicket(projectId, "Host is down");
+    String wrapperId = wrapperIdOf(projectId);
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch)));
+    gitHost.headUnreadable(
+        wrapperId,
+        branch,
+        ReleaseGitHost.Answer.failedRetryable("qits-githost could not be reached: timeout"));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), "could not ask is not gone: " + requests);
+    assertTrue(sourceNamesOf(requests.get(0)).contains(branch));
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertFalse(said.contains("Not asked for"), said);
   }
 
   // --- and an obsolete agent is not one to act on ---------------------------------------------

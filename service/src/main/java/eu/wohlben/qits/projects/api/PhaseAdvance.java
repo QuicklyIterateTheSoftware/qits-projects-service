@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
+import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -19,6 +20,8 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -133,8 +136,11 @@ import org.jboss.logging.Logger;
  * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
  * naming a branch the git host no longer has lands a PENDING row whose fold answers UNREACHABLE and
  * which the 30-second sweep then retries for ever. The <b>ACTIVE</b> agent's list of pushed
- * branches is the evidence that each branch is there, so <b>no such agent, or one that pushed
- * nothing, means no ask</b> — one plain sentence on the thread and nothing else.
+ * branches is the evidence that each branch was pushed, so <b>no such agent, or one that pushed
+ * nothing, means no ask</b> — one plain sentence on the thread and nothing else. Pushed is not the
+ * same as still there, though: since qits-1220 each branch is also put to the git host, and one it
+ * says is gone, or whose head is already released, is passed over and named ({@link
+ * ReleasableBranch}).
  *
  * <p><b>ACTIVE is doing real work in that sentence.</b> {@link WorkspaceAgentDispatch#agentsFor}
  * answers every agent of the entity, OBSOLETE and REMOVED ones included. An OBSOLETE agent's branches
@@ -262,6 +268,16 @@ public class PhaseAdvance {
 
   /** Where a reported branch's repository is checked against the work item's project. */
   @Inject RepositoryService repositories;
+
+  /**
+   * Where a pushed branch is checked for still existing and for being unreleased before it is asked
+   * for (qits-1220, {@link ReleasableBranch}). A port, so an {@code Instance}: <b>absent is "cannot
+   * tell"</b>, and every branch is asked for exactly as it was before the check existed.
+   */
+  @Inject Instance<ReleaseGitHost> gitHosts;
+
+  /** The releases not yet merged into their default branch — see {@link ReleasableBranch}. */
+  @Inject ReleasedTagPendingMergeRepository pendingTags;
 
   /**
    * Who asks for the release when the transition carried no name. The platform is the requester on
@@ -551,6 +567,19 @@ public class PhaseAdvance {
    * <p>Each pushed branch is asked for in its own repository; {@link ReleaseRequests#request}
    * converges per repository, so this opens or joins one request per repository. The wrapper goes
    * last, after the submodules it points at.
+   *
+   * <p><b>A pushed branch is not proof that it is still there, so the git host is asked first</b>
+   * (qits-1220). The agent's list records what it pushed, and a branch an earlier release shipped
+   * was deleted by that release while the list kept naming it: qits-projects-service-rr-261 was
+   * opened for {@code ticket/qits-1199}, which shipped on 2026-10-11 and was deleted, and its fold
+   * died on {@code 404 no-such-source}. So each in-scope branch goes through {@link
+   * ReleasableBranch} before it is asked for: a branch the git host answers {@code no-such-branch}
+   * for is <b>gone</b>, and one whose head is contained in the repository's default branch or in a
+   * release still pending its merge there is <b>already released</b> — neither is asked for, and
+   * the thread names both. Every answer short of the host saying so — no git host, an unreachable
+   * one, a refusal — asks exactly as before: a release is never dropped on a flaky moment. When
+   * every in-scope branch is passed over, nothing is left to release and no request is opened; the
+   * sentence says so in the shape of the "pushed no branches" one.
    */
   private void releaseAgentBranches(WorkEntity entity, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
@@ -644,7 +673,31 @@ public class PhaseAdvance {
             + entity.title;
     List<String> asked = new java.util.ArrayList<>();
     List<String> refused = new java.util.ArrayList<>();
+    List<String> released = new java.util.ArrayList<>();
+    List<String> gone = new java.util.ArrayList<>();
+    ReleaseGitHost gitHost = gitHosts.isResolvable() ? gitHosts.get() : null;
     for (WorkspaceAgentDispatch.Branch branch : branches) {
+      ReleasableBranch.Verdict verdict =
+          ReleasableBranch.of(
+              gitHost,
+              branch.repositoryId(),
+              branch.branch(),
+              defaultBranchOf(branch.repositoryId()),
+              releasedShasOf(branch.repositoryId()));
+      if (verdict != ReleasableBranch.Verdict.ASK) {
+        LOG.infof(
+            "%s %s is VERIFIED, but %s in %s is %s, so its release was not asked for",
+            entity.archetype,
+            entity.id,
+            branch.branch(),
+            branch.repositoryId(),
+            verdict == ReleasableBranch.Verdict.GONE
+                ? "gone from the git host"
+                : "already released");
+        (verdict == ReleasableBranch.Verdict.GONE ? gone : released)
+            .add("`" + branch.branch() + "`");
+        continue;
+      }
       try {
         ReleaseRequestDto request =
             releaseRequests.request(
@@ -673,6 +726,30 @@ public class PhaseAdvance {
         refused.add("`" + branch.branch() + "`" + (detail.isBlank() ? "" : ": " + detail));
       }
     }
+    String skipped =
+        (released.isEmpty()
+                ? ""
+                : " Not asked for, because they are already released: "
+                    + String.join(", ", released)
+                    + ".")
+            + (gone.isEmpty()
+                ? ""
+                : " Not asked for, because they no longer exist on the git host: "
+                    + String.join(", ", gone)
+                    + ".");
+    if (asked.isEmpty() && refused.isEmpty()) {
+      // Every in-scope branch was skipped: nothing is left to release, and the work item moves on
+      // without a request — the "pushed no branches" sentence's shape, naming what was passed over.
+      say(
+          entity,
+          "Nothing was left to release, so no release was asked for. The "
+              + noun(entity)
+              + " is VERIFIED and nothing is running on it."
+              + skipped
+              + refusedScope,
+          changedBy);
+      return;
+    }
     StringBuilder sentence = new StringBuilder();
     if (!asked.isEmpty()) {
       sentence
@@ -695,7 +772,37 @@ public class PhaseAdvance {
         sentence.append(" The ").append(noun(entity)).append(" is VERIFIED and nothing is running on it.");
       }
     }
-    say(entity, sentence.toString() + refusedScope, changedBy);
+    say(entity, sentence.toString() + skipped + refusedScope, changedBy);
+  }
+
+  /**
+   * The repository's default branch ({@link Repository#mainBranch}), {@code main} where it names
+   * none or cannot be read — the fallback every other reader of that column makes.
+   */
+  private String defaultBranchOf(String repoId) {
+    try {
+      String main = repositories.get(repoId).mainBranch;
+      return main == null || main.isBlank() ? "main" : main;
+    } catch (RuntimeException e) {
+      return "main";
+    }
+  }
+
+  /**
+   * The commits of the repository's releases not yet merged into its default branch, or none when
+   * they cannot be read — fewer places to find a released head in, which only ever means asking.
+   */
+  private List<String> releasedShasOf(String repoId) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () ->
+                  pendingTags.listPending(repoId).stream().map(row -> row.releasedSha).toList());
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "Could not read the pending releases of %s; its default branch alone is asked", repoId);
+      return List.of();
+    }
   }
 
   /**

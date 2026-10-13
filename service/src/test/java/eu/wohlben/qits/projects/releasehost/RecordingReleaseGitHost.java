@@ -348,6 +348,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     addressed.clear();
     onDelete.set(null);
     taken.clear();
+    heads.clear();
     pins.clear();
     resolvable.clear();
     containment.clear();

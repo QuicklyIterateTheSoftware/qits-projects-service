@@ -56,6 +56,9 @@ public class WorkDispatchControllerTest {
 
   @Inject RecordingWorkspaceAgentTurns turns;
 
+  /** Where a pushed branch is staged as present, so a VERIFIED ask asks for it (qits-1220). */
+  @Inject eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost gitHost;
+
   @Inject RecordingEntityTransitionAnnouncer transitions;
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
@@ -233,8 +236,10 @@ public class WorkDispatchControllerTest {
   }
 
   /** The ACTIVE agent of {@code workId}, having pushed {@code branch} in the wrapper. */
-  private static WorkspaceAgentDispatch.Agent pushed(
+  private WorkspaceAgentDispatch.Agent pushed(
       long rowId, String wrapperId, String workId, String branch) {
+    // Pushed, so on the git host — the check a VERIFIED ask makes first (qits-1220).
+    gitHost.headOf(wrapperId, branch, "head-of-" + wrapperId + "-" + branch);
     return RecordingWorkspaceAgentDispatch.active(
         "agent-" + rowId,
         rowId,

@@ -2000,7 +2000,12 @@ assignment, not a comment, not a release.
   of the work item's project is named; any other is left off and the thread says so. No ACTIVE
   agent, or one that pushed nothing in scope, asks for nothing and
   says so on the thread: an ask naming a branch that is not there would be a PENDING request the
-  sweep retries for ever. A move back to VERIFYING or IMPLEMENTED names each open request that
+  sweep retries for ever. Pushed is not still there (qits-1220): each in-scope branch is put to
+  `ReleaseGitHost` first (`api/ReleasableBranch`), and one the git host answers `no-such-branch`
+  for (released and deleted), or whose head its default branch or a release pending its merge
+  already contains, is not asked for and is named on the thread; every branch passed over means no
+  request at all. Anything short of the host saying so — no git host, unreachable, refused — asks
+  as before. A move back to VERIFYING or IMPLEMENTED names each open request that
   still carries one of those branches.
 - **It is not on `WorkEntityService`** because the entities module has no idea what a workspace is and must
   keep not having one, and because recording a fact and calling out to a sibling service must not
