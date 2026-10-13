@@ -19,6 +19,9 @@ public interface BranchListing {
    * Every branch {@code repoId} has on the git host, by name ({@code ticket/qits-1}, not {@code
    * refs/heads/…}).
    *
+   * <p>Called off the request thread, concurrently for several repositories, and interrupted when
+   * its caller's deadline passes: an implementation activates whatever context it needs itself.
+   *
    * @throws RuntimeException when the repository or its git host cannot be read — never an empty
    *     list, which would say "this repository has no branch" and pass its work over
    */

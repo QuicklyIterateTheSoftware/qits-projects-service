@@ -31,14 +31,40 @@ public class RecordingBranchListing implements BranchListing {
 
   private final List<String> listed = new ArrayList<>();
 
+  private final java.util.Set<String> hanging = new java.util.HashSet<>();
+
+  /** Released by {@link #reset}, so a hung listing never outlives its test. */
+  private java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+
   @Override
-  public synchronized List<String> branches(String repoId) {
-    listed.add(repoId);
-    String failure = failures.get(repoId);
-    if (failure != null) {
-      throw new IllegalStateException(failure);
+  public List<String> branches(String repoId) {
+    java.util.concurrent.CountDownLatch hang;
+    synchronized (this) {
+      listed.add(repoId);
+      hang = hanging.contains(repoId) ? release : null;
     }
-    return staged.getOrDefault(repoId, List.of());
+    if (hang != null) {
+      try {
+        // A git host that does not answer: blocks until the caller gives up (an interrupt) or the
+        // test ends (reset). Outside the monitor, so the other repositories still answer meanwhile.
+        hang.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted while hanging", e);
+      }
+    }
+    synchronized (this) {
+      String failure = failures.get(repoId);
+      if (failure != null) {
+        throw new IllegalStateException(failure);
+      }
+      return staged.getOrDefault(repoId, List.of());
+    }
+  }
+
+  /** Listing {@code repoId} does not answer — it blocks until interrupted or reset. */
+  public synchronized void hang(String repoId) {
+    hanging.add(repoId);
   }
 
   /** {@code repoId} lists {@code branches} on the git host, from now until the next reset. */
@@ -58,6 +84,9 @@ public class RecordingBranchListing implements BranchListing {
   }
 
   public synchronized void reset() {
+    release.countDown();
+    release = new java.util.concurrent.CountDownLatch(1);
+    hanging.clear();
     staged.clear();
     failures.clear();
     listed.clear();

@@ -25,11 +25,20 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.jboss.logging.Logger;
 
 /**
@@ -309,6 +318,42 @@ public class PhaseAdvance {
    * history entry records as having ended the agent's work.
    */
   static final String VERIFIED_NOTHING_TO_RELEASE = "verified";
+
+  /**
+   * How long a move into VERIFIED waits for the git host's listings, all repositories together. This
+   * runs synchronously inside the transition request, and a project the size of qits has ~60
+   * repositories at ~270 ms per {@code ls-remote}: in series that was ~16 s on every VERIFIED move.
+   */
+  static final Duration LISTING_DEADLINE = Duration.ofSeconds(10);
+
+  /** {@link #LISTING_DEADLINE}, package-private and mutable for the suite alone. */
+  Duration listingDeadline = LISTING_DEADLINE;
+
+  /**
+   * How many listings run at once. Bounded rather than one per repository so a VERIFIED move does
+   * not open sixty concurrent {@code ls-remote}s against the git host; eight brings ~60 repositories
+   * to about two seconds.
+   */
+  static final int LISTING_THREADS = 8;
+
+  /**
+   * The listings' pool: plain daemon platform threads, {@code refinementhost/RefinementDrift}'s
+   * shape — nothing a native image needs telling about. They carry no request context, which is why
+   * the shipped {@link BranchListing} activates its own.
+   */
+  private final ExecutorService listingPool =
+      Executors.newFixedThreadPool(
+          LISTING_THREADS,
+          runnable -> {
+            Thread thread = new Thread(runnable, "verified-branch-listing");
+            thread.setDaemon(true);
+            return thread;
+          });
+
+  @PreDestroy
+  void shutdownListings() {
+    listingPool.shutdownNow();
+  }
 
   /**
    * Who asks for the release when the transition carried no name. The platform is the requester on
@@ -842,8 +887,10 @@ public class PhaseAdvance {
 
   /**
    * Every branch the git host lists in a repository of the entity's project that lies in the work
-   * item's scope ({@link WorkBranches#isAgentBranch}). A repository whose listing throws is logged
-   * and skipped, and the others are still read; with no listing configured, or the project's
+   * item's scope ({@link WorkBranches#isAgentBranch}), in the project's repository order. The
+   * listings run concurrently on {@link #listingPool}, at most {@link #LISTING_THREADS} at once, under
+   * one {@link #listingDeadline} for all of them. A repository whose listing throws, or does not
+   * answer within the deadline, is logged and skipped, and the others are still read; with no listing configured, or the project's
    * repositories unreadable, the answer is none and the agents' push logs are all there is.
    */
   private List<WorkspaceAgentDispatch.Branch> listedOnTheGitHost(
@@ -865,21 +912,52 @@ public class PhaseAdvance {
       return List.of();
     }
     BranchListing listing = branchListings.get();
+    List<Callable<List<String>>> asks =
+        ofTheProject.stream()
+            .map(repository -> (Callable<List<String>>) () -> listing.branches(repository.id))
+            .toList();
+    List<Future<List<String>>> answers;
+    try {
+      // invokeAll answers in the order asked, and cancels (interrupts) whatever is not done by the
+      // deadline — so the outcome keeps the project's repository order whatever finished first.
+      answers = listingPool.invokeAll(asks, listingDeadline.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warnf(
+          "Interrupted listing the branches of project %s, so %s %s's branches are read from its"
+              + " agents alone",
+          entity.projectId,
+          entity.archetype,
+          entity.id);
+      return List.of();
+    }
     List<WorkspaceAgentDispatch.Branch> listed = new java.util.ArrayList<>();
-    for (Repository repository : ofTheProject) {
+    for (int i = 0; i < answers.size(); i++) {
+      String repoId = ofTheProject.get(i).id;
       try {
-        for (String branch : listing.branches(repository.id)) {
+        for (String branch : answers.get(i).get()) {
           if (WorkBranches.isAgentBranch(wrapperBranch, branch)) {
-            listed.add(new WorkspaceAgentDispatch.Branch(repository.id, branch));
+            listed.add(new WorkspaceAgentDispatch.Branch(repoId, branch));
           }
         }
-      } catch (RuntimeException e) {
+      } catch (CancellationException e) {
         LOG.warnf(
-            e,
-            "Could not list the branches of %s on the git host; it is skipped for %s %s",
-            repository.id,
+            "The git host did not list the branches of %s within %s; it is skipped for %s %s",
+            repoId,
+            listingDeadline,
             entity.archetype,
             entity.id);
+      } catch (ExecutionException e) {
+        LOG.warnf(
+            e.getCause(),
+            "Could not list the branches of %s on the git host; it is skipped for %s %s",
+            repoId,
+            entity.archetype,
+            entity.id);
+      } catch (InterruptedException e) {
+        // Unreachable — invokeAll returned, so every future is done — but never swallowed.
+        Thread.currentThread().interrupt();
+        return listed;
       }
     }
     return listed;

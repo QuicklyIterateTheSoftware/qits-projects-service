@@ -2017,7 +2017,7 @@ assignment, not a comment, not a release.
   wrapper branch) — which also catches a plain `git push` no push log recorded — unioned with (2)
   the pushed branches of **every** agent of the item, in scope and in a repository of its project,
   deduplicated on (repository, branch). An agent-reported branch outside that scope is left off and
-  the thread says so; a repository whose listing throws is logged and skipped. Each candidate is
+  the thread says so. The listings run inside the transition request, so they fan out on a pool of `LISTING_THREADS` (8) daemon threads under one `LISTING_DEADLINE` (10 s) for all of them — ~60 repositories at ~270 ms per `ls-remote` was ~16 s in series; a repository whose listing throws or misses the deadline is logged and skipped, and results keep the project's repository order. Each candidate is
   asked for in its own repository through `ReleaseRequests.request`, which converges per
   repository, so this opens or joins one request per repository, the wrapper last. Listed or pushed
   is not still there (qits-1220): each candidate is put to `ReleaseGitHost` first

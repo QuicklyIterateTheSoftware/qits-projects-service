@@ -1528,6 +1528,51 @@ public class PhaseAdvanceTest {
   }
 
   /**
+   * <b>A listing that does not answer within the deadline is skipped, and the others still
+   * count.</b> The listings run concurrently under one deadline because this runs inside the
+   * transition request; a hung git host costs the deadline, never the move. The deadline is shrunk
+   * here so the test does not wait the shipped ten seconds.
+   */
+  @Test
+  void aListingThatHangsPastTheDeadlineIsSkippedWhileTheOthersCount() {
+    String projectId = createProject("Advance Release Listing Hangs");
+    String ticketId = createTicket(projectId, "One host hangs");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-hung-service", null).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branch));
+    listing.willList(componentId, branch + "-late");
+    listing.hang(componentId);
+    onTheGitHost(componentId, branch + "-late");
+    listing.willList(wrapperId, branch);
+    onTheGitHost(wrapperId, branch);
+    PhaseAdvance bean = io.quarkus.arc.ClientProxy.unwrap(advance);
+    java.time.Duration shipped = bean.listingDeadline;
+    assertEquals(java.time.Duration.ofSeconds(10), PhaseAdvance.LISTING_DEADLINE);
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    bean.listingDeadline = java.time.Duration.ofMillis(300);
+    long started = System.nanoTime();
+    try {
+      transition(ticketId, "VERIFIED");
+    } finally {
+      bean.listingDeadline = shipped;
+    }
+    long tookMillis = (System.nanoTime() - started) / 1_000_000;
+
+    assertTrue(listing.listed().contains(componentId), "the hung repository was asked");
+    assertTrue(
+        releaseRequestsOf(componentId).isEmpty(), "and its listing, never answered, counts for nothing");
+    List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
+    assertEquals(1, wrapper.size(), "the wrapper's listing still counted: " + wrapper);
+    assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
+    assertTrue(tookMillis < 5_000, "the move waited the deadline, not the hang: " + tookMillis);
+  }
+
+  /**
    * <b>The qits-1223 shape.</b> The ACTIVE agent pushed nothing, and nothing of the ticket's is on
    * the git host — only {@code main} and another ticket's branch. No request, and the workspace is
    * handed to cleanup exactly once, at the wrapper on the ticket's branch: only a release marks an
