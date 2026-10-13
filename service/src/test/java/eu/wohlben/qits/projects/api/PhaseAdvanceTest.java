@@ -24,6 +24,8 @@ import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
+import eu.wohlben.qits.projects.control.BackingBranchMerger;
+import eu.wohlben.qits.projects.releasehost.RecordingBackingBranchMerger;
 import eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost;
 import eu.wohlben.qits.projects.testsupport.RecordingBranchListing;
 import eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces;
@@ -96,6 +98,13 @@ public class PhaseAdvanceTest {
   /** Where a VERIFIED item with nothing left to release hands its workspace to cleanup. */
   @Inject RecordingReleasedBranchWorkspaces resolutions;
 
+  /**
+   * The git host's merge door, through which a wrapper branch the git host does not have is created
+   * at the wrapper's default branch before it is asked for (qits-1224). Every release request's own
+   * fold lands here too, so a test reads the folds of one target ref ({@link #creationsOf}).
+   */
+  @Inject RecordingBackingBranchMerger merger;
+
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -106,6 +115,27 @@ public class PhaseAdvanceTest {
     transitions.reset();
     listing.reset();
     resolutions.reset();
+    merger.reset();
+  }
+
+  /** Every fold that targeted {@code ticketId}'s wrapper branch: the creations of it (qits-1224). */
+  private List<RecordingBackingBranchMerger.Fold> creationsOf(String ticketId) {
+    return merger.foldsOf("refs/heads/" + branchOf(ticketId));
+  }
+
+  /** The creation fold qits-1224 asks for: the wrapper branch, at the head of {@code main}. */
+  private void assertCreatedAtMain(String wrapperId, String ticketId) {
+    List<RecordingBackingBranchMerger.Fold> creations = creationsOf(ticketId);
+    assertEquals(1, creations.size(), "the wrapper branch was created once: " + creations);
+    assertEquals(wrapperId, creations.get(0).repoId());
+    assertEquals(List.of("refs/heads/main"), creations.get(0).sources(), "at the head of main");
+  }
+
+  /** The sentence a wrapper branch created for the release adds to the thread (qits-1224). */
+  private String createdAtMain(String ticketId) {
+    return " `"
+        + branchOf(ticketId)
+        + "` was not on the git host, so it was created at `main` to carry the estate pins.";
   }
 
   /** What was handed to cleanup for {@code ticketId}'s wrapper branch. */
@@ -1066,13 +1096,14 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>An agent that pushed nothing, on a git host with nothing of the ticket's, asks for
-   * nothing</b> (qits-1152) — and hands its workspace to cleanup (qits-1218), because no release
-   * will ever do that for it. {@code ReleaseRequests.request} checks a branch name's syntax and
-   * nothing else, so an ask naming a branch that is not there would be a request that cannot fold.
+   * <b>An agent that pushed nothing, on a git host with nothing of the ticket's, still asks for the
+   * wrapper</b> (qits-1224): the wrapper's release is what moves the estate pins, so its branch is
+   * created at {@code main} first — {@code ReleaseRequests.request} checks a branch name's syntax and
+   * nothing else, and a request naming a branch that is not there cannot fold. A release was asked
+   * for, so nothing is handed to cleanup (qits-1218): that release resolves the workspace.
    */
   @Test
-  public void anAgentThatPushedNothingAsksForNothing() {
+  public void anAgentThatPushedNothingStillAsksForTheWrapperBranchCreatedAtMain() {
     String projectId = createProject("Advance Release Nothing Pushed");
     String ticketId = createTicket(projectId, "Nothing pushed");
     String wrapperId = wrapperIdOf(projectId);
@@ -1083,16 +1114,19 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
-    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "nothing was pushed, so nothing was asked for");
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), "the wrapper is asked for, pushed or not: " + requests);
+    assertEquals(List.of("main", branchOf(ticketId)), sourceNamesOf(requests.get(0)));
+    assertCreatedAtMain(wrapperId, ticketId);
     assertEquals(
-        "No branch of this ticket was found on the git host or among its agents' pushes, so no"
-            + " release was asked for. Its workspace was handed to cleanup.",
+        "Asked for the release of `"
+            + branchOf(ticketId)
+            + "` (release request "
+            + requests.get(0).get("qualifiedId")
+            + "): the ticket now waits on that request."
+            + createdAtMain(ticketId),
         thread(ticketId).get(thread(ticketId).size() - 1));
-    assertEquals(
-        List.of(
-            new RecordingReleasedBranchWorkspaces.Resolved(
-                wrapperId, branchOf(ticketId), "verified", null)),
-        handedToCleanup(ticketId));
+    assertTrue(handedToCleanup(ticketId).isEmpty(), "the wrapper's release resolves the workspace");
   }
 
   /**
@@ -1182,9 +1216,12 @@ public class PhaseAdvanceTest {
     assertTrue(said.contains(branch + "-elsewhere"), said);
   }
 
-  /** An agent whose every branch lies outside its scope asks for nothing at all. */
+  /**
+   * An agent whose every branch lies outside its scope asks for none of them — and the wrapper is
+   * asked for all the same (qits-1224), on its own branch created at {@code main}.
+   */
   @Test
-  void anAgentWithOnlyForeignBranchesAsksForNothing() {
+  void anAgentWithOnlyForeignBranchesAsksForTheWrapperAlone() {
     String projectId = createProject("Advance Release Foreign Only");
     String ticketId = createTicket(projectId, "Only foreign");
     String wrapperId = wrapperIdOf(projectId);
@@ -1201,13 +1238,12 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
-    assertTrue(releaseRequestsOf(wrapperId).isEmpty());
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertEquals(List.of("main", branchOf(ticketId)), sourceNamesOf(requests.get(0)));
+    assertCreatedAtMain(wrapperId, ticketId);
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
-    assertTrue(
-        said.startsWith(
-            "No branch of this ticket was found on the git host or among its agents' pushes, so no"
-                + " release was asked for."),
-        said);
+    assertTrue(said.startsWith("Asked for the release of `" + branchOf(ticketId) + "`"), said);
     assertTrue(said.contains("`release/hijack`"), said);
   }
 
@@ -1294,12 +1330,13 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>Nothing left to release opens no request</b> (qits-1220): every in-scope branch is gone or
-   * released, so the ticket moves on with one sentence naming what was passed over — and its
-   * workspace is handed to cleanup (qits-1218).
+   * <b>Nothing else left to release still asks for the wrapper</b> (qits-1224): every other in-scope
+   * branch is gone or released and is passed over and named (qits-1220), and the wrapper branch,
+   * released too, is asked for anyway — it exists, so nothing is created, and it is what the estate
+   * pins are bumped onto. A release was asked for, so nothing is handed to cleanup.
    */
   @Test
-  void anItemWithNothingLeftToReleaseAsksForNothing() {
+  void anItemWithNothingElseLeftAsksForItsReleasedWrapperBranchAnyway() {
     String projectId = createProject("Advance Release Nothing Left");
     String ticketId = createTicket(projectId, "All shipped");
     String wrapperId = wrapperIdOf(projectId);
@@ -1320,18 +1357,23 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
-    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "nothing was left, so none was asked for");
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertEquals(List.of("main", branch), sourceNamesOf(requests.get(0)), "the gone branch is not on it");
+    assertTrue(creationsOf(ticketId).isEmpty(), "a branch that exists is not created");
     assertEquals(
-        "Nothing was left to release, so no release was asked for. Not asked for, because they are"
-            + " already released: `"
+        "Asked for the release of `"
             + branch
-            + "`. Not asked for, because they no longer exist on the git host: `"
+            + "` (release request "
+            + requests.get(0).get("qualifiedId")
+            + "): the ticket now waits on that request. `"
             + branch
-            + "-first`. Its workspace was handed to cleanup.",
+            + "` is already released, and was asked for anyway to carry the estate pins. Not asked"
+            + " for, because they no longer exist on the git host: `"
+            + branch
+            + "-first`.",
         thread(ticketId).get(thread(ticketId).size() - 1));
-    assertEquals(
-        List.of(new RecordingReleasedBranchWorkspaces.Resolved(wrapperId, branch, "verified", null)),
-        handedToCleanup(ticketId));
+    assertTrue(handedToCleanup(ticketId).isEmpty(), "the wrapper's release resolves the workspace");
   }
 
   /**
@@ -1500,6 +1542,8 @@ public class PhaseAdvanceTest {
             < said.indexOf((String) wrapper.get(0).get("qualifiedId")),
         "the wrapper is asked for last: " + said);
     assertTrue(handedToCleanup(ticketId).isEmpty(), "a release was asked for");
+    assertTrue(creationsOf(ticketId).isEmpty(), "a wrapper branch that is there is not created");
+    assertFalse(said.contains("estate pins"), said);
   }
 
   /**
@@ -1573,14 +1617,13 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>The qits-1223 shape.</b> The ACTIVE agent pushed nothing, and nothing of the ticket's is on
-   * the git host — only {@code main} and another ticket's branch. No request, and the workspace is
-   * handed to cleanup exactly once, at the wrapper on the ticket's branch: only a release marks an
-   * agent OBSOLETE, and without this the workspace stood for ever beside a thread saying "nothing is
-   * running on it".
+   * <b>The qits-1223 shape, since qits-1224.</b> The ACTIVE agent pushed nothing, and nothing of the
+   * ticket's is on the git host — only {@code main} and another ticket's branch. The wrapper branch
+   * is created at {@code main} and asked for, carrying nothing of anybody else's; that release is
+   * what marks the agent OBSOLETE, so nothing is handed to cleanup here.
    */
   @Test
-  void nothingInScopeOnTheGitHostHandsTheWorkspaceToCleanup() {
+  void nothingInScopeOnTheGitHostStillAsksForTheWrapperBranchCreatedAtMain() {
     String projectId = createProject("Advance Release Nothing On The Host");
     String ticketId = createTicket(projectId, "Nothing to show");
     String other = createTicket(projectId, "Somebody else's work");
@@ -1596,14 +1639,14 @@ public class PhaseAdvanceTest {
     transition(ticketId, "VERIFIED");
 
     assertTrue(listing.listed().contains(wrapperId), "the git host was read");
-    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "nothing in scope, nothing asked for");
-    assertEquals(
-        List.of(new RecordingReleasedBranchWorkspaces.Resolved(wrapperId, branch, "verified", null)),
-        handedToCleanup(ticketId),
-        "handed to cleanup exactly once");
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertEquals(List.of("main", branch), sourceNamesOf(requests.get(0)), "nothing of anybody else's");
+    assertCreatedAtMain(wrapperId, ticketId);
+    assertTrue(handedToCleanup(ticketId).isEmpty(), "the wrapper's release resolves the workspace");
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertFalse(said.contains("nothing is running on it"), said);
-    assertTrue(said.endsWith("Its workspace was handed to cleanup."), said);
+    assertTrue(said.endsWith(createdAtMain(ticketId)), said);
   }
 
   /**
@@ -1648,11 +1691,204 @@ public class PhaseAdvanceTest {
     public void sweepGateTickets() {}
   }
 
+  // --- the wrapper is always asked for, last (qits-1224) --------------------------------------
+
+  /**
+   * <b>The everyday shape.</b> The agent pushed a component branch and never pushed the wrapper
+   * branch. The component is asked for; then the wrapper branch is created at {@code main} on the
+   * git host — before its ask, since a fold naming a source the git host does not have rejects — and
+   * asked for last, so the wrapper's estate-pins automation has a branch to bump onto.
+   */
+  @Test
+  void aComponentBranchIsAskedForAndTheWrapperBranchIsCreatedAndAskedForLast() {
+    String projectId = createProject("Advance Release Wrapper Created");
+    String ticketId = createTicket(projectId, "Component only");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-created-service", null).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
+    onTheGitHost(componentId, branch + "-totals");
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> component = releaseRequestsOf(componentId);
+    List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
+    assertEquals(1, component.size(), component.toString());
+    assertEquals(1, wrapper.size(), wrapper.toString());
+    assertEquals(List.of("main", branch + "-totals"), sourceNamesOf(component.get(0)));
+    assertEquals(List.of("main", branch), sourceNamesOf(wrapper.get(0)));
+    assertCreatedAtMain(wrapperId, ticketId);
+    List<RecordingBackingBranchMerger.Fold> folds = merger.folds();
+    int created = folds.indexOf(creationsOf(ticketId).get(0));
+    int foldedIn =
+        java.util.stream.IntStream.range(0, folds.size())
+            .filter(i -> folds.get(i).sources().contains("refs/heads/" + branch))
+            .findFirst()
+            .orElse(-1);
+    assertTrue(
+        created >= 0 && (foldedIn < 0 || created < foldedIn),
+        "created before anything folded it in: " + folds);
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertEquals(
+        "Asked for the release of `"
+            + branch
+            + "-totals` (release request "
+            + component.get(0).get("qualifiedId")
+            + "), `"
+            + branch
+            + "` (release request "
+            + wrapper.get(0).get("qualifiedId")
+            + "): the ticket now waits on those requests."
+            + createdAtMain(ticketId),
+        said);
+    assertTrue(handedToCleanup(ticketId).isEmpty(), "a release was asked for");
+  }
+
+  /**
+   * <b>Nothing at all, anywhere</b> — no push, no listing, no candidate — and the wrapper is still
+   * asked for, on its branch created at {@code main}. The one ask is the whole of the outcome.
+   */
+  @Test
+  void noCandidateAtAllStillAsksForTheWrapperBranchCreatedAtMain() {
+    String projectId = createProject("Advance Release No Candidate");
+    String ticketId = createTicket(projectId, "Nothing anywhere");
+    String wrapperId = wrapperIdOf(projectId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branchOf(ticketId)));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertEquals(List.of("main", branchOf(ticketId)), sourceNamesOf(requests.get(0)));
+    assertCreatedAtMain(wrapperId, ticketId);
+    assertTrue(handedToCleanup(ticketId).isEmpty());
+  }
+
+  /**
+   * <b>A wrapper branch that cannot be created is not asked for</b>: a request naming a source the
+   * git host does not have rejects its fold (qits-1221). The thread says why, and with nothing else
+   * asked for, the qits-1218 rule decides as before — the workspace is handed to cleanup.
+   */
+  @Test
+  void aWrapperBranchThatCannotBeCreatedIsNotAskedForAndTheWorkspaceIsHandedToCleanup() {
+    String projectId = createProject("Advance Release Not Created");
+    String ticketId = createTicket(projectId, "Host refuses");
+    String wrapperId = wrapperIdOf(projectId);
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branch));
+    merger.answerFor(
+        "refs/heads/" + branch,
+        BackingBranchMerger.Outcome.unreachable("qits-githost could not be reached"));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertEquals(1, creationsOf(ticketId).size(), "the creation was tried");
+    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "and the wrapper was not asked for");
+    assertEquals(
+        "No branch of this ticket was found on the git host or among its agents' pushes, so no"
+            + " release was asked for. `"
+            + branch
+            + "` is not on the git host and could not be created at `main` to carry the estate"
+            + " pins (qits-githost could not be reached), so the wrapper's release was not asked"
+            + " for. Its workspace was handed to cleanup.",
+        thread(ticketId).get(thread(ticketId).size() - 1));
+    assertEquals(
+        List.of(new RecordingReleasedBranchWorkspaces.Resolved(wrapperId, branch, "verified", null)),
+        handedToCleanup(ticketId));
+  }
+
+  /**
+   * <b>A wrapper branch that cannot be created beside a component that was asked for</b>: the
+   * component's release stands, the wrapper is not asked for and the thread says why — and since a
+   * release was asked for, it is that release which resolves the workspace, not a hand-off here.
+   */
+  @Test
+  void aWrapperBranchThatCannotBeCreatedLeavesTheComponentsAskStanding() {
+    String projectId = createProject("Advance Release Not Created Beside");
+    String ticketId = createTicket(projectId, "Half refused");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-not-created-service", null)
+            .repository()
+            .id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
+    onTheGitHost(componentId, branch + "-totals");
+    merger.answerFor(
+        "refs/heads/" + branch, BackingBranchMerger.Outcome.missingSource("refs/heads/main"));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> component = releaseRequestsOf(componentId);
+    assertEquals(1, component.size(), component.toString());
+    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "the wrapper was not asked for");
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(said.startsWith("Asked for the release of `" + branch + "-totals`"), said);
+    assertTrue(
+        said.endsWith(
+            " `"
+                + branch
+                + "` is not on the git host and could not be created at `main` to carry the estate"
+                + " pins (refs/heads/main), so the wrapper's release was not asked for."),
+        said);
+    assertTrue(handedToCleanup(ticketId).isEmpty(), "a release was asked for");
+  }
+
+  /**
+   * <b>A second VERIFIED of a ticket whose wrapper branch had to be created joins the request the
+   * first opened</b>, with the branch on it once — the convergence rule, unchanged by qits-1224.
+   */
+  @Test
+  void aSecondMoveIntoVerifiedJoinsTheWrapperRequestItsCreatedBranchOpened() {
+    String projectId = createProject("Advance Release Created Twice");
+    String ticketId = createTicket(projectId, "Created and verified again");
+    String wrapperId = wrapperIdOf(projectId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branchOf(ticketId)));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+    String first = (String) releaseRequestsOf(wrapperId).get(0).get("id");
+    transition(ticketId, "VERIFYING");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertEquals(first, requests.get(0).get("id"));
+    assertEquals(List.of("main", branchOf(ticketId)), sourceNamesOf(requests.get(0)));
+  }
+
   /**
    * <b>A ticket whose only agent is REMOVED still has its branches read</b> (qits-1218), and does
-   * not fail doing it. Here the branch it pushed is gone from the git host, so nothing is left: no
-   * request, the transition untouched, the passed-over branch named, and the workspace handed to
-   * cleanup.
+   * not fail doing it. Here the branch it pushed is gone from the git host — and it is the wrapper
+   * branch, so it is created again at {@code main} and asked for (qits-1224), the transition
+   * untouched.
    */
   @Test
   public void aTicketWhoseOnlyAgentIsRemovedAsksForWhatIsLeftAndDoesNotError() {
@@ -1672,16 +1908,13 @@ public class PhaseAdvanceTest {
         asked + 1,
         workspaces.lookups().size(),
         "the far side was asked, which is the only way to know");
-    assertTrue(
-        releaseRequestsOf(wrapperId).isEmpty(),
-        "a branch the git host no longer has is not one to ask for the release of");
-    assertEquals(
-        "Nothing was left to release, so no release was asked for. Not asked for, because they no"
-            + " longer exist on the git host: `"
-            + branchOf(ticketId)
-            + "`. Its workspace was handed to cleanup.",
-        thread(ticketId).get(thread(ticketId).size() - 1));
-    assertEquals(1, handedToCleanup(ticketId).size());
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), "the wrapper branch, created again, is asked for: " + requests);
+    assertCreatedAtMain(wrapperId, ticketId);
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(said.endsWith(createdAtMain(ticketId)), said);
+    assertFalse(said.contains("no longer exist"), said);
+    assertTrue(handedToCleanup(ticketId).isEmpty());
     asAdmin("dana")
         .when()
         .get("/projects/api/work/" + ticketId)

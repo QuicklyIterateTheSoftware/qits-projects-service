@@ -2024,8 +2024,14 @@ assignment, not a comment, not a release.
   (`api/ReleasableBranch`), and one the git host answers `no-such-branch` for (released and
   deleted), or whose head its default branch or a release pending its merge already contains, is
   not asked for and is named on the thread. Anything short of the host saying so — no git host,
-  unreachable, refused — asks as before. **When nothing is asked and nothing was refused** (every
-  candidate gone or released, or none at all) the workspace is handed to cleanup through
+  unreachable, refused — asks as before. **The work item's wrapper branch is then asked for
+  always, last** (qits-1224), because the wrapper's release is what runs the estate-pins automation
+  and that bumps onto the request's branch, never onto `main`: an unreleased one as any candidate,
+  a released one anyway, and a gone one after creating it at the wrapper's default branch through
+  `BackingBranchMerger` (the merge door with an absent target and `refs/heads/<main>` as the one
+  source is a fast-forward that creates it). A creation that fails asks for nothing and says why on
+  the thread. **When nothing is asked and nothing was refused** (every candidate gone or released,
+  or none at all, and the wrapper branch could not be created) the workspace is handed to cleanup through
   `ReleasedBranchWorkspaces.branchReleased(wrapperRepoId, wrapperBranch, "verified", null)`: only a
   release marks an agent OBSOLETE and only an OBSOLETE agent is cleaned up, so without it the
   workspace stood for ever (qits-1223). Where a request was asked, that release resolves it; where an

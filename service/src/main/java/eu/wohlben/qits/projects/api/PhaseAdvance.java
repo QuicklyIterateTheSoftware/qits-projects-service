@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
+import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchListing;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
@@ -24,6 +25,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
+import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -159,9 +161,17 @@ import org.jboss.logging.Logger;
  * first (qits-1220), and one it says is gone, or whose head is already released, is passed over and
  * named ({@link ReleasableBranch}).
  *
+ * <p><b>The wrapper is always asked for, last</b> (qits-1224). Its release is what runs the
+ * estate-pins automation, which bumps onto the request's own branch and never onto {@code main} —
+ * and the work item's wrapper branch was in practice never pushed or already released, so no
+ * wrapper request was opened and the pins never moved. So the wrapper branch is asked for whatever
+ * the git host says of it: already released, it is asked for anyway; gone, it is first created at
+ * the wrapper's default branch through {@link BackingBranchMerger}.
+ *
  * <p><b>Nothing left to release hands the workspace to cleanup.</b> Only a release marks an agent
  * OBSOLETE, and only an OBSOLETE agent is cleaned up, so where no request is asked for and none was
- * refused the wrapper branch is reported done through {@link ReleasedBranchWorkspaces} itself.
+ * refused — which since qits-1224 means the wrapper branch could not even be created — the wrapper
+ * branch is reported done through {@link ReleasedBranchWorkspaces} itself.
  *
  * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
  * bypassing that door is the intent.</b> {@link ReleaseRequests} is role-blind; every check on the
@@ -312,6 +322,19 @@ public class PhaseAdvance {
    * the workspace lingers as it did before.
    */
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
+
+  /**
+   * Where the work item's wrapper branch is created at the wrapper's default branch when the git
+   * host no longer has it (qits-1224): a wrapper request needs a source other than {@code main} for
+   * its estate-pins automation to bump onto, and qits-githost's merge door is the one door that
+   * moves a ref onto a commit — an absent target and a single source is a fast-forward that creates
+   * it. Optional, as {@link ReleaseRequests} injects it: absent, the branch cannot be created and the
+   * wrapper's release is not asked for.
+   */
+  @Inject Instance<BackingBranchMerger> mergers;
+
+  /** The wrapper's registered name, for the address pair the git host announces a creation under. */
+  @Inject RepositoryNameRepository repositoryNames;
 
   /**
    * The {@code version} that hand-off carries in place of a release version: what the far side's
@@ -634,7 +657,7 @@ public class PhaseAdvance {
 
   /**
    * The ask that a move into VERIFIED makes, and the sentence that follows it (qits-1152, reworked
-   * by qits-1218).
+   * by qits-1218 and qits-1224).
    *
    * <p><b>Whether anything is decided at all is gated on the entity having had an agent</b> — in
    * any state. An entity no agent ever worked on is the ordinary state of one walked through by
@@ -652,7 +675,7 @@ public class PhaseAdvance {
    * added on top, through the same scope check, and an agent-reported branch outside it is left off
    * and named on the thread. A repository whose listing cannot be read is logged and skipped; its
    * branches may still arrive through a push log. Candidates are deduplicated on (repository,
-   * branch).
+   * branch), and the work item's own wrapper branch is taken out of them: it has an arm of its own.
    *
    * <p>Each candidate is asked for in its own repository; {@link ReleaseRequests#request} converges
    * per repository, so this opens or joins one request per repository. The wrapper goes last, after
@@ -668,8 +691,16 @@ public class PhaseAdvance {
    * answer short of the host saying so — no git host, an unreachable one, a refusal — asks exactly as
    * before: a release is never dropped on a flaky moment.
    *
+   * <p><b>Then the wrapper branch is asked for, always and last</b> (qits-1224, {@link
+   * #askForTheWrapper}): the wrapper's release is what moves the estate pins, and it needs a source
+   * other than {@code main} to bump onto. The verdict decides only how — {@code ASK} as any
+   * candidate, {@code RELEASED} anyway, {@code GONE} after creating the branch at the wrapper's
+   * default branch on the git host. A creation that fails asks for nothing, says so, and leaves the
+   * next paragraph's rule to decide. A second VERIFIED joins the request the first opened.
+   *
    * <p><b>When nothing was asked for and nothing was refused, the workspace is handed to
-   * cleanup</b>: every candidate was gone or released, or there was none. Only a release marks an
+   * cleanup</b>: every candidate was gone or released, or there was none, and the wrapper branch
+   * could not be created (or no wrapper repository is known). Only a release marks an
    * agent OBSOLETE ({@link ReleasedBranchWorkspaces}), and the far side's cleanup only removes
    * OBSOLETE agents — so a VERIFIED item with nothing to release would otherwise keep its agent and
    * its workspace for ever. The same port is told the wrapper branch is done, with {@code verified}
@@ -738,6 +769,11 @@ public class PhaseAdvance {
         }
       }
     }
+    // The wrapper branch is asked for by its own arm below, whatever was found of it, so it is taken
+    // out of the candidates here: one ask, and always the last.
+    boolean wrapperFound =
+        found.remove(keyOf(new WorkspaceAgentDispatch.Branch(wrapperRepoId, wrapperBranch)))
+            != null;
     List<WorkspaceAgentDispatch.Branch> branches =
         found.values().stream()
             .sorted(
@@ -755,22 +791,6 @@ public class PhaseAdvance {
                 + "*): "
                 + String.join(", ", outOfScope)
                 + ".";
-    if (branches.isEmpty()) {
-      LOG.infof(
-          "%s %s is VERIFIED, but no branch in its scope was found on the git host or among its"
-              + " agents' pushes, so no release was asked for",
-          entity.archetype, entity.id);
-      say(
-          entity,
-          "No branch of this "
-              + noun(entity)
-              + " was found on the git host or among its agents' pushes, so no release was asked"
-              + " for."
-              + refusedScope
-              + handedToCleanup(entity, wrapperRepoId, wrapperBranch),
-          changedBy);
-      return;
-    }
 
     String requester = changedBy == null || changedBy.isBlank() ? PLATFORM_REQUESTER : changedBy;
     String summary =
@@ -805,34 +825,12 @@ public class PhaseAdvance {
             .add("`" + branch.branch() + "`");
         continue;
       }
-      try {
-        ReleaseRequestDto request =
-            releaseRequests.request(
-                branch.repositoryId(),
-                branch.branch(),
-                summary,
-                requester,
-                // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
-                // nothing to state — the entity carries no urgency a release could read.
-                null);
-        LOG.infof(
-            "%s %s is VERIFIED: release request %s now carries %s",
-            entity.archetype, entity.id, request.id(), branch.branch());
-        asked.add("`" + branch.branch() + "` (release request " + request.qualifiedId() + ")");
-      } catch (RuntimeException e) {
-        // The refusal arm's rule: name what did not happen, carry the far side's own reason, and
-        // claim nothing that did.
-        LOG.warnf(
-            e,
-            "Could not ask for the release of %s in %s for %s %s",
-            branch.branch(),
-            branch.repositoryId(),
-            entity.archetype,
-            entity.id);
-        String detail = e.getMessage() == null ? "" : e.getMessage().trim();
-        refused.add("`" + branch.branch() + "`" + (detail.isBlank() ? "" : ": " + detail));
-      }
+      ask(entity, branch.repositoryId(), branch.branch(), summary, requester, asked, refused);
     }
+    // Last, after the submodules it points at: the wrapper, always (qits-1224). See the javadoc.
+    String wrapperNote =
+        askForTheWrapper(
+            entity, wrapperRepoId, wrapperBranch, gitHost, summary, requester, asked, refused);
     String skipped =
         (released.isEmpty()
                 ? ""
@@ -845,12 +843,26 @@ public class PhaseAdvance {
                     + String.join(", ", gone)
                     + ".");
     if (asked.isEmpty() && refused.isEmpty()) {
-      // Every candidate was skipped: nothing is left to release, the work item moves on without a
-      // request, and its workspace is handed to cleanup — no release will ever do that for it.
+      // Not even the wrapper could be asked for: nothing is left to release, the work item moves on
+      // without a request, and its workspace is handed to cleanup — no release will ever do that for
+      // it.
+      boolean nothingFound = branches.isEmpty() && !wrapperFound;
+      if (nothingFound) {
+        LOG.infof(
+            "%s %s is VERIFIED, but no branch in its scope was found on the git host or among its"
+                + " agents' pushes, so no release was asked for",
+            entity.archetype, entity.id);
+      }
       say(
           entity,
-          "Nothing was left to release, so no release was asked for."
+          (nothingFound
+                  ? "No branch of this "
+                      + noun(entity)
+                      + " was found on the git host or among its agents' pushes, so no release"
+                      + " was asked for."
+                  : "Nothing was left to release, so no release was asked for.")
               + skipped
+              + wrapperNote
               + refusedScope
               + handedToCleanup(entity, wrapperRepoId, wrapperBranch),
           changedBy);
@@ -882,7 +894,164 @@ public class PhaseAdvance {
             .append(" is VERIFIED, and its workspace is left standing.");
       }
     }
-    say(entity, sentence.toString() + skipped + refusedScope, changedBy);
+    say(entity, sentence.toString() + wrapperNote + skipped + refusedScope, changedBy);
+  }
+
+  /**
+   * Open or join the request of {@code repoId} for {@code branch}, and record the answer in {@code
+   * asked} or {@code refused} as the thread will name it.
+   */
+  private void ask(
+      WorkEntity entity,
+      String repoId,
+      String branch,
+      String summary,
+      String requester,
+      List<String> asked,
+      List<String> refused) {
+    try {
+      ReleaseRequestDto request =
+          releaseRequests.request(
+              repoId,
+              branch,
+              summary,
+              requester,
+              // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
+              // nothing to state — the entity carries no urgency a release could read.
+              null);
+      LOG.infof(
+          "%s %s is VERIFIED: release request %s now carries %s",
+          entity.archetype, entity.id, request.id(), branch);
+      asked.add("`" + branch + "` (release request " + request.qualifiedId() + ")");
+    } catch (RuntimeException e) {
+      // The refusal arm's rule: name what did not happen, carry the far side's own reason, and
+      // claim nothing that did.
+      LOG.warnf(
+          e,
+          "Could not ask for the release of %s in %s for %s %s",
+          branch,
+          repoId,
+          entity.archetype,
+          entity.id);
+      String detail = e.getMessage() == null ? "" : e.getMessage().trim();
+      refused.add("`" + branch + "`" + (detail.isBlank() ? "" : ": " + detail));
+    }
+  }
+
+  /**
+   * The wrapper's ask, which a move into VERIFIED always makes (qits-1224), and the sentence it adds
+   * to the thread — empty when there is nothing to say beyond the ask itself.
+   *
+   * <p>The wrapper's release is what runs its estate-pins automation, and that automation bumps onto
+   * the request's own branch and never onto {@code main}: so the request needs the work item's
+   * wrapper branch as a source, whatever the agent did with it. {@link ReleasableBranch}'s verdict
+   * only decides how it gets one. {@link ReleasableBranch.Verdict#ASK ASK} — there and unreleased, or
+   * the host could not say — asks as for any candidate. {@link ReleasableBranch.Verdict#RELEASED
+   * RELEASED} asks anyway: its head is in {@code main}, but the branch is there for the pins to
+   * land on. {@link ReleasableBranch.Verdict#GONE GONE} — never pushed, or released and deleted —
+   * creates it at the wrapper's default branch first ({@link #createAtDefaultBranch}), because a
+   * fold naming a source the git host does not have rejects the request (qits-1221); a creation that
+   * fails asks for nothing, and the sentence says why.
+   */
+  private String askForTheWrapper(
+      WorkEntity entity,
+      String wrapperRepoId,
+      String wrapperBranch,
+      ReleaseGitHost gitHost,
+      String summary,
+      String requester,
+      List<String> asked,
+      List<String> refused) {
+    if (wrapperRepoId == null || wrapperRepoId.isBlank()) {
+      return "";
+    }
+    String main = defaultBranchOf(wrapperRepoId);
+    ReleasableBranch.Verdict verdict =
+        ReleasableBranch.of(
+            gitHost, wrapperRepoId, wrapperBranch, main, releasedShasOf(wrapperRepoId));
+    String note = "";
+    if (verdict == ReleasableBranch.Verdict.GONE) {
+      String failure = createAtDefaultBranch(entity, wrapperRepoId, wrapperBranch, main);
+      if (failure != null) {
+        return " `"
+            + wrapperBranch
+            + "` is not on the git host and could not be created at `"
+            + main
+            + "` to carry the estate pins ("
+            + failure
+            + "), so the wrapper's release was not asked for.";
+      }
+      note =
+          " `"
+              + wrapperBranch
+              + "` was not on the git host, so it was created at `"
+              + main
+              + "` to carry the estate pins.";
+    } else if (verdict == ReleasableBranch.Verdict.RELEASED) {
+      LOG.infof(
+          "%s %s is VERIFIED and its wrapper branch %s is already released; it is asked for anyway,"
+              + " to carry the estate pins",
+          entity.archetype, entity.id, wrapperBranch);
+      note =
+          " `"
+              + wrapperBranch
+              + "` is already released, and was asked for anyway to carry the estate pins.";
+    }
+    ask(entity, wrapperRepoId, wrapperBranch, summary, requester, asked, refused);
+    return note;
+  }
+
+  /**
+   * Create {@code branch} of {@code repoId} at the head of {@code defaultBranch}, and answer null —
+   * or why it could not be. qits-githost has no create-branch door; its merge door, asked with an
+   * absent target and the default branch as the only source, moves the target onto that source's
+   * head ({@code fast-forward}), which is a creation. Never throws.
+   */
+  private String createAtDefaultBranch(
+      WorkEntity entity, String repoId, String branch, String defaultBranch) {
+    if (!mergers.isResolvable()) {
+      return "no git host is configured to create it";
+    }
+    BackingBranchMerger.Outcome outcome;
+    try {
+      outcome =
+          mergers
+              .get()
+              .merge(
+                  repoId,
+                  entity.projectId,
+                  nameOf(repoId),
+                  "refs/heads/" + branch,
+                  List.of("refs/heads/" + defaultBranch),
+                  "Create " + branch + " at " + defaultBranch + " to carry the estate pins");
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and reads as "could not create".
+      outcome = BackingBranchMerger.Outcome.unreachable("merger error: " + e.getMessage());
+    }
+    if (outcome.folded()) {
+      LOG.infof(
+          "%s %s is VERIFIED: its wrapper branch %s was created at %s of %s (%s)",
+          entity.archetype, entity.id, branch, defaultBranch, repoId, outcome.result());
+      return null;
+    }
+    String detail =
+        outcome.detail() == null || outcome.detail().isBlank()
+            ? outcome.result().name().toLowerCase(java.util.Locale.ROOT)
+            : outcome.detail().trim();
+    LOG.warnf(
+        "%s %s is VERIFIED, but its wrapper branch %s could not be created at %s of %s: %s",
+        entity.archetype, entity.id, branch, defaultBranch, repoId, detail);
+    return detail;
+  }
+
+  /** The repository's registered name, or null where it has none or it cannot be read. */
+  private String nameOf(String repoId) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(() -> repositoryNames.nameFor(repositories.get(repoId)).orElse(null));
+    } catch (RuntimeException e) {
+      return null;
+    }
   }
 
   /**

@@ -6,8 +6,10 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -58,6 +60,9 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
   /** One-shot answers, taken in order before the standing one — see {@link #answerOnce}. */
   private final Queue<Outcome> queued = new ConcurrentLinkedQueue<>();
 
+  /** Standing answers for one target ref alone, ahead of every other — see {@link #answerFor}. */
+  private final Map<String, Outcome> byTarget = new ConcurrentHashMap<>();
+
   public List<Fold> folds() {
     return List.copyOf(folds);
   }
@@ -88,6 +93,16 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
     queued.add(outcome);
   }
 
+  /**
+   * A standing answer for every fold of {@code target} alone, ahead of {@link #answerOnce} and
+   * {@link #answer}. It exists for a caller whose fold of one ref is the subject while folds of
+   * other refs — a release request's own, a sweep's — run beside it and must keep their answers
+   * (qits-1224: a wrapper branch created through the merge door, and failing to be).
+   */
+  public void answerFor(String target, Outcome outcome) {
+    byTarget.put(target, outcome);
+  }
+
   /** Back to the default: every fold produces new content. */
   public void answerFreshMerges() {
     scripted.set(null);
@@ -96,6 +111,7 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
   public void reset() {
     folds.clear();
     queued.clear();
+    byTarget.clear();
     scripted.set(null);
   }
 
@@ -121,14 +137,17 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
             List.copyOf(resolutions),
             versionPins,
             rebuild));
-    Outcome once = queued.poll();
+    Outcome forTarget = byTarget.get(target);
+    Outcome once = forTarget != null ? null : queued.poll();
     Outcome scriptedOutcome = scripted.get();
     Outcome outcome =
-        once != null
-            ? once
-            : scriptedOutcome != null
-                ? scriptedOutcome
-                : Outcome.merged(freshSha(), List.copyOf(sources));
+        forTarget != null
+            ? forTarget
+            : once != null
+                ? once
+                : scriptedOutcome != null
+                    ? scriptedOutcome
+                    : Outcome.merged(freshSha(), List.copyOf(sources));
     if (outcome.folded() && outcome.sha() != null) {
       sources.forEach(source -> gitHost.folded(repoId, source, outcome.sha()));
     }
