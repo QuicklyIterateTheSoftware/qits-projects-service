@@ -17,7 +17,9 @@ import java.util.Optional;
  * the answer on the wire. A gate class holds only its own rule.
  *
  * <p><b>The rule for every gate:</b> {@code DOES_NOT_APPLY} leaves the gate out; {@code UNREADABLE}
- * reports it {@code UNKNOWN} with the gate set's reason; {@code APPLIES} reports what the gate says.
+ * reports it {@code UNKNOWN} with the gate set's reason; {@code APPLIES} reports what the gate says
+ * — except on a request whose sources could not be folded, where it is FAILED with the fold's
+ * sentence unless the gate itself said FAILED ({@link FoldFailure}, qits-1221).
  */
 @ApplicationScoped
 public class ReleaseGateEvaluator {
@@ -60,7 +62,9 @@ public class ReleaseGateEvaluator {
                 new Evaluated(
                     gate,
                     GateEvaluation.of(ReleaseGates.State.UNKNOWN, subject.gateSet().detail())));
-        case APPLIES -> answered.add(new Evaluated(gate, gate.evaluate(subject)));
+        case APPLIES ->
+            answered.add(
+                new Evaluated(gate, FoldFailure.answer(subject, gate.evaluate(subject))));
       }
     }
     return List.copyOf(answered);

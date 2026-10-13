@@ -1047,6 +1047,16 @@ a consumer may rely on:
 - **A refold need not descend from the fold before it.** Nothing here assumes it: the gates,
   approvals and waivers are keyed on `mergedSha`, `FoldChanges.pathsBetween` is a tree diff, the
   diff base is the newest release tag, and a moved fold cancels the request's runs as before.
+- **A fold naming a source the git host does not have REJECTS** (qits-1221). The merge door's
+  `404 {"error":"no-such-source","detail":<ref>}` is `BackingBranchMerger.Result.MISSING_SOURCE`;
+  the request moves to `REJECTED` with `rejecting_gate = fold` (`gate/FoldFailure.KIND`),
+  `retryable` false, no unattended-gate ticket and `detail` "The sources could not be folded: <ref>
+  does not exist on the git host"; every applying gate that has not itself FAILED reads FAILED with
+  that sentence, in `qualityGates[]`, `gates[]` and the pipeline alike. The sweep neither re-folds
+  nor re-reads it; a push of the missing branch re-folds it, and the fold that lands lifts it (a
+  reopen at the same sha, a re-arm at a new one). Every other failure to fold — a timeout, a 5xx,
+  any other 404, `ref-moved`, no address — is still `UNREACHABLE`: the state stays where it was and
+  the sweep folds again.
 
 **Release and withdrawal both ask qits-ci to cancel the request's queued or running runs**, best
 effort and never able to fail the release or the withdrawal itself (`ReleaseRequests.cancel`) — so a
@@ -1117,6 +1127,10 @@ module's `TransitionGate`.
 | `ApprovalGate` | `approval` | `qa-publish` |
 | `PublishRunGate` | `publish` | `publish-deploy` |
 | `DeploymentRollbackGate` | `deployment-not-rolled-back` | `deploy-finalized` |
+
+`FoldFailure` (`fold`) is no gate and is not discovered: it is the `rejecting_gate` of a request
+whose sources could not be folded (qits-1221), and `ReleaseGateEvaluator` reports every applying
+gate of such a request that has not itself FAILED as FAILED with the fold's sentence.
 
 - **The tag reaching `main` is the finalize step, not a gate** (`mergedToMainAt`). The deployment's
   gate is "went live and not rolled back": live is `deploymentActiveAt`, rolled back is

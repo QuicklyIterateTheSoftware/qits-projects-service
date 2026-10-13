@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.control.gate.AutomationsGate;
+import eu.wohlben.qits.projects.control.gate.FoldFailure;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.control.gate.LegacyGates;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
@@ -118,7 +119,10 @@ import org.jboss.logging.Logger;
  * free. A fold that cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored
  * for a person to act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
  * <em>including</em> one answering {@code unchanged}, unless that sha already carries a verdict the
- * gate can read.
+ * gate can read. A fold naming a source the git host does not have ({@code 404 no-such-source})
+ * REJECTS the request with {@code rejecting_gate = fold} (qits-1221) and is likewise lifted by the
+ * next fold that succeeds; any other failure to fold is a fact about the moment and leaves the state
+ * where it was.
  *
  * <h2>The gate set</h2>
  *
@@ -2613,13 +2617,19 @@ public class ReleaseRequests {
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
    * this file already paid for once (measured 2026-09-01). Something has to change first, and the
-   * things that change it are all triggers of their own.
+   * things that change it are all triggers of their own. A request the <b>fold</b> REJECTED — a
+   * source the git host does not have (qits-1221, {@code rejecting_gate = fold}) — is left alone for
+   * the same reason: neither re-folded nor re-read, and answered by the push that re-creates it.
    */
   public void sweep() {
     List<ReleaseRequest> open =
         QuarkusTransaction.requiringNew().call(() -> List.copyOf(requests.listUnreleased()));
     for (ReleaseRequest row : open) {
-      if (row.state != ReleaseRequest.State.CONFLICTED && row.mergedSha == null) {
+      // A request the fold REJECTED (qits-1221) is not knocked again either, CONFLICTED's reason: a
+      // source the git host does not have answers the same every time, and a push re-folds it.
+      if (row.state != ReleaseRequest.State.CONFLICTED
+          && !FoldFailure.rejected(row)
+          && row.mergedSha == null) {
         remerge(row.id, "the first fold had not been made yet");
         continue;
       }
@@ -2645,7 +2655,10 @@ public class ReleaseRequests {
           // superseded because a retry is the only thing that ever deletes a row. A human decline
           // names no run at all, so it is not asked about and can never be re-opened here — which
           // is the same discrimination the event path makes, made from the other end.
-          if (AutomationsGate.KIND.equals(row.rejectingGate)) {
+          if (FoldFailure.KIND.equals(row.rejectingGate)) {
+            // THE FOLD'S REJECTION (qits-1221) names no run and no automation: nothing at this
+            // fold can answer it, only a push of the missing source, which re-folds it on its own.
+          } else if (AutomationsGate.KIND.equals(row.rejectingGate)) {
             // AN AUTOMATION'S REJECTION (qits-1199) is answered at this fold by a re-run, which
             // the re-read below learns, or by a waiver. A push re-arms it through the fold, as any.
             refreshAutomations(row.id, null);
@@ -3019,7 +3032,60 @@ public class ReleaseRequests {
               }
               Instant now = Instant.now();
               row.updatedAt = now;
+              if (outcome.folded() && FoldFailure.rejected(row)) {
+                // THE FOLD REJECTED IT AND NOW FOLDS (qits-1221): the missing source exists again —
+                // a push re-created it — or left the request. Either way the rejection's cause is
+                // gone. A fold onto the sha the request already had is reopened at that fold, like
+                // reconsider(): same window, same approval, nothing new to build. Anything else is
+                // the ordinary re-arm onto new content, which the default arm below would make for
+                // any request; it is made here so the UNCHANGED arm cannot leave the row REJECTED.
+                String superseded = row.mergedSha;
+                row.conflictDetail = null;
+                if (outcome.sha().equals(superseded)) {
+                  LOG.infof(
+                      "Release request %s folds again at %s (%s); the fold rejection is lifted",
+                      id, shortSha(superseded), why);
+                  states.move(row, ReleaseRequest.State.PENDING);
+                  row.rejectingGate = null;
+                  row.rejectingRunId = null;
+                  row.detail = "The sources fold again (" + why + ")";
+                  return null;
+                }
+                row.mergedSha = outcome.sha();
+                rearm(row, why);
+                return new Folded(
+                    row.id,
+                    row.qualifiedId,
+                    row.projectId,
+                    row.repoId,
+                    row.repoName,
+                    row.backingBranch(),
+                    row.mergedSha,
+                    superseded,
+                    now,
+                    effectivePriorityOf(row.id).name());
+              }
               switch (outcome.result()) {
+                case MISSING_SOURCE -> {
+                  // A SOURCE THE GIT HOST DOES NOT HAVE (qits-1221) is not a fact about the moment:
+                  // it answers the same on every knock until that ref exists again, so holding the
+                  // request PENDING — what the UNREACHABLE arm below does — left it "in progress"
+                  // for ever with gates still waiting (qits-projects-service-rr-261). It REJECTS,
+                  // naming the fold as the cause, like a failed automation does (qits-1199). A push
+                  // of the missing branch re-folds it through onBranchMoved and the fold that lands
+                  // lifts the rejection (above); the sweep does not knock again. No unattended-gate
+                  // ticket: the sentence names the ref, and only a push or a person can answer it.
+                  states.move(row, ReleaseRequest.State.REJECTED);
+                  row.rejectingGate = FoldFailure.KIND;
+                  row.rejectingRunId = null;
+                  row.retryable = false;
+                  row.conflictDetail = null;
+                  row.detail =
+                      "The sources could not be folded: "
+                          + outcome.detail()
+                          + " does not exist on the git host";
+                  return null;
+                }
                 case CONFLICT -> {
                   states.move(row, ReleaseRequest.State.CONFLICTED);
                   row.detail =

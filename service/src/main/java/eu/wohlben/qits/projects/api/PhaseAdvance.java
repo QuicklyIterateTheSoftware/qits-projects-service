@@ -131,8 +131,9 @@ import org.jboss.logging.Logger;
  *
  * <p><b>The agent is looked up first, and the lookup is the point rather than decoration.</b>
  * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
- * naming a branch the git host no longer has lands a PENDING row whose fold answers UNREACHABLE and
- * which the 30-second sweep then retries for ever. The <b>ACTIVE</b> agent's list of pushed
+ * naming a branch the git host no longer has lands a row whose fold the git host refuses — PENDING
+ * and re-folded by the 30-second sweep for ever until qits-1221, REJECTED with {@code rejecting_gate
+ * = fold} since — either way a request nobody asked for. The <b>ACTIVE</b> agent's list of pushed
  * branches is the evidence that each branch is there, so <b>no such agent, or one that pushed
  * nothing, means no ask</b> — one plain sentence on the thread and nothing else.
  *

@@ -324,4 +324,53 @@ class HttpBackingBranchMergerTest {
     assertTrue(outcome.folded());
     assertEquals(List.of(), outcome.resolvedVersions());
   }
+
+  /**
+   * qits-1221: the git host's {@code 404 no-such-source} is a source that does not exist — a fact
+   * about the request, carried as MISSING_SOURCE with the ref the git host named — and not a fact
+   * about the moment.
+   */
+  @Test
+  void aMissingSourceIsMissingSourceNamingTheRef() throws Exception {
+    String base = startServer();
+    status.set(404);
+    responseBody.set("{\"error\":\"no-such-source\",\"detail\":\"refs/heads/ticket/qits-1199\"}");
+
+    BackingBranchMerger.Outcome outcome =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+
+    assertEquals(BackingBranchMerger.Result.MISSING_SOURCE, outcome.result());
+    assertEquals("refs/heads/ticket/qits-1199", outcome.detail());
+    assertFalse(outcome.folded());
+  }
+
+  /** Every other 404 — a missing repository, a body nothing here can read — stays transient. */
+  @Test
+  void anyOther404IsStillUnreachable() throws Exception {
+    String base = startServer();
+    status.set(404);
+    responseBody.set("{\"error\":\"no-such-repository\",\"detail\":\"repo-1\"}");
+
+    BackingBranchMerger.Outcome repository =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+    assertEquals(BackingBranchMerger.Result.UNREACHABLE, repository.result());
+    assertTrue(repository.detail().contains("no-such-repository"), repository.detail());
+
+    responseBody.set("<html>not found</html>");
+    BackingBranchMerger.Outcome unreadable =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+    assertEquals(BackingBranchMerger.Result.UNREACHABLE, unreadable.result());
+  }
+
+  @Test
+  void aServerErrorIsStillUnreachable() throws Exception {
+    String base = startServer();
+    status.set(503);
+    responseBody.set("{\"error\":\"no-such-source\",\"detail\":\"refs/heads/work\"}");
+
+    BackingBranchMerger.Outcome outcome =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+
+    assertEquals(BackingBranchMerger.Result.UNREACHABLE, outcome.result(), "only a 404 says so");
+  }
 }
