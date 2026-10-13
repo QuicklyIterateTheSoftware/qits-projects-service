@@ -207,7 +207,7 @@
              stamps X-Qits-Caller. Released separately from qits-arch-rules/qits-db-core above and
              pinned on its own property because it ships out of the same reactor but is consumed by
              every class that still hand-rolls an HttpClient, not only test-scoped tooling. -->
-        <qits.http-core.version>2026.1012.153509</qits.http-core.version>
+        <qits.http-core.version>2026.1013.64811</qits.http-core.version>
 
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
