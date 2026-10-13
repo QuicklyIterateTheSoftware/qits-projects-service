@@ -32,6 +32,9 @@ import org.jboss.logging.Logger;
  *   {"branch": "…", "target": "&lt;version&gt;", "commit": "&lt;released sha&gt;",
  *    "result": "released as &lt;version&gt;"}
  *
+ *   (or, with no sha, "commit": null and "result": "nothing left to release (&lt;version&gt;)" —
+ *    a work item VERIFIED with nothing to release, qits-1218)
+ *
  *   -&gt; 200 {"resolved": true, "agentIds": ["…"]}  every agent owning that branch is OBSOLETE
  *   -&gt; 200 {"resolved": false, "agentIds": []}    no agent owned it — the ordinary answer
  * </pre>
@@ -122,7 +125,14 @@ public class HttpReleasedBranchWorkspaces implements ReleasedBranchWorkspaces {
       body.put("branch", branch);
       body.put("target", version);
       body.put("commit", releasedSha);
-      body.put("result", "released as " + version);
+      // No sha means no release: the work item was VERIFIED with nothing left to release
+      // (qits-1218, PhaseAdvance), and "released as verified" would say something that did not
+      // happen.
+      body.put(
+          "result",
+          releasedSha == null
+              ? "nothing left to release (" + version + ")"
+              : "released as " + version);
       HttpRequest request =
           HttpRequest.newBuilder(URI.create(url))
               .timeout(REQUEST_TIMEOUT)

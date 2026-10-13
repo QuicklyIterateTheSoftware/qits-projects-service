@@ -2006,21 +2006,32 @@ IMPLEMENTING or VERIFYING itself, through `WorkEntityService.transitionFrom`, ne
 a route — as the dispatch press does (`EntityDispatch`). It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
-- **VERIFIED asks for the release of the agent's branches** (qits-1152). The work item's ACTIVE
-  agent lists every (repository, branch) it pushed; each is asked for in its own repository through
-  `ReleaseRequests.request`, which converges per repository, so this opens or joins one request per
-  repository, the wrapper last. The list is the agent's word, so only a branch in the scope this side
-  derives (`WorkBranches.isAgentBranch` over the work item's own wrapper branch) and in a repository
-  of the work item's project is named; any other is left off and the thread says so. No ACTIVE
-  agent, or one that pushed nothing in scope, asks for nothing and
-  says so on the thread: an ask naming a branch that is not there would be a PENDING request the
-  sweep retries for ever. Pushed is not still there (qits-1220): each in-scope branch is put to
-  `ReleaseGitHost` first (`api/ReleasableBranch`), and one the git host answers `no-such-branch`
-  for (released and deleted), or whose head its default branch or a release pending its merge
-  already contains, is not asked for and is named on the thread; every branch passed over means no
-  request at all. Anything short of the host saying so — no git host, unreachable, refused — asks
-  as before. A move back to VERIFYING or IMPLEMENTED names each open request that
-  still carries one of those branches.
+- **VERIFIED asks for the release of the work item's branches** (qits-1152, reworked by
+  qits-1218). It is gated on the work item having had **any** agent, in any state: none at all is
+  an item walked through by hand and asks for nothing ("No agent is working on this …"). An
+  OBSOLETE agent is not one whose branches are all gone — it becomes OBSOLETE as soon as **any one**
+  of them is released — so the candidates are (1) every branch the git host lists
+  (`control/BranchListing`, shipped as the `@DefaultBean` `RepositoryBranchListing` over
+  `RepositoryService.listBranches`'s `ls-remote`) in each repository of the work item's project
+  that lies in the scope this side derives (`WorkBranches.isAgentBranch` over the work item's own
+  wrapper branch) — which also catches a plain `git push` no push log recorded — unioned with (2)
+  the pushed branches of **every** agent of the item, in scope and in a repository of its project,
+  deduplicated on (repository, branch). An agent-reported branch outside that scope is left off and
+  the thread says so; a repository whose listing throws is logged and skipped. Each candidate is
+  asked for in its own repository through `ReleaseRequests.request`, which converges per
+  repository, so this opens or joins one request per repository, the wrapper last. Listed or pushed
+  is not still there (qits-1220): each candidate is put to `ReleaseGitHost` first
+  (`api/ReleasableBranch`), and one the git host answers `no-such-branch` for (released and
+  deleted), or whose head its default branch or a release pending its merge already contains, is
+  not asked for and is named on the thread. Anything short of the host saying so — no git host,
+  unreachable, refused — asks as before. **When nothing is asked and nothing was refused** (every
+  candidate gone or released, or none at all) the workspace is handed to cleanup through
+  `ReleasedBranchWorkspaces.branchReleased(wrapperRepoId, wrapperBranch, "verified", null)`: only a
+  release marks an agent OBSOLETE and only an OBSOLETE agent is cleaned up, so without it the
+  workspace stood for ever (qits-1223). Where a request was asked, that release resolves it; where an
+  ask was refused, nothing is resolved. A move back to VERIFYING or IMPLEMENTED names each open
+  request that still carries one of the ACTIVE agent's branches. Tests stage the listing through
+  `testsupport/RecordingBranchListing` (a repository nothing staged lists no branch).
 - **It is not on `WorkEntityService`** because the entities module has no idea what a workspace is and must
   keep not having one, and because recording a fact and calling out to a sibling service must not
   share a transaction. Both call sites wrap the call in the belt `ReleaseRequests` carries: the port

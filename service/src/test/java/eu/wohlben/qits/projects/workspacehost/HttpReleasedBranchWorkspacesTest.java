@@ -104,6 +104,24 @@ class HttpReleasedBranchWorkspacesTest {
         new ObjectMapper().readValue(request.body(), Map.class));
   }
 
+  /**
+   * A work item VERIFIED with nothing to release hands its wrapper branch over with no sha
+   * (qits-1218): the body carries a null commit and does not claim a release happened.
+   */
+  @Test
+  void aBranchHandedOverWithNothingReleasedSaysSoAndCarriesNoCommit() throws Exception {
+    String base = startServer();
+
+    against(base).branchReleased("repo-1", "ticket/qits-1", "verified", null);
+
+    assertEquals(1, received.size());
+    Map<?, ?> body = new ObjectMapper().readValue(received.get(0).body(), Map.class);
+    assertEquals("ticket/qits-1", body.get("branch"));
+    assertEquals("verified", body.get("target"));
+    assertTrue(body.containsKey("commit") && body.get("commit") == null, body.toString());
+    assertEquals("nothing left to release (verified)", body.get("result"));
+  }
+
   @Test
   void noWorkspaceOnTheBranchIsAnOrdinaryAnswerAndNotAFailure() throws Exception {
     String base = startServer();

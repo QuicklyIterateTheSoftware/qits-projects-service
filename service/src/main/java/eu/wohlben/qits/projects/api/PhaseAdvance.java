@@ -12,8 +12,11 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
+import eu.wohlben.qits.projects.control.BranchListing;
+import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.control.ReleasedBranchWorkspaces;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -126,28 +129,30 @@ import org.jboss.logging.Logger;
  *
  * <h2>VERIFIED asks for a release, and nothing else does</h2>
  *
- * <p>The verify phase found the change good. What the agent's branches then need is to be
- * released. So a move into VERIFIED opens (or joins) a release request for each branch the agent
- * pushed — one per repository, since a request converges per repository — and the thread is told
- * which requests the entity now waits on (qits-1152: the agent names its own submodule branches,
- * {@code <prefix>/<qualified id>-<its choice>}, so they are read from the agent and never derived).
+ * <p>The verify phase found the change good. What the entity's branches then need is to be
+ * released. So a move into VERIFIED opens (or joins) a release request for each of its branches that
+ * is still unreleased — one per repository, since a request converges per repository — and the
+ * thread is told which requests the entity now waits on (qits-1152: the agent names its own
+ * submodule branches, {@code <prefix>/<qualified id>-<its choice>}).
  *
- * <p><b>The agent is looked up first, and the lookup is the point rather than decoration.</b>
- * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
- * naming a branch the git host no longer has lands a row whose fold the git host refuses — PENDING
- * and re-folded by the 30-second sweep for ever until qits-1221, REJECTED with {@code rejecting_gate
- * = fold} since — either way a request nobody asked for. The <b>ACTIVE</b> agent's list of pushed
- * branches is the evidence that each branch is there, so <b>no such agent, or one that pushed
- * nothing, means no ask</b> — one plain sentence on the thread and nothing else.
+ * <p><b>The agents are looked up first, and the lookup gates the decision.</b> An entity no agent
+ * ever worked on asks for nothing — one plain sentence on the thread. Any agent, <b>in any
+ * state</b>, means work was done (qits-1218): {@link WorkspaceAgentDispatch#agentsFor} answers
+ * OBSOLETE and REMOVED agents too, and an OBSOLETE agent is <em>not</em> one whose branches are
+ * all gone — it became OBSOLETE when any one of them was released, and the rest may still wait.
  *
- * <p><b>Pushed is not the same as still there.</b> Since qits-1220 each pushed branch is also put
- * to the git host, and one it says is gone, or whose head is already released, is passed over and
+ * <p><b>The git host says which branches there are; the agents' push logs add to it.</b> Every
+ * repository of the project is listed on the git host and each branch in the work item's scope is a
+ * candidate, which also catches a branch pushed with a plain {@code git push} that no push log
+ * recorded; every agent's pushed branches in scope are added. {@link ReleaseRequests#request}
+ * validates a branch name syntactically and nothing else, so an ask naming a branch the git host no
+ * longer has lands a row whose fold the git host refuses — so each candidate is put to the git host
+ * first (qits-1220), and one it says is gone, or whose head is already released, is passed over and
  * named ({@link ReleasableBranch}).
  *
- * <p><b>ACTIVE is doing real work in that sentence.</b> {@link WorkspaceAgentDispatch#agentsFor}
- * answers every agent of the entity, OBSOLETE and REMOVED ones included. An OBSOLETE agent's branches
- * were released and deleted — so the filter is explicit, in one helper ({@code theLiveOne}), with
- * its reason beside it.
+ * <p><b>Nothing left to release hands the workspace to cleanup.</b> Only a release marks an agent
+ * OBSOLETE, and only an OBSOLETE agent is cleaned up, so where no request is asked for and none was
+ * refused the wrapper branch is reported done through {@link ReleasedBranchWorkspaces} itself.
  *
  * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
  * bypassing that door is the intent.</b> {@link ReleaseRequests} is role-blind; every check on the
@@ -280,6 +285,30 @@ public class PhaseAdvance {
 
   /** The releases not yet merged into their default branch — see {@link ReleasableBranch}. */
   @Inject ReleasedTagPendingMergeRepository pendingTags;
+
+  /** Where the repositories of a work item's project are enumerated for the listing below. */
+  @Inject ProjectService projects;
+
+  /**
+   * The branches each repository of the project has on the git host, the first source of what a
+   * move into VERIFIED asks for (qits-1218). A port, so an {@code Instance}: <b>absent means the
+   * agents' push logs are all there is</b>, exactly as before the listing existed.
+   */
+  @Inject Instance<BranchListing> branchListings;
+
+  /**
+   * Told the wrapper branch is done when a move into VERIFIED finds nothing left to release, so the
+   * entity's agent is marked OBSOLETE and its workspace cleaned up (qits-1218) — the release that
+   * would otherwise do it never happens. Optional, as {@code ReleaseRequests} injects it: absent,
+   * the workspace lingers as it did before.
+   */
+  @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
+
+  /**
+   * The {@code version} that hand-off carries in place of a release version: what the far side's
+   * history entry records as having ended the agent's work.
+   */
+  static final String VERIFIED_NOTHING_TO_RELEASE = "verified";
 
   /**
    * Who asks for the release when the transition carried no name. The platform is the requester on
@@ -559,29 +588,48 @@ public class PhaseAdvance {
       "Refined; waiting for a person to schedule it (READY_FOR_DEV).";
 
   /**
-   * The ask that a move into VERIFIED makes, and the sentence that follows it (qits-1152).
+   * The ask that a move into VERIFIED makes, and the sentence that follows it (qits-1152, reworked
+   * by qits-1218).
    *
-   * <p>Ordered so that the <b>lookup decides whether anything is asked at all</b>: the entity's
-   * ACTIVE agent lists the (repository, branch) pairs it pushed, which is the evidence each branch is
-   * there. No agent, or an agent that pushed nothing, asks for nothing: an ask naming a branch the
-   * git host does not have would be a PENDING request the sweep retries for ever.
+   * <p><b>Whether anything is decided at all is gated on the entity having had an agent</b> — in
+   * any state. An entity no agent ever worked on is the ordinary state of one walked through by
+   * hand, and it asks for nothing and says so in one sentence. Any agent, ACTIVE, OBSOLETE or
+   * REMOVED, means work was done on the entity's branches and some of it may still be unreleased:
+   * an agent becomes OBSOLETE as soon as <em>any one</em> of its branches is released, so an
+   * earlier agent's other branches may well still be on the git host (qits-168: the wrapper branch
+   * of an OBSOLETE agent was never asked for, because only the ACTIVE agent's push log was read).
    *
-   * <p>Each pushed branch is asked for in its own repository; {@link ReleaseRequests#request}
-   * converges per repository, so this opens or joins one request per repository. The wrapper goes
-   * last, after the submodules it points at.
+   * <p><b>The candidates are what the git host has, unioned with what the agents pushed.</b> For
+   * every repository of the entity's project, each branch the git host lists ({@link
+   * BranchListing}) that lies in the scope this side derives for the work item ({@link
+   * WorkBranches#isAgentBranch} over its own wrapper branch) is a candidate — which catches a branch
+   * pushed with a plain {@code git push} that no push log ever recorded. Every agent's push log is
+   * added on top, through the same scope check, and an agent-reported branch outside it is left off
+   * and named on the thread. A repository whose listing cannot be read is logged and skipped; its
+   * branches may still arrive through a push log. Candidates are deduplicated on (repository,
+   * branch).
    *
-   * <p><b>A pushed branch is not proof that it is still there, so the git host is asked first</b>
-   * (qits-1220). The agent's list records what it pushed, and a branch an earlier release shipped
-   * was deleted by that release while the list kept naming it: qits-projects-service-rr-261 was
-   * opened for {@code ticket/qits-1199}, which shipped on 2026-10-11 and was deleted, and its fold
-   * died on {@code 404 no-such-source}. So each in-scope branch goes through {@link
-   * ReleasableBranch} before it is asked for: a branch the git host answers {@code no-such-branch}
-   * for is <b>gone</b>, and one whose head is contained in the repository's default branch or in a
-   * release still pending its merge there is <b>already released</b> — neither is asked for, and
-   * the thread names both. Every answer short of the host saying so — no git host, an unreachable
-   * one, a refusal — asks exactly as before: a release is never dropped on a flaky moment. When
-   * every in-scope branch is passed over, nothing is left to release and no request is opened; the
-   * sentence says so in the shape of the "pushed no branches" one.
+   * <p>Each candidate is asked for in its own repository; {@link ReleaseRequests#request} converges
+   * per repository, so this opens or joins one request per repository. The wrapper goes last, after
+   * the submodules it points at.
+   *
+   * <p><b>Listed or pushed is not proof the branch is unreleased, so each candidate goes through
+   * {@link ReleasableBranch} before it is asked for</b> (qits-1220). A push log keeps naming a branch
+   * an earlier release shipped and deleted: qits-projects-service-rr-261 was opened for {@code
+   * ticket/qits-1199}, which shipped on 2026-10-11 and was deleted, and its fold died on {@code 404
+   * no-such-source}. A branch the git host answers {@code no-such-branch} for is <b>gone</b>, and one
+   * whose head is contained in the repository's default branch or in a release still pending its
+   * merge there is <b>already released</b> — neither is asked for, and the thread names both. Every
+   * answer short of the host saying so — no git host, an unreachable one, a refusal — asks exactly as
+   * before: a release is never dropped on a flaky moment.
+   *
+   * <p><b>When nothing was asked for and nothing was refused, the workspace is handed to
+   * cleanup</b>: every candidate was gone or released, or there was none. Only a release marks an
+   * agent OBSOLETE ({@link ReleasedBranchWorkspaces}), and the far side's cleanup only removes
+   * OBSOLETE agents — so a VERIFIED item with nothing to release would otherwise keep its agent and
+   * its workspace for ever. The same port is told the wrapper branch is done, with {@code verified}
+   * standing in for a version. Where a request was asked for, that release resolves the workspace
+   * when it lands; where an ask was refused, work may still be unreleased and nothing is resolved.
    */
   private void releaseAgentBranches(WorkEntity entity, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
@@ -592,21 +640,16 @@ public class PhaseAdvance {
           entity.archetype, entity.id);
       return;
     }
-    WorkspaceAgentDispatch.Agent agent = theLiveOne(agentsOf(entity));
-    if (agent == null) {
-      // A removed or obsolete agent is work that is over and branches that may well be gone (see
-      // theLiveOne); no agent at all is the ordinary state of an entity walked through by hand.
-      LOG.debugf("%s %s has no ACTIVE agent, so it asks for no release", entity.archetype, entity.id);
+    List<WorkspaceAgentDispatch.Agent> agents = agentsOf(entity);
+    if (agents.isEmpty()) {
+      // No agent at all is the ordinary state of an entity walked through by hand.
+      LOG.debugf("%s %s has no agent, so it asks for no release", entity.archetype, entity.id);
       say(
           entity,
           "No agent is working on this " + noun(entity) + ", so no release was asked for.",
           changedBy);
       return;
     }
-    // The far side reports what the agent pushed, so the list is the agent's word. Only branches in
-    // the scope this side derives for the work item, in a repository of the work item's project,
-    // may become release sources: the release door's own checks are bypassed here on purpose (see
-    // the class javadoc), so this is where they are made instead.
     Optional<EntityWorkspaces.Target> address = workspaces.find(entity);
     if (address.isEmpty()) {
       LOG.warnf(
@@ -619,27 +662,42 @@ public class PhaseAdvance {
       return;
     }
     String wrapperBranch = address.get().branch();
-    List<String> outOfScope = new java.util.ArrayList<>();
+    WorkspaceAgentDispatch.Agent newest = theNewest(agents);
+    String wrapperRepoId =
+        newest.repositoryId() == null || newest.repositoryId().isBlank()
+            ? address.get().repositoryId()
+            : newest.repositoryId();
+
+    // The git host first, then every agent's word. Only branches in the scope this side derives for
+    // the work item, in a repository of the work item's project, may become release sources: the
+    // release door's own checks are bypassed here on purpose (see the class javadoc), so this is
+    // where they are made instead.
+    java.util.Map<String, WorkspaceAgentDispatch.Branch> found = new java.util.LinkedHashMap<>();
+    for (WorkspaceAgentDispatch.Branch branch : listedOnTheGitHost(entity, wrapperBranch)) {
+      found.putIfAbsent(keyOf(branch), branch);
+    }
+    java.util.Set<String> outOfScope = new java.util.LinkedHashSet<>();
+    for (WorkspaceAgentDispatch.Agent agent : agents) {
+      for (WorkspaceAgentDispatch.Branch branch : agent.branches()) {
+        if (inScope(entity, wrapperBranch, branch)) {
+          found.putIfAbsent(keyOf(branch), branch);
+        } else {
+          LOG.warnf(
+              "%s %s: agent %s reported %s in %s, outside its scope; not released",
+              entity.archetype,
+              entity.id,
+              agent.agentId(),
+              branch.branch(),
+              branch.repositoryId());
+          outOfScope.add("`" + branch.branch() + "`");
+        }
+      }
+    }
     List<WorkspaceAgentDispatch.Branch> branches =
-        agent.branches().stream()
-            .filter(
-                branch -> {
-                  boolean ok = inScope(entity, wrapperBranch, branch);
-                  if (!ok) {
-                    LOG.warnf(
-                        "%s %s: agent %s reported %s in %s, outside its scope; not released",
-                        entity.archetype,
-                        entity.id,
-                        agent.agentId(),
-                        branch.branch(),
-                        branch.repositoryId());
-                    outOfScope.add("`" + branch.branch() + "`");
-                  }
-                  return ok;
-                })
+        found.values().stream()
             .sorted(
                 java.util.Comparator.comparing(
-                    branch -> branch.repositoryId().equals(agent.repositoryId())))
+                    branch -> branch.repositoryId().equals(wrapperRepoId)))
             .toList();
     String refusedScope =
         outOfScope.isEmpty()
@@ -654,15 +712,17 @@ public class PhaseAdvance {
                 + ".";
     if (branches.isEmpty()) {
       LOG.infof(
-          "%s %s is VERIFIED, but its agent %s pushed no branch in its scope, so no release was"
-              + " asked for",
-          entity.archetype, entity.id, agent.agentId());
+          "%s %s is VERIFIED, but no branch in its scope was found on the git host or among its"
+              + " agents' pushes, so no release was asked for",
+          entity.archetype, entity.id);
       say(
           entity,
-          "The agent pushed no branches, so no release was asked for. The "
+          "No branch of this "
               + noun(entity)
-              + " is VERIFIED and nothing is running on it."
-              + refusedScope,
+              + " was found on the git host or among its agents' pushes, so no release was asked"
+              + " for."
+              + refusedScope
+              + handedToCleanup(entity, wrapperRepoId, wrapperBranch),
           changedBy);
       return;
     }
@@ -740,15 +800,14 @@ public class PhaseAdvance {
                     + String.join(", ", gone)
                     + ".");
     if (asked.isEmpty() && refused.isEmpty()) {
-      // Every in-scope branch was skipped: nothing is left to release, and the work item moves on
-      // without a request — the "pushed no branches" sentence's shape, naming what was passed over.
+      // Every candidate was skipped: nothing is left to release, the work item moves on without a
+      // request, and its workspace is handed to cleanup — no release will ever do that for it.
       say(
           entity,
-          "Nothing was left to release, so no release was asked for. The "
-              + noun(entity)
-              + " is VERIFIED and nothing is running on it."
+          "Nothing was left to release, so no release was asked for."
               + skipped
-              + refusedScope,
+              + refusedScope
+              + handedToCleanup(entity, wrapperRepoId, wrapperBranch),
           changedBy);
       return;
     }
@@ -771,10 +830,93 @@ public class PhaseAdvance {
           .append(String.join("; ", refused))
           .append(".");
       if (asked.isEmpty()) {
-        sentence.append(" The ").append(noun(entity)).append(" is VERIFIED and nothing is running on it.");
+        // Work may still be unreleased, so the workspace is not resolved: it stays for a person.
+        sentence
+            .append(" The ")
+            .append(noun(entity))
+            .append(" is VERIFIED, and its workspace is left standing.");
       }
     }
     say(entity, sentence.toString() + skipped + refusedScope, changedBy);
+  }
+
+  /**
+   * Every branch the git host lists in a repository of the entity's project that lies in the work
+   * item's scope ({@link WorkBranches#isAgentBranch}). A repository whose listing throws is logged
+   * and skipped, and the others are still read; with no listing configured, or the project's
+   * repositories unreadable, the answer is none and the agents' push logs are all there is.
+   */
+  private List<WorkspaceAgentDispatch.Branch> listedOnTheGitHost(
+      WorkEntity entity, String wrapperBranch) {
+    if (!branchListings.isResolvable()) {
+      return List.of();
+    }
+    List<Repository> ofTheProject;
+    try {
+      ofTheProject = projects.getRepositories(entity.projectId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not read the repositories of project %s, so %s %s's branches are read from its"
+              + " agents alone",
+          entity.projectId,
+          entity.archetype,
+          entity.id);
+      return List.of();
+    }
+    BranchListing listing = branchListings.get();
+    List<WorkspaceAgentDispatch.Branch> listed = new java.util.ArrayList<>();
+    for (Repository repository : ofTheProject) {
+      try {
+        for (String branch : listing.branches(repository.id)) {
+          if (WorkBranches.isAgentBranch(wrapperBranch, branch)) {
+            listed.add(new WorkspaceAgentDispatch.Branch(repository.id, branch));
+          }
+        }
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            e,
+            "Could not list the branches of %s on the git host; it is skipped for %s %s",
+            repository.id,
+            entity.archetype,
+            entity.id);
+      }
+    }
+    return listed;
+  }
+
+  /** The key a candidate is deduplicated on: its repository and its branch. */
+  private static String keyOf(WorkspaceAgentDispatch.Branch branch) {
+    return branch.repositoryId() + "\u0000" + branch.branch();
+  }
+
+  /**
+   * Tell the workspaces port the wrapper branch is done, so the entity's agent is marked OBSOLETE and
+   * its workspace cleaned up, and answer the sentence that says so — or nothing, when there is no
+   * port to tell or it threw. Never throws: the port says it must not, and a throw is a port bug
+   * that may not touch a transition already recorded.
+   */
+  private String handedToCleanup(WorkEntity entity, String wrapperRepoId, String wrapperBranch) {
+    if (!releasedBranchWorkspaces.isResolvable()) {
+      return "";
+    }
+    try {
+      releasedBranchWorkspaces
+          .get()
+          .branchReleased(wrapperRepoId, wrapperBranch, VERIFIED_NOTHING_TO_RELEASE, null);
+      LOG.infof(
+          "%s %s is VERIFIED with nothing to release: its workspace on %s was handed to cleanup",
+          entity.archetype, entity.id, wrapperBranch);
+      return " Its workspace was handed to cleanup.";
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not hand the workspace of %s %s on %s to cleanup: the port threw",
+          entity.archetype,
+          entity.id,
+          wrapperBranch);
+      return "";
+    }
   }
 
   /**
@@ -845,17 +987,28 @@ public class PhaseAdvance {
   }
 
   /**
-   * The entity's one <b>ACTIVE</b> agent, or nothing.
+   * The entity's one <b>ACTIVE</b> agent, or nothing — the agent a move back to IMPLEMENTED or
+   * VERIFYING names the open release of.
    *
-   * <p><b>The state filter is load-bearing.</b> {@link WorkspaceAgentDispatch#agentsFor} answers
-   * every agent that ever worked on the entity, so that it keeps a link to where its work happened.
-   * This class <em>acts</em> on the answer: an agent here is taken as evidence that its branches are
-   * still there and is turned straight into release requests. An OBSOLETE or REMOVED agent is
-   * exactly the case where that is wrong — its branches were released and deleted.
+   * <p>{@link WorkspaceAgentDispatch#agentsFor} answers every agent that ever worked on the entity,
+   * so that it keeps a link to where its work happened. An OBSOLETE or REMOVED agent is <b>not</b>
+   * proof that its branches are gone — an agent becomes OBSOLETE as soon as any one of its branches
+   * is released — which is why the release a move into VERIFIED asks for reads every agent and the
+   * git host ({@link #releaseAgentBranches}). This note is only context on a move, and the live
+   * agent is the one whose work is in question.
    */
   private static WorkspaceAgentDispatch.Agent theLiveOne(
       List<WorkspaceAgentDispatch.Agent> found) {
     return found.stream().filter(WorkspaceAgentDispatch.Agent::active).findFirst().orElse(null);
+  }
+
+  /**
+   * The newest agent of the entity: its ACTIVE one, or else the newest of the rest — {@link
+   * WorkspaceAgentDispatch#agentsFor} answers newest first. {@code found} is never empty.
+   */
+  private static WorkspaceAgentDispatch.Agent theNewest(List<WorkspaceAgentDispatch.Agent> found) {
+    WorkspaceAgentDispatch.Agent live = theLiveOne(found);
+    return live != null ? live : found.get(0);
   }
 
   /**
