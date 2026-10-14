@@ -8,7 +8,11 @@ import jakarta.enterprise.inject.Alternative;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * A TEST-SCOPE implementation of the {@link WorkspaceAgentDispatch} port that records what a ticket
@@ -71,6 +75,55 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   public synchronized List<Agent> agentsFor(Collection<String> workIds) {
     lookups.add(new Looked(List.copyOf(workIds)));
     return agents;
+  }
+
+  /**
+   * What {@link #hasActiveAgent} knows, per work item. <b>Separate from {@link #willFind}</b> on
+   * purpose: that one answers every listing whatever it asked about, and a test seeding a page's
+   * agents must not thereby claim an agent on whichever gate ticket happens to close meanwhile.
+   */
+  private final Map<String, List<Agent>> agentsByWork = new HashMap<>();
+
+  /** Whether {@link #hasActiveAgent} answers "not known", as an unreachable far side would. */
+  private boolean activeLookupFails;
+
+  private final List<String> activeLookups = new ArrayList<>();
+
+  /**
+   * The port's contract: true only for an {@link Agent#ACTIVE} agent seeded on this work item,
+   * false for none or only OBSOLETE/REMOVED ones, empty while {@link #willNotKnowAgents} holds.
+   * The default — nothing seeded, nothing failing — is "no agent", which is what every test written
+   * before the question existed was implicitly answering.
+   */
+  @Override
+  public synchronized Optional<Boolean> hasActiveAgent(String workId) {
+    activeLookups.add(workId);
+    if (workId == null || workId.isBlank()) {
+      return Optional.of(false);
+    }
+    if (activeLookupFails) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        agentsByWork.getOrDefault(workId, List.of()).stream().anyMatch(Agent::active));
+  }
+
+  /** {@link #hasActiveAgent} answers from these agents for {@code workId}, replacing what was set. */
+  public synchronized void willFindFor(String workId, Agent... found) {
+    agentsByWork.put(workId, List.of(found));
+  }
+
+  /**
+   * {@link #hasActiveAgent} answers "not known" until told otherwise — a far side that is away. The
+   * listing read is unaffected: its contract has no way to say this.
+   */
+  public synchronized void willNotKnowAgents(boolean fails) {
+    this.activeLookupFails = fails;
+  }
+
+  /** Every work item {@link #hasActiveAgent} was asked about, oldest first. */
+  public synchronized List<String> activeLookups() {
+    return Collections.unmodifiableList(new ArrayList<>(activeLookups)); // may hold null
   }
 
   /** Every lookup, oldest first. */
@@ -152,6 +205,9 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     calls.clear();
     lookups.clear();
     agents = List.of();
+    agentsByWork.clear();
+    activeLookupFails = false;
+    activeLookups.clear();
     scripted = defaultAnswer();
     failure = null;
   }

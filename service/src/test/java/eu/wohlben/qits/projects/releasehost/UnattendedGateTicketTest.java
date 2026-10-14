@@ -23,6 +23,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryName;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -89,6 +90,13 @@ public class UnattendedGateTicketTest {
 
   @Inject ReleaseRequests releaseRequests;
 
+  /**
+   * Who is working on a ticket (qits-885). The recording double is the {@code @Alternative} every
+   * default-profile test runs against; reset on both sides of each test, so no agent and no failing
+   * lookup seeded here outlives it into another class.
+   */
+  @Inject RecordingWorkspaceAgentDispatch agents;
+
   private String repoId;
   private String projectId;
 
@@ -98,6 +106,7 @@ public class UnattendedGateTicketTest {
     executor.reset();
     gitHost.reset();
     merger.reset();
+    agents.reset();
     repoId = "gate-ticket-repo-" + UUID.randomUUID();
     projectId = "gate-ticket-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -126,6 +135,7 @@ public class UnattendedGateTicketTest {
   /** The discipline {@code ReleaseRequestFlowTest} states: no open request outlives its test. */
   @AfterEach
   void dropTheFixturesRequests() {
+    agents.reset();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -511,6 +521,101 @@ public class UnattendedGateTicketTest {
     assertTrue(said.contains("WITHDRAWN"), said);
     assertEquals("REPORTED", statusOf(ticketId), "a person's ticket is not the platform's to close");
     assertTrue(awaitClosedAt(id) != null, "and there is nothing more to retry");
+  }
+
+  /**
+   * <b>qits-885, the case that started it.</b> An agent dispatched onto the MAINTENANCE ticket made
+   * the fix, the fix released, and its tag reaching main is what finalizes the request — seconds
+   * before the agent's own IMPLEMENTED. The ticket is the agent's now: told, left where its phase
+   * put it, and the request is stamped, because there is nothing left for the sweep to do.
+   */
+  @Test
+  public void aFinalizationWhileAnAgentWorksOnTheTicketTellsItAndLeavesItOpen() {
+    String version = uniqueVersion();
+    String releasedSha = RecordingBackingBranchMerger.freshSha();
+    Released released = releasedWithTicket(version, releasedSha);
+    awaitComment(released.ticketId(), "released as");
+    agents.willFindFor(
+        released.ticketId(),
+        RecordingWorkspaceAgentDispatch.inState(
+            "agent-old", 40L, repoId, released.ticketId(), "ticket/x", "REMOVED", Instant.now()),
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-41", 41L, repoId, released.ticketId(), "ticket/x"));
+
+    String mainSha = RecordingBackingBranchMerger.freshSha();
+    gitHost.containsCommit(repoId, releasedSha, mainSha);
+    headMovedTo("main", mainSha);
+
+    awaitState(released.requestId(), "FINALIZED");
+    String said = awaitComment(released.ticketId(), "An agent is working on this ticket");
+    assertTrue(said.contains("FINALIZED"), "the ending is said: " + said);
+    assertTrue(said.contains(version), "naming the version that reached main: " + said);
+    assertTrue(awaitClosedAt(released.requestId()) != null, "and there is nothing left to retry");
+    assertEquals("REPORTED", statusOf(released.ticketId()), "the agent's to move, not the platform's");
+    assertNull(given().get("/projects/api/work/" + released.ticketId()).path("outcome"));
+    assertTrue(
+        agents.activeLookups().contains(released.ticketId()),
+        "asked by the ticket's row id: " + agents.activeLookups());
+  }
+
+  /** An agent that is OBSOLETE or REMOVED will never transition anything: the drop goes ahead. */
+  @Test
+  public void onlyObsoleteOrRemovedAgentsOnTheTicketStillDropIt() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    agents.willFindFor(
+        ticketId,
+        RecordingWorkspaceAgentDispatch.inState(
+            "agent-1", 1L, repoId, ticketId, "ticket/x", "OBSOLETE", null),
+        RecordingWorkspaceAgentDispatch.inState(
+            "agent-2", 2L, repoId, ticketId, "ticket/x", "REMOVED", Instant.now()));
+
+    withdraw(id, null);
+
+    awaitStatus(ticketId, "DROPPED");
+    assertEquals("OBSOLETE", given().get("/projects/api/work/" + ticketId).path("outcome"));
+    awaitComment(ticketId, "WITHDRAWN");
+    assertTrue(
+        commentBodies(ticketId).stream().noneMatch(c -> c.contains("An agent is working")),
+        commentBodies(ticketId).toString());
+    assertTrue(awaitClosedAt(id) != null);
+  }
+
+  /**
+   * <b>"Not known" is a retry, never a drop.</b> qits-workspaces cannot say whether an agent is on
+   * the ticket: nothing moves, nothing is said, and the request stays unstamped — so the sweep asks
+   * again, and once the answer is a definite "no agent", it drops as ever.
+   */
+  @Test
+  public void anUnknownAgentLeavesTheTicketForTheSweepWhichDropsItOnceItKnows() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    List<String> before = commentBodies(ticketId);
+    agents.willNotKnowAgents(true);
+
+    withdraw(id, "not wanted");
+
+    await(
+        () -> agents.activeLookups().contains(ticketId) ? ticketId : null,
+        "the close never asked whether an agent works on " + ticketId);
+    // The stamp would follow the answer on the same thread; give a wrong one the time to land.
+    sleep(500);
+    assertNull(closedAtOf(id), "unstamped, so the sweep visits it again");
+    assertEquals("REPORTED", statusOf(ticketId), "not dropped on a guess");
+    assertEquals(before, commentBodies(ticketId), "and nothing said, so the retry starts clean");
+
+    agents.willNotKnowAgents(false);
+    releaseRequests.sweepGateTickets();
+
+    awaitStatus(ticketId, "DROPPED");
+    List<String> withdrawn =
+        commentBodies(ticketId).stream().filter(c -> c.contains("WITHDRAWN")).toList();
+    assertEquals(1, withdrawn.size(), "said once, by the close that moved it: " + withdrawn);
+    assertTrue(awaitClosedAt(id) != null, "and the sweep will not ask again");
   }
 
   /**

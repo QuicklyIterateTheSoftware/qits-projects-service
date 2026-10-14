@@ -4,6 +4,7 @@ import eu.wohlben.qits.projects.error.DomainException;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A coding agent for one work item, asked for on the project's wrapper — the seam behind the
@@ -267,10 +268,50 @@ public interface WorkspaceAgentDispatch {
    * <p>This one <b>decorates a read</b>, and a lookup that threw would take a whole page down
    * because a sibling service was restarting. <b>So an implementation must never throw: it warns
    * and answers empty.</b> Batched because the caller may be one listing asking about every row on
-   * it.
+   * it. The price is that empty here cannot be told from a failure, so a caller that would act
+   * <em>irreversibly</em> on "no agent" asks {@link #hasActiveAgent} instead.
    *
    * @param workIds the work items' row ids; empty answers empty without a call
    * @return every agent working on any of them, in no particular order; never null
    */
   List<Agent> agentsFor(Collection<String> workIds);
+
+  /**
+   * Whether an agent is working on this one work item <b>right now</b> — an {@link Agent#ACTIVE}
+   * agent whose work item it is — or {@link Optional#empty()} when that could not be found out
+   * (qits-885).
+   *
+   * <h2>Why this is not {@link #agentsFor} with a filter</h2>
+   *
+   * <p>Because of what its caller does with the answer. {@link #agentsFor} decorates a read, and its
+   * contract folds every failure into the empty list — which is exactly the answer "no agent".
+   * That is honest for a page and dishonest for a <b>write</b>: the caller here is {@link
+   * UnattendedGateTickets#ended}, which drops a MAINTENANCE ticket unless somebody has taken it
+   * over, and an agent dispatched onto that ticket has. Read through {@link #agentsFor}, a
+   * qits-workspaces that was restarting would answer "nobody is working on it", the ticket would
+   * go DROPPED under the agent, and the agent's IMPLEMENTED a few seconds later would be refused —
+   * the very failure qits-885 and qits-1231 are about, merely made rarer. A drop is not something
+   * the agent can undo; a retry costs one sweep. So this read keeps the two apart.
+   *
+   * <h2>The failure contract, which is neither of the other two</h2>
+   *
+   * <p>It <b>never throws</b>, like {@link #agentsFor} — its caller is a port that must not throw
+   * either — but it does not pretend: {@code Optional.of(true)} and {@code Optional.of(false)} are
+   * answers the far side actually gave, a 200 that parsed, and <b>everything else is empty</b> — no
+   * address, no credential, a non-200, an unreachable or timing-out far side, an interrupt, an
+   * answer that will not parse. The caller reads empty as "ask again later", never as "no".
+   *
+   * <p>Only {@link Agent#ACTIVE} counts. An OBSOLETE agent's branches were released and a REMOVED
+   * one is gone; neither will transition anything again.
+   *
+   * <p><b>No default method</b>, on purpose: there is no honest one. Derived from {@link
+   * #agentsFor} it would inherit exactly the conflation above, and a default answering empty would
+   * leave an implementation that forgot to override it retrying forever. Every implementation says
+   * for itself.
+   *
+   * @param workId the work item's row id; null or blank answers {@code Optional.of(false)} without
+   *     a call, since no agent is keyed by nothing
+   * @return whether an ACTIVE agent works on the item, or empty when that is not known; never null
+   */
+  Optional<Boolean> hasActiveAgent(String workId);
 }

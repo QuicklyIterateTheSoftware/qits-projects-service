@@ -118,6 +118,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     indistinguishable from its empty success, a behaviour test on this side proves nothing about the
     far side's door**; the far side pins the roles now, and a live read is worth making before
     calling such a feature done.
+    <br>Its third verb, `hasActiveAgent(workId)`, is the same GET for one row with a **third**
+    contract (qits-885): never throws, but answers `Optional.empty()` — "not known" — for every
+    failure `agentsFor` folds into "none", because its caller (`entitieshost/TicketUnattendedGateTickets`)
+    would otherwise drop a MAINTENANCE ticket out from under the agent working on it.
 
   - `control/WorkspaceAgentTurns` → `HttpWorkspaceAgentTurns`: the POST that says something **to the
     work item's agent** — `POST /workspaces/api/agent-dispatches/delivery` with
