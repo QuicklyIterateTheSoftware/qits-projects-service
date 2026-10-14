@@ -14,11 +14,13 @@ import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.control.UnattendedGateTickets;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.arc.DefaultBean;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.Optional;
 import org.jboss.logging.Logger;
@@ -58,6 +60,18 @@ import org.jboss.logging.Logger;
  * such ticket stayed open after its request had long finished, and the backlog that built up was
  * made entirely of reports about things that had already stopped being true.
  *
+ * <p><b>The type is no longer the only consent (qits-885).</b> Agents are dispatched onto MAINTENANCE
+ * tickets now, and an agent working on one has taken it over exactly as a person who retyped it
+ * has — without retyping anything. Worse, it is the agent's own fix that ends the request: the fix
+ * releases, its tag reaches main, the request goes FINALIZED, and the drop used to land seconds
+ * before the agent's IMPLEMENTED, which the closed ticket then refused (qits-1231). So before
+ * dropping, {@link #ended} asks qits-workspaces through {@link WorkspaceAgentDispatch#hasActiveAgent}
+ * whether an ACTIVE agent works on the ticket; if one does, the ending is said on the thread and
+ * the ticket stays where its phase put it, for that agent to move. <b>An answer of "not known" is a
+ * retry, not a drop</b>: the drop is the one outcome here the agent cannot undo, while a retry costs
+ * the reconcile sweep one more visit. An assembly with no workspaces context at all has no agents to
+ * ask about, and drops as before.
+ *
  * <h2>Nothing here throws</h2>
  *
  * <p>The port says so and the reason is the call site: the gate has already decided and, on the
@@ -84,6 +98,13 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   @Inject ProjectChangePublisher publisher;
 
   @Inject EntityResolutions resolutions;
+
+  /**
+   * Who is working on a ticket, asked before the platform drops it (qits-885). {@code Instance} like
+   * every optional port here — {@code api.EntityDispatch} is the precedent — so an assembly without
+   * qits-workspaces still closes its tickets.
+   */
+  @Inject Instance<WorkspaceAgentDispatch> workspaces;
 
   @Override
   public Optional<String> rejected(Rejection rejection) {
@@ -166,14 +187,18 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   /**
    * Close the ticket of a request that ended, if it is still the platform's to close — see the port.
    *
-   * <p><b>Four outcomes and one of them is "try again".</b> A ticket that is already closed (DONE or
+   * <p><b>Five outcomes and one of them is "try again".</b> A ticket that is already closed (DONE or
    * DROPPED) or no longer exists has nothing left to do and answers true without a word: somebody
    * finished with it, and a comment on a closed thread is noise. A ticket a person retyped away from
    * MAINTENANCE is told the request ended and left open, and answers true too — the platform's part
-   * is over. Otherwise the ending goes on the thread first and the ticket goes DROPPED through
-   * {@link EntityResolutions}, which is the one door that also tears down a refinement the ticket may
-   * hold. Only a failure that could go differently next time — the store unreachable, a write
-   * refused mid-cutover — answers false, and the caller's sweep asks again.
+   * is over. So is a MAINTENANCE ticket an ACTIVE agent is working on (qits-885): it is told the
+   * request ended and left in whatever status its phase gave it, because that agent's IMPLEMENTED is
+   * on its way and a dropped ticket would refuse it (qits-1231). Otherwise the ending goes on the
+   * thread and the ticket goes DROPPED through {@link EntityResolutions}, which is the one door that
+   * also tears down a refinement the ticket may hold. Only a failure that could go differently next
+   * time answers false, and the caller's sweep asks again: the store unreachable, a write refused
+   * mid-cutover — <b>or qits-workspaces unable to say whether an agent is on the ticket</b>, which
+   * moves and says nothing, because a drop made on a guess is the one outcome the agent cannot undo.
    *
    * <p><b>"Not found" and "could not read" are told apart here</b>, where {@link #reusableTicket}
    * does not need to: the filer's worst case for a misread is a duplicate ticket, while this method's
@@ -182,6 +207,10 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
    *
    * <p>The ticket is moved before the ending is said on it, so a move that failed has written
    * nothing and its retry cannot repeat a sentence already on the thread.
+   *
+   * <p>The agent lookup is an HTTP call and is made from {@link #close} between the ticket store's
+   * {@code requiringNew} blocks, never inside one: with the caller's transaction suspended there is
+   * no transaction on the thread at all while qits-workspaces is asked.
    *
    * <p>{@link ActivateRequestContext} because the callers are the bus consumers, the release worker
    * and the scheduler — none with a request scope — and the transition's preview reads the row
@@ -249,6 +278,32 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
           requestId, ending, ticket.id, ticket.ticketType);
       return true;
     }
+    // An agent on the ticket has taken it over as surely as a retype (qits-885): its own fix is
+    // what ended the request, and its IMPLEMENTED is seconds behind. Asked here, after every cheaper
+    // way out and before the drop, outside any transaction (see ended).
+    Optional<Boolean> agent = agentOn(ticket.id);
+    if (agent.isEmpty()) {
+      // Neither move nor comment: the retry then starts from a clean thread. Unstamped, so the
+      // sweep asks again — a drop on a guess would be the one outcome the agent cannot undo.
+      LOG.warnf(
+          "Release request %s ended as %s, but whether an agent works on its ticket %s is not"
+              + " known; leaving it for the sweep",
+          requestId, ending, ticket.id);
+      return false;
+    }
+    if (agent.get()) {
+      tickets.addComment(
+          ticket.id,
+          endedSentence(requestId, repoName, ending, detail)
+              + "\n\nAn agent is working on this ticket, so the platform leaves it where its phase"
+              + " put it for that agent to transition.",
+          REPORTER);
+      redraw(ticket.projectId);
+      LOG.infof(
+          "Release request %s ended as %s; an agent works on its ticket %s, so it was only told",
+          requestId, ending, ticket.id);
+      return true;
+    }
     // The move FIRST and the comment after it: a failed move then leaves nothing written, so the
     // retry cannot say the same sentence twice; a failed comment after a move that landed is one
     // WARN, and the ticket is closed all the same — a retry would find it DROPPED and do nothing.
@@ -276,6 +331,19 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
         "Release request %s ended as %s; dropped its MAINTENANCE ticket %s",
         requestId, ending, ticket.id);
     return true;
+  }
+
+  /**
+   * Whether an ACTIVE agent works on the ticket, or empty when qits-workspaces could not say. An
+   * assembly with no implementation of the port has no agents anywhere, which is a definite "no".
+   */
+  private Optional<Boolean> agentOn(String ticketId) {
+    if (!workspaces.isResolvable()) {
+      return Optional.of(false);
+    }
+    Optional<Boolean> answer = workspaces.get().hasActiveAgent(ticketId);
+    // The port says never null; a null is read as what it is, an answer nobody gave.
+    return answer == null ? Optional.empty() : answer;
   }
 
   /** The entities module's 404, however the transaction wrapper handed it back. */

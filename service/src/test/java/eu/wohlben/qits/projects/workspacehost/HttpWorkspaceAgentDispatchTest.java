@@ -419,4 +419,143 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals(1, found.size());
     assertEquals("a-12", found.get(0).agentId());
   }
+
+  // --- whether an agent works on one row (qits-885) ----------------------------------------------
+
+  /**
+   * The same door as the listing read, asked about one row: one GET, the same path, the bearer, and
+   * the one id. The consumer pact's references row is what pins this exchange, so the two verbs
+   * must not drift apart on the wire.
+   */
+  @Test
+  void anActiveAgentIsTrueAndAsksTheReferencesDoorOnce() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"agent\":{\"agentId\":\"a-1\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\",\"state\":\"REMOVED\"}},"
+            + "{\"agent\":{\"agentId\":\"a-2\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\",\"state\":\"ACTIVE\",\"runState\":\"RUNNING\"}}]}");
+
+    assertEquals(Optional.of(true), against(base).hasActiveAgent("t-7"));
+
+    assertEquals(1, received.size());
+    Received request = received.get(0);
+    assertEquals("GET", request.method());
+    assertEquals("/workspaces/api/agent-dispatches/references", request.path());
+    assertEquals("workId=t-7", request.query());
+    assertEquals("Bearer machine-token", request.auth());
+  }
+
+  /** OBSOLETE and REMOVED agents will never transition the ticket again: they are no takeover. */
+  @Test
+  void onlyObsoleteOrRemovedAgentsIsFalse() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"agent\":{\"agentId\":\"a-1\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\",\"state\":\"REMOVED\"}},"
+            + "{\"agent\":{\"agentId\":\"a-2\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\",\"state\":\"OBSOLETE\"}}]}");
+
+    assertEquals(Optional.of(false), against(base).hasActiveAgent("t-7"));
+  }
+
+  @Test
+  void noEntriesIsFalse() throws Exception {
+    String base = startServer();
+    responseBody.set("{\"entries\":[]}");
+
+    assertEquals(Optional.of(false), against(base).hasActiveAgent("t-7"));
+  }
+
+  /**
+   * A missing state is the {@code Agent} record's ACTIVE, kept on purpose: the mistake that risks is
+   * a ticket left open with a comment, never a drop under a working agent.
+   */
+  @Test
+  void aMissingStateCountsAsActive() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"agent\":{\"agentId\":\"a-1\",\"repositoryId\":\"repo-1\","
+            + "\"workId\":\"t-7\"}}]}");
+
+    assertEquals(Optional.of(true), against(base).hasActiveAgent("t-7"));
+  }
+
+  @Test
+  void aBlankWorkIdIsFalseWithoutACall() throws Exception {
+    String base = startServer();
+
+    assertEquals(Optional.of(false), against(base).hasActiveAgent(null));
+    assertEquals(Optional.of(false), against(base).hasActiveAgent("  "));
+
+    assertTrue(received.isEmpty(), "a question about no row was still asked over the network");
+  }
+
+  /**
+   * <b>The whole point of the verb.</b> Every failure the listing read folds into "none" is "not
+   * known" here, because its caller would drop a ticket on "none".
+   */
+  @Test
+  void everyFailureIsNotKnownAndNeverFalseOrAThrow() throws Exception {
+    String base = startServer();
+
+    status.set(503);
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "a non-200");
+    status.set(403);
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "the 403 of qits-1152");
+
+    status.set(200);
+    responseBody.set("not json at all");
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "unparseable");
+    responseBody.set("{}");
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "no entries list");
+    responseBody.set("null");
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "a null answer");
+    responseBody.set("[]");
+    assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"), "not an object");
+
+    assertEquals(
+        Optional.empty(),
+        against("http://127.0.0.1:1", null, Optional.of("Bearer t")).hasActiveAgent("t-7"),
+        "nothing listening");
+    assertEquals(
+        Optional.empty(),
+        against(null, "", Optional.of("Bearer t")).hasActiveAgent("t-7"),
+        "no address");
+    assertEquals(
+        Optional.empty(),
+        against(base, null, Optional.empty()).hasActiveAgent("t-7"),
+        "no credential");
+  }
+
+  /** An interrupt is "not known" too, and the flag survives for whoever owns the thread. */
+  @Test
+  void anInterruptIsNotKnownAndTheFlagIsKept() throws Exception {
+    String base = startServer();
+    responseBody.set("{\"entries\":[]}");
+
+    Thread.currentThread().interrupt();
+    try {
+      assertEquals(Optional.empty(), against(base).hasActiveAgent("t-7"));
+      assertTrue(Thread.currentThread().isInterrupted(), "the interrupt was swallowed");
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  /**
+   * The listing read is unchanged by the shared exchange: the same failures are still an empty
+   * list, never "not known" and never a throw.
+   */
+  @Test
+  void theListingReadKeepsItsEmptyListContract() throws Exception {
+    String base = startServer();
+    status.set(503);
+    assertEquals(List.of(), against(base).agentsFor(List.of("t-7")));
+    status.set(200);
+    responseBody.set("{}");
+    assertEquals(List.of(), against(base).agentsFor(List.of("t-7")));
+    responseBody.set("null");
+    assertEquals(List.of(), against(base).agentsFor(List.of("t-7")));
+  }
 }

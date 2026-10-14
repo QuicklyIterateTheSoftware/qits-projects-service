@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -86,6 +87,11 @@ import org.jboss.logging.Logger;
  * unreachable or timing-out far side, an answer that will not parse or carries no workspace id.
  * There is no forwarded-header fallback, for {@link HttpReleasedBranchWorkspaces}' reason: this door
  * creates a container, and a call this service cannot authenticate is one it does not make.
+ *
+ * <p>That is the dispatch's rule only. The two reads beside it share one GET and two other
+ * contracts: {@link #agentsFor} turns every failure into one WARN and an empty list, and {@link
+ * #hasActiveAgent} into "not known" — never into "no agent", because its caller would drop a ticket
+ * on that answer (qits-885).
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static, so a native image does not get
  * an {@code HttpClientFacade} in its build-time heap; {@code NativeImageContractTest} pins that. It
@@ -246,15 +252,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       return List.of();
     }
     try {
-      HttpRequest request =
-          HttpRequest.newBuilder(
-                  URI.create(base.get() + "/workspaces/api/agent-dispatches/references?" + query))
-              .timeout(LOOKUP_TIMEOUT)
-              .header("Accept", "application/json")
-              .header("Authorization", authorization.get())
-              .GET()
-              .build();
-      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      HttpResponse<String> response = references(base.get(), authorization.get(), query);
       if (response.statusCode() != 200) {
         LOG.warnf(
             "qits-workspaces answered %s to an agent lookup; reporting none: %s",
@@ -270,6 +268,90 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       LOG.warnf("Could not read agents, so none are reported: %s", e.toString());
       return List.of();
     }
+  }
+
+  /**
+   * Whether an ACTIVE agent works on {@code workId} (qits-885): the same door as {@link #agentsFor},
+   * asked about one row, with the <b>opposite reading of a failure</b> — see the port. {@code
+   * Optional.of(…)} comes from a 200 that parsed and from nothing else; every other way this can
+   * end is empty, which the gate-ticket close reads as "retry", never as "no agent".
+   *
+   * <p>The exchange is {@link #agentsFor}'s exactly — one shared {@link #references} call, the same
+   * short timeout, the same path and query shape — so the consumer pact's references row covers
+   * both verbs. What differs is only what each one makes of the outcome, and that is why each keeps
+   * its own handling rather than sharing one that would have to choose.
+   *
+   * <p><b>The parse is {@link #agents}', and that is a decision with two consequences.</b> An entry
+   * with no agent id or no repository id is skipped here as it is there: the far side writes both on
+   * every row it holds, and an entry without them is not an agent this side could name in a comment
+   * either. And a missing or blank {@code state} reads as {@link Agent#ACTIVE}, which is the {@link
+   * Agent} record's own default — kept deliberately rather than overridden, because the mistake it
+   * risks is the cheap one: a ticket left open with a comment saying an agent is on it, which a
+   * person can drop by hand, against a drop the agent cannot undo. An answer with no {@code entries}
+   * list at all is not "no agents" but an answer this side cannot read, so it is empty.
+   */
+  @Override
+  public Optional<Boolean> hasActiveAgent(String workId) {
+    if (workId == null || workId.isBlank()) {
+      return Optional.of(false); // nothing is keyed by no row — no call to make
+    }
+    Optional<String> base = address();
+    Optional<String> authorization = bearer.authorization();
+    if (base.isEmpty() || authorization.isEmpty()) {
+      LOG.debugf(
+          "No %s for qits-workspaces, so whether an agent works on %s is not known",
+          base.isEmpty() ? "address" : "machine credential", workId);
+      return Optional.empty();
+    }
+    try {
+      HttpResponse<String> response =
+          references(base.get(), authorization.get(), query(List.of(workId)));
+      if (response.statusCode() != 200) {
+        LOG.warnf(
+            "qits-workspaces answered %s to whether an agent works on %s; not known: %s",
+            response.statusCode(), workId, response.body());
+        return Optional.empty();
+      }
+      Map<?, ?> answer = MAPPER.readValue(response.body(), Map.class);
+      if (answer == null || !(answer.get("entries") instanceof List<?>)) {
+        LOG.warnf(
+            "qits-workspaces answered no entries to whether an agent works on %s; not known: %s",
+            workId, response.body());
+        return Optional.empty();
+      }
+      return Optional.of(
+          agents(answer).stream()
+              // The far side was asked about this one row; an entry naming another is not about it.
+              .filter(agent -> agent.workId() == null || workId.equals(agent.workId()))
+              .anyMatch(Agent::active));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warnf("Interrupted while asking whether an agent works on %s; not known", workId);
+      return Optional.empty();
+    } catch (Exception e) {
+      LOG.warnf(
+          "Could not find out whether an agent works on %s, so it is not known: %s",
+          workId, e.toString());
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * The one exchange both reads make: {@code GET …/agent-dispatches/references?<query>} with the
+   * machine bearer and {@link #LOOKUP_TIMEOUT}. It throws, and each caller decides what a throw
+   * means — an empty list for {@link #agentsFor}, "not known" for {@link #hasActiveAgent}.
+   */
+  private HttpResponse<String> references(String base, String authorization, String query)
+      throws IOException, InterruptedException {
+    HttpRequest request =
+        HttpRequest.newBuilder(
+                URI.create(base + "/workspaces/api/agent-dispatches/references?" + query))
+            .timeout(LOOKUP_TIMEOUT)
+            .header("Accept", "application/json")
+            .header("Authorization", authorization)
+            .GET()
+            .build();
+    return client.send(request, HttpResponse.BodyHandlers.ofString());
   }
 
   /**
@@ -293,7 +375,11 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    * or act on it.
    */
   private static List<Agent> agents(String responseBody) throws Exception {
-    Map<?, ?> answer = MAPPER.readValue(responseBody, Map.class);
+    return agents(MAPPER.readValue(responseBody, Map.class));
+  }
+
+  /** {@link #agents(String)} over an answer already read; a null answer throws, as it always did. */
+  private static List<Agent> agents(Map<?, ?> answer) {
     if (!(answer.get("entries") instanceof List<?> entries)) {
       return List.of();
     }

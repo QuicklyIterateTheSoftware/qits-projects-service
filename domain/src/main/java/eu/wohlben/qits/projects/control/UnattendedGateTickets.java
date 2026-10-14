@@ -146,6 +146,17 @@ public interface UnattendedGateTickets {
    * stopped needing anything. A ticket a person retyped (to BUG, say) has been taken over; the
    * implementation says on its thread that the request ended and leaves it where it is.
    *
+   * <p><b>The type is not the only consent any more (qits-885): an ACTIVE agent on the ticket is a
+   * takeover too.</b> Agents are dispatched onto MAINTENANCE tickets, and nothing about that retypes
+   * them — yet the agent's own fix is what ends the request: it releases, the tag reaches main, the
+   * request goes FINALIZED, and a drop made then lands seconds before the agent's IMPLEMENTED, which
+   * the closed ticket refuses (qits-1231). So a MAINTENANCE ticket that {@link
+   * WorkspaceAgentDispatch#hasActiveAgent} says an agent is working on is treated like a retyped
+   * one: told, and left where its phase put it for that agent to move. <b>When that question cannot
+   * be answered, nothing is moved and nothing is said, and the answer is false</b> — a retry rather
+   * than a drop, because the drop is the one outcome the agent cannot undo and the retry costs the
+   * sweep one more visit.
+   *
    * <p>Never throws. The caller runs it after the ending has committed, outside every transaction of
    * this service's database, and records the answer on the request so its reconcile sweep can
    * retry what failed.
@@ -154,8 +165,9 @@ public interface UnattendedGateTickets {
    * @param detail what the ending names: the version (the tag) for FINALIZED, the successor request's
    *     qualified id for OBSOLETE, and null or a short reason for WITHDRAWN
    * @return true when there is nothing more to do — the ticket is now closed, was already closed, is
-   *     gone, or is no longer the platform's to close; false on a failure worth retrying, which
-   *     leaves the request unstamped for the sweep to visit again
+   *     gone, or is no longer the platform's to close (retyped, or an ACTIVE agent works on it);
+   *     false on a failure worth retrying — including not being able to tell whether an agent works
+   *     on it — which leaves the request unstamped for the sweep to visit again
    */
   boolean ended(String ticketId, String requestId, String repoName, Ending ending, String detail);
 }
