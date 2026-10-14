@@ -5,7 +5,9 @@ import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * The release requests' rows. Plain CRUD and nothing else — the caller ({@code ReleaseRequests})
@@ -87,6 +89,19 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
             ? list("lower(qualifiedId) = ?1", lowered)
             : list("repoId = ?1 and lower(qualifiedId) = ?2", repoId, lowered);
     return found.size() == 1 ? Optional.of(found.get(0)) : Optional.empty();
+  }
+
+  /**
+   * The qualified id of each of {@code ids} that still names a request, keyed by its uuid — one
+   * query for a page of rows, where asking per row was a query per superseded request (qits-1203).
+   */
+  public Map<String, String> qualifiedIdsOf(Collection<String> ids) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    return list("id in ?1", ids).stream()
+        .filter(row -> row.qualifiedId != null)
+        .collect(Collectors.toMap(row -> row.id, row -> row.qualifiedId, (a, b) -> a));
   }
 
   /** The request whose stored backing branch is {@code branch} in this repository, if any. */

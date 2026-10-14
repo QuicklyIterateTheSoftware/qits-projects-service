@@ -166,10 +166,40 @@ public class ApprovalPolicy {
    * release.
    */
   private ApprovalRequirement settled(String repoId, boolean approvedAtFold) {
-    if (gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL)) {
+    return settled(gates.resolve(repoId), approvedAtFold);
+  }
+
+  private static ApprovalRequirement settled(ReleaseGates.GateSet set, boolean approvedAtFold) {
+    if (set.requires(ReleaseGates.Kind.APPROVAL)) {
       return new ApprovalRequirement(true, MANUAL_REVIEW_DETAIL);
     }
     return approvedAtFold ? new ApprovalRequirement(true, null) : ApprovalRequirement.NOT_REQUIRED;
+  }
+
+  /**
+   * <b>The same question for a read-only display</b> (qits-1203) — the release-request list and
+   * single read — which has already read everything this needs from the database inside its own
+   * transaction, and asks this <em>after</em> that transaction has closed, so that the git work an
+   * unsettled request costs never holds a connection.
+   *
+   * <p>The rule is the one {@link #requirementFor(String, String, ReleaseRequest.State, boolean)}
+   * applies, word for word; only where its two inputs come from differs. {@code gateSet} is the
+   * display's own reading of the repository's configuration ({@link ReleaseGates#forDisplay}), and
+   * {@code repositoryExists} is the row lookup {@link #contentReasons} would otherwise make. Nothing
+   * that decides a release may call this: a decision asks {@link #requirementFor(ReleaseRequest)},
+   * which resolves the gate set strictly.
+   */
+  public ApprovalRequirement requirementForDisplay(
+      ReleaseGates.GateSet gateSet,
+      boolean repositoryExists,
+      String repoId,
+      String mergedSha,
+      ReleaseRequest.State state,
+      boolean approvedAtFold) {
+    if (isSettled(state)) {
+      return settled(gateSet, approvedAtFold);
+    }
+    return unsettled(gateSet, repositoryExists, repoId, mergedSha);
   }
 
   /**
@@ -178,11 +208,21 @@ public class ApprovalPolicy {
    * with no fold yet.
    */
   public ApprovalRequirement requirementFor(String repoId, String mergedSha) {
+    ReleaseGates.GateSet set = gates.resolve(repoId);
+    boolean exists =
+        mergedSha != null
+            && !mergedSha.isBlank()
+            && repositories.findByIdOptional(repoId).isPresent();
+    return unsettled(set, exists, repoId, mergedSha);
+  }
+
+  private ApprovalRequirement unsettled(
+      ReleaseGates.GateSet set, boolean repositoryExists, String repoId, String mergedSha) {
     List<String> reasons = new ArrayList<>(3);
-    if (gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL)) {
+    if (set.requires(ReleaseGates.Kind.APPROVAL)) {
       reasons.add(MANUAL_REVIEW_DETAIL);
     }
-    reasons.addAll(contentReasons(repoId, mergedSha));
+    reasons.addAll(contentReasons(repositoryExists, repoId, mergedSha));
     return reasons.isEmpty()
         ? ApprovalRequirement.NOT_REQUIRED
         : new ApprovalRequirement(true, String.join("; ", reasons));
@@ -193,11 +233,11 @@ public class ApprovalPolicy {
    * adds nothing to {@code main}; empty when neither holds. A fold whose changes could not be read is
    * one sentence and no second read: it is already held, and the same mirror would be asked again.
    */
-  private List<String> contentReasons(String repoId, String mergedSha) {
+  private List<String> contentReasons(boolean repositoryExists, String repoId, String mergedSha) {
     if (mergedSha == null || mergedSha.isBlank()) {
       return List.of();
     }
-    if (repositories.findByIdOptional(repoId).isEmpty()) {
+    if (!repositoryExists) {
       return List.of();
     }
     List<CommitFileChangeDto> files;
