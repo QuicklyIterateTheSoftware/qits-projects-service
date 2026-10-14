@@ -318,14 +318,18 @@ public class ReleaseRequests {
   @Inject ReleaseRequestApprovalRepository approvals;
 
   /**
-   * Which gates this repository configures — resolved per request from its {@code main}, stored
-   * nowhere, and the thing every arm of {@link #evaluate} is now a member of. It is this module's own
-   * bean rather than a port: what is behind a port is the git host it reads through.
+   * Which gates this repository configures — resolved per request from its {@code main}, never stored
+   * on a request (a display's copy is stored per repository, see {@link #render}), and the thing every
+   * arm of {@link #evaluate} is now a member of. It is this module's own bean rather than a port: what
+   * is behind a port is the git host it reads through.
    */
   @Inject ReleaseGates gates;
 
-  /** The display's memory of the approval question's content half — see {@link #render}. */
-  @Inject DisplayApprovals displayApprovals;
+  /**
+   * Reads the approval question's content half in the background and writes it onto the request, so
+   * that {@link #render} reads only the row — see {@link #render}.
+   */
+  @Inject ApprovalContentRecorder contentRecorder;
 
   @Inject ReleaseGateEvaluator gateEvaluator;
 
@@ -1359,9 +1363,10 @@ public class ReleaseRequests {
    * One request, as the API answers it.
    *
    * <p>Read in two halves (qits-1203), as the lists are: every row it needs inside one short
-   * transaction ({@link #loadOne}), then the gate set, the approval question's git work and the
-   * deployment read after that transaction has closed ({@link #render}) — so no database connection
-   * is held across a call to the git host, the mirror or qits-deployments.
+   * transaction ({@link #loadOne}), then the rendering after that transaction has closed ({@link
+   * #render}) — which asks the git host and the mirror nothing since qits-1201, and asks
+   * qits-deployments for this one request's deployment — so no database connection is held across a
+   * call to another service.
    */
   public ReleaseRequestDto get(String id) {
     Page page =
@@ -2307,14 +2312,24 @@ public class ReleaseRequests {
    * the tag work — never inside the caller's transaction, which for the head listener is the event
    * funnel's — and best effort: a failure there is logged and never reaches this method.
    * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper.
+   *
+   * <p><b>And what a list shows about the repository is re-read behind it</b> (qits-1201). Its gate
+   * set ({@link ReleaseGates#mainMoved}) and the approval content of every fold still before its tag
+   * ({@link ApprovalContentRecorder#mainMoved}) both read {@code main}, so both are read again on a
+   * pool of their own — never on this thread, and never by the next list read, which keeps showing
+   * what is stored until the new readings land. Until qits-1201 this only forgot them, and the next
+   * list paid for the reads on its own thread.
    */
   public void onMainMoved(String repoId, String mainSha) {
     // The gate configuration is read from main: whatever moved it — a finalization merge or a hand
-    // push — the remembered gate set predates the move, so a display must not keep serving it.
-    gates.forget(repoId);
-    // So does the display's answer to the approval question's content half: it diffs each fold
-    // against main (the merge base, and whether the fold adds anything to it).
-    displayApprovals.forget(repoId);
+    // push — the remembered gate set predates the move. Forget it and read it again in the
+    // background, so a display shows the stored set until the new one lands and never reads the git
+    // host itself (qits-1201).
+    gates.mainMoved(repoId);
+    // So does the stored answer to the approval question's content half: it diffs each fold against
+    // main (the merge base, and whether the fold adds anything to it). Every open fold of the
+    // repository is re-read in the background; the stored reasons show until each is rewritten.
+    contentRecorder.mainMoved(repoId);
     try {
       settleTagsOnMain(repoId, mainSha);
     } finally {
@@ -2850,6 +2865,9 @@ public class ReleaseRequests {
     }
     Folded folded = apply(id, target, why, outcome, attempted);
     if (folded != null) {
+      // The fold has committed: read what it changes in the background and write it onto the row,
+      // so a list shows it without reading git itself (qits-1201). Never blocks, never throws.
+      contentRecorder.enqueue(folded.repoId(), folded.mergedSha());
       if (folded.supersededSha() != null) {
         // A fold that REPLACED a sha, not the first one: whatever qits-ci is still running for this
         // request is grinding on content nobody will accept. See cancel() for why this is best
@@ -4320,15 +4338,18 @@ public class ReleaseRequests {
 
   /**
    * Everything a set of rows needs from the database, read inside one transaction — and nothing
-   * that needs the git host, the mirror or another service, which {@link #render} asks after the
-   * transaction has closed (qits-1203). The list read used to do both inside one {@code
-   * requiringNew()}, so a page held a connection through every gate read and every fold diff: 4.5 to
-   * 5.5 seconds a page, once 38.
+   * that needs the git host, the mirror or another service (qits-1203). The list read used to do
+   * both inside one {@code requiringNew()}, so a page held a connection through every gate read and
+   * every fold diff: 4.5 to 5.5 seconds a page, once 38. Since qits-1201 {@link #render} does not ask
+   * the git host or the mirror either: the gate sets and the approval question's content half are
+   * read here, as stored, and only a single read's deployment is asked after the transaction.
    *
    * @param mainBranchByRepo each distinct repository's main branch, as {@link ReleaseGates} would
-   *     read it — handed to {@link ReleaseGates#forDisplay} so the gate reads need no database
+   *     read it — handed to {@link ReleaseGates#forDisplay} for the background refresh it may start
    * @param existingRepos the distinct repositories that still have a row — the one fact the approval
    *     question reads from the database ({@link ApprovalPolicy#requirementForDisplay})
+   * @param storedGateSets each distinct repository's stored gate set ({@link ReleaseGates#stored}),
+   *     one query for the page; a repository with none is absent
    * @param successors each OBSOLETE row's successor's qualified id, keyed by the successor's uuid —
    *     one query for the page rather than one per superseded row
    */
@@ -4346,6 +4367,7 @@ public class ReleaseRequests {
       Map<String, String> mainBranchByRepo,
       Set<String> existingRepos,
       Map<String, String> successors,
+      Map<String, ReleaseGates.Stored> storedGateSets,
       ReleasePipelineAssembler.DeployReach reach) {}
 
   /**
@@ -4361,11 +4383,10 @@ public class ReleaseRequests {
    *
    * <p><b>The approval decisions are answered in the same batched shape and for the same reason</b>:
    * one query, keyed on each request's own current fold — see {@link
-   * ReleaseRequestApprovalRepository#currentForEach}. Whether approval is <em>required</em> cannot
-   * be batched per repository any more: it depends on what each fold changes, so {@link #render}
-   * asks the policy per request, once per distinct {@code (repoId, mergedSha)} in the page — and
-   * only for the requests still before their tag; a settled one is answered from the decisions
-   * above with no git read.
+   * ReleaseRequestApprovalRepository#currentForEach}. Whether approval is <em>required</em> depends
+   * on what each fold changes, which is stored on the row itself ({@link
+   * ReleaseRequest#approvalContentReasons}, qits-1201) and so costs no query of its own; a settled
+   * request is answered from the decisions above alone.
    *
    * <p>Must be called inside a transaction; asks nothing but the database.
    */
@@ -4427,6 +4448,7 @@ public class ReleaseRequests {
         mainBranches(repoIds),
         existingRepositories(repoIds),
         successorsOf(rows),
+        gates.stored(repoIds),
         // A list read never asks qits-deployments. Its listing is keyed on (repoId, version), so a
         // page of N released requests is N HTTP calls with nothing to batch — on the busiest read
         // this service has. The deploy phase is simply ABSENT from these rows, which is this
@@ -4475,6 +4497,7 @@ public class ReleaseRequests {
         mainBranches(repoIds),
         existingRepositories(repoIds),
         successorsOf(List.of(row)),
+        gates.stored(repoIds),
         ReleasePipelineAssembler.DeployReach.ASK);
   }
 
@@ -4503,26 +4526,39 @@ public class ReleaseRequests {
 
   /**
    * The rows of a {@link #loadPage loaded page} as the API answers them — <b>outside</b> any
-   * transaction: the gate sets, the approval question's git work and (for a single read) the
-   * deployment are all asked here, after the connection has gone back.
+   * transaction, and <b>asking neither the git host nor the mirror</b> (qits-1201): everything here
+   * is the page's rows plus computation in memory. A single read's deployment is the one call left
+   * ({@code DeployReach.ASK}); a list makes none at all.
    *
    * <p>The gate sets come from {@link ReleaseGates#forDisplay}: once per <b>distinct</b> repository
-   * (it cannot differ within one, being read from that repository's main), concurrently for the ones
-   * with nothing cached, and a stale cached one answered at once while it is refreshed behind the
-   * page. This is a display, so that is safe; nothing here decides anything.
+   * (it cannot differ within one, being read from that repository's main), answered from memory or
+   * from the set stored per repository, and refreshed behind the page in the background where that
+   * is stale, missing or from before main last moved. Before qits-1201 a repository with nothing in
+   * memory — every repository after a restart, and the one whose main had just moved — was read at
+   * qits-githost on the page's own thread.
    *
    * <p>The approval question is asked per request, because it depends on what each fold changes. A
-   * settled request reads no git at all; an open one's content half comes from {@link
-   * DisplayApprovals}, remembered per {@code (repoId, mergedSha)} until that repository's main moves,
-   * with the folds it has not seen read concurrently, one task per repository. The caller's thread
-   * runs under a request context activated here when it has none, for the case where only one
-   * repository is read and it is read inline: {@link CommitService} reads a repository row outside
-   * any transaction, as it does on its own doors.
+   * settled request reads nothing more. An open one's content half is the reasons {@link
+   * ApprovalContentRecorder} stored on the row for its current fold; a row whose stored fold is not
+   * its current one is handed to the recorder (in the background, once per fold however many pages
+   * meet it) and shown as {@link ApprovalContentRecorder#NOT_YET_READ} — approval required, the
+   * same fail-closed answer an unreadable fold has always had — until the reading lands. Before
+   * qits-1201 that read was qits-1203's {@code DisplayApprovals}, which ran the git work on the
+   * page's thread whenever its memory missed.
+   *
+   * <p><b>The suite reads synchronously</b> ({@code display-reads-synchronously}): there every
+   * open fold is read on this thread ({@link ApprovalContentRecorder#readNow}), so a test that scripts
+   * a fold's content and lists right after sees what it scripted. The caller's thread runs under a
+   * request context activated here when it has none: {@link CommitService} reads a repository row
+   * outside any transaction, as it does on its own doors.
    */
   private List<ReleaseRequestDto> render(Page page) {
-    Map<String, ReleaseGates.GateSet> gateSets = gates.forDisplay(page.mainBranchByRepo());
+    Map<String, ReleaseGates.GateSet> gateSets =
+        gates.forDisplay(page.mainBranchByRepo(), page.storedGateSets());
     Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired =
-        withRequestContext(() -> approvalRequirements(page, gateSets));
+        contentRecorder.displayReadsSynchronously()
+            ? withRequestContext(() -> approvalRequirements(page, gateSets))
+            : approvalRequirements(page, gateSets);
     return page.rows().stream()
         .map(
             row -> {
@@ -4565,18 +4601,9 @@ public class ReleaseRequests {
 
   private Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequirements(
       Page page, Map<String, ReleaseGates.GateSet> gateSets) {
-    // Only an open request on a fold of a repository that still exists has a content half to read.
-    Map<String, Set<String>> folds = new LinkedHashMap<>();
-    for (ReleaseRequest row : page.rows()) {
-      if (!ApprovalPolicy.isSettled(row.state)
-          && row.mergedSha != null
-          && !row.mergedSha.isBlank()
-          && page.existingRepos().contains(row.repoId)) {
-        folds.computeIfAbsent(row.repoId, key -> new LinkedHashSet<>()).add(row.mergedSha);
-      }
-    }
-    Map<DisplayApprovals.Fold, List<String>> content =
-        folds.isEmpty() ? Map.of() : displayApprovals.contentReasons(folds);
+    boolean synchronous = contentRecorder.displayReadsSynchronously();
+    // Read once per fold in the page, however many rows share it (the suite's synchronous path).
+    Map<ApprovalContentRecorder.Fold, List<String>> readNow = new HashMap<>();
     Map<String, ApprovalPolicy.ApprovalRequirement> required = new HashMap<>();
     for (ReleaseRequest row : page.rows()) {
       ReleaseGates.GateSet set =
@@ -4585,10 +4612,27 @@ public class ReleaseRequests {
       ReleaseRequestApproval decision = page.decisions().get(row.id);
       boolean approvedAtFold =
           decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED;
-      List<String> reasons =
-          ApprovalPolicy.isSettled(row.state) || row.mergedSha == null
-              ? List.of()
-              : content.getOrDefault(new DisplayApprovals.Fold(row.repoId, row.mergedSha), List.of());
+      List<String> reasons = List.of();
+      // Only an open request on a fold of a repository that still exists has a content half.
+      if (!ApprovalPolicy.isSettled(row.state)
+          && row.mergedSha != null
+          && !row.mergedSha.isBlank()
+          && page.existingRepos().contains(row.repoId)) {
+        if (synchronous) {
+          reasons =
+              readNow.computeIfAbsent(
+                  new ApprovalContentRecorder.Fold(row.repoId, row.mergedSha),
+                  fold -> contentRecorder.readNow(fold.repoId(), fold.mergedSha()));
+        } else {
+          java.util.Optional<List<String>> stored = ApprovalContentRecorder.storedFor(row);
+          if (stored.isPresent()) {
+            reasons = stored.get();
+          } else {
+            contentRecorder.enqueue(row.repoId, row.mergedSha);
+            reasons = List.of(ApprovalContentRecorder.NOT_YET_READ);
+          }
+        }
+      }
       required.put(
           row.id,
           approvalPolicy.requirementForDisplay(

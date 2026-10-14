@@ -262,6 +262,25 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String conflictDetail;
 
   /**
+   * The approval question's content half as last read for {@link #approvalContentFold} — a JSON array
+   * of {@code ApprovalPolicy.readContent}'s reasons, {@code []} for a fold that neither changes {@code
+   * .config/qits/} nor adds nothing to {@code main} (qits-1201, V44). <b>What a list shows, and
+   * nothing that decides reads it</b>: the executor, the gates and approve/decline read the fold
+   * afresh. Only a complete reading is written, by {@code ApprovalContentRecorder} and nobody else —
+   * which is why both columns are read-only to the entity: a flush of a row loaded before the
+   * recorder wrote must not put the older value back.
+   */
+  @Column(name = "approval_content_reasons", insertable = false, updatable = false)
+  public String approvalContentReasons;
+
+  /**
+   * The fold {@link #approvalContentReasons} was read for. Unequal to {@link #mergedSha} (or null),
+   * the current fold has not been read yet, and a list shows approval as required until it has.
+   */
+  @Column(name = "approval_content_fold", insertable = false, updatable = false)
+  public String approvalContentFold;
+
+  /**
    * When {@link #mergedSha} was armed — the merge that produced it. The settle window's basis: a
    * re-armed request waits its own window, and a fold no verdict will ever arrive for still passes
    * vacuously after it.
