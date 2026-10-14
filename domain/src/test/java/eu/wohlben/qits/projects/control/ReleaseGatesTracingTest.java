@@ -1,0 +1,87 @@
+package eu.wohlben.qits.projects.control;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
+import eu.wohlben.qits.projects.gitmirror.GitTracing;
+import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+/**
+ * {@code release-gates.resolve} (qits-1202): one span per {@link ReleaseGates#resolve}, saying
+ * whether the answer came from the freshness cache, with whatever the git host does on a miss
+ * nested under it. Built with {@code new} and no database: the repository row is absent (so the
+ * branch is {@code main}) and the git host is a proxy that answers an empty tree — a known, empty
+ * gate set, which is what gets cached.
+ */
+class ReleaseGatesTracingTest {
+
+  private final StackTracing tracing = new StackTracing();
+
+  private ReleaseGates gates() {
+    ReleaseGates gates = new ReleaseGates();
+    gates.freshnessMs = 60_000;
+    gates.repositories =
+        new RepositoryRepository() {
+          @Override
+          public Optional<Repository> findByIdOptional(String id) {
+            return Optional.empty();
+          }
+        };
+    gates.gitHosts = new FixedInstance<>(gitHostThatTraces());
+    gates.tracing = new FixedInstance<>(tracing);
+    return gates;
+  }
+
+  /** Every call opens a span of its own, standing in for the HTTP client span a real one makes. */
+  private ReleaseGitHost gitHostThatTraces() {
+    return (ReleaseGitHost)
+        Proxy.newProxyInstance(
+            ReleaseGitHost.class.getClassLoader(),
+            new Class<?>[] {ReleaseGitHost.class},
+            (proxy, method, args) -> {
+              try (GitTracing.Span ignored = tracing.start("http " + method.getName(), Map.of())) {
+                if (method.getName().equals("tree")) {
+                  return ReleaseGitHost.Answer.of(List.of("README.md"));
+                }
+                throw new UnsupportedOperationException(method.getName());
+              }
+            });
+  }
+
+  @Test
+  void aMissReadsTheGitHostInsideTheSpanAndAHitReadsNothing() {
+    ReleaseGates gates = gates();
+
+    assertTrue(gates.resolve("repo-1").nothingToWaitOn());
+
+    StackTracing.Recorded miss = tracing.only(ReleaseGates.RESOLVE_SPAN);
+    assertEquals("repo-1", miss.attributes.get(GitProcessSpans.REPO_ID));
+    assertEquals("miss", miss.attributes.get(ReleaseGates.CACHE_ATTRIBUTE));
+    assertSame(miss, tracing.only("http tree").parent, "the git host's call nests under it");
+    assertTrue(miss.closed);
+
+    tracing.spans.clear();
+    gates.resolve("repo-1");
+
+    StackTracing.Recorded hit = tracing.only(ReleaseGates.RESOLVE_SPAN);
+    assertEquals("hit", hit.attributes.get(ReleaseGates.CACHE_ATTRIBUTE));
+    assertEquals(1, tracing.spans.size(), "a hit asks nobody: " + tracing.spans);
+  }
+
+  @Test
+  void aGatesBuiltWithoutCdiTracesNothingAndStillAnswers() {
+    ReleaseGates gates = gates();
+    gates.tracing = null;
+
+    assertTrue(gates.resolve("repo-1").nothingToWaitOn());
+    assertEquals(1, tracing.spans.size(), "only the stand-in host's own span: " + tracing.spans);
+  }
+}

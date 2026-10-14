@@ -66,6 +66,15 @@ public final class RepoMirror {
   private final Duration freshness;
   private final Supplier<String> causationId;
 
+  /** The span around {@link #refreshNow()}. */
+  public static final String REFRESH_SPAN = "git.mirror.refresh";
+
+  /** {@code clone} or {@code fetch}: which branch of {@link #refreshNow()} ran. */
+  public static final String REFRESH_OP = "git.mirror.op";
+
+  /** Milliseconds from just before {@link #fetchLock} was asked for to just after it was held. */
+  public static final String FETCH_LOCK_WAIT_MS = "qits.git.fetch_lock.wait_ms";
+
   private final ReentrantLock fetchLock = new ReentrantLock();
   private volatile long fetchedAtMillis = 0L;
 
@@ -132,22 +141,41 @@ public final class RepoMirror {
    * Fetch unconditionally, cloning first if the mirror is absent — what every flow that is about to
    * <em>write</em> calls, because a preflight against a stale object store is a preflight against
    * the wrong repository.
+   *
+   * <p><b>Traced as {@value #REFRESH_SPAN}</b> (qits-1202), around the whole of it, with the clone or
+   * fetch process span nested inside: {@link #REFRESH_OP} says which branch ran and {@link
+   * #FETCH_LOCK_WAIT_MS} how long this caller queued behind another refresh of the same repository
+   * first. The wait is the number worth having — a fetch is the network's time, the wait is this
+   * service's own serialization, and without it a slow refresh reads as a slow git host. A {@link
+   * #refresh()} answered from the freshness window never gets here, so it emits nothing.
    */
   public void refreshNow() {
-    fetchLock.lock();
-    try {
-      if (!isMirror()) {
-        // Not "absent" — not a REPOSITORY. A leftover directory takes this branch too, and
-        // cloneMirror deletes it before cloning, so a gutted mirror heals instead of being fetched
-        // into. See isMirror for what fetching into one used to do.
-        deleteQuietly(gitDir);
-        cloneMirror();
-      } else {
-        fetch();
+    try (GitTracing.Span span =
+        cli.tracing().start(REFRESH_SPAN, Map.of(GitProcessSpans.REPO_ID, repoId))) {
+      long waitStart = System.nanoTime();
+      fetchLock.lock();
+      span.attribute(FETCH_LOCK_WAIT_MS, (System.nanoTime() - waitStart) / 1_000_000L);
+      try {
+        if (!isMirror()) {
+          // Not "absent" — not a REPOSITORY. A leftover directory takes this branch too, and
+          // cloneMirror deletes it before cloning, so a gutted mirror heals instead of being
+          // fetched into. See isMirror for what fetching into one used to do.
+          span.attribute(REFRESH_OP, "clone");
+          deleteQuietly(gitDir);
+          cloneMirror();
+        } else {
+          span.attribute(REFRESH_OP, "fetch");
+          fetch();
+        }
+        fetchedAtMillis = System.currentTimeMillis();
+      } catch (RuntimeException e) {
+        // Safe to record whole: a timeout's message is redacted at its source (GitCli), and the
+        // rest is git's own output against the tokenless git host URL.
+        span.error(e);
+        throw e;
+      } finally {
+        fetchLock.unlock();
       }
-      fetchedAtMillis = System.currentTimeMillis();
-    } finally {
-      fetchLock.unlock();
     }
   }
 
@@ -803,7 +831,7 @@ public final class RepoMirror {
 
   private GitCli.Result unbounded(File cwd, Map<String, String> env, String... argv) {
     try {
-      return cli.run(cwd, guardEnv(cwd, env), null, null, argv);
+      return cli.run(spanAttributes(), cwd, guardEnv(cwd, env), null, null, argv);
     } catch (Exception e) {
       throw new GitMirrorException(
           "git " + String.join(" ", argv) + " failed" + (cwd != null ? " in " + cwd : ""), e);
@@ -819,7 +847,13 @@ public final class RepoMirror {
   private GitCli.Result wire(String what, Path cwd, Consumer<String> onLine, String... argv) {
     File dir = cwd == null ? null : cwd.toFile();
     try {
-      return cli.run(dir, guardEnv(dir, Map.of()), onLine, networkTimeout, platformArgv(argv));
+      return cli.run(
+          spanAttributes(),
+          dir,
+          guardEnv(dir, Map.of()),
+          onLine,
+          networkTimeout,
+          platformArgv(argv));
     } catch (Exception e) {
       throw new GitMirrorException(what + ": " + e.getMessage(), e);
     }
@@ -829,10 +863,15 @@ public final class RepoMirror {
   private GitCli.Result wireExternal(String what, Path cwd, Consumer<String> onLine, String... argv) {
     File dir = cwd == null ? null : cwd.toFile();
     try {
-      return cli.run(dir, guardEnv(dir, Map.of()), onLine, networkTimeout, argv);
+      return cli.run(spanAttributes(), dir, guardEnv(dir, Map.of()), onLine, networkTimeout, argv);
     } catch (Exception e) {
       throw new GitMirrorException(what + ": " + e.getMessage(), e);
     }
+  }
+
+  /** What every process span this mirror opens knows that the argv cannot say: whose it is. */
+  private Map<String, String> spanAttributes() {
+    return Map.of(GitProcessSpans.REPO_ID, repoId);
   }
 
   private String[] platformArgv(String... argv) {

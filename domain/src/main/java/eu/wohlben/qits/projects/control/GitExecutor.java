@@ -1,6 +1,10 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
+import eu.wohlben.qits.projects.gitmirror.GitTracing;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
@@ -10,11 +14,29 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * The domain's own git spawner, for the work that is not a mirror's: a workspace checkout, a backup
+ * push to a forge, a bare read by path.
+ *
+ * <p><b>Every process is one span</b> (qits-1202), made exactly as {@code gitmirror}'s {@code
+ * GitCli} makes its own — {@link GitProcessSpans} names it, redacts its argv (which is where {@code
+ * GitRemoteAuth}'s credential helper travels) and decides when an exit is a failure, so the two
+ * spawners cannot drift on what a trace may say. The tracer is an optional port like every other
+ * here: no {@link GitTracing} bean, or an instance built with {@code new} by a test, is {@link
+ * GitTracing#NONE}.
+ */
 @ApplicationScoped
 public class GitExecutor {
 
   /** The exit code and combined stdout/stderr of a finished git invocation. */
   public record ExecResult(int exitCode, String output) {}
+
+  /** Null when constructed outside CDI, which several plain unit tests do. */
+  @Inject Instance<GitTracing> tracing;
+
+  private GitTracing tracing() {
+    return tracing != null && tracing.isResolvable() ? tracing.get() : GitTracing.NONE;
+  }
 
   public String exec(java.io.File cwd, String... command) throws Exception {
     return exec(cwd, (Consumer<String>) null, command);
@@ -112,8 +134,30 @@ public class GitExecutor {
     return result;
   }
 
-  /** {@link #execAllowNonZero(java.io.File, Consumer, String...)} with an environment overlay. */
+  /**
+   * {@link #execAllowNonZero(java.io.File, Consumer, String...)} with an environment overlay — and
+   * the overload every other one here funnels into, so this is where the process span is opened: on
+   * the calling thread, before the process starts, carrying {@link GitProcessSpans#CWD}.
+   */
   public ExecResult execAllowNonZero(
+      java.io.File cwd, Map<String, String> env, Consumer<String> onLine, String... command)
+      throws Exception {
+    Map<String, String> attributes =
+        cwd == null ? Map.of() : Map.of(GitProcessSpans.CWD, cwd.getPath());
+    try (GitTracing.Span span = GitProcessSpans.start(tracing(), command, attributes, null)) {
+      ExecResult result;
+      try {
+        result = execute(cwd, env, onLine, command);
+      } catch (Exception e) {
+        span.error(e);
+        throw e;
+      }
+      GitProcessSpans.exited(span, result.exitCode(), result.output());
+      return result;
+    }
+  }
+
+  private static ExecResult execute(
       java.io.File cwd, Map<String, String> env, Consumer<String> onLine, String... command)
       throws Exception {
     ProcessBuilder pb = new ProcessBuilder(withMaintenanceGuard(command));

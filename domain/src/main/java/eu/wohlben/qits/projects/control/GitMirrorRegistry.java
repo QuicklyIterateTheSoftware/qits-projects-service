@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.gitmirror.GitCli;
 import eu.wohlben.qits.projects.gitmirror.GitMirrors;
+import eu.wohlben.qits.projects.gitmirror.GitTracing;
 import eu.wohlben.qits.projects.gitmirror.RepoMirror;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -62,13 +63,20 @@ public class GitMirrorRegistry {
    */
   @Inject Instance<PushCausation> pushCausation;
 
+  /**
+   * Where every mirror's git process and {@code git.mirror.refresh} span goes (qits-1202). Optional
+   * the same way: the deployable implements it over OpenTelemetry, and this module's own suite —
+   * which has no tracer — gets {@link GitTracing#NONE} and traces nothing.
+   */
+  @Inject Instance<GitTracing> tracing;
+
   private GitMirrors mirrors;
 
   @PostConstruct
   void build() {
     mirrors =
         new GitMirrors(
-            new GitCli(),
+            new GitCli(tracing.isResolvable() ? tracing.get() : GitTracing.NONE),
             gitHost,
             Path.of(dataDir).toAbsolutePath(),
             Duration.ofMillis(networkTimeoutMs),

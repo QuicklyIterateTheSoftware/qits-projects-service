@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
+import eu.wohlben.qits.projects.gitmirror.GitTracing;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -201,6 +203,21 @@ public class ReleaseGates {
 
   @Inject Instance<ReleaseGitHost> gitHosts;
 
+  /**
+   * Where the {@value #RESOLVE_SPAN} span goes (qits-1202). Borrowed from {@code gitmirror} rather
+   * than declared twice: it is this repository's one tracing port, and its shape — open, attribute,
+   * close, nested under whatever is current — is exactly what a resolution needs. Optional like
+   * every port here, and null when a test builds this class with {@code new}; both are {@link
+   * GitTracing#NONE}.
+   */
+  @Inject Instance<GitTracing> tracing;
+
+  /** The span around {@link #resolve}; on a miss the git host's HTTP spans nest under it. */
+  static final String RESOLVE_SPAN = "release-gates.resolve";
+
+  /** {@code hit} or {@code miss}: whether {@link #resolve} answered from {@link #cache}. */
+  static final String CACHE_ATTRIBUTE = "qits.release_gates.cache";
+
   /** How long a successfully read gate configuration is reused for. See {@link #resolve}. */
   @ConfigProperty(name = "qits.projects.release-requests.gate-freshness-ms", defaultValue = "30000")
   long freshnessMs;
@@ -316,19 +333,31 @@ public class ReleaseGates {
    * own freshness window is the same idea one seam over. An <em>unknown</em> answer is deliberately
    * never held: retrying is exactly what fixes it, and caching "could not ask" would turn a moment's
    * outage into a window of holds.
+   *
+   * <p><b>Traced as {@value #RESOLVE_SPAN}</b> (qits-1202) with {@value #CACHE_ATTRIBUTE} {@code
+   * hit} or {@code miss}, because this is asked once per repository on the busiest read this
+   * service has, and a slow worklist is either many misses or one slow git host — the span says
+   * which, and on a miss the git host's own HTTP spans sit inside it.
    */
   public GateSet resolve(String repoId) {
-    Cached cached = cache.get(repoId);
-    if (cached != null && cached.freshAt(System.currentTimeMillis(), freshnessMs)) {
-      return cached.set();
+    GitTracing tracer = tracing != null && tracing.isResolvable() ? tracing.get() : GitTracing.NONE;
+    try (GitTracing.Span span =
+        tracer.start(
+            RESOLVE_SPAN, repoId == null ? Map.of() : Map.of(GitProcessSpans.REPO_ID, repoId))) {
+      Cached cached = cache.get(repoId);
+      if (cached != null && cached.freshAt(System.currentTimeMillis(), freshnessMs)) {
+        span.attribute(CACHE_ATTRIBUTE, "hit");
+        return cached.set();
+      }
+      span.attribute(CACHE_ATTRIBUTE, "miss");
+      GateSet resolved = read(repoId);
+      if (resolved.known()) {
+        cache.put(repoId, new Cached(resolved, System.currentTimeMillis()));
+      } else {
+        cache.remove(repoId);
+      }
+      return resolved;
     }
-    GateSet resolved = read(repoId);
-    if (resolved.known()) {
-      cache.put(repoId, new Cached(resolved, System.currentTimeMillis()));
-    } else {
-      cache.remove(repoId);
-    }
-    return resolved;
   }
 
   /** Drop what is remembered about {@code repoId}, so the next resolve asks the git host again. */

@@ -24,11 +24,41 @@ import java.util.stream.Collectors;
  * accepts the connection and then says nothing blocks in {@code readLine()}, never in {@code
  * waitFor()}, so the output is drained on its own thread and the deadline is enforced against the
  * process — {@code destroyForcibly} closes the pipe, which is what unblocks the drain.
+ *
+ * <p><b>Every invocation is one span</b> (qits-1202), opened through the {@link GitTracing} this
+ * instance was built with and shaped by {@link GitProcessSpans}: named {@code git <subcommand>},
+ * argv redacted, exit code and output size recorded, status ERROR on a throw, a timeout or an exit
+ * of 128 and above. It is opened on the calling thread before the process starts — never on the
+ * drain thread — so it parents to whatever that thread was doing.
  */
 public final class GitCli {
 
   /** The exit code and combined stdout/stderr of a finished git invocation. */
   public record Result(int exitCode, String output) {}
+
+  private final GitTracing tracing;
+
+  /** An untraced spawner — {@link GitTracing#NONE} — for every caller with no tracer to offer. */
+  public GitCli() {
+    this(GitTracing.NONE);
+  }
+
+  /**
+   * @param tracing where each invocation's span goes; null is {@link GitTracing#NONE}
+   */
+  public GitCli(GitTracing tracing) {
+    this.tracing = tracing == null ? GitTracing.NONE : tracing;
+  }
+
+  /**
+   * The tracer this spawner was built with — never null. {@link RepoMirror} opens its {@code
+   * git.mirror.refresh} span through it, which is how that span reaches the same tracer as the
+   * processes nested under it without a second constructor parameter threaded through {@link
+   * GitMirrors}.
+   */
+  public GitTracing tracing() {
+    return tracing;
+  }
 
   /** How long to wait for the drain thread to finish after the process has settled. */
   private static final Duration DRAIN_JOIN = Duration.ofSeconds(5);
@@ -79,6 +109,46 @@ public final class GitCli {
   public Result run(
       File cwd, Map<String, String> env, Consumer<String> onLine, Duration timeout, String... argv)
       throws Exception {
+    return run(Map.of(), cwd, env, onLine, timeout, argv);
+  }
+
+  /**
+   * {@link #run(File, Map, Consumer, Duration, String...)}, with attributes for this invocation's
+   * span that only the caller knows — {@link GitProcessSpans#REPO_ID} is the one {@link RepoMirror}
+   * passes on every call.
+   *
+   * @param spanAttributes added to the span as given; they are NOT redacted, so nothing taken from
+   *     the argv belongs here
+   */
+  public Result run(
+      Map<String, String> spanAttributes,
+      File cwd,
+      Map<String, String> env,
+      Consumer<String> onLine,
+      Duration timeout,
+      String... argv)
+      throws Exception {
+    try (GitTracing.Span span = GitProcessSpans.start(tracing, argv, spanAttributes, timeout)) {
+      Result result;
+      try {
+        result = execute(cwd, env, onLine, timeout, argv);
+      } catch (TimeoutException e) {
+        // The message is already redacted (see execute), but the description says only what the
+        // span needs and stays safe should that message ever change.
+        span.error("git timed out after " + timeout);
+        throw e;
+      } catch (Exception e) {
+        span.error(e);
+        throw e;
+      }
+      GitProcessSpans.exited(span, result.exitCode(), result.output());
+      return result;
+    }
+  }
+
+  private Result execute(
+      File cwd, Map<String, String> env, Consumer<String> onLine, Duration timeout, String... argv)
+      throws Exception {
     ProcessBuilder pb = new ProcessBuilder(withMaintenanceGuard(argv));
     if (cwd != null) {
       pb.directory(cwd);
@@ -120,7 +190,10 @@ public final class GitCli {
     if (!finished) {
       p.destroyForcibly();
       drain.join(DRAIN_JOIN.toMillis());
-      throw new TimeoutException("git timed out after " + timeout + ": " + String.join(" ", argv));
+      // Redacted, not String.join(argv): every call to the git host carries the platform bearer as
+      // a -c http.extraHeader, and this message travels into exceptions, logs and spans.
+      throw new TimeoutException(
+          "git timed out after " + timeout + ": " + GitProcessSpans.describe(argv));
     }
     drain.join(DRAIN_JOIN.toMillis());
     return new Result(p.exitValue(), collected.toString());
