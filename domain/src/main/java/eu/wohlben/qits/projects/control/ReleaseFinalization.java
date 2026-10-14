@@ -132,9 +132,6 @@ public class ReleaseFinalization {
   /** Told when a finalization merge moves a repository's main — see {@link #merge}. */
   @Inject ReleaseGates gates;
 
-  /** Told with {@link #gates}: the display's approval answers diff each fold against main. */
-  @Inject DisplayApprovals displayApprovals;
-
   /**
    * Asks qits-ci the one fact the publish gate needs of a {@link #RELEASE_SLOT_CONFIG} repository:
    * does a release run exist for this tag at all. An {@code Instance} like the two ports above it,
@@ -678,8 +675,9 @@ public class ReleaseFinalization {
     // This service just moved main, and main is what the gate configuration is read from: the
     // remembered gate set is from before the move, so drop it rather than let a display serve it
     // stale for a window (qits-1203). A release merges its own tree, which may change .config/qits/.
+    // onMainMoved, below, forgets it again and re-reads it — and every open fold's approval content
+    // — in the background (qits-1201); forgetting first keeps a decision racing this line honest.
     gates.forget(ask.repoId());
-    displayApprovals.forget(ask.repoId());
     // merged_at is stamped THERE and only there — one writer of that column — by asking whether main
     // at its new head contains each pending tag: this one, and any obsoleted tag that rode in with it.
     // The git host announces this merge as an SCMPublishCommit on main too, and the head listener

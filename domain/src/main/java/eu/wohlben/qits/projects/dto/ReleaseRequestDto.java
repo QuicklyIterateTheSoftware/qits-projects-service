@@ -97,6 +97,12 @@ import java.util.List;
  * because it would have to be cleared on every re-fold, and the whole design of the approval record
  * is that the sha on it makes that unnecessary.
  *
+ * <p><b>On a read, the content half of that answer is a stored <em>reading</em></b> (qits-1201): what
+ * the fold changes was read in the background for this exact {@code mergedSha} and written beside it,
+ * so the list asks no git. It is keyed by the sha, so a re-fold is "not read yet" — approval
+ * required, the {@code APPROVAL} entry saying so — until its own reading lands, and a change of
+ * policy or of {@code main} is re-read rather than remembered. A decision never reads it.
+ *
  * <p>{@code approvedBy}, {@code approvedAt} and {@code approvalNote} are the newest decision at that
  * same sha, and they are <b>null together</b> where there is none — a repository nobody has to ask,
  * a fold nobody has judged, and a fold whose earlier decisions were all made against a sha the

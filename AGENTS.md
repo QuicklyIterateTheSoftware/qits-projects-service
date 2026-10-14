@@ -1023,31 +1023,40 @@ than dropping it.
 within `qits.projects.release-requests.gate-freshness-ms` (30 s), else a synchronous tree read at
 qits-githost — is the only read anything that *decides* may use: the executor, gating, finalization,
 the approval question asked for a release. The release-request list and single reads use
-`ReleaseGates.forDisplay` instead: stale-while-revalidate (an expired entry is answered at once and
-refreshed once in the background per repository), with the repositories it has nothing cached for
-read **concurrently** on a bounded pool (`gate-read-concurrency`, 8). Both reads load every row inside
-one short transaction (`ReleaseRequests.loadPage`/`loadOne`) and ask the git host, the mirror (the
-approval question's fold diff) and qits-deployments only after it has closed (`render`) — a page used
-to hold a connection through all of it and took 4.5–5.5 s. A freshness of `0`, the suite's setting,
-turns stale serving off, so a test that rewrites main and lists sees what it staged;
-`ReleaseRequestListGateReadsTest` sets a window on the bean to count the reads. A finalization merge
-`forget`s the repository's entry, since this service has just moved its main.
+`ReleaseGates.forDisplay` instead. Both reads load every row inside one short transaction
+(`ReleaseRequests.loadPage`/`loadOne`) and render after it has closed (`render`) — a page used to hold
+a connection through every gate read and fold diff and took 4.5–5.5 s.
 
-**The approval question's content half is remembered the same way, per fold** (qits-1203, second
-half). Whether a fold changes `.config/qits/` and whether it adds anything to `main` is git work on
-the mirror — a fetch once the mirror is 5 s old, then about ten subprocesses — and the list paid it
-per open request on every view (1.0–2.5 s with five open requests). `control/DisplayApprovals` keeps
-`ApprovalPolicy.readContent`'s answer per `(repoId, mergedSha)`: a new fold is a new sha and so a miss,
-and `ReleaseRequests.onMainMoved` (a push to main, and `ReleaseFinalization.merge`'s own) `forget`s the
-repository, since both reads diff against main. An answer older than
-`qits.projects.release-requests.approval-display-revalidate-ms` (5 min) is still answered and re-read
-once in the background — the bound on a main move the bus never delivered. Misses are read one task
-per repository, concurrently (`approval-read-concurrency`, 8), each under a request context of its own
-(the mirror read looks a repository row up outside a transaction, and the caller's Hibernate session
-must not cross threads). An answer about an outage (a read that failed closed) is never kept. Decisions
-keep `ApprovalPolicy.requirementFor`, uncached. The suite sets the window to `0` — no memory at all —
-because `RecordingFoldChanges` scripts a fold's content per repository and tests change the script for
-the same sha without moving main.
+**And since qits-1201 the list reads the database only — no git process, no mirror fetch, no
+git-host call, not even on a cold process or right after `main` moved.** qits-1203 had remembered
+both answers in memory, but a miss was still read on the page's own thread, every restart and every
+`onMainMoved` emptied the memory, and N pages arriving together each redid the same folds (queued on
+`RepoMirror`'s fetch lock). Now both answers are **stored** (V44) and written by background work:
+
+- **The gate set, per repository**, in `release_gate_set` (`entity/StoredGateSet`; JSON built as a
+  Jackson tree, so nothing needs registering for the native image). Every known read is stored —
+  `resolve`'s miss and the background refresh, off the caller's thread. `loadPage` loads the page's
+  sets in one query; `forDisplay` answers from memory or the store, and a repository whose set is
+  missing, older than the freshness window or read before main last moved is shown from what is
+  there (`GateSet.unknown("…not been read yet")` if nothing) while **one** background refresh per
+  repository runs. `onMainMoved` → `ReleaseGates.mainMoved` forgets and re-reads in the background.
+- **The approval question's content half, per request**, in `release_request.approval_content_reasons`
+  (a JSON array) for the fold named by `approval_content_fold`. `control/ApprovalContentRecorder`
+  (which replaced `DisplayApprovals`) runs `ApprovalPolicy.readContent` on its own pool, **single
+  flight per `(repoId, mergedSha)`**, and writes in its own transaction only onto rows still at that
+  sha, and only a complete reading. Triggers: a fold landing (`remerge`, after its transaction), a
+  main move (every fold still before its tag is re-read; the stored reasons show until rewritten),
+  and a list meeting a row whose stored fold is not its current one — shown as "the changes of this
+  fold have not been read yet", i.e. approval required, failing closed until the reading lands. The
+  entity maps both columns read-only so no other flush writes an older value back.
+
+Decisions keep `ApprovalPolicy.requirementFor` and `resolve`, reading afresh; nothing that decides
+reads either stored value. **The suite renders synchronously** —
+`qits.projects.release-requests.display-reads-synchronously=true` in the test properties, beside a
+freshness of `0` — because its tests rewrite main or rescript `RecordingFoldChanges` for the same sha
+and list right after: there every open fold and every repository without a fresh set is read on the
+page's thread, and nothing is read in the background. A deployment never sets it.
+`ReleaseRequestListGateReadsTest` flips it off on the two beans to test the deployed path.
 
 **Naming an archetype is not the only way to be composed** (2026-09-22). The CI gate's predicate
 asked for `archetype:` alone, on the reasoning that a `release.yml` declaring only `artifacts:` or

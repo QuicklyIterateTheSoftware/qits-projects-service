@@ -97,7 +97,9 @@ class ReleaseGatesTracingTest {
    * served stale and how many had to be read synchronously — with a {@code release-gates.read} span
    * per synchronous read, carrying the repository's id. A mix of exactly one fresh hit and one
    * uncached repository takes the {@code toRead.size() == 1} shortcut, which reads inline rather
-   * than through {@code readers} — so the test needs no {@code @PostConstruct startReaders()}.
+   * than through {@code readers} — so the test needs no {@code @PostConstruct startReaders()}. That
+   * synchronous read is the suite's mode ({@code displayReadsSynchronously}); the deployed mode reads
+   * nothing here, which the next test pins.
    */
   @Test
   void forDisplayTracesAMixOfAFreshHitAndAnUncachedRepository() {
@@ -107,8 +109,9 @@ class ReleaseGatesTracingTest {
     assertTrue(gates.resolve("repo-1").nothingToWaitOn());
     tracing.spans.clear();
 
+    gates.displayReadsSynchronously = true;
     Map<String, ReleaseGates.GateSet> answered =
-        gates.forDisplay(Map.of("repo-1", "main", "repo-2", "main"));
+        gates.forDisplay(Map.of("repo-1", "main", "repo-2", "main"), Map.of());
 
     assertTrue(answered.get("repo-1").nothingToWaitOn());
     assertTrue(answered.get("repo-2").nothingToWaitOn());
@@ -123,5 +126,46 @@ class ReleaseGatesTracingTest {
     StackTracing.Recorded read = tracing.only(ReleaseGates.READ_SPAN);
     assertEquals("repo-2", read.attributes.get(GitProcessSpans.REPO_ID));
     assertSame(forDisplay, read.parent, "the inline read nests under the display span");
+  }
+  /**
+   * The deployed mode (qits-1201): an uncached repository is answered from its stored set, or as not
+   * read yet where there is none, and the git host is asked nothing on the caller's thread — the
+   * refresh that is started needs the reader pool, which a {@code new}-built instance has not got.
+   */
+  @Test
+  void forDisplayInTheDeployedModeReadsNothingOnTheCallersThread() {
+    ReleaseGates gates = gates();
+
+    Map<String, ReleaseGates.GateSet> answered =
+        gates.forDisplay(
+            Map.of("repo-1", "main", "repo-2", "main"),
+            Map.of(
+                "repo-1",
+                new ReleaseGates.Stored(
+                    ReleaseGates.GateSet.of(java.util.EnumSet.of(ReleaseGates.Kind.CI)),
+                    java.time.Instant.now())));
+
+    assertTrue(answered.get("repo-1").requires(ReleaseGates.Kind.CI));
+    assertEquals(ReleaseGates.NOT_READ_YET, answered.get("repo-2").detail());
+    assertTrue(
+        tracing.spans.stream().noneMatch(span -> span.name.equals(ReleaseGates.READ_SPAN)),
+        "no read: " + tracing.spans);
+    StackTracing.Recorded forDisplay = tracing.only(ReleaseGates.FOR_DISPLAY_SPAN);
+    assertEquals(1L, forDisplay.attributes.get(ReleaseGates.HITS_ATTRIBUTE));
+    assertEquals(1L, forDisplay.attributes.get(ReleaseGates.STALE_ATTRIBUTE));
+    assertEquals(0L, forDisplay.attributes.get(ReleaseGates.MISSES_ATTRIBUTE));
+  }
+
+  /** The stored form round-trips, and a set nothing can parse reads as nothing stored. */
+  @Test
+  void aGateSetRoundTripsThroughItsStoredForm() {
+    ReleaseGates.GateSet set =
+        ReleaseGates.GateSet.of(
+            java.util.EnumSet.of(ReleaseGates.Kind.CI, ReleaseGates.Kind.APPROVAL));
+    assertEquals(set, ReleaseGates.fromJson(ReleaseGates.toJson(set)));
+    ReleaseGates.GateSet none = ReleaseGates.GateSet.of(java.util.EnumSet.noneOf(ReleaseGates.Kind.class));
+    assertEquals(none, ReleaseGates.fromJson(ReleaseGates.toJson(none)));
+    assertEquals(null, ReleaseGates.fromJson("{\"known\":true,\"kinds\":[\"NOPE\"]}"));
+    assertEquals(null, ReleaseGates.fromJson("not json"));
   }
 }

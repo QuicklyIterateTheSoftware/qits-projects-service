@@ -1,14 +1,24 @@
 package eu.wohlben.qits.projects.control;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import eu.wohlben.qits.projects.entity.StoredGateSet;
 import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
 import eu.wohlben.qits.projects.gitmirror.GitTracing;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import eu.wohlben.qits.projects.persistence.StoredGateSetRepository;
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.ManagedContext;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -176,11 +186,16 @@ import org.jboss.logging.Logger;
  * GateSet#unknown}, never an empty set, and {@code release-requests.yml} is the one file read after
  * the listing has already said it is there.
  *
- * <h2>Stored nowhere</h2>
+ * <h2>Stored per repository, and never on a request</h2>
  *
  * <p>Resolved when asked. No gate's answer is a column on the request row — {@link AutomationLedger}
  * states that rule for the automations gate and it holds for all of them: a stored answer would leave the
  * requests that are already open holding a rule that has since changed.
+ *
+ * <p>What <em>is</em> stored (qits-1201, V44) is the repository's configuration as last read from its
+ * {@code main} — {@link StoredGateSet}, one row per repository, written whenever a read comes back
+ * known. It is what {@link #forDisplay} shows, so the release-request list asks the git host nothing
+ * even on a cold process or right after {@code main} moved; nothing that decides ever reads it.
  */
 @ApplicationScoped
 public class ReleaseGates {
@@ -209,6 +224,19 @@ public class ReleaseGates {
   @Inject ReleaseArchetypeParser archetypeParser;
 
   @Inject Instance<ReleaseGitHost> gitHosts;
+
+  /**
+   * Where every known gate set is written down for {@link #forDisplay} (qits-1201). Null when a test
+   * builds this class with {@code new}, and then nothing is stored.
+   */
+  @Inject StoredGateSetRepository storedSets;
+
+  /** Trees only — {@link #toJson} and {@link #fromJson} need nothing registered for a native image. */
+  private static final ObjectMapper JSON = new ObjectMapper();
+
+  /** What a display shows for a repository whose configuration has never been read. */
+  public static final String NOT_READ_YET =
+      "The gate configuration of this repository has not been read yet";
 
   /**
    * Where every span this class opens goes — {@value #RESOLVE_SPAN}, {@value #FOR_DISPLAY_SPAN}
@@ -264,10 +292,33 @@ public class ReleaseGates {
   @ConfigProperty(name = "qits.projects.release-requests.gate-read-concurrency", defaultValue = "8")
   int readConcurrency;
 
+  /**
+   * <b>The suite's switch, never a deployment's</b> (qits-1201): {@link #forDisplay} reads every
+   * repository it has nothing fresh in memory for on the caller's thread, as it did before the gate
+   * sets were stored, and {@link #mainMoved} starts no background read. The suite rewrites a
+   * repository's main and lists right after, with a freshness of zero, and must see what it staged.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.display-reads-synchronously",
+      defaultValue = "false")
+  boolean displayReadsSynchronously;
+
   private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
   /** The repositories a background refresh is in flight for — at most one each. */
   private final Set<String> refreshing = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Bumped by every {@link #forget}: a read that began before it must not be remembered or stored,
+   * and a refresh that finds it moved reads once more.
+   */
+  private final Map<String, Long> generations = new ConcurrentHashMap<>();
+
+  /**
+   * When each repository was last {@link #forget forgotten}: a stored set read before that is from
+   * before the move, and a display treats it as stale however young it is.
+   */
+  private final Map<String, Long> forgottenAt = new ConcurrentHashMap<>();
 
   /**
    * Where gate configurations are read off the caller's thread. No CDI, transaction or security
@@ -420,79 +471,127 @@ public class ReleaseGates {
         return cached.set();
       }
       span.attribute(CACHE_ATTRIBUTE, "miss");
-      return remember(repoId, read(repoId));
+      long generation = generation(repoId);
+      long startedAt = System.currentTimeMillis();
+      return remember(repoId, read(repoId), generation, startedAt);
     }
+  }
+
+  /** A stored gate set and when the read behind it began — see {@link StoredGateSet}. */
+  public record Stored(GateSet set, Instant readAt) {}
+
+  /**
+   * The stored gate sets of {@code repoIds}, in one query — what a page's {@code loadPage} hands
+   * {@link #forDisplay}. Must be called inside a transaction; a row that will not parse is left out,
+   * which a display reads as "not read yet".
+   */
+  public Map<String, Stored> stored(Collection<String> repoIds) {
+    if (storedSets == null || repoIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, Stored> out = new HashMap<>();
+    for (StoredGateSet row : storedSets.listByRepos(repoIds)) {
+      GateSet set = fromJson(row.gateSet);
+      if (set != null && row.readAt != null) {
+        out.put(row.repoId, new Stored(set, row.readAt));
+      }
+    }
+    return out;
   }
 
   /**
    * <b>The gate sets a read-only display shows</b> — the release-request list and single read, and
-   * nothing that decides anything. Keyed by repository id, each with the main branch the caller has
-   * already read inside its own transaction, so nothing here touches the database and none of it
-   * needs one.
+   * nothing that decides anything. Keyed by repository id, each with the main branch and the stored
+   * set the caller has already read inside its own transaction, so nothing here touches the database.
    *
-   * <p><b>Stale-while-revalidate, and only here.</b> A known set inside {@link #freshnessMs} is
-   * answered as {@link #resolve} answers it. A known set <em>older</em> than that is still answered
-   * at once, and one background refresh is started for its repository — at most one in flight per
-   * repository however many readers arrive meanwhile — so a page view never waits on the git host for
-   * a configuration it has already seen. Only a repository with nothing cached at all is read
-   * synchronously, and those reads run <b>concurrently</b> on a bounded pool rather than one after
-   * another: a page spanning N such repositories waits roughly one read, not N.
+   * <p><b>It asks the git host nothing</b> (qits-1201). Each repository is answered from what is
+   * already known — a set in memory inside {@link #freshnessMs}, else the stored one inside it, else
+   * the newer of the two however old, else {@link GateSet#unknown} with {@link #NOT_READ_YET} — and a
+   * repository answered from anything but a fresh set gets <b>one background refresh</b>, at most
+   * one in flight per repository however many pages arrive meanwhile. A stored set read before the
+   * repository was last {@link #forget forgotten} is from before its main moved and counts as stale.
+   * So a cold process, and the first page after a push to main, show the configuration last read and
+   * a page later the one read now; before qits-1201 both read the git host on the page's own thread.
    *
    * <p>That trade is safe for a display and for nothing else: the configuration changes about once a
    * year, and the worst a stale answer does on a page is draw a gate a few seconds late. Every caller
    * that <em>decides</em> — the executor, gating, finalization, the approval question asked for a
    * release — keeps {@link #resolve}, fresh within the window or read synchronously.
    *
-   * <p><b>A freshness of zero turns stale serving off</b>, which is the choice the suite makes
-   * ({@code qits.projects.release-requests.gate-freshness-ms=0} in the test configuration): a window
-   * of nothing means the deployment wants every read to see what main says now, and serving an old
-   * entry "while revalidating" would contradict that. Every repository is then read synchronously —
-   * still concurrently — so a test that rewrites main and lists right after sees what it staged,
-   * deterministically, with no background refresh racing its assertions.
+   * <p><b>The suite reads synchronously instead</b> ({@link #displayReadsSynchronously}): every
+   * repository with nothing fresh in memory is read on the spot — concurrently, on a bounded pool —
+   * so a test that rewrites main and lists right after sees what it staged, with no background
+   * refresh racing its assertions.
    *
    * <p><b>Traced as {@value #FOR_DISPLAY_SPAN}</b> (qits-1202), with {@value #REPOSITORIES_ATTRIBUTE},
-   * {@value #HITS_ATTRIBUTE}, {@value #STALE_ATTRIBUTE} and {@value #MISSES_ATTRIBUTE} as long
-   * attributes. The span stays open — and current — across the synchronous reads this method starts
-   * and joins, so {@link #traced} carries it onto each reader thread and every {@value #READ_SPAN} a
-   * miss or a background refresh opens nests under it.
+   * {@value #HITS_ATTRIBUTE} (answered fresh, from memory or the store), {@value #STALE_ATTRIBUTE}
+   * (answered from something older while a refresh starts) and {@value #MISSES_ATTRIBUTE} (read
+   * synchronously — only ever in the suite) as long attributes. The span stays open and current
+   * across the synchronous reads, so {@link #traced} carries it onto each reader thread and every
+   * {@value #READ_SPAN} nests under it.
    */
-  public Map<String, GateSet> forDisplay(Map<String, String> mainBranchByRepo) {
+  public Map<String, GateSet> forDisplay(
+      Map<String, String> mainBranchByRepo, Map<String, Stored> stored) {
     GitTracing tracer = tracer();
     try (GitTracing.Span span = tracer.start(FOR_DISPLAY_SPAN, Map.of())) {
       Map<String, GateSet> answered = new HashMap<>();
       Map<String, String> toRead = new LinkedHashMap<>();
       long now = System.currentTimeMillis();
-      boolean serveStale = freshnessMs > 0;
       int[] hits = {0};
       int[] stale = {0};
       mainBranchByRepo.forEach(
           (repoId, main) -> {
             Cached cached = cache.get(repoId);
+            Stored kept = stored.get(repoId);
+            long forgot = forgottenAt.getOrDefault(repoId, 0L);
+            long keptAt = kept == null ? Long.MIN_VALUE : kept.readAt().toEpochMilli();
             if (cached != null && cached.freshAt(now, freshnessMs)) {
               answered.put(repoId, cached.set());
               hits[0]++;
-            } else if (cached != null && serveStale) {
-              answered.put(repoId, cached.set());
-              stale[0]++;
-              refreshInBackground(repoId, main, cached);
-            } else {
+            } else if (displayReadsSynchronously) {
               toRead.put(repoId, main);
+            } else if (kept != null && keptAt >= forgot && now - keptAt < freshnessMs) {
+              answered.put(repoId, kept.set());
+              hits[0]++;
+            } else {
+              GateSet shown;
+              if (cached != null && (kept == null || cached.readAt() >= keptAt)) {
+                shown = cached.set();
+              } else if (kept != null) {
+                shown = kept.set();
+              } else {
+                shown = GateSet.unknown(NOT_READ_YET);
+              }
+              answered.put(repoId, shown);
+              stale[0]++;
+              refreshInBackground(repoId, main);
             }
           });
       span.attribute(REPOSITORIES_ATTRIBUTE, (long) mainBranchByRepo.size());
       span.attribute(HITS_ATTRIBUTE, (long) hits[0]);
       span.attribute(STALE_ATTRIBUTE, (long) stale[0]);
       span.attribute(MISSES_ATTRIBUTE, (long) toRead.size());
+      if (toRead.isEmpty()) {
+        return answered;
+      }
       if (toRead.size() == 1) {
         // One read is no reason to change threads.
         Map.Entry<String, String> only = toRead.entrySet().iterator().next();
-        answered.put(only.getKey(), remember(only.getKey(), read(only.getKey(), only.getValue())));
+        long generation = generation(only.getKey());
+        long startedAt = System.currentTimeMillis();
+        answered.put(
+            only.getKey(),
+            remember(only.getKey(), read(only.getKey(), only.getValue()), generation, startedAt));
         return answered;
       }
       Map<String, CompletableFuture<GateSet>> reading = new LinkedHashMap<>();
+      Map<String, Long> generationAtStart = new HashMap<>();
+      long startedAt = System.currentTimeMillis();
       toRead.forEach(
-          (repoId, main) ->
-              reading.put(repoId, readers.supplyAsync(traced(() -> read(repoId, main)))));
+          (repoId, main) -> {
+            generationAtStart.put(repoId, generation(repoId));
+            reading.put(repoId, readers.supplyAsync(traced(() -> read(repoId, main))));
+          });
       reading.forEach(
           (repoId, future) -> {
             GateSet set;
@@ -503,45 +602,64 @@ public class ReleaseGates {
               LOG.debugf(e, "Reading the gate configuration of %s did not complete", repoId);
               set = GateSet.unknown("The gate configuration of this repository could not be read");
             }
-            answered.put(repoId, remember(repoId, set));
+            answered.put(repoId, remember(repoId, set, generationAtStart.get(repoId), startedAt));
           });
       return answered;
     }
   }
 
   /**
-   * One refresh of {@code repoId} off the caller's thread, unless one is already in flight. Its
-   * answer replaces the entry only if the entry is still the one that was found stale: a {@link
-   * #forget} in the meantime means main moved after this read began, and the read must not put the
-   * configuration from before the move back.
+   * {@code repoId}'s {@code main} moved: drop what is remembered about it and read it again in the
+   * background (qits-1201), so the next page shows the configuration from after the move rather than
+   * waiting for one to notice it is stale. In the suite ({@link #displayReadsSynchronously}) only the
+   * forget: its next display reads synchronously anyway.
    */
-  private void refreshInBackground(String repoId, String main, Cached stale) {
-    if (!refreshing.add(repoId)) {
+  public void mainMoved(String repoId) {
+    forget(repoId);
+    if (!displayReadsSynchronously) {
+      refreshInBackground(repoId, null);
+    }
+  }
+
+  /**
+   * One refresh of {@code repoId} off the caller's thread, unless one is already in flight. Its
+   * answer is remembered and stored only if the repository was not {@link #forget forgotten} while it
+   * read — a read from before a move must not put the configuration from before the move back — and
+   * a refresh that finds it was forgotten reads once more, since the {@link #mainMoved} that forgot it
+   * found this one in flight and started nothing.
+   *
+   * @param main the main branch, or null to look it up in a transaction of the refresh's own
+   */
+  private void refreshInBackground(String repoId, String main) {
+    if (readers == null || repoId == null || !refreshing.add(repoId)) {
       return;
     }
+    long generation = generation(repoId);
     try {
       readers.supplyAsync(
           traced(
               () -> {
                 try {
-                  GateSet set = read(repoId, main);
+                  long startedAt = System.currentTimeMillis();
+                  String branch = main != null ? main : inTransaction(() -> mainOf(repoId));
+                  GateSet set = read(repoId, branch);
                   if (set.known()) {
-                    Cached fresh = new Cached(set, System.currentTimeMillis());
-                    cache.computeIfPresent(
-                        repoId, (key, current) -> current == stale ? fresh : current);
-                  } else {
-                    // An unknown answer is never held, as in resolve(): the next reader asks again.
-                    cache.remove(repoId, stale);
+                    // An unknown answer is never held, as in resolve(): what is shown stays shown
+                    // and the next page that finds it stale asks again.
+                    remember(repoId, set, generation, startedAt);
                   }
                 } catch (RuntimeException e) {
                   LOG.debugf(e, "Refreshing the gate configuration of %s failed", repoId);
                 } finally {
                   refreshing.remove(repoId);
                 }
+                if (generation(repoId) != generation) {
+                  refreshInBackground(repoId, null);
+                }
                 return null;
               }));
     } catch (RuntimeException e) {
-      // A pool that refuses the task (shutting down) leaves the stale answer standing.
+      // A pool that refuses the task (shutting down) leaves what is shown standing.
       refreshing.remove(repoId);
       LOG.debugf(e, "Could not start a refresh of the gate configuration of %s", repoId);
     }
@@ -566,10 +684,33 @@ public class ReleaseGates {
     };
   }
 
-  /** A known answer is remembered for the window; an unknown one drops whatever was remembered. */
-  private GateSet remember(String repoId, GateSet resolved) {
+  /**
+   * A known answer is remembered for the window and stored for {@link #forDisplay}; an unknown one
+   * drops whatever was remembered. Neither happens to an answer read before the repository was last
+   * {@link #forget forgotten} ({@code generation}): main moved under that read.
+   *
+   * @param startedAt when the read began — the stored set's {@code read_at}, so a set read across a
+   *     {@link #forget} counts as older than it
+   */
+  private GateSet remember(String repoId, GateSet resolved, long generation, long startedAt) {
+    if (repoId == null) {
+      return resolved;
+    }
     if (resolved.known()) {
-      cache.put(repoId, new Cached(resolved, System.currentTimeMillis()));
+      Cached fresh = new Cached(resolved, startedAt);
+      boolean[] kept = {false};
+      cache.compute(
+          repoId,
+          (key, current) -> {
+            if (generation(repoId) != generation) {
+              return current;
+            }
+            kept[0] = true;
+            return fresh;
+          });
+      if (kept[0]) {
+        store(repoId, resolved, startedAt);
+      }
     } else {
       cache.remove(repoId);
     }
@@ -577,18 +718,122 @@ public class ReleaseGates {
   }
 
   /**
+   * Write {@code set} down for {@link #forDisplay}, off the caller's thread: a decision that resolved
+   * it may be holding a row lock, and must neither wait for nor fail on a display's bookkeeping. Best
+   * effort — a lost write is a background refresh on the next page.
+   */
+  private void store(String repoId, GateSet set, long readAt) {
+    if (storedSets == null || readers == null) {
+      return;
+    }
+    String json = toJson(set);
+    try {
+      readers.execute(
+          () -> {
+            try {
+              inTransaction(
+                  () -> {
+                    storedSets.upsert(repoId, json, Instant.ofEpochMilli(readAt));
+                    return null;
+                  });
+            } catch (RuntimeException e) {
+              LOG.debugf(e, "Could not store the gate set of %s", repoId);
+            }
+          });
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "Could not hand the gate set of %s to be stored", repoId);
+    }
+  }
+
+  /**
    * Drop what is remembered about {@code repoId}, so the next resolve asks the git host again —
    * called whenever the repository's main moves (a finalization merge, or any push seen by the head
-   * listener through {@link ReleaseRequests#onMainMoved}), so neither
-   * a decision nor a display reads the configuration from before the move.
+   * listener through {@link ReleaseRequests#onMainMoved}, by way of {@link #mainMoved}), so neither a
+   * decision nor a display reads the configuration from before the move. The stored set stays, and a
+   * display keeps showing it until the re-read lands.
    */
   public void forget(String repoId) {
+    if (repoId == null) {
+      return;
+    }
+    generations.merge(repoId, 1L, Long::sum);
+    forgottenAt.put(repoId, System.currentTimeMillis());
     cache.remove(repoId);
+  }
+
+  private long generation(String repoId) {
+    return repoId == null ? 0L : generations.getOrDefault(repoId, 0L);
   }
 
   private record Cached(GateSet set, long readAt) {
     boolean freshAt(long now, long windowMs) {
       return now - readAt < windowMs;
+    }
+  }
+
+  /**
+   * The stored form of a set: {@code {"known":true,"kinds":["CI","APPROVAL"],"detail":null}}. Built
+   * as a tree, so neither direction needs a class registered for reflection in the native image.
+   */
+  static String toJson(GateSet set) {
+    ObjectNode node = JSON.createObjectNode();
+    node.put("known", set.known());
+    var kinds = node.putArray("kinds");
+    for (Kind kind : Kind.values()) {
+      if (set.kinds().contains(kind)) {
+        kinds.add(kind.name());
+      }
+    }
+    if (set.detail() == null) {
+      node.putNull("detail");
+    } else {
+      node.put("detail", set.detail());
+    }
+    return node.toString();
+  }
+
+  /** {@link #toJson} read back; null for anything that does not parse, including a kind unheard of. */
+  static GateSet fromJson(String json) {
+    if (json == null || json.isBlank()) {
+      return null;
+    }
+    try {
+      JsonNode node = JSON.readTree(json);
+      if (node == null || !node.isObject()) {
+        return null;
+      }
+      JsonNode detail = node.get("detail");
+      String why = detail == null || detail.isNull() ? null : detail.asText();
+      if (!node.path("known").asBoolean(false)) {
+        return GateSet.unknown(why);
+      }
+      EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
+      for (JsonNode kind : node.path("kinds")) {
+        kinds.add(Kind.valueOf(kind.asText()));
+      }
+      return GateSet.of(kinds);
+    } catch (Exception e) {
+      LOG.debugf(e, "A stored gate set does not parse: %s", json);
+      return null;
+    }
+  }
+
+  /**
+   * Runs {@code work} in a transaction of its own under a request context — a reader thread carries
+   * neither.
+   */
+  private static <T> T inTransaction(java.util.function.Supplier<T> work) {
+    ManagedContext context = Arc.container().requestContext();
+    boolean activated = !context.isActive();
+    if (activated) {
+      context.activate();
+    }
+    try {
+      return QuarkusTransaction.requiringNew().call(work::get);
+    } finally {
+      if (activated) {
+        context.terminate();
+      }
     }
   }
 

@@ -179,9 +179,9 @@ public class ApprovalPolicy {
   /**
    * <b>The same question for a read-only display</b> (qits-1203) — the release-request list and
    * single read — which has already read everything this needs: the gate set from {@link
-   * ReleaseGates#forDisplay}, and the content half from {@link DisplayApprovals}, which caches it per
-   * {@code (repoId, mergedSha)} and reads the misses concurrently, one task per repository. Nothing
-   * here touches the database or git.
+   * ReleaseGates#forDisplay}, and the content half as {@link ApprovalContentRecorder} stored it on the
+   * request (qits-1201), or {@link ApprovalContentRecorder#NOT_YET_READ} where it has not been read at
+   * the current fold yet. Nothing here touches the database or git.
    *
    * <p>The rule is the one {@link #requirementFor(String, String, ReleaseRequest.State, boolean)}
    * applies, word for word; only where its inputs come from differs. Nothing that decides a release
@@ -237,7 +237,8 @@ public class ApprovalPolicy {
    * The content half's answer for one fold.
    *
    * @param complete false where a read failed and a reason says so (failing closed) — an answer about
-   *     an outage rather than about the fold, which {@link DisplayApprovals} therefore never keeps
+   *     an outage rather than about the fold, which {@link ApprovalContentRecorder} therefore never
+   *     stores
    */
   public record ContentReading(List<String> reasons, boolean complete) {
 

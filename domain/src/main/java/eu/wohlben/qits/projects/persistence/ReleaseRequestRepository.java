@@ -287,4 +287,40 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
     }
     return list("projectId = ?1 and state in ?2 order by updatedAt desc", projectId, states);
   }
+  /**
+   * Write the approval question's content half onto every request of {@code repoId} still at {@code
+   * mergedSha} (qits-1201) — SQL rather than an entity write, so it neither reads the rows nor races a
+   * fold: a request that moved to another fold meanwhile is simply not matched, and the entity maps
+   * both columns read-only, so no other writer's flush can put an older value back.
+   *
+   * @return how many rows took it
+   */
+  public int recordApprovalContent(String repoId, String mergedSha, String reasonsJson) {
+    return getEntityManager()
+        .createNativeQuery(
+            "update release_request set approval_content_reasons = ?1, approval_content_fold = ?2"
+                + " where repo_id = ?3 and merged_sha = ?2")
+        .setParameter(1, reasonsJson)
+        .setParameter(2, mergedSha)
+        .setParameter(3, repoId)
+        .executeUpdate();
+  }
+
+  /**
+   * The distinct folds of {@code repoId}'s requests whose content can still matter: in one of
+   * {@code states} and with a fold at all.
+   */
+  public List<String> foldsOf(String repoId, Collection<ReleaseRequest.State> states) {
+    if (states.isEmpty()) {
+      return List.of();
+    }
+    return getEntityManager()
+        .createQuery(
+            "select distinct r.mergedSha from ReleaseRequest r"
+                + " where r.repoId = ?1 and r.state in ?2 and r.mergedSha is not null",
+            String.class)
+        .setParameter(1, repoId)
+        .setParameter(2, states)
+        .getResultList();
+  }
 }
