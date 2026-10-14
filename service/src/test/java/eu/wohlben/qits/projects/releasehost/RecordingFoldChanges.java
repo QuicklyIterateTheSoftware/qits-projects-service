@@ -86,7 +86,29 @@ public class RecordingFoldChanges implements FoldChanges {
 
   private final Set<String> rowReaders = ConcurrentHashMap.newKeySet();
 
+  /** How long every content read takes — zero, unless a test stands in for a slow mirror. */
+  private final java.util.concurrent.atomic.AtomicLong latencyMs =
+      new java.util.concurrent.atomic.AtomicLong();
+
+  /** Make every {@link #changes} and {@link #addsNothingToMain} read take {@code millis}. */
+  public void readLatency(long millis) {
+    latencyMs.set(millis);
+  }
+
+  private void count(String repoId) {
+    reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
+    long latency = latencyMs.get();
+    if (latency > 0) {
+      try {
+        Thread.sleep(latency);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
   public void reset() {
+    latencyMs.set(0);
     rowReaders.clear();
     scripted.clear();
     betweenScripted.clear();
@@ -98,7 +120,7 @@ public class RecordingFoldChanges implements FoldChanges {
 
   @Override
   public List<CommitFileChangeDto> changes(String repoId, String mergedSha, String pathspec) {
-    reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
+    count(repoId);
     if (mirrored.contains(repoId)) {
       return mirror.changes(repoId, mergedSha, pathspec);
     }
@@ -140,7 +162,7 @@ public class RecordingFoldChanges implements FoldChanges {
    */
   @Override
   public boolean addsNothingToMain(String repoId, String mergedSha) {
-    reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
+    count(repoId);
     if (mirrored.contains(repoId)) {
       return mirror.addsNothingToMain(repoId, mergedSha);
     }

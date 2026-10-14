@@ -4,7 +4,9 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.control.DisplayApprovals;
 import eu.wohlben.qits.projects.control.ReleaseGates;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -57,14 +59,27 @@ public class ReleaseRequestListGateReadsTest {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
 
+  @Inject DisplayApprovals displayApprovals;
+
+  @Inject ReleaseRequests releaseRequests;
+
+  @Inject RecordingFoldChanges foldChanges;
+
+  /** Holds every gate open, so an open request seeded here never releases itself mid-test. */
+  @Inject FakeActiveBuilds activeBuilds;
+
   private String projectId;
   private final List<String> repoIds = new ArrayList<>();
   private long freshnessBefore;
+  private long approvalWindowBefore;
 
   @BeforeEach
   void seed() throws Exception {
     gitHost.reset();
+    foldChanges.reset();
+    activeBuilds.answer(java.util.Optional.of(1));
     freshnessBefore = freshness();
+    approvalWindowBefore = approvalWindow();
     projectId = "gate-reads-project-" + UUID.randomUUID();
     repoIds.clear();
     for (int index = 0; index < REPOSITORIES; index++) {
@@ -99,8 +114,11 @@ public class ReleaseRequestListGateReadsTest {
   void restore() throws Exception {
     gitHost.treeLatency(0);
     awaitNoReadsInFlight();
+    foldChanges.readLatency(0);
     setFreshness(freshnessBefore);
+    setApprovalWindow(approvalWindowBefore);
     repoIds.forEach(gates::forget);
+    repoIds.forEach(displayApprovals::forget);
     QuarkusTransaction.requiringNew()
         .run(() -> ReleaseRequest.delete("projectId = ?1", projectId));
   }
@@ -191,8 +209,132 @@ public class ReleaseRequestListGateReadsTest {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // The approval question's content half (qits-1203, second half): per fold, until main moves
+  // ---------------------------------------------------------------------------------------------
+
+  /** How long each content read takes here: a mirror refresh plus its git subprocesses. */
+  private static final long FOLD_LATENCY_MS = 300;
+
+  /**
+   * An open request per repository costs its fold's two content reads once — the repositories read
+   * at the same time — and a second page costs none, until that repository's main moves: then that
+   * repository, and only it, is read again.
+   */
+  @Test
+  void aFoldIsReadOncePerPageConcurrentlyAndAgainOnlyWhenItsMainMoves() throws Exception {
+    setApprovalWindow(60_000);
+    for (int index = 0; index < REPOSITORIES; index++) {
+      pending(repoIds.get(index), fold(index));
+    }
+    foldChanges.readLatency(FOLD_LATENCY_MS);
+
+    long started = System.nanoTime();
+    list();
+    long tookMs = (System.nanoTime() - started) / 1_000_000;
+    // Each fold is two reads (what it changes under .config/qits/, whether it adds anything to
+    // main); one after another the four repositories would take eight of them.
+    assertEquals(foldReads(2), foldReadsNow(), "each open fold read once");
+    assertTrue(
+        tookMs < REPOSITORIES * 2 * FOLD_LATENCY_MS,
+        "the page took " + tookMs + " ms: the repositories' folds were read one after another");
+
+    list();
+    assertEquals(foldReads(2), foldReadsNow(), "a second page reads no fold it has seen");
+
+    String moved = repoIds.get(0);
+    releaseRequests.onMainMoved(moved, "0000000000000000000000000000000000000abc");
+    list();
+    Map<String, Long> expected = new java.util.HashMap<>(foldReads(2));
+    expected.put(moved, 4L);
+    assertEquals(expected, foldReadsNow(), "main moved under one repository: only its fold again");
+  }
+
+  /**
+   * An answer older than the window is still answered at once, and re-read once behind the page —
+   * the bound on how long a main move the bus never delivered can show.
+   */
+  @Test
+  void anOldAnswerIsAnsweredAtOnceAndReReadOnceBehindThePage() throws Exception {
+    setApprovalWindow(200);
+    for (int index = 0; index < REPOSITORIES; index++) {
+      pending(repoIds.get(index), fold(index));
+    }
+    list();
+    assertEquals(foldReads(2), foldReadsNow());
+    Thread.sleep(250);
+    foldChanges.readLatency(FOLD_LATENCY_MS);
+
+    long started = System.nanoTime();
+    List<CompletableFuture<List<String>>> pages = new ArrayList<>();
+    for (int page = 0; page < 3; page++) {
+      pages.add(CompletableFuture.supplyAsync(this::list));
+    }
+    pages.forEach(CompletableFuture::join);
+    long tookMs = (System.nanoTime() - started) / 1_000_000;
+    assertTrue(
+        tookMs < 2 * FOLD_LATENCY_MS,
+        "three pages took " + tookMs + " ms: an old answer must not make a page wait for git");
+
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (!foldReads(4).equals(foldReadsNow()) && System.currentTimeMillis() < deadline) {
+      Thread.sleep(100);
+    }
+    Thread.sleep(3 * FOLD_LATENCY_MS);
+    assertEquals(
+        foldReads(4), foldReadsNow(), "one re-read per fold, however many pages found it old");
+  }
+
+  /** With no window — the suite's setting — every page reads every open fold. */
+  @Test
+  void withNoApprovalWindowEveryPageReadsTheFoldsAfresh() throws Exception {
+    setApprovalWindow(0);
+    for (int index = 0; index < REPOSITORIES; index++) {
+      pending(repoIds.get(index), fold(index));
+    }
+    list();
+    list();
+    assertEquals(foldReads(4), foldReadsNow());
+  }
+
+  private static String fold(int index) {
+    return String.format("%040x", 0xf01d00 + index);
+  }
+
+  private Map<String, Long> foldReads(long each) {
+    return repoIds.stream().collect(Collectors.toMap(Function.identity(), repoId -> each));
+  }
+
+  private Map<String, Long> foldReadsNow() {
+    return repoIds.stream()
+        .collect(
+            Collectors.toMap(Function.identity(), repoId -> (long) foldChanges.reads(repoId)));
+  }
+
+  /** An open request on {@code fold}, written straight to the table: the list is the subject. */
+  private void pending(String repoId, String fold) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Instant when = Instant.now();
+              ReleaseRequest row = new ReleaseRequest();
+              row.id = UUID.randomUUID().toString();
+              row.repoId = repoId;
+              row.projectId = projectId;
+              row.summary = "an open release of " + repoId;
+              row.state = ReleaseRequest.State.PENDING;
+              row.mergedSha = fold;
+              row.createdAt = when;
+              row.armedAt = when;
+              row.updatedAt = when;
+              row.name(releaseRequestNumbers.next(row.repoId));
+              row.persist();
+            });
+  }
+
+  // ---------------------------------------------------------------------------------------------
 
   private List<String> list() {
+
     return given()
         .get("/projects/api/projects/" + projectId + "/release-requests?state=all")
         .then()
@@ -259,5 +401,19 @@ public class ReleaseRequestListGateReadsTest {
 
   private void setFreshness(long millis) throws Exception {
     freshnessField().setLong(ClientProxy.unwrap(gates), millis);
+  }
+
+  private Field approvalWindowField() throws NoSuchFieldException {
+    Field field = DisplayApprovals.class.getDeclaredField("revalidateMs");
+    field.setAccessible(true);
+    return field;
+  }
+
+  private long approvalWindow() throws Exception {
+    return approvalWindowField().getLong(ClientProxy.unwrap(displayApprovals));
+  }
+
+  private void setApprovalWindow(long millis) throws Exception {
+    approvalWindowField().setLong(ClientProxy.unwrap(displayApprovals), millis);
   }
 }

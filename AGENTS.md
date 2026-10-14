@@ -1033,6 +1033,22 @@ turns stale serving off, so a test that rewrites main and lists sees what it sta
 `ReleaseRequestListGateReadsTest` sets a window on the bean to count the reads. A finalization merge
 `forget`s the repository's entry, since this service has just moved its main.
 
+**The approval question's content half is remembered the same way, per fold** (qits-1203, second
+half). Whether a fold changes `.config/qits/` and whether it adds anything to `main` is git work on
+the mirror — a fetch once the mirror is 5 s old, then about ten subprocesses — and the list paid it
+per open request on every view (1.0–2.5 s with five open requests). `control/DisplayApprovals` keeps
+`ApprovalPolicy.readContent`'s answer per `(repoId, mergedSha)`: a new fold is a new sha and so a miss,
+and `ReleaseRequests.onMainMoved` (a push to main, and `ReleaseFinalization.merge`'s own) `forget`s the
+repository, since both reads diff against main. An answer older than
+`qits.projects.release-requests.approval-display-revalidate-ms` (5 min) is still answered and re-read
+once in the background — the bound on a main move the bus never delivered. Misses are read one task
+per repository, concurrently (`approval-read-concurrency`, 8), each under a request context of its own
+(the mirror read looks a repository row up outside a transaction, and the caller's Hibernate session
+must not cross threads). An answer about an outage (a read that failed closed) is never kept. Decisions
+keep `ApprovalPolicy.requirementFor`, uncached. The suite sets the window to `0` — no memory at all —
+because `RecordingFoldChanges` scripts a fold's content per repository and tests change the script for
+the same sha without moving main.
+
 **Naming an archetype is not the only way to be composed** (2026-09-22). The CI gate's predicate
 asked for `archetype:` alone, on the reasoning that a `release.yml` declaring only `artifacts:` or
 `userflows:` composes nothing at qits-ci. A repository may instead **inline** its slots, and qits-ci
