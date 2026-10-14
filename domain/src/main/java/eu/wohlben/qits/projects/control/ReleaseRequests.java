@@ -1352,40 +1352,51 @@ public class ReleaseRequests {
             });
   }
 
-  /** One request, as the API answers it. */
+  /**
+   * One request, as the API answers it.
+   *
+   * <p>Read in two halves (qits-1203), as the lists are: every row it needs inside one short
+   * transaction ({@link #loadOne}), then the gate set, the approval question's git work and the
+   * deployment read after that transaction has closed ({@link #render}) — so no database connection
+   * is held across a call to the git host, the mirror or qits-deployments.
+   */
   public ReleaseRequestDto get(String id) {
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () -> {
-              ReleaseRequest row =
-                  requests
-                      .findByIdOptional(id)
-                      .orElseThrow(
-                          () -> new NotFoundException("Release request not found: " + id));
-              ApprovalView approval = approvalOf(row);
-              ReleasedTagPendingMerge released = pendingTags.findByRequest(id).orElse(null);
-              return dto(
-                  row,
-                  row.repoName,
-                  sources.listByRequest(id),
-                  implicitFor(row.repoId),
-                  released,
-                  approval,
-                  gateReport(
-                      row,
-                      gates.resolve(row.repoId),
-                      approval,
-                      automationsOf(
-                          row,
-                          automationsApply(row.repoId),
-                          waivers.latestFor(row.id, row.mergedSha).isPresent()),
-                      row.mergedSha == null
-                          ? List.of()
-                          : ledger.verdictsOf(row.repoId, row.mergedSha),
-                      released,
-                      pipelineRuns.runsOf(row.id),
-                      ReleasePipelineAssembler.DeployReach.ASK));
-            });
+    Page page =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    loadOne(
+                        requests
+                            .findByIdOptional(id)
+                            .orElseThrow(
+                                () -> new NotFoundException("Release request not found: " + id))));
+    return render(page).get(0);
+  }
+
+  /**
+   * One request of {@code projectId}, by its uuid or its qualified id ({@code <repo>-rr-<n>}, any
+   * case) — the same answer as {@link #get}, for a caller that knows the project and the request but
+   * not which repository it belongs to. A reference naming nothing, and one naming a request of
+   * another project, are both a 404: a request is not readable through a project that does not own
+   * it.
+   */
+  public ReleaseRequestDto getInProject(String projectId, String reference) {
+    Page page =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    loadOne(
+                        requests
+                            .findByReference(null, reference)
+                            .filter(row -> projectId != null && projectId.equals(row.projectId))
+                            .orElseThrow(
+                                () ->
+                                    new NotFoundException(
+                                        "Release request not found in project "
+                                            + projectId
+                                            + ": "
+                                            + reference))));
+    return render(page).get(0);
   }
 
   /**
@@ -1492,16 +1503,19 @@ public class ReleaseRequests {
    */
   public List<ReleaseRequestDto> listByRepo(String repoId, String state) {
     Selection selection = statesFor(state);
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () -> {
-              List<ReleaseRequest> rows = new ArrayList<>(requests.listByRepo(repoId, selection.states()));
-              if (selection.recentReleased()) {
-                rows.addAll(requests.listRecentFinalized(repoId, RECENT_RELEASED));
-              }
-              rows.sort(Comparator.comparing((ReleaseRequest row) -> row.createdAt).reversed());
-              return decorate(rows, Map.of());
-            });
+    Page page =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  List<ReleaseRequest> rows =
+                      new ArrayList<>(requests.listByRepo(repoId, selection.states()));
+                  if (selection.recentReleased()) {
+                    rows.addAll(requests.listRecentFinalized(repoId, RECENT_RELEASED));
+                  }
+                  rows.sort(Comparator.comparing((ReleaseRequest row) -> row.createdAt).reversed());
+                  return loadPage(rows, Map.of());
+                });
+    return render(page);
   }
 
   /**
@@ -1523,17 +1537,19 @@ public class ReleaseRequests {
    */
   public List<ReleaseRequestDto> listByProject(String projectId, String state) {
     Selection selection = statesFor(state);
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () -> {
-              List<ReleaseRequest> rows =
-                  new ArrayList<>(requests.listByProject(projectId, selection.states()));
-              if (selection.recentReleased()) {
-                rows.addAll(requests.listRecentFinalizedByProject(projectId, RECENT_RELEASED));
-              }
-              rows.sort(Comparator.comparing((ReleaseRequest row) -> row.updatedAt).reversed());
-              return decorate(rows, names.namesByRepository(projectId));
-            });
+    Page page =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  List<ReleaseRequest> rows =
+                      new ArrayList<>(requests.listByProject(projectId, selection.states()));
+                  if (selection.recentReleased()) {
+                    rows.addAll(requests.listRecentFinalizedByProject(projectId, RECENT_RELEASED));
+                  }
+                  rows.sort(Comparator.comparing((ReleaseRequest row) -> row.updatedAt).reversed());
+                  return loadPage(rows, names.namesByRepository(projectId));
+                });
+    return render(page);
   }
 
   /**
@@ -2290,6 +2306,9 @@ public class ReleaseRequests {
    * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper.
    */
   public void onMainMoved(String repoId, String mainSha) {
+    // The gate configuration is read from main: whatever moved it — a finalization merge or a hand
+    // push — the remembered gate set predates the move, so a display must not keep serving it.
+    gates.forget(repoId);
     try {
       settleTagsOnMain(repoId, mainSha);
     } finally {
@@ -4294,6 +4313,36 @@ public class ReleaseRequests {
   }
 
   /**
+   * Everything a set of rows needs from the database, read inside one transaction — and nothing
+   * that needs the git host, the mirror or another service, which {@link #render} asks after the
+   * transaction has closed (qits-1203). The list read used to do both inside one {@code
+   * requiringNew()}, so a page held a connection through every gate read and every fold diff: 4.5 to
+   * 5.5 seconds a page, once 38.
+   *
+   * @param mainBranchByRepo each distinct repository's main branch, as {@link ReleaseGates} would
+   *     read it — handed to {@link ReleaseGates#forDisplay} so the gate reads need no database
+   * @param existingRepos the distinct repositories that still have a row — the one fact the approval
+   *     question reads from the database ({@link ApprovalPolicy#requirementForDisplay})
+   * @param successors each OBSOLETE row's successor's qualified id, keyed by the successor's uuid —
+   *     one query for the page rather than one per superseded row
+   */
+  private record Page(
+      List<ReleaseRequest> rows,
+      Map<String, String> currentNames,
+      Map<String, List<ReleaseRequestSource>> named,
+      Map<String, List<ReleasedTagPendingMerge>> implicit,
+      Map<String, ReleasedTagPendingMerge> released,
+      Map<String, ReleaseRequestApproval> decisions,
+      Map<String, Boolean> automationsApplyTo,
+      Set<String> waived,
+      Map<BuildStatusLedger.VerdictKey, List<CommitBuildStatusDto>> verdicts,
+      Map<String, List<ReleasePipelineRun>> phaseRuns,
+      Map<String, String> mainBranchByRepo,
+      Set<String> existingRepos,
+      Map<String, String> successors,
+      ReleasePipelineAssembler.DeployReach reach) {}
+
+  /**
    * Names a list of rows without a query per row: one read of every named source in the page, one
    * read of each distinct repository's pending tags, and one read of the released tags the page's
    * own requests produced — which is where {@code releasedSha} and {@code mergedToMainAt} both come
@@ -4307,32 +4356,25 @@ public class ReleaseRequests {
    * <p><b>The approval decisions are answered in the same batched shape and for the same reason</b>:
    * one query, keyed on each request's own current fold — see {@link
    * ReleaseRequestApprovalRepository#currentForEach}. Whether approval is <em>required</em> cannot
-   * be batched per repository any more: it depends on what each fold changes, so the policy is
-   * asked per request, once per distinct {@code (repoId, mergedSha)} in the page — and only for the
-   * requests still before their tag; a settled one is answered from the decisions above with no git
-   * read.
+   * be batched per repository any more: it depends on what each fold changes, so {@link #render}
+   * asks the policy per request, once per distinct {@code (repoId, mergedSha)} in the page — and
+   * only for the requests still before their tag; a settled one is answered from the decisions
+   * above with no git read.
+   *
+   * <p>Must be called inside a transaction; asks nothing but the database.
    */
-  private List<ReleaseRequestDto> decorate(
-      List<ReleaseRequest> rows, Map<String, String> currentNames) {
+  private Page loadPage(List<ReleaseRequest> rows, Map<String, String> currentNames) {
     List<String> ids = rows.stream().map(row -> row.id).toList();
+    Set<String> repoIds = new LinkedHashSet<>();
+    rows.forEach(row -> repoIds.add(row.repoId));
     Map<String, List<ReleaseRequestSource>> named =
         sources.listByRequests(ids).stream()
             .collect(Collectors.groupingBy(source -> source.requestId));
-    Map<String, List<ReleasedTagPendingMerge>> implicit =
-        rows.stream()
-            .map(row -> row.repoId)
-            .distinct()
-            .collect(Collectors.toMap(repoId -> repoId, this::implicitFor));
+    Map<String, List<ReleasedTagPendingMerge>> implicit = new HashMap<>();
+    repoIds.forEach(repoId -> implicit.put(repoId, implicitFor(repoId)));
     Map<String, ReleasedTagPendingMerge> released =
         pendingTags.listByRequests(ids).stream()
             .collect(Collectors.toMap(tag -> tag.releaseRequestId, tag -> tag, (a, b) -> a));
-    // The gate set, asked once per DISTINCT repository — it cannot differ within one repository,
-    // since it is read from that repository's main.
-    Map<String, ReleaseGates.GateSet> gateSets =
-        rows.stream()
-            .map(row -> row.repoId)
-            .distinct()
-            .collect(Collectors.toMap(repoId -> repoId, repoId -> gates.resolve(repoId)));
     Map<String, ReleaseRequestApproval> decisions =
         approvals.currentForEach(
             rows.stream()
@@ -4342,38 +4384,16 @@ public class ReleaseRequests {
     // The automations gate's two durable halves, batched the same way: whether it holds a
     // repository at all (once per distinct repository), and the waivers at each request's own fold
     // (one query). The third half is the in-memory ledger and costs nothing to ask per row.
-    Map<String, Boolean> automationsApplyTo =
-        rows.stream()
-            .map(row -> row.repoId)
-            .distinct()
-            .collect(Collectors.toMap(repoId -> repoId, this::automationsApply));
-    Map<String, ReleaseRequestAutomationWaiver> waived =
-        waivers.currentForEach(
-            rows.stream()
-                .filter(row -> row.mergedSha != null)
-                .collect(
-                    Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
-    // Asked PER REQUEST, because the answer depends on what each fold changes; cached by (repoId,
-    // mergedSha) within this read, since two open requests on one fold are one question. A settled
-    // request reads no git at all — the policy answers it from the configuration and the approval
-    // batched just above.
-    Map<String, ApprovalPolicy.ApprovalRequirement> approvalAsked = new HashMap<>();
-    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired = new HashMap<>();
-    for (ReleaseRequest row : rows) {
-      approvalRequired.put(
-          row.id,
-          ApprovalPolicy.isSettled(row.state)
-              ? approvalPolicy.requirementFor(
-                  row.repoId,
-                  row.mergedSha,
-                  row.state,
-                  decisions.containsKey(row.id)
-                      && decisions.get(row.id).decision
-                          == ReleaseRequestApproval.Decision.APPROVED)
-              : approvalAsked.computeIfAbsent(
-                  row.repoId + "@" + row.mergedSha,
-                  key -> approvalPolicy.requirementFor(row.repoId, row.mergedSha)));
-    }
+    Map<String, Boolean> automationsApplyTo = new HashMap<>();
+    repoIds.forEach(repoId -> automationsApplyTo.put(repoId, automationsApply(repoId)));
+    Set<String> waived =
+        waivers
+            .currentForEach(
+                rows.stream()
+                    .filter(row -> row.mergedSha != null)
+                    .collect(
+                        Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)))
+            .keySet();
     // The CI gate's state needs the ledger, which would be a query per row asked naively; the same
     // batched shape as the decisions above answers the whole page in one.
     Map<BuildStatusLedger.VerdictKey, List<CommitBuildStatusDto>> verdicts =
@@ -4386,22 +4406,132 @@ public class ReleaseRequests {
     // asking per row would put a query per row on this same read. A request with no phase run is
     // absent from the map, which is what the assembler reads as "there is no pipeline to draw".
     Map<String, List<ReleasePipelineRun>> phaseRuns =
-        pipelineRuns.runsForEach(
-            rows.stream().map(row -> row.id).collect(Collectors.toSet()));
-    return rows.stream()
+        pipelineRuns.runsForEach(rows.stream().map(row -> row.id).collect(Collectors.toSet()));
+    return new Page(
+        rows,
+        currentNames,
+        named,
+        implicit,
+        released,
+        decisions,
+        automationsApplyTo,
+        Set.copyOf(waived),
+        verdicts,
+        phaseRuns,
+        mainBranches(repoIds),
+        existingRepositories(repoIds),
+        successorsOf(rows),
+        // A list read never asks qits-deployments. Its listing is keyed on (repoId, version), so a
+        // page of N released requests is N HTTP calls with nothing to batch — on the busiest read
+        // this service has. The deploy phase is simply ABSENT from these rows, which is this
+        // block's own word for "not known yet" and is not the same claim as UNKNOWN.
+        ReleasePipelineAssembler.DeployReach.LIST_READ);
+  }
+
+  /**
+   * The same reads for a <b>single</b> request, where a batched read would be one query with one
+   * element in it. Must be called inside a transaction.
+   */
+  private Page loadOne(ReleaseRequest row) {
+    Set<String> repoIds = Set.of(row.repoId);
+    ReleasedTagPendingMerge released = pendingTags.findByRequest(row.id).orElse(null);
+    Map<String, ReleasedTagPendingMerge> releasedById = new HashMap<>();
+    if (released != null) {
+      releasedById.put(row.id, released);
+    }
+    // The newest decision at the current fold: what the approval question reads for a settled
+    // request, and what the answer shows wherever a person was asked.
+    Map<String, ReleaseRequestApproval> decisions = new HashMap<>();
+    if (row.mergedSha != null) {
+      approvals.latestFor(row.id, row.mergedSha).ifPresent(decision -> decisions.put(row.id, decision));
+    }
+    Set<String> waived =
+        row.mergedSha != null && waivers.latestFor(row.id, row.mergedSha).isPresent()
+            ? Set.of(row.id)
+            : Set.of();
+    Map<BuildStatusLedger.VerdictKey, List<CommitBuildStatusDto>> verdicts = new HashMap<>();
+    if (row.mergedSha != null) {
+      verdicts.put(
+          new BuildStatusLedger.VerdictKey(row.repoId, row.mergedSha),
+          ledger.verdictsOf(row.repoId, row.mergedSha));
+    }
+    return new Page(
+        List.of(row),
+        Map.of(),
+        Map.of(row.id, sources.listByRequest(row.id)),
+        Map.of(row.repoId, implicitFor(row.repoId)),
+        releasedById,
+        decisions,
+        Map.of(row.repoId, automationsApply(row.repoId)),
+        waived,
+        verdicts,
+        Map.of(row.id, pipelineRuns.runsOf(row.id)),
+        mainBranches(repoIds),
+        existingRepositories(repoIds),
+        successorsOf(List.of(row)),
+        ReleasePipelineAssembler.DeployReach.ASK);
+  }
+
+  private Map<String, String> mainBranches(Set<String> repoIds) {
+    Map<String, String> mains = new LinkedHashMap<>();
+    repoIds.forEach(repoId -> mains.put(repoId, mainOf(repoId)));
+    return mains;
+  }
+
+  private Set<String> existingRepositories(Set<String> repoIds) {
+    // The same lookups mainBranches just made: the session answers them without a second query.
+    return repoIds.stream()
+        .filter(repoId -> repositories.findByIdOptional(repoId).isPresent())
+        .collect(Collectors.toUnmodifiableSet());
+  }
+
+  /** Each superseded row's successor's qualified id, keyed by the successor's uuid; one query. */
+  private Map<String, String> successorsOf(List<ReleaseRequest> rows) {
+    Set<String> successorIds =
+        rows.stream()
+            .map(row -> row.supersededBy)
+            .filter(java.util.Objects::nonNull)
+            .collect(Collectors.toSet());
+    return successorIds.isEmpty() ? Map.of() : requests.qualifiedIdsOf(successorIds);
+  }
+
+  /**
+   * The rows of a {@link #loadPage loaded page} as the API answers them — <b>outside</b> any
+   * transaction: the gate sets, the approval question's git work and (for a single read) the
+   * deployment are all asked here, after the connection has gone back.
+   *
+   * <p>The gate sets come from {@link ReleaseGates#forDisplay}: once per <b>distinct</b> repository
+   * (it cannot differ within one, being read from that repository's main), concurrently for the ones
+   * with nothing cached, and a stale cached one answered at once while it is refreshed behind the
+   * page. This is a display, so that is safe; nothing here decides anything.
+   *
+   * <p>The approval question is asked per request, because it depends on what each fold changes;
+   * cached by {@code (repoId, mergedSha)} within this read, since two open requests on one fold are
+   * one question. A settled request reads no git at all. The git work is sequential and runs on the
+   * caller's thread, under a request context activated here when the caller has none: {@link
+   * CommitService} reads a repository row or two outside any transaction, as it does on its own
+   * doors.
+   */
+  private List<ReleaseRequestDto> render(Page page) {
+    Map<String, ReleaseGates.GateSet> gateSets = gates.forDisplay(page.mainBranchByRepo());
+    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired =
+        withRequestContext(() -> approvalRequirements(page, gateSets));
+    return page.rows().stream()
         .map(
             row -> {
+              ReleaseRequestApproval decision = page.decisions().get(row.id);
               ApprovalView approval =
                   ApprovalView.of(
                       approvalRequired.getOrDefault(
                           row.id, ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED),
-                      decisions.get(row.id));
+                      decision);
+              ReleasedTagPendingMerge released = page.released().get(row.id);
               return dto(
                   row,
-                  currentNames.getOrDefault(row.repoId, row.repoName),
-                  named.getOrDefault(row.id, List.of()),
-                  implicit.getOrDefault(row.repoId, List.of()),
-                  released.get(row.id),
+                  page.currentNames().getOrDefault(row.repoId, row.repoName),
+                  page.named().getOrDefault(row.id, List.of()),
+                  page.implicit().getOrDefault(row.repoId, List.of()),
+                  released,
                   approval,
                   gateReport(
                       row,
@@ -4410,23 +4540,60 @@ public class ReleaseRequests {
                       approval,
                       automationsOf(
                           row,
-                          automationsApplyTo.getOrDefault(row.repoId, false),
-                          waived.containsKey(row.id)),
+                          page.automationsApplyTo().getOrDefault(row.repoId, false),
+                          page.waived().contains(row.id)),
                       row.mergedSha == null
                           ? List.of()
-                          : verdicts.getOrDefault(
-                              new BuildStatusLedger.VerdictKey(row.repoId, row.mergedSha),
-                              List.of()),
-                      released.get(row.id),
-                      phaseRuns.getOrDefault(row.id, List.of()),
-                      // A list read never asks qits-deployments. Its listing is keyed on
-                      // (repoId, version), so a page of N released requests is N HTTP calls with
-                      // nothing to batch — on the busiest read this service has. The deploy phase
-                      // is simply ABSENT from these rows, which is this block's own word for "not
-                      // known yet" and is not the same claim as UNKNOWN.
-                      ReleasePipelineAssembler.DeployReach.LIST_READ));
+                          : page.verdicts()
+                              .getOrDefault(
+                                  new BuildStatusLedger.VerdictKey(row.repoId, row.mergedSha),
+                                  List.of()),
+                      released,
+                      page.phaseRuns().getOrDefault(row.id, List.of()),
+                      page.reach()),
+                  row.supersededBy == null ? null : page.successors().get(row.supersededBy));
             })
         .toList();
+  }
+
+  private Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequirements(
+      Page page, Map<String, ReleaseGates.GateSet> gateSets) {
+    Map<String, ApprovalPolicy.ApprovalRequirement> asked = new HashMap<>();
+    Map<String, ApprovalPolicy.ApprovalRequirement> required = new HashMap<>();
+    for (ReleaseRequest row : page.rows()) {
+      ReleaseGates.GateSet set =
+          gateSets.getOrDefault(
+              row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved"));
+      boolean exists = page.existingRepos().contains(row.repoId);
+      ReleaseRequestApproval decision = page.decisions().get(row.id);
+      boolean approvedAtFold =
+          decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED;
+      required.put(
+          row.id,
+          ApprovalPolicy.isSettled(row.state)
+              ? approvalPolicy.requirementForDisplay(
+                  set, exists, row.repoId, row.mergedSha, row.state, approvedAtFold)
+              : asked.computeIfAbsent(
+                  row.repoId + "@" + row.mergedSha,
+                  key ->
+                      approvalPolicy.requirementForDisplay(
+                          set, exists, row.repoId, row.mergedSha, row.state, false)));
+    }
+    return required;
+  }
+
+  /** Runs {@code work} under a request context, activating one only where the caller has none. */
+  private static <T> T withRequestContext(java.util.function.Supplier<T> work) {
+    io.quarkus.arc.ManagedContext context = io.quarkus.arc.Arc.container().requestContext();
+    if (context.isActive()) {
+      return work.get();
+    }
+    context.activate();
+    try {
+      return work.get();
+    } finally {
+      context.terminate();
+    }
   }
 
   /**
@@ -4807,20 +4974,6 @@ public class ReleaseRequests {
   }
 
   /**
-   * The same derivation for a <b>single</b> request, where a batched read would be one query with
-   * one element in it. Called inside the caller's already-open transaction, like {@link
-   * #effectivePriorityOf(String)} beside it.
-   */
-  private ApprovalView approvalOf(ReleaseRequest row) {
-    ApprovalPolicy.ApprovalRequirement required = approvalPolicy.requirementFor(row);
-    return ApprovalView.of(
-        required,
-        required.required() && row.mergedSha != null
-            ? approvals.latestFor(row.id, row.mergedSha).orElse(null)
-            : null);
-  }
-
-  /**
    * What a DECLINED request says, and it names the person: a machine gate's sentence is about a run,
    * and this one is about somebody's judgement, so the actor is the first thing in it. The note is
    * appended only where there is one — a decline with nothing said reads as the bare fact rather
@@ -4848,6 +5001,9 @@ public class ReleaseRequests {
    *     three approval fields are a published surface and the set is the new reading of it. It
    *     carries the pipeline block beside the flat list, because both are that one derivation: see
    *     {@link GateView}.
+   * @param supersededByQualifiedId the successor's qualified id where {@code row.supersededBy} names
+   *     one that still exists, else null — read for the whole page at once ({@link #successorsOf})
+   *     rather than a query per OBSOLETE row.
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
@@ -4856,7 +5012,8 @@ public class ReleaseRequests {
       List<ReleasedTagPendingMerge> implicit,
       ReleasedTagPendingMerge released,
       ApprovalView approval,
-      GateView gates) {
+      GateView gates,
+      String supersededByQualifiedId) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -4906,9 +5063,7 @@ public class ReleaseRequests {
         conflictOf(row),
         row.version,
         row.supersededBy,
-        row.supersededBy == null
-            ? null
-            : requests.findByIdOptional(row.supersededBy).map(next -> next.qualifiedId).orElse(null),
+        supersededByQualifiedId,
         released == null ? null : released.releasedSha,
         released == null ? null : released.mergedAt,
         row.retryable,

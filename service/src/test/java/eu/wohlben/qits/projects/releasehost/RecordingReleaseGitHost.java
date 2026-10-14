@@ -339,7 +339,37 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     tagFailure.set(answer);
   }
 
+  /**
+   * One tree read as it was made: which repository, at which rev, and when it started and ended — so
+   * a test can count the reads a page made and see whether they overlapped (qits-1203).
+   */
+  public record TreeRead(String repoId, String rev, long startedNanos, long endedNanos) {}
+
+  private final List<TreeRead> treeReads = Collections.synchronizedList(new ArrayList<>());
+
+  /** How long every tree read takes — zero, unless a test stands in for a slow git host. */
+  private final java.util.concurrent.atomic.AtomicLong treeLatencyMs =
+      new java.util.concurrent.atomic.AtomicLong();
+
+  /** Make every tree read take {@code millis}, the way qits-githost's sometimes does. */
+  public void treeLatency(long millis) {
+    treeLatencyMs.set(millis);
+  }
+
+  /** Every tree read since the last {@link #reset} or {@link #clearTreeReads}, in arrival order. */
+  public List<TreeRead> treeReads() {
+    synchronized (treeReads) {
+      return List.copyOf(treeReads);
+    }
+  }
+
+  public void clearTreeReads() {
+    treeReads.clear();
+  }
+
   public void reset() {
+    treeReads.clear();
+    treeLatencyMs.set(0);
     trees.clear();
     trees.put("refs/heads/main", new LinkedHashMap<>(GATED_MAIN));
     commits.clear();
@@ -418,6 +448,23 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
    */
   @Override
   public Answer<List<String>> tree(String repoId, String rev) {
+    long started = System.nanoTime();
+    try {
+      return treeAnswer(repoId, rev);
+    } finally {
+      treeReads.add(new TreeRead(repoId, rev, started, System.nanoTime()));
+    }
+  }
+
+  private Answer<List<String>> treeAnswer(String repoId, String rev) {
+    long latency = treeLatencyMs.get();
+    if (latency > 0) {
+      try {
+        Thread.sleep(latency);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     Hold armed = hold.get();
     if (armed != null && armed.repoId().equals(repoId) && hold.compareAndSet(armed, null)) {
       armed.entered().countDown();

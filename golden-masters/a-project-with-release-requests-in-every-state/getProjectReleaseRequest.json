@@ -1,0 +1,194 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "qualifiedId": "contract-suite-app-rr-1",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-suite-app",
+    "backingBranch": "release/contract-suite-app-rr-1",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "bump/contract-service",
+        "ref": "refs/heads/bump/contract-service",
+        "implicit": false,
+        "priority": "BLOCKING",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "BLOCKING",
+    "mergedSha": "0000000000000000000000000000000000000007",
+    "state": "PENDING",
+    "summary": "Release the export across the suite",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Waiting for a person to approve 0000000000",
+    "approvalRequired": true,
+    "approvalState": "WAITING",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "CI",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "APPROVAL",
+        "state": "PENDING",
+        "detail": "configured by manual-review"
+      }
+    ],
+    "automations": [
+      {
+        "kind": "estate-pins",
+        "label": "Estate pins",
+        "state": "FRESH",
+        "foldSha": "0000000000000000000000000000000000000007",
+        "runId": "bump-00000000-0000-4000-8000-000000000004",
+        "branch": "maintenance/estate-pins",
+        "detail": null,
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "failure": null
+      },
+      {
+        "kind": "screenshot-baselines",
+        "label": "Screenshot baselines",
+        "state": "FRESH",
+        "foldSha": "0000000000000000000000000000000000000007",
+        "runId": "bump-00000000-0000-4000-8000-000000000005",
+        "branch": "maintenance/screenshot-baselines",
+        "detail": null,
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "failure": null
+      },
+      {
+        "kind": "entity-diagram",
+        "label": "Entity diagram",
+        "state": "PENDING",
+        "foldSha": "0000000000000000000000000000000000000007",
+        "runId": "bump-00000000-0000-4000-8000-000000000006",
+        "branch": "maintenance/entity-diagram",
+        "detail": "Run in flight",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "failure": null
+      }
+    ],
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "supersededByQualifiedId": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": {
+      "phases": [
+        {
+          "phase": "QA",
+          "state": "WAITING_FOR_PRE_RUN",
+          "runId": null,
+          "startedAt": null,
+          "finishedAt": null,
+          "detail": "QA starts once every automation is fresh or waived at this fold"
+        }
+      ],
+      "gates": [
+        {
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "APPROVAL",
+          "state": "PENDING",
+          "detail": "configured by manual-review"
+        }
+      ]
+    },
+    "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PENDING",
+        "detail": "Waiting for: Entity diagram",
+        "checks": [
+          {
+            "name": "Estate pins",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000004"
+          },
+          {
+            "name": "Screenshot baselines",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000005"
+          },
+          {
+            "name": "Entity diagram",
+            "state": "PENDING",
+            "detail": "PENDING: Run in flight",
+            "runId": "bump-00000000-0000-4000-8000-000000000006"
+          }
+        ],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000007 passed for 0000000000",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000007",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/contract-suite-app-rr-1",
+            "runId": "00000000-0000-4000-8000-000000000007"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000007",
+        "link": null
+      },
+      {
+        "kind": "approval",
+        "label": "Approval",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "configured by manual-review",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ],
+    "preRun": {
+      "state": "PENDING"
+    }
+  }
+}

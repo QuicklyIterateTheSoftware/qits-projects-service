@@ -370,6 +370,73 @@ public class ProjectReleaseRequestsTest {
         .body("message", containsString("all"));
   }
 
+  // -----------------------------------------------------------------------------------------
+  // One request through the project: GET /projects/{projectId}/release-requests/{ref} (qits-1203)
+  // -----------------------------------------------------------------------------------------
+
+  private static java.util.Map<String, Object> repositoryRead(String repoId, String requestId) {
+    return given()
+        .get(repoBase(repoId) + "/" + requestId)
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("request");
+  }
+
+  /** By uuid, the project read answers exactly what the repository's own single read answers. */
+  @Test
+  public void oneRequestIsReadThroughItsProjectByUuid() {
+    String id = create(serviceRepoId, "one-by-uuid");
+
+    java.util.Map<String, Object> viaProject =
+        given().get(projectBase() + "/" + id).then().statusCode(200).extract().path("request");
+
+    assertEquals(id, viaProject.get("id"));
+    assertEquals(serviceRepoId, viaProject.get("repoId"));
+    assertEquals(repositoryRead(serviceRepoId, id), viaProject, "the same answer, field for field");
+  }
+
+  /** By qualified id, in any case — the name a ticket thread and a CLI line carry. */
+  @Test
+  public void oneRequestIsReadThroughItsProjectByQualifiedId() {
+    String id = create(frontendRepoId, "one-by-qualified-id");
+    String qualifiedId = (String) repositoryRead(frontendRepoId, id).get("qualifiedId");
+
+    given()
+        .get(projectBase() + "/" + qualifiedId)
+        .then()
+        .statusCode(200)
+        .body("request.id", equalTo(id))
+        .body("request.qualifiedId", equalTo(qualifiedId));
+    given()
+        .get(projectBase() + "/" + qualifiedId.toUpperCase(java.util.Locale.ROOT))
+        .then()
+        .statusCode(200)
+        .body("request.id", equalTo(id));
+  }
+
+  /** Another project's request is not readable through this one — by uuid or by qualified id. */
+  @Test
+  public void anotherProjectsRequestIsNotFoundThroughThisOne() {
+    String elsewhere = create(otherRepoId, "one-elsewhere");
+    String qualifiedId = (String) repositoryRead(otherRepoId, elsewhere).get("qualifiedId");
+
+    given().get(projectBase() + "/" + elsewhere).then().statusCode(404);
+    given().get(projectBase() + "/" + qualifiedId).then().statusCode(404);
+    // And it is there, through the project that does own it.
+    given()
+        .get("/projects/api/projects/" + otherProjectId + "/release-requests/" + elsewhere)
+        .then()
+        .statusCode(200)
+        .body("request.id", equalTo(elsewhere));
+  }
+
+  @Test
+  public void anUnknownRequestIsNotFound() {
+    given().get(projectBase() + "/" + UUID.randomUUID()).then().statusCode(404);
+    given().get(projectBase() + "/prr-service-rr-999999").then().statusCode(404);
+  }
+
   @Test
   public void anUnknownProjectIsNotAnEmptyList() {
     given()

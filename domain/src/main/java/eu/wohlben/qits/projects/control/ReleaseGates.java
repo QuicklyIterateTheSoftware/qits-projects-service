@@ -3,16 +3,23 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
 import eu.wohlben.qits.projects.gitmirror.GitTracing;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.context.ManagedExecutor;
+import org.eclipse.microprofile.context.ThreadContext;
 import org.jboss.logging.Logger;
 
 /**
@@ -222,7 +229,44 @@ public class ReleaseGates {
   @ConfigProperty(name = "qits.projects.release-requests.gate-freshness-ms", defaultValue = "30000")
   long freshnessMs;
 
+  /**
+   * How many gate configurations are read from the git host at once — by one display read that
+   * meets several repositories it has nothing cached for, and by the background refreshes {@link
+   * #forDisplay} starts. Bounded so that a project with fifty repositories is not fifty concurrent
+   * requests at qits-githost.
+   */
+  @ConfigProperty(name = "qits.projects.release-requests.gate-read-concurrency", defaultValue = "8")
+  int readConcurrency;
+
   private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+
+  /** The repositories a background refresh is in flight for — at most one each. */
+  private final Set<String> refreshing = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Where gate configurations are read off the caller's thread. No CDI, transaction or security
+   * context is carried: a read needs none of them ({@link #read(String, String)} is handed the main
+   * branch rather than looking it up), and a background refresh outlives the request that started
+   * it. The trace is carried explicitly instead, see {@link #traced}.
+   */
+  private ManagedExecutor readers;
+
+  @PostConstruct
+  void startReaders() {
+    readers =
+        ManagedExecutor.builder()
+            .maxAsync(Math.max(1, readConcurrency))
+            .propagated(ThreadContext.ALL_REMAINING)
+            .cleared(ThreadContext.CDI, ThreadContext.TRANSACTION, ThreadContext.SECURITY)
+            .build();
+  }
+
+  @PreDestroy
+  void stopReaders() {
+    if (readers != null) {
+      readers.shutdownNow();
+    }
+  }
 
   /** The five gates. A sixth is a new member here and nowhere else. */
   public enum Kind {
@@ -350,17 +394,142 @@ public class ReleaseGates {
         return cached.set();
       }
       span.attribute(CACHE_ATTRIBUTE, "miss");
-      GateSet resolved = read(repoId);
-      if (resolved.known()) {
-        cache.put(repoId, new Cached(resolved, System.currentTimeMillis()));
-      } else {
-        cache.remove(repoId);
-      }
-      return resolved;
+      return remember(repoId, read(repoId));
     }
   }
 
-  /** Drop what is remembered about {@code repoId}, so the next resolve asks the git host again. */
+  /**
+   * <b>The gate sets a read-only display shows</b> — the release-request list and single read, and
+   * nothing that decides anything. Keyed by repository id, each with the main branch the caller has
+   * already read inside its own transaction, so nothing here touches the database and none of it
+   * needs one.
+   *
+   * <p><b>Stale-while-revalidate, and only here.</b> A known set inside {@link #freshnessMs} is
+   * answered as {@link #resolve} answers it. A known set <em>older</em> than that is still answered
+   * at once, and one background refresh is started for its repository — at most one in flight per
+   * repository however many readers arrive meanwhile — so a page view never waits on the git host for
+   * a configuration it has already seen. Only a repository with nothing cached at all is read
+   * synchronously, and those reads run <b>concurrently</b> on a bounded pool rather than one after
+   * another: a page spanning N such repositories waits roughly one read, not N.
+   *
+   * <p>That trade is safe for a display and for nothing else: the configuration changes about once a
+   * year, and the worst a stale answer does on a page is draw a gate a few seconds late. Every caller
+   * that <em>decides</em> — the executor, gating, finalization, the approval question asked for a
+   * release — keeps {@link #resolve}, fresh within the window or read synchronously.
+   *
+   * <p><b>A freshness of zero turns stale serving off</b>, which is the choice the suite makes
+   * ({@code qits.projects.release-requests.gate-freshness-ms=0} in the test configuration): a window
+   * of nothing means the deployment wants every read to see what main says now, and serving an old
+   * entry "while revalidating" would contradict that. Every repository is then read synchronously —
+   * still concurrently — so a test that rewrites main and lists right after sees what it staged,
+   * deterministically, with no background refresh racing its assertions.
+   */
+  public Map<String, GateSet> forDisplay(Map<String, String> mainBranchByRepo) {
+    Map<String, GateSet> answered = new HashMap<>();
+    Map<String, String> toRead = new LinkedHashMap<>();
+    long now = System.currentTimeMillis();
+    boolean serveStale = freshnessMs > 0;
+    mainBranchByRepo.forEach(
+        (repoId, main) -> {
+          Cached cached = cache.get(repoId);
+          if (cached != null && cached.freshAt(now, freshnessMs)) {
+            answered.put(repoId, cached.set());
+          } else if (cached != null && serveStale) {
+            answered.put(repoId, cached.set());
+            refreshInBackground(repoId, main, cached);
+          } else {
+            toRead.put(repoId, main);
+          }
+        });
+    if (toRead.size() == 1) {
+      // One read is no reason to change threads.
+      Map.Entry<String, String> only = toRead.entrySet().iterator().next();
+      answered.put(only.getKey(), remember(only.getKey(), read(only.getKey(), only.getValue())));
+      return answered;
+    }
+    Map<String, CompletableFuture<GateSet>> reading = new LinkedHashMap<>();
+    toRead.forEach(
+        (repoId, main) ->
+            reading.put(repoId, readers.supplyAsync(traced(() -> read(repoId, main)))));
+    reading.forEach(
+        (repoId, future) -> {
+          GateSet set;
+          try {
+            set = future.join();
+          } catch (RuntimeException e) {
+            // read() answers every failure as unknown; a throw here is the pool's, not the host's.
+            LOG.debugf(e, "Reading the gate configuration of %s did not complete", repoId);
+            set = GateSet.unknown("The gate configuration of this repository could not be read");
+          }
+          answered.put(repoId, remember(repoId, set));
+        });
+    return answered;
+  }
+
+  /**
+   * One refresh of {@code repoId} off the caller's thread, unless one is already in flight. Its
+   * answer replaces the entry only if the entry is still the one that was found stale: a {@link
+   * #forget} in the meantime means main moved after this read began, and the read must not put the
+   * configuration from before the move back.
+   */
+  private void refreshInBackground(String repoId, String main, Cached stale) {
+    if (!refreshing.add(repoId)) {
+      return;
+    }
+    try {
+      readers.supplyAsync(
+          traced(
+              () -> {
+                try {
+                  GateSet set = read(repoId, main);
+                  if (set.known()) {
+                    Cached fresh = new Cached(set, System.currentTimeMillis());
+                    cache.computeIfPresent(
+                        repoId, (key, current) -> current == stale ? fresh : current);
+                  } else {
+                    // An unknown answer is never held, as in resolve(): the next reader asks again.
+                    cache.remove(repoId, stale);
+                  }
+                } catch (RuntimeException e) {
+                  LOG.debugf(e, "Refreshing the gate configuration of %s failed", repoId);
+                } finally {
+                  refreshing.remove(repoId);
+                }
+                return null;
+              }));
+    } catch (RuntimeException e) {
+      // A pool that refuses the task (shutting down) leaves the stale answer standing.
+      refreshing.remove(repoId);
+      LOG.debugf(e, "Could not start a refresh of the gate configuration of %s", repoId);
+    }
+  }
+
+  /** The caller's trace, carried onto the reader thread so the git host calls are its children. */
+  private static <T> java.util.function.Supplier<T> traced(java.util.function.Supplier<T> task) {
+    io.opentelemetry.context.Context context = io.opentelemetry.context.Context.current();
+    return () -> {
+      try (io.opentelemetry.context.Scope ignored = context.makeCurrent()) {
+        return task.get();
+      }
+    };
+  }
+
+  /** A known answer is remembered for the window; an unknown one drops whatever was remembered. */
+  private GateSet remember(String repoId, GateSet resolved) {
+    if (resolved.known()) {
+      cache.put(repoId, new Cached(resolved, System.currentTimeMillis()));
+    } else {
+      cache.remove(repoId);
+    }
+    return resolved;
+  }
+
+  /**
+   * Drop what is remembered about {@code repoId}, so the next resolve asks the git host again —
+   * called whenever the repository's main moves (a finalization merge, or any push seen by the head
+   * listener through {@link ReleaseRequests#onMainMoved}), so neither
+   * a decision nor a display reads the configuration from before the move.
+   */
   public void forget(String repoId) {
     cache.remove(repoId);
   }
@@ -375,7 +544,14 @@ public class ReleaseGates {
     if (!gitHosts.isResolvable()) {
       return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
     }
-    String main = mainOf(repoId);
+    return read(repoId, mainOf(repoId));
+  }
+
+  /** {@link #read(String)} with the main branch already known: no database, any thread. */
+  private GateSet read(String repoId, String main) {
+    if (!gitHosts.isResolvable()) {
+      return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
+    }
     String rev = "refs/heads/" + main;
     ReleaseGitHost host = gitHosts.get();
     ReleaseGitHost.Answer<List<String>> tree;

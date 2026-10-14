@@ -1019,6 +1019,20 @@ treated as "none"** — every failed read holds the request rather than releasin
 an archetype whose composed pipeline this service does not itself verify) holds the CI gate rather
 than dropping it.
 
+**Displays and decisions read the gate set differently** (qits-1203). `ReleaseGates.resolve` — fresh
+within `qits.projects.release-requests.gate-freshness-ms` (30 s), else a synchronous tree read at
+qits-githost — is the only read anything that *decides* may use: the executor, gating, finalization,
+the approval question asked for a release. The release-request list and single reads use
+`ReleaseGates.forDisplay` instead: stale-while-revalidate (an expired entry is answered at once and
+refreshed once in the background per repository), with the repositories it has nothing cached for
+read **concurrently** on a bounded pool (`gate-read-concurrency`, 8). Both reads load every row inside
+one short transaction (`ReleaseRequests.loadPage`/`loadOne`) and ask the git host, the mirror (the
+approval question's fold diff) and qits-deployments only after it has closed (`render`) — a page used
+to hold a connection through all of it and took 4.5–5.5 s. A freshness of `0`, the suite's setting,
+turns stale serving off, so a test that rewrites main and lists sees what it staged;
+`ReleaseRequestListGateReadsTest` sets a window on the bean to count the reads. A finalization merge
+`forget`s the repository's entry, since this service has just moved its main.
+
 **Naming an archetype is not the only way to be composed** (2026-09-22). The CI gate's predicate
 asked for `archetype:` alone, on the reasoning that a `release.yml` declaring only `artifacts:` or
 `userflows:` composes nothing at qits-ci. A repository may instead **inline** its slots, and qits-ci

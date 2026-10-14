@@ -12,6 +12,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * A project's release requests, across every repository it owns — the one read that shows what is
@@ -65,5 +66,40 @@ public class ProjectReleaseRequestsController {
     projects.get(projectId); // 404 if the project does not exist
     return new ListProjectReleaseRequests.Response(
         releaseRequests.listByProject(projectId, state));
+  }
+
+  /**
+   * The envelope of {@link #get}: {@code getReleaseRequest}'s shape. Its schema is <b>named</b>,
+   * because one more record called {@code Response} is numbered among the others and renumbers every
+   * anonymous response schema after it in {@code docs/openapi.yml} — and answering {@code
+   * ReleaseRequestController}'s own record instead moves the numbering just the same.
+   */
+  @Schema(
+      name = "ProjectReleaseRequest",
+      description = "One release request, as getReleaseRequest answers it.")
+  public record GetProjectReleaseRequest(ReleaseRequestDto request) {}
+
+  /**
+   * One request of this project, for a caller that knows the project and the request but not which
+   * repository it was made in (qits-1203) — a ticket thread, a CLI line naming {@code
+   * qits-qits-rr-131}. The answer is exactly {@code GET /repositories/{repoId}/release-requests/
+   * {requestId}}'s, in the same {@code {"request": …}} envelope.
+   *
+   * @param ref the request's uuid, or its qualified id ({@code <repo>-rr-<n>}, any case). A request
+   *     of another project is a 404 like one that does not exist: this route reads through the
+   *     project, and a project does not own another's requests.
+   */
+  @GET
+  @Path("/{ref}")
+  @Operation(
+      operationId = "getProjectReleaseRequest",
+      summary = "One of the project's release requests, by its id or qualified id",
+      description =
+          "The same answer as the repository's own single read, addressed through the project:"
+              + " {ref} is the request's uuid or its qualified id (e.g. qits-qits-rr-131). A"
+              + " request that does not exist, or belongs to another project, is a 404.")
+  public GetProjectReleaseRequest get(
+      @PathParam("projectId") String projectId, @PathParam("ref") String ref) {
+    return new GetProjectReleaseRequest(releaseRequests.getInProject(projectId, ref));
   }
 }
