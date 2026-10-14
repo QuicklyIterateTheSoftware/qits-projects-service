@@ -324,6 +324,9 @@ public class ReleaseRequests {
    */
   @Inject ReleaseGates gates;
 
+  /** The display's memory of the approval question's content half — see {@link #render}. */
+  @Inject DisplayApprovals displayApprovals;
+
   @Inject ReleaseGateEvaluator gateEvaluator;
 
   /** qits-deployments, asked by a single-request read for the rollback gate. */
@@ -2309,6 +2312,9 @@ public class ReleaseRequests {
     // The gate configuration is read from main: whatever moved it — a finalization merge or a hand
     // push — the remembered gate set predates the move, so a display must not keep serving it.
     gates.forget(repoId);
+    // So does the display's answer to the approval question's content half: it diffs each fold
+    // against main (the merge base, and whether the fold adds anything to it).
+    displayApprovals.forget(repoId);
     try {
       settleTagsOnMain(repoId, mainSha);
     } finally {
@@ -4505,12 +4511,13 @@ public class ReleaseRequests {
    * with nothing cached, and a stale cached one answered at once while it is refreshed behind the
    * page. This is a display, so that is safe; nothing here decides anything.
    *
-   * <p>The approval question is asked per request, because it depends on what each fold changes;
-   * cached by {@code (repoId, mergedSha)} within this read, since two open requests on one fold are
-   * one question. A settled request reads no git at all. The git work is sequential and runs on the
-   * caller's thread, under a request context activated here when the caller has none: {@link
-   * CommitService} reads a repository row or two outside any transaction, as it does on its own
-   * doors.
+   * <p>The approval question is asked per request, because it depends on what each fold changes. A
+   * settled request reads no git at all; an open one's content half comes from {@link
+   * DisplayApprovals}, remembered per {@code (repoId, mergedSha)} until that repository's main moves,
+   * with the folds it has not seen read concurrently, one task per repository. The caller's thread
+   * runs under a request context activated here when it has none, for the case where only one
+   * repository is read and it is read inline: {@link CommitService} reads a repository row outside
+   * any transaction, as it does on its own doors.
    */
   private List<ReleaseRequestDto> render(Page page) {
     Map<String, ReleaseGates.GateSet> gateSets = gates.forDisplay(page.mainBranchByRepo());
@@ -4558,26 +4565,34 @@ public class ReleaseRequests {
 
   private Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequirements(
       Page page, Map<String, ReleaseGates.GateSet> gateSets) {
-    Map<String, ApprovalPolicy.ApprovalRequirement> asked = new HashMap<>();
+    // Only an open request on a fold of a repository that still exists has a content half to read.
+    Map<String, Set<String>> folds = new LinkedHashMap<>();
+    for (ReleaseRequest row : page.rows()) {
+      if (!ApprovalPolicy.isSettled(row.state)
+          && row.mergedSha != null
+          && !row.mergedSha.isBlank()
+          && page.existingRepos().contains(row.repoId)) {
+        folds.computeIfAbsent(row.repoId, key -> new LinkedHashSet<>()).add(row.mergedSha);
+      }
+    }
+    Map<DisplayApprovals.Fold, List<String>> content =
+        folds.isEmpty() ? Map.of() : displayApprovals.contentReasons(folds);
     Map<String, ApprovalPolicy.ApprovalRequirement> required = new HashMap<>();
     for (ReleaseRequest row : page.rows()) {
       ReleaseGates.GateSet set =
           gateSets.getOrDefault(
               row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved"));
-      boolean exists = page.existingRepos().contains(row.repoId);
       ReleaseRequestApproval decision = page.decisions().get(row.id);
       boolean approvedAtFold =
           decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED;
+      List<String> reasons =
+          ApprovalPolicy.isSettled(row.state) || row.mergedSha == null
+              ? List.of()
+              : content.getOrDefault(new DisplayApprovals.Fold(row.repoId, row.mergedSha), List.of());
       required.put(
           row.id,
-          ApprovalPolicy.isSettled(row.state)
-              ? approvalPolicy.requirementForDisplay(
-                  set, exists, row.repoId, row.mergedSha, row.state, approvedAtFold)
-              : asked.computeIfAbsent(
-                  row.repoId + "@" + row.mergedSha,
-                  key ->
-                      approvalPolicy.requirementForDisplay(
-                          set, exists, row.repoId, row.mergedSha, row.state, false)));
+          approvalPolicy.requirementForDisplay(
+              set, row.state, ApprovalPolicy.isSettled(row.state) && approvedAtFold, reasons));
     }
     return required;
   }

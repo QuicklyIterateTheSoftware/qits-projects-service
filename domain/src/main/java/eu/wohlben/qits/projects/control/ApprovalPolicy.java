@@ -178,28 +178,28 @@ public class ApprovalPolicy {
 
   /**
    * <b>The same question for a read-only display</b> (qits-1203) — the release-request list and
-   * single read — which has already read everything this needs from the database inside its own
-   * transaction, and asks this <em>after</em> that transaction has closed, so that the git work an
-   * unsettled request costs never holds a connection.
+   * single read — which has already read everything this needs: the gate set from {@link
+   * ReleaseGates#forDisplay}, and the content half from {@link DisplayApprovals}, which caches it per
+   * {@code (repoId, mergedSha)} and reads the misses concurrently, one task per repository. Nothing
+   * here touches the database or git.
    *
    * <p>The rule is the one {@link #requirementFor(String, String, ReleaseRequest.State, boolean)}
-   * applies, word for word; only where its two inputs come from differs. {@code gateSet} is the
-   * display's own reading of the repository's configuration ({@link ReleaseGates#forDisplay}), and
-   * {@code repositoryExists} is the row lookup {@link #contentReasons} would otherwise make. Nothing
-   * that decides a release may call this: a decision asks {@link #requirementFor(ReleaseRequest)},
-   * which resolves the gate set strictly.
+   * applies, word for word; only where its inputs come from differs. Nothing that decides a release
+   * may call this: a decision asks {@link #requirementFor(ReleaseRequest)}, which resolves the gate
+   * set strictly and reads the fold afresh.
+   *
+   * @param contentReasons {@link #readContent}'s reasons for the request's current fold — empty for
+   *     a settled request, which reads no git
    */
   public ApprovalRequirement requirementForDisplay(
       ReleaseGates.GateSet gateSet,
-      boolean repositoryExists,
-      String repoId,
-      String mergedSha,
       ReleaseRequest.State state,
-      boolean approvedAtFold) {
+      boolean approvedAtFold,
+      List<String> contentReasons) {
     if (isSettled(state)) {
       return settled(gateSet, approvedAtFold);
     }
-    return unsettled(gateSet, repositoryExists, repoId, mergedSha);
+    return combined(gateSet, contentReasons);
   }
 
   /**
@@ -218,27 +218,47 @@ public class ApprovalPolicy {
 
   private ApprovalRequirement unsettled(
       ReleaseGates.GateSet set, boolean repositoryExists, String repoId, String mergedSha) {
+    return combined(set, readContent(repositoryExists, repoId, mergedSha).reasons());
+  }
+
+  private static ApprovalRequirement combined(
+      ReleaseGates.GateSet set, List<String> contentReasons) {
     List<String> reasons = new ArrayList<>(3);
     if (set.requires(ReleaseGates.Kind.APPROVAL)) {
       reasons.add(MANUAL_REVIEW_DETAIL);
     }
-    reasons.addAll(contentReasons(repositoryExists, repoId, mergedSha));
+    reasons.addAll(contentReasons);
     return reasons.isEmpty()
         ? ApprovalRequirement.NOT_REQUIRED
         : new ApprovalRequirement(true, String.join("; ", reasons));
   }
 
   /**
+   * The content half's answer for one fold.
+   *
+   * @param complete false where a read failed and a reason says so (failing closed) — an answer about
+   *     an outage rather than about the fold, which {@link DisplayApprovals} therefore never keeps
+   */
+  public record ContentReading(List<String> reasons, boolean complete) {
+
+    static final ContentReading NOTHING = new ContentReading(List.of(), true);
+  }
+
+  /**
    * The content half: a sentence where the fold changes {@link #CONFIG_DIRECTORY}, then one where it
    * adds nothing to {@code main}; empty when neither holds. A fold whose changes could not be read is
    * one sentence and no second read: it is already held, and the same mirror would be asked again.
+   *
+   * <p>Git work on the repository's mirror (a refresh, then a handful of subprocesses); reads no
+   * database itself, though the mirror read underneath looks a repository row up outside any
+   * transaction and so needs a request context on the thread that calls it.
    */
-  private List<String> contentReasons(boolean repositoryExists, String repoId, String mergedSha) {
+  public ContentReading readContent(boolean repositoryExists, String repoId, String mergedSha) {
     if (mergedSha == null || mergedSha.isBlank()) {
-      return List.of();
+      return ContentReading.NOTHING;
     }
     if (!repositoryExists) {
-      return List.of();
+      return ContentReading.NOTHING;
     }
     List<CommitFileChangeDto> files;
     try {
@@ -248,38 +268,42 @@ public class ApprovalPolicy {
       LOG.warnf(
           "Could not read whether %s of %s changes %s; requiring approval: %s",
           mergedSha, repoId, CONFIG_DIRECTORY, e.getMessage());
-      return List.of(
-          "the changes to " + CONFIG_DIRECTORY + " could not be read: " + e.getMessage());
+      return new ContentReading(
+          List.of("the changes to " + CONFIG_DIRECTORY + " could not be read: " + e.getMessage()),
+          false);
     }
     List<String> reasons = new ArrayList<>(2);
     String config = configReason(files);
     if (config != null) {
       reasons.add(config);
     }
-    String empty = emptyFoldReason(repoId, mergedSha);
+    boolean complete = true;
+    String empty;
+    try {
+      empty = foldChanges.addsNothingToMain(repoId, mergedSha) ? NO_CHANGES_DETAIL : null;
+    } catch (RuntimeException e) {
+      empty = emptyFoldUnreadable(repoId, mergedSha, e);
+      complete = false;
+    }
     if (empty != null) {
       reasons.add(empty);
     }
-    return reasons;
+    return new ContentReading(List.copyOf(reasons), complete);
   }
 
   /**
-   * A sentence where the fold adds nothing to {@code main}, else null. Such a fold is a commit
-   * {@code main} already holds — a fast-forward onto its own head, tagged and built by the last
-   * release — so the CI gate would be vouched by that release's old run before this request's own QA
-   * run exists, and the request would release having been checked by nothing. A person decides
-   * whether an empty release is wanted.
+   * The sentence for a fold whose emptiness against {@code main} could not be read. The rule it stands
+   * in for: a fold that adds nothing to {@code main} is a commit {@code main} already holds — a
+   * fast-forward onto its own head, tagged and built by the last release — so the CI gate would be
+   * vouched by that release's old run before this request's own QA run exists, and the request would
+   * release having been checked by nothing. A person decides whether an empty release is wanted.
+   * FAIL CLOSED, for the same reason as the configuration read beside it.
    */
-  private String emptyFoldReason(String repoId, String mergedSha) {
-    try {
-      return foldChanges.addsNothingToMain(repoId, mergedSha) ? NO_CHANGES_DETAIL : null;
-    } catch (RuntimeException e) {
-      // FAIL CLOSED, for the same reason as the configuration read beside it.
-      LOG.warnf(
-          "Could not read whether %s of %s changes anything against main; requiring approval: %s",
-          mergedSha, repoId, e.getMessage());
-      return "whether the fold changes anything against main could not be read: " + e.getMessage();
-    }
+  private static String emptyFoldUnreadable(String repoId, String mergedSha, RuntimeException e) {
+    LOG.warnf(
+        "Could not read whether %s of %s changes anything against main; requiring approval: %s",
+        mergedSha, repoId, e.getMessage());
+    return "whether the fold changes anything against main could not be read: " + e.getMessage();
   }
 
   /** A sentence where {@code files} touch {@link #CONFIG_DIRECTORY}, else null. */
