@@ -32,6 +32,20 @@ public class ReleasedTagPendingMergeRepository
     return list("repoId = ?1 and mergedAt is null order by releasedAt", repoId);
   }
 
+  /**
+   * <b>Every release this service recorded for one repository</b>, in whatever state — pending,
+   * merged, abandoned — oldest first. This is the release history {@code CommitService} subtracts
+   * from a fold: the tags themselves are garbage-collected by {@code TagCollector}, and these rows
+   * are not (see {@link #latestReleased} for why, and for the caveat about releases older than the
+   * table).
+   *
+   * <p>{@code list} and not {@code find}, for {@link #findByRequest}'s reason: the one-argument
+   * {@code find("repoId = ?1", x)} binds to this class's own two-String {@code find} overload.
+   */
+  public List<ReleasedTagPendingMerge> listByRepository(String repoId) {
+    return list("repoId = ?1 order by releasedAt", repoId);
+  }
+
   public Optional<ReleasedTagPendingMerge> find(String repoId, String tagName) {
     return find("repoId = ?1 and tagName = ?2", repoId, tagName).firstResultOptional();
   }

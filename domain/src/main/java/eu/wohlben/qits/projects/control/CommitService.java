@@ -11,16 +11,22 @@ import eu.wohlben.qits.projects.dto.CommitLogDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.gitmirror.GitMirrorException;
 import eu.wohlben.qits.projects.gitmirror.RepoMirror;
+import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.io.File;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Reads the commit log for a branch, scoped to the commits unique to it. The "parent" a branch is
@@ -57,6 +63,9 @@ public class CommitService {
   @Inject GitMirrorRegistry gitMirrors;
 
   @Inject GitHostRepositories gitHostRepositories;
+
+  /** Every release this service recorded: what a fold is read against ({@link #shippedBefore}). */
+  @Inject ReleasedTagPendingMergeRepository releasedTags;
 
   /**
    * Lists the commits on {@code branch} that are not on its parent ({@code git log
@@ -155,30 +164,6 @@ public class CommitService {
   public record MergeRange(boolean present, List<CommitDto> commits) {}
 
   /**
-   * The commits a release request's fold merged: everything the fold reaches that no earlier
-   * release shipped.
-   *
-   * <p><b>The base is the released tags, not {@code ^1} and not {@code main}.</b> {@code ^1..}
-   * under-reports twice over: a re-folded request's first parent is its own <em>previous fold</em>
-   * (so the range shrinks to whatever the last re-fold added), and a first fold with nothing on the
-   * target fast-forwards onto a source head (so there is no fold commit to have parents at all).
-   * {@code main} as it stands now answers differently every time somebody else releases, and
-   * nothing at all once this release itself reaches it. What is stable is the platform's own
-   * invariant: {@code main} only ever advances by merging released tags — so "already shipped" IS
-   * "reachable from a release tag", and the honest range is the fold minus every tag that does not
-   * contain it. A tag that <em>does</em> contain the fold is this release itself or a later one,
-   * and subtracting it would erase the answer.
-   *
-   * <p>Two consequences are deliberate. A sibling release folded in as an implicit source is
-   * excluded — its tag does not contain this fold, so its commits read as shipped, which they are.
-   * And a repository that has never released answers its whole history, because its first release
-   * ships exactly that.
-   *
-   * <p><b>A missing object is an answer, never a 500.</b> The fold is probed with {@code cat-file
-   * -e} first, because {@code git log} against an unknown rev exits non-zero the same way a real
-   * failure does and the caller must be able to tell "that commit is gone" from "the read broke".
-   */
-  /**
    * The commit each of {@code refs} points at in the repository's mirror, keyed by the full ref; a
    * ref the mirror does not hold is absent. An annotated tag answers the commit it tags.
    */
@@ -224,6 +209,40 @@ public class CommitService {
     }
   }
 
+  /**
+   * The commits a release request's fold merged: everything the fold reaches that no earlier
+   * release shipped.
+   *
+   * <p><b>The base is the earlier releases, not {@code ^1} and not {@code main}.</b> {@code ^1..}
+   * under-reports twice over: a re-folded request's first parent is its own <em>previous fold</em>
+   * (so the range shrinks to whatever the last re-fold added), and a first fold with nothing on the
+   * target fast-forwards onto a source head (so there is no fold commit to have parents at all).
+   * {@code main} as it stands now answers differently every time somebody else releases, and
+   * nothing at all once this release itself reaches it. What is stable is the platform's own
+   * invariant: {@code main} only ever advances by merging released commits — so "already shipped"
+   * IS "reachable from an earlier release", and the honest range is the fold minus every release
+   * that does not contain it. A release that <em>does</em> contain the fold is this release itself
+   * or a later one, and subtracting it would erase the answer.
+   *
+   * <p><b>The recorded releases are the authority, the tags only a fallback</b> (qits-1211). {@code
+   * TagCollector} deletes old release tags on purpose and the mirror prunes them with the host, so
+   * a base built from tags alone reaches further back every night: an older request's range first
+   * stretches to the oldest tag left, then — once every remaining tag contains the fold — to the
+   * whole history. {@code released_tag_pending_merge} keeps every release's commit for ever, so
+   * those are subtracted as bare shas; the tags still in the mirror are subtracted beside them,
+   * which covers releases older than that table and a tag cut by hand. See {@link #shippedBefore}.
+   *
+   * <p>Two consequences are deliberate. A sibling release folded in as an implicit source is
+   * excluded — its release does not contain this fold, so its commits read as shipped, which they
+   * are. And a repository that has never released answers its whole history, because its first
+   * release ships exactly that.
+   *
+   * <p><b>A missing object is an answer, never a 500.</b> The fold is probed with {@code cat-file
+   * -e} first, because {@code git log} against an unknown rev exits non-zero the same way a real
+   * failure does and the caller must be able to tell "that commit is gone" from "the read broke".
+   * The same holds one level down: a recorded release the mirror does not hold is left out of the
+   * base rather than handed to {@code git log}.
+   */
   public MergeRange listMergeRange(String repoId, String mergedSha) {
     requireRef(mergedSha, "commit");
     RepoMirror mirror = requireMirror(repoId);
@@ -236,14 +255,8 @@ public class CommitService {
       }
       List<String> command = new ArrayList<>();
       command.addAll(List.of("git", "log", "--name-only", LOG_FORMAT, mergedSha));
-      String shipped =
-          git.exec(mirror.gitDir().toFile(), "git", "tag", "--no-contains", mergedSha, "--");
-      for (String tag : shipped.split("\n")) {
-        if (!tag.isBlank()) {
-          // The full spelling, so a tag can never be read as anything else; the names are the
-          // platform's own calvers, but the range must not depend on that being true forever.
-          command.add("^refs/tags/" + tag.trim());
-        }
+      for (Shipped shipped : shippedBefore(repoId, mirror, mergedSha)) {
+        command.add("^" + shipped.rev());
       }
       // `--` terminates option parsing so no rev is ever read as a flag.
       command.add("--");
@@ -262,14 +275,15 @@ public class CommitService {
    *     fold nothing references is pruned)
    * @param base the commit to diff against, or null for "the empty tree" ({@code --root}) — a
    *     repository that has never released has no earlier release to stand on
-   * @param baseTag the release tag the base was resolved from, so a page can say "since
-   *     2026.910.180413" rather than print a sha. Null exactly when {@code base} is null.
+   * @param baseTag the release the base was resolved from, by its version, so a page can say "since
+   *     2026.910.180413" rather than print a sha — whether or not that tag still exists. Null
+   *     exactly when {@code base} is null.
    */
   public record MergeDiffBase(boolean present, String base, String baseTag) {}
 
   /**
-   * The diff base for a release request's fold: {@code merge-base(mergedSha, newest release tag that
-   * does not contain it)}, or null — the empty tree — when the repository has never released.
+   * The diff base for a release request's fold: {@code merge-base(mergedSha, newest earlier release
+   * that does not contain it)}, or null — the empty tree — when the repository has never released.
    *
    * <p><b>It is not {@code mergedSha^1}.</b> A re-folded request's first parent is its own previous
    * fold, so {@code ^1} shows only what the last push added; and a fold whose sources are all
@@ -279,21 +293,26 @@ public class CommitService {
    * octopus case this exists for.
    *
    * <p><b>It is not the same base {@link #listMergeRange} uses.</b> That answers a commit
-   * <em>list</em> with the same invariant but expressed as N negative tips ({@code ^refs/tags/…}),
-   * which a diff cannot express: one diff has one base tree, so the set is resolved to a single
-   * commit. The two agree in the ordinary case; where they differ <b>the commit list is the
-   * authority</b> and this read names the base it actually used.
+   * <em>list</em> with the same invariant but expressed as N negative tips, which a diff cannot
+   * express: one diff has one base tree, so the set is resolved to a single commit. The two agree
+   * in the ordinary case; where they differ <b>the commit list is the authority</b> and this read
+   * names the base it actually used.
    *
    * <p><b>It is not {@code merge-base(mergedSha, main)}</b>, however identical the answer looks
-   * today. {@code main} only ever advances by merging released tags, so the newest non-containing
-   * tag <em>is</em> the main the fold was built on — until this release reaches {@code main}, at
-   * which point that merge base collapses to {@code mergedSha} itself and the whole diff goes empty.
-   * A released request's page is read months later, so that is not an edge case.
+   * today. {@code main} only ever advances by merging released commits, so the newest
+   * non-containing release <em>is</em> the main the fold was built on — until this release reaches
+   * {@code main}, at which point that merge base collapses to {@code mergedSha} itself and the
+   * whole diff goes empty. A released request's page is read months later, so that is not an edge
+   * case.
    *
-   * <p>The newest tag is newest <b>by {@code creatordate}, never by name</b>: the names are the
-   * platform's calvers today and this arithmetic must not depend on that staying true.
+   * <p>The set is {@link #listMergeRange}'s — the recorded releases first, the tags still in the
+   * mirror as a fallback — and for the same reason: the tag a page was diffed against yesterday may
+   * be one {@code TagCollector} deleted last night. The newest is newest <b>by time, never by
+   * name</b>: a recorded release by its {@code releasedAt}, a tag by its {@code creatordate}, the
+   * later of the two winning. The names are the platform's calvers today and this arithmetic must
+   * not depend on that staying true.
    *
-   * <p>Unrelated histories are the one case where a tag exists and no merge base does ({@code
+   * <p>Unrelated histories are the one case where a release exists and no merge base does ({@code
    * merge-base} exits non-zero); that answers the empty tree too, which is what a fold sharing no
    * history with any release has in fact added.
    */
@@ -307,51 +326,129 @@ public class CommitService {
       if (probe.exitCode() != 0) {
         return new MergeDiffBase(false, null, null);
       }
-      Set<String> shipped = new LinkedHashSet<>();
-      for (String tag :
-          git.exec(mirror.gitDir().toFile(), "git", "tag", "--no-contains", mergedSha, "--")
-              .split("\n")) {
-        if (!tag.isBlank()) {
-          shipped.add(tag.trim());
-        }
-      }
-      if (shipped.isEmpty()) {
-        return new MergeDiffBase(true, null, null);
-      }
-      String newest = null;
-      for (String tag :
-          git.exec(
-                  mirror.gitDir().toFile(),
-                  "git",
-                  "for-each-ref",
-                  "--sort=-creatordate",
-                  "--format=%(refname:short)",
-                  "refs/tags")
-              .split("\n")) {
-        if (shipped.contains(tag.trim())) {
-          newest = tag.trim();
-          break;
-        }
-      }
+      Shipped newest =
+          shippedBefore(repoId, mirror, mergedSha).stream()
+              .max(Comparator.comparing(Shipped::at))
+              .orElse(null);
       if (newest == null) {
         return new MergeDiffBase(true, null, null);
       }
-      // The full spelling, so a tag can never be read as anything else.
       GitExecutor.ExecResult mergeBase =
           git.execAllowNonZero(
-              mirror.gitDir().toFile(),
-              "git",
-              "merge-base",
-              "refs/tags/" + newest,
-              mergedSha,
-              "--");
+              mirror.gitDir().toFile(), "git", "merge-base", newest.rev(), mergedSha, "--");
       if (mergeBase.exitCode() != 0 || mergeBase.output().isBlank()) {
         return new MergeDiffBase(true, null, null);
       }
-      return new MergeDiffBase(true, mergeBase.output().trim(), newest);
+      return new MergeDiffBase(true, mergeBase.output().trim(), newest.version());
     } catch (Exception e) {
       throw new InternalServerErrorException("Git merge-base failed: " + e.getMessage());
     }
+  }
+
+  /**
+   * One earlier release, as a fold's base subtracts it.
+   *
+   * @param rev what git is handed: a recorded release's bare sha, or a tag's full {@code
+   *     refs/tags/…} spelling, so a tag can never be read as anything else
+   * @param version the version it names — the row's {@code tagName}, or the tag's own name
+   * @param at when it was cut — the row's {@code releasedAt}, or the tag's {@code creatordate}
+   */
+  private record Shipped(String rev, String version, Instant at) {}
+
+  /** A full object id, the only shape a recorded sha is handed to git in. */
+  private static final Pattern FULL_SHA = Pattern.compile("[0-9a-f]{40}");
+
+  /**
+   * <b>Every earlier release that does not contain {@code mergedSha}</b> — the set {@link
+   * #listMergeRange} subtracts and {@link #resolveDiffBase} picks the newest of.
+   *
+   * <p>Two sources, and the order is the authority. First the repository's recorded releases
+   * ({@link ReleasedTagPendingMergeRepository#listByRepository}), which are never deleted; then the
+   * release tags still in the mirror, which {@code TagCollector} thins out nightly but which are
+   * the only record of a release older than that table, or of a tag cut by hand. A release present
+   * in both is subtracted twice, which costs git nothing.
+   *
+   * <p>A recorded sha is kept only when the mirror holds it as a commit and it does not contain the
+   * fold. Absent is ordinary — history rewritten on the host, or a row from before a re-clone — and
+   * is skipped rather than handed to {@code git log}, which would fail the whole read for one
+   * unreachable release. Containing the fold is the request's own release, or a later one that
+   * folded it in; subtracting either would erase the answer. Both questions are one git call each
+   * rather than one per row: {@code rev-list --no-walk --ignore-missing} lists the present ones,
+   * and {@code rev-list --ancestry-path ^mergedSha} lists exactly the commits that descend from
+   * the fold, so a candidate in that list (or the fold itself) contains it.
+   *
+   * <p>The rows are read in a transaction of their own: everything else here is git, run outside
+   * one, and a page read must not hold a connection while the mirror walks history.
+   */
+  private List<Shipped> shippedBefore(String repoId, RepoMirror mirror, String mergedSha)
+      throws Exception {
+    File gitDir = mirror.gitDir().toFile();
+    List<Shipped> shipped = new ArrayList<>();
+
+    Map<String, Shipped> recorded = new LinkedHashMap<>();
+    for (Shipped row :
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    releasedTags.listByRepository(repoId).stream()
+                        .map(r -> new Shipped(r.releasedSha, r.tagName, r.releasedAt))
+                        .toList())) {
+      if (row.rev() != null && FULL_SHA.matcher(row.rev()).matches() && row.at() != null) {
+        recorded.put(row.rev(), row);
+      }
+    }
+    if (!recorded.isEmpty()) {
+      List<String> present =
+          new ArrayList<>(List.of("git", "rev-list", "--no-walk", "--ignore-missing"));
+      for (String sha : recorded.keySet()) {
+        present.add(sha + "^{commit}");
+      }
+      present.add("--");
+      Set<String> held = lines(git.exec(gitDir, present.toArray(String[]::new)));
+      recorded.keySet().retainAll(held);
+    }
+    if (!recorded.isEmpty()) {
+      List<String> descendants =
+          new ArrayList<>(List.of("git", "rev-list", "--ancestry-path", "^" + mergedSha));
+      descendants.addAll(recorded.keySet());
+      descendants.add("--");
+      Set<String> containing = lines(git.exec(gitDir, descendants.toArray(String[]::new)));
+      containing.add(mergedSha);
+      recorded.keySet().removeAll(containing);
+      shipped.addAll(recorded.values());
+    }
+
+    for (String line :
+        git.exec(
+                gitDir,
+                "git",
+                "for-each-ref",
+                "--no-contains",
+                mergedSha,
+                "--format=%(refname)%09%(creatordate:unix)",
+                "refs/tags")
+            .split("\n")) {
+      String[] f = line.split("\t", -1);
+      if (f.length == 2 && f[0].startsWith("refs/tags/") && !f[1].isBlank()) {
+        shipped.add(
+            new Shipped(
+                f[0],
+                f[0].substring("refs/tags/".length()),
+                Instant.ofEpochSecond(Long.parseLong(f[1].trim()))));
+      }
+    }
+    return shipped;
+  }
+
+  /** The non-blank lines of a git answer, trimmed. */
+  private static Set<String> lines(String output) {
+    Set<String> out = new LinkedHashSet<>();
+    for (String line : output.split("\n")) {
+      if (!line.isBlank()) {
+        out.add(line.trim());
+      }
+    }
+    return out;
   }
 
   /**

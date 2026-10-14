@@ -5,9 +5,10 @@ import java.util.List;
 
 /**
  * What a release request's fold changed, read against the base the request's {@code …/changes}
- * view diffs it against — the newest release tag that does not contain the fold, resolved with
+ * view diffs it against — the newest earlier release that does not contain the fold, resolved with
  * {@code merge-base}, or the empty tree for a repository that has never released (see {@link
- * CommitService#resolveDiffBase}).
+ * CommitService#resolveDiffBase}). The releases are the recorded ones, with the tags still in the
+ * mirror only as a fallback, because {@code TagCollector} deletes old tags.
  *
  * <p><b>A port only so that the suite can stand in for it.</b> {@link MirrorFoldChanges} is the one
  * implementation and is {@code @DefaultBean}; nearly every release-request test folds through a

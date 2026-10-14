@@ -7,14 +7,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
+import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -23,11 +28,16 @@ import org.junit.jupiter.api.Test;
 /**
  * <b>What an octopus fold brought in, read against a real repository.</b>
  *
- * <p>The whole claim is the base: the fold minus every released tag that does not contain it. On
- * this platform {@code main} only advances by merging released tags, so "already shipped" IS
- * "reachable from a release tag" — an answer that survives re-folds, first folds that
+ * <p>The whole claim is the base: the fold minus every earlier release that does not contain it.
+ * On this platform {@code main} only advances by merging released commits, so "already shipped" IS
+ * "reachable from an earlier release" — an answer that survives re-folds, first folds that
  * fast-forwarded, and the release itself reaching {@code main}, none of which {@code ^1..} or a
  * live read of {@code main} does.
+ *
+ * <p>The earlier releases are the <b>recorded</b> ones ({@code released_tag_pending_merge}), with the
+ * tags still in the mirror as the fallback. {@code TagCollector} deletes old release tags on
+ * purpose, so a base read off the tags alone drifts back through history night by night
+ * (qits-1211); the cases below that record no release at all are the fallback on its own.
  *
  * <p>Driven through real git rather than a stub, the idiom {@code RepositoryServiceTest} sets: a
  * fixture bare is cloned as a repository, the fold is made and pushed to the git host, and the
@@ -48,6 +58,8 @@ public class MergeRangeCommitsTest {
   @Inject GitHostAddress gitHost;
 
   @Inject GitExecutor git;
+
+  @Inject ReleasedTagPendingMergeRepository releasedTags;
 
   /**
    * The shape a release request actually produces: two branches folded onto the default branch in
@@ -123,6 +135,144 @@ public class MergeRangeCommitsTest {
         "both folds' contributions, not only the last re-fold's: " + subjects);
     assertFalse(
         subjects.contains("Initial commit"), "what the previous release shipped stays out");
+  }
+
+  /**
+   * <b>A release whose tag is gone still counts as shipped</b> (qits-1211). {@code TagCollector}
+   * deletes old release tags and the mirror prunes them with the host, so a base read off the tags
+   * alone answers the second request with everything back to the oldest tag left — here, with no
+   * release tag left that does not contain the fold, the whole history. The recorded release is
+   * what still says the first fold shipped.
+   *
+   * <p>Two more rows are recorded on purpose: the second request's own release, and a later one
+   * that folded it in. Both contain the fold, so subtracting either would erase the answer, and
+   * either would win the diff base by time if it were not left out. The hand-made tag on the
+   * initial commit is the fallback still standing beside the rows — older, so the row wins.
+   */
+  @Test
+  public void aReleaseWhoseTagWasCollectedStillShipsThroughItsRecordedRelease() throws Exception {
+    Repository repo = cloned("Collected Tag Project");
+    Path work = checkout(repo);
+    String main = repo.mainBranch;
+    git.exec(work.toFile(), "git", "tag", "2026.800.000000", main);
+
+    branchWithCommit(work, main, "lane-one", "one.txt", "Add one");
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "release/first", main);
+    git.exec(
+        work.toFile(),
+        "git",
+        "merge",
+        "-q",
+        "--no-ff",
+        "-m",
+        "Release request: first fold",
+        "lane-one");
+    String first = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "tag", "2026.900.100000", first);
+
+    // The second request opens while the first is still in flight, so it folds the first release
+    // in as an implicit source — the shape every release after the first one has.
+    branchWithCommit(work, main, "lane-two", "two.txt", "Add two");
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "release/second", main);
+    git.exec(
+        work.toFile(),
+        "git",
+        "merge",
+        "-q",
+        "--no-ff",
+        "-m",
+        "Release request: second fold",
+        "lane-two",
+        first);
+    String fold = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "release/third", fold);
+    commit(work, "three.txt", "Release request: third fold");
+    String later = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+
+    git.exec(
+        work.toFile(),
+        "git",
+        "push",
+        "-q",
+        "--tags",
+        "origin",
+        "release/first",
+        "release/second",
+        "release/third");
+    // What TagCollector does to the host; the re-clone below is what the mirror's prune does.
+    git.exec(work.toFile(), "git", "push", "-q", "origin", ":refs/tags/2026.900.100000");
+    goCold(repo);
+
+    // Every row after every commit here, the hand-made tag's included: the fixture is built at test
+    // time, so its creatordate is minutes old, and the row has to be the newer one to win by time.
+    Instant now = Instant.now();
+    recordRelease(repo, "2026.900.100000", first, now.plus(Duration.ofHours(1)));
+    recordRelease(repo, "2026.900.110000", fold, now.plus(Duration.ofHours(2)));
+    recordRelease(repo, "2026.900.120000", later, now.plus(Duration.ofHours(3)));
+
+    assertTrue(
+        commitService.resolveRefs(repo.id, List.of("refs/tags/2026.900.100000")).isEmpty(),
+        "the first release's tag is gone from the mirror, which is the whole premise");
+
+    CommitService.MergeRange range = commitService.listMergeRange(repo.id, fold);
+
+    assertTrue(range.present());
+    List<String> subjects = range.commits().stream().map(commit -> commit.message()).toList();
+    assertEquals(
+        List.of("Add two", "Release request: second fold"),
+        subjects.stream().sorted().toList(),
+        "the second request's own work and nothing the first release shipped: " + subjects);
+
+    CommitService.MergeDiffBase base = commitService.resolveDiffBase(repo.id, fold);
+
+    assertTrue(base.present());
+    assertEquals(first, base.base(), "the first release's commit, though no tag names it now");
+    assertEquals("2026.900.100000", base.baseTag(), "named by the version the row recorded");
+  }
+
+  /**
+   * A recorded release the mirror does not hold — history rewritten on the host, a row from before
+   * a re-clone — is <b>left out of the base</b>, never handed to git: one unreachable release must
+   * not turn every older request's page into a 500. A recorded sha that is not a full object id is
+   * left out before git ever sees it. Both rows are newer than the tag, so either would win the
+   * diff base if it were not skipped.
+   */
+  @Test
+  public void aRecordedReleaseTheMirrorDoesNotHoldIsSkippedAndNotAFailure() throws Exception {
+    Repository repo = cloned("Missing Release Project");
+    Path work = checkout(repo);
+    String main = repo.mainBranch;
+
+    branchWithCommit(work, main, "lane-one", "one.txt", "Add one");
+    git.exec(work.toFile(), "git", "checkout", "-q", main);
+    commit(work, "later.txt", "Move main on");
+    git.exec(work.toFile(), "git", "tag", "2026.900.100000", main);
+    String released = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "release/fold", main);
+    git.exec(work.toFile(), "git", "merge", "-q", "-m", "Release request: fold", "lane-one");
+    String fold = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "--tags", "origin", "release/fold");
+    goCold(repo);
+
+    Instant later = Instant.now().plus(Duration.ofHours(1));
+    recordRelease(repo, "2026.900.110000", "0123456789abcdef0123456789abcdef01234567", later);
+    recordRelease(repo, "2026.900.120000", "--all", later.plus(Duration.ofHours(1)));
+
+    CommitService.MergeRange range = commitService.listMergeRange(repo.id, fold);
+
+    assertTrue(range.present());
+    List<String> subjects = range.commits().stream().map(commit -> commit.message()).toList();
+    assertEquals(
+        List.of("Add one", "Release request: fold"),
+        subjects.stream().sorted().toList(),
+        "the tag still standing is the base, as if neither row were there: " + subjects);
+
+    CommitService.MergeDiffBase base = commitService.resolveDiffBase(repo.id, fold);
+
+    assertTrue(base.present());
+    assertEquals(released, base.base());
+    assertEquals("2026.900.100000", base.baseTag());
   }
 
   /**
@@ -276,6 +426,17 @@ public class MergeRangeCommitsTest {
     Files.writeString(work.resolve(file), message + "\n", StandardCharsets.UTF_8);
     git.exec(work.toFile(), "git", "add", "-A");
     git.exec(work.toFile(), "git", "commit", "-q", "-m", message);
+  }
+
+  /** A release of {@code repo} as the release flow records it, in a transaction of its own. */
+  private void recordRelease(Repository repo, String tag, String sha, Instant at) {
+    ReleasedTagPendingMerge row = new ReleasedTagPendingMerge();
+    row.id = UUID.randomUUID().toString();
+    row.repoId = repo.id;
+    row.tagName = tag;
+    row.releasedSha = sha;
+    row.releasedAt = at;
+    QuarkusTransaction.requiringNew().run(() -> releasedTags.persist(row));
   }
 
   /**

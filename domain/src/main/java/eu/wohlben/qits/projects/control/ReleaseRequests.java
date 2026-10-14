@@ -1537,10 +1537,11 @@ public class ReleaseRequests {
   }
 
   /**
-   * What this request's fold brought in — the fold minus every release tag that does not contain it,
-   * which is exactly what the participants contributed over what was already shipped. See {@link
-   * CommitService#listMergeRange} for why the base is the released tags and neither {@code ^1} nor
-   * {@code main}.
+   * What this request's fold brought in — the fold minus every earlier release that does not
+   * contain it, which is exactly what the participants contributed over what was already shipped.
+   * See {@link CommitService#listMergeRange} for why the base is the earlier releases and neither
+   * {@code ^1} nor {@code main}, and why those are the recorded releases rather than the tags:
+   * {@code TagCollector} deletes old tags, so a tag is only the fallback.
    *
    * <p>Scoped by repository as well as by id, so a request read through the wrong repository's route
    * is a 404 rather than somebody else's answer. (The bare {@link #get} is deliberately left as it
