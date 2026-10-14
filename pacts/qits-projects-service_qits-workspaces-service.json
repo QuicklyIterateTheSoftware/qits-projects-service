@@ -18,14 +18,14 @@
         }
       },
       "description": "ReleaseRequests.resolveWorkspacesOnReleasedBranches: resolveReleasedBranch",
-      "key": "bdc89c67",
+      "key": "21e7ec83",
       "pending": false,
       "providerStates": [
         {
           "name": "an agent owning a released branch",
           "params": {
-            "branch": "ticket/contract-00000001-10-totals",
-            "repositoryId": "00000000-0000-4000-8000-000000000015",
+            "branch": "ticket/contract-00000001-10",
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
             "sha": "0123456789abcdef0123456789abcdef01234567",
             "version": "2026.101.120000"
           }
@@ -34,7 +34,7 @@
       "request": {
         "body": {
           "content": {
-            "branch": "ticket/contract-00000001-10-totals",
+            "branch": "ticket/contract-00000001-10",
             "commit": "0123456789abcdef0123456789abcdef01234567",
             "result": "released as 2026.101.120000",
             "target": "2026.101.120000"
@@ -118,7 +118,7 @@
         "path": "/workspaces/api/branches/resolution",
         "query": {
           "repositoryId": [
-            "00000000-0000-4000-8000-000000000015"
+            "00000000-0000-4000-8000-000000000013"
           ]
         }
       },
