@@ -177,6 +177,16 @@
             <artifactId>quarkus-opentelemetry</artifactId>
         </dependency>
         <dependency>
+            <!-- JDBC spans: a slow request's queries show up as child spans of its SERVER span
+                 instead of disappearing into one opaque duration (qits-1202). quarkus-opentelemetry
+                 does not pull this in on its own — quarkus.datasource.*.jdbc.telemetry=true in
+                 application.properties is the Agroal-side switch, and it is a no-op without this
+                 jar on the classpath. No <version>: the quarkus-bom above manages it at 2.23.0-alpha,
+                 the same io.opentelemetry.instrumentation release train as the extension itself. -->
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-jdbc</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
@@ -271,6 +281,14 @@
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- InMemorySpanExporter, for OtelGitTracingTest (qits-1202): %test disables the Quarkus
+                 SDK, so that test builds an SdkTracerProvider of its own. No <version>: the
+                 quarkus-bom imports the opentelemetry-bom that manages it. -->
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-testing</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

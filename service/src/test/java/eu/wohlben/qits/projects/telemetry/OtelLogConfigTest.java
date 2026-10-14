@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A drift guard over the six keys that decide whether this service's application logs leave the
- * process at all, and where they go.
+ * process at all, and where they go — plus two more (qits-1202) that decide whether a request's
+ * queries show up as child spans of its trace at all.
  *
  * <p><b>The behavioural proof is not here and deliberately is not.</b> qits-events owns it: {@code
  * OtelLogBridgeTest} decodes a real {@code ExportLogsServiceRequest} off an offline OTLP stub and
@@ -37,6 +38,15 @@ import org.junit.jupiter.api.Test;
  * inherits rather than shadows, so this is the shipped config under test. The suite also runs with
  * {@code quarkus.otel.sdk.disabled=true} under {@code %test} — nothing is exported during a build,
  * which is exactly why the configuration needs a reader of its own.
+ *
+ * <p>{@link #jdbcSpansAreOnForBothDatasources()} pins a second, unrelated pair: {@code
+ * quarkus.datasource.projects.jdbc.telemetry} and {@code quarkus.datasource.epics.jdbc.telemetry},
+ * the Agroal-side switch that wraps each named datasource's JDBC objects with {@code
+ * io.opentelemetry.instrumentation:opentelemetry-jdbc} so a query shows up as a child span of the
+ * request that issued it. Both are BUILD-TIME keys (read by {@code
+ * io.quarkus.agroal.runtime.DataSourceJdbcBuildTimeConfig}), so — like the log keys above — a
+ * dropped line here is invisible at runtime and only a value assertion at augmentation time catches
+ * it.
  */
 @QuarkusTest
 class OtelLogConfigTest {
@@ -69,9 +79,19 @@ class OtelLogConfigTest {
         value("quarkus.otel.exporter.otlp.endpoint"));
   }
 
+  @Test
+  void jdbcSpansAreOnForBothDatasources() {
+    // qits-1202: a request trace showed one SERVER span with its queries invisible inside it.
+    // Both named datasources (domain's `projects`, entities' `epics`) wrap at the Agroal layer, so
+    // a span-free query is silent the same way a dropped log record would be — only the value, not
+    // the key's mere presence, can catch either one reverting.
+    assertEquals("true", value("quarkus.datasource.projects.jdbc.telemetry"));
+    assertEquals("true", value("quarkus.datasource.epics.jdbc.telemetry"));
+  }
+
   private String value(String key) {
     return config
         .getOptionalValue(key, String.class)
-        .orElseThrow(() -> new AssertionError(key + " is not set — log export is off"));
+        .orElseThrow(() -> new AssertionError(key + " is not set"));
   }
 }
