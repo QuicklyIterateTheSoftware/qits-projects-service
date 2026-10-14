@@ -2306,6 +2306,9 @@ public class ReleaseRequests {
    * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper.
    */
   public void onMainMoved(String repoId, String mainSha) {
+    // The gate configuration is read from main: whatever moved it — a finalization merge or a hand
+    // push — the remembered gate set predates the move, so a display must not keep serving it.
+    gates.forget(repoId);
     try {
       settleTagsOnMain(repoId, mainSha);
     } finally {

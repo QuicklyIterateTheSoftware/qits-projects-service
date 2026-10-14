@@ -497,7 +497,8 @@ public class ReleaseGates {
 
   /**
    * Drop what is remembered about {@code repoId}, so the next resolve asks the git host again —
-   * called when this service itself moves the repository's main (a finalization merge), so neither
+   * called whenever the repository's main moves (a finalization merge, or any push seen by the head
+   * listener through {@link ReleaseRequests#onMainMoved}), so neither
    * a decision nor a display reads the configuration from before the move.
    */
   public void forget(String repoId) {
