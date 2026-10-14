@@ -211,11 +211,12 @@ public class ReleaseGates {
   @Inject Instance<ReleaseGitHost> gitHosts;
 
   /**
-   * Where the {@value #RESOLVE_SPAN} span goes (qits-1202). Borrowed from {@code gitmirror} rather
-   * than declared twice: it is this repository's one tracing port, and its shape — open, attribute,
-   * close, nested under whatever is current — is exactly what a resolution needs. Optional like
-   * every port here, and null when a test builds this class with {@code new}; both are {@link
-   * GitTracing#NONE}.
+   * Where every span this class opens goes — {@value #RESOLVE_SPAN}, {@value #FOR_DISPLAY_SPAN}
+   * and {@value #READ_SPAN} alike (qits-1202). Borrowed from {@code gitmirror} rather than declared
+   * twice: it is this repository's one tracing port, and its shape — open, attribute, close, nested
+   * under whatever is current — is exactly what a resolution, a display read or a git-host read
+   * needs. Optional like every port here, and null when a test builds this class with {@code new};
+   * both read as {@link GitTracing#NONE} through {@link #tracer}.
    */
   @Inject Instance<GitTracing> tracing;
 
@@ -224,6 +225,31 @@ public class ReleaseGates {
 
   /** {@code hit} or {@code miss}: whether {@link #resolve} answered from {@link #cache}. */
   static final String CACHE_ATTRIBUTE = "qits.release_gates.cache";
+
+  /** The span around {@link #forDisplay}; every read it starts nests under it. */
+  static final String FOR_DISPLAY_SPAN = "release-gates.for-display";
+
+  /** How many repositories {@link #forDisplay} was asked about, as a long attribute. */
+  static final String REPOSITORIES_ATTRIBUTE = "qits.release_gates.repositories";
+
+  /** How many of them {@link #forDisplay} answered fresh from {@link #cache}, as a long attribute. */
+  static final String HITS_ATTRIBUTE = "qits.release_gates.hits";
+
+  /**
+   * How many of them {@link #forDisplay} served stale while starting a background refresh, as a
+   * long attribute.
+   */
+  static final String STALE_ATTRIBUTE = "qits.release_gates.stale";
+
+  /** How many of them {@link #forDisplay} read synchronously, as a long attribute. */
+  static final String MISSES_ATTRIBUTE = "qits.release_gates.misses";
+
+  /**
+   * The span around {@link #read(String, String)} — the one git-host read every path shares, so a
+   * miss of {@link #resolve}, a concurrent read or a background refresh of {@link #forDisplay} is
+   * its own span, with the git host's own HTTP spans nested under it.
+   */
+  static final String READ_SPAN = "release-gates.read";
 
   /** How long a successfully read gate configuration is reused for. See {@link #resolve}. */
   @ConfigProperty(name = "qits.projects.release-requests.gate-freshness-ms", defaultValue = "30000")
@@ -384,7 +410,7 @@ public class ReleaseGates {
    * which, and on a miss the git host's own HTTP spans sit inside it.
    */
   public GateSet resolve(String repoId) {
-    GitTracing tracer = tracing != null && tracing.isResolvable() ? tracing.get() : GitTracing.NONE;
+    GitTracing tracer = tracer();
     try (GitTracing.Span span =
         tracer.start(
             RESOLVE_SPAN, repoId == null ? Map.of() : Map.of(GitProcessSpans.REPO_ID, repoId))) {
@@ -423,47 +449,64 @@ public class ReleaseGates {
    * entry "while revalidating" would contradict that. Every repository is then read synchronously —
    * still concurrently — so a test that rewrites main and lists right after sees what it staged,
    * deterministically, with no background refresh racing its assertions.
+   *
+   * <p><b>Traced as {@value #FOR_DISPLAY_SPAN}</b> (qits-1202), with {@value #REPOSITORIES_ATTRIBUTE},
+   * {@value #HITS_ATTRIBUTE}, {@value #STALE_ATTRIBUTE} and {@value #MISSES_ATTRIBUTE} as long
+   * attributes. The span stays open — and current — across the synchronous reads this method starts
+   * and joins, so {@link #traced} carries it onto each reader thread and every {@value #READ_SPAN} a
+   * miss or a background refresh opens nests under it.
    */
   public Map<String, GateSet> forDisplay(Map<String, String> mainBranchByRepo) {
-    Map<String, GateSet> answered = new HashMap<>();
-    Map<String, String> toRead = new LinkedHashMap<>();
-    long now = System.currentTimeMillis();
-    boolean serveStale = freshnessMs > 0;
-    mainBranchByRepo.forEach(
-        (repoId, main) -> {
-          Cached cached = cache.get(repoId);
-          if (cached != null && cached.freshAt(now, freshnessMs)) {
-            answered.put(repoId, cached.set());
-          } else if (cached != null && serveStale) {
-            answered.put(repoId, cached.set());
-            refreshInBackground(repoId, main, cached);
-          } else {
-            toRead.put(repoId, main);
-          }
-        });
-    if (toRead.size() == 1) {
-      // One read is no reason to change threads.
-      Map.Entry<String, String> only = toRead.entrySet().iterator().next();
-      answered.put(only.getKey(), remember(only.getKey(), read(only.getKey(), only.getValue())));
+    GitTracing tracer = tracer();
+    try (GitTracing.Span span = tracer.start(FOR_DISPLAY_SPAN, Map.of())) {
+      Map<String, GateSet> answered = new HashMap<>();
+      Map<String, String> toRead = new LinkedHashMap<>();
+      long now = System.currentTimeMillis();
+      boolean serveStale = freshnessMs > 0;
+      int[] hits = {0};
+      int[] stale = {0};
+      mainBranchByRepo.forEach(
+          (repoId, main) -> {
+            Cached cached = cache.get(repoId);
+            if (cached != null && cached.freshAt(now, freshnessMs)) {
+              answered.put(repoId, cached.set());
+              hits[0]++;
+            } else if (cached != null && serveStale) {
+              answered.put(repoId, cached.set());
+              stale[0]++;
+              refreshInBackground(repoId, main, cached);
+            } else {
+              toRead.put(repoId, main);
+            }
+          });
+      span.attribute(REPOSITORIES_ATTRIBUTE, (long) mainBranchByRepo.size());
+      span.attribute(HITS_ATTRIBUTE, (long) hits[0]);
+      span.attribute(STALE_ATTRIBUTE, (long) stale[0]);
+      span.attribute(MISSES_ATTRIBUTE, (long) toRead.size());
+      if (toRead.size() == 1) {
+        // One read is no reason to change threads.
+        Map.Entry<String, String> only = toRead.entrySet().iterator().next();
+        answered.put(only.getKey(), remember(only.getKey(), read(only.getKey(), only.getValue())));
+        return answered;
+      }
+      Map<String, CompletableFuture<GateSet>> reading = new LinkedHashMap<>();
+      toRead.forEach(
+          (repoId, main) ->
+              reading.put(repoId, readers.supplyAsync(traced(() -> read(repoId, main)))));
+      reading.forEach(
+          (repoId, future) -> {
+            GateSet set;
+            try {
+              set = future.join();
+            } catch (RuntimeException e) {
+              // read() answers every failure as unknown; a throw here is the pool's, not the host's.
+              LOG.debugf(e, "Reading the gate configuration of %s did not complete", repoId);
+              set = GateSet.unknown("The gate configuration of this repository could not be read");
+            }
+            answered.put(repoId, remember(repoId, set));
+          });
       return answered;
     }
-    Map<String, CompletableFuture<GateSet>> reading = new LinkedHashMap<>();
-    toRead.forEach(
-        (repoId, main) ->
-            reading.put(repoId, readers.supplyAsync(traced(() -> read(repoId, main)))));
-    reading.forEach(
-        (repoId, future) -> {
-          GateSet set;
-          try {
-            set = future.join();
-          } catch (RuntimeException e) {
-            // read() answers every failure as unknown; a throw here is the pool's, not the host's.
-            LOG.debugf(e, "Reading the gate configuration of %s did not complete", repoId);
-            set = GateSet.unknown("The gate configuration of this repository could not be read");
-          }
-          answered.put(repoId, remember(repoId, set));
-        });
-    return answered;
   }
 
   /**
@@ -502,6 +545,15 @@ public class ReleaseGates {
       refreshing.remove(repoId);
       LOG.debugf(e, "Could not start a refresh of the gate configuration of %s", repoId);
     }
+  }
+
+  /**
+   * The tracer every span in this class opens through (qits-1202): the optional {@link #tracing}
+   * port where it resolves, {@link GitTracing#NONE} where it is absent or a test built this class
+   * with {@code new} and never set it.
+   */
+  private GitTracing tracer() {
+    return tracing != null && tracing.isResolvable() ? tracing.get() : GitTracing.NONE;
   }
 
   /** The caller's trace, carried onto the reader thread so the git host calls are its children. */
@@ -547,101 +599,112 @@ public class ReleaseGates {
     return read(repoId, mainOf(repoId));
   }
 
-  /** {@link #read(String)} with the main branch already known: no database, any thread. */
+  /**
+   * {@link #read(String)} with the main branch already known: no database, any thread.
+   *
+   * <p><b>Traced as {@value #READ_SPAN}</b> (qits-1202) with {@value GitProcessSpans#REPO_ID}, so
+   * every git-host read this class makes — {@link #resolve}'s miss, one of {@link #forDisplay}'s
+   * concurrent reads, one of its background refreshes — is its own span, with the git host's own
+   * HTTP spans nested under it.
+   */
   private GateSet read(String repoId, String main) {
-    if (!gitHosts.isResolvable()) {
-      return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
-    }
-    String rev = "refs/heads/" + main;
-    ReleaseGitHost host = gitHosts.get();
-    ReleaseGitHost.Answer<List<String>> tree;
-    try {
-      tree = host.tree(repoId, rev);
-    } catch (RuntimeException e) {
-      // The port says it must not throw; a throw is a port bug and must not be read as an answer.
-      LOG.debugf(e, "The git host threw reading the tree of %s at %s", repoId, rev);
-      return GateSet.unknown("The git host could not be asked what " + rev + " configures");
-    }
-    if (!tree.ok()) {
-      LOG.debugf(
-          "Could not read the tree of %s at %s (%s): %s",
-          repoId, rev, tree.retryable() ? "retryable" : "final", tree.detail());
-      return GateSet.unknown("The gate configuration at " + rev + " could not be read: " + tree.detail());
-    }
-    List<String> paths = tree.value();
-    EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
-    if (paths.contains(RELEASE_CONFIG)) {
-      // One file read on every repository that declares a release at all, and the file is exactly
-      // the one ReleaseArtifacts already fetches. The tree listing alone cannot answer this gate:
-      // a release.yml is present for every migrated repository and what says whether qits-ci
-      // composes a QA pipeline to be gated by is inside it — an archetype: to compose one from, or
-      // a release-request: slot the repository declares itself.
-      ReleaseGitHost.Answer<String> config;
+    GitTracing tracer = tracer();
+    try (GitTracing.Span span =
+        tracer.start(READ_SPAN, repoId == null ? Map.of() : Map.of(GitProcessSpans.REPO_ID, repoId))) {
+      if (!gitHosts.isResolvable()) {
+        return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
+      }
+      String rev = "refs/heads/" + main;
+      ReleaseGitHost host = gitHosts.get();
+      ReleaseGitHost.Answer<List<String>> tree;
       try {
-        config = host.file(repoId, rev, RELEASE_CONFIG);
+        tree = host.tree(repoId, rev);
       } catch (RuntimeException e) {
-        LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_CONFIG, repoId, rev);
-        return GateSet.unknown("The git host could not be asked what " + RELEASE_CONFIG + " says");
+        // The port says it must not throw; a throw is a port bug and must not be read as an answer.
+        LOG.debugf(e, "The git host threw reading the tree of %s at %s", repoId, rev);
+        return GateSet.unknown("The git host could not be asked what " + rev + " configures");
       }
-      if (config == null || !config.ok()) {
+      if (!tree.ok()) {
+        LOG.debugf(
+            "Could not read the tree of %s at %s (%s): %s",
+            repoId, rev, tree.retryable() ? "retryable" : "final", tree.detail());
         return GateSet.unknown(
-            RELEASE_CONFIG
-                + " is declared at "
-                + rev
-                + " and could not be read: "
-                + (config == null ? "the git host could not be asked" : config.detail()));
+            "The gate configuration at " + rev + " could not be read: " + tree.detail());
       }
-      try {
-        if (archetypeParser.declaresQaPipeline(config.value())) {
+      List<String> paths = tree.value();
+      EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
+      if (paths.contains(RELEASE_CONFIG)) {
+        // One file read on every repository that declares a release at all, and the file is exactly
+        // the one ReleaseArtifacts already fetches. The tree listing alone cannot answer this gate:
+        // a release.yml is present for every migrated repository and what says whether qits-ci
+        // composes a QA pipeline to be gated by is inside it — an archetype: to compose one from, or
+        // a release-request: slot the repository declares itself.
+        ReleaseGitHost.Answer<String> config;
+        try {
+          config = host.file(repoId, rev, RELEASE_CONFIG);
+        } catch (RuntimeException e) {
+          LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_CONFIG, repoId, rev);
+          return GateSet.unknown("The git host could not be asked what " + RELEASE_CONFIG + " says");
+        }
+        if (config == null || !config.ok()) {
+          return GateSet.unknown(
+              RELEASE_CONFIG
+                  + " is declared at "
+                  + rev
+                  + " and could not be read: "
+                  + (config == null ? "the git host could not be asked" : config.detail()));
+        }
+        try {
+          if (archetypeParser.declaresQaPipeline(config.value())) {
+            kinds.add(Kind.CI);
+          }
+        } catch (RuntimeException e) {
+          // Unlike the settings-file failure below, this does NOT widen to GateSet.unknown: the one
+          // fact in doubt is whether this repository's CI gate applies, the deployment and approval
+          // gates read from other files entirely, and the safe answer to "cannot say" is the same
+          // one an archetype with no release-request slot gets — hold the CI gate rather than skip
+          // it. See the class javadoc's "Two edge cases both resolve to 'the CI gate applies'".
+          LOG.warnf(
+              "%s at %s of %s does not parse; treating %s as CI-gated rather than ungated: %s",
+              RELEASE_CONFIG, rev, repoId, repoId, e.getMessage());
           kinds.add(Kind.CI);
         }
-      } catch (RuntimeException e) {
-        // Unlike the settings-file failure below, this does NOT widen to GateSet.unknown: the one
-        // fact in doubt is whether this repository's CI gate applies, the deployment and approval
-        // gates read from other files entirely, and the safe answer to "cannot say" is the same
-        // one an archetype with no release-request slot gets — hold the CI gate rather than skip
-        // it. See the class javadoc's "Two edge cases both resolve to 'the CI gate applies'".
-        LOG.warnf(
-            "%s at %s of %s does not parse; treating %s as CI-gated rather than ungated: %s",
-            RELEASE_CONFIG, rev, repoId, repoId, e.getMessage());
-        kinds.add(Kind.CI);
       }
-    }
-    if (paths.contains(DEPLOYMENTS_MANIFEST)) {
-      kinds.add(Kind.DEPLOYMENT);
-    }
-    if (paths.contains(SETTINGS)) {
-      // The listing has already said the file is there, so a read that fails is a failure to ask
-      // rather than an absence — and an approval gate that vanished because a read failed is the one
-      // outcome this whole seam exists to prevent.
-      ReleaseGitHost.Answer<String> settings;
-      try {
-        settings = host.file(repoId, rev, SETTINGS);
-      } catch (RuntimeException e) {
-        LOG.debugf(e, "The git host threw reading %s of %s at %s", SETTINGS, repoId, rev);
-        return GateSet.unknown("The git host could not be asked what " + SETTINGS + " says");
+      if (paths.contains(DEPLOYMENTS_MANIFEST)) {
+        kinds.add(Kind.DEPLOYMENT);
       }
-      if (settings == null || !settings.ok()) {
-        return GateSet.unknown(
-            SETTINGS
-                + " is declared at "
-                + rev
-                + " and could not be read: "
-                + (settings == null ? "the git host could not be asked" : settings.detail()));
-      }
-      try {
-        if (settingsParser.parse(settings.value()).manualReview()) {
-          kinds.add(Kind.APPROVAL);
+      if (paths.contains(SETTINGS)) {
+        // The listing has already said the file is there, so a read that fails is a failure to ask
+        // rather than an absence — and an approval gate that vanished because a read failed is the one
+        // outcome this whole seam exists to prevent.
+        ReleaseGitHost.Answer<String> settings;
+        try {
+          settings = host.file(repoId, rev, SETTINGS);
+        } catch (RuntimeException e) {
+          LOG.debugf(e, "The git host threw reading %s of %s at %s", SETTINGS, repoId, rev);
+          return GateSet.unknown("The git host could not be asked what " + SETTINGS + " says");
         }
-      } catch (RuntimeException e) {
-        // A settings file that fails open on a typo is a gate that disappears when somebody
-        // mistypes it. Unknown holds the request and names the file in the sentence a person reads.
-        LOG.warnf(
-            "%s at %s of %s does not parse: %s", SETTINGS, rev, repoId, e.getMessage());
-        return GateSet.unknown(SETTINGS + " at " + rev + " does not parse: " + e.getMessage());
+        if (settings == null || !settings.ok()) {
+          return GateSet.unknown(
+              SETTINGS
+                  + " is declared at "
+                  + rev
+                  + " and could not be read: "
+                  + (settings == null ? "the git host could not be asked" : settings.detail()));
+        }
+        try {
+          if (settingsParser.parse(settings.value()).manualReview()) {
+            kinds.add(Kind.APPROVAL);
+          }
+        } catch (RuntimeException e) {
+          // A settings file that fails open on a typo is a gate that disappears when somebody
+          // mistypes it. Unknown holds the request and names the file in the sentence a person reads.
+          LOG.warnf("%s at %s of %s does not parse: %s", SETTINGS, rev, repoId, e.getMessage());
+          return GateSet.unknown(SETTINGS + " at " + rev + " does not parse: " + e.getMessage());
+        }
       }
+      return GateSet.of(kinds);
     }
-    return GateSet.of(kinds);
   }
 
   /**
