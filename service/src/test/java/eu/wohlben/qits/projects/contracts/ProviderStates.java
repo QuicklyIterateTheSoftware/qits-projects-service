@@ -2450,7 +2450,8 @@ public class ProviderStates {
    * repositories and one request in each state the default list shows — waiting for a person
    * (with a BLOCKING branch on it), ready, rejected by CI, unable to fold, failed at execution,
    * released and finalized. Each moved at its own minute, so the order is fixed. Params name the
-   * request awaiting approval, which the page can withdraw. No git is read: the shas are made up.
+   * request awaiting approval, which the page can withdraw — by uuid and by qualified id ({@code
+   * requestQualifiedId}). No git is read: the shas are made up.
    */
   private Setup aProjectWithReleaseRequestsInEveryState() {
     String token = token();
@@ -2553,8 +2554,17 @@ public class ProviderStates {
                     null)),
             null,
             null));
+    // The qualified id beside the uuid, for the project-scoped single read (qits-1203). Not
+    // tokenized: the repository is new, so its first request is always contract-suite-app-rr-1.
+    String waitingQualifiedId =
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequest.<ReleaseRequest>findById(waiting).qualifiedId);
     return new Setup(
-        params("projectId", project.id, "repositoryId", estate, "requestId", waiting),
+        params(
+            "projectId", project.id,
+            "repositoryId", estate,
+            "requestId", waiting,
+            "requestQualifiedId", waitingQualifiedId),
         List.of(token));
   }
 

@@ -1831,6 +1831,12 @@ components:
           $ref: "#/components/schemas/ProjectDnsRecordDto"
         frontDeskLifecycle:
           $ref: "#/components/schemas/FrontDeskLifecycle"
+    ProjectReleaseRequest:
+      type: object
+      description: "One release request, as getReleaseRequest answers it."
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
     RefinementDto:
       type: object
       properties:
@@ -4085,6 +4091,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Response12"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Release Requests Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+  /projects/api/projects/{projectId}/release-requests/{ref}:
+    get:
+      summary: "One of the project's release requests, by its id or qualified id"
+      description: "The same answer as the repository's own single read, addressed\
+        \ through the project: {ref} is the request's uuid or its qualified id (e.g.\
+        \ qits-qits-rr-131). A request that does not exist, or belongs to another\
+        \ project, is a 404."
+      operationId: getProjectReleaseRequest
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectReleaseRequest"
         "401":
           description: Not Authorized
         "403":

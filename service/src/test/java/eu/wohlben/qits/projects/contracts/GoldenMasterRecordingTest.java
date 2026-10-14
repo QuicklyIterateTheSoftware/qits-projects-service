@@ -589,6 +589,12 @@ class GoldenMasterRecordingTest {
     String list = ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE;
     all.add(
         read(list, "listProjectReleaseRequests", "/projects/api/projects/{projectId}/release-requests"));
+    // One request through its project, by qualified id (qits-1203): the request awaiting approval.
+    all.add(
+        read(
+            list,
+            "getProjectReleaseRequest",
+            "/projects/api/projects/{projectId}/release-requests/{requestQualifiedId}"));
     all.add(
         write(
             list,

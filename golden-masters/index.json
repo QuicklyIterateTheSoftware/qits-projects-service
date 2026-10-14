@@ -1779,10 +1779,38 @@
       "params": {
         "projectId": "00000000-0000-4000-8000-000000000001",
         "repositoryId": "00000000-0000-4000-8000-000000000002",
-        "requestId": "00000000-0000-4000-8000-000000000003"
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "requestQualifiedId": "contract-suite-app-rr-1"
       },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "getProjectReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/release-requests/{requestQualifiedId}",
+          "status": 200,
+          "file": "a-project-with-release-requests-in-every-state/getProjectReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name"
+            ],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "listProjectReleaseRequests",
           "method": "GET",
