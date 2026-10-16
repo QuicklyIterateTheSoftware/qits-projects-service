@@ -351,7 +351,7 @@ public class ReleaseRequestStateChangedTest {
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId + "\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId + "\""
                 + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
                 + ",\"runId\":\"" + runId + "\"" + extra + "}",
             null,

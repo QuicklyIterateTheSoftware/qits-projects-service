@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.control.gate.AutomationsGate;
+import eu.wohlben.qits.projects.control.gate.CiVerdicts;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.control.gate.LegacyGates;
@@ -2502,8 +2503,16 @@ public class ReleaseRequests {
    * re-arm the request with, which is why such a request used to sit REJECTED for ever with a green
    * build behind it. {@code supersededRunIds} is what makes that safe to act on: it is the lineage
    * the ledger just cleared, so a REJECTED request is reconsidered only where the run that rejected
-   * it is in that set. Anything else — a green that is not a retry, a person's decline — is left
-   * exactly where it was, which is what {@code ReleaseRequestFlowTest} pins from both sides.
+   * it is in that set. A person's decline names no run and is left exactly where it was, which is
+   * what {@code ReleaseRequestFlowTest} pins from both sides.
+   *
+   * <p><b>And a newer green of the request's OWN answers it too</b> (qits-1266): the CI gate is
+   * decided by the request's newest own run ({@link CiVerdicts}), so a green QA run on its backing
+   * branch that finished after the red — a phase rerun, or a retry whose lineage never reached this
+   * service — is the gate's answer whether or not the ledger superseded the red. Leaving the request
+   * REJECTED there would have the gate read PASSED beside a rejection, the disagreement qits-1266
+   * exists to end. A green of anyone else's (main, another request) answers nothing, and a decline
+   * names no run and is never found here.
    *
    * @param supersededRunIds the runs this verdict superseded, as {@link BuildStatusLedger#record}
    *     answered it. Empty for every ordinary build, which is almost all of them, and then this
@@ -2518,18 +2527,34 @@ public class ReleaseRequests {
                         .map(row -> row.id)
                         .toList());
     pending.forEach(id -> evaluate(id, commitSha));
-    if (supersededRunIds.isEmpty()) {
-      return;
-    }
-    List<String> answered =
+    List<ReleaseRequest> rejected =
         QuarkusTransaction.requiringNew()
-            .call(
-                () ->
-                    requests.findRejectedByCommit(repoId, commitSha).stream()
-                        .filter(row -> supersededRunIds.contains(row.rejectingRunId))
-                        .map(row -> row.id)
-                        .toList());
-    answered.forEach(id -> reconsider(id, commitSha, "the run that rejected it was retried"));
+            .call(() -> List.copyOf(requests.findRejectedByCommit(repoId, commitSha)));
+    for (ReleaseRequest row : rejected) {
+      if (supersededRunIds.contains(row.rejectingRunId)) {
+        reconsider(row.id, commitSha, "the run that rejected it was retried");
+      } else if (answeredByNewerOwnGreen(row)) {
+        reconsider(row.id, commitSha, "a newer run of its own passed");
+      }
+    }
+  }
+
+  /**
+   * Whether a CI rejection has been answered by the request's own newest run at the same fold
+   * coming back green (qits-1266) — read the way {@link #evaluate} reads the gate, so the reopen
+   * and the gate it reopens into cannot disagree. Only a rejection that names a run qualifies: a
+   * decline and an automation or fold rejection carry none.
+   */
+  private boolean answeredByNewerOwnGreen(ReleaseRequest row) {
+    if (row.rejectingRunId == null || row.mergedSha == null || row.rejectingGate != null) {
+      return false;
+    }
+    // Its own transaction: the verdict path runs under the bus claim's, on another datasource.
+    List<CommitBuildStatusDto> verdicts =
+        QuarkusTransaction.requiringNew().call(() -> ledger.verdictsOf(row.repoId, row.mergedSha));
+    return CiVerdicts.newestOwn(verdicts, row, null)
+        .filter(newest -> CiVerdicts.success(newest) && !newest.runId().equals(row.rejectingRunId))
+        .isPresent();
   }
 
   /**
@@ -2708,6 +2733,10 @@ public class ReleaseRequests {
             }
           } else if (row.rejectingRunId != null && !ledger.stands(row.rejectingRunId)) {
             reconsider(row.id, row.mergedSha, "the run that rejected it no longer stands");
+          } else if (answeredByNewerOwnGreen(row)) {
+            // A NEWER GREEN OF ITS OWN (qits-1266): the gate is the newest own run's, so a green
+            // that finished after the rejecting red answers it with or without a supersession.
+            reconsider(row.id, row.mergedSha, "a newer run of its own passed");
           }
         }
         default -> {}
@@ -3162,8 +3191,13 @@ public class ReleaseRequests {
                   states.move(row, ReleaseRequest.State.PENDING);
                   row.detail = "The conflict is resolved; the fold is unchanged";
                   row.mergedSha = outcome.sha();
-                  if (!ledger.verdictsOf(row.repoId, row.mergedSha).isEmpty()) {
-                    // A run has already answered for this exact sha, so evaluate() — which
+                  if (CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+                      .isPresent()) {
+                    // A run OF THIS REQUEST has already answered for this exact sha (qits-1266:
+                    // a main build or another request's run at the same commit is no answer the
+                    // gate would read, so it must not stand in for the announcement either — the
+                    // request would wait for ever on a QA run nobody asked for), so evaluate() —
+                    // which
                     // remerge calls the moment this returns — reads it, and announcing would ask
                     // for a second build of content already built. Same-datasource read, so it
                     // costs this transaction nothing. The QA stamp says the same thing to the
@@ -3522,15 +3556,20 @@ public class ReleaseRequests {
                     waiting(row, gateSet.detail());
                     return false;
                   }
-                  List<CommitBuildStatusDto> verdicts =
+                  // THE CI GATE'S EVIDENCE: this request's own runs at this fold, and the NEWEST of
+                  // them is the answer (qits-1266) — CiVerdicts, the same reading the gate's display
+                  // makes, so the two cannot disagree. A main build or another request's automation
+                  // on the same commit neither rejects this request nor vouches for it, and a newer
+                  // green of its own replaces an older red (and the reverse). No released tag is
+                  // passed: before the tag only QA runs on the backing branch can be its own.
+                  CommitBuildStatusDto newest =
                       gateSet.requires(ReleaseGates.Kind.CI)
-                          ? ledger.verdictsOf(row.repoId, row.mergedSha)
-                          : List.of();
+                          ? CiVerdicts.newestOwn(
+                                  ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+                              .orElse(null)
+                          : null;
                   CommitBuildStatusDto red =
-                      verdicts.stream()
-                          .filter(v -> !"SUCCESS".equals(v.status()))
-                          .findFirst()
-                          .orElse(null);
+                      newest != null && !CiVerdicts.success(newest) ? newest : null;
                   if (red != null) {
                     states.move(row, ReleaseRequest.State.REJECTED);
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
@@ -3567,8 +3606,7 @@ public class ReleaseRequests {
                     return false;
                   }
                   if (gateSet.requires(ReleaseGates.Kind.CI)) {
-                    boolean vouched =
-                        verdicts.stream().anyMatch(v -> "SUCCESS".equals(v.status()));
+                    boolean vouched = CiVerdicts.success(newest);
                     if (!vouched) {
                       // THE CI GATE. Nothing has vouched for this fold, so it does not pass — not
                       // after a window, not because CI looks idle, not ever until a run says
@@ -3598,10 +3636,11 @@ public class ReleaseRequests {
                     }
                     if (active == null && probe != null && probe.configured()) {
                       // A PROBE THAT IS THERE AND COULD NOT ANSWER HOLDS (qits-760). The vouch
-                      // above may be any green run ever recorded at this sha — on a fold that
-                      // reproduces an already-released commit it is the PREVIOUS release's publish
-                      // run, days old — so the probe is the only thing standing between it and
-                      // this request's own QA run, which is still building. Measured 2026-10-07:
+                      // above used to be any green run ever recorded at this sha — on a fold that
+                      // reproduces an already-released commit, the PREVIOUS release's publish run,
+                      // days old. Since qits-1266 it is a run of this request's own, but a second
+                      // run of its own may still be building, and the probe is what sees it.
+                      // Measured 2026-10-07:
                       // qits-ci restarted for its own deploy, the probe failed for the seconds it
                       // was down, the sweep read that as "nothing in flight", and qits-edge-service
                       // 44385ca2 released at 18:55:12 on a four-day-old publish verdict while its
@@ -4663,9 +4702,14 @@ public class ReleaseRequests {
    * deployment. That is what keeps the report from becoming a second, disagreeing evaluation.
    *
    * <ul>
-   *   <li><b>CI</b> — a red verdict is FAILED (and has already rejected the request), a green
-   *       one PASSED, nothing PENDING. The active-run probe is deliberately not asked here: it
-   *       narrows the gate rather than answering it, and a read must not make an HTTP call per row.
+   *   <li><b>CI</b> — the request's own newest run ({@code CiVerdicts}, qits-1266: its QA runs on
+   *       its backing branch and its tag build, never {@code main}'s or another request's run on
+   *       the same commit): red is FAILED (and has already rejected the request), green PASSED,
+   *       none PENDING, on an open and a concluded request alike. The
+   *       {@code verdicts} handed in are the whole commit's; the gate does the filtering, the
+   *       same filtering {@link #evaluate} decides by. The active-run probe is deliberately not
+   *       asked here: it narrows the gate rather than answering it, and a read must not make an
+   *       HTTP call per row.
    *   <li><b>Approval</b> — the decision at this fold. WAITING is PENDING, a decline is FAILED.
    *   <li><b>Publish</b> — the released tag's own release run, read off {@code publish_state}. It is
    *       the one gate whose <em>membership</em> is not in the gate set this class resolved: it is
@@ -4831,10 +4875,10 @@ public class ReleaseRequests {
    * Read the automations gate for one request off the ledger and the waiver, deciding nothing.
    *
    * <p><b>A request past its gates with no note reports PASSED</b>: a note is dropped when its
-   * request settles, and a READY, RELEASED, FINALIZED or failed-at-execution request got there only
-   * by passing this gate (or from before it existed), so reporting it PENDING would claim a wait
-   * that is over. Every other state with no note is PENDING — not asked yet, or asked by a process
-   * that has since restarted.
+   * request settles, and a READY, RELEASED, FINALIZED, OBSOLETE or failed-at-execution request got
+   * there only by passing this gate (or from before it existed), so reporting it PENDING would
+   * claim a wait that is over. Every other state with no note is PENDING — not asked yet, or asked
+   * by a process that has since restarted.
    */
   private AutomationView automationsOf(ReleaseRequest row, boolean applies, boolean waived) {
     AutomationLedger.Note note = automationLedger.noteFor(row.id).orElse(null);
@@ -4877,7 +4921,10 @@ public class ReleaseRequests {
     } else if (row.state == ReleaseRequest.State.READY
         || row.state == ReleaseRequest.State.RELEASED
         || row.state == ReleaseRequest.State.FINALIZED
+        || row.state == ReleaseRequest.State.OBSOLETE
         || row.state == ReleaseRequest.State.FAILED) {
+      // OBSOLETE too (qits-1266): only a RELEASED request is ever made obsolete, so it passed this
+      // gate exactly as a FINALIZED one did, and reading it PENDING claimed a wait that never was.
       gate = ReleaseGates.State.PASSED;
     } else {
       gate = ReleaseGates.State.PENDING;
@@ -4927,6 +4974,7 @@ public class ReleaseRequests {
         || row.state == ReleaseRequest.State.READY
         || row.state == ReleaseRequest.State.RELEASED
         || row.state == ReleaseRequest.State.FINALIZED
+        || row.state == ReleaseRequest.State.OBSOLETE
         || row.state == ReleaseRequest.State.FAILED) {
       return PRE_RUN_PASSED;
     }

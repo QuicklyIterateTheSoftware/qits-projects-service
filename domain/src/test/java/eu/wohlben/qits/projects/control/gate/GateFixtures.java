@@ -14,12 +14,23 @@ final class GateFixtures {
 
   static final String FOLD = "0123456789abcdef0123456789abcdef01234567";
 
+  /** The request's stored backing branch, what its own QA runs build. */
+  static final String BACKING = "release/repo-1-rr-1";
+
+  /** The released version, what its own tag build builds. */
+  static final String TAG = "2026.1009.100000";
+
+  /** When the default fixture verdicts finished; before every release stamp below. */
+  static final Instant FINISHED = Instant.parse("2026-10-09T09:00:00Z");
+
   private GateFixtures() {}
 
   static ReleaseRequest request() {
     ReleaseRequest row = new ReleaseRequest();
     row.id = "rr-1";
     row.repoId = "repo-1";
+    row.qualifiedId = "repo-1-rr-1";
+    row.backingBranch = BACKING;
     row.mergedSha = FOLD;
     row.state = ReleaseRequest.State.PENDING;
     return row;
@@ -67,18 +78,35 @@ final class GateFixtures {
         kind, label, state, FOLD, "run-" + kind, null, detail, null, null);
   }
 
+  /** A green QA run of the request's own, on its backing branch. */
   static CommitBuildStatusDto green(String runId) {
-    return new CommitBuildStatusDto(runId, "SUCCESS", "release/rr-1", null);
+    return green(runId, FINISHED);
   }
 
+  /** A red QA run of the request's own, on its backing branch. */
   static CommitBuildStatusDto red(String runId) {
-    return new CommitBuildStatusDto(runId, "FAILED", "release/rr-1", null);
+    return red(runId, FINISHED);
+  }
+
+  static CommitBuildStatusDto green(String runId, Instant finishedAt) {
+    return verdict(runId, "SUCCESS", BACKING, finishedAt);
+  }
+
+  static CommitBuildStatusDto red(String runId, Instant finishedAt) {
+    return verdict(runId, "FAILED", BACKING, finishedAt);
+  }
+
+  static CommitBuildStatusDto verdict(
+      String runId, String status, String branch, Instant finishedAt) {
+    return new CommitBuildStatusDto(runId, status, branch, finishedAt);
   }
 
   static ReleasedTagPendingMerge released(
       ReleasedTagPendingMerge.PublishState publish, boolean merged) {
     ReleasedTagPendingMerge tag = new ReleasedTagPendingMerge();
-    tag.tagName = "2026.1009.100000";
+    tag.tagName = TAG;
+    tag.releaseRequestId = "rr-1";
+    tag.releasedAt = Instant.parse("2026-10-09T10:00:00Z");
     tag.publishState = publish;
     tag.publishRunId = publish == null ? null : "publish-run";
     tag.publishDetail = publish == ReleasedTagPendingMerge.PublishState.FAILED ? "Run red" : null;
@@ -95,6 +123,17 @@ final class GateFixtures {
       ReleasedTagPendingMerge released) {
     return new GateSubject(
         request(), set, approval, automations, verdicts, released, GateSubject.Deployment.NOT_ASKED);
+  }
+
+  /** The same, about a given request row rather than the default PENDING one. */
+  static GateSubject subject(
+      ReleaseRequest request,
+      ReleaseGates.GateSet set,
+      List<CommitBuildStatusDto> verdicts,
+      ReleasedTagPendingMerge released,
+      GateSubject.Deployment deployment) {
+    return new GateSubject(
+        request, set, notRequired(), noAutomations(), verdicts, released, deployment);
   }
 
   static GateSubject subject(ReleaseGates.GateSet set) {

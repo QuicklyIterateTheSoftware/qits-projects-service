@@ -523,7 +523,7 @@ public class ReleaseRequestApprovalDoorTest {
             UUID.randomUUID().toString(),
             "BuildFailed",
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(automationRepoId, merged) + "\",\"commitSha\":\""
                 + merged
                 + "\",\"repoId\":\""
                 + automationRepoId
@@ -764,7 +764,7 @@ public class ReleaseRequestApprovalDoorTest {
             UUID.randomUUID().toString(),
             "BuildSuccessful",
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\""
                 + sha
                 + "\",\"repoId\":\""
                 + repoId

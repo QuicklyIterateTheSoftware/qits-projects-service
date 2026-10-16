@@ -161,12 +161,21 @@ public class ReleaseRequestFlowTest {
    * a qits-ci that has not released the field yet publishes.
    */
   private void verdict(String name, String sha, String runId, String retryOfRunId, String extra) {
+    verdictOn(BackingBranches.atFold(repoId, sha), name, sha, runId, retryOfRunId, extra);
+  }
+
+  /**
+   * The same, on a branch the test names: the request's backing branch is what makes a run its own
+   * (qits-1266), so a run of somebody else's is written by naming theirs.
+   */
+  private void verdictOn(
+      String branch, String name, String sha, String runId, String retryOfRunId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId
+            "{\"branch\":\"" + branch + "\",\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId
                 + "\""
                 + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
                 + ",\"runId\":\"" + runId + "\"" + extra + "}",
@@ -458,10 +467,59 @@ public class ReleaseRequestFlowTest {
     verdict("BuildFailed", merged, ",\"outcome\":\"FAILED\",\"gating\":false");
     awaitState(id, "REJECTED");
 
-    // And a green one afterwards does not undo it: the fold is what was judged.
-    verdict("BuildSuccessful", merged, "");
-    assertEquals("REJECTED", stateOf(id), "a rejection is answered by a push, not by a second run");
+    // And a green on somebody else's branch afterwards does not undo it (qits-1266): only the
+    // request's own runs are its gate's evidence.
+    verdictOn("main", "BuildSuccessful", merged, run("main"), null, "");
+    assertEquals("REJECTED", stateOf(id), "a main build at the same commit answers nothing here");
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  /**
+   * <b>A newer green of the request's own answers its rejection, retry or not</b> (qits-1266). The
+   * CI gate is the request's newest own run, so a green QA run on its backing branch that finished
+   * after the red — a phase rerun, or a retry whose lineage never reached this service — is the
+   * answer; leaving the request REJECTED would have its gate read PASSED beside the rejection.
+   * Before qits-1266 such a green changed nothing and only a push or a supersession could.
+   */
+  @Test
+  public void aNewerGreenOfItsOwnAnswersTheRejectionWithoutARetry() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildSuccessful", merged, run("rerun"), null, "");
+    awaitState(id, "RELEASED");
+    assertEquals(merged, executor.calls().get(0).expectedSha(), "released at the fold that was judged");
+  }
+
+  /**
+   * <b>A foreign red does not reject</b> (qits-1266, the rr-143 shape): a run on {@code main} — or
+   * another request's QA run, or its automation — at the very commit this request folded is not
+   * this request's QA, and before qits-1266 it rejected the request all the same. It neither rejects
+   * nor vouches: the request waits for its own run, and that run's green releases it.
+   */
+  @Test
+  public void aForeignRedAtTheSameCommitNeitherRejectsNorVouches() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+
+    verdictOn("main", "BuildFailed", merged, run("main-red"), null, ",\"outcome\":\"FAILED\"");
+    verdictOn(
+        "release/somebody-else-rr-9",
+        "BuildFailed",
+        merged,
+        run("other-request"),
+        null,
+        ",\"outcome\":\"FAILED\"");
+    releaseRequests.sweep();
+    assertEquals("PENDING", stateOf(id), "nobody's red but its own rejects it");
+    assertTrue(detailOf(id).contains("Waiting for a CI verdict"), detailOf(id));
+
+    verdict("BuildSuccessful", merged, "");
+    awaitState(id, "RELEASED");
   }
 
   /**
@@ -573,7 +631,8 @@ public class ReleaseRequestFlowTest {
     java.util.Set<String> superseded =
         ledger.record(
             new eu.wohlben.qits.projects.control.BuildStatusLedger.Verdict(
-                green, repoId, projectId, null, "work", merged, "SUCCESS", Instant.now(), null,
+                green, repoId, projectId, null, BackingBranches.of(id), merged, "SUCCESS",
+                Instant.now(), null,
                 unpublished));
     assertTrue(superseded.contains(red), "the ledger walked past the gap to " + red);
     assertEquals("REJECTED", stateOf(id), "nothing re-evaluated it yet: only the sweep is left");
@@ -583,13 +642,15 @@ public class ReleaseRequestFlowTest {
   }
 
   /**
-   * <b>A lookup that fails costs the re-arm and nothing else.</b> qits-ci unreachable (here: a port
-   * that throws in spite of its contract) stops the walk at the gap, exactly where it stopped
-   * before qits-556 — the green verdict is still recorded, no exception reaches the consumption,
-   * and the request stays REJECTED naming the run that rejected it.
+   * <b>A lookup that fails costs the supersession and nothing else.</b> qits-ci unreachable (here: a
+   * port that throws in spite of its contract) stops the walk at the gap, exactly where it stopped
+   * before qits-556 — the green verdict is still recorded, the red row still stands, and no
+   * exception reaches the consumption. Before qits-1266 that left the request REJECTED naming the
+   * red; now the green is the request's own NEWEST run at the fold, which answers the rejection
+   * with or without the lineage, so the request releases all the same.
    */
   @Test
-  public void aLookupThatFailsLeavesTheRequestRejectedAndThrowsNothing() {
+  public void aLookupThatFailsCostsTheSupersessionButTheNewerGreenStillAnswers() {
     String id = create("work");
     String merged = mergedShaOf(id);
     String red = run("red");
@@ -602,11 +663,9 @@ public class ReleaseRequestFlowTest {
     awaitState(id, "REJECTED");
 
     verdict("BuildSuccessful", merged, green, unpublished, "");
-    releaseRequests.sweep();
+    awaitState(id, "RELEASED");
 
-    assertEquals("REJECTED", stateOf(id), "the gap could not be crossed");
-    assertTrue(detailOf(id).contains(red), detailOf(id));
-    assertEquals(0, executor.calls().size());
+    assertTrue(ledger.stands(red), "the gap could not be crossed: the red row still stands");
     assertTrue(lineage.asked().contains(unpublished), "it was asked, and it failed");
     assertTrue(
         ledger.verdictsOf(repoId, merged).stream().anyMatch(v -> green.equals(v.runId())),
@@ -657,7 +716,10 @@ public class ReleaseRequestFlowTest {
     verdict("BuildFailed", merged, mine, null, ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
 
-    verdict("BuildSuccessful", merged, run("stranger"), run("somebody-elses"), "");
+    // On somebody else's branch: a green of this request's own that finished after the red would
+    // answer it by itself (qits-1266, aNewerGreenOfItsOwnAnswersTheRejectionWithoutARetry).
+    verdictOn(
+        "release/somebody-else-rr-9", "BuildSuccessful", merged, run("stranger"), run("somebody-elses"), "");
     releaseRequests.sweep();
 
     assertEquals("REJECTED", stateOf(id), "this rejection was never re-fired");

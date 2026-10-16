@@ -108,7 +108,7 @@ public class ReleaseWithNoWorkspaceResolutionTest {
             UUID.randomUUID().toString(),
             "BuildSuccessful",
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\"" + merged + "\",\"repoId\":\"" + repoId
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, merged) + "\",\"commitSha\":\"" + merged + "\",\"repoId\":\"" + repoId
                 + "\",\"runId\":\"run-" + UUID.randomUUID() + "\"}",
             null,
             null,

@@ -6,12 +6,29 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 
 /**
- * The QA build passed for the current fold. Configured by {@code .config/qits/release.yml} at
+ * The request's own newest CI run is green. Configured by {@code .config/qits/release.yml} at
  * {@code main} declaring a QA pipeline (see {@link ReleaseGates}).
  *
- * <p>Any red verdict is FAILED (and has already rejected the request), else any green one is
- * PASSED, else PENDING. The active-run probe is not asked: it narrows the gate in the sweep, and a
- * read must not make a call per row.
+ * <p><b>Own and newest</b> (qits-1266) — both are {@link CiVerdicts}',
+ * the reading the sweep decides on too, so this display and that decision answer from one rule:
+ *
+ * <ul>
+ *   <li>only the request's own runs count — its QA runs on its backing branch and its tag build on
+ *       its released version. A {@code main} build or another request's run on the same commit is
+ *       neither listed nor counted, red or green;
+ *   <li>the newest of them answers, on an open and a concluded request alike: red is FAILED (and,
+ *       before the tag, has rejected the request), green is PASSED, none is PENDING. An older
+ *       run's word is still listed as a check, marked superseded.
+ * </ul>
+ *
+ * <p>The checks list only the request's own runs; every run of the commit, red ones included, is
+ * still listed where runs are listed (the commit's build status and the Builds tab), which this
+ * class does not touch.
+ *
+ * <p>Before qits-1266 this read every verdict of the commit with "any red wins", and so showed
+ * {@code qits-qits-rr-143} FAILED — FINALIZED, its own runs green — on another request's
+ * automation run on {@code main}. The active-run probe is still not asked: it narrows the gate in
+ * the sweep, and a read must not make a call per row.
  */
 @ApplicationScoped
 public class CiBuildGate implements ReleaseGate {
@@ -50,33 +67,35 @@ public class CiBuildGate implements ReleaseGate {
 
   @Override
   public GateEvaluation evaluate(GateSubject subject) {
-    List<CommitBuildStatusDto> verdicts = subject.verdicts();
+    List<CommitBuildStatusDto> own =
+        CiVerdicts.own(subject.verdicts(), subject.request(), subject.released());
+    CommitBuildStatusDto newest = own.isEmpty() ? null : own.get(0);
     List<GateCheck> checks =
-        verdicts.stream()
+        own.stream()
             .map(
                 v ->
                     new GateCheck(
                         "Run " + v.runId(),
-                        success(v) ? "PASSED" : "FAILED",
-                        v.status() + (v.branch() == null ? "" : " on " + v.branch()),
+                        CiVerdicts.success(v) ? "PASSED" : "FAILED",
+                        v.status()
+                            + (v.branch() == null ? "" : " on " + v.branch())
+                            + (v == newest ? "" : "; superseded by run " + newest.runId()),
                         v.runId()))
             .toList();
-    CommitBuildStatusDto red = verdicts.stream().filter(v -> !success(v)).findFirst().orElse(null);
-    if (red != null) {
+    if (newest != null && !CiVerdicts.success(newest)) {
       return new GateEvaluation(
           ReleaseGates.State.FAILED,
-          "Run " + red.runId() + " finished " + red.status() + " for " + subject.shortFold(),
+          "Run " + newest.runId() + " finished " + newest.status() + " for " + subject.shortFold(),
           checks,
-          red.runId(),
+          newest.runId(),
           null);
     }
-    CommitBuildStatusDto green = verdicts.stream().filter(CiBuildGate::success).findFirst().orElse(null);
-    if (green != null) {
+    if (newest != null) {
       return new GateEvaluation(
           ReleaseGates.State.PASSED,
-          "Run " + green.runId() + " passed for " + subject.shortFold(),
+          "Run " + newest.runId() + " passed for " + subject.shortFold(),
           checks,
-          green.runId(),
+          newest.runId(),
           null);
     }
     return new GateEvaluation(
@@ -87,9 +106,5 @@ public class CiBuildGate implements ReleaseGate {
         checks,
         null,
         null);
-  }
-
-  private static boolean success(CommitBuildStatusDto verdict) {
-    return "SUCCESS".equals(verdict.status());
   }
 }

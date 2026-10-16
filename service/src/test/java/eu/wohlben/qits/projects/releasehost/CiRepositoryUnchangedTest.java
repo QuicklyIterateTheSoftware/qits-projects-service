@@ -206,7 +206,7 @@ public class CiRepositoryUnchangedTest {
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
-            "{\"branch\":\"work\",\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\""
                 + sha
                 + "\",\"repoId\":\""
                 + repoId

@@ -31,6 +31,25 @@ final class BackingBranches {
                     .orElseThrow(() -> new AssertionError("no release request " + requestId)));
   }
 
+  /**
+   * The backing branch of the newest request of {@code repoId} whose current fold is {@code
+   * mergedSha} — the branch qits-ci builds that request's QA run on, so a verdict a test announces
+   * for a fold is the request's OWN run and the CI gate reads it (qits-1266). A sha no request is
+   * folded at answers {@code work}, an ordinary branch nobody's gate counts.
+   */
+  static String atFold(String repoId, String mergedSha) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                ReleaseRequest.<ReleaseRequest>find(
+                        "repoId = ?1 and mergedSha = ?2 order by createdAt desc",
+                        repoId,
+                        mergedSha)
+                    .firstResultOptional()
+                    .map(ReleaseRequest::backingBranch)
+                    .orElse("work"));
+  }
+
   /** {@code refs/heads/<backing branch>}. */
   static String ref(String requestId) {
     return "refs/heads/" + of(requestId);

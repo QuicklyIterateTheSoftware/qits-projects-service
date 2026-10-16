@@ -698,7 +698,7 @@ public class UnattendedGateTicketTest {
             repoId,
             projectId,
             REPO_NAME,
-            "maintenance/dependencies",
+            BackingBranches.of(id),
             merged,
             "FAILED",
             Instant.now(),
@@ -858,7 +858,7 @@ public class UnattendedGateTicketTest {
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
-            "{\"branch\":\"maintenance/dependencies\",\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\""
                 + sha
                 + "\",\"repoId\":\""
                 + repoId

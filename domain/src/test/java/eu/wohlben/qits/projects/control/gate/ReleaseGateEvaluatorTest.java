@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
 /**
  * The gate classes answer exactly what {@code ReleaseRequests.gateReport} answered before they
  * existed. {@link #before} is that method's evaluation, copied as it was; every combination of its
- * inputs must give the same kinds, order and states.
+ * inputs must give the same kinds, order and states — with one deliberate change since: the CI
+ * gate is the request's own NEWEST run, not "any red wins" over every run of the commit
+ * (qits-1266), and {@link #before} says so in as few words as it can.
  */
 class ReleaseGateEvaluatorTest {
 
@@ -53,8 +55,16 @@ class ReleaseGateEvaluatorTest {
     for (ReleaseGates.State state : ReleaseGates.State.values()) {
       automations.add(automations(state));
     }
+    java.time.Instant early = java.time.Instant.parse("2026-10-09T08:00:00Z");
+    java.time.Instant late = java.time.Instant.parse("2026-10-09T09:00:00Z");
     List<List<CommitBuildStatusDto>> verdicts =
-        List.of(List.of(), List.of(green("g")), List.of(red("r")), List.of(green("g"), red("r")));
+        List.of(
+            List.of(),
+            List.of(green("g")),
+            List.of(red("r")),
+            List.of(green("g", early), red("r", late)),
+            List.of(red("r", early), green("g", late)),
+            List.of(verdict("m", "FAILED", "main", late), green("g", early)));
     List<ReleasedTagPendingMerge> releases = new ArrayList<>();
     releases.add(null);
     releases.add(released(null, false));
@@ -160,11 +170,19 @@ class ReleaseGateEvaluatorTest {
     List<CommitBuildStatusDto> verdicts = subject.verdicts();
     ReleasedTagPendingMerge released = subject.released();
     Map<ReleaseGates.Kind, ReleaseGates.State> states = new EnumMap<>(ReleaseGates.Kind.class);
-    if (verdicts.stream().anyMatch(v -> !"SUCCESS".equals(v.status()))) {
-      states.put(ReleaseGates.Kind.CI, ReleaseGates.State.FAILED);
-    } else if (verdicts.stream().anyMatch(v -> "SUCCESS".equals(v.status()))) {
-      states.put(ReleaseGates.Kind.CI, ReleaseGates.State.PASSED);
-    }
+    // qits-1266: the request's own runs (here: its backing branch), the newest one answering.
+    verdicts.stream()
+        .filter(v -> BACKING.equals(v.branch()))
+        .max(
+            java.util.Comparator.comparing(CommitBuildStatusDto::finishedAt)
+                .thenComparing(CommitBuildStatusDto::runId))
+        .ifPresent(
+            newest ->
+                states.put(
+                    ReleaseGates.Kind.CI,
+                    "SUCCESS".equals(newest.status())
+                        ? ReleaseGates.State.PASSED
+                        : ReleaseGates.State.FAILED));
     switch (approval.state()) {
       case APPROVED -> states.put(ReleaseGates.Kind.APPROVAL, ReleaseGates.State.PASSED);
       case DECLINED -> states.put(ReleaseGates.Kind.APPROVAL, ReleaseGates.State.FAILED);

@@ -151,7 +151,8 @@ public class ReleaseRequestSourcesTest {
             UUID.randomUUID().toString(),
             "BuildSuccessful",
             Instant.now(),
-            "{\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId + "\",\"runId\":\"run-"
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\"" + sha
+                + "\",\"repoId\":\"" + repoId + "\",\"runId\":\"run-"
                 + UUID.randomUUID() + "\"}",
             null,
             null,

@@ -425,7 +425,7 @@ public class ReleaseConvergenceTest {
             UUID.randomUUID().toString(),
             "BuildSuccessful",
             Instant.now(),
-            "{\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\""
                 + sha
                 + "\",\"repoId\":\""
                 + repoId

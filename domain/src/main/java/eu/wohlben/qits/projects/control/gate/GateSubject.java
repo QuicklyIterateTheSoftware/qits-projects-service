@@ -15,7 +15,9 @@ import java.util.List;
  * @param gateSet the gates the repository's {@code main} configures, or that it could not be read
  * @param approval the approval gate's facts at the current fold
  * @param automations the automations gate's facts at the current fold
- * @param verdicts the CI verdicts for the current fold; empty where none, or no fold yet
+ * @param verdicts every CI verdict the ledger holds for the current fold's commit — any branch, any
+ *     request, any time; empty where none, or no fold yet. Which of them are this request's own is
+ *     {@link CiVerdicts}' question, never the caller's
  * @param released the request's released tag, or null where it has not released
  * @param deployment what qits-deployments said about the released version on this read
  */

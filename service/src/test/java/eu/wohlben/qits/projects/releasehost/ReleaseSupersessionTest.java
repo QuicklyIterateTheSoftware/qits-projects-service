@@ -315,7 +315,7 @@ public class ReleaseSupersessionTest {
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
-            "{\"branch\":\"work-a\",\"commitSha\":\""
+            "{\"branch\":\"" + BackingBranches.atFold(repoId, sha) + "\",\"commitSha\":\""
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
