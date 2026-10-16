@@ -3058,8 +3058,8 @@ public class ReleaseRequests {
     }
     try {
       LOG.debugf(
-          "Release request %s %s; asking qits-ci to cancel its %s runs",
-          requestId, reason, qaOnly ? "QA" : "");
+          "Release request %s %s; asking qits-ci to cancel its %s",
+          requestId, reason, qaOnly ? "QA runs" : "runs");
       if (qaOnly) {
         cancellations.get().cancelQaRunsOf(repoId, requestId);
       } else {
