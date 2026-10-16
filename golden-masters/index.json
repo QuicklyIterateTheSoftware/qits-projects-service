@@ -1880,6 +1880,21 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "backupSyncProject",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/repositories/backup-sync",
+          "status": 202,
+          "file": "a-project-with-repositories-in-components/backupSyncProject.json",
+          "frozen": {
+            "ids": [
+              "$.projectId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listProjectRepositories",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/repositories",
@@ -6080,6 +6095,21 @@
       },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "backupSyncProject",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/repositories/backup-sync",
+          "status": 404,
+          "file": "no-project-with-the-given-id/backupSyncProject.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "getProject",
           "method": "GET",

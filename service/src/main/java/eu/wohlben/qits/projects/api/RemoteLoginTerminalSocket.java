@@ -30,9 +30,10 @@ import org.jboss.logging.Logger;
  * <p>Wire protocol matches {@code TerminalSocket}: the client sends {@code
  * {"type":"data","data":…}} for keystrokes and {@code {"type":"resize","cols":N,"rows":M}} for
  * size; the server sends raw PTY output as text frames, an exit note, then a clean close (1000) —
- * the frontend's signal to refetch sync-status. Cross-origin handshakes are rejected globally by
- * {@code SameOriginUpgradeCheck}; the path is not in {@code PublicPaths}, so the upgrade requires
- * an authenticated identity.
+ * the frontend's signal to refetch sync-status. The path is not in {@code PublicPaths}, so the
+ * upgrade requires an authenticated identity ({@code qits:admin} / {@code qits:admin-agent}); a
+ * non-browser client such as {@code qits repositories remote-login} sends its bearer on the
+ * handshake through qits-edge.
  *
  * <p>The path is a <b>literal</b>: {@code @WebSocket} does not follow {@code quarkus.rest.path}, so
  * the {@code /projects/api} prefix is spelled out here and has to be kept in step with that key by

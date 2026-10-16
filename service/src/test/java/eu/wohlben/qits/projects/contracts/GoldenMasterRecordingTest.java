@@ -200,6 +200,16 @@ class GoldenMasterRecordingTest {
               200,
               null,
               "$.entries:repository.name"),
+          // The project-wide backup button, after a backup-remote sign-in: three of the four
+          // repositories have a forge twin, so the answer counts three scheduled.
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS,
+              "backupSyncProject",
+              "POST",
+              "/projects/api/projects/{projectId}/repositories/backup-sync",
+              202,
+              null,
+              null),
           // The whole planning tree, unfiltered: consumers filter and count on their side. Tree
           // order (roots oldest first) is the provider's own and is fixed by the seed order.
           new Interaction(
@@ -413,6 +423,14 @@ class GoldenMasterRecordingTest {
               "getProject",
               "GET",
               "/projects/api/projects/{projectId}",
+              404,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID,
+              "backupSyncProject",
+              "POST",
+              "/projects/api/projects/{projectId}/repositories/backup-sync",
               404,
               null,
               null),
