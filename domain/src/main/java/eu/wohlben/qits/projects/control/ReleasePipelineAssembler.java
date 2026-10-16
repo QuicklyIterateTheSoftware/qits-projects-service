@@ -8,7 +8,9 @@ import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,8 +183,8 @@ public class ReleasePipelineAssembler {
   /**
    * The pipeline block for one request, or null where there is nothing to draw.
    *
-   * @param runs every phase run of this request, newest transition first — {@code
-   *     ReleasePipelineRuns} answers exactly that order, and the fold below depends on it
+   * @param runs every phase run of this request, in any order — {@code ReleasePipelineRuns} answers
+   *     newest transition first, and {@link #newestPerPhase} sorts them so all the same
    * @param gates the gates this request reports, already decided, in {@code ReleaseGates.report}'s
    *     order; placed here and never re-evaluated
    * @param details a sentence per gate where the existing path already has one, sourced rather than
@@ -420,13 +422,28 @@ public class ReleasePipelineAssembler {
    *
    * <p>With no {@code foldSha} nothing is filtered. The publish phase is not filtered either: all its
    * runs build the one tag.
+   *
+   * <p><b>Each phase shows its newest run and nothing else</b> (qits-1266): a green retry replaces
+   * the red it retried, and a red rerun the green before it. The rows are sorted here (newest
+   * transition first, then run id) rather than trusted to arrive in the query's order, because the
+   * phase drawn is decided by that order and a caller handing rows over in any other — a test, a
+   * merged list — drew an older red over its newer run.
    */
+  /** Newest transition first, then run id, so a tie reads the same on every call. */
+  private static final Comparator<ReleasePipelineRun> NEWEST_TRANSITION_FIRST =
+      Comparator.comparing(
+              (ReleasePipelineRun run) -> run.updatedAt,
+              Comparator.nullsFirst(Comparator.<Instant>naturalOrder()))
+          .thenComparing(run -> run.runId, Comparator.nullsFirst(Comparator.<String>naturalOrder()))
+          .reversed();
+
   private static Map<String, ReleasePipelineRun> newestPerPhase(
       List<ReleasePipelineRun> runs, String foldSha) {
     Map<String, ReleasePipelineRun> newest = new LinkedHashMap<>();
     ReleasePipelineRun qaAtFold = null;
     ReleasePipelineRun qaUnknownCommit = null;
-    for (ReleasePipelineRun run : runs) {
+    List<ReleasePipelineRun> ordered = runs.stream().sorted(NEWEST_TRANSITION_FIRST).toList();
+    for (ReleasePipelineRun run : ordered) {
       String phase = phaseWordOf(run.phase);
       if (phase == null) {
         continue;

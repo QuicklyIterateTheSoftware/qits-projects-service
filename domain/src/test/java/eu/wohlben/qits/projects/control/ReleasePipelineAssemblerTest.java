@@ -78,6 +78,39 @@ class ReleasePipelineAssemblerTest {
     assertEquals("retry", qa(runs, NEW_FOLD).runId());
   }
 
+  /**
+   * Each phase shows its newest run whatever order the rows are handed over in (qits-1266): a green
+   * retry over the red it retried, and a red rerun over the green before it.
+   */
+  @Test
+  void theNewestRunOfAPhaseIsShownWhateverTheOrderTheRowsArriveIn() {
+    ReleasePipelineRun red = run("first", NEW_FOLD, "FAILED", "2026-10-09T17:30:00Z");
+    ReleasePipelineRun green = run("retry", NEW_FOLD, "SUCCESS", "2026-10-09T18:00:00Z");
+    assertEquals("retry", qa(List.of(red, green), NEW_FOLD).runId());
+    assertEquals("SUCCESS", qa(List.of(red, green), NEW_FOLD).state());
+
+    ReleasePipelineRun laterRed = run("rerun", NEW_FOLD, "FAILED", "2026-10-09T18:30:00Z");
+    assertEquals("rerun", qa(List.of(red, green, laterRed), NEW_FOLD).runId());
+
+    ReleasePipelineRun publishRed = publish("publish-1", "FAILED", "2026-10-09T19:00:00Z");
+    ReleasePipelineRun publishGreen = publish("publish-2", "SUCCESS", "2026-10-09T19:30:00Z");
+    ReleasePipelineDto block =
+        assembler.assemble(
+            List.of(publishRed, publishGreen, green), List.of(), Map.of(), null, NEW_FOLD, LIST);
+    ReleasePhaseDto published =
+        block.phases().stream()
+            .filter(phase -> ReleasePipelineAssembler.PHASE_PUBLISH.equals(phase.phase()))
+            .findFirst()
+            .orElseThrow();
+    assertEquals("publish-2", published.runId());
+  }
+
+  private static ReleasePipelineRun publish(String id, String status, String at) {
+    ReleasePipelineRun run = run(id, NEW_FOLD, status, at);
+    run.phase = ReleasePipelineRuns.PHASE_RELEASE;
+    return run;
+  }
+
   private static final ReleasePipelineAssembler.DeployReach LIST =
       ReleasePipelineAssembler.DeployReach.LIST_READ;
 
