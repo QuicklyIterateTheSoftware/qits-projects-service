@@ -3032,15 +3032,39 @@ public class ReleaseRequests {
    * before that rule reached every archetype — and that request's runs are none of this one's
    * business. The per-repository rule that one build runs at a time lives in qits-ci's accept
    * path, not here: this cancels by request id and nothing wider.
+   *
+   * <p><b>Cancels every phase, including the tag's own publish run — which is why RELEASED does not
+   * call this overload (qits-1264).</b> At every other call site nothing has published yet, so
+   * "everything" and "this request's QA runs" are the same set; at RELEASED they are not, because
+   * qits-ci correlates the publish run it may already have started off the same {@code
+   * releaseRequestId}. See {@link #cancelQaOnly} for the one place that distinction matters.
    */
   private void cancel(String repoId, String requestId, String reason) {
+    cancel(repoId, requestId, reason, false);
+  }
+
+  /**
+   * The RELEASED-only narrowing of {@link #cancel}: stop this request's QA runs and leave its
+   * publish run — if the tag push already started one — alone. See {@link QaRunCancellations
+   * #cancelQaRunsOf} and the one call site at {@code release()} for the full argument.
+   */
+  private void cancelQaOnly(String repoId, String requestId, String reason) {
+    cancel(repoId, requestId, reason, true);
+  }
+
+  private void cancel(String repoId, String requestId, String reason, boolean qaOnly) {
     if (!cancellations.isResolvable()) {
       return;
     }
     try {
       LOG.debugf(
-          "Release request %s %s; asking qits-ci to cancel its runs", requestId, reason);
-      cancellations.get().cancelRunsOf(repoId, requestId);
+          "Release request %s %s; asking qits-ci to cancel its %s",
+          requestId, reason, qaOnly ? "QA runs" : "runs");
+      if (qaOnly) {
+        cancellations.get().cancelQaRunsOf(repoId, requestId);
+      } else {
+        cancellations.get().cancelRunsOf(repoId, requestId);
+      }
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not cost the fold.
       LOG.warnf(e, "Could not ask qits-ci to cancel the runs of release request %s", requestId);
@@ -4087,8 +4111,11 @@ public class ReleaseRequests {
       // The backing branch is gone now, so any run still building it is doomed to a checkout
       // failure that has nothing to do with the code under test — the exact case cancel() exists
       // for, and best effort for the same reason as every other call to it: the release already
-      // happened and nothing here may undo it.
-      cancel(ask.repoId(), id, "was released as " + outcome.version());
+      // happened and nothing here may undo it. QA-only, not cancel(): the tag push that just
+      // happened may already have started this same request's RELEASE-phase publish run — qits-ci
+      // correlates it by this releaseRequestId too — and cancelling "everything" here would race
+      // that run instead of only cleaning up the QA run the deleted branch stranded (qits-1264).
+      cancelQaOnly(ask.repoId(), id, "was released as " + outcome.version());
       remergeOpenOf(ask.repoId(), id, "the sibling release " + outcome.version() + " is in flight");
       // THE PUBLISH PHASE'S FORK, on the release's own thread and the moment it lands: a repository
       // that declares no deployment has nothing to wait for and its tag goes to main now. One that

@@ -14,11 +14,15 @@ import java.util.List;
  * <p>The assertion this exists for is a <b>count and a scope</b>: one supersession is exactly one
  * cancellation, naming exactly the request whose fold moved. A cancellation naming a sibling — or
  * naming a repository and no request — would be a green build taken away from somebody else.
+ *
+ * <p>{@code cancelQaRunsOf} is overridden rather than left to the port's default, so a RELEASED
+ * cancellation records distinctly from every other call site's "everything" (qits-1264) and a test
+ * can assert which one fired.
  */
 @ApplicationScoped
 public class RecordingQaRunCancellations implements QaRunCancellations {
 
-  public record Cancelled(String repoId, String releaseRequestId) {}
+  public record Cancelled(String repoId, String releaseRequestId, boolean qaOnly) {}
 
   private final List<Cancelled> calls = Collections.synchronizedList(new ArrayList<>());
 
@@ -31,12 +35,22 @@ public class RecordingQaRunCancellations implements QaRunCancellations {
     return calls().stream().map(Cancelled::releaseRequestId).toList();
   }
 
+  /** The requests cancelled QA-only — the RELEASED call site, and nothing else. */
+  public List<String> qaOnlyCancelledRequests() {
+    return calls().stream().filter(Cancelled::qaOnly).map(Cancelled::releaseRequestId).toList();
+  }
+
   public void reset() {
     calls.clear();
   }
 
   @Override
   public void cancelRunsOf(String repoId, String releaseRequestId) {
-    calls.add(new Cancelled(repoId, releaseRequestId));
+    calls.add(new Cancelled(repoId, releaseRequestId, false));
+  }
+
+  @Override
+  public void cancelQaRunsOf(String repoId, String releaseRequestId) {
+    calls.add(new Cancelled(repoId, releaseRequestId, true));
   }
 }
