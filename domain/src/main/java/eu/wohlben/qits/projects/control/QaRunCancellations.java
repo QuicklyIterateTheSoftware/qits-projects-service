@@ -34,11 +34,37 @@ package eu.wohlben.qits.projects.control;
 public interface QaRunCancellations {
 
   /**
-   * Cancel every in-flight QA run of one release request.
+   * Cancel every in-flight run of one release request, whichever CI phase it belongs to.
    *
    * @param repoId the repository's storage id — the git host's key, and qits-ci's
    * @param releaseRequestId the request whose runs are stale. <b>Never null and never widened to
    *     "everything in this repository"</b>: see the class javadoc.
    */
   void cancelRunsOf(String repoId, String releaseRequestId);
+
+  /**
+   * Cancel only this request's QA runs — qits-ci's {@code RELEASE_REQUEST} phase — and leave any
+   * other run of the request untouched.
+   *
+   * <p><b>Used at exactly one call site: a request that just reached RELEASED (qits-1264).</b> The
+   * tag push that released it may already have started the tag's own {@code RELEASE}-phase publish
+   * run, and that run carries the <em>same</em> {@code releaseRequestId} — qits-ci correlates both
+   * phases by it — so a cancellation naming "every run of this request" there would race its own
+   * publish before it has a chance to report. Everywhere else a request concludes or is superseded
+   * (withdrawn, a branch deleted out from under it, finalized, re-folded onto a different sha), no
+   * publish run exists yet and {@link #cancelRunsOf} is the right call.
+   *
+   * <p>The default widens to {@link #cancelRunsOf}: an implementation that does not itself
+   * distinguish the phase — including no implementation at all, and an older qits-ci, which simply
+   * ignores an unknown {@code phase} field — cancelling everything is the behaviour this call has
+   * always had. That is safe to fall back to everywhere but the one call site above, and this port
+   * is best effort there exactly as it is everywhere else.
+   *
+   * @param repoId the repository's storage id — the git host's key, and qits-ci's
+   * @param releaseRequestId the request whose QA runs are stale. <b>Never null and never widened to
+   *     "everything in this repository"</b>: see the class javadoc.
+   */
+  default void cancelQaRunsOf(String repoId, String releaseRequestId) {
+    cancelRunsOf(repoId, releaseRequestId);
+  }
 }

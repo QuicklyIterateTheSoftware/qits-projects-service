@@ -380,15 +380,20 @@ public class AutoReleaseTest {
   }
 
   /**
-   * <b>A release asks qits-ci to cancel the request's runs, the moment the tag lands.</b> The
+   * <b>A release asks qits-ci to cancel the request's QA runs, the moment the tag lands.</b> The
    * executor already deleted the branch a stale run would still be building — {@link
-   * #aMetGateStampsBumpsCommitsTagsDeletesAndAnnounces} proves that half — so a run still in flight
-   * is heading for a checkout failure that says nothing about the code, and freeing that build agent
-   * is exactly {@code cancel}'s job. {@code ReleaseGateCorrelationTest} owns the same call for
-   * supersession and for WITHDRAWN; this is its RELEASED half.
+   * #aMetGateStampsBumpsCommitsTagsDeletesAndAnnounces} proves that half — so a QA run still in
+   * flight is heading for a checkout failure that says nothing about the code, and freeing that
+   * build agent is exactly {@code cancel}'s job. {@code ReleaseGateCorrelationTest} owns the same
+   * call for supersession and for WITHDRAWN; this is its RELEASED half.
+   *
+   * <p><b>QA-only, not "everything" (qits-1264).</b> The tag push that just landed may already have
+   * started this same request's RELEASE-phase publish run — qits-ci correlates it by this very
+   * {@code releaseRequestId} — and a RELEASED cancellation naming "everything" would race that run
+   * instead of only cleaning up the stranded QA one.
    */
   @Test
-  public void aReleaseCancelsAnyRunStillBuildingTheDeletedBranch() {
+  public void aReleaseCancelsAnyQaRunStillBuildingTheDeletedBranch() {
     String id = releaseARequest(reactor());
     awaitState(id, "RELEASED");
 
@@ -396,6 +401,7 @@ public class AutoReleaseTest {
     RecordingQaRunCancellations.Cancelled cancelled = cancellations.calls().get(0);
     assertEquals(repoId, cancelled.repoId());
     assertEquals(id, cancelled.releaseRequestId());
+    assertTrue(cancelled.qaOnly(), "RELEASED must not cancel the tag's own publish run");
   }
 
   @Test
