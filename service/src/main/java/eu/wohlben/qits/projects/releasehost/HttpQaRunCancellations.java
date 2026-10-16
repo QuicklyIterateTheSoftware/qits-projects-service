@@ -29,9 +29,15 @@ import org.jboss.logging.Logger;
  *   Content-Type: application/json
  *
  *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;"}
+ *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;", "phase": "RELEASE_REQUEST"}
  *
  *   -&gt; 202 (or 200) — the runs of that request are cancelled, or there were none
  * </pre>
+ *
+ * <p>The {@code phase} field is sent only by {@link #cancelQaRunsOf}, exactly the body above with
+ * {@code "phase":"RELEASE_REQUEST"} appended, and is absent otherwise — byte-identical to the body
+ * this class always sent. An older qits-ci that has never heard of the field ignores it and
+ * cancels everything, which is the documented fallback on the port.
  *
  * <p><b>{@code releaseRequestId} is the whole of the scoping and it is never optional.</b> qits-ci
  * knows which runs belong to a release request because {@code ReleaseRequestChanged} told it: the
@@ -73,6 +79,21 @@ public class HttpQaRunCancellations implements QaRunCancellations {
 
   @Override
   public void cancelRunsOf(String repoId, String releaseRequestId) {
+    send(repoId, releaseRequestId, null);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Sent as the exact body {@link #cancelRunsOf} would send, plus {@code "phase":
+   * "RELEASE_REQUEST"} — see the class javadoc for why that is the one addition.
+   */
+  @Override
+  public void cancelQaRunsOf(String repoId, String releaseRequestId) {
+    send(repoId, releaseRequestId, "RELEASE_REQUEST");
+  }
+
+  private void send(String repoId, String releaseRequestId, String phase) {
     if (ciUrl.isEmpty() || ciUrl.get().isBlank()) {
       return;
     }
@@ -85,6 +106,9 @@ public class HttpQaRunCancellations implements QaRunCancellations {
       Map<String, String> body = new LinkedHashMap<>();
       body.put("repoId", repoId);
       body.put("releaseRequestId", releaseRequestId);
+      if (phase != null) {
+        body.put("phase", phase);
+      }
       HttpRequest.Builder builder =
           HttpRequest.newBuilder(URI.create(ciUrl.get() + "/ci/api/runs/cancellations"))
               .timeout(Duration.ofSeconds(3))
