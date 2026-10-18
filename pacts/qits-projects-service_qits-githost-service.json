@@ -8,6 +8,64 @@
         "references": {
           "qits-call": {
             "app": "qits-githost-service",
+            "operationId": "putRepositoryNames"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "GitHostNameReconcile.reconcile"
+          }
+        }
+      },
+      "description": "GitHostNameReconcile.reconcile: putRepositoryNames",
+      "key": "101e9c0a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no repository with the given id",
+          "params": {
+            "repositoryId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "names": [
+              "contract-service"
+            ],
+            "projectId": "contract-project",
+            "projectSlug": "contract",
+            "revision": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/git/${repositoryId}/names",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "PUT",
+        "path": "/git/00000000-0000-4000-8000-000000000001/names"
+      },
+      "response": {
+        "status": 404
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-githost-service",
             "operationId": "getRepositoryFile"
           },
           "qits-trigger": {
@@ -1412,6 +1470,99 @@
       },
       "response": {
         "status": 204
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-githost-service",
+            "operationId": "putRepositoryNames"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "RepositoryController.rename"
+          }
+        }
+      },
+      "description": "RepositoryController.rename: putRepositoryNames",
+      "key": "9dbdcbc6",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository exists",
+          "params": {
+            "repositoryId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "names": [
+              "contract-service"
+            ],
+            "projectId": "contract-project",
+            "projectSlug": "contract",
+            "revision": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/git/${repositoryId}/names",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "PUT",
+        "path": "/git/00000000-0000-4000-8000-000000000001/names"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "applied": true
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.applied": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
       },
       "type": "Synchronous/HTTP"
     },

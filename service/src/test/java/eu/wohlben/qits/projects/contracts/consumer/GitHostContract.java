@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.ConfiguredGitHostAddress;
 import eu.wohlben.qits.projects.control.GitHostBearer;
+import eu.wohlben.qits.projects.control.GitHostRepositories;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.releasehost.HttpBackingBranchMerger;
 import eu.wohlben.qits.projects.releasehost.HttpReleaseGitHost;
@@ -26,6 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code /githost/api/repositories/{repositoryId}} ({@link HttpReleaseGitHost}, {@link
  * HttpBackingBranchMerger}) and the by-name tree read under {@code /git/{projectId}/{repoName}}.
  *
+ * <p>The name push ({@code PUT /git/{repositoryId}/names}, qits-1215) is bound to the states
+ * qits-githost records it in — {@code a repository exists} and {@code no repository with the given
+ * id}, its {@code putRepositoryNames} operation — and stays pending until a golden-masters release
+ * carrying them is pinned here.
+ *
  * <p>{@code ReleaseGitHost.head} ({@code GET .../branches/{name}}) has no caller in the shipped
  * code, so it has no row.
  */
@@ -35,6 +41,15 @@ final class GitHostContract {
   static final String APP = "qits-githost";
 
   private static final GitHostBearer BEARER = () -> Optional.of("machine-token");
+
+  /**
+   * The name push's body, with the literal coordinates qits-githost records it under (its state
+   * hands back a repository id and nothing else). The member order is {@code HttpGitHostRepositories}'
+   * own.
+   */
+  private static final String NAMES_BODY =
+      "{\"projectId\":\"contract-project\",\"projectSlug\":\"contract\","
+          + "\"names\":[\"contract-service\"],\"revision\":1}";
 
   private GitHostContract() {}
 
@@ -114,6 +129,48 @@ final class GitHostContract {
               Trigger.operation("RepositoryController.delete"),
               (base, p) -> assertTrue(repositories(base).delete(p.get("repositoryId"))),
               "DELETE /git/{repositoryId} answering 204"),
+          row(
+              "putRepositoryNames",
+              "a repository exists",
+              "PUT",
+              "/git/{repositoryId}/names",
+              Map.of(),
+              NAMES_BODY,
+              List.of("$.applied"),
+              200,
+              Trigger.operation("RepositoryController.rename"),
+              (base, p) ->
+                  assertEquals(
+                      GitHostRepositories.NamesOutcome.APPLIED,
+                      repositories(base)
+                          .putNames(
+                              p.get("repositoryId"),
+                              "contract-project",
+                              "contract",
+                              List.of("contract-service"),
+                              1)),
+              "PUT /git/{repositoryId}/names answering 200 with applied for a repository it stores"),
+          row(
+              "putRepositoryNames",
+              "no repository with the given id",
+              "PUT",
+              "/git/{repositoryId}/names",
+              Map.of(),
+              NAMES_BODY,
+              List.of(),
+              404,
+              Trigger.schedule("GitHostNameReconcile.reconcile"),
+              (base, p) ->
+                  assertEquals(
+                      GitHostRepositories.NamesOutcome.NOT_STORED,
+                      repositories(base)
+                          .putNames(
+                              p.get("repositoryId"),
+                              "contract-project",
+                              "contract",
+                              List.of("contract-service"),
+                              1)),
+              "PUT /git/{repositoryId}/names answering 404 for an id it does not store"),
           row(
               "getRepositoryTree",
               "a repository with files on main",
