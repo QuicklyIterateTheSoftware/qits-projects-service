@@ -1021,9 +1021,10 @@ qits-maintenance's estate-pins re-plan lands), the request is held PENDING as th
 pins ("The fold adds nothing to main; waiting for member releases …"). With none it is WITHDRAWN
 (`EMPTY_WRAPPER_WITHDRAWN`) with `withdraw`'s side effects, and its named sources are handed to
 cleanup through `ReleasedBranchWorkspaces` with `withdrawn` for a version. A read that fails goes on
-as before. `PhaseAdvance` likewise no longer asks for (or creates) a wrapper branch that is GONE or
-RELEASED when nothing else was asked for and no other repository has a request open. Ordinary
-repositories keep qits-760.
+as before. `PhaseAdvance` still asks for the wrapper on every VERIFIED move (qits-1224): only
+estate-pins' verdict at the request knows whether a just-finalized member's pin is still owed, and
+a request that turns out empty is withdrawn here before any build. Ordinary repositories keep
+qits-760.
 
 **A repository configuring none of these releases at once**, which is not the same as unreviewed:
 pressing release is still a person's act. **A configuration this service could not read is never

@@ -3836,18 +3836,6 @@ public class ReleaseRequests {
   }
 
   /**
-   * The qualified ids of every {@link ReleaseRequestRepository#OPEN open} request of {@code
-   * projectId} in a repository other than {@code repoId} — the member releases an estate wrapper's
-   * request would carry pins for. Its own transaction; empty for a null project.
-   */
-  public List<String> openInOtherRepositories(String projectId, String repoId) {
-    if (projectId == null) {
-      return List.of();
-    }
-    return QuarkusTransaction.requiringNew().call(() -> openElsewhere(projectId, repoId));
-  }
-
-  /**
    * {@link #withdraw}'s side effects for a request {@link #evaluate} withdrew for carrying nothing,
    * after the commit — and what a release would have done for its sources: they are handed to
    * cleanup, because no release will ever mark the agents on them OBSOLETE now. Each call out is
