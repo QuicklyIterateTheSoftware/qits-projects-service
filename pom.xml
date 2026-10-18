@@ -253,7 +253,7 @@
         <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1010.174604</qits.ci-golden-masters.version>
-        <qits.idp-golden-masters.version>2026.1012.180836</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1018.142635</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1010.145913</qits.deployments-golden-masters.version>
         <qits.configuration-golden-masters.version>2026.1011.84651</qits.configuration-golden-masters.version>
         <qits.containers-golden-masters.version>2026.1010.134141</qits.containers-golden-masters.version>
