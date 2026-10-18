@@ -245,7 +245,7 @@
              contract whose state is not recorded yet is skipped with the state it needs, and turns
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
-        <qits.githost-golden-masters.version>2026.1010.133955</qits.githost-golden-masters.version>
+        <qits.githost-golden-masters.version>2026.1018.135253</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1016.90656</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
