@@ -28,8 +28,8 @@ final class ConsumerContracts {
             IdpContract.ROWS,
             ConfigurationContract.ROWS,
             ContainersContract.ROWS,
-            EventsContract.ROWS,
-            ProjectsDaemonContract.ROWS)) {
+            ProjectsDaemonContract.ROWS,
+            RefinementDaemonContract.ROWS)) {
       for (ConsumerRow row : rows) {
         all.computeIfAbsent(row.provider(), k -> new ArrayList<>()).add(row);
       }

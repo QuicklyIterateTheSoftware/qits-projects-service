@@ -143,14 +143,11 @@ public interface ReleaseGitHost {
    * Whether {@code in} has {@code commit} in its history — "is the older of these two shas an
    * ancestor of the newer", asked of the repository that holds them both.
    *
-   * <p><b>Why containment is asked at all.</b> {@link ConflictResolver} decides a gitlink conflict by
-   * picking the <em>later</em> of two recorded releases of the same sibling, and later there means
-   * later by {@code released_tag_pending_merge.released_at} — which orders releases by when somebody
-   * cut them and says nothing whatever about lineage. A release cut from a side branch is newer in
-   * time and contains none of what the older one shipped, so pinning it would silently drop released
-   * work out of the estate: a wrapper version naming a member commit from which shipped changes are
-   * missing, with no conflict, no failure and nothing to notice it by. This read is what turns "the
-   * newer one" into "the newer one, and it really is a descendant of the other".
+   * <p><b>Why containment is asked at all.</b> "Is this already in there" is lineage, never time: a
+   * commit made later says nothing about whether a branch carries one made earlier. So whether
+   * {@code main} contains a released tag (which settles that tag's pending merge), or whether a
+   * branch's work has already landed (the releasable-branch read), is asked here, of the repository
+   * that holds both, rather than inferred from when anything happened.
    *
    * <p><b>False is an answer, not a failure</b> — {@link #resolves}' rule one method up, and the same
    * consequence: an unreachable host, a repository that is not there and a sha that is not there are

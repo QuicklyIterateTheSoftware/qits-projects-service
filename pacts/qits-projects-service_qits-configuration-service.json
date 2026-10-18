@@ -1,0 +1,216 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-configuration-service",
+            "operationId": "listEntries"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "AgentMcpCatalogController.save"
+          }
+        }
+      },
+      "description": "AgentMcpCatalogController.save: listEntries",
+      "key": "9cb0d111",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an application with an entry in an environment",
+          "params": {
+            "application": "qits-agent-mcp",
+            "env": "test",
+            "key": "env.EXAMPLE_TOKEN"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/configuration/api/applications/${application}/envs/${env}/entries",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/configuration/api/applications/qits-agent-mcp/envs/test/entries"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "entries": [
+              {
+                "key": "env.EXAMPLE_TOKEN",
+                "value": "golden-token-value"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].value": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-configuration-service",
+            "operationId": "listEntries"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "FrontDeskSpecs.compose (AgentMcpCatalogService.resolve)"
+          }
+        }
+      },
+      "description": "FrontDeskSpecs.compose (AgentMcpCatalogService.resolve): listEntries",
+      "key": "9d82c4c2",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an application with an entry in an environment",
+          "params": {
+            "application": "qits-agent-mcp",
+            "env": "test",
+            "key": "env.EXAMPLE_TOKEN"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/configuration/api/applications/${application}/envs/${env}/entries",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/configuration/api/applications/qits-agent-mcp/envs/test/entries"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "entries": [
+              {
+                "key": "env.EXAMPLE_TOKEN",
+                "value": "golden-token-value"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].value": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-configuration-service"
+  }
+}

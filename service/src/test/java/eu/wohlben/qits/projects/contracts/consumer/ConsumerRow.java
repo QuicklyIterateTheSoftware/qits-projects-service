@@ -27,6 +27,12 @@ import java.util.Optional;
  * @param providerApp the provider application, as its golden-master index names it
  * @param needs what the provider's recording must hold for this row, for the inventory and the
  *     skip reason while the state is not recorded yet
+ * @param headers request headers the provider's door needs to answer as recorded (an {@code
+ *     Authorization} the state names), a {@code {name}} in a value a provider-state parameter;
+ *     empty for a door that needs none ({@link #withHeaders})
+ * @param formBody an {@code application/x-www-form-urlencoded} request body, sent exactly as
+ *     written (pact-jvm has no provider-state generator for a form body), or null ({@link
+ *     #withFormBody}); a row carries this or {@code requestBody}, never both
  */
 public record ConsumerRow(
     String provider,
@@ -41,7 +47,9 @@ public record ConsumerRow(
     int status,
     Trigger trigger,
     Call call,
-    String needs) {
+    String needs,
+    Map<String, String> headers,
+    String formBody) {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -49,6 +57,44 @@ public record ConsumerRow(
     Objects.requireNonNull(trigger, "trigger: every row names the entry point that makes the call");
     query = query == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(query));
     consumes = consumes == null ? List.of() : List.copyOf(consumes);
+    headers = headers == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(headers));
+    if (formBody != null && requestBody != null) {
+      throw new IllegalArgumentException(operationId + ": a JSON body or a form body, not both");
+    }
+  }
+
+  /** A row with no request headers and no form body: what nearly every row is. */
+  public ConsumerRow(
+      String provider,
+      String providerApp,
+      String operationId,
+      String state,
+      String method,
+      String path,
+      Map<String, String> query,
+      JsonNode requestBody,
+      List<String> consumes,
+      int status,
+      Trigger trigger,
+      Call call,
+      String needs) {
+    this(
+        provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
+        status, trigger, call, needs, Map.of(), null);
+  }
+
+  /** This row, sending {@code headers} too. */
+  public ConsumerRow withHeaders(Map<String, String> headers) {
+    return new ConsumerRow(
+        provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
+        status, trigger, call, needs, headers, formBody);
+  }
+
+  /** This row, sending {@code body} as a form instead of a JSON body. */
+  public ConsumerRow withFormBody(String body) {
+    return new ConsumerRow(
+        provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
+        status, trigger, call, needs, headers, body);
   }
 
   /** What the row does with the real client, given the mock server and the state's params. */

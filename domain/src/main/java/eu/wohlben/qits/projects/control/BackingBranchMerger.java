@@ -39,11 +39,11 @@ public interface BackingBranchMerger {
    * them instead of letting the merge fail on them.
    *
    * <p><b>The resolutions carry no release vocabulary and this port grows none.</b> A directive is a
-   * path and the sha that path is to hold; why that sha is the right one — that it is the later of
-   * two releases of the same sibling, and that it contains the other — is decided by {@link
-   * ConflictResolver} on this side of the boundary and is nothing the git host is told. What travels
-   * stays what has always travelled here: refs, paths and shas, with no version, no request id and
-   * no notion of what {@code release/<id>} is for.
+   * path and the sha that path is to hold, and why that sha is the right one is nothing the git host
+   * is told. What travels stays what has always travelled here: refs, paths and shas, with no
+   * version, no request id and no notion of what {@code release/<id>} is for. No caller on this side
+   * sends one any more — the release flow's gitlink conflicts are the git host's to decide under
+   * {@code gitlinkPins} (qits-958) — but the form stays, because the git host still honours it.
    *
    * <p>An empty list is exactly today's behaviour, and an implementation must make it exactly
    * today's <em>request</em> too: a git host that has never heard of directives must not be able to
@@ -111,6 +111,43 @@ public interface BackingBranchMerger {
    * N two-parent merges on the target (51 commits on one request, measured 2026-10-09). A git host
    * that predates the flag ignores it and folds onto the tip, as it always did. Still no release
    * vocabulary: it says "this branch is a function of its sources", not what a release is.
+   *
+   * <p>This form asks for no gitlink-pin decisions; see the ten-argument form.
+   */
+  default Outcome merge(
+      String repoId,
+      String projectId,
+      String repoName,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions,
+      boolean versionPins,
+      boolean rebuild) {
+    return merge(
+        repoId,
+        projectId,
+        repoName,
+        target,
+        sources,
+        message,
+        resolutions,
+        versionPins,
+        rebuild,
+        false);
+  }
+
+  /**
+   * The full form: {@code gitlinkPins} asks the git host to decide, <b>itself and during this
+   * call</b>, a conflict over a submodule pin — the later release of the sibling winning, where it
+   * contains the other (qits-958). It writes a {@code Resolved-Gitlink} trailer per decision into
+   * the merge commit and reports them back as {@link Outcome#resolvedGitlinks}; a gitlink conflict
+   * it examined and declined comes back in the 409 with {@link Conflict#declined} saying why.
+   *
+   * <p>{@code versionPins}' posture exactly: a permission, not a decision carried across, and one a
+   * git host that predates the flag ignores — which is the fold it always made. Still no release
+   * vocabulary crosses from this side: which sibling release is the later one is the git host's to
+   * read.
    */
   Outcome merge(
       String repoId,
@@ -121,7 +158,8 @@ public interface BackingBranchMerger {
       String message,
       List<Resolution> resolutions,
       boolean versionPins,
-      boolean rebuild);
+      boolean rebuild,
+      boolean gitlinkPins);
 
   /**
    * "Whatever the merge would have made of {@code path}, put this gitlink there instead."
@@ -155,6 +193,9 @@ public interface BackingBranchMerger {
    * <p>{@link Outcome#resolvedVersions} is what the git host decided under {@code versionPins}, one
    * entry per pin; those paths are in {@link Outcome#resolved} too. Empty on every other fold, and
    * on every fold of a git host that predates the flag.
+   *
+   * <p>{@link Outcome#resolvedGitlinks} is the same for {@code gitlinkPins}: one entry per submodule
+   * pin the git host decided, each path also in {@link Outcome#resolved}.
    */
   record Outcome(
       Result result,
@@ -163,7 +204,20 @@ public interface BackingBranchMerger {
       List<Conflict> conflicts,
       String detail,
       List<String> resolved,
-      List<ResolvedVersion> resolvedVersions) {
+      List<ResolvedVersion> resolvedVersions,
+      List<ResolvedGitlink> resolvedGitlinks) {
+
+    /** The shape before {@code gitlinkPins}: no submodule pin decided. */
+    public Outcome(
+        Result result,
+        String sha,
+        List<String> parents,
+        List<Conflict> conflicts,
+        String detail,
+        List<String> resolved,
+        List<ResolvedVersion> resolvedVersions) {
+      this(result, sha, parents, conflicts, detail, resolved, resolvedVersions, List.of());
+    }
 
     public static Outcome merged(String sha, List<String> parents) {
       return merged(sha, parents, List.of());
@@ -180,6 +234,16 @@ public interface BackingBranchMerger {
         List<String> parents,
         List<String> resolved,
         List<ResolvedVersion> resolvedVersions) {
+      return merged(sha, parents, resolved, resolvedVersions, List.of());
+    }
+
+    /** A fold that also decided submodule pins on the git host's side. */
+    public static Outcome merged(
+        String sha,
+        List<String> parents,
+        List<String> resolved,
+        List<ResolvedVersion> resolvedVersions,
+        List<ResolvedGitlink> resolvedGitlinks) {
       return new Outcome(
           Result.MERGED,
           sha,
@@ -187,7 +251,8 @@ public interface BackingBranchMerger {
           List.of(),
           null,
           List.copyOf(resolved),
-          List.copyOf(resolvedVersions));
+          List.copyOf(resolvedVersions),
+          List.copyOf(resolvedGitlinks));
     }
 
     public static Outcome fastForward(String sha, List<String> parents) {
@@ -202,6 +267,7 @@ public interface BackingBranchMerger {
           List.of(),
           null,
           List.copyOf(resolved),
+          List.of(),
           List.of());
     }
 
@@ -244,8 +310,8 @@ public interface BackingBranchMerger {
   record ResolvedVersion(String path, int line, String ours, String theirs, String chosen) {
 
     /**
-     * The decision as one git trailer line, the shape of {@code ConflictResolver}'s {@code
-     * Resolved-Gitlink}, so a person auditing either reads the same form.
+     * The decision as one git trailer line, the shape of {@link ResolvedGitlink#trailer}, so a
+     * person auditing either reads the same form.
      */
     public String trailer() {
       return "Resolved-Version: "
@@ -258,6 +324,22 @@ public interface BackingBranchMerger {
           + theirs
           + " -> "
           + chosen;
+    }
+  }
+
+  /**
+   * One submodule pin the git host decided under {@code gitlinkPins}: at {@code path} (the
+   * submodule {@code name} in {@code .gitmodules}) the losing pin {@code from} gave way to {@code
+   * to}, the commit of the sibling's release tagged {@code tag}.
+   */
+  record ResolvedGitlink(String path, String name, String from, String to, String tag) {
+
+    /**
+     * The decision as one git trailer line — the {@code Resolved-Gitlink} the git host writes into
+     * the merge commit, so the log line and the commit read the same.
+     */
+    public String trailer() {
+      return "Resolved-Gitlink: " + path + ' ' + from + " -> " + to + " (" + name + ' ' + tag + ')';
     }
   }
 
@@ -278,12 +360,16 @@ public interface BackingBranchMerger {
    * at — which is also the commit whose {@code .gitmodules} declares the path, if anything does, and
    * therefore the only rev a reader of that declaration may use.
    *
-   * <p>The last four components are what make a mechanical resolution possible at all. {@code kind}
-   * is {@code gitlink} or {@code file} and is never null; {@code base}, {@code ours} and {@code
+   * <p>{@code kind}, {@code base}, {@code ours} and {@code theirs} say what each side held, which
+   * is what lets the read model show which two versions conflict. {@code kind} is {@code gitlink}
+   * or {@code file} and is never null; {@code base}, {@code ours} and {@code
    * theirs} are 40-hex or null, and a null means that side does not have the path (a deletion, which
    * is a person's call and never a machine's). <b>For a gitlink they are commits of the SUBMODULE's
    * repository</b>, not of the one being folded — so nothing about them can be looked up in the
    * repository this conflict is a conflict in.
+   *
+   * <p>{@code declined} is one sentence, or null: set when the git host's gitlink rule examined
+   * this conflict under {@code gitlinkPins} and declined to decide it, saying why (qits-958).
    *
    * <p>The four-component form is kept for a caller that is describing an ordinary content conflict
    * and has nothing to say about sides: it reads {@code file}, with no base, ours or theirs.
@@ -296,14 +382,31 @@ public interface BackingBranchMerger {
       String kind,
       String base,
       String ours,
-      String theirs) {
+      String theirs,
+      String declined) {
 
     public Conflict(String path, String head, String headSha, String reason) {
       this(path, head, headSha, reason, KIND_FILE, null, null, null);
     }
+
+    /** The shape before {@code gitlinkPins}: nothing declined. */
+    public Conflict(
+        String path,
+        String head,
+        String headSha,
+        String reason,
+        String kind,
+        String base,
+        String ours,
+        String theirs) {
+      this(path, head, headSha, reason, kind, base, ours, theirs, null);
+    }
   }
 
-  /** The {@code kind} of a conflict over a submodule pin — the one kind anything here can decide. */
+  /**
+   * The {@code kind} of a conflict over a submodule pin. A fold asked with {@code gitlinkPins} has
+   * already had the git host decide the ones it could; one reported here is one it declined.
+   */
   String KIND_GITLINK = "gitlink";
 
   /**
