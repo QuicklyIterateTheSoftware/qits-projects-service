@@ -1028,6 +1028,11 @@ class GoldenMasterRecordingTest {
             requests + "?state=all"));
     all.add(
         read(
+            ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH,
+            "listRepositoryReleaseRequests",
+            requests + "?state=all"));
+    all.add(
+        read(
             ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA,
             "getWorkArchetypeSchema",
             "/projects/api/work/archetypes/TICKET/schemas/update"));

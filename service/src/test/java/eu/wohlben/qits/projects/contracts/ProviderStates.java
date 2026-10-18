@@ -217,6 +217,8 @@ public class ProviderStates {
       "a repository with released release requests";
   public static final String A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN =
       "a repository with a release not merged to main";
+  public static final String A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH =
+      "a repository with a tagged release whose request went obsolete mid-publish";
   public static final String THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA =
       "the archetype registry's update schema";
   public static final String THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA =
@@ -458,6 +460,9 @@ public class ProviderStates {
     states.put(
         A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN,
         () -> aRepositoryWithReleases(A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN));
+    states.put(
+        A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH,
+        this::aTaggedReleaseObsoletedMidPublish);
     states.put(THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA, ProviderStates::theArchetypeRegistry);
     states.put(THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_DISPATCHED_AGENT, this::aTicketWithADispatchedAgent);
@@ -3032,6 +3037,61 @@ public class ProviderStates {
         project, repoId, "contract-service", "Release the README", State.WITHDRAWN, 6, null,
         row -> row.detail = "Withdrawn: the README moves to the next release.");
     return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  /**
+   * qits-maintenance's history read (qits-1156): a release whose tag was cut and whose publish run
+   * was still running when a new request overtook it. The overtaken request is OBSOLETE, names its
+   * successor, keeps its version and its mirrored runs (QA green, publish still RUNNING), and its
+   * tag row is abandoned as {@code ReleaseRequests.obsolete} leaves it. The successor is still
+   * pending. No git is read: the shas are made up.
+   */
+  private Setup aTaggedReleaseObsoletedMidPublish() {
+    String token = token();
+    Project project =
+        project(token, A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH);
+    String repoId =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    seededRepos.add(repoId);
+    String successor =
+        releaseRow(
+            project, repoId, "contract-service", "Release the rounding fix", State.PENDING, 3,
+            madeUpSha(3), row -> {});
+    String successorQualifiedId =
+        QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.<ReleaseRequest>findById(successor).qualifiedId);
+    String obsolete =
+        releaseRow(
+            project, repoId, "contract-service", "Release the CSV export", State.OBSOLETE, 1,
+            madeUpSha(1),
+            row -> {
+              row.version = "2026.101.100100";
+              row.supersededBy = successor;
+              row.detail =
+                  "Superseded by release request "
+                      + successorQualifiedId
+                      + ", which folds 2026.101.100100 in and releases past it";
+            });
+    phaseRun(obsolete, repoId, "RELEASE_REQUEST", "SUCCESS", 1, 1);
+    String publishRun = phaseRun(obsolete, repoId, "RELEASE", "RUNNING", 2, null);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var tag = new eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge();
+              tag.id = UUID.randomUUID().toString();
+              tag.repoId = repoId;
+              tag.tagName = "2026.101.100100";
+              tag.releasedSha = madeUpSha(10);
+              tag.releaseRequestId = obsolete;
+              tag.releasedAt = SEEDED_AT.plusSeconds(60L * 2);
+              tag.publishState =
+                  eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.PENDING;
+              tag.publishRunId = publishRun;
+              tag.abandonedAt = SEEDED_AT.plusSeconds(60L * 3);
+              tag.persist();
+            });
+    return new Setup(
+        params("projectId", project.id, "repositoryId", repoId, "requestId", obsolete),
+        List.of(token));
   }
 
   /** A released tag that reached main at the given minute. */
