@@ -79,6 +79,8 @@ public class ReleaseRequestPreRunTest {
 
   @Inject eu.wohlben.qits.eventstream.control.DurableFunnel funnel;
 
+  @Inject eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces resolutions;
+
   private String projectId;
   private String repoId;
   private String repoName;
@@ -95,6 +97,7 @@ public class ReleaseRequestPreRunTest {
     automations.reset();
     announcer.reset();
     cancellations.reset();
+    resolutions.reset();
     requestIds.clear();
     activeBuilds.answer(Optional.of(0));
 
@@ -499,6 +502,140 @@ public class ReleaseRequestPreRunTest {
   }
 
   // -----------------------------------------------------------------------------------------
+  // The estate wrapper's empty fold (qits-1273, qits-qits-rr-148 on 2026-10-18)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * <b>The live double tag, replayed.</b> A wrapper request whose fold adds nothing to main, with
+   * its estate pins fresh and no member release in flight, is main's own head: QA used to build it
+   * again and a person's approval tagged it a second time. Now it is withdrawn before QA is asked
+   * for — no DONE, no stamp, no release — and its source is handed to cleanup, since no release
+   * ever will be.
+   */
+  @Test
+  public void anEmptyWrapperFoldWithNothingInFlightIsWithdrawnBeforeQa() {
+    String[] wrapper = wrapper();
+    automations.answer(wrapper[1], "estate-pins", "FRESH");
+    foldChanges.empty(wrapper[0]);
+
+    String id = create(wrapper[0], "work");
+    awaitStateIn(wrapper[0], id, "WITHDRAWN");
+
+    assertEquals(List.of(), preRuns(id), "QA was never asked for");
+    assertNull(qaAnnouncedShaOf(id));
+    assertEquals(
+        ReleaseRequests.EMPTY_WRAPPER_WITHDRAWN, request(wrapper[0], id).getString("detail"));
+    assertTrue(executor.calls().isEmpty(), "nothing was tagged");
+    assertTrue(cancellations.cancelledRequests().contains(id));
+    assertEquals(
+        List.of(
+            new eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces.Resolved(
+                wrapper[0], "work", "withdrawn", null)),
+        resolutions.calls(),
+        "the named source is handed to cleanup; main is not");
+  }
+
+  /**
+   * <b>While a member release is in flight the empty wrapper request is the vessel, and holds.</b>
+   * In the everyday flow the wrapper is asked for right after its members, when its fold is still
+   * main and its pins are fresh because no member has finalized. Withdrawing it then would leave
+   * the members' pins nowhere to land. Once a member's pin is folded in, the fold carries
+   * something and QA is asked for as ever.
+   */
+  @Test
+  public void anEmptyWrapperFoldWaitsForAMemberReleaseInFlightAndThenGoesToQa() {
+    String[] wrapper = wrapper();
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String member = create("work");
+    String memberQualified = request(member).getString("qualifiedId");
+    automations.answer(wrapper[1], "estate-pins", "FRESH");
+    foldChanges.empty(wrapper[0]);
+
+    String id = create(wrapper[0], "work");
+    releaseRequests.sweep();
+
+    JsonPath held = request(wrapper[0], id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        "The fold adds nothing to main; waiting for member releases " + memberQualified,
+        held.getString("detail"));
+    assertEquals(List.of(), preRuns(id), "no QA for main's own head");
+    assertNull(qaAnnouncedShaOf(id));
+
+    // The member finalizes, and the estate pins' commit makes the wrapper's fold carry its pin.
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = ReleaseRequest.findById(member);
+              row.state = ReleaseRequest.State.FINALIZED;
+              row.updatedAt = Instant.now();
+            });
+    foldChanges.changes(wrapper[0], List.of(RecordingFoldChanges.gitlink("components/member")));
+    releaseRequests.sweep();
+
+    assertEquals(List.of("DONE"), preRuns(id));
+    assertEquals(mergedShaOf(wrapper[0], id), qaAnnouncedShaOf(id));
+    assertEquals("PENDING", request(wrapper[0], id).getString("state"));
+  }
+
+  /**
+   * <b>A member that has only just finalized still holds the empty wrapper request.</b> Its finalize
+   * moved its main, and qits-maintenance re-plans the wrapper's estate pins only after that; until
+   * the re-plan reaches the ledger the pre-run reads FRESH at a fold about to get the member's pin.
+   * Past the grace, a fold still empty carries nothing, and is withdrawn.
+   */
+  @Test
+  public void anEmptyWrapperFoldHoldsThroughAMembersFinalizationGrace() {
+    String[] wrapper = wrapper();
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String member = create("work");
+    String memberQualified = request(member).getString("qualifiedId");
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = ReleaseRequest.findById(member);
+              row.state = ReleaseRequest.State.FINALIZED;
+              row.updatedAt = Instant.now();
+            });
+    automations.answer(wrapper[1], "estate-pins", "FRESH");
+    foldChanges.empty(wrapper[0]);
+
+    String id = create(wrapper[0], "work");
+    releaseRequests.sweep();
+
+    JsonPath held = request(wrapper[0], id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        "The fold adds nothing to main; waiting for member releases "
+            + memberQualified
+            + " (finalized, pins re-planning)",
+        held.getString("detail"));
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findById(member).updatedAt =
+                    Instant.now().minus(java.time.Duration.ofHours(1)));
+    releaseRequests.sweep();
+
+    awaitStateIn(wrapper[0], id, "WITHDRAWN");
+    assertEquals(List.of(), preRuns(id));
+    assertTrue(executor.calls().isEmpty());
+  }
+
+  /** <b>Only the estate wrapper</b>: an ordinary repository's empty fold keeps qits-760's hold. */
+  @Test
+  public void anEmptyFoldOfAnOrdinaryRepositoryStillGoesToQa() {
+    automations.answer(repoName, BUMP, "FRESH");
+    foldChanges.empty(repoId);
+
+    String id = create("work");
+
+    assertEquals(List.of("DONE"), preRuns(id));
+    assertEquals("PENDING", request(id).getString("state"));
+  }
+
+  // -----------------------------------------------------------------------------------------
   // One DONE per fold (qits-1133, request b4dc3310 on 2026-10-10)
   // -----------------------------------------------------------------------------------------
 
@@ -635,6 +772,73 @@ public class ReleaseRequestPreRunTest {
             .path("request.id");
     requestIds.add(id);
     return id;
+  }
+
+  /**
+   * The project's estate wrapper, beside the fixture's repository: its id and its name (the fake
+   * automations are scripted by name).
+   */
+  private String[] wrapper() {
+    String wrapperId = repoId + "-wrapper";
+    String wrapperName = repoName + "-wrapper";
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project project = Project.findById(projectId);
+              Repository repository = new Repository();
+              repository.id = wrapperId;
+              repository.project = project;
+              repository.mainBranch = "main";
+              repository.archetype = RepositoryArchetype.PROJECT;
+              repository.persist();
+              RepositoryName name = new RepositoryName();
+              name.project = project;
+              name.repository = repository;
+              name.name = wrapperName;
+              name.persist();
+            });
+    return new String[] {wrapperId, wrapperName};
+  }
+
+  private String create(String inRepo, String branch) {
+    String id =
+        given()
+            .contentType(ContentType.JSON)
+            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+            .post("/projects/api/repositories/" + inRepo + "/release-requests")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("request.id");
+    requestIds.add(id);
+    return id;
+  }
+
+  private JsonPath request(String inRepo, String id) {
+    return given()
+        .get("/projects/api/repositories/" + inRepo + "/release-requests/" + id)
+        .then()
+        .statusCode(200)
+        .extract()
+        .jsonPath()
+        .setRootPath("request");
+  }
+
+  private String mergedShaOf(String inRepo, String id) {
+    return request(inRepo, id).getString("mergedSha");
+  }
+
+  private void awaitStateIn(String inRepo, String id, String expected) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    String last = null;
+    while (System.currentTimeMillis() < deadline) {
+      last = request(inRepo, id).getString("state");
+      if (expected.equals(last)) {
+        return;
+      }
+      sleep();
+    }
+    fail("request " + id + " never reached " + expected + "; last seen " + last);
   }
 
   /** The preRun of every announcement about one request, oldest first. */

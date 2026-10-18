@@ -287,6 +287,22 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
     }
     return list("projectId = ?1 and state in ?2 order by updatedAt desc", projectId, states);
   }
+
+  /**
+   * One project's requests that FINALIZED at or after {@code since}, in every repository but {@code
+   * repoId}, most recently moved first. {@code updatedAt} is read as the moment of finalization,
+   * which is the last write a request's row takes.
+   */
+  public List<ReleaseRequest> listFinalizedElsewhereSince(
+      String projectId, String repoId, java.time.Instant since) {
+    return list(
+        "projectId = ?1 and repoId <> ?2 and state = ?3 and updatedAt >= ?4 order by updatedAt desc",
+        projectId,
+        repoId,
+        ReleaseRequest.State.FINALIZED,
+        since);
+  }
+
   /**
    * Write the approval question's content half onto every request of {@code repoId} still at {@code
    * mergedSha} (qits-1201) — SQL rather than an entity write, so it neither reads the rows nor races a
