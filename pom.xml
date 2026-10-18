@@ -146,7 +146,7 @@
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
         <qits.runner.version>2026.1018.92716</qits.runner.version>
-        <qits.eventstream.version>2026.1014.223716</qits.eventstream.version>
+        <qits.eventstream.version>2026.1018.151251</qits.eventstream.version>
         <qits.githost-events.version>2026.1015.22957</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -228,7 +228,7 @@
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
         <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
-             (workspaces, landing, the projects frontend, the platform-access CLI, maintenance), each carrying `pacts/<consumer>_qits-projects-service.json`, and
+             (workspaces, landing, the projects frontend, the platform-access CLI, maintenance, githost), each carrying `pacts/<consumer>_qits-projects-service.json`, and
              ConsumerPactVerificationTest loads every such resource off the test classpath. Test
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
@@ -238,17 +238,26 @@
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1011.142705</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1011.183826</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1011.152312</qits.maintenance-service-pacts-qits-projects-service.version>
+        <qits.githost-service-pacts-qits-projects-service.version>2026.1012.120958</qits.githost-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
-             qits-1149): what qits-githost, qits-workspaces, qits-maintenance and qits-events record
+             qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
+             qits-idp, qits-deployments, qits-configuration, qits-containers and
+             qits-projects-daemon record
              for their provider states. Test scope, read off the classpath by
              service/src/test/.../contracts/consumer/ConsumerGoldenMasters. A row of a consumer
              contract whose state is not recorded yet is skipped with the state it needs, and turns
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
-        <qits.githost-golden-masters.version>2026.1018.135253</qits.githost-golden-masters.version>
+        <qits.githost-golden-masters.version>2026.1018.160706</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1016.90656</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
+        <qits.ci-golden-masters.version>2026.1010.174604</qits.ci-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1018.142635</qits.idp-golden-masters.version>
+        <qits.deployments-golden-masters.version>2026.1010.145913</qits.deployments-golden-masters.version>
+        <qits.configuration-golden-masters.version>2026.1011.84651</qits.configuration-golden-masters.version>
+        <qits.containers-golden-masters.version>2026.1010.134141</qits.containers-golden-masters.version>
+        <qits.projects-daemon-golden-masters.version>2026.1010.134301</qits.projects-daemon-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -307,6 +316,14 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-eventstream</artifactId>
+                <version>${qits.eventstream.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at its declaration site (qits-1163): the kit that pacts what
+                     qits-eventstream asks qits-events on this service's behalf. Same release, same
+                     property, as the jar. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-eventstream-contracts</artifactId>
                 <version>${qits.eventstream.version}</version>
             </dependency>
             <dependency>
@@ -454,6 +471,13 @@
                 <version>${qits.maintenance-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-githost-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.githost-service-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
                 <!-- Test scope at every declaration site. -->
                 <groupId>au.com.dius.pact.provider</groupId>
                 <artifactId>junit5</artifactId>
@@ -490,6 +514,42 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-events-golden-masters</artifactId>
                 <version>${qits.events-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-ci-golden-masters</artifactId>
+                <version>${qits.ci-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-idp-golden-masters</artifactId>
+                <version>${qits.idp-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-deployments-golden-masters</artifactId>
+                <version>${qits.deployments-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-configuration-golden-masters</artifactId>
+                <version>${qits.configuration-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-containers-golden-masters</artifactId>
+                <version>${qits.containers-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-projects-daemon-golden-masters</artifactId>
+                <version>${qits.projects-daemon-golden-masters.version}</version>
             </dependency>
             <!-- The reactor's own modules, so children depend on them version-less. -->
             <dependency>

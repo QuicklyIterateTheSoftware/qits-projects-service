@@ -35,9 +35,9 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
 
   /**
    * One fold, exactly as the domain asked for it — the sources are the assertion worth making, and
-   * since the conflict resolver landed, so are the {@code resolutions}: "two folds were asked for
-   * and the second carried the directives" is the whole observable shape of a mechanical resolution
-   * from this side.
+   * so are the flags: {@code versionPins} and {@code gitlinkPins} are what hand the git host the
+   * pin decisions, and "one fold, asking for both" is the whole observable shape of a pin
+   * resolution from this side (qits-958).
    */
   public record Fold(
       String repoId,
@@ -48,7 +48,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
       String message,
       List<Resolution> resolutions,
       boolean versionPins,
-      boolean rebuild) {}
+      boolean rebuild,
+      boolean gitlinkPins) {}
 
   private final List<Fold> folds = Collections.synchronizedList(new ArrayList<>());
 
@@ -84,10 +85,9 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
   /**
    * An answer for the <b>next</b> fold alone, ahead of whatever {@link #answer} scripted.
    *
-   * <p>It exists for the conflict resolver, whose whole subject is a sequence: the first fold
-   * conflicts and the second one — the one carrying the directives — succeeds. A single scripted
-   * answer cannot express that, and scripting by argument ("conflict unless resolutions are
-   * present") would build the expected behaviour into the fake and then assert it back.
+   * <p>It exists for a test whose subject is a sequence — one fold conflicts and a later one
+   * succeeds. A single scripted answer cannot express that, and scripting by argument would build
+   * the expected behaviour into the fake and then assert it back.
    */
   public void answerOnce(Outcome outcome) {
     queued.add(outcome);
@@ -125,7 +125,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
       String message,
       List<Resolution> resolutions,
       boolean versionPins,
-      boolean rebuild) {
+      boolean rebuild,
+      boolean gitlinkPins) {
     folds.add(
         new Fold(
             repoId,
@@ -136,7 +137,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
             message,
             List.copyOf(resolutions),
             versionPins,
-            rebuild));
+            rebuild,
+            gitlinkPins));
     Outcome forTarget = byTarget.get(target);
     Outcome once = forTarget != null ? null : queued.poll();
     Outcome scriptedOutcome = scripted.get();

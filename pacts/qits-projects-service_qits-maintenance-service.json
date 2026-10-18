@@ -129,35 +129,14 @@
                 }
               ]
             },
-            "$.automations[*].failure.excerpt": {
-              "combine": "AND",
+            "$.automations[*].failure": {
+              "combine": "OR",
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            },
-            "$.automations[*].failure.exitCode": {
-              "combine": "AND",
-              "matchers": [
+                },
                 {
-                  "match": "number"
-                }
-              ]
-            },
-            "$.automations[*].failure.image": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.automations[*].failure.stepIndex": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
+                  "match": "null"
                 }
               ]
             },
@@ -467,35 +446,14 @@
                 }
               ]
             },
-            "$.automations[*].failure.excerpt": {
-              "combine": "AND",
+            "$.automations[*].failure": {
+              "combine": "OR",
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            },
-            "$.automations[*].failure.exitCode": {
-              "combine": "AND",
-              "matchers": [
+                },
                 {
-                  "match": "number"
-                }
-              ]
-            },
-            "$.automations[*].failure.image": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.automations[*].failure.stepIndex": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
+                  "match": "null"
                 }
               ]
             },
@@ -574,6 +532,96 @@
                 {
                   "match": "regex",
                   "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-maintenance-service",
+            "operationId": "getRepositoryDownstream"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "createReleaseRequest"
+          }
+        }
+      },
+      "description": "createReleaseRequest: getRepositoryDownstream",
+      "key": "b3ae4f6a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository with downstream components",
+          "params": {
+            "repoName": "contract-ui-jslib",
+            "repositoryId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/maintenance/api/repositories/${repositoryId}/downstream",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/maintenance/api/repositories/00000000-0000-4000-8000-000000000001/downstream"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "downstream": [
+              {
+                "repository": "contract-frontend"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.downstream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.downstream[*].repository": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

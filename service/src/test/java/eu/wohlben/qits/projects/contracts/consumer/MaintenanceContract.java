@@ -53,7 +53,7 @@ final class MaintenanceContract {
           new ConsumerRow(
               PROVIDER,
               APP,
-              "downstream",
+              "getRepositoryDownstream",
               "a repository with downstream components",
               "GET",
               "/maintenance/api/repositories/{repositoryId}/downstream",
