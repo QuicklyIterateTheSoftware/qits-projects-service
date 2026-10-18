@@ -408,6 +408,15 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- What this service's real use of qits-containers-client asks qits-containers
+                 (qits-1163): the kit behind ContainersClientPactTest and
+                 pacts/qits-projects-service_qits-containers-service.json. After the golden-master
+                 jars, so qits-events-golden-masters stays first on the classpath. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-containers-client-contracts</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!-- qits-projects-daemon's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-projects-daemon-golden-masters</artifactId>

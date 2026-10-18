@@ -337,6 +337,14 @@
                 <version>${qits.containers-client.version}</version>
             </dependency>
             <dependency>
+                <!-- The consumer pact kit for the client above (qits-1163): the rows and drives behind
+                     pacts/qits-projects-service_qits-containers-service.json. Same release, same
+                     property, as the client: the kit refuses a client of another version. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-containers-client-contracts</artifactId>
+                <version>${qits.containers-client.version}</version>
+            </dependency>
+            <dependency>
                 <!-- The projects-daemon's wire contract AND the version of the image it ships in —
                      one artifact, because what this service must speak and what it must start are
                      the same release. Published by qits-projects-daemon; ProjectAgentImage is the

@@ -27,7 +27,6 @@ final class ConsumerContracts {
             WorkspacesContract.ROWS,
             IdpContract.ROWS,
             ConfigurationContract.ROWS,
-            ContainersContract.ROWS,
             ProjectsDaemonContract.ROWS,
             RefinementDaemonContract.ROWS)) {
       for (ConsumerRow row : rows) {
