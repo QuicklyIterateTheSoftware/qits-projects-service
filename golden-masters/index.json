@@ -4222,6 +4222,45 @@
       ]
     },
     {
+      "name": "a repository with a tagged release whose request went obsolete mid-publish",
+      "slug": "a-repository-with-a-tagged-release-whose-request-went-obsolete-mid-publish",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "query": {
+            "state": "all"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-tagged-release-whose-request-went-obsolete-mid-publish/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].supersededBy",
+              "$.requests[*].pipeline.phases[*].runId",
+              "$.requests[*].qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt",
+              "$.requests[*].pipeline.phases[*].startedAt",
+              "$.requests[*].pipeline.phases[*].finishedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a repository with released release requests",
       "slug": "a-repository-with-released-release-requests",
       "params": {

@@ -16,8 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * <b>What qits-projects asks qits-deployments</b> (ticket qits-1149): the deployment requests of a
- * released version, and the ask to deploy a version again. qits-deployments publishes no golden
- * masters yet, so both rows wait on their state.
+ * released version, and the ask to deploy a version again.
  */
 final class DeploymentsContract {
 
@@ -32,10 +31,10 @@ final class DeploymentsContract {
               PROVIDER,
               APP,
               "listDeploymentRequests",
-              "a released version with a deployment request",
+              "an application deployed in an environment",
               "GET",
               "/deployments/api/deployment-requests",
-              Map.of("repoId", "{repositoryId}", "version", "{version}"),
+              Map.of("repoId", "{repoId}", "version", "{version}"),
               null,
               List.of(
                   "$.deploymentRequests[*].id",
@@ -46,7 +45,7 @@ final class DeploymentsContract {
               (base, p) -> {
                 List<DeploymentRequests.DeploymentRequestView> views =
                     Fields.with(new HttpDeploymentRequests(QitsHttpClients.of(OpenTelemetry.noop(), null)), "deploymentsUrl", Optional.of(base))
-                        .forRelease(p.get("repositoryId"), p.get("version"))
+                        .forRelease(p.get("repoId"), p.get("version"))
                         .orElseThrow();
                 assertFalse(views.isEmpty());
               },
@@ -61,7 +60,7 @@ final class DeploymentsContract {
               "/deployments/api/events/software-released",
               Map.of(),
               json(
-                  "{\"repoId\":\"{repositoryId}\",\"projectId\":\"{projectId}\","
+                  "{\"repoId\":\"{repoId}\",\"projectId\":\"{projectId}\","
                       + "\"repoName\":\"{repoName}\",\"application\":\"{application}\","
                       + "\"version\":\"{version}\"}"),
               List.of(),
@@ -74,7 +73,7 @@ final class DeploymentsContract {
                           "bearer", new IdpDeploymentsBearer())
                       .deployAgain(
                           new DeploymentRedeploys.Redeploy(
-                              p.get("repositoryId"),
+                              p.get("repoId"),
                               p.get("projectId"),
                               p.get("repoName"),
                               p.get("application"),

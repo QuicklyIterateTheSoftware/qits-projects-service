@@ -4,6 +4,7 @@
       "item": {
         "name": "first",
         "doneAt": null,
+        "failure": null,
         "parts": [
           {
             "label": "a"
@@ -15,6 +16,10 @@
       "item": {
         "name": "second",
         "doneAt": "2026-01-01T00:00:00Z",
+        "failure": {
+          "code": 3,
+          "excerpt": "boom"
+        },
         "parts": []
       }
     }

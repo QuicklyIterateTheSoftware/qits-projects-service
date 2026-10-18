@@ -325,6 +325,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-githost-service-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <scope>test</scope>
@@ -370,6 +375,42 @@
             <!-- qits-maintenance's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-maintenance-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-ci's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-ci-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-idp's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-idp-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-deployments's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-deployments-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-configuration's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-configuration-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-containers's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-containers-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-projects-daemon's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-projects-daemon-golden-masters</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
