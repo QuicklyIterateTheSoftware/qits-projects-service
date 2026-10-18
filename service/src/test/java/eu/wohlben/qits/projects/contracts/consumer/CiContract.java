@@ -23,8 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * phase, the active runs, one run's lineage, and the two asks a release request makes of its runs.
  * Every client here calls with {@link IdpCiBearer}, which is off in a test, so the request carries
  * the header identity instead; neither is part of the contract.
- *
- * <p>qits-ci publishes no golden masters yet, so every row waits on its state.
  */
 final class CiContract {
 
@@ -57,7 +55,7 @@ final class CiContract {
   static final List<ConsumerRow> ROWS =
       List.of(
           row(
-              "releaseArtifacts",
+              "listReleaseArtifacts",
               "a released version with artifact decisions",
               "GET",
               "/ci/api/repositories/{repositoryId}/releases/{version}/artifacts",
@@ -92,6 +90,21 @@ final class CiContract {
                       .cancelRunsOf(p.get("repositoryId"), p.get("releaseRequestId")),
               "POST /ci/api/runs/cancellations answering 202"),
           row(
+              "cancelReleaseRequestRuns",
+              "a release request with runs in flight",
+              "POST",
+              "/ci/api/runs/cancellations",
+              Map.of(),
+              "{\"repoId\":\"{repositoryId}\",\"releaseRequestId\":\"{releaseRequestId}\","
+                  + "\"phase\":\"RELEASE_REQUEST\"}",
+              List.of(),
+              202,
+              Trigger.schedule("ReleaseRequests.remerge (a source moved during QA)"),
+              (base, p) ->
+                  ci(new HttpQaRunCancellations(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      .cancelQaRunsOf(p.get("repositoryId"), p.get("releaseRequestId")),
+              "POST /ci/api/runs/cancellations with phase RELEASE_REQUEST answering 202"),
+          row(
               "rerunReleaseRequestPhase",
               "a release request whose QA run failed",
               "POST",
@@ -111,7 +124,7 @@ final class CiContract {
               "POST /ci/api/runs/rerun answering 202 with runId"),
           row(
               "getRun",
-              "a run that retries another",
+              "a failed run that retries another",
               "GET",
               "/ci/api/runs/{runId}",
               Map.of(),
@@ -124,7 +137,7 @@ final class CiContract {
                       ci(new HttpCiRunLineage(QitsHttpClients.of(OpenTelemetry.noop(), null)), base).retryOfRunId(p.get("runId")).isPresent()),
               "GET /ci/api/runs/{runId} answering 200 with retryOfRunId set"),
           row(
-              "releasePhase",
+              "getReleasePhase",
               "a repository that declares a release phase",
               "GET",
               "/ci/api/repositories/{repositoryId}/release-phase",

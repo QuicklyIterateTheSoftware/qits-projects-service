@@ -17,8 +17,14 @@ contracts:
   # provider to pin and verify. A provider appears here once at least one row against it is
   # recorded; ConsumerPactFilesTest holds this list equal to the committed files.
   pacts:
+    qits-ci-service: { packages: [maven] }
+    qits-configuration-service: { packages: [maven] }
+    qits-containers-service: { packages: [maven] }
+    qits-deployments-service: { packages: [maven] }
     qits-events-service: { packages: [maven] }
     qits-githost-service: { packages: [maven] }
+    qits-idp-service: { packages: [maven] }
     qits-maintenance-service: { packages: [maven] }
+    qits-projects-daemon: { packages: [maven] }
     qits-workspaces-service: { packages: [maven] }
 userflows: qits-projects

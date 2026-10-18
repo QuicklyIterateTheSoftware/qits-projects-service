@@ -90,7 +90,7 @@ final class GitHostContract {
                   + " hold"),
           row(
               "describeRepository",
-              "a repository with a default branch",
+              "a repository exists",
               "GET",
               "/git/{repositoryId}",
               Map.of(),
@@ -104,7 +104,7 @@ final class GitHostContract {
               "GET /git/{repositoryId} answering 200 with defaultBranch"),
           row(
               "deleteRepository",
-              "a repository with a default branch",
+              "a repository exists",
               "DELETE",
               "/git/{repositoryId}",
               Map.of(),
@@ -115,7 +115,7 @@ final class GitHostContract {
               (base, p) -> assertTrue(repositories(base).delete(p.get("repositoryId"))),
               "DELETE /git/{repositoryId} answering 204"),
           row(
-              "tree",
+              "getRepositoryTree",
               "a repository with files on main",
               "GET",
               "/githost/api/repositories/{repositoryId}/tree",
@@ -132,7 +132,7 @@ final class GitHostContract {
               },
               "GET .../tree?rev={rev} answering 200 with paths[] of at least one file"),
           row(
-              "file",
+              "getRepositoryFile",
               "a repository with files on main",
               "GET",
               "/githost/api/repositories/{repositoryId}/file",
@@ -149,7 +149,7 @@ final class GitHostContract {
               "GET .../file?rev={rev}&path={path} answering 200 with binary=false and content for a"
                   + " text file"),
           row(
-              "serveTreeByName",
+              "getTree",
               "a wrapper repository with a submodule",
               "GET",
               "/git/{projectId}/{repoName}/tree/{rev}/{directory}",
@@ -172,7 +172,7 @@ final class GitHostContract {
               "GET /git/{projectId}/{repoName}/tree/{rev}/{directory} answering 200 with entries[]"
                   + " holding a mode 160000 entry named {submodule}"),
           row(
-              "serveTreeByName",
+              "getRootTree",
               "a repository with files on main",
               "GET",
               "/git/{projectId}/{repoName}/tree/{sha}",
@@ -189,7 +189,7 @@ final class GitHostContract {
               },
               "GET /git/{projectId}/{repoName}/tree/{sha} answering 200 for a commit it holds"),
           row(
-              "contains",
+              "containsCommit",
               "a repository whose main contains a commit",
               "GET",
               "/githost/api/repositories/{repositoryId}/contains",
@@ -205,13 +205,14 @@ final class GitHostContract {
               },
               "GET .../contains?commit={commit}&in={in} answering 200 with contains"),
           row(
-              "commit",
+              "commitFiles",
               "a repository with files on main",
               "POST",
               "/githost/api/repositories/{repositoryId}/commits",
               Map.of(),
-              "{\"ref\":\"refs/heads/main\",\"message\":\"release(1.0.0)\","
-                  + "\"files\":{\"VERSION\":\"1.0.0\\n\"},"
+              "{\"ref\":\"refs/heads/main\","
+                  + "\"message\":\"release(2026.101.120000): stamp the version\","
+                  + "\"files\":{\"pom.xml\":\"<project>\\n  <version>2026.101.120000</version>\\n</project>\\n\"},"
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
                   + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
               List.of("$.sha"),
@@ -225,19 +226,20 @@ final class GitHostContract {
                             p.get("projectId"),
                             p.get("repoName"),
                             "refs/heads/main",
-                            "release(1.0.0)",
-                            Map.of("VERSION", "1.0.0\n"),
+                            "release(2026.101.120000): stamp the version",
+                            Map.of("pom.xml", "<project>\n  <version>2026.101.120000</version>\n</project>\n"),
                             Map.of());
                 assertTrue(answer.ok(), answer.detail());
               },
               "POST .../commits answering 200 with the new commit's sha"),
           row(
-              "tag",
+              "createTag",
               "a repository with files on main",
               "POST",
               "/githost/api/repositories/{repositoryId}/tags",
               Map.of(),
-              "{\"name\":\"1.0.0\",\"sha\":\"{sha}\",\"message\":\"release 1.0.0\","
+              "{\"name\":\"2026.101.120000\",\"sha\":\"{sha}\","
+                  + "\"message\":\"release 2026.101.120000\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
                   + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
               List.of("$.sha"),
@@ -250,15 +252,15 @@ final class GitHostContract {
                             p.get("repositoryId"),
                             p.get("projectId"),
                             p.get("repoName"),
-                            "1.0.0",
+                            "2026.101.120000",
                             p.get("sha"),
-                            "release 1.0.0");
+                            "release 2026.101.120000");
                 assertEquals(ReleaseGitHost.TagResult.CREATED, answer.result(), answer.detail());
               },
               "POST .../tags answering 201 with the tag's sha"),
           row(
               "deleteBranch",
-              "a repository with a consumed branch",
+              "a repository with a side branch",
               "DELETE",
               "/githost/api/repositories/{repositoryId}/branches/{branch}",
               Map.of("projectId", "{projectId}", "repoName", "{repoName}"),
@@ -272,14 +274,15 @@ final class GitHostContract {
                           p.get("repositoryId"), p.get("projectId"), p.get("repoName"), p.get("branch")),
               "DELETE .../branches/{branch}?projectId&repoName answering 204"),
           row(
-              "merge",
+              "mergeBranches",
               "a repository with a branch to fold",
               "POST",
               "/githost/api/repositories/{repositoryId}/merges",
               Map.of(),
-              "{\"target\":\"{target}\",\"sources\":[\"{source}\"],\"message\":\"fold\","
+              "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
+                  + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\",\"versionPins\":true}",
               List.of(
                   "$.outcome",
                   "$.sha",
@@ -297,22 +300,23 @@ final class GitHostContract {
                             p.get("repoName"),
                             p.get("target"),
                             List.of(p.get("source")),
-                            "fold",
+                            "fold the branch",
                             List.of(),
-                            false,
+                            true,
                             false);
                 assertTrue(outcome.folded(), outcome.detail());
               },
               "POST .../merges answering 200 with outcome merged or fast-forward, sha and parents[]"),
           row(
-              "merge",
+              "mergeBranches",
               "a repository with a branch that conflicts with main",
               "POST",
               "/githost/api/repositories/{repositoryId}/merges",
               Map.of(),
-              "{\"target\":\"{target}\",\"sources\":[\"{source}\"],\"message\":\"fold\","
+              "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
+                  + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\",\"versionPins\":true}",
               List.of(
                   "$.error",
                   "$.target",
@@ -332,9 +336,9 @@ final class GitHostContract {
                             p.get("repoName"),
                             p.get("target"),
                             List.of(p.get("source")),
-                            "fold",
+                            "fold the branch",
                             List.of(),
-                            false,
+                            true,
                             false);
                 assertEquals(BackingBranchMerger.Result.CONFLICT, outcome.result(), outcome.detail());
                 assertFalse(outcome.conflicts().isEmpty());
