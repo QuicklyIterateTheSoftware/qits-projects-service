@@ -43,6 +43,7 @@ public class WrapperReconcileServiceTest {
   @Inject RepositoryNameRepository repositoryNameRepository;
   @Inject GitHostRepositories gitHostRepositories;
   @Inject GitHostAddress gitHost;
+  @Inject FakeGitHostRepositories fakeGitHost;
 
   private String fixture(String name) throws Exception {
     return GitFixtures.path(name);
@@ -362,6 +363,31 @@ public class WrapperReconcileServiceTest {
             fixture("submodule-shared.git"),
             "shared-things"),
         "and the retarget happened anyway");
+  }
+
+  /**
+   * A row the reconcile matches by url rather than by name gains the entry's name as an alias — and
+   * the git host's name index hears about it once the reconcile's transaction commits (qits-1215),
+   * with every name the row now answers to and a newer revision than the one before.
+   */
+  @Test
+  public void anAliasTheReconcileRegistersIsPushedToTheGitHost() throws Exception {
+    Project project = projectWithManifest("Reconcile Pushes Names");
+    Repository repo =
+        projectService.createRepositoryUnderProject(
+            project.id, fixture("submodule-shared.git"), RepositoryArchetype.LIBRARY);
+    repositoryService.rename(repo.id, "shared-elsewhere");
+    var before = fakeGitHost.namesPushesOf(repo.id);
+    assertEquals(List.of("shared-elsewhere"), before.get(before.size() - 1).names());
+
+    reconcileService.reconcile(project.id);
+
+    var pushes = fakeGitHost.namesPushesOf(repo.id);
+    assertTrue(pushes.size() > before.size(), "the alias the reconcile inserted was pushed");
+    var pushed = pushes.get(pushes.size() - 1);
+    assertEquals(List.of("shared-elsewhere", "submodule-shared"), pushed.names());
+    assertEquals("qits", pushed.projectSlug());
+    assertTrue(pushed.revision() > before.get(before.size() - 1).revision());
   }
 
   /**
