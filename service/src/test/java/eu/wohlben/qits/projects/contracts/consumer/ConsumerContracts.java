@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * <b>Every REST call qits-projects makes to another qits service, as consumer pact rows</b> (ticket
@@ -27,6 +28,7 @@ final class ConsumerContracts {
             WorkspacesContract.ROWS,
             IdpContract.ROWS,
             ConfigurationContract.ROWS,
+            ContainersContract.ROWS,
             ProjectsDaemonContract.ROWS,
             RefinementDaemonContract.ROWS)) {
       for (ConsumerRow row : rows) {
@@ -39,6 +41,18 @@ final class ConsumerContracts {
   /** Every row. */
   static List<ConsumerRow> all() {
     return byProvider().values().stream().flatMap(List::stream).toList();
+  }
+
+  /**
+   * The {@code qits-via} reference of {@code provider}'s pact: the client library this service
+   * reaches it through, and its version. Only qits-containers today, through {@code
+   * qits-containers-client} (qits-1163); every other provider is called with this service's own
+   * clients and carries none.
+   */
+  static Optional<Map<String, String>> via(String provider) {
+    return ContainersContract.PROVIDER.equals(provider)
+        ? Optional.of(ContainersContract.VIA.reference())
+        : Optional.empty();
   }
 
   /** The committed pact file for {@code provider}: both repository names. */

@@ -42,9 +42,11 @@ import org.junit.jupiter.api.Test;
  *       {@code HttpClient.request}) itself or through its own class's helpers and lambdas. Read
  *       off the bytecode with ArchUnit. The qits-eventstream library's calls to qits-events are not
  *       derived here: {@link EventstreamPactTest} pacts them from the library's own kit, and its
- *       guard holds the listeners in step with the code (qits-1163). Nor are the qits-containers
- *       client's calls to qits-containers: {@link ContainersClientPactTest} pacts them from the
- *       library's own kit, whose scan of the compiled classes picks the rows (qits-1163).
+ *       guard holds the listeners in step with the code (qits-1163).
+ *   <li><b>A qits-containers client method</b> this service calls: every method of the library's
+ *       {@code ContainersClient} some class here invokes. The library's other doors are not this
+ *       service's calls. {@link ContainersClientUsageTest} holds the same rows against the
+ *       qits-containers-client-contracts kit's own scan, per feature (qits-1163).
  *   <li><b>A quarkus-oidc-client</b> switched on in {@code application.properties} (its unprofiled
  *       {@code client-enabled=true}): the client-credentials token mint at qits-idp.
  * </ul>
@@ -91,6 +93,8 @@ class ConsumerCallCoverageTest {
               "eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities#send"),
           IdpContract.TOKEN_MINT_TRIGGER + ": issueToken",
           Set.of("quarkus-oidc-client:qits"));
+
+  private static final String CONTAINERS_CLIENT = "eu.wohlben.qits.containers.client.ContainersClient";
 
   /** Where a request leaves the JVM: owner type and method name. */
   private static final Map<String, Set<String>> SENDS =
@@ -154,7 +158,8 @@ class ConsumerCallCoverageTest {
     JavaClasses classes =
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages("eu.wohlben.qits.projects");
+            .importPackages(
+                "eu.wohlben.qits.projects", "eu.wohlben.qits.containers.client");
     Set<String> out = new TreeSet<>();
     for (JavaClass type : classes) {
       String name = type.getName();
@@ -162,6 +167,11 @@ class ConsumerCallCoverageTest {
         continue;
       }
       for (JavaMethod method : type.getMethods()) {
+        for (JavaMethodCall call : method.getMethodCallsFromSelf()) {
+          if (CONTAINERS_CLIENT.equals(call.getTargetOwner().getName())) {
+            out.add(CONTAINERS_CLIENT + "#" + call.getName());
+          }
+        }
         if (method.getModifiers().contains(JavaModifier.PRIVATE)
             || method.getModifiers().contains(JavaModifier.SYNTHETIC)
             || method.getName().startsWith("lambda$")) {

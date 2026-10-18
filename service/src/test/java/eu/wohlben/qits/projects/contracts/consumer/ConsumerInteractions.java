@@ -48,7 +48,9 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>Every interaction carries {@code comments.references}: {@code qits-call} (the provider and its
- * operation) and {@code qits-trigger} (the entry point here that makes the call).
+ * operation) and {@code qits-trigger} (the entry point here that makes the call). A provider this
+ * service reaches through a published client library adds {@code qits-via}, the library and its
+ * version ({@link ConsumerContracts#via}).
  */
 public final class ConsumerInteractions {
 
@@ -107,6 +109,7 @@ public final class ConsumerInteractions {
     call.put("operationId", row.operationId());
     references.put("qits-call", call);
     references.put("qits-trigger", row.trigger().reference());
+    ConsumerContracts.via(row.provider()).ifPresent(via -> references.put("qits-via", via));
     builder.expectsToReceiveHttpInteraction(
         row.description(),
         http -> {

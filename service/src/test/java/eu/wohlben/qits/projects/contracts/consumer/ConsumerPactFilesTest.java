@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -165,6 +166,14 @@ class ConsumerPactFilesTest {
       assertTrue(
           description.startsWith(trigger.path(keyOfKind.get(kind)).asText() + ": "),
           description + ": the description leads with the trigger");
+      JsonNode via = refs.path("qits-via");
+      Optional<Map<String, String>> expected = ConsumerContracts.via(provider);
+      if (expected.isPresent()) {
+        assertEquals(
+            MAPPER.valueToTree(expected.get()), via, description + ": qits-via names the client");
+      } else {
+        assertTrue(via.isMissingNode(), description + ": no client library, so no qits-via");
+      }
     }
   }
 
