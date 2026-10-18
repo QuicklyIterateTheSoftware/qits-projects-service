@@ -89,7 +89,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       String message,
       List<Resolution> resolutions,
       boolean versionPins,
-      boolean rebuild) {
+      boolean rebuild,
+      boolean gitlinkPins) {
     if (githostUrl.isEmpty() || githostUrl.get().isBlank()) {
       return Outcome.unreachable(
           "qits.projects.release-requests.githost-url is not configured; nothing can fold this"
@@ -120,6 +121,13 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
         // decoding does not fail on unknown properties, as projectId/repoName already rely on — and
         // folds exactly as it always did.
         body.put("versionPins", true);
+      }
+      if (gitlinkPins) {
+        // The git host decides submodule-pin conflicts itself (qits-958): the later release of the
+        // sibling, where it contains the other. It reports them back as resolvedGitlinks, writes
+        // the Resolved-Gitlink trailers into the merge commit, and marks a gitlink conflict it
+        // declined with a `declined` sentence. One that predates the flag ignores it.
+        body.put("gitlinkPins", true);
       }
       if (rebuild) {
         // The git host leaves the target's tip out and builds the fold from the sources alone. One
@@ -179,10 +187,12 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
 
   /**
    * The 200 body: {@code target}, {@code sha}, {@code outcome}, {@code parents}, {@code skipped},
-   * and — on a fold that carried directives or {@code versionPins} — {@code resolved}, the paths the
-   * far side decided, and {@code resolvedVersions}, the version pins among them ({@code path},
-   * 1-based {@code line}, {@code ours}, {@code theirs}, {@code chosen}). An absent {@code resolved} is an empty list and not a failure: it is what every fold that
-   * asked for nothing answers, and what a git host that predates directives answers to every fold.
+   * and — on a fold that carried directives, {@code versionPins} or {@code gitlinkPins} — {@code
+   * resolved}, the paths the far side decided, {@code resolvedVersions}, the version pins among them
+   * ({@code path}, 1-based {@code line}, {@code ours}, {@code theirs}, {@code chosen}), and {@code
+   * resolvedGitlinks}, the submodule pins among them ({@code path}, {@code name}, {@code from},
+   * {@code to}, {@code tag}). An absent list is an empty list and not a failure: it is what every
+   * fold that asked for nothing answers, and what a git host that predates the flag answers.
    */
   private static Outcome success(String body) throws Exception {
     JsonNode answer = MAPPER.readTree(body);
@@ -206,8 +216,20 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
                         text(node, "ours"),
                         text(node, "theirs"),
                         text(node, "chosen"))));
+    List<ResolvedGitlink> resolvedGitlinks = new ArrayList<>();
+    answer
+        .path("resolvedGitlinks")
+        .forEach(
+            node ->
+                resolvedGitlinks.add(
+                    new ResolvedGitlink(
+                        text(node, "path"),
+                        text(node, "name"),
+                        text(node, "from"),
+                        text(node, "to"),
+                        text(node, "tag"))));
     return switch (answer.path("outcome").asText("")) {
-      case "merged" -> Outcome.merged(sha, parents, resolved, resolvedVersions);
+      case "merged" -> Outcome.merged(sha, parents, resolved, resolvedVersions, resolvedGitlinks);
       case "fast-forward" -> Outcome.fastForward(sha, parents, resolved);
       case "unchanged" -> Outcome.unchanged(sha);
       default ->
@@ -220,7 +242,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
    * One conflict per path and head, forwarded unchanged. {@code kind} is never null on the wire; a
    * body that omits it is read as {@code file}, which is the answer that decides nothing — the
    * gitlink arm is the only one anything acts on, so an unknown kind must never fall into it.
-   * {@code base}, {@code ours} and {@code theirs} stay null where the side does not have the path.
+   * {@code base}, {@code ours} and {@code theirs} stay null where the side does not have the path,
+   * and {@code declined} stays null where the git host's gitlink rule said nothing about it.
    */
   private static List<Conflict> conflictsOf(JsonNode conflicts) {
     List<Conflict> paths = new ArrayList<>();
@@ -237,7 +260,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
                         : text(node, "kind"),
                     text(node, "base"),
                     text(node, "ours"),
-                    text(node, "theirs"))));
+                    text(node, "theirs"),
+                    text(node, "declined"))));
     return paths;
   }
 

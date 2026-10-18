@@ -347,8 +347,6 @@ public class ReleaseRequests {
    */
   @Inject AutomationRefresh automationRefresh;
 
-  @Inject ConflictResolver conflictResolver;
-
   @Inject AutomationLedger automationLedger;
 
   @Inject ReleaseRequestAutomationWaiverRepository waivers;
@@ -2781,23 +2779,22 @@ public class ReleaseRequests {
    * takes: the read that assembles the sources and the write that applies the answer are two short
    * transactions with an HTTP round trip between them.
    *
-   * <p><b>A conflicted fold gets one mechanical attempt before it becomes a person's problem.</b>
-   * {@link ConflictResolver} is asked whether every conflicting path is a submodule pin this service
-   * can decide — two recorded releases of one sibling, the later one containing the earlier — and if
-   * every one of them is, the sources are folded once more with those pins decided and the decisions
-   * written into the merge message as trailers. Anything else, including a second conflict, reaches
-   * {@link #apply} exactly as it always did, with what was attempted appended to the CONFLICT arm's
-   * sentence.
+   * <p><b>Exactly one fold, and every pin is the git host's to decide.</b> Two sources bumping one
+   * {@code <….version>} in a pom, or one dependency in a package.json, is a text conflict only the
+   * git host holds the chunks of, so the fold goes out with {@code versionPins} and the far side
+   * decides those itself, newer wins. Two sources pinning one submodule at two releases of the same
+   * sibling is the same shape one level down, and since qits-958 the fold also goes out with {@code
+   * gitlinkPins}: the git host picks the later release where it contains the other and writes the
+   * {@code Resolved-Gitlink} trailers into the merge commit itself. There is no second fold and no
+   * decision made on this side — the git host holds the conflict, the siblings' tags and their
+   * lineage in one place, so it is the one place that decides.
    *
-   * <p><b>Version pins are the git host's to decide, and every fold asks it to.</b> Two sources
-   * bumping one {@code <….version>} in a pom, or one dependency in a package.json, is a text conflict
-   * only the git host holds the chunks of, so both folds go out with {@code versionPins} and the far
-   * side decides those itself, newer wins. Because it decides during the call, the decisions cannot
-   * be trailers of the message this side composed beforehand; they are logged at INFO, one {@code
-   * Resolved-Version} trailer line each. Not on the request's detail: the gate pass that follows
-   * every fold rewrites that sentence at once, so it would be a record nobody ever reads, and the
-   * gitlink decisions are not there either. A manifest the git host could not decide comes back in
-   * the 409 as before, and {@link ConflictResolver} declines it as it always has.
+   * <p>Both kinds of decision come back with the outcome and are logged at INFO, one trailer line
+   * each. Not on the request's detail: the gate pass that follows every fold rewrites that sentence
+   * at once, so it would be a record nobody ever reads. What the git host could not decide comes
+   * back in the 409; a gitlink conflict it examined and declined carries a {@code declined} sentence
+   * saying why, and those sentences are appended to the CONFLICT arm's detail by {@link #apply}, so
+   * the person the conflict now belongs to reads why no machine took it.
    */
   void remerge(String id, String why) {
     record Ask(
@@ -2817,9 +2814,8 @@ public class ReleaseRequests {
                   if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
                     return new Ask(null, null, null, List.of(), null, null, null, false);
                   }
-                  // The project is read here rather than at the conflict, because by then the only
-                  // transaction going is one this thread is deliberately not in; a conflict is rare
-                  // and one extra row read on every fold is cheaper than a second transaction.
+                  // The project is read here, inside the one read transaction, because the fold
+                  // itself is made outside every transaction.
                   String projectId =
                       repositories
                           .findByIdOptional(row.repoId)
@@ -2849,47 +2845,27 @@ public class ReleaseRequests {
     }
     String message = "Release request " + ask.qualifiedId() + ": " + ask.summary();
     BackingBranchMerger.Outcome outcome =
-        fold(
-            id,
-            ask.repoId(),
-            ask.projectId(),
-            ask.repoName(),
-            target,
-            ask.refs(),
-            message,
-            List.of());
+        fold(id, ask.repoId(), ask.projectId(), ask.repoName(), target, ask.refs(), message);
     String attempted = null;
     if (outcome.result() == BackingBranchMerger.Result.CONFLICT) {
-      // ONE mechanical attempt, and one extra fold at most. See fold() for why there is no
-      // trigger, no retry and no loop behind this line.
-      ConflictResolver.Attempt attempt =
-          conflictResolver.attempt(id, ask.repoId(), ask.projectId(), outcome);
-      if (attempt.complete()) {
-        LOG.infof(
-            "Release request %s conflicts on %d submodule pin(s) this service can decide; folding"
-                + " again with the later release of each",
-            id, attempt.directives().size());
-        outcome =
-            fold(
-                id,
-                ask.repoId(),
-                ask.projectId(),
-                ask.repoName(),
-                target,
-                ask.refs(),
-                message + "\n\n" + attempt.trailer(),
-                attempt.directives());
-        if (outcome.result() == BackingBranchMerger.Result.CONFLICT) {
-          // The second outcome is the one that stands, and nothing attempts a third time: a fold
-          // that still conflicts with every decidable pin decided is conflicting over something
-          // else, which is a person's.
-          attempted =
-              attempt.directives().size()
-                  + " submodule pin(s) were decided and the fold conflicts anyway";
-        }
-      } else {
-        attempted = attempt.detail();
-      }
+      // What the git host's gitlink rule said about the conflicts it declined, if anything. Nothing
+      // here re-folds on it: a conflict answers the same on every knock.
+      String declined =
+          outcome.conflicts().stream()
+              .map(BackingBranchMerger.Conflict::declined)
+              .filter(sentence -> sentence != null && !sentence.isBlank())
+              .distinct()
+              .collect(Collectors.joining("; "));
+      attempted = declined.isEmpty() ? null : declined;
+    }
+    if (outcome.folded() && !outcome.resolvedGitlinks().isEmpty()) {
+      LOG.infof(
+          "Release request %s: qits-githost decided %d submodule pin(s) in the fold:\n%s",
+          id,
+          outcome.resolvedGitlinks().size(),
+          outcome.resolvedGitlinks().stream()
+              .map(BackingBranchMerger.ResolvedGitlink::trailer)
+              .collect(Collectors.joining("\n")));
     }
     if (outcome.folded() && !outcome.resolvedVersions().isEmpty()) {
       LOG.infof(
@@ -2934,8 +2910,9 @@ public class ReleaseRequests {
 
   /**
    * One call to the merge port, with the port's must-not-throw contract belted, and always with
-   * {@code versionPins} — see {@link #remerge}. Two call sites and exactly two: a fold, and — only when the first answered CONFLICT and every conflicting path was
-   * decidable — the same fold again carrying the directives.
+   * {@code versionPins} and {@code gitlinkPins} — see {@link #remerge}. One call site: every pin
+   * decision is the git host's, made during this call, so nothing here ever folds a second time
+   * and no directive is ever sent.
    *
    * <p><b>Every fold is a rebuild</b> (user decision 2026-10-09): the git host builds it from
    * {@code main} and the request's sources alone and moves {@code release/<id>} onto it with a
@@ -2947,13 +2924,10 @@ public class ReleaseRequests {
    * is keyed on the sha, {@link FoldChanges#pathsBetween} is a tree diff, and a moved fold already
    * cancels the runs it superseded.
    *
-   * <p><b>Two is the ceiling and there is no mechanism here that could raise it.</b> The second call
-   * is made from a straight line of code with no loop around it, on an outcome that is examined once;
-   * a second conflict is applied as it stands. That matters more than it looks: {@link #sweep()}
-   * deliberately does not re-fold a CONFLICTED request — a conflict answers the same on every knock,
-   * and knocking anyway is the unbounded-retry defect this aggregate already paid for once
-   * (cf91a63, measured 2026-09-01) — so the only way a resolution attempt could become a loop is by
-   * being made more than once per fold. It is not.
+   * <p><b>One is the ceiling.</b> A conflict is applied as it stands, with no retry behind it. That
+   * matters more than it looks: {@link #sweep()} deliberately does not re-fold a CONFLICTED request
+   * — a conflict answers the same on every knock, and knocking anyway is the unbounded-retry defect
+   * this aggregate already paid for once (cf91a63, measured 2026-09-01).
    */
   private BackingBranchMerger.Outcome fold(
       String id,
@@ -2962,12 +2936,11 @@ public class ReleaseRequests {
       String repoName,
       String target,
       List<String> refs,
-      String message,
-      List<BackingBranchMerger.Resolution> resolutions) {
+      String message) {
     try {
       return mergers
           .get()
-          .merge(repoId, projectId, repoName, target, refs, message, resolutions, true, true);
+          .merge(repoId, projectId, repoName, target, refs, message, List.of(), true, true, true);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not lose the request.
       LOG.warnf(e, "The backing-branch merger threw for release request %s", id);
@@ -3097,8 +3070,8 @@ public class ReleaseRequests {
   /**
    * The write half of a fold: the row is re-read, so a request settled mid-call is left alone.
    *
-   * @param attempted what the mechanical resolution attempt came to, or null where there was
-   *     nothing to attempt. It is appended to the CONFLICT arm's own sentence and to nothing else —
+   * @param attempted why the git host declined the gitlink conflicts it examined — the conflicts'
+   *     {@code declined} sentences, joined — or null where it declined none. It is appended to the CONFLICT arm's own sentence and to nothing else —
    *     <b>the state machine keeps exactly one CONFLICT arm</b>, because a second one would be a
    *     second place the conflicted state is written and the two would drift.
    */
