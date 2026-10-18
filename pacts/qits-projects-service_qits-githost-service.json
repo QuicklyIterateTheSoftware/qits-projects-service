@@ -872,7 +872,6 @@
               "email": "qits-projects@qits.internal",
               "name": "qits-projects"
             },
-            "gitlinkPins": true,
             "message": "fold the branch",
             "projectId": "00000000-0000-4000-8000-000000000001",
             "repoName": "contract-service",
@@ -1100,7 +1099,6 @@
               "email": "qits-projects@qits.internal",
               "name": "qits-projects"
             },
-            "gitlinkPins": true,
             "message": "fold the branch",
             "projectId": "00000000-0000-4000-8000-000000000001",
             "repoName": "contract-service",
@@ -1195,7 +1193,6 @@
             "resolved": [
               "pom.xml"
             ],
-            "resolvedGitlinks": [],
             "resolvedVersions": [
               {
                 "chosen": "1.1.0",
