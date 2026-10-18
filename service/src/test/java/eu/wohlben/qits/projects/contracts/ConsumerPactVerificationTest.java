@@ -66,7 +66,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *       door (scheduling, qits-887; a campaign criterion's approval) answer as it does for them, and
  *       exactly what {@link GoldenMasterRecordingTest} sends when it records the answer the consumer
  *       wrote against. Any other trigger (a CLI command, a service's schedule) calls as the plain
- *       {@code %test} dev user, as before.
+ *       {@code %test} dev user, as before. A state that returns an {@code authorization} param
+ *       grants it ({@link ContractBearers}), so the pact's {@code Authorization} header — the
+ *       runner toolkit's registration bearer — arrives as the machine identity the edge forwards.
  *   <li><b>State-param stand-ins in the body are this run's values</b> ({@link
  *       StateParamRequestBody}): a member name or value that is exactly a param's pinned example, or
  *       the golden masters' own {@code "{name}"} placeholder, becomes what the {@code @State}
@@ -594,5 +596,15 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS)
   Map<String, String> repositoriesWithDecommissionableTags() {
     return states.params(ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS);
+  }
+
+  @State(ProviderStates.AN_UNREGISTERED_RUNNER)
+  Map<String, String> anUnregisteredRunner() {
+    return states.params(ProviderStates.AN_UNREGISTERED_RUNNER);
+  }
+
+  @State(ProviderStates.A_REGISTERED_RUNNER)
+  Map<String, String> aRegisteredRunner() {
+    return states.params(ProviderStates.A_REGISTERED_RUNNER);
   }
 }

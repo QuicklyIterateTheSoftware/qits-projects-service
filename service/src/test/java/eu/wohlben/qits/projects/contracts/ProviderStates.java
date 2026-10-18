@@ -225,6 +225,25 @@ public class ProviderStates {
   public static final String REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS =
       "repositories with decommissionable tags";
 
+  // qits-1163: the runner toolkit's register call, as qits-projects-desk-runner-daemon makes it.
+  // The names are qits-ci's own for its runner register door; here they mean a front-desk runner.
+  public static final String AN_UNREGISTERED_RUNNER = "an unregistered runner";
+  public static final String A_REGISTERED_RUNNER = "a registered runner";
+
+  /** The front-desk runner the runner states declare, named as qits-ci's states name theirs. */
+  static final String RUNNER_NAME = "localhost";
+
+  /**
+   * The bearer a desk runner's registration token is presented as, and the subject the edge
+   * forwards for it — what the runner row records as its registration token's subject.
+   */
+  static final String REGISTRATION_BEARER = "Bearer qits_tok_contract-registration";
+
+  static final String REGISTRATION_SUBJECT = "tok-desk-runner-registration-contract";
+
+  /** The public domain the runner states give the platform, so the register door has addresses. */
+  static final String RUNNER_DOMAIN = "suite.example";
+
   /** The fold the release-request states script the merger to answer, first and after a change. */
   static final String SCRIPTED_FOLD = "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001";
 
@@ -359,6 +378,15 @@ public class ProviderStates {
   /** Whether a state scripted the decisions or deployments fakes, which cleanUp resets. */
   private boolean fakesTouched;
 
+  /** Turns a state's {@code authorization} param into the identity the edge forwards for it. */
+  @Inject ContractBearers bearers;
+
+  /** The qits-idp a runner state stands up, closed again by {@link #cleanUp()}. */
+  private eu.wohlben.qits.projects.idphost.RoutingIdpServer idp;
+
+  /** Whether a runner state seeded {@link #RUNNER_NAME}, which cleanUp deletes again. */
+  private boolean seededRunner;
+
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
   /** Release requests and CI verdicts the states wrote, removed again by {@link #cleanUp()}. */
@@ -463,6 +491,8 @@ public class ProviderStates {
     states.put(A_TICKET_WITH_A_DISPATCHED_AGENT, this::aTicketWithADispatchedAgent);
     states.put(
         REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS, this::repositoriesWithDecommissionableTags);
+    states.put(AN_UNREGISTERED_RUNNER, this::anUnregisteredRunner);
+    states.put(A_REGISTERED_RUNNER, this::aRegisteredRunner);
   }
 
   /** Every state name this provider answers for. */
@@ -488,6 +518,15 @@ public class ProviderStates {
    */
   public void cleanUp() {
     SeededGit.deleteAll();
+    bearers.reset();
+    if (idp != null) {
+      idp.close();
+      idp = null;
+    }
+    if (seededRunner) {
+      seededRunner = false;
+      deleteRunner();
+    }
     if (fakesTouched) {
       fakesTouched = false;
       releaseDecisions.get().reset();
@@ -3095,6 +3134,87 @@ public class ProviderStates {
       throw new IllegalStateException("Could not seed the tagged repository", e);
     }
     return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  // --- the desk-runner states (qits-1163) ------------------------------------------------------
+
+  /**
+   * Front-desk runner {@link #RUNNER_NAME}, declared and never registered; its registration token is
+   * presented as the {@code authorization} param. qits-idp commissions the runner's client, and the
+   * platform has a public domain, so the register door answers 200 with both.
+   */
+  private Setup anUnregisteredRunner() {
+    Map<String, String> params = runnerParams();
+    persistRunner(runner(params.get("runnerId")));
+    standUpRunnerPlane();
+    bearers.grant(REGISTRATION_BEARER, REGISTRATION_SUBJECT, "qits:desk-runner-registration");
+    return new Setup(params, List.of());
+  }
+
+  /** Runner {@link #RUNNER_NAME}, registered already: its registration token answers 409 now. */
+  private Setup aRegisteredRunner() {
+    Map<String, String> params = runnerParams();
+    eu.wohlben.qits.projects.entity.DeskRunner runner = runner(params.get("runnerId"));
+    runner.clientId = "dev-qits-projects-desk-runner-" + runner.id;
+    runner.capabilities =
+        "{\"arch\":\"amd64\",\"docker\":true,\"labels\":{\"site\":\"home\"},\"os\":\"linux\"}";
+    runner.registeredAt = SEEDED_AT.plusSeconds(60);
+    runner.lastSeenAt = SEEDED_AT.plusSeconds(120);
+    persistRunner(runner);
+    standUpRunnerPlane();
+    bearers.grant(REGISTRATION_BEARER, REGISTRATION_SUBJECT, "qits:desk-runner-registration");
+    return new Setup(params, List.of());
+  }
+
+  private static Map<String, String> runnerParams() {
+    return params(
+        "authorization", REGISTRATION_BEARER, "runnerId", UUID.randomUUID().toString());
+  }
+
+  /** Runner {@link #RUNNER_NAME} as a create declares it: one slot, its token not yet spent. */
+  private static eu.wohlben.qits.projects.entity.DeskRunner runner(String id) {
+    var runner = new eu.wohlben.qits.projects.entity.DeskRunner();
+    runner.id = UUID.fromString(id);
+    runner.name = RUNNER_NAME;
+    runner.description = "the workstation's own front-desk runner";
+    runner.slots = 1;
+    runner.registrationTokenId = "token-contract-registration";
+    runner.registrationTokenSubject = REGISTRATION_SUBJECT;
+    runner.createdAt = SEEDED_AT;
+    return runner;
+  }
+
+  private void persistRunner(eu.wohlben.qits.projects.entity.DeskRunner runner) {
+    deleteRunner();
+    seededRunner = true;
+    QuarkusTransaction.requiringNew().run(() -> runner.persist());
+  }
+
+  private static void deleteRunner() {
+    QuarkusTransaction.requiringNew()
+        .run(() -> eu.wohlben.qits.projects.entity.DeskRunner.delete("name", RUNNER_NAME));
+  }
+
+  /**
+   * A qits-idp that commissions the runner's client (and takes back the spent token: the stub
+   * answers any DELETE 204), and the public domain the door composes the runner's addresses from.
+   */
+  private void standUpRunnerPlane() {
+    if (idp != null) {
+      idp.close();
+    }
+    try {
+      idp = new eu.wohlben.qits.projects.idphost.RoutingIdpServer();
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("Could not start the runner states' stub qits-idp", e);
+    }
+    idp.on("POST /idp/api/clients", 201, "{\"clientId\":\"run-client-1\",\"secret\":\"run-s3cr3t-1\"}");
+    io.quarkus.test.junit.QuarkusMock.installMockForType(
+        eu.wohlben.qits.projects.idphost.IdpRunnerCommissionerFixture.pointedAt(idp.url()),
+        eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner.class);
+    io.quarkus.test.junit.QuarkusMock.installMockForType(
+        eu.wohlben.qits.projects.deskhost.DeskRunnerAddressesFixture.withDomain(RUNNER_DOMAIN),
+        eu.wohlben.qits.projects.deskhost.DeskRunnerAddresses.class);
   }
 
   // --- seeding ---------------------------------------------------------------------------------
