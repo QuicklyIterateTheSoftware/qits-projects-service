@@ -339,13 +339,15 @@ final class GitHostContract {
               "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\","
+                  + "\"gitlinkPins\":true}",
               List.of(
                   "$.outcome",
                   "$.sha",
                   "$.parents[*]",
                   "$.resolved",
-                  "$.resolvedVersions"),
+                  "$.resolvedVersions",
+                  "$.resolvedGitlinks"),
               200,
               Trigger.schedule("ReleaseRequests.fold"),
               (base, p) -> {
@@ -360,7 +362,8 @@ final class GitHostContract {
                             "fold the branch",
                             List.of(),
                             false,
-                            false);
+                            false,
+                            true);
                 assertTrue(outcome.folded(), outcome.detail());
               },
               "POST .../merges answering 200 with outcome merged or fast-forward, sha and parents[]"),
@@ -373,7 +376,8 @@ final class GitHostContract {
               "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\","
+                  + "\"gitlinkPins\":true}",
               List.of(
                   "$.error",
                   "$.target",
@@ -396,7 +400,8 @@ final class GitHostContract {
                             "fold the branch",
                             List.of(),
                             false,
-                            false);
+                            false,
+                            true);
                 assertEquals(BackingBranchMerger.Result.CONFLICT, outcome.result(), outcome.detail());
                 assertFalse(outcome.conflicts().isEmpty());
               },
