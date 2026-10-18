@@ -28,8 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link HttpGitHostRepositories} against a local server standing in for qits-githost — plain
  * JUnit over a directly-constructed bean. What is under
  * test is the wire shape: the exact absolute url, method and body {@code ensure}/{@code find}/{@code
- * delete} send (§2.3's {@code PUT}/{@code GET}/{@code DELETE /git/<repoId>}), and which status
- * codes become which outcome.
+ * delete} send (§2.3's {@code PUT}/{@code GET}/{@code DELETE /git/<repoId>}) and {@code putNames}
+ * sends ({@code PUT /git/<repoId>/names}, qits-1215), and which status codes become which outcome.
  */
 class HttpGitHostRepositoriesTest {
 
@@ -217,5 +217,74 @@ class HttpGitHostRepositoriesTest {
     GitHostException failure =
         assertThrows(GitHostException.class, () -> repositoriesAgainst(base).delete("repo-1"));
     assertTrue(failure.getMessage().contains("500"), "got: " + failure.getMessage());
+  }
+
+  // --- putNames() -------------------------------------------------------------------------------
+
+  @Test
+  void putNamesSendsAPutToTheNamesUrlWithTheWholeSet() throws Exception {
+    String base = startServer();
+    status.set(200);
+    responseBody.set(
+        "{\"repoId\":\"repo-1\",\"projectId\":\"p-1\",\"projectSlug\":\"demo\","
+            + "\"names\":[\"a\",\"b\"],\"revision\":3,\"applied\":true}");
+
+    GitHostRepositories.NamesOutcome outcome =
+        repositoriesAgainst(base).putNames("repo-1", "p-1", "demo", List.of("a", "b"), 3);
+
+    assertEquals(GitHostRepositories.NamesOutcome.APPLIED, outcome);
+    assertEquals(1, received.size());
+    Received request = received.get(0);
+    assertEquals("PUT", request.method());
+    assertEquals("/git/repo-1/names", request.path());
+    assertEquals(
+        "{\"projectId\":\"p-1\",\"projectSlug\":\"demo\",\"names\":[\"a\",\"b\"],\"revision\":3}",
+        request.body(),
+        "the members in a fixed order, which is what the pact compares");
+    assertEquals("Bearer machine-token", request.authorization());
+  }
+
+  @Test
+  void putNamesReportsAnUnappliedAnswerAsAlreadyCurrent() throws Exception {
+    String base = startServer();
+    status.set(200);
+    responseBody.set("{\"repoId\":\"repo-1\",\"revision\":5,\"applied\":false}");
+
+    assertEquals(
+        GitHostRepositories.NamesOutcome.ALREADY_CURRENT,
+        repositoriesAgainst(base).putNames("repo-1", "p-1", "demo", List.of("a"), 3),
+        "applied=false: the host already held this revision or a newer one");
+  }
+
+  @Test
+  void putNamesReports404AsNotStoredRatherThanAFailure() throws Exception {
+    String base = startServer();
+    status.set(404);
+
+    assertEquals(
+        GitHostRepositories.NamesOutcome.NOT_STORED,
+        repositoriesAgainst(base).putNames("no-such-repo", "p-1", "demo", List.of("a"), 1));
+  }
+
+  @Test
+  void putNamesThrowsOnAServerError() throws Exception {
+    String base = startServer();
+    status.set(500);
+
+    GitHostException failure =
+        assertThrows(
+            GitHostException.class,
+            () -> repositoriesAgainst(base).putNames("repo-1", "p-1", "demo", List.of("a"), 1));
+    assertTrue(failure.getMessage().contains("500"), "got: " + failure.getMessage());
+  }
+
+  @Test
+  void putNamesThrowsOnARefusedBody() throws Exception {
+    String base = startServer();
+    status.set(400);
+
+    assertThrows(
+        GitHostException.class,
+        () -> repositoriesAgainst(base).putNames("repo-1", "p-1", "demo", List.of("a/b"), 1));
   }
 }

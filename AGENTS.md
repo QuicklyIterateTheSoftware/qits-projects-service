@@ -56,7 +56,8 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   Framework-free in the sense that matters: no JAX-RS, no websockets. Entities are Panache
   active-record with public fields; mappers are MapStruct `@Mapper(componentModel = "jakarta")`.
 - `service/` — `api` (JAX-RS + the remote-login websocket), `startup`, `wiring` (the git host's lifecycle client — `HttpGitHostRepositories`, a
-  `java.net.http.HttpClient` as an instance field). There is **no `notify` package any more**: its
+  `java.net.http.HttpClient` as an instance field — and `GitHostNameReconcile`, the name index's
+  scheduled re-push). There is **no `notify` package any more**: its
   one class implemented `ProjectDomainRegistrar` against qits-platform-dns, that service is gone from
   the platform, and the port is an unimplemented hook now — so this repo implements no creation port
   at all. Bring the package name back (qits-ci-service's `ci.notify` idiom) if a fire-and-forget notifier
@@ -810,10 +811,12 @@ textual, one section at a time, every other byte where it was, because this is a
 that changes a repository's public identity, and phase 2 of the wrapper reorganisation is ordered
 after it. `RepositoryService.rename` is the whole of it. Five things about it:
 
-- **Nothing is asked of the git host.** A bare is keyed by the row's opaque id (the 2026-08-21
-  identity ruling) and `GitHostRepositories`' three verbs all take a repoId, so there is no rename
-  to make there: `/git/<project>/<newName>` serves the same bare the moment the row commits, because
-  that path resolves through `GET …/repositories/by-name/{repoName}` and the alias table.
+- **The bare does not move; only the git host's name index does.** A bare is keyed by the row's
+  opaque id (the 2026-08-21 identity ruling), so there is no rename to make in storage:
+  `/git/<project>/<newName>` serves the same bare the moment the row commits. What the git host is
+  told is the new name set — the after-commit name push below — so its own index follows at once,
+  and `GET …/repositories/by-name/{repoName}` answers from the alias table for anything still
+  reading it.
 - **The repository answers to exactly the new name afterwards, and every old alias goes.** Keeping
   the old one is the tempting alternative and it is wrong in three ways at once: it would keep
   `/git/<project>/<oldName>` resolving, which is what a rename must stop; it would keep the old name
@@ -833,6 +836,25 @@ after it. `RepositoryService.rename` is the whole of it. Five things about it:
   folds `../<newName>.git` against the wrapper's forge url and reports `SYNC_TARGET_UPDATED`.
   `RepositoryRenameTest` asserts the lag rather than leaving it documented, so a future change that
   quietly started writing the wrapper shows up there.
+
+**The git host keeps its own name index, and this service is its only writer (qits-1215).**
+`repository.names_revision` (V45) counts changes to a repository's name set; every write in
+`RepositoryNameRepository` that really adds or drops a row (`ensureAlias` when it inserts,
+`forgetNames` when it deletes anything, `registerSelfName` through `ensureAlias`) bumps it with a JPQL
+increment in the caller's transaction and fires the CDI event `persistence/RepositoryNamesChanged`.
+`control/GitHostNameSync` observes it `AFTER_SUCCESS` — a rolled-back write pushes nothing — re-reads
+id, project, slug, revision and names in a fresh transaction and sends `PUT /git/<repoId>/names`
+through `GitHostRepositories.putNames`. Four rules: the push runs **synchronously on the committing
+thread** (a rename moves at once; the port's network timeout bounds the wait); it **never throws**
+(a WARN naming the reconciler, so a failing git host never fails a rename); a name the git host would
+refuse (`/`, whitespace, `.git` suffix, over 255) is left out with a WARN rather than sinking the set;
+and `Repository.namesRevision` is mapped **read-only**, because a writable mapping would let the dirty
+flush of a row loaded before the bump write the old value back. `wiring/GitHostNameReconcile`
+re-pushes every repository every `qits.projects.githost-names.reconcile-every` (5m, `off` in dev and
+test) and logs `githost name sync: N pushed, M applied, K not stored, F failed`; its first pass after
+deploy is the one-time backfill of the git host's index. The revision is what makes all of this safe
+to repeat: the git host ignores an equal or older one. Delete is unchanged — `DELETE /git/<id>`
+drops the names on the git host too.
 
 **Archetype is optional at creation for the same reason**: `POST …/repositories` reads it off the
 name's role suffix when none is stated (the url's basename for the attach arm), and refuses when
