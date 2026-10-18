@@ -29,8 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>What only a wire test can see, and the flow cannot: that a fold with nothing to decide sends
  * <b>the request it always sent</b>, byte-comparable and with no {@code resolutions} key at all, so
  * a git host that has never heard of directives cannot tell the two features apart; that a
- * directive travels as {@code {path, gitlink}}; and that the 409's four new fields and the 200's
- * {@code resolved} are carried through unchanged rather than reworded.
+ * directive travels as {@code {path, gitlink}}; that the 409's side fields and {@code declined},
+ * and the 200's {@code resolved}, {@code resolvedVersions} and {@code resolvedGitlinks}, are
+ * carried through unchanged rather than reworded.
  */
 class HttpBackingBranchMergerTest {
 
@@ -323,6 +324,102 @@ class HttpBackingBranchMergerTest {
 
     assertTrue(outcome.folded());
     assertEquals(List.of(), outcome.resolvedVersions());
+  }
+
+  /** qits-958: submodule pins are the git host's to decide, asked for exactly like version pins. */
+  @Test
+  void aFoldAskingForGitlinkPinsSaysSo() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true, true);
+
+    JsonNode body = MAPPER.readTree(received.get(0).body());
+    assertTrue(body.path("gitlinkPins").asBoolean(false), body.toString());
+    assertTrue(body.path("versionPins").asBoolean(false), body.toString());
+    assertFalse(body.has("resolutions"), "asking for gitlink pins directs no path");
+  }
+
+  @Test
+  void aFoldNotAskingForGitlinkPinsSendsNoSuchKey() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true);
+
+    assertFalse(MAPPER.readTree(received.get(0).body()).has("gitlinkPins"));
+  }
+
+  @Test
+  void theGitlinkPinsTheGitHostDecidedAreRead() throws Exception {
+    String base = startServer();
+    String from = "a".repeat(40);
+    String to = "b".repeat(40);
+    responseBody.set(
+        "{\"outcome\":\"merged\",\"sha\":\"fold-sha\",\"parents\":[\"p1\",\"p2\"],"
+            + "\"resolved\":[\"components/member-a/member-a\"],\"resolvedVersions\":[],"
+            + "\"resolvedGitlinks\":[{\"path\":\"components/member-a/member-a\","
+            + "\"name\":\"member-a\",\"from\":\""
+            + from
+            + "\",\"to\":\""
+            + to
+            + "\",\"tag\":\"2026.902.2\"}]}");
+
+    BackingBranchMerger.Outcome outcome =
+        against(base)
+            .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true, true);
+
+    assertEquals(BackingBranchMerger.Result.MERGED, outcome.result());
+    assertEquals(List.of("components/member-a/member-a"), outcome.resolved());
+    assertEquals(
+        List.of(
+            new BackingBranchMerger.ResolvedGitlink(
+                "components/member-a/member-a", "member-a", from, to, "2026.902.2")),
+        outcome.resolvedGitlinks());
+    assertEquals(
+        "Resolved-Gitlink: components/member-a/member-a " + from + " -> " + to
+            + " (member-a 2026.902.2)",
+        outcome.resolvedGitlinks().get(0).trailer());
+  }
+
+  @Test
+  void aBodyWithNoResolvedGitlinksKeyIsAnEmptyList() throws Exception {
+    String base = startServer();
+
+    BackingBranchMerger.Outcome outcome =
+        against(base)
+            .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true, true);
+
+    assertTrue(outcome.folded());
+    assertEquals(List.of(), outcome.resolvedGitlinks());
+  }
+
+  @Test
+  void aConflictTheGitHostDeclinedSaysWhyAndOneItDidNotSaysNothing() throws Exception {
+    String base = startServer();
+    status.set(409);
+    responseBody.set(
+        "{\"error\":\"merge-conflict\",\"target\":\"refs/heads/release/r1\",\"conflicts\":["
+            + "{\"path\":\"components/member-a/member-a\",\"head\":\"refs/heads/work\","
+            + "\"headSha\":\"head-sha\",\"reason\":\"content\",\"kind\":\"gitlink\","
+            + "\"base\":\"base-sha\",\"ours\":\"ours-sha\",\"theirs\":\"theirs-sha\","
+            + "\"declined\":\"the conflict at components/member-a/member-a is not one this"
+            + " service can decide: neither release contains the other\"},"
+            + "{\"path\":\"pom.xml\",\"head\":\"refs/heads/work\",\"headSha\":\"head-sha\","
+            + "\"reason\":\"content\",\"kind\":\"file\",\"declined\":null},"
+            + "{\"path\":\"README.md\",\"head\":\"refs/heads/work\",\"headSha\":\"head-sha\","
+            + "\"reason\":\"content\",\"kind\":\"file\"}]}");
+
+    List<BackingBranchMerger.Conflict> conflicts =
+        against(base)
+            .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true, true)
+            .conflicts();
+
+    assertEquals(
+        "the conflict at components/member-a/member-a is not one this service can decide:"
+            + " neither release contains the other",
+        conflicts.get(0).declined());
+    assertNull(conflicts.get(1).declined(), "JSON null is null, never the string \"null\"");
+    assertNull(conflicts.get(2).declined(), "an absent key is null");
   }
 
   /**
