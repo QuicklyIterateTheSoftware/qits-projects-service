@@ -109,13 +109,9 @@ public class GitHostNameSync {
       if (!always && acknowledged.getOrDefault(repositoryId, -1L) >= snapshot.revision()) {
         return Result.ALREADY_CURRENT;
       }
+      // An empty set is still pushed: a repository whose names were all forgotten, or none of
+      // whose names the git host accepts, must stop answering to the names the git host held.
       List<String> names = addressable(repositoryId, snapshot.names());
-      if (names.isEmpty()) {
-        LOG.warnf(
-            "githost name push for %s skipped: none of its names %s is one the git host accepts",
-            repositoryId, snapshot.names());
-        return Result.SKIPPED;
-      }
       NamesOutcome outcome =
           gitHost
               .get()
