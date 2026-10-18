@@ -1012,6 +1012,19 @@ release before its own QA run existed (qits-edge-service, request 44385ca2). A `
 never held by it: qits-maintenance opens a request only for a branch ahead of `main`. An unreadable
 read of either fails closed into approval.
 
+**The estate wrapper's empty fold never reaches QA** (qits-1273). On the wrapper alone,
+`ReleaseRequests.evaluate` asks `ApprovalPolicy.knownToAddNothingToMain` once the automations pass
+and before QA is stamped: a fold that adds nothing is `main`'s head, and QA plus an approval used to
+build and tag it a second time (qits-qits-rr-146, rr-148). While another repository of the project
+has a request in `OPEN`, or one finalized within `MEMBER_FINALIZED_GRACE` (10 min, the window before
+qits-maintenance's estate-pins re-plan lands), the request is held PENDING as the vessel for those
+pins ("The fold adds nothing to main; waiting for member releases …"). With none it is WITHDRAWN
+(`EMPTY_WRAPPER_WITHDRAWN`) with `withdraw`'s side effects, and its named sources are handed to
+cleanup through `ReleasedBranchWorkspaces` with `withdrawn` for a version. A read that fails goes on
+as before. `PhaseAdvance` likewise no longer asks for (or creates) a wrapper branch that is GONE or
+RELEASED when nothing else was asked for and no other repository has a request open. Ordinary
+repositories keep qits-760.
+
 **A repository configuring none of these releases at once**, which is not the same as unreviewed:
 pressing release is still a person's act. **A configuration this service could not read is never
 treated as "none"** — every failed read holds the request rather than releasing it ungated. See
