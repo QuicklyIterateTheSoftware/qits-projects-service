@@ -37,10 +37,12 @@ import org.junit.jupiter.api.Test;
  * <p>The set of calls is <b>derived from the code</b>, never written down here:
  *
  * <ul>
- *   <li><b>A client method</b> is a non-private method of a class in this service, or in the
- *       qits-eventstream library this service runs, that reaches a request leaving the JVM ({@code
- *       java.net.http.HttpClient.send}/{@code sendAsync}, Vert.x {@code HttpClient.request})
- *       itself or through its own class's helpers and lambdas. Read off the bytecode with ArchUnit.
+ *   <li><b>A client method</b> is a non-private method of a class in this service that reaches a
+ *       request leaving the JVM ({@code java.net.http.HttpClient.send}/{@code sendAsync}, Vert.x
+ *       {@code HttpClient.request}) itself or through its own class's helpers and lambdas. Read
+ *       off the bytecode with ArchUnit. The qits-eventstream library's calls to qits-events are not
+ *       derived here: {@link EventstreamPactTest} pacts them from the library's own kit, and its
+ *       guard holds the listeners in step with the code (qits-1163).
  *   <li><b>A qits-containers client method</b> this service calls: every method of the library's
  *       {@code ContainersClient} some class here invokes. The library's other doors are not this
  *       service's calls.
@@ -156,23 +158,17 @@ class ConsumerCallCoverageTest {
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages(
-                "eu.wohlben.qits.projects",
-                "eu.wohlben.qits.eventstream",
-                "eu.wohlben.qits.containers.client");
+                "eu.wohlben.qits.projects", "eu.wohlben.qits.containers.client");
     Set<String> out = new TreeSet<>();
     for (JavaClass type : classes) {
       String name = type.getName();
-      boolean own =
-          name.startsWith("eu.wohlben.qits.projects.") || name.startsWith("eu.wohlben.qits.eventstream.");
-      if (!own) {
+      if (!name.startsWith("eu.wohlben.qits.projects.")) {
         continue;
       }
       for (JavaMethod method : type.getMethods()) {
-        if (name.startsWith("eu.wohlben.qits.projects.")) {
-          for (JavaMethodCall call : method.getMethodCallsFromSelf()) {
-            if (CONTAINERS_CLIENT.equals(call.getTargetOwner().getName())) {
-              out.add(CONTAINERS_CLIENT + "#" + call.getName());
-            }
+        for (JavaMethodCall call : method.getMethodCallsFromSelf()) {
+          if (CONTAINERS_CLIENT.equals(call.getTargetOwner().getName())) {
+            out.add(CONTAINERS_CLIENT + "#" + call.getName());
           }
         }
         if (method.getModifiers().contains(JavaModifier.PRIVATE)

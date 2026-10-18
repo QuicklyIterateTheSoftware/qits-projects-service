@@ -339,7 +339,7 @@ final class GitHostContract {
               "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\",\"versionPins\":true}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
               List.of(
                   "$.outcome",
                   "$.sha",
@@ -359,7 +359,7 @@ final class GitHostContract {
                             List.of(p.get("source")),
                             "fold the branch",
                             List.of(),
-                            true,
+                            false,
                             false);
                 assertTrue(outcome.folded(), outcome.detail());
               },
@@ -373,7 +373,7 @@ final class GitHostContract {
               "{\"target\":\"{target}\",\"sources\":[\"{source}\"],"
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\",\"versionPins\":true}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
               List.of(
                   "$.error",
                   "$.target",
@@ -395,7 +395,7 @@ final class GitHostContract {
                             List.of(p.get("source")),
                             "fold the branch",
                             List.of(),
-                            true,
+                            false,
                             false);
                 assertEquals(BackingBranchMerger.Result.CONFLICT, outcome.result(), outcome.detail());
                 assertFalse(outcome.conflicts().isEmpty());
