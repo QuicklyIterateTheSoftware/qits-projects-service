@@ -360,6 +360,185 @@ public class ReleaseRequestPreRunTest {
   }
 
   // -----------------------------------------------------------------------------------------
+  // A FRESH note is confirmed before QA is announced (qits-1249)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * The live gap, replayed: the sweep that holds re-reads the note FRESH at its tail, and before the
+   * next sweep announces QA an upstream re-plan opens a new run at the same fold. Nothing used to ask
+   * again, so QA was announced and cancelled seconds later when the automation's commit joined. Now
+   * the next sweep confirms the FRESH note with one status read first, finds the kind running and
+   * holds — and announces DONE once when it is fresh again.
+   */
+  @Test
+  public void aRunOpenedAfterTheNoteTurnedFreshHoldsQaUntilItIsFresh() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    assertEquals(List.of("PENDING"), preRuns(id));
+
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // held; the tail re-reads and the note turns FRESH
+    assertTrue(ledger.fresh(id, merged), "fresh at the fold, and QA not announced yet");
+
+    automations.answer(repoName, BUMP, "RUNNING"); // an upstream re-plan opened a run at this fold
+    releaseRequests.sweep();
+
+    assertEquals(List.of("PENDING"), preRuns(id), "the confirming read found it running: no QA");
+    assertNull(qaAnnouncedShaOf(id));
+    assertEquals(AutomationLedger.State.PENDING, ledger.noteFor(id).orElseThrow().state());
+    JsonPath held = request(id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals("RUNNING", held.getString("preRun.state"));
+    assertEquals(List.of(SCREENSHOTS, BUMP), held.getList("automations.kind"));
+
+    automations.answer(repoName, BUMP, "FRESH");
+    releaseRequests.sweep(); // held; the tail re-reads it FRESH
+    releaseRequests.sweep(); // confirmed fresh: DONE
+    releaseRequests.sweep();
+
+    assertEquals(List.of("PENDING", "DONE"), preRuns(id), "DONE once, when it is fresh again");
+    assertEquals(merged, qaAnnouncedShaOf(id));
+  }
+
+  /**
+   * A kind that went red between the FRESH note and QA, with nothing still in flight, rejects on the
+   * confirming read exactly as a red pre-run does (qits-1199) — and no QA is asked for.
+   */
+  @Test
+  public void aKindFailingOnTheConfirmingReadRejectsWithNoQa() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // the note turns FRESH
+
+    automations.answer(repoName, BUMP, "FAILED");
+    releaseRequests.sweep();
+
+    JsonPath rejected = request(id);
+    assertEquals("REJECTED", rejected.getString("state"), "rejected by the automations");
+    assertEquals("FAILED", rejected.getString("preRun.state"));
+    assertEquals(List.of("PENDING"), preRuns(id), "no QA was asked for");
+    assertNull(qaAnnouncedShaOf(id));
+  }
+
+  /**
+   * A confirming read that could not be made leaves the note FRESH and QA is announced, as before
+   * qits-1249: an outage of the read door must not hold a fold whose pre-run was already found done.
+   */
+  @Test
+  public void anUnreadableConfirmingReadLeavesTheNoteFreshAndAnnouncesDone() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // the note turns FRESH
+
+    automations.answerNoStatus();
+    automations.answer(repoName, BUMP, "RUNNING"); // which nothing can read now
+    long reads = automations.readsOf(id);
+    releaseRequests.sweep();
+
+    assertEquals(reads + 1, automations.readsOf(id), "the confirming read was attempted");
+    assertEquals(List.of("PENDING", "DONE"), preRuns(id));
+    assertEquals(mergedShaOf(id), qaAnnouncedShaOf(id));
+  }
+
+  /**
+   * The confirm is a READ and never the trigger: re-posting would re-plan every fresh-by-plan kind
+   * on every sweep. One status read, no ask.
+   */
+  @Test
+  public void theConfirmingReadNeverAsksTheTrigger() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // the note turns FRESH
+
+    int asked = automations.askedAbout(id).size();
+    long reads = automations.readsOf(id);
+    releaseRequests.sweep(); // confirms, passes, announces DONE
+
+    assertEquals(List.of("PENDING", "DONE"), preRuns(id));
+    assertEquals(asked, automations.askedAbout(id).size(), "the trigger was not asked");
+    assertEquals(reads + 1, automations.readsOf(id), "one status read confirmed it");
+  }
+
+  /**
+   * Once QA is announced at the fold nothing is confirmed again: a request in QA, or waiting on its
+   * approval, costs the sweep no read of qits-maintenance at all.
+   */
+  @Test
+  public void anAnnouncedFoldIsNotReadAgain() {
+    automations.answer(repoName, BUMP, "FRESH");
+    String id = create("work");
+    assertEquals(List.of("DONE"), preRuns(id));
+    assertEquals(mergedShaOf(id), qaAnnouncedShaOf(id));
+
+    long reads = automations.readsOf(id);
+    int asked = automations.askedAbout(id).size();
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+
+    assertEquals(reads, automations.readsOf(id), "no status read after QA was announced");
+    assertEquals(asked, automations.askedAbout(id).size());
+    assertEquals(List.of("DONE"), preRuns(id));
+  }
+
+  /**
+   * A person's waiver of the fold passes the gate whatever the automations say, so a read would
+   * decide nothing: a waived fold announces DONE without one.
+   */
+  @Test
+  public void aWaivedFoldAnnouncesDoneWithoutAConfirmingRead() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // the note turns FRESH
+    waive(id, merged);
+
+    long reads = automations.readsOf(id);
+    releaseRequests.sweep();
+
+    assertEquals(List.of("PENDING", "DONE"), preRuns(id));
+    assertEquals(reads, automations.readsOf(id), "no confirming read of a waived fold");
+  }
+
+  /**
+   * The re-run door on a fold whose note is FRESH and whose QA is not announced yet: the refresh
+   * leaves a FRESH note alone, so the door confirms it — the ledger says the re-run is running at
+   * once, and the sweep holds QA for it.
+   */
+  @Test
+  public void aReRunOnAnUnannouncedFreshFoldHoldsItWhileItRuns() {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    automations.answer(repoName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep(); // the note turns FRESH, QA not announced yet
+    assertTrue(ledger.fresh(id, merged));
+
+    automations.answer(repoName, SCREENSHOTS, "RUNNING"); // the re-run the door is about to start
+    int asked = automations.askedAbout(id).size();
+    given()
+        .contentType(ContentType.JSON)
+        .body("{}")
+        .post(base() + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+        .then()
+        .statusCode(202);
+
+    assertEquals(
+        AutomationLedger.State.PENDING,
+        ledger.noteFor(id).orElseThrow().state(),
+        "the door read the re-run running, before any sweep");
+    assertEquals(asked, automations.askedAbout(id).size(), "read, never re-triggered");
+    releaseRequests.sweep();
+    assertEquals(List.of("PENDING"), preRuns(id), "no QA while the re-run runs");
+    assertNull(qaAnnouncedShaOf(id));
+  }
+
+  // -----------------------------------------------------------------------------------------
   // Moves
   // -----------------------------------------------------------------------------------------
 

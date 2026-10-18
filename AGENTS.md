@@ -1221,6 +1221,15 @@ started four release builds for one change. Now:
   write that failed is logged and dropped — so the remaining window is a crash between the stamp's
   commit and the publish, or that silent drop: either loses one DONE (never duplicates it) until a
   push or re-run re-folds.
+- **A FRESH note is confirmed before QA is announced at its fold** (qits-1249). The pre-run is
+  decided over two sweeps — the holding one's tail re-reads the note FRESH, the next passes on it —
+  and in between qits-maintenance can open a new run at the same fold (an upstream re-plan), which
+  used to get QA announced and then cancelled when its commit joined. So `evaluate`, outside the row
+  lock, makes ONE status read (`AutomationRefresh.confirm`, never the trigger) where the request is
+  PENDING, its note FRESH at `mergedSha`, no waiver of that fold exists and `qa_announced_sha` is
+  behind it, and merges it into the note (a kind the read omits keeps its entry: fresh by plan has no
+  row there). Not FRESH any more → recorded, and the request holds or rejects. An unreadable read,
+  or one about another fold, leaves it FRESH. The re-run door confirms the same way.
 - **A failed automation REJECTS** (qits-1199) — no DONE, `rejecting_gate = automations` (V43),
   the ledger note kept so the gate and `automations[]` still show the failure, no unattended-gate
   ticket — once no kind at the fold is still REQUESTED, RUNNING or COMMITTED (a failure beside one

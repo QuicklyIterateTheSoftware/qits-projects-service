@@ -25,9 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * in which every release-request test that is not about automations behaves exactly as it did
  * before the gate existed: an empty list is a FRESH note and the request releases on the same pass.
  * A test about the gate scripts kinds per repository name ({@link #answer}) — the same states for
- * the trigger and the read, at whatever fold is asked — and the three other postures are one call
- * each: {@link #answerNothing()} (unreachable), {@link #unconfigure()} (no address at all) and
- * {@link #refuseReruns}.
+ * the trigger and the read, at whatever fold is asked — and the four other postures are one call
+ * each: {@link #answerNothing()} (unreachable), {@link #answerNoStatus()} (the read alone down,
+ * qits-1249), {@link #unconfigure()} (no address at all) and {@link #refuseReruns}.
  */
 @ApplicationScoped
 public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations {
@@ -71,6 +71,8 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
 
   private volatile boolean reachable = true;
 
+  private volatile boolean statusReadable = true;
+
   private volatile boolean configured = true;
 
   private volatile Run rerunAnswer;
@@ -87,6 +89,11 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   /** The request ids the status read was asked about, in order. */
   public List<String> reads() {
     return List.copyOf(reads);
+  }
+
+  /** How many status reads were made about one request. */
+  public long readsOf(String requestId) {
+    return reads().stream().filter(requestId::equals).count();
   }
 
   public List<Rerun> reruns() {
@@ -111,6 +118,14 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     reachable = false;
   }
 
+  /**
+   * The status read answers "could not read" from here on, while the trigger still answers — a far
+   * side whose read door alone is down (qits-1249's unreadable confirming read).
+   */
+  public void answerNoStatus() {
+    statusReadable = false;
+  }
+
   /** No address: the gate is not configured at all. */
   public void unconfigure() {
     configured = false;
@@ -128,6 +143,7 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     scripted.clear();
     failures.clear();
     reachable = true;
+    statusReadable = true;
     configured = true;
     rerunAnswer = null;
   }
@@ -160,7 +176,9 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   @Override
   public Optional<Answer> status(String repositoryName, String requestId, String foldSha) {
     reads.add(requestId);
-    return reachable ? Optional.of(answerAt(repositoryName, requestId, foldSha)) : Optional.empty();
+    return reachable && statusReadable
+        ? Optional.of(answerAt(repositoryName, requestId, foldSha))
+        : Optional.empty();
   }
 
   @Override

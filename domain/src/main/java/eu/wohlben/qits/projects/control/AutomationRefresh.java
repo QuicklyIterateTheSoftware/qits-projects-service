@@ -13,8 +13,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.jboss.logging.Logger;
@@ -58,10 +60,12 @@ import org.jboss.logging.Logger;
  *
  * <h2>Idempotence, and what the sweep re-reads</h2>
  *
- * <p>Per {@code (requestId, foldSha)}: a FRESH note is left alone, so the sweep's re-ask every thirty
- * seconds costs a map lookup. An UNKNOWN note, and no note at all, are <b>asked again</b> — the far
- * side's trigger is idempotent, so the re-ask answers the stored outcome rather than running
- * anything twice — which is what makes a qits-maintenance outage heal on the existing sweep.
+ * <p>Per {@code (requestId, foldSha)}: a FRESH note is left alone by {@link #refresh}, so the sweep's
+ * re-ask every thirty seconds costs a map lookup — and is confirmed with one status read, by {@link
+ * #confirm}, before QA is announced at its fold (below). An UNKNOWN note, and no note at all, are
+ * <b>asked again</b> — the far side's trigger is idempotent, so the re-ask answers the stored
+ * outcome rather than running anything twice — which is what makes a qits-maintenance outage heal
+ * on the existing sweep.
  *
  * <p>A PENDING or FAILED note is <b>re-read</b> with {@link ReleaseRequestAutomations#status}, not
  * re-posted. That closes the gap the estate gate carried: its PENDING_BUMP was sticky, so a targeted
@@ -73,8 +77,24 @@ import org.jboss.logging.Logger;
  * trigger is asked instead. A read that could not be made leaves the note as it is: it holds either
  * way.
  *
+ * <p><b>A FRESH note is provisional until QA has been announced at its fold</b> (qits-1249), and
+ * {@link #confirm} is what makes it final: one status read, made by the gate's caller just before
+ * the evaluation that would stamp {@code qa_announced_sha}. The pre-run is decided over two sweeps —
+ * the one that holds re-reads a PENDING note and records it FRESH, and the next one, up to thirty
+ * seconds later, passes the gate on that note — and in between qits-maintenance can open a NEW run
+ * at the same fold (an upstream re-plan when a dependency releases). Nothing here asked again, so QA
+ * was announced at a fold whose automation's commit then joined and cancelled it seconds later. The
+ * far side's status read does list that kind REQUESTED or RUNNING once the run exists; this is the
+ * asking. It is a <em>read</em> and never the trigger — re-posting would re-plan the fresh-by-plan
+ * kinds on every sweep — and it is <em>merged</em> into the held note rather than replacing it,
+ * because a fresh-by-plan kind has no row on the far side and so is not on the read, while a re-plan
+ * always writes one. A read that could not be made, or that answers about another fold, leaves the
+ * note FRESH, which is the behaviour before qits-1249. Once QA is announced at the fold the caller
+ * stops asking, so a request in QA or waiting on its approval costs nothing more.
+ *
  * <p><b>Nothing here throws.</b> It is called from the arming seam, after a fold has already landed,
- * and from the gate's tail. Both belts are the caller's; this one is its own.
+ * from the gate's tail, and — {@link #confirm} — from the gate's head and the re-run door. The belts
+ * are the callers'; this one is its own.
  */
 @ApplicationScoped
 public class AutomationRefresh {
@@ -142,7 +162,7 @@ public class AutomationRefresh {
   /**
    * Establish, or fail to establish, where {@code requestId}'s current fold's automations stand.
    *
-   * <p>The only entry point, and it never throws: a port bug, a lazy-loading surprise or anything
+   * <p>The refresh's one entry point, and it never throws: a port bug, a lazy-loading surprise or anything
    * else costs one WARN and leaves the ledger as it was — which is a hold, because absence is the
    * hold.
    *
@@ -158,6 +178,74 @@ public class AutomationRefresh {
           "Could not refresh the automations of release request %s; it holds until the next sweep",
           requestId);
     }
+  }
+
+  /**
+   * <b>Confirm a FRESH note before QA is announced at its fold</b> (qits-1249) — see the class
+   * javadoc's "Idempotence" section for why a FRESH note is provisional until then.
+   *
+   * <p>One {@link ReleaseRequestAutomations#status} read at the request's current fold, merged into
+   * the held note: every kind the read lists is taken from the read, every kind it does not list
+   * keeps the held entry. Where the merged note is no longer FRESH — a re-plan opened a run, a kind
+   * went red — it is recorded, so the gate holds (or rejects, once nothing is in flight) on the very
+   * evaluation that would otherwise have announced QA. Where it is still FRESH, or the read could not
+   * be made, or it answered about another fold, the note is left exactly as it was.
+   *
+   * <p>A no-op for a request that is not open and folded, with no port configured, or whose note is
+   * not FRESH at exactly the current fold — which is what makes it safe to call from anywhere. It
+   * never asks the trigger, and like {@link #refresh} it never throws.
+   */
+  public void confirm(String requestId) {
+    try {
+      attemptConfirm(requestId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not confirm the automations of release request %s before its QA; they stay as"
+              + " recorded",
+          requestId);
+    }
+  }
+
+  private void attemptConfirm(String requestId) {
+    Facts facts = QuarkusTransaction.requiringNew().call(() -> gather(requestId));
+    if (facts == null || !configured()) {
+      return;
+    }
+    AutomationLedger.Note held =
+        ledger
+            .noteFor(requestId)
+            .filter(note -> facts.foldSha().equals(note.foldSha()))
+            .filter(note -> note.state() == AutomationLedger.State.FRESH)
+            .orElse(null);
+    if (held == null) {
+      return;
+    }
+    // A READ, NEVER THE TRIGGER: re-posting would re-plan the fresh-by-plan kinds on every sweep.
+    Optional<ReleaseRequestAutomations.Answer> read =
+        automations.get().status(facts.repoName(), facts.requestId(), facts.foldSha());
+    if (read.isEmpty()
+        || (read.get().foldSha() != null && !facts.foldSha().equals(read.get().foldSha()))) {
+      // Could not be made, or about another fold: the note stands, as it did before qits-1249.
+      return;
+    }
+    // MERGED, NOT REPLACED: a kind fresh by plan has no row on the far side, so its absence from a
+    // read says nothing; a re-plan always writes one, so a kind the read lists is the read's word.
+    Map<String, AutomationLedger.Automation> merged = new LinkedHashMap<>();
+    held.automations().forEach(entry -> merged.put(entry.kind(), entry));
+    read.get().automations().forEach(entry -> merged.put(entry.kind(), entryOf(entry)));
+    List<AutomationLedger.Automation> entries = List.copyOf(merged.values());
+    AutomationLedger.State state = stateOf(entries);
+    if (state == AutomationLedger.State.FRESH) {
+      return;
+    }
+    LOG.infof(
+        "Release request %s: its automations at %s were fresh and read %s before QA was"
+            + " announced; QA waits",
+        facts.requestId(), facts.foldSha(), state);
+    record(
+        facts,
+        new AutomationLedger.Note(facts.foldSha(), state, entries, null, held.previousFoldSha()));
   }
 
   private void attempt(String requestId, String previousFoldSha) {
@@ -272,21 +360,22 @@ public class AutomationRefresh {
   private static AutomationLedger.Note noteOf(
       Facts facts, String previous, ReleaseRequestAutomations.Answer answer) {
     List<AutomationLedger.Automation> entries =
-        answer.automations().stream()
-            .map(
-                entry ->
-                    new AutomationLedger.Automation(
-                        entry.kind(),
-                        entry.label() == null ? entry.kind() : entry.label(),
-                        entry.state() == null ? "UNKNOWN" : entry.state().toUpperCase(Locale.ROOT),
-                        entry.detail(),
-                        entry.runIds(),
-                        entry.branch(),
-                        entry.resultSha(),
-                        entry.updatedAt(),
-                        entry.failure()))
-            .toList();
+        answer.automations().stream().map(AutomationRefresh::entryOf).toList();
     return new AutomationLedger.Note(facts.foldSha(), stateOf(entries), entries, null, previous);
+  }
+
+  /** One kind of an answer as the ledger keeps it — {@link #noteOf}'s and {@link #confirm}'s. */
+  private static AutomationLedger.Automation entryOf(ReleaseRequestAutomations.Automation entry) {
+    return new AutomationLedger.Automation(
+        entry.kind(),
+        entry.label() == null ? entry.kind() : entry.label(),
+        entry.state() == null ? "UNKNOWN" : entry.state().toUpperCase(Locale.ROOT),
+        entry.detail(),
+        entry.runIds(),
+        entry.branch(),
+        entry.resultSha(),
+        entry.updatedAt(),
+        entry.failure());
   }
 
   /** The words several kinds' states read as together. */

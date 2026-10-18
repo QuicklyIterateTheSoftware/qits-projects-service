@@ -1316,7 +1316,15 @@ public class ReleaseRequests {
     try {
       refreshAutomations(id, null);
       if (reopenAutomationRejection(id, "a failed automation was asked to run again")) {
+        // The evaluation confirms a FRESH note itself before it could announce QA (qits-1249).
         evaluate(id);
+      } else {
+        // A re-run pressed on a fold whose note is FRESH and whose QA is not announced yet: the
+        // refresh above leaves a FRESH note alone, so without this the ledger would go on saying
+        // fresh while the re-run runs, and the next sweep would announce QA under it (qits-1249).
+        // Self-guarding — a rejected request, an announced fold or a note that is not FRESH asks
+        // nothing.
+        confirmAutomationsBeforeQa(id, null);
       }
     } catch (RuntimeException e) {
       LOG.warnf(e, "Release request %s: could not reconsider it after a re-run; the sweep will", id);
@@ -3468,6 +3476,10 @@ public class ReleaseRequests {
    * request whose fold moved between the two reads is simply evaluated against the newer one.
    */
   void evaluate(String id, String verdictSha) {
+    // A FRESH NOTE IS CONFIRMED BEFORE IT ANNOUNCES QA (qits-1249) — one status read, here and not
+    // under the row lock below, because it is an HTTP round trip into qits-maintenance. Only for a
+    // fold whose QA has not been announced yet; see confirmAutomationsBeforeQa.
+    confirmAutomationsBeforeQa(id, verdictSha);
     // Filled INSIDE the gate transaction and acted on outside it: a ticket write is another module's
     // database and belongs nowhere near the transaction that decides a gate. Null on every
     // evaluation that does not reject an unattended request, which is nearly all of them.
@@ -3744,6 +3756,57 @@ public class ReleaseRequests {
     }
     if (ready) {
       enqueueExecution(id);
+    }
+  }
+
+  /**
+   * <b>Confirm a FRESH pre-run with one status read before QA is announced at its fold</b>
+   * (qits-1249) — {@link AutomationRefresh#confirm}, asked only where the evaluation that follows
+   * would stamp {@code qa_announced_sha} on the strength of that note.
+   *
+   * <p>The pre-run is decided over two sweeps: the one that holds re-reads a PENDING note at its
+   * tail and records it FRESH, and the next one passes the gate on it, up to thirty seconds later. In
+   * between, qits-maintenance can open a new run of an automation at the same fold — an upstream
+   * re-plan when a dependency releases — and a FRESH note was never asked about again, so QA was
+   * announced and then cancelled seconds later when that automation's commit joined. The far side's
+   * status read lists the kind REQUESTED or RUNNING once the run exists; this is the asking.
+   *
+   * <p><b>Who pays for it</b>: a PENDING, folded request the automations gate holds, whose note is
+   * FRESH at exactly {@code mergedSha}, with no waiver of that fold (a person's waiver passes the
+   * gate whatever the automations say, so a read would decide nothing) and whose {@code
+   * qa_announced_sha} is behind the fold. Once QA is announced at the fold this asks nothing, so a
+   * request in QA or waiting on its approval costs no more than it did. A verdict about another
+   * fold asks nothing either: the evaluation returns on it without reading the gate.
+   *
+   * <p>The facts are read in a short transaction of their own and the read is made outside every
+   * transaction, never under the evaluation's row lock. Never throws: a failure is a WARN and the
+   * evaluation goes on as it did before qits-1249, on the note as recorded.
+   */
+  private void confirmAutomationsBeforeQa(String id, String verdictSha) {
+    try {
+      boolean unannouncedFresh =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () -> {
+                    ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                    return row != null
+                        && row.state == ReleaseRequest.State.PENDING
+                        && row.mergedSha != null
+                        && (verdictSha == null || verdictSha.equals(row.mergedSha))
+                        && !row.mergedSha.equals(row.qaAnnouncedSha)
+                        && automationLedger.fresh(row.id, row.mergedSha)
+                        && waivers.latestFor(row.id, row.mergedSha).isEmpty()
+                        && automationsApply(row.repoId);
+                  });
+      if (unannouncedFresh) {
+        automationRefresh.confirm(id);
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Release request %s: could not confirm its automations before QA; evaluating on the note"
+              + " as recorded",
+          id);
     }
   }
 
