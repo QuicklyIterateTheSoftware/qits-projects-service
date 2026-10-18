@@ -461,6 +461,7 @@ public class DeskRunnerController {
   @Consumes(MediaType.APPLICATION_JSON)
   @RolesAllowed(REGISTRATION_ROLE)
   @Operation(
+      operationId = "registerDeskRunner",
       summary = "Register a front-desk runner with its registration token; answers its client")
   @APIResponse(
       responseCode = "200",

@@ -28,8 +28,7 @@ import java.util.Optional;
  *
  * <p>The ensure body is what the client writes for a minimal spec, not the full refinement spec
  * {@code RefinementContainerFactory} builds: the contract is the shape of the door, and the factory's
- * values are this service's own business. qits-containers publishes no golden masters yet, so every
- * row waits on its state.
+ * values are this service's own business.
  */
 final class ContainersContract {
 
@@ -84,7 +83,7 @@ final class ContainersContract {
       List.of(
           row(
               "ensureContainer",
-              "an owner with no container in a place",
+              "no container",
               "PUT",
               PLACE,
               ensureBody(),
@@ -101,7 +100,7 @@ final class ContainersContract {
                   + " state.observed and detail"),
           row(
               "getContainer",
-              "an owner with a running container",
+              "a running container",
               "GET",
               PLACE,
               null,
@@ -118,7 +117,7 @@ final class ContainersContract {
                   + " state.observed"),
           row(
               "listWorkloadContainers",
-              "an owner with a running container",
+              "a running container",
               "GET",
               "/containers/api/containers/{owner}/{workload}",
               null,
@@ -135,7 +134,7 @@ final class ContainersContract {
                   + " containerName and state.observed"),
           row(
               "stopContainer",
-              "an owner with a running container",
+              "a running container",
               "POST",
               PLACE + "/stop",
               null,
@@ -146,7 +145,7 @@ final class ContainersContract {
               "POST .../{ref}/stop answering 200 with an envelope"),
           row(
               "touchContainer",
-              "an owner with a running container",
+              "a running container",
               "POST",
               PLACE + "/touch",
               null,
@@ -155,11 +154,14 @@ final class ContainersContract {
               Trigger.operation("getWorkRefinement"),
               (base, p) -> ok(client(base).touch(p.get("owner"), p.get("workload"), p.get("ref"))),
               "POST .../{ref}/touch answering 204"),
-          row(
+          new ConsumerRow(
+              PROVIDER,
+              APP,
               "deleteContainer",
-              "an owner with a running container",
+              "a running container",
               "DELETE",
               PLACE,
+              Map.of("logs", "false", "volumes", "false"),
               null,
               List.of("$"),
               200,
@@ -169,18 +171,18 @@ final class ContainersContract {
               "DELETE .../{ref} answering 200 with a delete outcome"),
           row(
               "ensureVolume",
-              "an owner with no volume of that name",
+              "no volume",
               "PUT",
               VOLUME,
               null,
               List.of("$"),
-              201,
+              200,
               Trigger.operation("startWorkRefinement"),
               (base, p) -> ok(client(base).ensureVolume(p.get("owner"), p.get("name"))),
-              "PUT .../volumes/{owner}/{name} answering 201 with a volume envelope"),
+              "PUT .../volumes/{owner}/{name} answering 200 with a volume envelope"),
           row(
               "getVolume",
-              "an owner with a volume",
+              "a claimed volume",
               "GET",
               VOLUME,
               null,
@@ -195,7 +197,7 @@ final class ContainersContract {
               "GET .../volumes/{owner}/{name} answering 200 with a volume envelope"),
           row(
               "deleteVolume",
-              "an owner with a volume",
+              "a claimed volume",
               "DELETE",
               VOLUME,
               null,

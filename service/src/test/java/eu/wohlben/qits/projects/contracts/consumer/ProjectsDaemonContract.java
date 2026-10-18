@@ -22,7 +22,8 @@ import java.util.Map;
  *
  * <p>The relay speaks Vert.x over a loopback tunnel, which a test cannot stand up without a daemon;
  * the row's call makes the same GET with the JDK client and decodes the body exactly as {@code
- * AgentCapabilityRelay.ingest} does. qits-projects-daemon publishes no golden masters yet.
+ * AgentCapabilityRelay.ingest} does. The relay presents the daemon's own api token as a bearer,
+ * so the row does too.
  */
 final class ProjectsDaemonContract {
 
@@ -54,7 +55,7 @@ final class ProjectsDaemonContract {
                                         base
                                             + ContainerProxyPath.base(p.get("projectId"))
                                             + "agents/available"))
-                                .header("Authorization", "Bearer daemon-api-token")
+                                .header("Authorization", "Bearer " + p.get("apiToken"))
                                 .GET()
                                 .build(),
                             HttpResponse.BodyHandlers.ofString());
@@ -64,5 +65,6 @@ final class ProjectsDaemonContract {
                 assertFalse(report.capabilities().isEmpty());
               },
               "GET {base}/agents/available answering 200 with reportedBy, imageVersion and"
-                  + " capabilities[]"));
+                  + " capabilities[]")
+              .withHeaders(Map.of("Authorization", "Bearer {apiToken}")));
 }

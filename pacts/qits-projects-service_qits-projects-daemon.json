@@ -1,0 +1,239 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
+            "operationId": "listAvailableAgents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "AgentCapabilityRelay.relay (on the daemon's Hello)"
+          }
+        }
+      },
+      "description": "AgentCapabilityRelay.relay (on the daemon's Hello): listAvailableAgents",
+      "key": "ec84479e",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose harnesses were probed",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/agents/available",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ]
+        },
+        "method": "GET",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/agents/available"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "capabilities": [
+              {
+                "authDetail": "Signed in.",
+                "authenticated": true,
+                "effortLevels": [
+                  "low"
+                ],
+                "effortSupported": true,
+                "harness": "CLAUDE",
+                "harnessVersion": "2.1.0 (Claude Code)",
+                "models": [
+                  "opus"
+                ],
+                "modelsEnumerated": false,
+                "probeDetail": "",
+                "probeFailed": false
+              }
+            ],
+            "imageVersion": "2026.1001.120000",
+            "reportedBy": "project-agent/00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.capabilities": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.capabilities[*].authDetail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].authenticated": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].effortLevels": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.capabilities[*].effortLevels[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].effortSupported": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].harness": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].harnessVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].models": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.capabilities[*].modelsEnumerated": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].models[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].probeDetail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.capabilities[*].probeFailed": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.imageVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.reportedBy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-projects-daemon"
+  }
+}

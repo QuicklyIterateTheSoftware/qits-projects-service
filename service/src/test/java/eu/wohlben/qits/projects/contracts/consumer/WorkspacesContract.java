@@ -10,12 +10,21 @@ import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.workspacehost.WorkspacesBearer;
 import io.opentelemetry.api.OpenTelemetry;
+import com.sun.net.httpserver.HttpServer;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <b>What qits-projects asks qits-workspaces</b> (ticket qits-1149, reshaped by qits-1152):
@@ -24,8 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
  * names the work item; none names a branch to find an agent by.
  *
  * <p>{@code POST /agent-dispatches/blocked} is the fallback {@link HttpWorkspaceAgentEntities} uses
- * when the entity door answers 404 or 405 (a qits-workspaces older than it). It takes the same body
- * and has no row: a pact against a current provider cannot reach it.
+ * when the entity door answers 404 or 405 (a qits-workspaces older than it), with the same body. A
+ * current provider still serves it, so it has a row: the client runs against {@link
+ * #olderThanTheEntityDoor}, which answers the entity door 404 itself and passes everything else to
+ * the mock — the 404 is the scenario, not part of the pact.
  */
 final class WorkspacesContract {
 
@@ -52,6 +63,73 @@ final class WorkspacesContract {
     return Fields.with(
         client, "workspacesUrl", Optional.of(base), "releaseWorkspacesUrl", Optional.empty(),
         "bearer", BEARER);
+  }
+
+  /** Headers the JDK client sets itself and refuses to be handed. */
+  private static final java.util.Set<String> HOP_BY_HOP =
+      java.util.Set.of(
+          "host", "content-length", "connection", "upgrade", "http2-settings", "expect", "te");
+
+  /** A door this consumer knows to ask about, as a far side older than it answers: 404. */
+  @FunctionalInterface
+  interface Against {
+    void run(String base) throws Exception;
+  }
+
+  /**
+   * Runs {@code call} against a far side that answers {@code POST .../agent-dispatches/entity} 404
+   * — a qits-workspaces older than that door — and passes every other request to {@code mock}.
+   */
+  static void olderThanTheEntityDoor(String mock, Against call) throws Exception {
+    HttpClient forward = HttpClient.newHttpClient();
+    HttpServer server =
+        HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    server.createContext(
+        "/",
+        exchange -> {
+          String path = exchange.getRequestURI().getRawPath();
+          if (path.endsWith("/agent-dispatches/entity")) {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+          }
+          byte[] body;
+          try (InputStream in = exchange.getRequestBody()) {
+            body = in.readAllBytes();
+          }
+          try {
+            HttpRequest.Builder request =
+                HttpRequest.newBuilder(URI.create(mock + exchange.getRequestURI()))
+                    .method(exchange.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(body));
+            exchange.getRequestHeaders().forEach(
+                (name, values) -> {
+                  if (!HOP_BY_HOP.contains(name.toLowerCase())) {
+                    values.forEach(value -> request.header(name, value));
+                  }
+                });
+            HttpResponse<byte[]> answer =
+                forward.send(request.build(), HttpResponse.BodyHandlers.ofByteArray());
+            answer.headers().firstValue("Content-Type")
+                .ifPresent(type -> exchange.getResponseHeaders().add("Content-Type", type));
+            byte[] out = answer.body();
+            exchange.sendResponseHeaders(answer.statusCode(), out.length == 0 ? -1 : out.length);
+            if (out.length > 0) {
+              exchange.getResponseBody().write(out);
+            }
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            exchange.sendResponseHeaders(502, -1);
+          } finally {
+            exchange.close();
+          }
+        });
+    server.start();
+    try {
+      call.run("http://127.0.0.1:" + server.getAddress().getPort());
+    } finally {
+      server.stop(0);
+    }
   }
 
   static final List<ConsumerRow> ROWS =
@@ -130,6 +208,25 @@ final class WorkspacesContract {
           new ConsumerRow(
               PROVIDER,
               APP,
+              "listAgentDispatchReferences",
+              AGENTS_BOUND_TO_WORK_ITEMS,
+              "GET",
+              "/workspaces/api/agent-dispatches/references",
+              Map.of("workId", "{bugTicketId}"),
+              null,
+              List.of("$.entries[*].agent.workId", "$.entries[*].agent.state"),
+              200,
+              Trigger.schedule("TicketUnattendedGateTickets.ended"),
+              (base, p) ->
+                  assertTrue(
+                      workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                          .hasActiveAgent(p.get("bugTicketId"))
+                          .isPresent()),
+              "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
+                  + " entries[].agent's workId and state"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
               "markAgentDispatchEntity",
               AN_AGENT_ON_A_TICKET,
               "POST",
@@ -146,6 +243,31 @@ final class WorkspacesContract {
                       .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", false, null),
               "param ticketId; POST .../agent-dispatches/entity answering 200 with agentId and"
                   + " applied"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "markAgentDispatchBlocked",
+              AN_AGENT_ON_A_TICKET,
+              "POST",
+              "/workspaces/api/agent-dispatches/blocked",
+              Map.of(),
+              json(
+                  "{\"workId\":\"{ticketId}\",\"title\":\"Fix it\",\"status\":\"IMPLEMENTING\","
+                      + "\"blocked\":true,\"blockSource\":\"EXPLICIT\"}"),
+              List.of("$.agentId", "$.applied"),
+              200,
+              Trigger.operation("setWorkBlocked"),
+              (base, p) ->
+                  olderThanTheEntityDoor(
+                      base,
+                      older ->
+                          workspaces(
+                                  new HttpWorkspaceAgentEntities(
+                                      QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                                  older)
+                              .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", true, "EXPLICIT")),
+              "param ticketId; POST .../agent-dispatches/blocked answering 200 with agentId and"
+                  + " applied, for a far side whose entity door answers 404"),
           new ConsumerRow(
               PROVIDER,
               APP,

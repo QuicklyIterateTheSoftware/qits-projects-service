@@ -130,6 +130,8 @@ public class GitHostFixture implements QuarkusTestResourceLifecycleManager {
       }
       if (suffix.isEmpty()) {
         lifecycle(exchange, repoId);
+      } else if ("/names".equals(suffix)) {
+        names(exchange, repoId);
       } else {
         smartHttp(exchange, repoId, suffix);
       }
@@ -185,6 +187,26 @@ public class GitHostFixture implements QuarkusTestResourceLifecycleManager {
       return;
     }
     respond(exchange, 405, null, new byte[0]);
+  }
+
+  /**
+   * {@code PUT …/:repoId/names} (qits-1215), reduced to its status: 404 for an id with no bare and
+   * 200 {@code applied: true} otherwise. The packaged binary pushes names after every committed
+   * change, and without this route the push would land on smart HTTP and fail loudly for nothing;
+   * the index itself is qits-githost's and nothing here reads it back.
+   */
+  private void names(HttpExchange exchange, String repoId) throws IOException {
+    exchange.getRequestBody().readAllBytes();
+    if (!"PUT".equals(exchange.getRequestMethod())) {
+      respond(exchange, 405, null, new byte[0]);
+      return;
+    }
+    if (!Files.isDirectory(root.resolve(repoId + ".git"))) {
+      respond(exchange, 404, null, new byte[0]);
+      return;
+    }
+    String json = mapper.createObjectNode().put("repoId", repoId).put("applied", true).toString();
+    respond(exchange, 200, "application/json", json.getBytes(StandardCharsets.UTF_8));
   }
 
   private void respondRepository(HttpExchange exchange, int status, String repoId, Path bare)

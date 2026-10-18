@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The test-side {@link GitHostRepositories}: {@code git init --bare -b <branch>} at the address
@@ -31,6 +33,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * accepted push carried, read back by {@link #lastPushOptions}: what a test asserts a push's options
  * against, the same fact the git host's hooks read off {@code ReceivePack.getPushOptions()} in
  * production (§2.4).
+ *
+ * <p>{@link #putNames} records every push it is handed ({@link #namesPushesOf}) and keeps the newest
+ * revision per repository the way the real name index does: an equal or older revision answers
+ * {@code ALREADY_CURRENT}, an id with no bare answers {@code NOT_STORED}, and {@link #failNamesOf}
+ * makes it throw.
  */
 @ApplicationScoped
 public class FakeGitHostRepositories implements GitHostRepositories {
@@ -38,6 +45,14 @@ public class FakeGitHostRepositories implements GitHostRepositories {
   @Inject GitHostAddress gitHost;
 
   private final Set<String> failingDeletes = ConcurrentHashMap.newKeySet();
+
+  /** One {@link #putNames} call, as the host received it. */
+  public record NamesPush(
+      String repoId, String projectId, String projectSlug, List<String> names, long revision) {}
+
+  private final List<NamesPush> namesPushes = new CopyOnWriteArrayList<>();
+  private final Map<String, Long> heldRevisions = new ConcurrentHashMap<>();
+  private final Set<String> failingNames = ConcurrentHashMap.newKeySet();
 
   @Override
   public boolean ensure(String repoId, String defaultBranch) {
@@ -95,6 +110,39 @@ public class FakeGitHostRepositories implements GitHostRepositories {
   /** Undoes every {@link #failDeleteOf}. */
   public void allowDeletes() {
     failingDeletes.clear();
+  }
+
+  @Override
+  public NamesOutcome putNames(
+      String repoId, String projectId, String projectSlug, List<String> names, long revision) {
+    namesPushes.add(new NamesPush(repoId, projectId, projectSlug, List.copyOf(names), revision));
+    if (failingNames.contains(repoId)) {
+      throw new GitHostException("The fake git host was told to fail the names push of " + repoId);
+    }
+    if (!Files.isDirectory(bareOf(repoId))) {
+      return NamesOutcome.NOT_STORED;
+    }
+    Long held = heldRevisions.get(repoId);
+    if (held != null && held >= revision) {
+      return NamesOutcome.ALREADY_CURRENT;
+    }
+    heldRevisions.put(repoId, revision);
+    return NamesOutcome.APPLIED;
+  }
+
+  /** Every {@link #putNames} made for {@code repoId}, oldest first, failed ones included. */
+  public List<NamesPush> namesPushesOf(String repoId) {
+    return namesPushes.stream().filter(push -> push.repoId().equals(repoId)).toList();
+  }
+
+  /** Makes {@link #putNames} throw for {@code repoId}, after recording it. */
+  public void failNamesOf(String repoId) {
+    failingNames.add(repoId);
+  }
+
+  /** Undoes every {@link #failNamesOf}; this bean outlives a test method. */
+  public void allowNames() {
+    failingNames.clear();
   }
 
   /**

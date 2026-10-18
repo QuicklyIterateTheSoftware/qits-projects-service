@@ -15,13 +15,18 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
 /**
  * The shipped {@link GitHostRepositories}: {@code PUT}/{@code GET}/{@code DELETE} against
- * qits-githost's {@code /git/<repoId>} (projects-volume-decoupling-plan.md §2.3, §3.2).
+ * qits-githost's {@code /git/<repoId>} (projects-volume-decoupling-plan.md §2.3, §3.2), and {@code
+ * PUT /git/<repoId>/names} for the git host's name index (qits-1215) — the same client, bearer and
+ * timeouts, one path segment further down.
  *
  * <p>The url is {@link GitHostAddress#fetchUrl}: the same {@code
  * <qits.githost.url>/git/<repoId>} the mirror's clone, fetch and {@code ls-remote} use,
@@ -53,6 +58,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 @ApplicationScoped
 @DefaultBean
 public class HttpGitHostRepositories implements GitHostRepositories {
+
+  private static final Logger LOG = Logger.getLogger(HttpGitHostRepositories.class);
 
   /** How long a connect may take — the receiver is a sibling service on the same network. */
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
@@ -151,6 +158,59 @@ public class HttpGitHostRepositories implements GitHostRepositories {
             + url
             + ": "
             + response.body());
+  }
+
+  /**
+   * {@code PUT <fetchUrl>/names}. The body is a {@link LinkedHashMap} for a stable member order on
+   * the wire (the pact compares it), and the answer is read for {@code applied} alone: the echoed
+   * names are the host's business.
+   */
+  @Override
+  public NamesOutcome putNames(
+      String repoId, String projectId, String projectSlug, List<String> names, long revision) {
+    String url = gitHost.fetchUrl(repoId) + "/names";
+    Map<String, Object> request = new LinkedHashMap<>();
+    request.put("projectId", projectId);
+    request.put("projectSlug", projectSlug);
+    request.put("names", names);
+    request.put("revision", revision);
+    String body;
+    try {
+      body = objectMapper.writeValueAsString(request);
+    } catch (IOException e) {
+      throw new GitHostException("Could not build the names request for " + repoId, e);
+    }
+    HttpResponse<String> response =
+        send(
+            request(url)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body))
+                .build(),
+            "pushing names of");
+    if (response.statusCode() == 404) {
+      LOG.infof("git host does not store %s; its names were not pushed", repoId);
+      return NamesOutcome.NOT_STORED;
+    }
+    if (response.statusCode() != 200) {
+      throw new GitHostException(
+          "qits-githost answered "
+              + response.statusCode()
+              + " pushing names of "
+              + repoId
+              + " at "
+              + url
+              + ": "
+              + response.body());
+    }
+    try {
+      Map<?, ?> parsed = objectMapper.readValue(response.body(), Map.class);
+      return Boolean.TRUE.equals(parsed.get("applied"))
+          ? NamesOutcome.APPLIED
+          : NamesOutcome.ALREADY_CURRENT;
+    } catch (IOException e) {
+      throw new GitHostException(
+          "Could not read qits-githost's names answer for " + repoId + " at " + url, e);
+    }
   }
 
   private HttpResponse<String> send(HttpRequest request, String verbing) {

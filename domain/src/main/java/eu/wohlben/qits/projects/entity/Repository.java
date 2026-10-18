@@ -93,6 +93,20 @@ public class Repository extends PanacheEntityBase implements CausedRow {
   @Column(name = "last_backup_detail", length = 1000)
   public String lastBackupDetail;
 
+  /**
+   * How many times this repository's name set has changed — the {@code revision} the git host's
+   * name index orders pushes by (V45, qits-1215). Bumped only by {@code RepositoryNameRepository}'s
+   * JPQL increment, in the transaction that changed the names.
+   *
+   * <p><b>Read-only to the entity on purpose</b> ({@code insertable = false, updatable = false}):
+   * the increment is a bulk statement that never touches a loaded instance, so a writable mapping
+   * would let the dirty flush of a row loaded before the bump — a rename restamping its archetype, a
+   * reconcile setting the component — write the stale value straight back. Read it from a fresh
+   * persistence context.
+   */
+  @Column(name = "names_revision", insertable = false, updatable = false)
+  public long namesRevision;
+
   // SEAM (migration-plan.md §6): the `workspaces` @OneToMany is gone. The Workspace entity and the
   // `workspace` table belong to qits-workspaces, in a different physical database (§7), so neither
   // a JPA relation nor a foreign key can span the two. Workspaces reach a repository by String id
