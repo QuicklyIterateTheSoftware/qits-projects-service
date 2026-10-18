@@ -146,7 +146,7 @@
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
         <qits.runner.version>2026.1018.92716</qits.runner.version>
-        <qits.eventstream.version>2026.1014.223716</qits.eventstream.version>
+        <qits.eventstream.version>2026.1018.151251</qits.eventstream.version>
         <qits.githost-events.version>2026.1015.22957</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -253,7 +253,7 @@
         <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1010.174604</qits.ci-golden-masters.version>
-        <qits.idp-golden-masters.version>2026.1012.180836</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1018.142635</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1010.145913</qits.deployments-golden-masters.version>
         <qits.configuration-golden-masters.version>2026.1011.84651</qits.configuration-golden-masters.version>
         <qits.containers-golden-masters.version>2026.1010.134141</qits.containers-golden-masters.version>
@@ -316,6 +316,14 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-eventstream</artifactId>
+                <version>${qits.eventstream.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at its declaration site (qits-1163): the kit that pacts what
+                     qits-eventstream asks qits-events on this service's behalf. Same release, same
+                     property, as the jar. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-eventstream-contracts</artifactId>
                 <version>${qits.eventstream.version}</version>
             </dependency>
             <dependency>

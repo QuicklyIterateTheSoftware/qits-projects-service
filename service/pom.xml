@@ -343,6 +343,23 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- qits-events's recorded answers, read by the eventstream kit below. FIRST among the
+                 golden-master jars, and it must stay first (qits-1163): the kit's
+                 EventsGoldenMasters reads the first golden-masters/index.json on the classpath and
+                 fails when that is another provider's. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-events-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- What qits-eventstream asks qits-events for this service (qits-1163): the kit behind
+                 contracts/consumer/EventstreamPactTest, which writes
+                 pacts/qits-projects-service_qits-eventstream-javalib_qits-events-service.json. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-eventstream-contracts</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!-- qits-githost's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-githost-golden-masters</artifactId>
@@ -358,12 +375,6 @@
             <!-- qits-maintenance's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-maintenance-golden-masters</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <!-- qits-events's recorded answers, for the consumer rows against it. -->
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-events-golden-masters</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

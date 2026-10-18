@@ -68,6 +68,10 @@ class GoldenMasterRecordingTest {
    *     takes no body (the openapi says which — the recording fails on a mismatch). A {@code {param}} in it — a
    *     string value or a member name that is exactly a param's name in braces — is expanded from
    *     the state's params as a path's is, and recorded unexpanded
+   * @param headers request headers the consumer sends because the answer depends on them — a
+   *     bearer a door judges. Values are templates expanded from the state's params as a path's
+   *     are, and recorded unexpanded as the index's {@code headers}. An interaction that sends one
+   *     is a machine's call and carries no person's session
    */
   record Interaction(
       String state,
@@ -77,7 +81,21 @@ class GoldenMasterRecordingTest {
       int status,
       String listFilteredTo,
       String sortedBy,
-      String requestBody) {
+      String requestBody,
+      Map<String, String> headers) {
+
+    /** No headers beyond what a browser sends. */
+    Interaction(
+        String state,
+        String operationId,
+        String method,
+        String path,
+        int status,
+        String listFilteredTo,
+        String sortedBy,
+        String requestBody) {
+      this(state, operationId, method, path, status, listFilteredTo, sortedBy, requestBody, Map.of());
+    }
 
     /** A read: no request body. */
     Interaction(
@@ -112,6 +130,12 @@ class GoldenMasterRecordingTest {
           + "\"impetus\":\"A new container fails its migration at boot: the database refuses the"
           + " connection.\","
           + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
+
+  /**
+   * The header a door that judges the caller's token reads: the state's {@code authorization}.
+   * Declared above {@link #INTERACTIONS}, which reads it while the class initialises.
+   */
+  private static final Map<String, String> BEARER = Map.of("Authorization", "{authorization}");
 
   static final List<Interaction> INTERACTIONS =
       withServiceCallers(
@@ -1064,8 +1088,41 @@ class GoldenMasterRecordingTest {
             "{\"dryRun\":false,\"pins\":{\"deployments\":{\"pins\":[]},\"ciDaemon\":{},"
                 + "\"dependencies\":{\"pins\":[]},\"workspaceLaunches\":{\"pins\":[]},"
                 + "\"projectLaunches\":{\"pins\":[]}}}"));
+    // The runner toolkit registering qits-projects-desk-runner-daemon with its registration token
+    // (qits-1163): the client it is answered once, and the refusal of a replay.
+    String register = "/projects/api/runners/{runnerId}/register";
+    all.add(
+        new Interaction(
+            ProviderStates.AN_UNREGISTERED_RUNNER,
+            "registerDeskRunner",
+            "POST",
+            register,
+            200,
+            null,
+            null,
+            TOOLKIT_REGISTRATION,
+            BEARER));
+    all.add(
+        new Interaction(
+            ProviderStates.A_REGISTERED_RUNNER,
+            "registerDeskRunner",
+            "POST",
+            register,
+            409,
+            null,
+            null,
+            TOOLKIT_REGISTRATION,
+            BEARER));
     return List.copyOf(all);
   }
+
+  /**
+   * What the runner toolkit sends to register (qits-runner-javalib's {@code Registration}): every
+   * one of its four capability keys, as qits-runner-toolkit-contracts pins them (qits-1163).
+   */
+  private static final String TOOLKIT_REGISTRATION =
+      "{\"capabilities\":{\"docker\":true,\"arch\":\"amd64\",\"os\":\"linux\","
+          + "\"labels\":{\"site\":\"home\"}}}";
 
   private static Interaction write(
       String state, String operationId, String method, String path, String body) {
@@ -1280,6 +1337,10 @@ class GoldenMasterRecordingTest {
               eq < 0 ? "" : URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8));
         }
       }
+      if (!interaction.headers().isEmpty()) {
+        ObjectNode headers = operation.putObject("headers");
+        new TreeMap<>(interaction.headers()).forEach(headers::put);
+      }
       if (interaction.requestBody() != null) {
         operation.set("body", JSON.readTree(interaction.requestBody()));
       }
@@ -1362,9 +1423,15 @@ class GoldenMasterRecordingTest {
     Response response;
     try {
       // The consumers are browsers: a session rides with every call, which is what lets a person's
-      // door — the scheduling move (qits-887) — answer as it does for them.
+      // door — the scheduling move (qits-887) — answer as it does for them. A machine's call — one
+      // that sends a header of its own — carries its bearer instead, and no session.
       var request =
-          given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"));
+          interaction.headers().isEmpty()
+              ? given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
+              : given();
+      for (Map.Entry<String, String> header : interaction.headers().entrySet()) {
+        request = request.header(header.getKey(), expand(header.getValue(), params));
+      }
       if (interaction.requestBody() != null) {
         request =
             request
