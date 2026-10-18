@@ -161,16 +161,20 @@ import org.jboss.logging.Logger;
  * first (qits-1220), and one it says is gone, or whose head is already released, is passed over and
  * named ({@link ReleasableBranch}).
  *
- * <p><b>The wrapper is always asked for, last</b> (qits-1224). Its release is what runs the
- * estate-pins automation, which bumps onto the request's own branch and never onto {@code main} —
- * and the work item's wrapper branch was in practice never pushed or already released, so no
- * wrapper request was opened and the pins never moved. So the wrapper branch is asked for whatever
- * the git host says of it: already released, it is asked for anyway; gone, it is first created at
- * the wrapper's default branch through {@link BackingBranchMerger}.
+ * <p><b>The wrapper is asked for, last, whenever it has something to carry</b> (qits-1224,
+ * qits-1273). Its release is what runs the estate-pins automation, which bumps onto the request's
+ * own branch and never onto {@code main} — and the work item's wrapper branch was in practice never
+ * pushed or already released, so no wrapper request was opened and the pins never moved. So the
+ * wrapper branch is asked for whatever the git host says of it: already released, it is asked for
+ * anyway; gone, it is first created at the wrapper's default branch through {@link
+ * BackingBranchMerger}. The one exception is a wrapper with nothing to carry: its branch holds
+ * nothing unreleased, no member release was asked for, and no other repository of the project has a
+ * request open. Its request would fold to {@code main}'s head and tag that commit again
+ * (qits-qits-rr-148), so it is not asked for and the branch is not created.
  *
  * <p><b>Nothing left to release hands the workspace to cleanup.</b> Only a release marks an agent
  * OBSOLETE, and only an OBSOLETE agent is cleaned up, so where no request is asked for and none was
- * refused — which since qits-1224 means the wrapper branch could not even be created — the wrapper
+ * refused — the wrapper had nothing to carry, or its branch could not be created — the wrapper
  * branch is reported done through {@link ReleasedBranchWorkspaces} itself.
  *
  * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
@@ -691,19 +695,23 @@ public class PhaseAdvance {
    * answer short of the host saying so — no git host, an unreachable one, a refusal — asks exactly as
    * before: a release is never dropped on a flaky moment.
    *
-   * <p><b>Then the wrapper branch is asked for, always and last</b> (qits-1224, {@link
-   * #askForTheWrapper}): the wrapper's release is what moves the estate pins, and it needs a source
-   * other than {@code main} to bump onto. The verdict decides only how — {@code ASK} as any
-   * candidate, {@code RELEASED} anyway, {@code GONE} after creating the branch at the wrapper's
-   * default branch on the git host. A creation that fails asks for nothing, says so, and leaves the
-   * next paragraph's rule to decide. A second VERIFIED joins the request the first opened.
+   * <p><b>Then the wrapper branch is asked for, last</b> (qits-1224, {@link #askForTheWrapper}): the
+   * wrapper's release is what moves the estate pins, and it needs a source other than {@code main}
+   * to bump onto. The verdict decides how — {@code ASK} as any candidate, {@code RELEASED} anyway,
+   * {@code GONE} after creating the branch at the wrapper's default branch on the git host. A
+   * creation that fails asks for nothing, says so, and leaves the next paragraph's rule to decide. A
+   * second VERIFIED joins the request the first opened. <b>It is not asked for when it would carry
+   * nothing</b> (qits-1273): its verdict is not {@code ASK}, nothing above was asked for or refused,
+   * and no other repository of the project has a release request open whose pins it could carry —
+   * then its request would fold to {@code main}'s own head, and QA and a release would build and tag
+   * that commit a second time.
    *
    * <p><b>When nothing was asked for and nothing was refused, the workspace is handed to
-   * cleanup</b>: every candidate was gone or released, or there was none, and the wrapper branch
-   * could not be created (or no wrapper repository is known). Only a release marks an
-   * agent OBSOLETE ({@link ReleasedBranchWorkspaces}), and the far side's cleanup only removes
-   * OBSOLETE agents — so a VERIFIED item with nothing to release would otherwise keep its agent and
-   * its workspace for ever. The same port is told the wrapper branch is done, with {@code verified}
+   * cleanup</b>: every candidate was gone or released, or there was none, and the wrapper had
+   * nothing to carry, or its branch could not be created (or no wrapper repository is known). Only a
+   * release marks an agent OBSOLETE ({@link ReleasedBranchWorkspaces}), and the far side's cleanup
+   * only removes OBSOLETE agents — so a VERIFIED item with nothing to release would otherwise keep
+   * its agent and its workspace for ever. The same port is told the wrapper branch is done, with {@code verified}
    * standing in for a version. Where a request was asked for, that release resolves the workspace
    * when it lands; where an ask was refused, work may still be unreleased and nothing is resolved.
    */
@@ -827,7 +835,8 @@ public class PhaseAdvance {
       }
       ask(entity, branch.repositoryId(), branch.branch(), summary, requester, asked, refused);
     }
-    // Last, after the submodules it points at: the wrapper, always (qits-1224). See the javadoc.
+    // Last, after the submodules it points at: the wrapper, unless it has nothing to carry
+    // (qits-1224, qits-1273). See the javadoc.
     String wrapperNote =
         askForTheWrapper(
             entity, wrapperRepoId, wrapperBranch, gitHost, summary, requester, asked, refused);
@@ -843,7 +852,7 @@ public class PhaseAdvance {
                     + String.join(", ", gone)
                     + ".");
     if (asked.isEmpty() && refused.isEmpty()) {
-      // Not even the wrapper could be asked for: nothing is left to release, the work item moves on
+      // Not even the wrapper was asked for: nothing is left to release, the work item moves on
       // without a request, and its workspace is handed to cleanup — no release will ever do that for
       // it.
       boolean nothingFound = branches.isEmpty() && !wrapperFound;
@@ -939,8 +948,9 @@ public class PhaseAdvance {
   }
 
   /**
-   * The wrapper's ask, which a move into VERIFIED always makes (qits-1224), and the sentence it adds
-   * to the thread — empty when there is nothing to say beyond the ask itself.
+   * The wrapper's ask, which a move into VERIFIED makes whenever the wrapper has something to carry
+   * (qits-1224, qits-1273), and the sentence it adds to the thread — empty when there is nothing to
+   * say beyond the ask itself.
    *
    * <p>The wrapper's release is what runs its estate-pins automation, and that automation bumps onto
    * the request's own branch and never onto {@code main}: so the request needs the work item's
@@ -952,6 +962,13 @@ public class PhaseAdvance {
    * creates it at the wrapper's default branch first ({@link #createAtDefaultBranch}), because a
    * fold naming a source the git host does not have rejects the request (qits-1221); a creation that
    * fails asks for nothing, and the sentence says why.
+   *
+   * <p><b>A wrapper with nothing to carry is not asked for</b> (qits-1273), and a GONE branch is then
+   * not created either: the verdict is not {@code ASK}, so the agent left nothing unreleased on it;
+   * {@code asked} and {@code refused} are empty, so no member release was asked for above; and no
+   * other repository of the project has a release request open ({@link
+   * ReleaseRequests#openInOtherRepositories}), so no member's pins are on their way. A request opened
+   * then folds to {@code main}'s own head. A read of the open requests that fails asks as before.
    */
   private String askForTheWrapper(
       WorkEntity entity,
@@ -969,6 +986,25 @@ public class PhaseAdvance {
     ReleasableBranch.Verdict verdict =
         ReleasableBranch.of(
             gitHost, wrapperRepoId, wrapperBranch, main, releasedShasOf(wrapperRepoId));
+    if (verdict != ReleasableBranch.Verdict.ASK
+        && asked.isEmpty()
+        && refused.isEmpty()
+        && nothingInFlightBeside(entity, wrapperRepoId)) {
+      LOG.infof(
+          "%s %s is VERIFIED and its wrapper branch %s is %s; no other release of the project is"
+              + " in flight, so the wrapper's release was not asked for",
+          entity.archetype,
+          entity.id,
+          wrapperBranch,
+          verdict == ReleasableBranch.Verdict.GONE ? "gone" : "already released");
+      return " `"
+          + wrapperBranch
+          + (verdict == ReleasableBranch.Verdict.GONE
+              ? "` is not on the git host and was not created"
+              : "` is already released")
+          + ": no other release of the project is in flight whose estate pins it could carry, so"
+          + " the wrapper's release was not asked for.";
+    }
     String note = "";
     if (verdict == ReleasableBranch.Verdict.GONE) {
       String failure = createAtDefaultBranch(entity, wrapperRepoId, wrapperBranch, main);
@@ -999,6 +1035,25 @@ public class PhaseAdvance {
     }
     ask(entity, wrapperRepoId, wrapperBranch, summary, requester, asked, refused);
     return note;
+  }
+
+  /**
+   * Whether no repository of the entity's project but the wrapper has a release request open — the
+   * member releases a wrapper request would carry pins for. A read that fails answers false, so the
+   * wrapper is asked for as before. Never throws.
+   */
+  private boolean nothingInFlightBeside(WorkEntity entity, String wrapperRepoId) {
+    try {
+      return releaseRequests.openInOtherRepositories(entity.projectId, wrapperRepoId).isEmpty();
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not read the open release requests of project %s; %s %s asks for its wrapper",
+          entity.projectId,
+          entity.archetype,
+          entity.id);
+      return false;
+    }
   }
 
   /**

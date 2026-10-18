@@ -293,6 +293,31 @@ public class ApprovalPolicy {
   }
 
   /**
+   * Whether {@code mergedSha} is <b>known</b> to add nothing to {@code repoId}'s {@code main} — the
+   * qits-760 reading above, asked on its own by the estate wrapper's backstop in {@link
+   * ReleaseRequests} (qits-1273), which withdraws or holds such a fold instead of building {@code
+   * main}'s head again and tagging it twice.
+   *
+   * <p><b>A read that fails answers false</b>, the opposite direction from {@link #readContent}, and
+   * for the same reason: false sends the request down the ordinary path, where the approval gate
+   * reads the same fold again and fails closed into a person. A guess of "empty" would withdraw a
+   * request that may carry the estate's pins.
+   */
+  public boolean knownToAddNothingToMain(String repoId, String mergedSha) {
+    if (mergedSha == null || mergedSha.isBlank()) {
+      return false;
+    }
+    try {
+      return foldChanges.addsNothingToMain(repoId, mergedSha);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not read whether %s of %s changes anything against main; it is gated as ever: %s",
+          mergedSha, repoId, e.getMessage());
+      return false;
+    }
+  }
+
+  /**
    * The sentence for a fold whose emptiness against {@code main} could not be read. The rule it stands
    * in for: a fold that adds nothing to {@code main} is a commit {@code main} already holds — a
    * fast-forward onto its own head, tagged and built by the last release — so the CI gate would be

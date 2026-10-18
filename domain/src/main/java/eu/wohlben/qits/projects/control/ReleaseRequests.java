@@ -3479,6 +3479,9 @@ public class ReleaseRequests {
     AtomicReference<Folded> qaAnnouncement = new AtomicReference<>();
     // What the stamp held before this evaluation moved it, so a failed publish can give it back.
     AtomicReference<String> previousQaStamp = new AtomicReference<>();
+    // The estate wrapper's empty fold this evaluation withdrew (qits-1273), carried out so that the
+    // withdrawal's side effects run after the commit; null on nearly every pass.
+    AtomicReference<EmptyWrapperWithdrawal> emptyWrapper = new AtomicReference<>();
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -3531,6 +3534,40 @@ public class ReleaseRequests {
                     }
                     waiting(row, automationDetail(row));
                     automationsHeld.set(true);
+                    return false;
+                  }
+                  // THE ESTATE WRAPPER'S EMPTY FOLD, asked before QA is (qits-1273). The pre-run has
+                  // passed, so the estate pins are fresh at this fold; a fold that still adds nothing
+                  // to main is main's own head, already tagged and built, and QA would build it again
+                  // and a release would tag it twice (qits-qits-rr-146, rr-148). While a member
+                  // release of the project is in flight the request is the vessel its pins land on,
+                  // so it is HELD; with none in flight it carries nothing and is WITHDRAWN. A fold
+                  // that cannot be read is not known to be empty and goes on as before. Ordinary
+                  // repositories keep qits-760: an empty fold is held for a person further down.
+                  if (approvalPolicy.isEstateWrapper(row.repoId)
+                      && approvalPolicy.knownToAddNothingToMain(row.repoId, row.mergedSha)) {
+                    List<String> inFlight = membersInFlight(row);
+                    if (!inFlight.isEmpty()) {
+                      waiting(
+                          row,
+                          "The fold adds nothing to main; waiting for member releases "
+                              + String.join(", ", inFlight));
+                      return false;
+                    }
+                    states.move(row, ReleaseRequest.State.WITHDRAWN);
+                    row.detail = EMPTY_WRAPPER_WITHDRAWN;
+                    row.retryable = false;
+                    row.updatedAt = Instant.now();
+                    LOG.infof(
+                        "Release request %s withdrawn: its fold %s adds nothing to main and no"
+                            + " member release is in flight",
+                        row.id, shortSha(row.mergedSha));
+                    Set<String> named = new LinkedHashSet<>();
+                    sources.listByRequest(row.id).forEach(source -> named.add(source.name));
+                    named.remove(mainOf(row.repoId));
+                    emptyWrapper.set(
+                        new EmptyWrapperWithdrawal(
+                            row.id, row.repoId, row.repoName, row.gateTicketId, List.copyOf(named)));
                     return false;
                   }
                   // THE PRE-RUN IS DONE AT THIS FOLD, so its QA may start — announced preRun=DONE AT
@@ -3724,6 +3761,9 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return true;
                 });
+    if (emptyWrapper.get() != null) {
+      withdrawnEmpty(emptyWrapper.get());
+    }
     Folded done = qaAnnouncement.get();
     if (done != null && !announce(done, ReleaseRequestAnnouncer.PRE_RUN_DONE)) {
       unstampQaAnnouncement(done.releaseRequestId(), done.mergedSha(), previousQaStamp.get());
@@ -3742,6 +3782,98 @@ public class ReleaseRequests {
     }
     if (ready) {
       enqueueExecution(id);
+    }
+  }
+
+  /** The detail of an estate wrapper's request withdrawn for carrying nothing (qits-1273). */
+  public static final String EMPTY_WRAPPER_WITHDRAWN =
+      "Withdrawn: the fold adds nothing to main and the estate pins are fresh";
+
+  /**
+   * What stands in for a version when the sources of a request withdrawn for carrying nothing are
+   * handed to cleanup: there is no release, so no sha either, and the far side's history reads
+   * "nothing left to release (withdrawn)".
+   */
+  static final String WITHDRAWN_NOTHING_TO_RELEASE = "withdrawn";
+
+  /**
+   * How long a member's finalization still counts as in flight for the estate wrapper's empty-fold
+   * hold. A member's finalize moves its {@code main}, and only then does qits-maintenance re-plan the
+   * open wrapper requests' estate pins ({@code UpstreamReplan}); until that re-plan reaches the
+   * ledger, the wrapper's pre-run still reads FRESH at a fold that is about to get the member's pin.
+   * Withdrawing in that window would drop the vessel the pin was coming to.
+   */
+  static final java.time.Duration MEMBER_FINALIZED_GRACE = java.time.Duration.ofMinutes(10);
+
+  /** An estate wrapper's request withdrawn inside {@link #evaluate} for carrying nothing. */
+  private record EmptyWrapperWithdrawal(
+      String id, String repoId, String repoName, String gateTicketId, List<String> namedSources) {}
+
+  /**
+   * The member releases an estate wrapper's request may still be the vessel for, by qualified id:
+   * every request of the same project in another repository that is {@link
+   * ReleaseRequestRepository#OPEN open} (RELEASED included — its tag has still to reach {@code
+   * main}), then any that finalized within {@link #MEMBER_FINALIZED_GRACE}. Inside the caller's
+   * transaction. A request with no project has no members.
+   */
+  private List<String> membersInFlight(ReleaseRequest row) {
+    if (row.projectId == null) {
+      return List.of();
+    }
+    List<String> inFlight = new ArrayList<>(openElsewhere(row.projectId, row.repoId));
+    requests
+        .listFinalizedElsewhereSince(
+            row.projectId, row.repoId, Instant.now().minus(MEMBER_FINALIZED_GRACE))
+        .forEach(member -> inFlight.add(member.qualifiedId + " (finalized, pins re-planning)"));
+    return inFlight;
+  }
+
+  private List<String> openElsewhere(String projectId, String repoId) {
+    return requests.listByProject(projectId, ReleaseRequestRepository.OPEN).stream()
+        .filter(open -> !open.repoId.equals(repoId))
+        .map(open -> open.qualifiedId)
+        .toList();
+  }
+
+  /**
+   * The qualified ids of every {@link ReleaseRequestRepository#OPEN open} request of {@code
+   * projectId} in a repository other than {@code repoId} — the member releases an estate wrapper's
+   * request would carry pins for. Its own transaction; empty for a null project.
+   */
+  public List<String> openInOtherRepositories(String projectId, String repoId) {
+    if (projectId == null) {
+      return List.of();
+    }
+    return QuarkusTransaction.requiringNew().call(() -> openElsewhere(projectId, repoId));
+  }
+
+  /**
+   * {@link #withdraw}'s side effects for a request {@link #evaluate} withdrew for carrying nothing,
+   * after the commit — and what a release would have done for its sources: they are handed to
+   * cleanup, because no release will ever mark the agents on them OBSOLETE now. Each call out is
+   * best effort and none of them can undo the withdrawal.
+   */
+  private void withdrawnEmpty(EmptyWrapperWithdrawal withdrawn) {
+    automationLedger.forget(withdrawn.id());
+    cancel(withdrawn.repoId(), withdrawn.id(), "was withdrawn: its fold adds nothing to main");
+    closeGateTicket(
+        withdrawn.id(),
+        withdrawn.gateTicketId(),
+        withdrawn.repoName(),
+        UnattendedGateTickets.Ending.WITHDRAWN,
+        EMPTY_WRAPPER_WITHDRAWN);
+    if (!releasedBranchWorkspaces.isResolvable()) {
+      return;
+    }
+    try {
+      ReleasedBranchWorkspaces workspaces = releasedBranchWorkspaces.get();
+      for (String branch : withdrawn.namedSources()) {
+        workspaces.branchReleased(withdrawn.repoId(), branch, WITHDRAWN_NOTHING_TO_RELEASE, null);
+      }
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not touch the withdrawal.
+      LOG.warnf(
+          e, "Could not hand the sources of withdrawn request %s to cleanup", withdrawn.id());
     }
   }
 
