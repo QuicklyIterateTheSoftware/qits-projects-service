@@ -276,18 +276,25 @@ public class PhasePromptsTest {
   }
 
   /**
-   * <b>A failed verification blocks; it never moves back</b> (qits-592). The ticket stays
-   * IMPLEMENTED with what still occurs on its thread, and what happens next is a person's call —
-   * as is closing.
+   * <b>A verification fixes what it finds; it never moves back</b> (qits-1154). A failure is fixed
+   * on the ticket's own branch, released and verified again live, with the status left where it
+   * stands — never a correction route back to an earlier status. {@code work_block} is for what the
+   * agent cannot resolve itself: a person's decision, a shut door, someone else's unreleased work.
    */
   @Test
-  public void verifyBlocksOnFailureAndLeavesClosingToAPerson() {
+  public void verifyFixesWhatItFindsAndBlocksOnlyWhatItCannotResolve() {
     String prompt = promptFor(EntityStatus.IMPLEMENTED);
+    assertTrue(prompt.contains("each acceptance criterion holds"), prompt);
     assertTrue(
-        prompt.contains("If it still occurs, or you could not check, call work_block with what you"
-            + " found"),
+        prompt.contains("If something fails, fix it on this branch, release it and verify again"
+            + " live"),
         prompt);
+    assertTrue(prompt.contains("leave the status where it is meanwhile"), prompt);
+    assertTrue(prompt.contains("what you found and what you fixed"), prompt);
+    assertTrue(prompt.contains("Call work_block only for what you cannot resolve yourself"), prompt);
     assertTrue(prompt.contains("closing is a person's move"), prompt);
+    assertFalse(prompt.contains("you could not check"), prompt);
+    assertFalse(prompt.contains("If it still occurs"), prompt);
     assertFalse(prompt.contains("to DONE"), "an agent never closes a ticket");
     assertFalse(prompt.contains("REFINED"), "no route back to REFINED at all: " + prompt);
   }
@@ -337,7 +344,7 @@ public class PhasePromptsTest {
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
       String turn = prompt(entity).orElseThrow();
       String noun = entity.archetype == Archetype.TICKET ? "ticket" : "epic";
-      assertTrue(turn.contains("work_block with what"), entity.status + " " + noun + ": " + turn);
+      assertTrue(turn.contains("work_block"), entity.status + " " + noun + ": " + turn);
       assertTrue(
           turn.contains("to " + forwardOf(entity.status) + " with work_status"),
           entity.status + " " + noun + ": " + turn);
@@ -645,9 +652,13 @@ public class PhasePromptsTest {
     assertEquals(epicPromptFor(EntityStatus.READY_FOR_DEV), epicPromptFor(EntityStatus.IMPLEMENTING));
   }
 
-  /** The epic verify turn: the live platform first, the code second, VERIFIED or a block. */
+  /**
+   * The epic verify turn: the live platform first, the code second, each acceptance criterion
+   * checked, and a failure fixed on the same branch and verified again rather than blocked
+   * (qits-1154).
+   */
   @Test
-  public void theEpicVerifyTurnConfirmsLiveAndClaimsVerifiedOrBlocks() {
+  public void theEpicVerifyTurnConfirmsLiveAndFixesWhatItFinds() {
     String turn = epicPromptFor(EntityStatus.IMPLEMENTED);
     assertTrue(turn.contains("Verify epic \"Planning domain\""), turn);
     assertTrue(
@@ -655,8 +666,14 @@ public class PhasePromptsTest {
             < turn.indexOf("Fall back to reading the change"),
         "reproducing comes first and the fallback second: " + turn);
     assertTrue(turn.contains("to VERIFIED with work_status; closing is a person's move"), turn);
+    assertTrue(turn.contains("each acceptance criterion holds"), turn);
     assertTrue(
-        turn.contains("If something does not hold, or you could not check, call work_block"), turn);
+        turn.contains("If something fails, fix it on this branch, release it and verify again"
+            + " live"),
+        turn);
+    assertTrue(turn.contains("leave the status where it is meanwhile"), turn);
+    assertTrue(turn.contains("what you found and what you fixed"), turn);
+    assertTrue(turn.contains("Call work_block only for what you cannot resolve yourself"), turn);
     assertTrue(turn.contains("work_comment_create"), turn);
     assertFalse(turn.contains("REFINED"), "no route back to REFINED: " + turn);
   }
