@@ -146,7 +146,7 @@
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
         <qits.runner.version>2026.1018.92716</qits.runner.version>
-        <qits.eventstream.version>2026.1014.223716</qits.eventstream.version>
+        <qits.eventstream.version>2026.1018.151251</qits.eventstream.version>
         <qits.githost-events.version>2026.1015.22957</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -307,6 +307,14 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-eventstream</artifactId>
+                <version>${qits.eventstream.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at its declaration site (qits-1163): the kit that pacts what
+                     qits-eventstream asks qits-events on this service's behalf. Same release, same
+                     property, as the jar. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-eventstream-contracts</artifactId>
                 <version>${qits.eventstream.version}</version>
             </dependency>
             <dependency>
