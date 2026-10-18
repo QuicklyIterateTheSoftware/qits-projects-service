@@ -54,13 +54,16 @@ import java.util.Optional;
  *       to produce, where to write it, and the one or two mistakes that phase is prone to.
  *   <li><b>One ending, for every phase and archetype.</b> Either the forward move — {@code move it
  *       to <next> with work_status}, the agent's claim that the phase is done — or {@code
- *       work_block} with what is missing or what was found. There is no
+ *       work_block} with what the agent cannot resolve itself, never with a defect it can still fix
+ *       (qits-1154). There is no
  *       "leave the status where it is and comment" arm: a comment is read only by whoever opens the
  *       thread, while everything that hands out work reads the status and the flag, so an
  *       unfinished phase that only commented went on advertising itself as ready work.
  *   <li><b>No backward move.</b> A move back is a correction of a claim that turned out wrong, not
- *       how a phase reports failure. A verification that fails blocks the entity where it stands with
- *       what still occurs; a person decides what happens next, and closing is a person's move too.
+ *       how a phase reports failure. A verification that finds something it can fix fixes it on the
+ *       same branch, releases it and verifies again, with the status left where it stands
+ *       (qits-1154); it blocks only on what it cannot resolve — a person's decision, a shut door,
+ *       someone else's unreleased work; closing is a person's move too.
  *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER} and
  *       the substituted title, type, qualified id, slug and id. {@code PhasePromptsTest} renders
  *       all six and enforces it.
@@ -76,7 +79,9 @@ import java.util.Optional;
  * epic/<slug>}, separated by a context reset, and integrating it destroys the ground the verify
  * phase needs. Verify: on the live platform first, reading the change only when the situation cannot
  * be reproduced on demand — that order is the design, since the code-reading arm is always the one
- * an agent can finish in one turn — and the thread says which was done. An epic's implement turn
+ * an agent can finish in one turn — and the thread says which was done. It also checks each
+ * acceptance criterion, and fixes what it finds — on the same branch, released and verified again —
+ * rather than blocking on it (qits-1154). An epic's implement turn
  * also makes the move to IMPLEMENTED conditional on every task being marked, because that move
  * stamps every unmarked task, and asks for the {@code implementingAt} marker ({@code work_update})
  * as each task starts, so the board shows which of them are under way (qits-749).
@@ -331,8 +336,9 @@ final class PhasePrompts {
    * EntityStatus#VERIFYING}. The live platform is
    * the subject; reading the change is the fallback and comes second, bounded to what cannot be
    * reproduced on demand. The thread says which, because the two are different evidence. A check
-   * that fails — or could not be made — blocks the ticket where it stands with what was found; it
-   * does not move it back, and VERIFIED is as far as an agent goes.
+   * that fails is fixed on the ticket's branch, released and checked again while the status stays
+   * where it is; only what the agent cannot resolve blocks it (qits-1154); it never moves back, and
+   * VERIFIED is as far as an agent goes.
    */
   private static String verifyTicket(WorkEntity ticket, String q) {
     return "Verify ticket \""
@@ -346,12 +352,15 @@ final class PhasePrompts {
         + ", id "
         + ticket.id
         + "). Read it with work_details, then check on the live platform that what it reported no"
-        + " longer occurs. Fall back to reading the change only if the situation cannot be"
-        + " reproduced on demand. Say on the thread with work_comment_create which of the two you"
-        + " did. If it holds, move it to "
+        + " longer occurs and that each acceptance criterion holds. Fall back to reading the"
+        + " change only if the situation cannot be reproduced on demand. If something fails, fix"
+        + " it on this branch, release it and verify again live; leave the status where it is"
+        + " meanwhile. Say on the thread with work_comment_create which of the two you did, what"
+        + " you found and what you fixed. If it holds, move it to "
         + end(Phase.VERIFY)
-        + " with work_status; closing is a person's move. If it"
-        + " still occurs, or you could not check, call work_block with what you found.";
+        + " with work_status; closing is a person's move. Call work_block only for what you cannot"
+        + " resolve yourself: a person's decision, a door your credential cannot open, or a defect"
+        + " in someone else's unreleased work.";
   }
 
   // ---- the three epic templates -------------------------------------------------------------
@@ -428,8 +437,10 @@ final class PhasePrompts {
    * <b>VERIFY</b> for an epic, run while it is {@link EntityStatus#IMPLEMENTED} or {@link
    * EntityStatus#VERIFYING}: the ticket's verify
    * turn applied to what an epic claims — not that a reported fault is gone, but that what it
-   * promised holds, feature by feature. What was confirmed, and how, goes on the epic's thread.
-   * Reaching VERIFIED asks for the release of {@code epic/<slug>} ({@link PhaseAdvance}); closing
+   * promised holds, feature by feature. What was confirmed, and how, goes on the epic's thread. A
+   * failing feature is fixed on the epic's branch, released and checked again live rather than
+   * blocked, the status left where it stands (qits-1154); only what the agent cannot resolve blocks
+   * it. Reaching VERIFIED asks for the release of {@code epic/<slug>} ({@link PhaseAdvance}); closing
    * stays a person's move.
    */
   private static String verifyEpic(WorkEntity epic, String q) {
@@ -442,12 +453,14 @@ final class PhasePrompts {
         + ", id "
         + epic.id
         + "). Read it with work_details, then check on the live platform, feature by feature, that"
-        + " what it promised holds. Fall back to reading the change only if a behaviour cannot be"
-        + " reproduced on demand. Record on its thread with work_comment_create what you confirmed"
-        + " and how. If it holds, move it to "
+        + " what it promised holds and that each acceptance criterion holds. Fall back to reading"
+        + " the change only if a behaviour cannot be reproduced on demand. If something fails, fix"
+        + " it on this branch, release it and verify again live; leave the status where it is"
+        + " meanwhile. Record on its thread with work_comment_create what you confirmed and how,"
+        + " what you found and what you fixed. If it holds, move it to "
         + end(Phase.VERIFY)
-        + " with work_status; closing is a"
-        + " person's move. If something does not hold, or you could not check, call work_block with"
-        + " what you found.";
+        + " with work_status; closing is a person's move. Call work_block only for what you cannot"
+        + " resolve yourself: a person's decision, a door your credential cannot open, or a defect"
+        + " in someone else's unreleased work.";
   }
 }
