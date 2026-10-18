@@ -2329,6 +2329,43 @@
       ]
     },
     {
+      "name": "a registered runner",
+      "slug": "a-registered-runner",
+      "params": {
+        "authorization": "Bearer qits_tok_contract-registration",
+        "runnerId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "registerDeskRunner",
+          "method": "POST",
+          "path": "/projects/api/runners/{runnerId}/register",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "capabilities": {
+              "docker": true,
+              "arch": "amd64",
+              "os": "linux",
+              "labels": {
+                "site": "home"
+              }
+            }
+          },
+          "status": 409,
+          "file": "a-registered-runner/registerDeskRunner.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a release request awaiting approval",
       "slug": "a-release-request-awaiting-approval",
       "params": {
@@ -4177,6 +4214,45 @@
               "$.requests[*].createdAt",
               "$.requests[*].updatedAt",
               "$.requests[*].mergedToMainAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository with a tagged release whose request went obsolete mid-publish",
+      "slug": "a-repository-with-a-tagged-release-whose-request-went-obsolete-mid-publish",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "query": {
+            "state": "all"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-tagged-release-whose-request-went-obsolete-mid-publish/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].supersededBy",
+              "$.requests[*].pipeline.phases[*].runId",
+              "$.requests[*].qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt",
+              "$.requests[*].pipeline.phases[*].startedAt",
+              "$.requests[*].pipeline.phases[*].finishedAt"
             ],
             "strings": [],
             "listFilteredTo": null
@@ -6081,6 +6157,43 @@
             "strings": [
               "$.members[*].entity.qualifiedId"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unregistered runner",
+      "slug": "an-unregistered-runner",
+      "params": {
+        "authorization": "Bearer qits_tok_contract-registration",
+        "runnerId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "registerDeskRunner",
+          "method": "POST",
+          "path": "/projects/api/runners/{runnerId}/register",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "capabilities": {
+              "docker": true,
+              "arch": "amd64",
+              "os": "linux",
+              "labels": {
+                "site": "home"
+              }
+            }
+          },
+          "status": 200,
+          "file": "an-unregistered-runner/registerDeskRunner.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         }

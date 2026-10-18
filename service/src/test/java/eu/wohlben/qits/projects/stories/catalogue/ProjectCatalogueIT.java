@@ -55,8 +55,8 @@ import org.junit.jupiter.api.TestMethodOrder;
  * <p><b>The third story is the one that reaches least, and that is its point.</b> Adoption
  * registers a repository the git host <em>already serves</em> — the state qits-cli-bootstrap leaves
  * behind, since it creates every platform bare before this service exists to be asked. It asks the
- * host once, whether the bare is there and what its default branch is, and then writes rows.
- * Nothing is cloned, nothing is pushed, and no mirror is created: fetching into a history the CI
+ * host once, whether the bare is there and what its default branch is, writes rows, and states the
+ * repository's names to the git host's name index. Nothing is cloned, nothing is pushed, and no mirror is created: fetching into a history the CI
  * host has already built from would risk rewinding refs. {@code assertEdgeCount} is what says that,
  * and no presence check could.
  */
@@ -338,6 +338,7 @@ public class ProjectCatalogueIT {
         .as("name-resolves");
 
     StoryGitHost.awaitRead(StoryGitHost.repoPath(StoryPlatform.SEEDED_REPO_ID));
+    StoryGitHost.awaitRead(StoryGitHost.repoPath(StoryPlatform.SEEDED_REPO_ID) + "/names");
   }
 
   @AfterAll
@@ -443,9 +444,19 @@ public class ProjectCatalogueIT {
         StoryTarget.SERVICE,
         StoryGitHost.SERVICE_NAME,
         StoryGitHost.label("GET", StoryGitHost.repoPath(StoryPlatform.SEEDED_REPO_ID), 200));
-    // Exactly three arrows: two doors and ONE question to the git host. Adoption clones nothing,
-    // pushes nothing and makes no mirror, and only a count can say so.
-    ReportAssertions.assertEdgeCount(CATEGORY, ADOPTED_SLUG, 3);
+    // The alias the adoption wrote reaches the git host's own name index (qits-1215), so the
+    // public name serves without the git host asking this service anything.
+    ReportAssertions.assertEdge(
+        CATEGORY,
+        ADOPTED_SLUG,
+        NetworkEdge.HTTP,
+        StoryTarget.SERVICE,
+        StoryGitHost.SERVICE_NAME,
+        StoryGitHost.label(
+            "PUT", StoryGitHost.repoPath(StoryPlatform.SEEDED_REPO_ID) + "/names", 200));
+    // Exactly four arrows: two doors, ONE question to the git host and ONE statement of the names.
+    // Adoption clones nothing, pushes nothing and makes no mirror, and only a count can say so.
+    ReportAssertions.assertEdgeCount(CATEGORY, ADOPTED_SLUG, 4);
     ReportAssertions.assertOnlyEdgesFrom(
         CATEGORY, ADOPTED_SLUG, List.of(BOOTSTRAP, StoryTarget.SERVICE));
     ReportAssertions.assertNotLeaked(CATEGORY, ADOPTED_SLUG, bootstrapBearer);

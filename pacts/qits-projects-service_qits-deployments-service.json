@@ -1,0 +1,270 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-deployments-service",
+            "operationId": "listDeploymentRequests"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getReleaseRequest"
+          }
+        }
+      },
+      "description": "getReleaseRequest: listDeploymentRequests",
+      "key": "15e9ab79",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an application deployed in an environment",
+          "params": {
+            "applicationName": "contract-app-00000001",
+            "environmentId": "00000000-0000-4000-8000-000000000001",
+            "repoId": "contract-app-00000001",
+            "version": "2026.101.120000"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "query": {
+            "repoId": {
+              "dataType": "RAW",
+              "expression": "${repoId}",
+              "type": "ProviderState"
+            },
+            "version": {
+              "dataType": "RAW",
+              "expression": "${version}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/deployments/api/deployment-requests",
+        "query": {
+          "repoId": [
+            "contract-app-00000001"
+          ],
+          "version": [
+            "2026.101.120000"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "deploymentRequests": [
+              {
+                "createdAt": "2026-01-01T00:00:00Z",
+                "deploymentStatus": "ACTIVE",
+                "id": "00000000-0000-4000-8000-000000000002"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.deploymentRequests": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.deploymentRequests[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].deploymentStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-deployments-service",
+            "operationId": "softwareReleased"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "rerunReleasePipelinePhase"
+          }
+        }
+      },
+      "description": "rerunReleasePipelinePhase: softwareReleased",
+      "key": "f40c03c9",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a released version of a deployable repository",
+          "params": {
+            "application": "contract-app-00000001",
+            "projectId": "contract-project-00000001",
+            "repoId": "00000000-0000-4000-8000-000000000001",
+            "repoName": "contract-app-00000001",
+            "version": "2026.101.120000"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "application": "contract-app-00000001",
+            "projectId": "contract-project-00000001",
+            "repoId": "00000000-0000-4000-8000-000000000001",
+            "repoName": "contract-app-00000001",
+            "version": "2026.101.120000"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.application": {
+              "dataType": "STRING",
+              "expression": "${application}",
+              "type": "ProviderState"
+            },
+            "$.projectId": {
+              "dataType": "STRING",
+              "expression": "${projectId}",
+              "type": "ProviderState"
+            },
+            "$.repoId": {
+              "dataType": "STRING",
+              "expression": "${repoId}",
+              "type": "ProviderState"
+            },
+            "$.repoName": {
+              "dataType": "STRING",
+              "expression": "${repoName}",
+              "type": "ProviderState"
+            },
+            "$.version": {
+              "dataType": "STRING",
+              "expression": "${version}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.application": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.projectId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repoName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/deployments/api/events/software-released"
+      },
+      "response": {
+        "status": 202
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-deployments-service"
+  }
+}

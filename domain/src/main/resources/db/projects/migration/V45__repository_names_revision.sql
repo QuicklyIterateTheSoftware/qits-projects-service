@@ -1,0 +1,20 @@
+-- THE GIT HOST KEEPS ITS OWN COPY OF EVERY REPOSITORY'S NAMES, AND THIS IS ITS ORDERING (qits-1215).
+--
+-- qits-githost resolves /git/<projectId>/<name> from a name index of its own instead of asking
+-- GET …/repositories/by-name/{repoName} here on every clone. That index is fed from this service:
+-- each write that changes a repository's name set (RepositoryNameRepository's ensureAlias when it
+-- inserts, forgetNames when it deletes, and so registerSelfName through ensureAlias) bumps this
+-- counter in the same transaction, and control/GitHostNameSync pushes the whole set with it after
+-- commit — PUT /git/<repoId>/names {projectId, projectSlug, names[], revision}.
+--
+--    names_revision  a monotonic per-repository counter. The git host keeps the set it holds when a
+--                    push carries an equal or older revision (applied=false), so two pushes that
+--                    overtake each other, or a reconciler pass racing a rename, can never put an
+--                    older name set back.
+--
+-- NOT NULL DEFAULT 0, and no backfill beyond that: every existing row starts at 0, which the git host
+-- has never been sent, so the reconciler's first pass after this deploys (GitHostNameReconcile) is
+-- the one-time backfill of its whole index — any revision >= 0 applies against an empty index.
+-- Written only by that JPQL increment: the entity maps the column read-only, so a dirty flush of a
+-- Repository loaded before the bump can never write the old value back.
+alter table Repository add column names_revision bigint not null default 0;

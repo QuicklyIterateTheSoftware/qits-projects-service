@@ -9,12 +9,14 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.control.FakeGitHostRepositories;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.testsupport.RecordingRepositoryAnnouncer;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,16 +28,21 @@ import org.junit.jupiter.api.Test;
  * archetype and a suffix-less one leaves it alone; a rename is announced exactly once and only when
  * something changed; and three things are refused outright.
  *
- * <p><b>Nothing here asserts a call to the git host, because there is none to assert.</b> A bare is
- * keyed by the row's opaque id, so the {@code by-name} resolution below is the whole proof that the
- * rename took effect where it matters — that read is what qits-githost makes to turn {@code
- * /git/<project>/<name>} into the storage id it serves.
+ * <p><b>The bare is never asked to move</b>: it is keyed by the row's opaque id, so the {@code
+ * by-name} resolution below proves the rename took effect for every caller that still reads it.
+ * The one git host call a rename makes is the name push (qits-1215) — {@code PUT
+ * /git/<repoId>/names} after commit, so qits-githost's own index follows at once — and the last two
+ * cases pin it: the new set goes out with a newer revision, and a git host that fails it never
+ * fails the rename.
  */
 @QuarkusTest
 public class RepositoryRenameTest {
 
   /** Wins the port's injection over the shipped {@code @DefaultBean} announcer. */
   @Inject RecordingRepositoryAnnouncer announcer;
+
+  /** The domain test-jar's git host, which wins over {@code HttpGitHostRepositories} here. */
+  @Inject FakeGitHostRepositories gitHost;
 
   private String createProject(String name) {
     return given()
@@ -311,5 +318,43 @@ public class RepositoryRenameTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("entries.find { it.repositoryId == '" + repoId + "' }.outcome", equalTo("UNDECLARED"))
         .body("entries.find { it.name == 'search' }.outcome", notNullValue());
+  }
+
+  // --- the git host's name index (qits-1215) ---
+
+  @Test
+  public void aRenamePushesTheNewNameSetToTheGitHostWithAHigherRevision() {
+    String projectId = createProject("Rename Pushes Names");
+    String repoId = createRepository(projectId, "notifier", RepositoryArchetype.SERVICE);
+    List<FakeGitHostRepositories.NamesPush> before = gitHost.namesPushesOf(repoId);
+    long revisionBefore = before.isEmpty() ? -1 : before.get(before.size() - 1).revision();
+
+    rename(repoId, "notifier-service").then().statusCode(Response.Status.OK.getStatusCode());
+
+    List<FakeGitHostRepositories.NamesPush> pushes = gitHost.namesPushesOf(repoId);
+    assertTrue(pushes.size() > before.size(), "the rename pushed, before the PATCH answered");
+    FakeGitHostRepositories.NamesPush pushed = pushes.get(pushes.size() - 1);
+    assertEquals(List.of("notifier-service"), pushed.names(), "exactly the new name, the old gone");
+    assertEquals(projectId, pushed.projectId());
+    assertTrue(pushed.revision() > revisionBefore, "a newer revision than the old set's");
+  }
+
+  @Test
+  public void aGitHostThatFailsTheNamePushNeverFailsTheRename() {
+    String projectId = createProject("Rename Push Fails");
+    String repoId = createRepository(projectId, "courier", RepositoryArchetype.SERVICE);
+    gitHost.failNamesOf(repoId);
+    try {
+      rename(repoId, "courier-service")
+          .then()
+          .statusCode(Response.Status.OK.getStatusCode())
+          .body("changed", equalTo(true));
+      resolveByName(projectId, "courier-service")
+          .then()
+          .statusCode(Response.Status.OK.getStatusCode())
+          .body("repositoryId", equalTo(repoId));
+    } finally {
+      gitHost.allowNames();
+    }
   }
 }

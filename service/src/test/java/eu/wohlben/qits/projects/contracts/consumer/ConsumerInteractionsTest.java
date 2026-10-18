@@ -199,6 +199,38 @@ class ConsumerInteractionsTest {
         "an array never empty keeps at least one");
   }
 
+  /**
+   * An object null in some elements is "this object or null" in every element, never "always this
+   * object": the merged template takes the object from the element that has one, and binding its
+   * fields as required would refuse every element where the provider answers null (qits-maintenance
+   * found it in the automations' {@code failure}).
+   */
+  @Test
+  void anObjectNullInSomeElementsMatchesTheObjectOrNull() throws Exception {
+    ConsumerRow entries =
+        row(
+            "listEntries",
+            "GET",
+            "/fixture/api/entries",
+            Map.of(),
+            null,
+            List.of("$.entries[*].item.name", "$.entries[*].item.failure"),
+            200,
+            (base, p) -> {
+              JsonNode body = MAPPER.readTree(get(base + "/fixture/api/entries").body());
+              assertTrue(body.path("entries").isArray());
+            });
+    ConsumerPactsTest.run(FIXTURE, entries);
+    JsonNode rules =
+        pactOf(entries).path("interactions").path(0).path("response").path("matchingRules").path("body");
+    JsonNode failure = rules.path("$.entries[*].item.failure");
+    assertEquals("OR", failure.path("combine").asText(), "object or null: " + failure);
+    assertTrue(failure.toString().contains("null"), "object or null: " + failure);
+    assertTrue(
+        rules.path("$.entries[*].item.failure.code").isMissingNode(),
+        "no field of it is required on its own: " + rules);
+  }
+
   @Test
   void aStatusOnlyRowBindsNoBodyAndSendsItsOwnRequest() throws Exception {
     ConsumerRow rename =

@@ -1,0 +1,687 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "getRun"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "event": "BuildFailed",
+            "kind": "event"
+          }
+        }
+      },
+      "description": "BuildFailed: getRun",
+      "key": "17ef8fcb",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a failed run that retries another",
+          "params": {
+            "repositoryId": "00000000-0000-4000-8000-000000000001",
+            "retryOfRunId": "00000000-0000-4000-8000-000000000002",
+            "runId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/ci/api/runs/${runId}",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/ci/api/runs/00000000-0000-4000-8000-000000000003"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "retryOfRunId": "00000000-0000-4000-8000-000000000002"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.retryOfRunId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "getReleasePhase"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "ReleaseFinalization.releasedTree"
+          }
+        }
+      },
+      "description": "ReleaseFinalization.releasedTree: getReleasePhase",
+      "key": "3373e69d",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository that declares a release phase",
+          "params": {
+            "repositoryId": "00000000-0000-4000-8000-000000000001",
+            "rev": "refs/tags/2026.1001.1"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/ci/api/repositories/${repositoryId}/release-phase",
+            "type": "ProviderState"
+          },
+          "query": {
+            "rev": {
+              "dataType": "RAW",
+              "expression": "${rev}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/ci/api/repositories/00000000-0000-4000-8000-000000000001/release-phase",
+        "query": {
+          "rev": [
+            "refs/tags/2026.1001.1"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "declared": true
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.declared": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "cancelReleaseRequestRuns"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "ReleaseRequests.remerge (a source moved during QA)"
+          }
+        }
+      },
+      "description": "ReleaseRequests.remerge (a source moved during QA): cancelReleaseRequestRuns",
+      "key": "195e1fda",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request with runs in flight",
+          "params": {
+            "queuedRunId": "00000000-0000-4000-8000-000000000001",
+            "releaseRequestId": "00000000-0000-4000-8000-000000000002",
+            "repositoryId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "phase": "RELEASE_REQUEST",
+            "releaseRequestId": "00000000-0000-4000-8000-000000000002",
+            "repoId": "00000000-0000-4000-8000-000000000003"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.releaseRequestId": {
+              "dataType": "STRING",
+              "expression": "${releaseRequestId}",
+              "type": "ProviderState"
+            },
+            "$.repoId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.releaseRequestId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/ci/api/runs/cancellations"
+      },
+      "response": {
+        "status": 202
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "listActiveRuns"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getReleaseRequest"
+          }
+        }
+      },
+      "description": "getReleaseRequest: listActiveRuns",
+      "key": "657ea5a9",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a commit with a run in flight",
+          "params": {
+            "commitSha": "0000000000000000000000000000000000000005",
+            "repositoryId": "00000000-0000-4000-8000-000000000001",
+            "runId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/ci/api/runs/active"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "runs": [
+              {
+                "commitSha": "0000000000000000000000000000000000000005",
+                "repoId": "00000000-0000-4000-8000-000000000001"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.runs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.runs[*].commitSha": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.runs[*].repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "listReleaseArtifacts"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getReleaseRequestArtifacts"
+          }
+        }
+      },
+      "description": "getReleaseRequestArtifacts: listReleaseArtifacts",
+      "key": "5807680a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a released version with artifact decisions",
+          "params": {
+            "repositoryId": "00000000-0000-4000-8000-000000000001",
+            "repositoryName": "contract-service",
+            "runId": "00000000-0000-4000-8000-000000000002",
+            "version": "2026.1001.1"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/ci/api/repositories/${repositoryId}/releases/${version}/artifacts",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/ci/api/repositories/00000000-0000-4000-8000-000000000001/releases/2026.1001.1/artifacts"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "artifacts": [
+              {
+                "decision": "published",
+                "name": "qits/contract-service",
+                "type": "docker",
+                "unchangedSince": "2026.901.1"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.artifacts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.artifacts[*].decision": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.artifacts[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.artifacts[*].type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.artifacts[*].unchangedSince": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "rerunReleaseRequestPhase"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "rerunReleasePipelinePhase"
+          }
+        }
+      },
+      "description": "rerunReleasePipelinePhase: rerunReleaseRequestPhase",
+      "key": "c2d0e10a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request whose QA run failed",
+          "params": {
+            "releaseRequestId": "00000000-0000-4000-8000-000000000001",
+            "repositoryId": "00000000-0000-4000-8000-000000000002",
+            "runId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "phase": "RELEASE_REQUEST",
+            "releaseRequestId": "00000000-0000-4000-8000-000000000001",
+            "repoId": "00000000-0000-4000-8000-000000000002"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.releaseRequestId": {
+              "dataType": "STRING",
+              "expression": "${releaseRequestId}",
+              "type": "ProviderState"
+            },
+            "$.repoId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.releaseRequestId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/ci/api/runs/rerun"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "runId": "00000000-0000-4000-8000-000000000004"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.runId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 202
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
+            "operationId": "cancelReleaseRequestRuns"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "withdrawReleaseRequest"
+          }
+        }
+      },
+      "description": "withdrawReleaseRequest: cancelReleaseRequestRuns",
+      "key": "9c94f0ff",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request with runs in flight",
+          "params": {
+            "queuedRunId": "00000000-0000-4000-8000-000000000001",
+            "releaseRequestId": "00000000-0000-4000-8000-000000000002",
+            "repositoryId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "releaseRequestId": "00000000-0000-4000-8000-000000000002",
+            "repoId": "00000000-0000-4000-8000-000000000003"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.releaseRequestId": {
+              "dataType": "STRING",
+              "expression": "${releaseRequestId}",
+              "type": "ProviderState"
+            },
+            "$.repoId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.releaseRequestId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/ci/api/runs/cancellations"
+      },
+      "response": {
+        "status": 202
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-ci-service"
+  }
+}

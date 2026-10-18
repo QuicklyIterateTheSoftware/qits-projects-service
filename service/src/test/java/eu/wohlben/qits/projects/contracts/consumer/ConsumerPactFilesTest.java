@@ -39,7 +39,10 @@ import org.junit.jupiter.api.Test;
  * the file of a provider that has no recorded row any more.
  *
  * <p><b>Published as the platform publishes every pact</b>: {@code .config/qits/release.yml}'s
- * {@code contracts.pacts} names each provider with a committed file, and names no other. A file
+ * {@code contracts.pacts} names each provider with a committed file, and names no other. That
+ * includes {@code EventstreamPactTest}'s three-part {@code
+ * qits-projects-service_qits-eventstream-javalib_qits-events-service.json} (qits-1163), whose
+ * provider is the segment after the last {@code _}. A file
  * nobody publishes is a contract no provider can verify; a declaration with no file publishes
  * nothing.
  */
@@ -84,14 +87,17 @@ class ConsumerPactFilesTest {
         files
             .map(path -> path.getFileName().toString())
             .filter(name -> name.startsWith(prefix) && name.endsWith(".json"))
-            .forEach(name -> committed.add(name.substring(prefix.length(), name.length() - 5)));
+            // The provider is the segment after the LAST `_`: a library's pact is three-part,
+            // <consumer>_<library>_<provider>.json (qits-1163), and publishes to the provider.
+            .forEach(
+                name -> committed.add(name.substring(name.lastIndexOf('_') + 1, name.length() - 5)));
       }
     }
     assertEquals(
         committed,
         declaredPacts(Files.readString(root.resolve(".config/qits/release.yml"))),
         "contracts.pacts in .config/qits/release.yml must name each provider with a committed"
-            + " pacts/qits-projects-service_<provider>.json, and no other");
+            + " pacts/qits-projects-service_[<library>_]<provider>.json, and no other");
   }
 
   /** The provider keys under {@code contracts:} → {@code pacts:}, read off the YAML's indentation. */

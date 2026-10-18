@@ -30,6 +30,7 @@ erDiagram
     string last_backup_detail "length 1000"
     enum last_backup_outcome
     string main_branch
+    long names_revision "not null"
     string project_id FK "not null"
     string url
   }

@@ -5,6 +5,8 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryName;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
+import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -15,11 +17,22 @@ import org.jboss.logging.Logger;
  * The name-alias table: resolves {@code (projectId, name) → Repository} for the git host and
  * registers new aliases on import/creation. A repository may have many aliases; each {@code
  * (project, name)} maps to exactly one repository (the DB unique constraint).
+ *
+ * <p><b>Every write that changes a repository's name set is announced</b> (qits-1215): {@link
+ * #ensureAlias} when it inserts, {@link #forgetNames} when it deletes, and so both {@code
+ * registerSelfName} overloads, which write through {@code ensureAlias}. Each bumps {@code
+ * Repository.namesRevision} in the caller's transaction and fires {@link RepositoryNamesChanged},
+ * which {@code control/GitHostNameSync} turns into a push to the git host's name index after commit.
+ * A write that changes nothing — the first-writer-wins no-op, a self-name already held — neither
+ * bumps nor fires, so the revision counts real changes and nothing else. A new writer of this table
+ * goes through {@code changed} or the git host stops hearing about it.
  */
 @ApplicationScoped
 public class RepositoryNameRepository implements PanacheRepositoryBase<RepositoryName, String> {
 
   private static final Logger LOG = Logger.getLogger(RepositoryNameRepository.class);
+
+  @Inject Event<RepositoryNamesChanged> namesChanged;
 
   /**
    * The addressable name of a repository url: its basename with any {@code .git} suffix stripped —
@@ -92,6 +105,9 @@ public class RepositoryNameRepository implements PanacheRepositoryBase<Repositor
    * collision (two distinct urls whose basenames coincide within one project) — first writer wins,
    * and this logs without overwriting, since native {@code ../name.git} resolution is inherently
    * ambiguous there. Used to register each referencing submodule name as an alias of its child.
+   *
+   * <p>Only the insert is a change: it bumps the revision and fires {@link
+   * RepositoryNamesChanged}; both no-op arms do neither.
    */
   public void ensureAlias(Project project, String name, Repository repository) {
     Optional<RepositoryName> existing = findByProjectAndName(project.id, name);
@@ -110,6 +126,7 @@ public class RepositoryNameRepository implements PanacheRepositoryBase<Repositor
     alias.repository = repository;
     alias.name = name;
     persist(alias);
+    changed(repository);
   }
 
   /**
@@ -120,9 +137,31 @@ public class RepositoryNameRepository implements PanacheRepositoryBase<Repositor
    * rename — an alias left behind keeps {@code /git/<project>/<oldName>} resolving, keeps the old
    * name taken against every other repository in the project, and leaves {@link #nameFor} free to
    * answer either one.
+   *
+   * <p>A delete that removed nothing changed nothing, so only a non-zero count bumps the revision
+   * and fires {@link RepositoryNamesChanged}. The rename that calls it inserts the new name straight
+   * afterwards and is announced by that insert anyway; the guard keeps the counter honest for any
+   * later caller.
    */
   public long forgetNames(Repository repository) {
-    return delete("repository.id", repository.id);
+    long forgotten = delete("repository.id", repository.id);
+    if (forgotten > 0) {
+      changed(repository);
+    }
+    return forgotten;
+  }
+
+  /**
+   * The one place a name-set change is recorded: the revision bump, as a JPQL increment in the
+   * caller's transaction (the entity maps the column read-only, so a loaded instance never writes
+   * it back), and the CDI event the after-commit push observes.
+   */
+  private void changed(Repository repository) {
+    getEntityManager()
+        .createQuery("update Repository set namesRevision = namesRevision + 1 where id = :id")
+        .setParameter("id", repository.id)
+        .executeUpdate();
+    namesChanged.fire(new RepositoryNamesChanged(repository.id));
   }
 
   /**

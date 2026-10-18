@@ -1,0 +1,239 @@
+{
+  "requests": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "qualifiedId": "contract-service-rr-1",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repoName": "contract-service",
+      "backingBranch": "release/contract-service-rr-1",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100100",
+          "ref": "refs/tags/2026.101.100100",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000003",
+      "state": "PENDING",
+      "summary": "Release the rounding fix",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": null,
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "CI",
+          "state": "PENDING",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "supersededByQualifiedId": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": {
+        "phases": [
+          {
+            "phase": "QA",
+            "state": "WAITING_FOR_PRE_RUN",
+            "runId": null,
+            "startedAt": null,
+            "finishedAt": null,
+            "detail": "QA starts once every automation is fresh or waived at this fold"
+          }
+        ],
+        "gates": [
+          {
+            "between": "PRE_RUN_QA",
+            "kind": "AUTOMATIONS",
+            "state": "PENDING",
+            "detail": null
+          },
+          {
+            "between": "QA_PUBLISH",
+            "kind": "CI",
+            "state": "PENDING",
+            "detail": null
+          }
+        ]
+      },
+      "qualityGates": [
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "pre-run-qa",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for a CI verdict for 0000000000",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ],
+      "preRun": {
+        "state": "PENDING"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-service-rr-2",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repoName": "contract-service",
+      "backingBranch": "release/contract-service-rr-2",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100100",
+          "ref": "refs/tags/2026.101.100100",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000001",
+      "state": "OBSOLETE",
+      "summary": "Release the CSV export",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "Superseded by release request contract-service-rr-1, which folds 2026.101.100100 in and releases past it",
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "CI",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "PUBLISH",
+          "state": "PENDING",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": "2026.101.100100",
+      "supersededBy": "00000000-0000-4000-8000-000000000004",
+      "supersededByQualifiedId": "contract-service-rr-1",
+      "releasedSha": "000000000000000000000000000000000000000a",
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": {
+        "phases": [
+          {
+            "phase": "QA",
+            "state": "SUCCESS",
+            "runId": "00000000-0000-4000-8000-000000000005",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "finishedAt": "2026-01-01T00:00:00Z",
+            "detail": null
+          },
+          {
+            "phase": "PUBLISH",
+            "state": "RUNNING",
+            "runId": "00000000-0000-4000-8000-000000000006",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "finishedAt": null,
+            "detail": null
+          }
+        ],
+        "gates": [
+          {
+            "between": "PRE_RUN_QA",
+            "kind": "AUTOMATIONS",
+            "state": "PASSED",
+            "detail": null
+          },
+          {
+            "between": "QA_PUBLISH",
+            "kind": "CI",
+            "state": "PENDING",
+            "detail": null
+          },
+          {
+            "between": "PUBLISH_DEPLOY",
+            "kind": "PUBLISH",
+            "state": "PENDING",
+            "detail": null
+          }
+        ]
+      },
+      "qualityGates": [
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "pre-run-qa",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for a CI verdict for 0000000000",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "publish",
+          "label": "Publish run",
+          "position": "publish-deploy",
+          "state": "PENDING",
+          "detail": null,
+          "checks": [],
+          "runId": "00000000-0000-4000-8000-000000000006",
+          "link": null
+        }
+      ],
+      "preRun": {
+        "state": "PASSED"
+      }
+    }
+  ]
+}

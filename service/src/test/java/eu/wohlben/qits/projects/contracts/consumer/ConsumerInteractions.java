@@ -61,6 +61,9 @@ public final class ConsumerInteractions {
 
   private static final Pattern PARAM = Pattern.compile("\\{([A-Za-z0-9_]+)}");
 
+  private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+      new com.fasterxml.jackson.databind.ObjectMapper();
+
   private ConsumerInteractions() {}
 
   /** One pact for {@code rows}, all against the same provider, each bound to its recording. */
@@ -124,9 +127,20 @@ public final class ConsumerInteractions {
                           ? Matchers.fromProviderState(expression(value), example(value, params, where))
                           : value);
                 }
+                for (Map.Entry<String, String> h : row.headers().entrySet()) {
+                  String value = h.getValue();
+                  r.header(
+                      h.getKey(),
+                      hasParam(value)
+                          ? Matchers.fromProviderState(expression(value), example(value, params, where))
+                          : value);
+                }
                 if (request != null) {
                   r.header("Content-Type", "application/json");
                   r.body(request);
+                }
+                if (row.formBody() != null) {
+                  r.body(row.formBody(), "application/x-www-form-urlencoded");
                 }
                 return r;
               });
@@ -278,6 +292,15 @@ public final class ConsumerInteractions {
       Need child = need.whole ? Need.WHOLE : need.fields.get(name);
       if (value.isNull()) {
         target.nullValue(name);
+      } else if ((value.isObject() || value.isArray()) && nullable.contains(childPath)) {
+        // Null or absent in some element: "this shape, or null", never "always this shape". The
+        // example is the merged template cut to what is consumed; its fields match by type,
+        // which the group cascades to.
+        target.or(
+            name,
+            MAPPER.convertValue(cut(value, child), Object.class),
+            TypeMatcher.INSTANCE,
+            NullMatcher.INSTANCE);
       } else if (value.isObject()) {
         PactDslJsonBody nested = target.object(name);
         fillObject(nested, value, child, childPath, op, nullable);
@@ -367,6 +390,26 @@ public final class ConsumerInteractions {
       return PactDslJsonRootValue.booleanType(example.asBoolean());
     }
     throw unsupported(op, path, "a " + example.getNodeType() + " array element");
+  }
+
+  /** {@code value} with only the fields {@code need} reaches. */
+  private static JsonNode cut(JsonNode value, Need need) {
+    if (need.whole) {
+      return value;
+    }
+    if (value.isArray()) {
+      com.fasterxml.jackson.databind.node.ArrayNode out = MAPPER.createArrayNode();
+      value.forEach(element -> out.add(need.element == null ? element : cut(element, need.element)));
+      return out;
+    }
+    ObjectNode out = MAPPER.createObjectNode();
+    need.fields.forEach(
+        (name, child) -> {
+          if (value.has(name)) {
+            out.set(name, cut(value.get(name), child));
+          }
+        });
+    return out;
   }
 
   /**
