@@ -21,7 +21,6 @@ import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
-import eu.wohlben.qits.projects.entity.RepositoryName;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -64,7 +63,6 @@ public class ReleaseRequestSourcesTest {
 
   private String repoId;
   private String projectId;
-  private String memberRepoId;
 
   @BeforeEach
   void seed() {
@@ -75,7 +73,6 @@ public class ReleaseRequestSourcesTest {
     activeBuilds.answer(Optional.of(1));
     repoId = "sources-repo-" + UUID.randomUUID();
     projectId = "sources-project-" + UUID.randomUUID();
-    memberRepoId = "sources-member-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -101,12 +98,7 @@ public class ReleaseRequestSourcesTest {
   void dropTheFixturesRequests() {
     QuarkusTransaction.requiringNew()
         .run(
-            () -> {
-              ReleaseRequest.delete("projectId = ?1", projectId);
-              // The released-tag rows the gitlink cases seed are foreign-keyed to nothing, and the
-              // finalization sweep walks every ungated row there is — so they leave with the test.
-              ReleasedTagPendingMerge.delete("repoId = ?1", memberRepoId);
-            });
+            () -> ReleaseRequest.delete("projectId = ?1", projectId));
   }
 
   private String base() {
@@ -616,76 +608,111 @@ public class ReleaseRequestSourcesTest {
   }
 
   // -------------------------------------------------------------------------------------------
-  // Conflicts a machine can decide
+  // Pins the git host decides
   // -------------------------------------------------------------------------------------------
 
   /**
-   * <b>The commonest conflict this service hits, and the one it already knows the answer to.</b> Two
-   * sources bumped one submodule pin to two different released versions of the same sibling; both
-   * shas are rows in {@code released_tag_pending_merge}; the later one contains the earlier one. So
-   * the fold is made a second time with that pin decided, and the request goes on as if nothing had
-   * happened — except in the merge commit's message, which says what was decided.
-   *
-   * <p><b>Exactly two folds.</b> That is the assertion the whole feature is bounded by: one attempt,
-   * one extra call, no trigger, no retry and no loop. {@code sweep()} still refuses to re-fold a
-   * CONFLICTED request, which is what makes the ceiling a ceiling.
+   * <b>The commonest conflict this service hits</b> — two sources bumping one submodule pin to two
+   * released versions of the same sibling — <b>is the git host's to decide, in the one fold</b>
+   * (qits-958). The fold asks for {@code gitlinkPins}, the git host answers 200 having picked the
+   * later release and written the {@code Resolved-Gitlink} trailer into the merge commit itself, and
+   * the request goes on. No directive is sent and nothing folds a second time; the decision is
+   * logged at INFO in the trailer's own form, beside the version pins.
    */
   @Test
-  public void aGitlinkConflictBetweenTwoReleasesIsDecidedByOneExtraFold() {
+  public void aGitlinkPinTheGitHostDecidedIsOneFoldThatAskedForIt() {
     String id = create("work");
     String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
-    seedMember();
 
-    merger.answerOnce(gitlinkConflict(target, OLDER_SHA, NEWER_SHA));
-    headMoved("work");
+    List<String> logged = new java.util.concurrent.CopyOnWriteArrayList<>();
+    java.util.logging.Logger log = java.util.logging.Logger.getLogger(ReleaseRequests.class.getName());
+    java.util.logging.Handler capture = capturing(logged);
+    log.addHandler(capture);
+    try {
+      merger.answerOnce(
+          BackingBranchMerger.Outcome.merged(
+              RecordingBackingBranchMerger.freshSha(),
+              List.of("refs/heads/main", "refs/heads/work"),
+              List.of(MEMBER_PATH),
+              List.of(),
+              List.of(
+                  new BackingBranchMerger.ResolvedGitlink(
+                      MEMBER_PATH, "member-a", OLDER_SHA, NEWER_SHA, "2026.902.2"))));
+      headMoved("work");
 
-    assertEquals("PENDING", stateOf(id), "the conflict was decided, so nothing is waiting on a person");
-    assertNull(
-        given().get(base() + "/" + id).then().extract().path("request.conflict"),
-        "and nothing conflicted is recorded on the row");
-    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
-    assertEquals(foldsBefore + 2, folds.size(), "one conflicted fold and one deciding it");
-    RecordingBackingBranchMerger.Fold second = folds.get(folds.size() - 1);
-    assertEquals(
-        List.of(new BackingBranchMerger.Resolution(MEMBER_PATH, NEWER_SHA)),
-        second.resolutions(),
-        "the later release is what the pin is decided at");
-    assertTrue(
-        second.message().contains("Resolved-Gitlink: " + MEMBER_PATH + " " + OLDER_SHA + " -> " + NEWER_SHA),
-        second.message());
-    assertEquals(
-        List.of(),
-        folds.get(folds.size() - 2).resolutions(),
-        "the fold that conflicted asked for nothing, exactly as every fold did before this existed");
-    assertTrue(second.versionPins(), "the gitlink re-fold asks for version pins like the first");
-    assertTrue(second.rebuild(), "and is rebuilt from the sources like the first");
+      assertEquals("PENDING", stateOf(id), "the git host decided it, so nothing waits on a person");
+      assertNull(
+          given().get(base() + "/" + id).then().extract().path("request.conflict"),
+          "and nothing conflicted is recorded on the row");
+      List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+      assertEquals(foldsBefore + 1, folds.size(), "exactly one fold: nothing here folds again");
+      RecordingBackingBranchMerger.Fold fold = folds.get(folds.size() - 1);
+      assertTrue(fold.gitlinkPins(), "every fold asks the git host to decide gitlink pins");
+      assertTrue(fold.versionPins(), "and version pins");
+      assertTrue(fold.rebuild(), "and is rebuilt from the sources");
+      assertEquals(List.of(), fold.resolutions(), "no directive is ever sent");
+      assertTrue(
+          !fold.message().contains("Resolved-Gitlink"),
+          "the trailer is the git host's to write, not this side's: " + fold.message());
+      String line =
+          logged.stream()
+              .filter(entry -> entry.contains("qits-githost decided 1 submodule pin(s)"))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("no decision logged: " + logged));
+      assertTrue(line.contains(id), line);
+      assertTrue(
+          line.contains(
+              "Resolved-Gitlink: "
+                  + MEMBER_PATH
+                  + " "
+                  + OLDER_SHA
+                  + " -> "
+                  + NEWER_SHA
+                  + " (member-a 2026.902.2)"),
+          line);
+    } finally {
+      log.removeHandler(capture);
+    }
   }
 
   /**
-   * And the other half: a gitlink conflict whose shas are not both recorded releases is nobody's to
-   * decide mechanically. <b>One fold</b> — no second attempt is made at all — the request is
-   * CONFLICTED as it always was, and the detail names the condition that failed, so a person reading
-   * it is told what was tried rather than left to wonder whether anything was.
+   * And the other half: a gitlink conflict the git host examined and declined is a person's, after
+   * <b>one fold</b>. The request is CONFLICTED as it always was, and the git host's own sentence for
+   * why it declined lands on the detail, so a person reading it is told what was tried rather than
+   * left to wonder whether anything was. Repeated sentences are said once.
    */
   @Test
-  public void aGitlinkConflictThisServiceCannotDecideIsStillAPersonsAfterOneFold() {
+  public void aGitlinkConflictTheGitHostDeclinedIsAPersonsAfterOneFold() {
     String id = create("work");
     String target = BackingBranches.ref(id);
     int foldsBefore = merger.foldsOf(target).size();
-    seedMember();
 
-    // A sha nobody released: a branch head somebody pinned by hand is exactly this shape.
     String unreleased = "cccccccccccccccccccccccccccccccccccccccc";
-    merger.answer(gitlinkConflict(target, OLDER_SHA, unreleased));
+    String why =
+        "the conflict at "
+            + MEMBER_PATH
+            + " is not one this service can decide: "
+            + unreleased
+            + " is no release of 'member-a'";
+    merger.answer(
+        BackingBranchMerger.Outcome.conflict(
+            target,
+            List.of(
+                declinedGitlink(OLDER_SHA, unreleased, why),
+                declinedGitlink(OLDER_SHA, unreleased, why),
+                new BackingBranchMerger.Conflict(
+                    "pom.xml", "refs/heads/work", CONFLICT_HEAD_SHA, "content"))));
     headMoved("work");
 
     assertEquals("CONFLICTED", stateOf(id));
-    assertEquals(
-        foldsBefore + 1, merger.foldsOf(target).size(), "nothing was decided, so nothing was folded again");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+    assertEquals(foldsBefore + 1, folds.size(), "nothing was decided, so nothing was folded again");
+    assertTrue(folds.get(folds.size() - 1).gitlinkPins());
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
-    assertTrue(detail.contains(MEMBER_PATH), detail);
-    assertTrue(detail.contains("is no recorded release of 'member-a'"), detail);
+    assertTrue(detail.contains(MEMBER_PATH + ", pom.xml"), detail);
+    assertTrue(detail.endsWith(" — " + why), detail);
+    assertEquals(detail.indexOf(why), detail.lastIndexOf(why), "a repeated sentence is said once");
     // The sides travel onto the read model, which is what lets the screen say which two versions
     // are in conflict rather than only which path is.
     given()
@@ -747,6 +774,7 @@ public class ReleaseRequestSourcesTest {
       List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
       assertEquals(foldsBefore + 1, folds.size(), "the git host decided it; nothing folds again");
       assertTrue(folds.get(folds.size() - 1).versionPins(), "every fold asks for version pins");
+      assertTrue(folds.get(folds.size() - 1).gitlinkPins(), "and for gitlink pins");
       assertTrue(
           folds.stream().allMatch(RecordingBackingBranchMerger.Fold::rebuild),
           "every fold is rebuilt from main and the sources, never made onto the previous fold");
@@ -771,8 +799,8 @@ public class ReleaseRequestSourcesTest {
 
   /**
    * And the manifest the git host could not decide — a comment changed beside the version, say —
-   * comes back in the 409 exactly as before: one fold, asked with version pins, CONFLICTED, and the
-   * resolver's sentence on the detail.
+   * comes back in the 409 exactly as before: one fold, asked with version pins, CONFLICTED, and —
+   * since no gitlink rule declined anything — nothing appended to the detail's path list.
    */
   @Test
   public void aPomTheGitHostCouldNotDecideStaysConflictedAfterOneFold() {
@@ -793,7 +821,7 @@ public class ReleaseRequestSourcesTest {
     assertEquals(foldsBefore + 1, folds.size(), "nothing here decides a pom, so nothing folds again");
     assertTrue(folds.get(folds.size() - 1).versionPins());
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
-    assertTrue(detail.contains("not over a submodule pin"), detail);
+    assertTrue(detail.endsWith("): pom.xml"), detail);
   }
 
   /** The member's path in the wrapper, under the component grammar. */
@@ -805,63 +833,38 @@ public class ReleaseRequestSourcesTest {
 
   private static final String NEWER_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-  /** A 409 over a submodule pin, as the git host reports one: a kind, and both sides' shas. */
-  private static BackingBranchMerger.Outcome gitlinkConflict(
-      String target, String ours, String theirs) {
-    return BackingBranchMerger.Outcome.conflict(
-        target,
-        List.of(
-            new BackingBranchMerger.Conflict(
-                MEMBER_PATH,
-                "refs/heads/work",
-                CONFLICT_HEAD_SHA,
-                "content",
-                BackingBranchMerger.KIND_GITLINK,
-                null,
-                ours,
-                theirs)));
-  }
-
-  /**
-   * The estate behind a gitlink conflict: a member this project has adopted, its two releases, the
-   * declaration that names it at the conflicting path, and the lineage between the two shas. Staged
-   * per repository and per rev, so it is invisible to every other test in this class.
-   */
-  private void seedMember() {
-    QuarkusTransaction.requiringNew()
-        .run(
-            () -> {
-              Project project = Project.findById(projectId);
-              Repository member = new Repository();
-              member.id = memberRepoId;
-              member.project = project;
-              member.mainBranch = "main";
-              member.persist();
-              RepositoryName alias = new RepositoryName();
-              alias.project = project;
-              alias.repository = member;
-              alias.name = "member-a";
-              alias.persist();
-              released("2026.901.1", OLDER_SHA, Instant.parse("2026-09-01T10:00:00Z"));
-              released("2026.902.2", NEWER_SHA, Instant.parse("2026-09-02T10:00:00Z"));
-            });
-    gitHost.treeFor(
-        repoId,
+  /** A 409 entry over a submodule pin the git host's gitlink rule declined, saying why. */
+  private static BackingBranchMerger.Conflict declinedGitlink(
+      String ours, String theirs, String declined) {
+    return new BackingBranchMerger.Conflict(
+        MEMBER_PATH,
+        "refs/heads/work",
         CONFLICT_HEAD_SHA,
-        java.util.Map.of(
-            ".gitmodules",
-            "[submodule \"member-a\"]\n\tpath = " + MEMBER_PATH + "\n\turl = ../member-a.git\n"));
-    gitHost.containsCommit(memberRepoId, OLDER_SHA, NEWER_SHA);
+        "content",
+        BackingBranchMerger.KIND_GITLINK,
+        null,
+        ours,
+        theirs,
+        declined);
   }
 
-  private void released(String tagName, String sha, Instant at) {
-    ReleasedTagPendingMerge row = new ReleasedTagPendingMerge();
-    row.id = UUID.randomUUID().toString();
-    row.repoId = memberRepoId;
-    row.tagName = tagName;
-    row.releasedSha = sha;
-    row.releasedAt = at;
-    row.persist();
+  /** A JUL handler collecting every formatted message into {@code into}. */
+  private static java.util.logging.Handler capturing(List<String> into) {
+    return new java.util.logging.Handler() {
+      @Override
+      public void publish(java.util.logging.LogRecord entry) {
+        into.add(
+            entry.getParameters() == null
+                ? entry.getMessage()
+                : String.format(entry.getMessage(), entry.getParameters()));
+      }
+
+      @Override
+      public void flush() {}
+
+      @Override
+      public void close() {}
+    };
   }
 
   /**
