@@ -105,7 +105,7 @@ public class ReleaseSupersessionTest {
   }
 
   @Test
-  public void aNewRequestObsoletesTheReleaseItOvertookAndStopsEverythingOwedForIt() {
+  public void aNewRequestObsoletesTheReleaseItOvertookAndStopsItsQaRuns() {
     String tag = releaseOf("work-a");
     assertEquals("RELEASED", stateOf(firstRequest()), "the premise: released and not finished");
     String earlier = firstRequest();
@@ -128,6 +128,9 @@ public class ReleaseSupersessionTest {
         List.of(earlier),
         cancellations.cancelledRequests(),
         "the overtaken request's runs are cancelled, and only its own");
+    assertTrue(
+        cancellations.calls().get(0).qaOnly(),
+        "a superseded release keeps its publish run (qits-733)");
 
     ReleasedTagPendingMerge abandoned = rowOf(tag);
     assertNotNull(abandoned.abandonedAt, "and its merge is abandoned rather than left to the sweep");

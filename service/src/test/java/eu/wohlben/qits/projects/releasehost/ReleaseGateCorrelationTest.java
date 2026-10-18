@@ -2,7 +2,6 @@ package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -365,9 +364,10 @@ public class ReleaseGateCorrelationTest {
     RecordingQaRunCancellations.Cancelled cancelled = cancellations.calls().get(0);
     assertEquals(repoId, cancelled.repoId());
     assertEquals(id, cancelled.releaseRequestId());
-    assertFalse(
+    assertTrue(
         cancelled.qaOnly(),
-        "a withdrawal cancels every run of the request — there is no publish run to spare it from");
+        "a withdrawn request never released, so it has no publish run and QA-only is the same set"
+            + " as everything");
   }
 
   @Test
@@ -382,7 +382,10 @@ public class ReleaseGateCorrelationTest {
     assertEquals("WITHDRAWN", stateOf(id));
     assertEquals(1, cancellations.calls().size());
     assertEquals(id, cancellations.calls().get(0).releaseRequestId());
-    assertFalse(cancellations.calls().get(0).qaOnly(), "a withdrawal cancels everything");
+    assertTrue(
+        cancellations.calls().get(0).qaOnly(),
+        "a withdrawn request never released, so it has no publish run and QA-only is the same set"
+            + " as everything");
   }
 
   @Test

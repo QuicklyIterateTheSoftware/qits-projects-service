@@ -15,9 +15,10 @@ import java.util.List;
  * cancellation, naming exactly the request whose fold moved. A cancellation naming a sibling — or
  * naming a repository and no request — would be a green build taken away from somebody else.
  *
- * <p>{@code cancelQaRunsOf} is overridden rather than left to the port's default, so a RELEASED
- * cancellation records distinctly from every other call site's "everything" (qits-1264) and a test
- * can assert which one fired.
+ * <p>{@code cancelQaRunsOf} is overridden rather than left to the port's default, so a test can
+ * assert which method {@code ReleaseRequests} called. Every call site now calls it (qits-733,
+ * widening qits-1264's RELEASED-only narrowing), so {@code cancelRunsOf} recording {@code false} is
+ * what a test would catch {@code ReleaseRequests} reaching for the one call it must never make.
  */
 @ApplicationScoped
 public class RecordingQaRunCancellations implements QaRunCancellations {
@@ -35,7 +36,7 @@ public class RecordingQaRunCancellations implements QaRunCancellations {
     return calls().stream().map(Cancelled::releaseRequestId).toList();
   }
 
-  /** The requests cancelled QA-only — the RELEASED call site, and nothing else. */
+  /** The requests cancelled QA-only — every {@code ReleaseRequests} call site, since qits-733. */
   public List<String> qaOnlyCancelledRequests() {
     return calls().stream().filter(Cancelled::qaOnly).map(Cancelled::releaseRequestId).toList();
   }
