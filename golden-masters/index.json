@@ -1456,6 +1456,7 @@
           "body": {
             "repositoryId": "{repositoryId}",
             "name": "{repoName}",
+            "url": "https://forge.example.test/contract/contract-events-service.git",
             "archetype": "SERVICE"
           },
           "status": 200,
@@ -2369,6 +2370,7 @@
       "name": "a release request awaiting approval",
       "slug": "a-release-request-awaiting-approval",
       "params": {
+        "authorization": "Bearer qits_tok_contract-person-cli",
         "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
         "projectId": "00000000-0000-4000-8000-000000000001",
         "repositoryId": "00000000-0000-4000-8000-000000000002",
@@ -2380,6 +2382,9 @@
           "operationId": "declineReleaseRequest",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/decline",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
           "body": {
             "mergedSha": "{mergedSha}",
             "note": "The README promises an approval policy nobody has signed off yet."
@@ -2744,6 +2749,7 @@
       "name": "a release request awaiting approval while its build runs",
       "slug": "a-release-request-awaiting-approval-while-its-build-runs",
       "params": {
+        "authorization": "Bearer qits_tok_contract-person-cli",
         "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
         "projectId": "00000000-0000-4000-8000-000000000001",
         "repositoryId": "00000000-0000-4000-8000-000000000002",
@@ -2755,6 +2761,9 @@
           "operationId": "approveReleaseRequest",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approve",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
           "body": {
             "mergedSha": "{mergedSha}",
             "note": "Read the diff: the pin moves to the export release."
@@ -6156,6 +6165,43 @@
             "instants": [],
             "strings": [
               "$.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an item that other items name as their supersededBy",
+      "slug": "an-item-that-other-items-name-as-their-supersededby",
+      "params": {
+        "entityId": "contract-00000001-1",
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "query": {
+            "supersededBy": "{entityId}"
+          },
+          "status": 200,
+          "file": "an-item-that-other-items-name-as-their-supersededby/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].supersededBy"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }

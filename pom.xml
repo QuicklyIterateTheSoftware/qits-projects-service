@@ -229,7 +229,8 @@
         <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
              (workspaces, landing, the projects frontend, the platform-access CLI, maintenance,
-             githost, the projects desk runner daemon), each carrying
+             githost, the projects desk runner daemon, artifacts, the bootstrap CLI, ci and the
+             orchestrator), each carrying
              `pacts/<consumer>_qits-projects-service.json`, and ConsumerPactVerificationTest loads
              every such resource off the test classpath. Test
              scope at the declaration site; a pin in <properties> like every other qits jar, so
@@ -242,6 +243,10 @@
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1018.165353</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1018.211743</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
+        <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
+        <qits.bootstrap-cli-pacts-qits-projects-service.version>2026.1018.185226</qits.bootstrap-cli-pacts-qits-projects-service.version>
+        <qits.ci-service-pacts-qits-projects-service.version>2026.1018.160604</qits.ci-service-pacts-qits-projects-service.version>
+        <qits.orchestrator-service-pacts-qits-projects-service.version>2026.1018.172917</qits.orchestrator-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-configuration, qits-containers and
@@ -494,6 +499,34 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-projects-desk-runner-daemon-pacts-qits-projects-service</artifactId>
                 <version>${qits.projects-desk-runner-daemon-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-artifacts-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.artifacts-service-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-bootstrap-cli-pacts-qits-projects-service</artifactId>
+                <version>${qits.bootstrap-cli-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-ci-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.ci-service-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-orchestrator-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.orchestrator-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->

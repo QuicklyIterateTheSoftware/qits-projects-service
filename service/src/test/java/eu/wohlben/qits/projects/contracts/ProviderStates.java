@@ -177,6 +177,8 @@ public class ProviderStates {
   public static final String AN_IMPLEMENTED_EPIC = "an implemented epic";
   public static final String A_VERIFYING_EPIC = "a verifying epic";
   public static final String A_DROPPED_EPIC = "a dropped epic";
+  public static final String AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY =
+      "an item that other items name as their supersededBy";
 
   // The landing app's detail page, one state per archetype (and per ticket type). All seven seed
   // the same project — see #workInDetail — and differ only in the entity they focus on.
@@ -240,6 +242,13 @@ public class ProviderStates {
    * forwards for it — what the runner row records as its registration token's subject.
    */
   static final String REGISTRATION_BEARER = "Bearer qits_tok_contract-registration";
+
+  /**
+   * A person's {@code qits} CLI token ({@link ContractBearers#grantPerson}): what the approve and
+   * decline doors take as proof of a person when the call comes from a terminal, not a browser.
+   * Its subject is {@code dev}, the name the browser session these doors recorded with carried.
+   */
+  static final String PERSON_CLI_BEARER = "Bearer qits_tok_contract-person-cli";
 
   static final String REGISTRATION_SUBJECT = "tok-desk-runner-registration-contract";
 
@@ -421,6 +430,9 @@ public class ProviderStates {
     states.put(
         A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
+    states.put(
+        AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY,
+        this::anItemThatOtherItemsNameAsTheirSupersededBy);
     states.put(AN_EPIC_WITH_FEATURES_AND_TASKS, this::anEpicWithFeaturesAndTasks);
     states.put(AN_EPIC_WITH_TASKS_IN_EVERY_STATUS, this::anEpicWithTasksInEveryStatus);
     states.put(
@@ -691,6 +703,38 @@ public class ProviderStates {
     work.transition(Archetype.TICKET, second, "REFINED", SEEDER);
     walk(Archetype.TICKET, done, EntityStatus.DONE);
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * One ticket that two others were dropped in favour of (outcome SUPERSEDED, {@code supersededBy}
+   * naming it), and one ticket dropped as OBSOLETE that names nothing: the work list filtered by
+   * {@code supersededBy} answers the two (the CLI's "what did this replace", qits-1149). {@code
+   * entityId} is the successor's qualified id.
+   */
+  private Setup anItemThatOtherItemsNameAsTheirSupersededBy() {
+    String token = token();
+    Project project = project(token, AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY);
+    String successor = ticket(project, "Retry the deploy when the database refuses connections");
+    for (String title :
+        List.of("Deploys fail on a refused connection", "Retry the migration on boot")) {
+      String replaced = ticket(project, title);
+      work.transition(
+          Archetype.TICKET,
+          replaced,
+          "DROPPED",
+          Mover.person(SEEDER),
+          DropOutcome.of(WorkOutcome.SUPERSEDED, successor));
+    }
+    String obsolete = ticket(project, "Document the old deploy script");
+    work.transition(
+        Archetype.TICKET,
+        obsolete,
+        "DROPPED",
+        Mover.person(SEEDER),
+        DropOutcome.of(WorkOutcome.OBSOLETE, null));
+    return new Setup(
+        params("projectId", project.id, "entityId", qualified(project, successor)),
+        List.of(token));
   }
 
   /** A project and nothing in it: every work list answers empty. */
@@ -2485,6 +2529,12 @@ public class ProviderStates {
     params.put("requestId", id);
     if (fold != null) {
       params.put("mergedSha", fold);
+    }
+    if (state.equals(A_RELEASE_REQUEST_AWAITING_APPROVAL)
+        || state.equals(A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS)) {
+      // A person decides these: the CLI's approve and decline send their qits CLI token.
+      bearers.grantPerson(PERSON_CLI_BEARER, "dev");
+      params.put("authorization", PERSON_CLI_BEARER);
     }
     return new Setup(Collections.unmodifiableMap(params), List.of(f.token()));
   }

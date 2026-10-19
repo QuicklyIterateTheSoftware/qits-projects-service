@@ -26,6 +26,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -79,6 +80,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * <p><b>References.</b> {@link #target} also fails an interaction that lacks {@code
  * comments.references.qits-call} or {@code qits-trigger}; the verification itself ignores them.
  *
+ * <p><b>A pinned pact that is wrong is named in {@link #KNOWN_WRONG}, by its jar's version</b>
+ * (qits-maintenance-service's pattern), and its interaction is reported as skipped with the reason
+ * — never answered by bending the provider to it. The entry is for that version alone: the bump
+ * that carries the consumer's fix verifies the interaction for real, and a bump that does not fix
+ * it goes red here.
+ *
  * <p><b>Integration.</b> Plain pact-jvm, not the Quarkiverse {@code quarkus-pact-provider}
  * extension: its newest release is built against Quarkus 3.14.1 and pins pact-jvm 4.6.17 (the
  * consumers write with 4.6.21), and it puts {@code quarkus-kotlin} into the test application. All
@@ -99,6 +106,36 @@ class ConsumerPactVerificationTest {
     // pact-jvm reports usage metrics over the network unless told not to; a test never should.
     System.setProperty("pact_do_not_track", "true");
   }
+
+  /** A pinned pact interaction this provider cannot honour, and why: the consumer must fix it. */
+  record KnownWrong(String consumer, String version, String description, String reason) {
+
+    boolean names(Pact pact, Interaction interaction) {
+      return consumer.equals(pact.getConsumer().getName())
+          && description.equals(interaction.getDescription())
+          && String.valueOf(pact.getSource()).contains("/" + version + "/");
+    }
+  }
+
+  private static final String NO_PERSON_CREDENTIAL =
+      "the interaction sends no Authorization, but approve and decline are a person's decision:"
+          + " PersonCheck answers 403 to anything but a browser session or a person's qits CLI"
+          + " token, and the CLI really sends that token. The states now record it as the"
+          + " 'authorization' param with 'Authorization: {authorization}' (qits-1149); the CLI's"
+          + " next pact sends ${authorization}";
+
+  static final List<KnownWrong> KNOWN_WRONG =
+      List.of(
+          new KnownWrong(
+              "qits-platform-access-cli",
+              "2026.1019.65035",
+              "qits release-request approve: approveReleaseRequest",
+              NO_PERSON_CREDENTIAL),
+          new KnownWrong(
+              "qits-platform-access-cli",
+              "2026.1019.65035",
+              "qits release-request decline: declineReleaseRequest",
+              NO_PERSON_CREDENTIAL));
 
   @Inject ProviderStates states;
 
@@ -134,6 +171,13 @@ class ConsumerPactVerificationTest {
                 + interaction.getDescription()
                 + "' carries no comments.references."
                 + key);
+      }
+    }
+    for (KnownWrong wrong : KNOWN_WRONG) {
+      if (wrong.names(pact, interaction)) {
+        Assumptions.abort(
+            consumer + " " + wrong.version() + " '" + interaction.getDescription() + "': "
+                + wrong.reason());
       }
     }
     context.setTarget(new HttpTestTarget(base.getHost(), base.getPort()));
@@ -456,6 +500,11 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_VERIFYING_TICKET)
   Map<String, String> aVerifyingTicket() {
     return states.params(ProviderStates.A_VERIFYING_TICKET);
+  }
+
+  @State(ProviderStates.AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY)
+  Map<String, String> anItemThatOtherItemsNameAsTheirSupersededBy() {
+    return states.params(ProviderStates.AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY);
   }
 
   @State(ProviderStates.A_DROPPED_TICKET)

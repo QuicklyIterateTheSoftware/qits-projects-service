@@ -31,6 +31,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -265,6 +266,8 @@ public class ProjectController {
      */
     public record Response(List<Entry> entries, WrapperReconcileService.WrapperView wrapper) {
       /**
+       * The entries are sorted by repository name.
+       *
        * @param declared whether the wrapper's {@code .gitmodules} names this repository — false is
        *     a row that is not part of the project any more, which the reconcile reports {@code
        *     UNDECLARED} and never deletes on its own. True for everything membership does not apply
@@ -318,6 +321,12 @@ public class ProjectController {
                             || (r.archetype != null && !r.archetype.isComponentOfItsProject())
                             || r.id.equals(wrapper.repositoryId())
                             || declaredIds.contains(r.id)))
+            // By name: the rows come back in no guaranteed order, and a reader (the CLI's
+            // pact, a person scanning the list) should see the same one on every call.
+            .sorted(
+                Comparator.comparing(
+                    (ListProjectRepositoriesRequest.Response.Entry e) -> e.repository().name(),
+                    Comparator.nullsLast(Comparator.naturalOrder())))
             .toList();
     return new ListProjectRepositoriesRequest.Response(entries, wrapper);
   }

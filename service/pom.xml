@@ -339,6 +339,26 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-artifacts-service-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-bootstrap-cli-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-ci-service-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-orchestrator-service-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <scope>test</scope>

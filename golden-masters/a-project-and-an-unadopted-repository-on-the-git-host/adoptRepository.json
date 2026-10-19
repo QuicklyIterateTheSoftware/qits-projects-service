@@ -2,7 +2,7 @@
   "repository": {
     "id": "contract-00000001-events-service",
     "name": "contract-events-service",
-    "backupUrl": null,
+    "backupUrl": "https://forge.example.test/contract/contract-events-service.git",
     "mainBranch": "main",
     "archetype": "SERVICE",
     "component": null,

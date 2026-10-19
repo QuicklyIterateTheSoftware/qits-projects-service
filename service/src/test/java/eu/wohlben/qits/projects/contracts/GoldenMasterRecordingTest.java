@@ -252,6 +252,15 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // The CLI's `qits work list --superseded-by`: the two items dropped in favour of one.
+          new Interaction(
+              ProviderStates.AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY,
+              "listProjectWork",
+              "GET",
+              "/projects/api/projects/{projectId}/work?supersededBy={entityId}",
+              200,
+              null,
+              null),
           new Interaction(
               ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS,
               "listProjectWork",
@@ -522,14 +531,20 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA,
             "getReleaseRequest",
             request));
+    // A person decides, from a terminal: the CLI sends their qits CLI token (the state's
+    // authorization), and the door verifies it as a person's (PersonCheck).
     all.add(
-        write(
+        new Interaction(
             awaiting,
             "declineReleaseRequest",
             "POST",
             request + "/decline",
+            200,
+            null,
+            null,
             "{\"mergedSha\":\"{mergedSha}\","
-                + "\"note\":\"The README promises an approval policy nobody has signed off yet.\"}"));
+                + "\"note\":\"The README promises an approval policy nobody has signed off yet.\"}",
+            BEARER));
     all.add(
         write(
             awaiting,
@@ -545,13 +560,17 @@ class GoldenMasterRecordingTest {
             request + "/sources/priority",
             "{\"branch\":\"docs/approval\",\"priority\":\"BLOCKING\"}"));
     all.add(
-        write(
+        new Interaction(
             ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS,
             "approveReleaseRequest",
             "POST",
             request + "/approve",
+            200,
+            null,
+            null,
             "{\"mergedSha\":\"{mergedSha}\","
-                + "\"note\":\"Read the diff: the pin moves to the export release.\"}"));
+                + "\"note\":\"Read the diff: the pin moves to the export release.\"}",
+            BEARER));
     all.add(
         write(
             ProviderStates.A_RELEASED_RELEASE_REQUEST,
@@ -1015,7 +1034,10 @@ class GoldenMasterRecordingTest {
             "adoptRepository",
             "POST",
             "/projects/api/projects/{projectId}/repositories/adopt",
+            // The body the bootstrap sends (qits-bootstrap-cli ProjectsApi.adoptRepository): the
+            // forge twin's url rides along whenever the estate has one.
             "{\"repositoryId\":\"{repositoryId}\",\"name\":\"{repoName}\","
+                + "\"url\":\"https://forge.example.test/contract/contract-events-service.git\","
                 + "\"archetype\":\"SERVICE\"}"));
     all.add(
         write(

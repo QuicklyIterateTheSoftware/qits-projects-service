@@ -37,8 +37,8 @@ public class ContractBearers implements SecurityIdentityAugmentor {
 
   static final String PLATFORM_AUDIENCE = "qits-platform";
 
-  /** What a granted bearer stands for. */
-  record Grant(String subject, Set<String> roles) {}
+  /** What a granted bearer stands for: its subject, its roles, and claims beyond sub and aud. */
+  record Grant(String subject, Set<String> roles, Map<String, Object> claims) {}
 
   private final Map<String, Grant> grants = new ConcurrentHashMap<>();
 
@@ -46,7 +46,22 @@ public class ContractBearers implements SecurityIdentityAugmentor {
 
   /** A request with {@code Authorization: <authorization>} is {@code subject} holding {@code roles}. */
   public void grant(String authorization, String subject, String... roles) {
-    grants.put(authorization, new Grant(subject, Set.of(roles)));
+    grants.put(authorization, new Grant(subject, Set.of(roles), Map.of()));
+  }
+
+  /**
+   * A request with {@code Authorization: <authorization>} is a person's {@code qits} CLI token for
+   * {@code subject} holding {@code qits:admin}: {@code credential_type=cli} and the admin group,
+   * the marks {@code PersonCheck} accepts as its second proof of a person (the approve and decline
+   * doors). What qits-idp mints for a person's {@code qits login}.
+   */
+  public void grantPerson(String authorization, String subject) {
+    grants.put(
+        authorization,
+        new Grant(
+            subject,
+            Set.of("qits:admin"),
+            Map.of("credential_type", "cli", "groups", Set.of("qits:admin"))));
   }
 
   /** A bearer no state granted is refused 401. */
@@ -86,13 +101,13 @@ public class ContractBearers implements SecurityIdentityAugmentor {
       return Uni.createFrom().item(identity);
     }
     QuarkusSecurityIdentity.Builder machine =
-        QuarkusSecurityIdentity.builder().setPrincipal(new Token(grant.subject()));
+        QuarkusSecurityIdentity.builder().setPrincipal(new Token(grant.subject(), grant.claims()));
     grant.roles().forEach(machine::addRole);
     return Uni.createFrom().item(machine.build());
   }
 
-  /** The JWT the edge would forward: a subject and the platform audience, nothing else. */
-  private record Token(String subject) implements JsonWebToken {
+  /** The JWT the edge would forward: a subject, the platform audience and the grant's claims. */
+  private record Token(String subject, Map<String, Object> claims) implements JsonWebToken {
 
     @Override
     public String getName() {
@@ -111,7 +126,10 @@ public class ContractBearers implements SecurityIdentityAugmentor {
 
     @Override
     public Set<String> getClaimNames() {
-      return Set.of("sub", "aud");
+      Set<String> names = new java.util.TreeSet<>(claims.keySet());
+      names.add("sub");
+      names.add("aud");
+      return names;
     }
 
     @Override
@@ -120,7 +138,7 @@ public class ContractBearers implements SecurityIdentityAugmentor {
       return switch (claimName) {
         case "sub" -> (T) subject;
         case "aud" -> (T) Set.of(PLATFORM_AUDIENCE);
-        default -> null;
+        default -> (T) claims.get(claimName);
       };
     }
   }
