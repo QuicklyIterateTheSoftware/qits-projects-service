@@ -33,6 +33,7 @@ import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
 import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
+import eu.wohlben.qits.projects.api.CommentTurns;
 import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -48,6 +49,7 @@ import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.json.JsonString;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -62,6 +64,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.jboss.logging.Logger;
 
 /**
@@ -170,6 +173,9 @@ public class WorkEntityDoors {
    * agent's comment names no work item.
    */
   @Inject Instance<WorkspaceAgentLookup> agentLookup;
+
+  /** A comment through the door tells the item's agent (qits-1448), off the request thread. */
+  @Inject CommentTurns commentTurns;
 
   // --- read ------------------------------------------------------------------------------------
 
@@ -522,7 +528,60 @@ public class WorkEntityDoors {
         comments.addComment(
             entity.id, body, author, authorWorkId, EntitiesPrincipal.changedBy(identity));
     publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
-    return toDto(identity, comment);
+    CommentDto written = toDto(identity, comment);
+    try {
+      tellTheAgent(identity, entity, written, authorWorkId);
+    } catch (RuntimeException e) {
+      // The comment is written; nothing about telling anybody may turn that into a failure.
+      LOG.warnf(e, "Could not tell anybody about comment %s", comment.id);
+    }
+    return written;
+  }
+
+  /**
+   * The notification (qits-1448): the comment is committed by now, and the agent of the entity's
+   * root work item — agents are keyed by root (qits-1152), so a task's comment reaches its epic's
+   * agent — is handed one turn naming who commented and on what. An agent's comment on its own
+   * root item, and one whose agent could not be resolved, tell nobody: a turn to oneself would make
+   * the agent comment, which would turn it again, so the rule fails closed.
+   */
+  private void tellTheAgent(
+      SecurityIdentity identity, WorkEntity entity, CommentDto written, String authorWorkId) {
+    String target = entities.auditRootOf(entity);
+    if (EntitiesPrincipal.agentOf(identity).isPresent()
+        && (authorWorkId == null || authorWorkId.equals(target))) {
+      return;
+    }
+    String who =
+        written.authorAgentOf() != null
+            ? written.authorAgentOf() + "'s agent"
+            : displayName(identity);
+    String commentedOn = read(entity).qualifiedId();
+    if (commentedOn == null) {
+      commentedOn = entity.id;
+    }
+    commentTurns.tell(target, commentedOn, CommentTurns.text(who, commentedOn));
+  }
+
+  /**
+   * Who a person or a machine is, for a turn: the token's {@code name}, else its {@code
+   * preferred_username}, else the principal name (a machine client's id), else {@code someone}.
+   */
+  static String displayName(SecurityIdentity identity) {
+    if (identity != null && identity.getPrincipal() instanceof JsonWebToken jwt) {
+      for (String claim : List.of("name", "preferred_username")) {
+        Object value = jwt.getClaim(claim);
+        String text =
+            value instanceof JsonString json
+                ? json.getString()
+                : value instanceof String plain ? plain : null;
+        if (text != null && !text.isBlank()) {
+          return text.trim();
+        }
+      }
+    }
+    String principal = EntitiesPrincipal.changedBy(identity);
+    return principal == null || principal.isBlank() ? "someone" : principal;
   }
 
   /** The comment {@code commentId}, or a 404. */

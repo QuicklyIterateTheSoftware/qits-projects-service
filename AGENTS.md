@@ -140,7 +140,8 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     fails on it. A well-formed request is always a 200; `agentId: null` is the ordinary answer
     and means the work item has no ACTIVE agent — **the door never creates one**, which is the
     dispatch door's job one path over. The path sits under `agent-dispatches` for the 403 reason
-    above; do not tidy it.
+    above; do not tidy it. Its second caller is `api/CommentTurns` (qits-1448), which tells the
+    item's agent about a comment and writes nothing on the thread about the outcome.
 
   - `control/WorkspaceAgentEntities` → `HttpWorkspaceAgentEntities` (qits-614, widened by
     qits-617): the POST that tells the work item's agent its ticket's or epic's title, status
@@ -2009,6 +2010,16 @@ snapshots already written keep their `ticketId`. What rides with it:
   unresolved or gone) and `editable` (whether this caller may edit it); both are server-owned in the
   patch. The audit row's `changedBy` stays the principal. In-service writers keep the 3-arg
   `EntityCommentService.addComment`, which stamps `author = changedBy`.
+- **A comment through the door tells the item's agent (qits-1448).** After `POST
+  /work/{qualifiedId}/comments` commits, `api/CommentTurns` hands one `WorkspaceAgentTurns` turn,
+  `(<who> just commented on <qualifiedId>)`, to the agent of `auditRootOf(entity)` (a task's comment
+  reaches its epic's agent; the text names the task) on a `ManagedExecutor` with no context, so the
+  POST never waits on the 30 s hop. `<who>` is `<authorAgentOf>'s agent`, else the token's `name`,
+  `preferred_username`, the principal, `someone`. An agent's comment on its own root item, or one
+  whose agent could not be resolved, tells nobody (fails closed: no self-turn loop). Nothing is
+  written on the thread about it; INFO when spoken, DEBUG on `NO_AGENT`, WARN otherwise. The
+  in-service writers (`PhaseAdvance`, `EntityDispatch`, `EntityBlocks`,
+  `TicketUnattendedGateTickets`) call the service directly and tell nobody.
 - **The old REST doors are deleted (qits-976)** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
   /ticket-comments/{id}`, `GET/POST /entities/{id}/comments` and `PATCH/DELETE
   /comments/{commentId}` all answer 404 (`RetiredEntityDoorsTest`).
