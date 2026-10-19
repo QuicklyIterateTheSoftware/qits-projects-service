@@ -73,9 +73,6 @@ public class FrontDeskSpecs {
 
   static final String PLATFORM_PROJECT = "qits";
 
-  /** The registry spelling the shipped image repository names, rewritten to the edge's. */
-  static final String DEV_REGISTRY = "registry.dev.localhost:8080";
-
   /** The daemon's own environment name for the resolved agent configuration document. */
   public static final String AGENT_CONFIGURATION_ENV = "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION";
 
@@ -87,7 +84,7 @@ public class FrontDeskSpecs {
   private static final ObjectMapper CANONICAL =
       new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
 
-  /** The image repository, registry host included ({@code registry.dev.localhost:8080/...}). */
+  /** The image repository, registry host included ({@code registry.qits.<domain>/...}). */
   @ConfigProperty(name = "qits.projects.agent-image-repo")
   String imageRepo;
 
@@ -330,19 +327,20 @@ public class FrontDeskSpecs {
       return reference;
     }
     String registry = reference.substring(0, slash).toLowerCase(Locale.ROOT);
-    if (!registrySpellings(settings.imageRepo()).contains(registry)) {
+    if (!registrySpellings(settings.imageRepo(), d).contains(registry)) {
       return reference;
     }
     return host("registry", d) + reference.substring(slash);
   }
 
   /**
-   * The registry spellings rewritten: the shipped dev registry, and whatever registry host the
+   * The registry spellings rewritten: this domain's own edge registry — the shipped repository
+   * already names it once {@code ${QITS_DOMAIN}} resolves — and whatever registry host the
    * configured repository names (a first segment with a dot or a port is a host, as docker reads
    * it).
    */
-  private static List<String> registrySpellings(String repo) {
-    List<String> spellings = new ArrayList<>(List.of(DEV_REGISTRY));
+  private static List<String> registrySpellings(String repo, String domain) {
+    List<String> spellings = new ArrayList<>(List.of(host("registry", domain)));
     int slash = repo == null ? -1 : repo.indexOf('/');
     if (slash > 0) {
       String first = repo.substring(0, slash).toLowerCase(Locale.ROOT);
