@@ -125,6 +125,7 @@ erDiagram
   entity_comment {
     string id PK "not null"
     string author
+    string author_work_id
     string body "not null"
     uuid causation_id
     instant created_at "not null"
