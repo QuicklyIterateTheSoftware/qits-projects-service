@@ -1,10 +1,8 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.confighost.ConfigurationBearer;
 import eu.wohlben.qits.projects.confighost.HttpMcpCredentials;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,7 +40,7 @@ final class ConfigurationContract {
                   assertEquals(
                       Optional.of(true),
                       Fields.with(
-                              new HttpMcpCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                              new HttpMcpCredentials(RowClients.clients()),
                               "configurationUrl", Optional.of(base),
                               "configurationEnv", Optional.of(p.get("env")),
                               "bearer", BEARER)
@@ -64,7 +62,7 @@ final class ConfigurationContract {
               (base, p) ->
                   assertTrue(
                       Fields.with(
-                              new HttpMcpCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                              new HttpMcpCredentials(RowClients.clients()),
                               "configurationUrl", Optional.of(base),
                               "configurationEnv", Optional.of(p.get("env")),
                               "bearer", BEARER)

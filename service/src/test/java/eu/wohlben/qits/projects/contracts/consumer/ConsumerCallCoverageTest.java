@@ -281,6 +281,8 @@ class ConsumerCallCoverageTest {
                   row.call().run(base, params);
                 } catch (Throwable expected) {
                   // The stub answers 503 to everything: the row's own assertions are not the point.
+                } finally {
+                  RowClients.closeAll();
                 }
               },
               "coverage " + row.description());

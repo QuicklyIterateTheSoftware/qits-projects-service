@@ -126,7 +126,12 @@ class ConsumerPactsTest {
             ConsumerInteractions.pact(masters, List.of(row)),
             MockProviderConfig.createDefault(PactSpecVersion.V4),
             (mockServer, context) -> {
-              row.call().run(mockServer.getUrl(), recorded.params());
+              try {
+                row.call().run(mockServer.getUrl(), recorded.params());
+              } finally {
+                // The row's client is done: its JDK HttpClient's threads go now, not at some GC.
+                RowClients.closeAll();
+              }
               return null;
             });
     if (!(result instanceof PactVerificationResult.Ok)) {

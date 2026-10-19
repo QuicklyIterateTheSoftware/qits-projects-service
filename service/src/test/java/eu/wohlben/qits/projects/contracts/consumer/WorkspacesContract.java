@@ -1,6 +1,5 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -10,7 +9,6 @@ import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentLookup;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.workspacehost.WorkspacesBearer;
-import io.opentelemetry.api.OpenTelemetry;
 import com.sun.net.httpserver.HttpServer;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -88,7 +86,7 @@ final class WorkspacesContract {
    * — a qits-workspaces older than that door — and passes every other request to {@code mock}.
    */
   static void olderThanTheEntityDoor(String mock, Against call) throws Exception {
-    HttpClient forward = HttpClient.newHttpClient();
+    HttpClient forward = RowClients.HTTP;
     HttpServer server =
         HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     server.createContext(
@@ -166,7 +164,7 @@ final class WorkspacesContract {
               Trigger.operation("dispatchWork"),
               (base, p) -> {
                 WorkspaceAgentDispatch.Dispatch dispatch =
-                    workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                    workspaces(new HttpWorkspaceAgentDispatch(RowClients.clients()), base)
                         .dispatchAgent(
                             p.get("repositoryId"),
                             p.get("wrapperBranch"),
@@ -206,7 +204,7 @@ final class WorkspacesContract {
               Trigger.operation("getWorkDispatch"),
               (base, p) ->
                   assertFalse(
-                      workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      workspaces(new HttpWorkspaceAgentDispatch(RowClients.clients()), base)
                           .agentsFor(List.of(p.get("bugTicketId")))
                           .isEmpty()),
               "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
@@ -226,7 +224,7 @@ final class WorkspacesContract {
               Trigger.schedule("TicketUnattendedGateTickets.ended"),
               (base, p) ->
                   assertTrue(
-                      workspaces(new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      workspaces(new HttpWorkspaceAgentDispatch(RowClients.clients()), base)
                           .hasActiveAgent(p.get("bugTicketId"))
                           .isPresent()),
               "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
@@ -246,7 +244,7 @@ final class WorkspacesContract {
               200,
               Trigger.operation("setWorkStatus"),
               (base, p) ->
-                  workspaces(new HttpWorkspaceAgentEntities(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                  workspaces(new HttpWorkspaceAgentEntities(RowClients.clients()), base)
                       .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", false, null),
               "param ticketId; POST .../agent-dispatches/entity answering 200 with agentId and"
                   + " applied"),
@@ -270,7 +268,7 @@ final class WorkspacesContract {
                       older ->
                           workspaces(
                                   new HttpWorkspaceAgentEntities(
-                                      QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                                      RowClients.clients()),
                                   older)
                               .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", true, "EXPLICIT")),
               "param ticketId; POST .../agent-dispatches/blocked answering 200 with agentId and"
@@ -289,7 +287,7 @@ final class WorkspacesContract {
               Trigger.operation("transitionWork"),
               (base, p) -> {
                 WorkspaceAgentTurns.Turn turn =
-                    workspaces(new HttpWorkspaceAgentTurns(QitsHttpClients.of(OpenTelemetry.noop(), null)), base).deliver(p.get("ticketId"), "go on");
+                    workspaces(new HttpWorkspaceAgentTurns(RowClients.clients()), base).deliver(p.get("ticketId"), "go on");
                 assertNotEquals(WorkspaceAgentTurns.Outcome.NO_AGENT, turn.outcome(), turn.detail());
                 assertFalse(turn.detail().isBlank(), "the answer carries its detail");
               },
@@ -311,7 +309,7 @@ final class WorkspacesContract {
               Trigger.schedule("ReleaseRequests.resolveWorkspacesOnReleasedBranches"),
               (base, p) ->
                   Fields.with(
-                          new HttpReleasedBranchWorkspaces(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                          new HttpReleasedBranchWorkspaces(RowClients.clients()),
                           "workspacesUrl", Optional.of(base),
                           "bearer", BEARER)
                       .branchReleased(
@@ -334,7 +332,7 @@ final class WorkspacesContract {
               Trigger.operation("addWorkComment"),
               (base, p) ->
                   assertTrue(
-                      workspaces(new HttpWorkspaceAgentLookup(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      workspaces(new HttpWorkspaceAgentLookup(RowClients.clients()), base)
                           .workOf(p.get("agentId"))
                           .isPresent()),
               "param agentId; GET /workspaces/api/agents/{agentId} answering 200 with workId"),
@@ -352,7 +350,7 @@ final class WorkspacesContract {
               Trigger.operation("addWorkComment"),
               (base, p) ->
                   assertTrue(
-                      workspaces(new HttpWorkspaceAgentLookup(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      workspaces(new HttpWorkspaceAgentLookup(RowClients.clients()), base)
                           .workOf(p.get("agentId"))
                           .isEmpty()),
               "param agentId; GET /workspaces/api/agents/{agentId} answering 404 for an agent it"

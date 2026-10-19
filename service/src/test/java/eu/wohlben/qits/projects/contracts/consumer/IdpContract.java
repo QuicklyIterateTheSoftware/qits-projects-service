@@ -2,20 +2,17 @@ package eu.wohlben.qits.projects.contracts.consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.GoldenFiles;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.idphost.IdpRefinementCredentials;
 import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
 import eu.wohlben.qits.projects.idphost.IdpSessionIntrospection;
 import eu.wohlben.qits.projects.idphost.IdpTokens;
-import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -82,7 +79,7 @@ final class IdpContract {
   private static IdpTokens tokens(String base, Map<String, String> p) {
     String[] pair = pair(p);
     return Fields.with(
-        new IdpTokens(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+        new IdpTokens(RowClients.clients()),
         "objectMapper", new ObjectMapper(),
         "tokensEnabled", true,
         "authServerUrl", base + "/idp",
@@ -94,7 +91,7 @@ final class IdpContract {
   private static IdpRunnerCommissioner commissioner(String base, Map<String, String> p) {
     String[] pair = pair(p);
     return Fields.with(
-        new IdpRunnerCommissioner(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+        new IdpRunnerCommissioner(RowClients.clients()),
         "objectMapper", new ObjectMapper(),
         "tokens", tokens(base, p),
         "tokensEnabled", true,
@@ -108,7 +105,7 @@ final class IdpContract {
   private static IdpRefinementCredentials refinements(String base, Map<String, String> p) {
     String[] pair = pair(p);
     return Fields.with(
-        new IdpRefinementCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+        new IdpRefinementCredentials(RowClients.clients()),
         "objectMapper", new ObjectMapper(),
         "tokensEnabled", true,
         "authServerUrl", base + "/idp",
@@ -172,7 +169,7 @@ final class IdpContract {
 
   private static void mint(String base, Map<String, String> p) throws Exception {
     HttpResponse<String> response =
-        HttpClient.newHttpClient()
+        RowClients.HTTP
             .send(
                 HttpRequest.newBuilder(URI.create(base + "/idp/" + oidcClient("token-path")))
                     .header("Authorization", p.get("authorization"))
@@ -405,7 +402,7 @@ final class IdpContract {
                 String[] pair = pair(p);
                 assertTrue(
                     Fields.with(
-                            new IdpSessionIntrospection(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                            new IdpSessionIntrospection(RowClients.clients()),
                             "objectMapper", new ObjectMapper(),
                             "tokensEnabled", true,
                             "authServerUrl", base + "/idp",

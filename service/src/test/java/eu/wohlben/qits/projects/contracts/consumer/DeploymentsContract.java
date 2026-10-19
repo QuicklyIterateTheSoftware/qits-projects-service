@@ -1,13 +1,11 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.DeploymentRedeploys;
 import eu.wohlben.qits.projects.control.DeploymentRequests;
 import eu.wohlben.qits.projects.deploymenthost.HttpDeploymentRedeploys;
 import eu.wohlben.qits.projects.deploymenthost.HttpDeploymentRequests;
 import eu.wohlben.qits.projects.deploymenthost.IdpDeploymentsBearer;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,7 +42,7 @@ final class DeploymentsContract {
               Trigger.operation("getReleaseRequest"),
               (base, p) -> {
                 List<DeploymentRequests.DeploymentRequestView> views =
-                    Fields.with(new HttpDeploymentRequests(QitsHttpClients.of(OpenTelemetry.noop(), null)), "deploymentsUrl", Optional.of(base))
+                    Fields.with(new HttpDeploymentRequests(RowClients.clients()), "deploymentsUrl", Optional.of(base))
                         .forRelease(p.get("repoId"), p.get("version"))
                         .orElseThrow();
                 assertFalse(views.isEmpty());
@@ -68,7 +66,7 @@ final class DeploymentsContract {
               Trigger.operation("rerunReleasePipelinePhase"),
               (base, p) ->
                   Fields.with(
-                          new HttpDeploymentRedeploys(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                          new HttpDeploymentRedeploys(RowClients.clients()),
                           "deploymentsUrl", Optional.of(base),
                           "bearer", new IdpDeploymentsBearer())
                       .deployAgain(

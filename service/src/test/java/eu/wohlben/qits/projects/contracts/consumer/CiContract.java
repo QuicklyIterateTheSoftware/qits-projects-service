@@ -1,6 +1,5 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.ReleaseDecisions;
 import eu.wohlben.qits.projects.releasehost.HttpActiveBuilds;
@@ -10,7 +9,6 @@ import eu.wohlben.qits.projects.releasehost.HttpPublishRuns;
 import eu.wohlben.qits.projects.releasehost.HttpQaRunCancellations;
 import eu.wohlben.qits.projects.releasehost.HttpReleaseDecisions;
 import eu.wohlben.qits.projects.releasehost.IdpCiBearer;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,7 +68,7 @@ final class CiContract {
               Trigger.operation("getReleaseRequestArtifacts"),
               (base, p) -> {
                 ReleaseDecisions.Answer answer =
-                    ci(new HttpReleaseDecisions(QitsHttpClients.of(OpenTelemetry.noop(), null)), base).of(p.get("repositoryId"), p.get("version"));
+                    ci(new HttpReleaseDecisions(RowClients.clients()), base).of(p.get("repositoryId"), p.get("version"));
                 assertTrue(answer.ok(), answer.failure());
                 assertFalse(answer.decisions().isEmpty());
               },
@@ -86,7 +84,7 @@ final class CiContract {
               202,
               Trigger.operation("withdrawReleaseRequest"),
               (base, p) ->
-                  ci(new HttpQaRunCancellations(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                  ci(new HttpQaRunCancellations(RowClients.clients()), base)
                       .cancelRunsOf(p.get("repositoryId"), p.get("releaseRequestId")),
               "POST /ci/api/runs/cancellations answering 202"),
           row(
@@ -101,7 +99,7 @@ final class CiContract {
               202,
               Trigger.schedule("ReleaseRequests.remerge (a source moved during QA)"),
               (base, p) ->
-                  ci(new HttpQaRunCancellations(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                  ci(new HttpQaRunCancellations(RowClients.clients()), base)
                       .cancelQaRunsOf(p.get("repositoryId"), p.get("releaseRequestId")),
               "POST /ci/api/runs/cancellations with phase RELEASE_REQUEST answering 202"),
           row(
@@ -117,7 +115,7 @@ final class CiContract {
               Trigger.operation("rerunReleasePipelinePhase"),
               (base, p) -> {
                 String runId =
-                    ci(new HttpPipelinePhaseReruns(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                    ci(new HttpPipelinePhaseReruns(RowClients.clients()), base)
                         .rerun(p.get("repositoryId"), p.get("releaseRequestId"), "RELEASE_REQUEST");
                 assertFalse(runId.isBlank());
               },
@@ -134,7 +132,7 @@ final class CiContract {
               Trigger.event("BuildFailed"),
               (base, p) ->
                   assertTrue(
-                      ci(new HttpCiRunLineage(QitsHttpClients.of(OpenTelemetry.noop(), null)), base).retryOfRunId(p.get("runId")).isPresent()),
+                      ci(new HttpCiRunLineage(RowClients.clients()), base).retryOfRunId(p.get("runId")).isPresent()),
               "GET /ci/api/runs/{runId} answering 200 with retryOfRunId set"),
           row(
               "getReleasePhase",
@@ -148,7 +146,7 @@ final class CiContract {
               Trigger.schedule("ReleaseFinalization.releasedTree"),
               (base, p) ->
                   assertTrue(
-                      ci(new HttpPublishRuns(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      ci(new HttpPublishRuns(RowClients.clients()), base)
                           .declaredFor(p.get("repositoryId"), p.get("rev"))
                           .isPresent()),
               "GET .../release-phase?rev={rev} answering 200 with a boolean declared"),
@@ -164,7 +162,7 @@ final class CiContract {
               Trigger.operation("getReleaseRequest"),
               (base, p) ->
                   assertTrue(
-                      ci(new HttpActiveBuilds(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                      ci(new HttpActiveBuilds(RowClients.clients()), base)
                               .activeFor(p.get("repositoryId"), p.get("commitSha"))
                               .orElseThrow()
                           >= 1),

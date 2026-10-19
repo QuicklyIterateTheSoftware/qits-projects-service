@@ -1,12 +1,10 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import eu.wohlben.qits.projects.maintenancehost.HttpDownstreamComponents;
 import eu.wohlben.qits.projects.maintenancehost.HttpReleaseRequestAutomations;
 import eu.wohlben.qits.projects.maintenancehost.MaintenanceBearer;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,7 +43,7 @@ final class MaintenanceContract {
 
   private static HttpReleaseRequestAutomations automations(String base) {
     return Fields.with(
-        new HttpReleaseRequestAutomations(QitsHttpClients.of(OpenTelemetry.noop(), null)), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
+        new HttpReleaseRequestAutomations(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
   }
 
   static final List<ConsumerRow> ROWS =
@@ -65,7 +63,7 @@ final class MaintenanceContract {
               (base, p) ->
                   assertFalse(
                       Fields.with(
-                              new HttpDownstreamComponents(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+                              new HttpDownstreamComponents(RowClients.clients()),
                               "maintenanceUrl", Optional.of(base),
                               "bearer", BEARER)
                           .downstreamOf(p.get("repositoryId"), p.get("repoName"))
