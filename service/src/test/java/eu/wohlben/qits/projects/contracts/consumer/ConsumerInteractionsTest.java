@@ -200,13 +200,15 @@ class ConsumerInteractionsTest {
   }
 
   /**
-   * An object null in some elements is "this object or null" in every element, never "always this
-   * object": the merged template takes the object from the element that has one, and binding its
-   * fields as required would refuse every element where the provider answers null (qits-maintenance
-   * found it in the automations' {@code failure}).
+   * An object null in some elements: pact-jvm refuses a null against an object example before it
+   * consults any matcher ("Type mismatch: Expected null (Null) to be the same type as {...}"), so
+   * "object or null" on one template never verifies (qits-maintenance found it in the automations'
+   * {@code failure}). The array's example is the recorded elements instead, each matched at its
+   * index, under the template's {@code [*]} rules: the object's fields stay bound by type where the
+   * provider answers one, and the null element is held against null.
    */
   @Test
-  void anObjectNullInSomeElementsMatchesTheObjectOrNull() throws Exception {
+  void anObjectNullInSomeElementsIsMatchedElementByElement() throws Exception {
     ConsumerRow entries =
         row(
             "listEntries",
@@ -221,14 +223,57 @@ class ConsumerInteractionsTest {
               assertTrue(body.path("entries").isArray());
             });
     ConsumerPactsTest.run(FIXTURE, entries);
-    JsonNode rules =
-        pactOf(entries).path("interactions").path(0).path("response").path("matchingRules").path("body");
-    JsonNode failure = rules.path("$.entries[*].item.failure");
-    assertEquals("OR", failure.path("combine").asText(), "object or null: " + failure);
-    assertTrue(failure.toString().contains("null"), "object or null: " + failure);
+    assertEquals(
+        List.of(),
+        ConsumerPactsTest.againstRecording(FIXTURE, entries).stream()
+            .map(au.com.dius.pact.core.matchers.Mismatch::description)
+            .toList(),
+        "pact-jvm accepts the recorded answer, null failure and object failure alike");
+    JsonNode response = pactOf(entries).path("interactions").path(0).path("response");
+    JsonNode examples = response.path("body").path("content").path("entries");
+    assertEquals(2, examples.size(), "one example per recorded element: " + examples);
+    assertTrue(examples.path(0).path("item").path("failure").isNull(), "the null one: " + examples);
+    assertEquals(3, examples.path(1).path("item").path("failure").path("code").asInt(), "the object one: " + examples);
+    JsonNode rules = response.path("matchingRules").path("body");
     assertTrue(
-        rules.path("$.entries[*].item.failure.code").isMissingNode(),
-        "no field of it is required on its own: " + rules);
+        rules.path("$.entries[*].item.failure").isMissingNode(),
+        "no rule on the object itself, which no rule could make accept null: " + rules);
+    assertEquals(
+        "type",
+        rules.path("$.entries[*].item.failure.excerpt").path("matchers").path(0).path("match").asText(),
+        "its fields match by type where the provider answers one: " + rules);
+    assertEquals(
+        1,
+        rules.path("$.entries").path("matchers").path(0).path("min").asInt(),
+        "still at least one element, in any count");
+  }
+
+  /** The answer the published 2026.1018.195756 pact made: refused by pact-jvm, which is the bug. */
+  @Test
+  void anObjectExampleRefusesNullWhateverItsMatchers() {
+    au.com.dius.pact.core.support.json.JsonValue expected =
+        au.com.dius.pact.core.support.json.JsonParser.parseString("{\"failure\":{\"code\":3}}");
+    au.com.dius.pact.core.support.json.JsonValue actual =
+        au.com.dius.pact.core.support.json.JsonParser.parseString("{\"failure\":null}");
+    au.com.dius.pact.core.model.matchingrules.MatchingRuleCategory body =
+        new au.com.dius.pact.core.model.matchingrules.MatchingRuleCategory("body");
+    body.addRule(
+        "$.failure",
+        au.com.dius.pact.core.model.matchingrules.TypeMatcher.INSTANCE,
+        au.com.dius.pact.core.model.matchingrules.RuleLogic.OR);
+    body.addRule(
+        "$.failure",
+        au.com.dius.pact.core.model.matchingrules.NullMatcher.INSTANCE,
+        au.com.dius.pact.core.model.matchingrules.RuleLogic.OR);
+    var mismatches =
+        au.com.dius.pact.core.matchers.JsonContentMatcher.INSTANCE.compare(
+            List.of("$"),
+            expected,
+            actual,
+            new au.com.dius.pact.core.matchers.MatchingContext(body, true));
+    assertFalse(
+        mismatches.stream().allMatch(r -> r.getResult().isEmpty()),
+        "pact-jvm took null for an object: the per-element examples may be unnecessary now");
   }
 
   @Test

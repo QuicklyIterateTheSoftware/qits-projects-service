@@ -12,6 +12,8 @@ import au.com.dius.pact.core.model.matchingrules.NullMatcher;
 import au.com.dius.pact.core.model.matchingrules.RegexMatcher;
 import au.com.dius.pact.core.model.matchingrules.TypeMatcher;
 import au.com.dius.pact.core.support.Json;
+import au.com.dius.pact.core.support.json.JsonParser;
+import au.com.dius.pact.core.support.json.JsonValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
@@ -41,9 +43,14 @@ import java.util.regex.Pattern;
  *   <li>under {@code frozen.instants}: an ISO-8601 regex ({@link #ISO_INSTANT});
  *   <li>any other leaf: a type match; {@code null} exactly where the recording holds only null;
  *   <li>a non-empty array: "at least one element like this", the template merged from every
- *       recorded element (a field null or absent in some element matches type-or-null, at any
+ *       recorded element (a leaf null or absent in some element matches type-or-null, at any
  *       depth; an array empty in some element matches "zero or more like this"). This
  *       service reads each element in a loop, so neither the count nor the order is its business;
+ *   <li>except that an object or array null or absent in some element makes the array's example
+ *       its recorded elements, in order, under the same {@code [*]} rules: pact-jvm refuses a
+ *       null against an object example before any matcher is consulted, so "this object or null"
+ *       has no rule that verifies; each answered element is held against the recorded one at its
+ *       index instead (qits-maintenance's automations {@code failure}, qits-1149);
  *   <li>an empty array: empty, exactly, because there is nothing to build a template from.
  * </ul>
  *
@@ -276,7 +283,11 @@ public final class ConsumerInteractions {
       if (template.isObject()) {
         PactDslJsonBody body = PactDslJsonArray.arrayMinLike(1, 1);
         fillObject(body, template, element, "$[*]", op, nullable);
-        return body.closeObject();
+        PactDslJsonArray root = (PactDslJsonArray) body.closeObject();
+        if (nullable.perElement) {
+          examplesAsRecorded(root, recorded, need);
+        }
+        return root;
       }
       return PactDslJsonArray.arrayMinLike(1, 1, rootLeaf(template, "$[*]", op));
     }
@@ -295,28 +306,30 @@ public final class ConsumerInteractions {
       Need child = need.whole ? Need.WHOLE : need.fields.get(name);
       if (value.isNull()) {
         target.nullValue(name);
-      } else if ((value.isObject() || value.isArray()) && nullable.contains(childPath)) {
-        // Null or absent in some element: "this shape, or null", never "always this shape". The
-        // example is the merged template cut to what is consumed; its fields match by type,
-        // which the group cascades to.
-        target.or(
-            name,
-            MAPPER.convertValue(cut(value, child), Object.class),
-            TypeMatcher.INSTANCE,
-            NullMatcher.INSTANCE);
       } else if (value.isObject()) {
+        // An object null or absent in some element binds its fields as usual, and the array's
+        // example becomes the recorded elements (perElement): pact-jvm refuses a null where the
+        // example holds an object whatever the matchers say, so "object or null" cannot be one
+        // template's rule; each element is matched against its own recorded example instead.
+        nullable.perElement |= nullable.contains(childPath);
         PactDslJsonBody nested = target.object(name);
         fillObject(nested, value, child, childPath, op, nullable);
         nested.closeObject();
       } else if (value.isArray()) {
-        array(target, name, value, child, childPath, op, nullable.mayBeEmpty(childPath));
+        nullable.perElement |= nullable.contains(childPath);
+        nullable.perElement |=
+            array(target, name, value, child, childPath, op, nullable.mayBeEmpty(childPath));
       } else {
         leaf(target, name, value, childPath, op, nullable.contains(childPath));
       }
     }
   }
 
-  private static void array(
+  /**
+   * Binds the array {@code name}; true when its example had to be its recorded elements, which an
+   * enclosing array's example must then be too (its single template would hold one of them only).
+   */
+  private static boolean array(
       PactDslJsonBody target,
       String name,
       JsonNode value,
@@ -326,7 +339,7 @@ public final class ConsumerInteractions {
       boolean mayBeEmpty) {
     if (value.isEmpty()) {
       target.array(name).closeArray();
-      return;
+      return false;
     }
     Nullable nullable = new Nullable();
     String elementPath = path + "[*]";
@@ -337,11 +350,34 @@ public final class ConsumerInteractions {
     if (template.isObject()) {
       PactDslJsonBody body = target.minArrayLike(name, min, 1);
       fillObject(body, template, element, elementPath, op, nullable);
-      ((PactDslJsonArray) body.closeObject()).closeArray();
+      PactDslJsonArray array = (PactDslJsonArray) body.closeObject();
+      array.closeArray();
+      if (nullable.perElement) {
+        examplesAsRecorded(array, value, need);
+      }
+      return nullable.perElement;
     } else if (template.isArray()) {
       throw unsupported(op, elementPath, "an array of arrays");
     } else {
       target.minArrayLike(name, min, rootLeaf(template, elementPath, op), 1);
+      return false;
+    }
+  }
+
+  /**
+   * Replace {@code array}'s single template example with the recorded elements, each cut to what
+   * {@code need} reaches, in recorded order. The matching rules stay those of the merged template
+   * ({@code [*]} paths, so they hold for every element); only the examples change, and pact-jvm
+   * compares the n-th answered element with the n-th example (the first once they run out). So
+   * an element the provider recorded with {@code failure: null} is checked against {@code null},
+   * and one recorded with a failure object against that object's fields. The parent holds the
+   * same {@code JsonValue} the array builds, so this edits the body in place.
+   */
+  private static void examplesAsRecorded(PactDslJsonArray array, JsonNode recorded, Need need) {
+    JsonValue.Array examples = (JsonValue.Array) array.getBody();
+    examples.getValues().clear();
+    for (JsonNode element : cut(recorded, need)) {
+      examples.getValues().add(JsonParser.parseString(element.toString()));
     }
   }
 
@@ -510,6 +546,8 @@ public final class ConsumerInteractions {
   private static final class Nullable {
     private final java.util.Set<String> paths = new java.util.HashSet<>();
     private final java.util.Set<String> empty = new java.util.HashSet<>();
+    /** The array's example must be its recorded elements ({@link #examplesAsRecorded}). */
+    boolean perElement;
 
     void add(String path) {
       paths.add(path);
