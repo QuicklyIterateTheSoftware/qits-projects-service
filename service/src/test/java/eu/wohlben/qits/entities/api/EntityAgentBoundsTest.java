@@ -440,7 +440,8 @@ class EntityAgentBoundsTest {
     assertEquals("REFINED", work(AGENT).setStatus(ticket, to("REFINED")).status());
 
     // The thread every entity has (qits-551): a ticket and an epic named by qualified id, a task by
-    // its UUID, and the remarks edited through the one comment door.
+    // its UUID, and the agent's own remarks edited through the one comment door — only a comment's
+    // author may edit it (qits-1448), which WorkCommentAuthorshipTest pins.
     String comment = workThreads(AGENT).add(ticket, remark("from the agent")).comment().id();
     assertEquals(
         "corrected", workThreads(AGENT).edit(ticket, comment, rewording("corrected")).comment().body());
@@ -451,13 +452,13 @@ class EntityAgentBoundsTest {
     assertEquals(
         "epic, corrected",
         workThreads(AGENT)
-            .edit(rows.epicId(), rows.epicCommentId(), rewording("epic, corrected"))
+            .edit(rows.epicId(), onEpic, rewording("epic, corrected"))
             .comment()
             .body());
     assertEquals(
         "task, corrected",
         workThreads(AGENT)
-            .edit(rows.taskId(), rows.taskCommentId(), rewording("task, corrected"))
+            .edit(rows.taskId(), onTask, rewording("task, corrected"))
             .comment()
             .body());
 

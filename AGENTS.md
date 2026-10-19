@@ -161,6 +161,13 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     a refinement container is given them as `QITS_WORKSPACE_DAEMON_ENTITY_TITLE` / `_STATUS` /
     `_BLOCKED` at every bring-up.
 
+  - `control/WorkspaceAgentLookup` → `HttpWorkspaceAgentLookup` (qits-1448): the GET that says
+    which work item an agent works on — `GET /workspaces/api/agents/{agentId}`, read as a `Map` for
+    its `workId` (the far side's `AgentController.get` admits `qits:system`). Asked once, before the
+    write, when a comment's bearer carries an `agent` claim. Never throws: a 404 is a DEBUG, every
+    other failure one WARN naming the agent, both answer empty; 2 s connect, 5 s per exchange, the
+    same two address keys.
+
   That is why the second and third are new classes and not further methods on the first: two verbs
   with opposite failure contracts do not share a class, and the standing rule stays — do not grow a
   verb onto `HttpReleasedBranchWorkspaces` on the grounds that the address is configured again. The
@@ -1951,8 +1958,10 @@ and each one is a decision rather than a simplification:
   lives only in the audit log. These two are duplicated onto the live rows because a ticket list
   wants a reporter and a thread wants a writer without a join per row — and they are read from the
   request identity at the seam (`EntitiesPrincipal.changedBy`), never from a
-  request body, so nobody can file as somebody else. An edit does not re-stamp either: who wrote it
-  and who last changed it are different facts, and the second one is the log's.
+  request body, so nobody can file as somebody else. An agent's comment is the one exception to
+  "principal name": its `author` is the agent id (`EntitiesPrincipal.commentAuthor`, qits-1448). An
+  edit does not re-stamp either: who wrote it and who last changed it are different facts, and the
+  second one is the log's.
 - **An agent can make the transition.** `work_status` reaches `POST /work/{id}/status`, because
   resolving a ticket is a statement about work that is done — which the agent that did it is the one
   who knows — and every move an agent makes is reversible (only DONE, a person's move, is final), so
@@ -1960,7 +1969,7 @@ and each one is a decision rather than a simplification:
   (see "Epic lifecycle"). `work_comment_update` is there for the front desk's sake — an agent that
   came back knowing more corrects its own earlier note rather than stacking a contradiction under
   it — and it obeys the rule above rather than bending it: an edit moves `updatedAt` and never
-  `author`. A read-only surface gets none of the write tools. Deleting is not an agent's door,
+  `author`, and only the author may make it (qits-1448). A read-only surface gets none of the write tools. Deleting is not an agent's door,
   since an agent that could delete what it disagrees with could erase the record of its own mistake.
 
 **`AuditEntry.epic_id` is the subtree key, not a foreign key**, and tickets are what make that
@@ -1989,8 +1998,17 @@ snapshots already written keep their `ticketId`. What rides with it:
   because a UUID whose last group is all digits parses as a qualified id; `CommitSubjectEntities`
   keeps the grammar and delegates its lookup there. The PATCH is a JSON merge patch read as a
   `JsonNode`, like `PATCH /work/{qualifiedId}`, and `body` is its only property: `{}`, null, blank, a
-  server-owned or unknown property are one 400. It never moves `author`, and there is no author
-  check.
+  server-owned or unknown property are one 400. It never moves `author`, and **only the author
+  edits** (qits-1448): a caller whose comment author (below) or principal name is not the row's
+  `author` is a 403 `Only the comment's author may edit it.` — admins included; a null author is
+  nobody's. Order: 404 entity, 404 comment, 403 project, 403 author, 400 patch.
+- **An agent's comment is authored by its agent (qits-1448).** A bearer carrying the `agent` claim
+  (a uuid, qits-1213) stamps `author` with it (`EntitiesPrincipal.commentAuthor`), and the agent's
+  work item is resolved at write time (`WorkspaceAgentLookup`) into `entity_comment.author_work_id`
+  (epics V31, no FK). The wire adds `authorAgentOf` (that row's qualified id, read-time, null when
+  unresolved or gone) and `editable` (whether this caller may edit it); both are server-owned in the
+  patch. The audit row's `changedBy` stays the principal. In-service writers keep the 3-arg
+  `EntityCommentService.addComment`, which stamps `author = changedBy`.
 - **The old REST doors are deleted (qits-976)** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
   /ticket-comments/{id}`, `GET/POST /entities/{id}/comments` and `PATCH/DELETE
   /comments/{commentId}` all answer 404 (`RetiredEntityDoorsTest`).

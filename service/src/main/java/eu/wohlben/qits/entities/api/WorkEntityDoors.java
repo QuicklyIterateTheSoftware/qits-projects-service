@@ -39,6 +39,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.RepositoryService;
+import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
@@ -58,6 +59,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jboss.logging.Logger;
@@ -107,7 +109,8 @@ public class WorkEntityDoors {
 
   /** What the server writes on a comment and a patch names only to be refused. */
   private static final List<String> COMMENT_SERVER_OWNED =
-      List.of("id", "entityId", "author", "createdAt", "updatedAt");
+      List.of(
+          "id", "entityId", "author", "authorAgentOf", "createdAt", "updatedAt", "editable");
 
   /**
    * The editable properties, as {@code EntityTransition} spells them, and their registry slot — read
@@ -161,6 +164,12 @@ public class WorkEntityDoors {
 
   /** Every quality gate (qits-887), so each served move names the gates it has to pass. */
   @Inject Instance<TransitionGate> gates;
+
+  /**
+   * The work item an agent works on (qits-1448), asked once when an agent comments. Absent: an
+   * agent's comment names no work item.
+   */
+  @Inject Instance<WorkspaceAgentLookup> agentLookup;
 
   // --- read ------------------------------------------------------------------------------------
 
@@ -487,18 +496,33 @@ public class WorkEntityDoors {
 
   // --- the thread ------------------------------------------------------------------------------
 
-  /** The entity's thread, oldest first. */
-  public List<CommentDto> comments(WorkEntity entity) {
-    return comments.listComments(entity.id).stream().map(commentMapper::toDto).toList();
+  /**
+   * The entity's thread, oldest first, as {@code identity} reads it: each comment's {@code
+   * authorAgentOf} resolved for the whole thread in one pass, and {@code editable} for this caller.
+   */
+  public List<CommentDto> comments(SecurityIdentity identity, WorkEntity entity) {
+    List<EntityComment> thread = comments.listComments(entity.id);
+    Map<String, String> agentsOf = qualifiedIdsOf(thread);
+    return thread.stream()
+        .map(c -> toDto(identity, c, c.authorWorkId == null ? null : agentsOf.get(c.authorWorkId)))
+        .toList();
   }
 
-  /** A remark on the entity's thread, its author stamped from the caller. */
+  /**
+   * A remark on the entity's thread, its author stamped from the caller: the bearer's agent when
+   * it carries one (qits-1448), with that agent's work item resolved here — before the write, so the
+   * write stays one short transaction — otherwise the principal.
+   */
   public CommentDto addComment(SecurityIdentity identity, WorkEntity entity, String body) {
     EntitiesAgentAccess.requireProject(identity, entity.projectId);
+    String author = EntitiesPrincipal.commentAuthor(identity);
+    String authorWorkId =
+        EntitiesPrincipal.agentOf(identity).flatMap(this::workOfAgent).orElse(null);
     EntityComment comment =
-        comments.addComment(entity.id, body, EntitiesPrincipal.changedBy(identity));
+        comments.addComment(
+            entity.id, body, author, authorWorkId, EntitiesPrincipal.changedBy(identity));
     publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
-    return commentMapper.toDto(comment);
+    return toDto(identity, comment);
   }
 
   /** The comment {@code commentId}, or a 404. */
@@ -524,17 +548,96 @@ public class WorkEntityDoors {
   }
 
   /**
-   * Edits a comment's text by merge patch: the binding (403), the patch (400), the write. {@code
-   * entity} is the comment's own.
+   * Edits a comment's text by merge patch: the binding (403), the authorship (403), the patch
+   * (400), the write. {@code entity} is the comment's own. Only the comment's author may edit it
+   * (qits-1448) — an admin included: one who disagrees writes a new comment or deletes.
    */
   public CommentDto editComment(
       SecurityIdentity identity, WorkEntity entity, EntityComment comment, JsonNode patch) {
     EntitiesAgentAccess.requireProject(identity, entity.projectId);
+    if (!isAuthor(identity, comment)) {
+      throw new ForbiddenException("Only the comment's author may edit it.");
+    }
     String body = commentBodyOf(patch);
     EntityComment edited =
         comments.updateComment(comment.id, body, EntitiesPrincipal.changedBy(identity));
     publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
-    return commentMapper.toDto(edited);
+    return toDto(identity, edited);
+  }
+
+  /**
+   * Whether {@code identity} wrote {@code comment}: its author is the caller's comment author (the
+   * agent, for an agent) or the caller's principal name — the second arm lets an agent edit what
+   * it wrote under its token subject before qits-1448. A comment with no author is nobody's.
+   */
+  static boolean isAuthor(SecurityIdentity identity, EntityComment comment) {
+    return comment.author != null
+        && (comment.author.equals(EntitiesPrincipal.commentAuthor(identity))
+            || comment.author.equals(EntitiesPrincipal.changedBy(identity)));
+  }
+
+  /** One comment as {@code identity} reads it, its agent's work item resolved on its own. */
+  private CommentDto toDto(SecurityIdentity identity, EntityComment comment) {
+    String agentOf =
+        comment.authorWorkId == null
+            ? null
+            : qualifiedIdsOf(List.of(comment)).get(comment.authorWorkId);
+    return toDto(identity, comment, agentOf);
+  }
+
+  private CommentDto toDto(SecurityIdentity identity, EntityComment comment, String authorAgentOf) {
+    CommentDto row = commentMapper.toDto(comment);
+    return new CommentDto(
+        row.id(),
+        row.entityId(),
+        row.author(),
+        authorAgentOf,
+        row.body(),
+        row.createdAt(),
+        row.updatedAt(),
+        isAuthor(identity, comment));
+  }
+
+  /**
+   * The qualified id of every distinct {@code authorWorkId} in {@code thread}: one entity read and
+   * one slug read for the lot ({@link QualifiedEntityIds}). A work item that is gone, or whose
+   * project is, is simply absent from the answer.
+   */
+  private Map<String, String> qualifiedIdsOf(List<EntityComment> thread) {
+    Set<String> workIds = new LinkedHashSet<>();
+    for (EntityComment c : thread) {
+      if (c.authorWorkId != null) {
+        workIds.add(c.authorWorkId);
+      }
+    }
+    if (workIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, String> qualified = new HashMap<>();
+    qualifiedIds
+        .qualifyEntities(catalog.byIds(workIds))
+        .forEach(
+            (id, row) -> {
+              if (row.qualifiedId() != null) {
+                qualified.put(id, row.qualifiedId());
+              }
+            });
+    return qualified;
+  }
+
+  /** The agent's work item, or empty: an absent port or a lookup that broke its contract. */
+  private Optional<String> workOfAgent(String agentId) {
+    if (!agentLookup.isResolvable()) {
+      return Optional.empty();
+    }
+    try {
+      Optional<String> work = agentLookup.get().workOf(agentId);
+      return work == null ? Optional.empty() : work;
+    } catch (RuntimeException e) {
+      // It promises never to throw; a throw is a bug in it and must not cost the comment.
+      LOG.warnf(e, "Could not find the work item of agent %s", agentId);
+      return Optional.empty();
+    }
   }
 
   /** Deletes a comment; {@code entity} is the comment's own, resolved before the delete. */

@@ -58,9 +58,19 @@ public class EntityComment extends PanacheEntityBase implements CausedRow {
   @Column(name = "entity_id", nullable = false, updatable = false)
   public String entityId;
 
-  /** The principal that wrote it; null when the caller was unattributed. */
+  /**
+   * Who wrote it: the agent id when the caller's bearer carried an {@code agent} claim
+   * (qits-1448), otherwise the principal; null when the caller was unattributed.
+   */
   @Column(name = "author", updatable = false)
   public String author;
+
+  /**
+   * The row id of the work item the authoring agent works on, resolved at write time (V31); null
+   * for a person, a machine, or an agent that could not be resolved. Not a foreign key.
+   */
+  @Column(name = "author_work_id", updatable = false)
+  public String authorWorkId;
 
   /** The remark itself, Markdown. Never blank — an empty comment is a comment nobody made. */
   @Column(nullable = false)

@@ -5,9 +5,11 @@
         "id": "00000000-0000-4000-8000-000000000013",
         "entityId": "00000000-0000-4000-8000-000000000006",
         "author": "dana.weber",
+        "authorAgentOf": null,
         "body": "Accounting needs the export before the Q4 close on 15 December.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     },
     {
@@ -15,9 +17,11 @@
         "id": "00000000-0000-4000-8000-000000000014",
         "entityId": "00000000-0000-4000-8000-000000000006",
         "author": "qits-agent",
+        "authorAgentOf": null,
         "body": "Refined into two features. CSV comes first: the accountants' tool imports it today. The PDF export depends on it for the column order.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     },
     {
@@ -25,9 +29,11 @@
         "id": "00000000-0000-4000-8000-000000000015",
         "entityId": "00000000-0000-4000-8000-000000000006",
         "author": "dana.weber",
+        "authorAgentOf": null,
         "body": "Agreed. Start with the CSV export.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     }
   ]
