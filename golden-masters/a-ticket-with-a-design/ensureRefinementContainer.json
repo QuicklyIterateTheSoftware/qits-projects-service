@@ -1,0 +1,26 @@
+{
+  "refinement": {
+    "id": 1,
+    "entityId": "00000000-0000-4000-8000-000000000003",
+    "epicId": "00000000-0000-4000-8000-000000000003",
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "repositoryId": "00000000-0000-4000-8000-000000000004",
+    "branch": "refining/export-invoices-as-csv",
+    "parent": "main",
+    "label": "refining-export-invoices-as-csv",
+    "runtimeStatus": "PROVISIONING",
+    "runtimeError": null,
+    "clean": null,
+    "ahead": null,
+    "behind": null,
+    "conflictsWithParent": false,
+    "agentActivity": null,
+    "daemonConnectedAt": null,
+    "daemonVersion": null,
+    "daemonOutdated": null,
+    "pinnedDaemonVersion": "00000002",
+    "daemonVersionStale": false,
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  "technicalProcessId": "00000000-0000-4000-8000-000000000005"
+}

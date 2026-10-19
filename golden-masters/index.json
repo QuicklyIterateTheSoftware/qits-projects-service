@@ -4671,6 +4671,45 @@
           }
         },
         {
+          "operationId": "discardRefinement",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/discard",
+          "status": 200,
+          "file": "a-ticket-with-a-design/discardRefinement.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "ensureRefinementContainer",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/ensure-container",
+          "status": 200,
+          "file": "a-ticket-with-a-design/ensureRefinementContainer.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId",
+              "$.technicalProcessId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.pinnedDaemonVersion"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getRefinementDesign",
           "method": "GET",
           "path": "/projects/api/refinements/{refinementId}/designs/{designId}",
@@ -4728,6 +4767,31 @@
               "$.designs[*].updatedAt"
             ],
             "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "startWorkRefinement",
+          "method": "POST",
+          "path": "/projects/api/work/{qualifiedId}/refinement",
+          "status": 200,
+          "file": "a-ticket-with-a-design/startWorkRefinement.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.pinnedDaemonVersion"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
             "listFilteredTo": null
           }
         },
