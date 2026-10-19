@@ -240,7 +240,7 @@
         <qits.landing-app-pacts-qits-projects-service.version>2026.1016.114910</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1011.142705</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1019.65035</qits.platform-access-cli-pacts-qits-projects-service.version>
-        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1018.165353</qits.maintenance-service-pacts-qits-projects-service.version>
+        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1019.94212</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1019.82130</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
@@ -256,7 +256,7 @@
              contract whose state is not recorded yet is skipped with the state it needs, and turns
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
-        <qits.githost-golden-masters.version>2026.1018.174636</qits.githost-golden-masters.version>
+        <qits.githost-golden-masters.version>2026.1019.94801</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1019.70413</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1018.165353</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
