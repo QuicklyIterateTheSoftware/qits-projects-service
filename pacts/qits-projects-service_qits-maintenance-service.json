@@ -66,19 +66,58 @@
                 "branch": "maintenance/automations/dependency-bump/00000000-0000-4000-8000-000000000002",
                 "bumpId": "00000000-0000-4000-8000-000000000003",
                 "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "dependency-bump",
+                "label": "Dependency bump",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/entity-diagram/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000004",
+                "detail": "committed the regenerated output",
+                "failure": null,
+                "kind": "entity-diagram",
+                "label": "Entity diagram",
+                "resultSha": "0123456789abcdef0123456789abcdef01234567",
+                "runIds": [
+                  "run-contract-3"
+                ],
+                "state": "COMMITTED",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/estate-pins/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000005",
+                "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "estate-pins",
+                "label": "Estate pins",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/screenshot-baselines/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000006",
+                "detail": "the screenshot baselines run failed at step 2 (exit 1): 3 screenshots differ",
                 "failure": {
                   "excerpt": "3 screenshots differ from their baselines",
                   "exitCode": 1,
                   "image": "qits/build-images/node-docker-base:2026.1.1",
                   "stepIndex": 2
                 },
-                "kind": "dependency-bump",
-                "label": "Dependency bump",
-                "resultSha": "0123456789abcdef0123456789abcdef01234567",
+                "kind": "screenshot-baselines",
+                "label": "Screenshot baselines",
+                "resultSha": null,
                 "runIds": [
-                  "run-contract-3"
+                  "run-contract-1",
+                  "run-contract-2"
                 ],
-                "state": "FRESH",
+                "state": "FAILED",
                 "updatedAt": "2026-01-01T00:00:00Z"
               }
             ],
@@ -129,14 +168,35 @@
                 }
               ]
             },
-            "$.automations[*].failure": {
-              "combine": "OR",
+            "$.automations[*].failure.excerpt": {
+              "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
-                },
+                }
+              ]
+            },
+            "$.automations[*].failure.exitCode": {
+              "combine": "AND",
+              "matchers": [
                 {
-                  "match": "null"
+                  "match": "number"
+                }
+              ]
+            },
+            "$.automations[*].failure.image": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].failure.stepIndex": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
                 }
               ]
             },
@@ -383,19 +443,58 @@
                 "branch": "maintenance/automations/dependency-bump/00000000-0000-4000-8000-000000000002",
                 "bumpId": "00000000-0000-4000-8000-000000000003",
                 "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "dependency-bump",
+                "label": "Dependency bump",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/entity-diagram/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000004",
+                "detail": "committed the regenerated output",
+                "failure": null,
+                "kind": "entity-diagram",
+                "label": "Entity diagram",
+                "resultSha": "0123456789abcdef0123456789abcdef01234567",
+                "runIds": [
+                  "run-contract-3"
+                ],
+                "state": "COMMITTED",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/estate-pins/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000005",
+                "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "estate-pins",
+                "label": "Estate pins",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/screenshot-baselines/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000006",
+                "detail": "the screenshot baselines run failed at step 2 (exit 1): 3 screenshots differ",
                 "failure": {
                   "excerpt": "3 screenshots differ from their baselines",
                   "exitCode": 1,
                   "image": "qits/build-images/node-docker-base:2026.1.1",
                   "stepIndex": 2
                 },
-                "kind": "dependency-bump",
-                "label": "Dependency bump",
-                "resultSha": "0123456789abcdef0123456789abcdef01234567",
+                "kind": "screenshot-baselines",
+                "label": "Screenshot baselines",
+                "resultSha": null,
                 "runIds": [
-                  "run-contract-3"
+                  "run-contract-1",
+                  "run-contract-2"
                 ],
-                "state": "FRESH",
+                "state": "FAILED",
                 "updatedAt": "2026-01-01T00:00:00Z"
               }
             ],
@@ -446,14 +545,35 @@
                 }
               ]
             },
-            "$.automations[*].failure": {
-              "combine": "OR",
+            "$.automations[*].failure.excerpt": {
+              "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
-                },
+                }
+              ]
+            },
+            "$.automations[*].failure.exitCode": {
+              "combine": "AND",
+              "matchers": [
                 {
-                  "match": "null"
+                  "match": "number"
+                }
+              ]
+            },
+            "$.automations[*].failure.image": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].failure.stepIndex": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
                 }
               ]
             },

@@ -6,7 +6,15 @@ import static org.junit.jupiter.api.Assertions.fail;
 import au.com.dius.pact.consumer.ConsumerPactRunnerKt;
 import au.com.dius.pact.consumer.PactVerificationResult;
 import au.com.dius.pact.consumer.model.MockProviderConfig;
+import au.com.dius.pact.core.matchers.Mismatch;
+import au.com.dius.pact.core.matchers.ResponseMatching;
+import au.com.dius.pact.core.model.ContentType;
+import au.com.dius.pact.core.model.HttpResponse;
+import au.com.dius.pact.core.model.IResponse;
+import au.com.dius.pact.core.model.OptionalBody;
 import au.com.dius.pact.core.model.PactSpecVersion;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +58,52 @@ class ConsumerPactsTest {
                       Assumptions.assumeTrue(pending.isEmpty(), () -> pending.orElseThrow());
                       run(masters, row);
                     }));
+  }
+
+  /**
+   * <b>Every interaction accepts the very answer it was built from</b>, matched by pact-jvm as a
+   * provider verification matches it. The recording is the provider's honest answer in that state,
+   * so a matcher that refuses it would fail the provider's verification of this pact: qits-1149's
+   * {@code failure: null} against an object example, which "type or null" did not save.
+   */
+  @TestFactory
+  Stream<DynamicTest> everyInteractionAcceptsTheRecordedAnswer() {
+    ConsumerGoldenMasters masters = ConsumerGoldenMasters.classpath();
+    return ConsumerContracts.all().stream()
+        .map(
+            row ->
+                DynamicTest.dynamicTest(
+                    row.provider() + " — " + row.description() + " [" + row.state() + "]",
+                    () -> {
+                      Optional<String> pending = row.pending(masters);
+                      Assumptions.assumeTrue(pending.isEmpty(), () -> pending.orElseThrow());
+                      List<Mismatch> mismatches = againstRecording(masters, row);
+                      assertTrue(
+                          mismatches.isEmpty(),
+                          row.description() + " [" + row.state() + "] refuses its own recording: "
+                              + mismatches.stream().map(Mismatch::description).toList());
+                    }));
+  }
+
+  /** What pact-jvm finds wrong with the recorded answer, held against the row's interaction. */
+  static List<Mismatch> againstRecording(ConsumerGoldenMasters masters, ConsumerRow row) {
+    ConsumerGoldenMasters.Recorded recorded = row.recorded(masters).orElseThrow();
+    IResponse expected =
+        ConsumerInteractions.pact(masters, List.of(row))
+            .getInteractions()
+            .get(0)
+            .asSynchronousRequestResponse()
+            .getResponse();
+    HashMap<String, List<String>> headers = new HashMap<>();
+    OptionalBody body = OptionalBody.missing();
+    if (!row.consumes().isEmpty()) {
+      headers.put("Content-Type", List.of("application/json"));
+      body =
+          OptionalBody.body(
+              recorded.body().toString().getBytes(StandardCharsets.UTF_8), ContentType.Companion.getJSON());
+    }
+    HttpResponse actual = new HttpResponse(recorded.status(), headers, body);
+    return ResponseMatching.responseMismatches(expected, actual);
   }
 
   /** (description, state) is how a pact tells interactions apart; it must not repeat. */
