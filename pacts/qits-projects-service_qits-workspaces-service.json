@@ -296,6 +296,126 @@
         "references": {
           "qits-call": {
             "app": "qits-workspaces-service",
+            "operationId": "getAgent"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "addWorkComment"
+          }
+        }
+      },
+      "description": "addWorkComment: getAgent",
+      "key": "103d9e90",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an agent with a saved prompt draft",
+          "params": {
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
+            "bugTicketId": "00000000-0000-4000-8000-000000000001",
+            "workspaceId": "1"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/workspaces/api/agents/${agentId}",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/workspaces/api/agents/00000000-0000-4000-8000-0000000000a1"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "workId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.workId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "getAgent"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "addWorkComment"
+          }
+        }
+      },
+      "description": "addWorkComment: getAgent",
+      "key": "f912c02e",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no agent with that id",
+          "params": {
+            "agentId": "00000000-0000-4000-8000-0000000000a9"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/workspaces/api/agents/${agentId}",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/workspaces/api/agents/00000000-0000-4000-8000-0000000000a9"
+      },
+      "response": {
+        "status": 404
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
             "operationId": "dispatchAgent"
           },
           "qits-trigger": {

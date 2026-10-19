@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.workspacehost.HttpReleasedBranchWorkspaces;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentEntities;
+import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentLookup;
 import eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.workspacehost.WorkspacesBearer;
 import io.opentelemetry.api.OpenTelemetry;
@@ -51,6 +52,12 @@ final class WorkspacesContract {
 
   /** One ACTIVE agent working on a ticket. */
   static final String AN_AGENT_ON_A_TICKET = "an agent working on a ticket";
+
+  /** An agent of a bug ticket: its read answers the work item it works on (qits-1448). */
+  static final String AN_AGENT_WITH_A_SAVED_PROMPT_DRAFT = "an agent with a saved prompt draft";
+
+  /** An agent id qits-workspaces never issued: its read answers 404. */
+  static final String NO_AGENT_WITH_THAT_ID = "no agent with that id";
 
   /** An ACTIVE agent that pushed the branch a release just deleted. */
   static final String AN_AGENT_ON_A_RELEASED_BRANCH = "an agent owning a released branch";
@@ -311,5 +318,43 @@ final class WorkspacesContract {
                           p.get("repositoryId"), p.get("branch"), p.get("version"), p.get("sha")),
               "params repositoryId, branch, version, sha; POST"
                   + " /workspaces/api/branches/resolution?repositoryId answering 200 with resolved"
-                  + " and agentIds"));
+                  + " and agentIds"),
+          // qits-1448: an agent's comment is stamped with the work item its agent works on.
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getAgent",
+              AN_AGENT_WITH_A_SAVED_PROMPT_DRAFT,
+              "GET",
+              "/workspaces/api/agents/{agentId}",
+              Map.of(),
+              null,
+              List.of("$.workId"),
+              200,
+              Trigger.operation("addWorkComment"),
+              (base, p) ->
+                  assertTrue(
+                      workspaces(new HttpWorkspaceAgentLookup(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                          .workOf(p.get("agentId"))
+                          .isPresent()),
+              "param agentId; GET /workspaces/api/agents/{agentId} answering 200 with workId"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getAgent",
+              NO_AGENT_WITH_THAT_ID,
+              "GET",
+              "/workspaces/api/agents/{agentId}",
+              Map.of(),
+              null,
+              List.of(),
+              404,
+              Trigger.operation("addWorkComment"),
+              (base, p) ->
+                  assertTrue(
+                      workspaces(new HttpWorkspaceAgentLookup(QitsHttpClients.of(OpenTelemetry.noop(), null)), base)
+                          .workOf(p.get("agentId"))
+                          .isEmpty()),
+              "param agentId; GET /workspaces/api/agents/{agentId} answering 404 for an agent it"
+                  + " does not know"));
 }
