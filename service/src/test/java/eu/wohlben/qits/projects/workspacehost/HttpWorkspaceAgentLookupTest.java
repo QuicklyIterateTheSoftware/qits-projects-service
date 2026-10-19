@@ -41,6 +41,19 @@ class HttpWorkspaceAgentLookupTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"agentId\":\"" + AGENT + "\",\"workId\":\"w-1402\"}");
 
+  /** Every lookup a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpWorkspaceAgentLookup> lookups = new CopyOnWriteArrayList<>();
+
+  private java.util.concurrent.ExecutorService serverThreads;
+
+  @AfterEach
+  void closeClients() {
+    lookups.forEach(HttpWorkspaceAgentLookup::close);
+    if (serverThreads != null) {
+      serverThreads.shutdownNow();
+    }
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -72,7 +85,8 @@ class HttpWorkspaceAgentLookupTest {
             // The client gave up first: the timeout case.
           }
         });
-    server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
+    serverThreads = java.util.concurrent.Executors.newCachedThreadPool();
+    server.setExecutor(serverThreads);
     server.start();
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
@@ -81,6 +95,7 @@ class HttpWorkspaceAgentLookupTest {
       String base, String fallback, Optional<String> authorization) {
     HttpWorkspaceAgentLookup lookup =
         new HttpWorkspaceAgentLookup(QitsHttpClients.of(OpenTelemetry.noop(), null));
+    lookups.add(lookup);
     lookup.workspacesUrl = Optional.ofNullable(base);
     lookup.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     lookup.bearer = () -> authorization;
