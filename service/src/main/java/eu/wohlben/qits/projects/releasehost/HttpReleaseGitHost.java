@@ -6,6 +6,7 @@ import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.GitHostBearer;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import io.quarkus.arc.DefaultBean;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
@@ -103,6 +104,12 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   @Inject
   public HttpReleaseGitHost(QitsHttpClients clients) {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+  }
+
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @PreDestroy
+  void close() {
+    client.shutdownNow();
   }
 
   // -----------------------------------------------------------------------------------------------

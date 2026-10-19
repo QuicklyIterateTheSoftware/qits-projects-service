@@ -45,6 +45,14 @@ class HttpWorkspaceAgentTurnsTest {
       new AtomicReference<>(
           "{\"agentId\":\"a-41\",\"delivered\":true,\"launched\":false,\"detail\":\"told it\"}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpWorkspaceAgentTurns> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpWorkspaceAgentTurns::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -82,6 +90,7 @@ class HttpWorkspaceAgentTurnsTest {
     turns.workspacesUrl = Optional.ofNullable(base);
     turns.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     turns.bearer = () -> authorization;
+    ports.add(turns);
     return turns;
   }
 

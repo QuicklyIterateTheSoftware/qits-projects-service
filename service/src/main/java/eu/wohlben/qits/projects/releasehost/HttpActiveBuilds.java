@@ -53,6 +53,12 @@ public class HttpActiveBuilds implements ActiveBuilds {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
   }
 
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @jakarta.annotation.PreDestroy
+  void close() {
+    client.shutdownNow();
+  }
+
   @Override
   public boolean configured() {
     return ciUrl.isPresent() && !ciUrl.get().isBlank();

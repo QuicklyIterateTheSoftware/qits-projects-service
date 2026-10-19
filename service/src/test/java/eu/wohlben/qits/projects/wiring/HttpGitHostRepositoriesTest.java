@@ -40,6 +40,14 @@ class HttpGitHostRepositoriesTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>("");
 
+  /** Every repositories client a test built, shut down after it so the fork keeps no idle threads. */
+  private final List<HttpGitHostRepositories> repositories = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    repositories.forEach(HttpGitHostRepositories::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -86,12 +94,13 @@ class HttpGitHostRepositoriesTest {
   }
 
   private HttpGitHostRepositories repositoriesAgainst(String base) {
-    HttpGitHostRepositories repositories = new HttpGitHostRepositories(QitsHttpClients.of(OpenTelemetry.noop(), null));
-    repositories.gitHost = addressOf(base);
-    repositories.gitHostBearer = () -> Optional.of("machine-token");
-    repositories.objectMapper = new ObjectMapper();
-    repositories.networkTimeoutMs = 5_000;
-    return repositories;
+    HttpGitHostRepositories built = new HttpGitHostRepositories(QitsHttpClients.of(OpenTelemetry.noop(), null));
+    built.gitHost = addressOf(base);
+    built.gitHostBearer = () -> Optional.of("machine-token");
+    built.objectMapper = new ObjectMapper();
+    built.networkTimeoutMs = 5_000;
+    repositories.add(built);
+    return built;
   }
 
   // --- ensure() -------------------------------------------------------------------------------

@@ -36,6 +36,14 @@ class HttpPublishRunsTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"repositoryId\":\"repo-1\",\"rev\":\"refs/tags/v\",\"declared\":true}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpPublishRuns> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpPublishRuns::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -70,6 +78,7 @@ class HttpPublishRunsTest {
     HttpPublishRuns runs = new HttpPublishRuns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     runs.ciUrl = Optional.ofNullable(base);
     runs.bearer = new IdpCiBearer();
+    ports.add(runs);
     return runs;
   }
 

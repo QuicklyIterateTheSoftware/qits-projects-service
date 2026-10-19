@@ -50,6 +50,14 @@ class HttpWorkspaceAgentEntitiesTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"agentId\":\"a-41\",\"applied\":true}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpWorkspaceAgentEntities> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpWorkspaceAgentEntities::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -92,6 +100,7 @@ class HttpWorkspaceAgentEntitiesTest {
     blocks.workspacesUrl = Optional.ofNullable(base);
     blocks.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     blocks.bearer = () -> authorization;
+    ports.add(blocks);
     return blocks;
   }
 

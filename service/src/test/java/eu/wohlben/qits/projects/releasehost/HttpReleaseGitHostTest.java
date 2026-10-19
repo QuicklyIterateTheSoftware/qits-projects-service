@@ -40,6 +40,14 @@ class HttpReleaseGitHostTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"sha\":\"new-sha\"}");
 
+  /** Every host a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpReleaseGitHost> hosts = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    hosts.forEach(HttpReleaseGitHost::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -74,6 +82,7 @@ class HttpReleaseGitHostTest {
     HttpReleaseGitHost host = new HttpReleaseGitHost(QitsHttpClients.of(OpenTelemetry.noop(), null));
     host.githostUrl = Optional.ofNullable(base);
     host.bearer = () -> Optional.of("machine-token");
+    hosts.add(host);
     return host;
   }
 

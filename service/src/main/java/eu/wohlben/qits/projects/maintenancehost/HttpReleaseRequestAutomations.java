@@ -8,6 +8,7 @@ import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import io.quarkus.arc.DefaultBean;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
@@ -131,6 +132,12 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
   @Inject
   public HttpReleaseRequestAutomations(QitsHttpClients clients) {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
+
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @PreDestroy
+  void close() {
+    client.shutdownNow();
   }
 
   @Override

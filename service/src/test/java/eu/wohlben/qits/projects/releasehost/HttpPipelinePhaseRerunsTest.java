@@ -41,6 +41,14 @@ class HttpPipelinePhaseRerunsTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"runId\":\"run-99\"}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpPipelinePhaseReruns> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpPipelinePhaseReruns::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -76,6 +84,7 @@ class HttpPipelinePhaseRerunsTest {
     HttpPipelinePhaseReruns reruns = new HttpPipelinePhaseReruns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     reruns.ciUrl = Optional.ofNullable(base);
     reruns.bearer = new IdpCiBearer();
+    ports.add(reruns);
     return reruns;
   }
 

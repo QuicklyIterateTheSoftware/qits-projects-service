@@ -39,6 +39,14 @@ class HttpReleasedBranchWorkspacesTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>("{\"resolved\":false,\"agentIds\":[]}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpReleasedBranchWorkspaces> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpReleasedBranchWorkspaces::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -75,6 +83,7 @@ class HttpReleasedBranchWorkspacesTest {
     HttpReleasedBranchWorkspaces workspaces = new HttpReleasedBranchWorkspaces(QitsHttpClients.of(OpenTelemetry.noop(), null));
     workspaces.workspacesUrl = Optional.ofNullable(base);
     workspaces.bearer = () -> authorization;
+    ports.add(workspaces);
     return workspaces;
   }
 

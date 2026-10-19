@@ -13,6 +13,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,6 +37,26 @@ class IdpRunnerCommissionerTest {
                           + IdpRunnerCommissionerFixture.OWN_SECRET)
                       .getBytes(StandardCharsets.UTF_8));
 
+  /** Every commissioner a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<IdpRunnerCommissioner> commissioners = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    commissioners.forEach(IdpRunnerCommissionerFixture::close);
+  }
+
+  private IdpRunnerCommissioner pointedAt(String authServerUrl, Duration patience) {
+    IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(authServerUrl, patience);
+    commissioners.add(commissioner);
+    return commissioner;
+  }
+
+  private IdpRunnerCommissioner pointedAt(String authServerUrl) {
+    IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(authServerUrl);
+    commissioners.add(commissioner);
+    return commissioner;
+  }
+
   @Test
   void theRegistrationTokenIsOfTheRegistrationKindNamedByTheRunner() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
@@ -42,7 +64,7 @@ class IdpRunnerCommissionerTest {
           201, "{\"tokenId\":\"t-1\",\"token\":\"qits_tok_abc\",\"subject\":\"sub-1\",\"x\":1}");
 
       IdpTokens.Issued token =
-          IdpRunnerCommissionerFixture.pointedAt(stub.url()).registrationToken(RUNNER);
+          pointedAt(stub.url()).registrationToken(RUNNER);
 
       assertEquals("t-1", token.tokenId());
       assertEquals("qits_tok_abc", token.token());
@@ -65,7 +87,7 @@ class IdpRunnerCommissionerTest {
       stub.answering(201, "{\"clientId\":\"dr-1\",\"secret\":\"s3cr3t\"}");
 
       IdpRunnerCommissioner.RunnerClient client =
-          IdpRunnerCommissionerFixture.pointedAt(stub.url()).runnerClient(RUNNER);
+          pointedAt(stub.url()).runnerClient(RUNNER);
 
       assertEquals("dr-1", client.clientId());
       assertEquals("s3cr3t", client.secret());
@@ -93,7 +115,7 @@ class IdpRunnerCommissionerTest {
           .answering(201, "{\"clientId\":\"dr-1\",\"secret\":\"s3cr3t\"}");
 
       IdpRunnerCommissioner.RunnerClient client =
-          IdpRunnerCommissionerFixture.pointedAt(stub.url(), Duration.ofSeconds(30))
+          pointedAt(stub.url(), Duration.ofSeconds(30))
               .runnerClient(RUNNER);
 
       assertEquals("dr-1", client.clientId());
@@ -110,7 +132,7 @@ class IdpRunnerCommissionerTest {
           assertThrows(
               IdpRunnerCommissioner.CommissionFailedException.class,
               () ->
-                  IdpRunnerCommissionerFixture.pointedAt(stub.url(), Duration.ofSeconds(30))
+                  pointedAt(stub.url(), Duration.ofSeconds(30))
                       .registrationToken(RUNNER));
 
       assertTrue(failed.getMessage().contains("unknown kind"), failed.getMessage());
@@ -125,14 +147,14 @@ class IdpRunnerCommissionerTest {
 
       assertThrows(
           IdpRunnerCommissioner.CommissionFailedException.class,
-          () -> IdpRunnerCommissionerFixture.pointedAt(stub.url()).registrationToken(RUNNER));
+          () -> pointedAt(stub.url()).registrationToken(RUNNER));
     }
   }
 
   @Test
   void anUnwiredCommissionerCommissionsNothingAndAsksNothing() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
-      IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(stub.url());
+      IdpRunnerCommissioner commissioner = pointedAt(stub.url());
       commissioner.clientSecret = Optional.of(" ");
 
       assertFalse(commissioner.enabled());
@@ -151,7 +173,7 @@ class IdpRunnerCommissionerTest {
   void giveBacksAreOneAttemptAndA404IsGone() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
       stub.answering(404, "").answering(204, "").answering(500, "{}");
-      IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(stub.url());
+      IdpRunnerCommissioner commissioner = pointedAt(stub.url());
 
       assertTrue(commissioner.deleteToken("t-1"), "404 is the state a delete asks for");
       assertTrue(commissioner.deleteToken("t-2"));
@@ -168,7 +190,7 @@ class IdpRunnerCommissionerTest {
   void decommissioningAClientNeverThrows() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
       stub.answering(500, "{}");
-      IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(stub.url());
+      IdpRunnerCommissioner commissioner = pointedAt(stub.url());
 
       commissioner.decommissionClient("dr-1");
 
@@ -176,7 +198,7 @@ class IdpRunnerCommissionerTest {
       assertEquals("/idp/api/clients/dr-1", stub.received().get(0).path());
     }
     // Nothing answering at all is no throw either.
-    IdpRunnerCommissionerFixture.pointedAt("http://127.0.0.1:1/idp").decommissionClient("dr-1");
+    pointedAt("http://127.0.0.1:1/idp").decommissionClient("dr-1");
   }
 
   @Test
@@ -191,7 +213,7 @@ class IdpRunnerCommissionerTest {
               "[{\"tokenId\":\"t-1\",\"contextKind\":\"desk-runner-registration\","
                   + "\"contextId\":\"r-1\",\"createdAt\":\"2026-10-08T10:00:00Z\"}]")
           .answering(500, "{}");
-      IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(stub.url());
+      IdpRunnerCommissioner commissioner = pointedAt(stub.url());
 
       assertEquals(
           Optional.of(List.of(new IdpRunnerCommissioner.LiveClient("dr-1", "desk-runner", "r-1"))),

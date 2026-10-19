@@ -30,6 +30,14 @@ class HttpCiRunLineageTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> body = new AtomicReference<>("{}");
 
+  /** Every lineage a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpCiRunLineage> lineages = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    lineages.forEach(HttpCiRunLineage::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -59,6 +67,7 @@ class HttpCiRunLineageTest {
     HttpCiRunLineage lineage = new HttpCiRunLineage(QitsHttpClients.of(OpenTelemetry.noop(), null));
     lineage.ciUrl = Optional.ofNullable(base);
     lineage.bearer = new IdpCiBearer();
+    lineages.add(lineage);
     return lineage;
   }
 

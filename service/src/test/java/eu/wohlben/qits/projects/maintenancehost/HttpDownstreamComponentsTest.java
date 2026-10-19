@@ -40,6 +40,14 @@ class HttpDownstreamComponentsTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>("{\"downstream\":[]}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpDownstreamComponents> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpDownstreamComponents::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -76,6 +84,7 @@ class HttpDownstreamComponentsTest {
     HttpDownstreamComponents components = new HttpDownstreamComponents(QitsHttpClients.of(OpenTelemetry.noop(), null));
     components.maintenanceUrl = Optional.ofNullable(base);
     components.bearer = () -> authorization;
+    ports.add(components);
     return components;
   }
 

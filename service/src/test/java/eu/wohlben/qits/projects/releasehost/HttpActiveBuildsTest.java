@@ -8,7 +8,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -31,6 +33,14 @@ class HttpActiveBuildsTest {
   private HttpServer server;
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>("{\"runs\":[]}");
+
+  /** Every probe a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpActiveBuilds> probes = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    probes.forEach(HttpActiveBuilds::close);
+  }
 
   @AfterEach
   void stopServer() {
@@ -59,6 +69,7 @@ class HttpActiveBuildsTest {
     HttpActiveBuilds probe = new HttpActiveBuilds(QitsHttpClients.of(OpenTelemetry.noop(), null));
     probe.ciUrl = Optional.ofNullable(base);
     probe.bearer = new IdpCiBearer();
+    probes.add(probe);
     return probe;
   }
 

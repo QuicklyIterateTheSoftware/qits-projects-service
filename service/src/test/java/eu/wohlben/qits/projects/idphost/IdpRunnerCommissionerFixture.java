@@ -45,4 +45,13 @@ public final class IdpRunnerCommissionerFixture {
   public static IdpRunnerCommissioner pointedAt(String authServerUrl) {
     return pointedAt(authServerUrl, Duration.ZERO);
   }
+
+  /**
+   * Shuts down both HttpClients a built commissioner holds — its own, and the {@link IdpTokens} it
+   * was given — so a suite that builds many of these does not run out of native threads (qits-1149).
+   */
+  public static void close(IdpRunnerCommissioner commissioner) {
+    commissioner.close();
+    commissioner.tokens.close();
+  }
 }
