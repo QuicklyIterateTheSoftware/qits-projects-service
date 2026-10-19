@@ -147,13 +147,14 @@ public class RepositoryArchetypeTemplateSyncTest {
         "these seven are what a project is built out of, so its wrapper is expected to declare"
             + " them");
     assertEquals(
-        List.of("PROJECT", "SERVICE_TEMPLATE", "FORK"),
+        List.of("PROJECT", "SERVICE_TEMPLATE", "FORK", "AGENT_CONFIG"),
         Stream.of(RepositoryArchetype.values())
             .filter(a -> !a.isComponentOfItsProject())
             .map(Enum::name)
             .toList(),
-        "the wrapper IS the tree, a template is what a component is generated from, and a fork is"
-            + " somebody else's repository — none of the three is a member of the project");
+        "the wrapper IS the tree, a template is what a component is generated from, a fork is"
+            + " somebody else's repository and the agent configuration is platform state — none of"
+            + " the four is a member of the project");
   }
 
   // --- the name is the kind: the two-way sync that replaced directory <-> archetype ---
@@ -194,18 +195,20 @@ public class RepositoryArchetypeTemplateSyncTest {
     assertEquals(null, RepositoryArchetype.fromRepositoryName("-service"));
     assertEquals(null, RepositoryArchetype.fromRepositoryName("qits-ci"));
     assertEquals(null, RepositoryArchetype.fromRepositoryName(null));
+    // AGENT_CONFIG has no role suffix, so no name derives it — not even its own (qits-1382).
+    assertEquals(null, RepositoryArchetype.fromRepositoryName("qits-agent-config"));
   }
 
   /**
-   * The taxonomy is these ten and no more. INTEGRATION and APPLICATION rode through release A as
+   * The taxonomy is these eleven and no more. INTEGRATION and APPLICATION rode through release A as
    * deprecated aliases so Hibernate could read pre-rework rows; V4 retired those rows and dropped
    * them, and this is what stops one being reintroduced without a migration to widen the check
-   * constraint for it. APP is the tenth, admitted by {@code
-   * V27__repository_archetype_app.sql} — which is the whole of it, since {@code
-   * db/projects/migration} is the one lineage this repository has.
+   * constraint for it. APP is the tenth, admitted by {@code V27__repository_archetype_app.sql}, and
+   * AGENT_CONFIG the eleventh, admitted by {@code V46__agent_config_archetype.sql} — which is the
+   * whole of it, since {@code db/projects/migration} is the one lineage this repository has.
    */
   @Test
-  public void theTaxonomyIsExactlyTheTenValuesTheCheckConstraintAllows() {
+  public void theTaxonomyIsExactlyTheElevenValuesTheCheckConstraintAllows() {
     assertEquals(
         List.of(
             "PROJECT",
@@ -217,22 +220,23 @@ public class RepositoryArchetypeTemplateSyncTest {
             "CLI",
             "IMAGE",
             "SERVICE_TEMPLATE",
-            "FORK"),
+            "FORK",
+            "AGENT_CONFIG"),
         Stream.of(RepositoryArchetype.values()).map(Enum::name).toList());
   }
 
   /**
-   * And the migration that widened the check constraint says the same ten, in the same words. The
+   * And the latest migration that widened the check constraint says the same eleven, in the same
+   * words. The
    * enum and the column are two halves of one taxonomy: a value Hibernate writes that the
    * constraint refuses is an insert that fails at runtime, which no compiler and no other test here
    * can see. Read off the source tree rather than {@code target/classes}, because it is the file
    * that ships in the jar either way and the source is where the mistake is made.
    */
   @Test
-  public void theMigrationWidensTheCheckConstraintToExactlyThoseTenValues() throws Exception {
+  public void theMigrationWidensTheCheckConstraintToExactlyThoseElevenValues() throws Exception {
     Path migration =
-        Path.of(
-            "src/main/resources/db/projects/migration/V27__repository_archetype_app.sql");
+        Path.of("src/main/resources/db/projects/migration/V46__agent_config_archetype.sql");
     String sql = Files.readString(migration);
     for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
       assertTrue(
@@ -261,6 +265,21 @@ public class RepositoryArchetypeTemplateSyncTest {
       assertTrue(
           dotted.isEmpty(),
           "store these dot-prefixed instead, or they will not survive jar packaging: " + dotted);
+    }
+  }
+
+  /**
+   * The same trap in the agent configuration skeleton (qits-1382), which carries two dot-directories
+   * and a {@code .gitkeep} — {@code AgentConfigRepositoryTest} holds that they come out un-prefixed.
+   */
+  @Test
+  public void noAgentConfigTemplateResourceIsStoredWithALeadingDot() throws Exception {
+    Path agentConfig = Path.of("target/classes/agent-config-template");
+    assertTrue(Files.isDirectory(agentConfig), "the agent configuration template is missing");
+    try (Stream<Path> all = Files.walk(agentConfig)) {
+      List<String> dotted =
+          all.map(p -> p.getFileName().toString()).filter(n -> n.startsWith(".")).sorted().toList();
+      assertTrue(dotted.isEmpty(), "store these dot-prefixed instead: " + dotted);
     }
   }
 

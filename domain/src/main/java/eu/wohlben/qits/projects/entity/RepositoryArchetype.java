@@ -28,16 +28,18 @@ import java.util.Set;
  * declaration and derived from nothing, because it is a statement about the archetype rather than a
  * consequence of one.
  *
- * <p>Three values answer false, each for its own reason: {@link #PROJECT} because it <em>is</em> the
+ * <p>Four values answer false, each for its own reason: {@link #PROJECT} because it <em>is</em> the
  * tree — the wrapper cannot be a submodule of itself; {@link #SERVICE_TEMPLATE} because it is
- * scaffolding a component is generated <em>from</em> rather than part of the application; and {@link
+ * scaffolding a component is generated <em>from</em> rather than part of the application; {@link
  * #FORK} because it is an external downstream fork of somebody else's repository, which this project
- * carries but is not built out of. The other seven are components and answer true.
+ * carries but is not built out of; and {@link #AGENT_CONFIG} because it is platform state rather than
+ * software. The other seven are components and answer true.
  *
- * <p>These ten are the whole set. {@code INTEGRATION} and {@code APPLICATION} were carried through
- * release A as deprecated aliases so Hibernate could read rows written before the rework; the H2
- * lineage's V4 retired the last of those rows and they are gone. {@link #APP} is the tenth, added
- * for a standalone web application — see its own doc for why it is not a {@link #FRONTEND}.
+ * <p>These eleven are the whole set. {@code INTEGRATION} and {@code APPLICATION} were carried
+ * through release A as deprecated aliases so Hibernate could read rows written before the rework;
+ * the H2 lineage's V4 retired the last of those rows and they are gone. {@link #APP} is the tenth,
+ * added for a standalone web application — see its own doc for why it is not a {@link #FRONTEND}.
+ * {@link #AGENT_CONFIG} is the eleventh (qits-1382), and the one value no name derives.
  *
  * <p>Adding a value here also requires a Flyway migration: {@code Repository.archetype} carries a DB
  * check constraint over the value set, written <b>inline and named</b> in {@code
@@ -47,7 +49,8 @@ import java.util.Set;
  * {@code CK_repository_archetype} and adds it back over the wider set. {@code
  * db/projects/migration} is the one lineage there is here — main and test read the same location —
  * so one migration is the whole of it; {@code V27__repository_archetype_app.sql} is the one that
- * admitted {@link #APP}.
+ * admitted {@link #APP}, and {@code V46__agent_config_archetype.sql} the one that admitted {@link
+ * #AGENT_CONFIG}.
  */
 public enum RepositoryArchetype {
   /** The project's wrapper repository — the root superproject. At most one per project. */
@@ -75,7 +78,19 @@ public enum RepositoryArchetype {
   /** Scaffolding a component is generated <em>from</em>, not part of the application. */
   SERVICE_TEMPLATE(false),
   /** A downstream fork — an external repository, never inline. */
-  FORK(false);
+  FORK(false),
+  /**
+   * The project's {@code qits-agent-config}: the memories, skills and enabled plugins its Claude Code
+   * agents inherit, one branch per agent, merged into {@code main} by an approved release request
+   * (qits-1382).
+   *
+   * <p><b>Platform state, not software</b>, and every exemption follows from that: no {@code
+   * .gitmodules} entry in the wrapper, no backup twin, no CI recipe, no artifact. It carries no role
+   * suffix either, so {@link #fromRepositoryName} never answers it — the row is minted only by {@code
+   * POST …/agent-config-repository}, which states the kind outright, and the ordinary create door
+   * refuses it like every other value that is not a component of its project.
+   */
+  AGENT_CONFIG(false);
 
   private final boolean componentOfItsProject;
 
@@ -87,7 +102,7 @@ public enum RepositoryArchetype {
    * Whether a repository of this kind is a <b>component of its project</b> — part of what the
    * project is built out of, and therefore something the project's wrapper is expected to declare.
    *
-   * <p>This is the whole of what membership rests on, and the class doc says which three values
+   * <p>This is the whole of what membership rests on, and the class doc says which four values
    * answer false and why. It is stated per constant rather than derived, so that widening the enum
    * is a decision somebody makes at the declaration instead of a side effect of some other field.
    */

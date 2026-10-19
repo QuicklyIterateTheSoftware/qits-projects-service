@@ -710,7 +710,9 @@ write** (user ruling, 2026-09-12):
   out of it. `qits:system` is deliberately not on the list: the machine door here is
   `…/repositories/adopt`. `api/ProjectRepositoryCreateDoorTest` drives four callers at the route
   under `NoDevUserProfile`, and `AgentReadAccessTest.CATALOGUE_AGENT_WRITES` is where the grant is
-  declared.
+  declared. `POST /projects/{projectId}/agent-config-repository` (qits-1382) takes the same three
+  roles on the same argument: it creates the project's one `qits-agent-config` or reads it back
+  (`api/AgentConfigRepositoryDoorTest`).
 - **The two control sockets take it, bound to the agent's own container** (a socket is a control
   channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
   `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
@@ -809,6 +811,18 @@ names, with a relative url. Three rules follow, and every one of them is enforce
 - **An empty `.gitmodules` is not a manifest.** A wrapper declaring no submodules enforces nothing
   and reports nothing undeclared. Without that, shipping either rule would have bricked every
   project that had not adopted the model yet.
+
+**A project's `qits-agent-config` is the one repository a project has on purpose outside its
+wrapper (qits-1382).** It holds what the project's Claude Code agents inherit — memories, skills,
+enabled plugins — one branch per agent named after its wrapper branch, merged into `main` by an
+approval-gated release request when the work item reaches VERIFIED (`PhaseAdvance` asks for it like
+any repository of the project, before the wrapper). Its archetype, `AGENT_CONFIG` (V46), is not a
+component of its project and derives from no name, so every membership rule above skips it; it has
+no backup twin (`url` null), no CI recipe and no main workspace. Only `POST
+/projects/{projectId}/agent-config-repository` mints one — idempotent on the name, 201 or 200 with
+the `RepositoryDto` — seeded from `agent-config-template/` as one commit on `main`; `POST
+…/repositories` refuses the archetype like `FORK`. The listing marks it `declared: true`, as it does
+every row that is not a component.
 
 `WrapperSubmoduleWriter` is the only writer of that file and `WrapperGitmodules` the only editor —
 textual, one section at a time, every other byte where it was, because this is a file people review.
@@ -3347,8 +3361,9 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   `PackagedSurfaceIT` is heavyweight (real git pushes, a pseudo-terminal), so the opt-in is per-run
   and per-class — `-DskipITs=false -Dit.test=<classes>`, which is exactly what the pipeline passes.
 - **Anything read off the classpath by walking is a native-image question.** `ProjectTemplate` is
-  the one such reader — it serves both committed skeletons, `project-template/` (a wrapper's first
-  commit) and `repository-template/` (a blank component's) — and it handles three URI schemes:
+  the one such reader — it serves the three committed skeletons, `project-template/` (a wrapper's
+  first commit), `repository-template/` (a blank component's) and `agent-config-template/` (a
+  project's `qits-agent-config`'s) — and it handles three URI schemes:
   `file:` (tests), `jar:` (fast-jar) and `resource:` (native). Quarkus' own `ClassPathUtils.consumeAsPaths` handles the first two and
   rejects the third, which is how the binary came to fail every project creation while the suite was
   green. Anything new that enumerates a resource directory needs the same three, plus an entry in

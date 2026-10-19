@@ -449,6 +449,55 @@ public class RepositoryService {
   }
 
   /**
+   * The name a project's agent configuration repository answers to — the one name, in every project,
+   * that {@link RepositoryArchetype#AGENT_CONFIG} is minted under (qits-1382).
+   */
+  public static final String AGENT_CONFIG_NAME = "qits-agent-config";
+
+  /**
+   * Creates {@code project}'s {@code qits-agent-config} on the platform's own git host, seeded with
+   * the agent configuration template as one commit on {@code main} — {@link #createBlankRepository}'s
+   * storage and seeding, and none of what makes that one a component (qits-1382).
+   *
+   * <p>Three things it deliberately does not do, because this repository is platform state and not
+   * software: <b>no backup twin</b> ({@code url} stays null, so neither the sweep nor the
+   * project-wide trigger ever lists it, see {@link #repositoryIdsWithBackupTwin}); <b>no main
+   * workspace</b>, since nobody works on {@code main} here — agents write their own branches through
+   * the workspace daemon; and <b>no wrapper entry</b>, which is the caller's to not make ({@code
+   * ProjectService.ensureAgentConfigRepository}).
+   *
+   * <p>A taken name is the same hard failure {@link #requireCreatableName} gives every creation; the
+   * idempotent answer for an existing one is the caller's.
+   */
+  @Transactional
+  public Repository createAgentConfigRepository(Project project) {
+    requireCreatableName(project, AGENT_CONFIG_NAME);
+
+    Repository repo = new Repository();
+    repo.id = UUID.randomUUID().toString();
+    repo.archetype = RepositoryArchetype.AGENT_CONFIG;
+    repo.project = project;
+    repo.mainBranch = WRAPPER_DEFAULT_BRANCH;
+    repositoryRepository.persist(repo);
+    repositoryNameRepository.registerSelfName(repo, AGENT_CONFIG_NAME);
+
+    RepoMirror mirror = gitMirrors.of(repo.id);
+    try {
+      mirror.initEmpty(WRAPPER_DEFAULT_BRANCH);
+    } catch (GitMirrorException e) {
+      throw new InternalServerErrorException(
+          "Failed to initialize the repository's mirror: " + e.getMessage());
+    }
+
+    String skeletonCommit =
+        seedTemplate(mirror, projectTemplate.agentConfigEntries(), "agent configuration");
+    gitHostRepositories.ensure(repo.id, WRAPPER_DEFAULT_BRANCH);
+    publishSingleRef(
+        mirror, skeletonCommit, WRAPPER_DEFAULT_BRANCH, "the agent configuration's skeleton commit");
+    return repo;
+  }
+
+  /**
    * The forge twin a new component of {@code project} would be backed up to, or null when the
    * project's wrapper names no forge to fold against (a greenfield wrapper has no twin for
    * anything). Never qits' own git host: a repository cannot be its own backup.
