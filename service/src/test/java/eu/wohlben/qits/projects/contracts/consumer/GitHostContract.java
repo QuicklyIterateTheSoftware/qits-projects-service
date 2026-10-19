@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.ConfiguredGitHostAddress;
@@ -11,7 +10,6 @@ import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.releasehost.HttpBackingBranchMerger;
 import eu.wohlben.qits.projects.releasehost.HttpReleaseGitHost;
 import eu.wohlben.qits.projects.wiring.HttpGitHostRepositories;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,7 +54,7 @@ final class GitHostContract {
   private static HttpGitHostRepositories repositories(String base) {
     ConfiguredGitHostAddress address = Fields.with(new ConfiguredGitHostAddress(), "gitHostUrl", base);
     return Fields.with(
-        new HttpGitHostRepositories(QitsHttpClients.of(OpenTelemetry.noop(), null)),
+        new HttpGitHostRepositories(RowClients.clients()),
         "gitHost", address,
         "gitHostBearer", BEARER,
         "objectMapper", new ObjectMapper(),
@@ -64,11 +62,11 @@ final class GitHostContract {
   }
 
   private static HttpReleaseGitHost releaseHost(String base) {
-    return Fields.with(new HttpReleaseGitHost(QitsHttpClients.of(OpenTelemetry.noop(), null)), "githostUrl", Optional.of(base), "bearer", BEARER);
+    return Fields.with(new HttpReleaseGitHost(RowClients.clients()), "githostUrl", Optional.of(base), "bearer", BEARER);
   }
 
   private static HttpBackingBranchMerger merger(String base) {
-    return Fields.with(new HttpBackingBranchMerger(QitsHttpClients.of(OpenTelemetry.noop(), null)), "githostUrl", Optional.of(base), "bearer", BEARER);
+    return Fields.with(new HttpBackingBranchMerger(RowClients.clients()), "githostUrl", Optional.of(base), "bearer", BEARER);
   }
 
   private static ConsumerRow row(
