@@ -879,7 +879,8 @@
             "sources": [
               "feature/contract"
             ],
-            "target": "refs/heads/main"
+            "target": "refs/heads/main",
+            "versionPins": true
           },
           "contentType": "application/json",
           "encoded": false
@@ -1107,7 +1108,8 @@
             "sources": [
               "feature/contract"
             ],
-            "target": "refs/heads/main"
+            "target": "refs/heads/main",
+            "versionPins": true
           },
           "contentType": "application/json",
           "encoded": false

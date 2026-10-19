@@ -340,7 +340,7 @@ final class GitHostContract {
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
                   + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\","
-                  + "\"gitlinkPins\":true}",
+                  + "\"versionPins\":true,\"gitlinkPins\":true}",
               List.of(
                   "$.outcome",
                   "$.sha",
@@ -361,7 +361,7 @@ final class GitHostContract {
                             List.of(p.get("source")),
                             "fold the branch",
                             List.of(),
-                            false,
+                            true,
                             false,
                             true);
                 assertTrue(outcome.folded(), outcome.detail());
@@ -377,7 +377,7 @@ final class GitHostContract {
                   + "\"message\":\"fold the branch\","
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
                   + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\","
-                  + "\"gitlinkPins\":true}",
+                  + "\"versionPins\":true,\"gitlinkPins\":true}",
               List.of(
                   "$.error",
                   "$.target",
@@ -399,7 +399,7 @@ final class GitHostContract {
                             List.of(p.get("source")),
                             "fold the branch",
                             List.of(),
-                            false,
+                            true,
                             false,
                             true);
                 assertEquals(BackingBranchMerger.Result.CONFLICT, outcome.result(), outcome.detail());
