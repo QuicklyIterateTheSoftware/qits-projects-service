@@ -966,6 +966,37 @@ class GoldenMasterRecordingTest {
             "{\"title\":\"Export button, primary\","
                 + "\"html\":\"<!doctype html><html><body><button>Export CSV</button></body></html>\","
                 + "\"version\":0}"));
+    // The room's own doors (qits-1383): the open finds the state's room — find-or-create on a
+    // REPORTED ticket — then its container is brought up (held at PROVISIONING by the state) and
+    // the room discarded. Every interaction sets the state up afresh, so the discard costs the
+    // others nothing.
+    all.add(
+        new Interaction(
+            design,
+            "startWorkRefinement",
+            "POST",
+            "/projects/api/work/{qualifiedId}/refinement",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            design,
+            "ensureRefinementContainer",
+            "POST",
+            "/projects/api/refinements/{refinementId}/ensure-container",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            design,
+            "discardRefinement",
+            "POST",
+            "/projects/api/refinements/{refinementId}/discard",
+            200,
+            null,
+            null));
     // `qits work unblock` (qits-1174): the blocked bug, freed.
     all.add(
         write(
@@ -974,8 +1005,7 @@ class GoldenMasterRecordingTest {
             "POST",
             "/projects/api/work/{qualifiedId}/blocked",
             "{\"blocked\":false,\"reason\":\"The database team confirmed the new limit.\"}"));
-    // A room's row id is a database sequence no freezing reaches, so the open is recorded where it
-    // is refused: a REFINED ticket's refine phase has run.
+    // And where the open is refused: a REFINED ticket's refine phase has run.
     all.add(
         new Interaction(
             ProviderStates.A_REFINED_TICKET,

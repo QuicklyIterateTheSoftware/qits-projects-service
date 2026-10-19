@@ -3226,8 +3226,11 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   golden-master files — a consumer pact still naming one is a pact against a route that answers
   404. An instant inside a longer string — an
   audit entry's `snapshot` is JSON held as text — is frozen in place and the string listed under
-  `frozen.strings`. `startWorkRefinement` is recorded as its 409: a room's row id is a database
-  sequence no freezing reaches, and `getWorkDossierAssetContent` serves bytes and has none.
+  `frozen.strings`. `startWorkRefinement` is recorded as its 409 in `a refined ticket` and as
+  its 200 in `a ticket with a design`, where `ensureRefinementContainer` and `discardRefinement`
+  are recorded on the same room (qits-1383; the room's id is the sequence param). That state holds
+  `FakeRefinementRuntime`'s bring-ups until `cleanUp`, so the ensure answers `PROVISIONING` on every
+  run instead of racing the executor that runs the ladder.
   <br>**The release-request family is recorded too** (qits-112, the landing app's release pages):
   every read of the detail page in each `RELEASE_REQUEST_DETAILS` state, each door it offers, and
   the project-wide list. Those states seed two real repositories through `contracts/SeededGit`,

@@ -315,6 +315,15 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementDesigns designs;
 
   /**
+   * The suite's refinement runtime, whose bring-ups the design state holds so the ensure door's
+   * answer reads {@code PROVISIONING} on every run; released by {@link #cleanUp()}. An {@code
+   * Instance} for the reason {@link #dispatches} is one.
+   */
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime>
+      refinementRuntime;
+
+  /**
    * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
    * Instance} because a test profile may take the port away ({@code
    * EntityDispatchWithNoWorkspacesTest}), and this bean is in every test application.
@@ -534,6 +543,9 @@ public class ProviderStates {
    * verification.
    */
   public void cleanUp() {
+    if (refinementRuntime.isResolvable()) {
+      refinementRuntime.get().releaseBringUps();
+    }
     SeededGit.deleteAll();
     bearers.reset();
     if (idp != null) {
@@ -1416,9 +1428,18 @@ public class ProviderStates {
    * A REPORTED ticket whose refinement room holds one design, for {@code qits work design}
    * (qits-1174): the room is the {@code refinementId} param — a database sequence number, so a
    * sequence param — and the design the {@code designId} param, at version 0.
+   *
+   * <p>The room's own doors are recorded here too (qits-1383): the open finds this room, the ensure
+   * brings its container up and the discard tears it down — each interaction sets the state up
+   * afresh, so the discard takes nothing from the others. The room has no container yet, and the
+   * suite runtime's bring-ups are held until {@link #cleanUp()}, so the ensure answers {@code
+   * PROVISIONING} on every run rather than whatever the executor reached first.
    */
   private Setup aTicketWithADesign() {
     resetDispatchPorts();
+    if (refinementRuntime.isResolvable()) {
+      refinementRuntime.get().holdBringUps();
+    }
     String token = token();
     Project project = project(token, A_TICKET_WITH_A_DESIGN);
     String ticket =

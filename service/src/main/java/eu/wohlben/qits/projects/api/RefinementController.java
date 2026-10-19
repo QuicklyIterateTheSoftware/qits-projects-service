@@ -10,6 +10,10 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * The refinement lifecycle surface the refining route drives — the projects-side replacement for
@@ -35,10 +39,14 @@ public class RefinementController {
 
   public record RefinementResponse(RefinementDto refinement) {}
 
+  @Schema(
+      name = "ProcessResponse",
+      description = "A refinement room and the technical process narrating its container's bring-up.")
   public record ProcessResponse(RefinementDto refinement, String technicalProcessId) {}
 
   public record ActiveProcessResponse(String technicalProcessId) {}
 
+  @Schema(name = "DiscardResponse", description = "A refinement room's teardown, done.")
   public record DiscardResponse(boolean success) {}
 
   @GET
@@ -50,6 +58,25 @@ public class RefinementController {
 
   @POST
   @Path("/{id}/ensure-container")
+  @Operation(
+      operationId = "ensureRefinementContainer",
+      summary = "Bring a refinement room's container up",
+      description =
+          "Provisions a fresh container, wakes a stopped one or touches a running one, off the"
+              + " request thread, and answers the room together with the technical process that"
+              + " narrates the bring-up. A second call while one is under way answers the live"
+              + " process. The path names the room by its row id.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The room and the bring-up's technical process id",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = ProcessResponse.class)))
+  @APIResponse(responseCode = "404", description = "No refinement with this id")
+  @APIResponse(
+      responseCode = "409",
+      description = "The container is already being worked on and no process is live")
   public ProcessResponse ensure(@PathParam("id") long id) {
     String processId = refinements.ensureContainer(id);
     return new ProcessResponse(
@@ -89,6 +116,21 @@ public class RefinementController {
    */
   @POST
   @Path("/{id}/discard")
+  @Operation(
+      operationId = "discardRefinement",
+      summary = "Discard a refinement room",
+      description =
+          "Tears the room down: container, volume, credential, refining branch and row. The work"
+              + " entity stays where it is, and a later open starts a fresh room. The path names"
+              + " the room by its row id.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The room is gone",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = DiscardResponse.class)))
+  @APIResponse(responseCode = "404", description = "No refinement with this id")
   public DiscardResponse discard(@PathParam("id") long id) {
     refinements.discard(id);
     return new DiscardResponse(true);

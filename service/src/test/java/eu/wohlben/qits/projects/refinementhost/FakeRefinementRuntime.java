@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The suite's {@link RefinementRuntime}: an in-memory place table and a verb log — no docker, no
@@ -61,32 +63,68 @@ public class FakeRefinementRuntime implements RefinementRuntime {
     return Optional.ofNullable(places.get(refinementId));
   }
 
-  @Override
-  public synchronized void provision(
-      Refinement refinement,
-      String projectSlug,
-      String slug,
-      String wrapperName,
-      RefinedEntity entity) {
-    calls.add("provision:" + refinement.id);
-    qualifiedEntityIds.put(refinement.id, entity.qualifiedId());
-    entities.put(refinement.id, entity);
-    places.put(
-        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
+  /**
+   * Test seam: while held, a provision or a wake waits before it does anything, so the bring-up's
+   * lock stays taken and the room reads {@code PROVISIONING} — the ensure door's answer is then the
+   * same on every run instead of racing the executor. A golden-master state holds it; {@link
+   * #releaseBringUps} (and {@link #reset}) let every waiting bring-up through. The wait sits
+   * OUTSIDE this bean's monitor, since {@link #inspect} — which the answer's view calls — takes it.
+   */
+  private volatile CountDownLatch bringUpGate = new CountDownLatch(0);
+
+  /** Hold every provision and wake until {@link #releaseBringUps}. */
+  public synchronized void holdBringUps() {
+    if (bringUpGate.getCount() == 0) {
+      bringUpGate = new CountDownLatch(1);
+    }
+  }
+
+  /** Let every held provision and wake through. Idempotent. */
+  public void releaseBringUps() {
+    bringUpGate.countDown();
+  }
+
+  private void awaitBringUpGate() {
+    try {
+      // Bounded, so a state that forgot to release never parks an executor thread for good.
+      bringUpGate.await(60, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Override
-  public synchronized void wake(
+  public void provision(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
       RefinedEntity entity) {
-    calls.add("wake:" + refinement.id);
-    qualifiedEntityIds.put(refinement.id, entity.qualifiedId());
-    entities.put(refinement.id, entity);
-    places.put(
-        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
+    awaitBringUpGate();
+    synchronized (this) {
+      calls.add("provision:" + refinement.id);
+      qualifiedEntityIds.put(refinement.id, entity.qualifiedId());
+      entities.put(refinement.id, entity);
+      places.put(
+          refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
+    }
+  }
+
+  @Override
+  public void wake(
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      RefinedEntity entity) {
+    awaitBringUpGate();
+    synchronized (this) {
+      calls.add("wake:" + refinement.id);
+      qualifiedEntityIds.put(refinement.id, entity.qualifiedId());
+      entities.put(refinement.id, entity);
+      places.put(
+          refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
+    }
   }
 
   /** Test hook: the next {@link #stop} call against this refinement throws instead of pausing it. */
@@ -135,6 +173,7 @@ public class FakeRefinementRuntime implements RefinementRuntime {
   }
 
   public synchronized void reset() {
+    releaseBringUps();
     throwOnStop.clear();
     places.clear();
     calls.clear();

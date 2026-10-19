@@ -1135,6 +1135,7 @@ components:
             \ it into sudo sh with this runner's values. Returned once"
     DiscardResponse:
       type: object
+      description: "A refinement room's teardown, done."
       properties:
         success:
           type: boolean
@@ -1800,6 +1801,8 @@ components:
           description: At least 1; absent leaves it
     ProcessResponse:
       type: object
+      description: A refinement room and the technical process narrating its container's
+        bring-up.
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
@@ -4649,6 +4652,11 @@ paths:
         - qits:admin-agent
   /projects/api/refinements/{id}/discard:
     post:
+      summary: Discard a refinement room
+      description: "Tears the room down: container, volume, credential, refining branch\
+        \ and row. The work entity stays where it is, and a later open starts a fresh\
+        \ room. The path names the room by its row id."
+      operationId: discardRefinement
       parameters:
       - name: id
         in: path
@@ -4658,16 +4666,17 @@ paths:
           format: int64
       responses:
         "200":
-          description: OK
+          description: The room is gone
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiscardResponse"
+        "404":
+          description: No refinement with this id
         "401":
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Discard
       tags:
       - Refinement Controller
       security:
@@ -4676,6 +4685,13 @@ paths:
         - qits:admin-agent
   /projects/api/refinements/{id}/ensure-container:
     post:
+      summary: Bring a refinement room's container up
+      description: "Provisions a fresh container, wakes a stopped one or touches a\
+        \ running one, off the request thread, and answers the room together with\
+        \ the technical process that narrates the bring-up. A second call while one\
+        \ is under way answers the live process. The path names the room by its row\
+        \ id."
+      operationId: ensureRefinementContainer
       parameters:
       - name: id
         in: path
@@ -4685,16 +4701,20 @@ paths:
           format: int64
       responses:
         "200":
-          description: OK
+          description: The room and the bring-up's technical process id
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessResponse"
+        "404":
+          description: No refinement with this id
+        "409":
+          description: The container is already being worked on and no process is
+            live
         "401":
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Ensure
       tags:
       - Refinement Controller
       security:
@@ -8470,4 +8490,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1011.174755
+  version: 2026.1019.61020
