@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.control.GitHostBearer;
 import eu.wohlben.qits.projects.control.GitHostException;
 import eu.wohlben.qits.projects.control.GitHostRepositories;
 import io.quarkus.arc.DefaultBean;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -77,6 +78,12 @@ public class HttpGitHostRepositories implements GitHostRepositories {
   @Inject
   public HttpGitHostRepositories(QitsHttpClients clients) {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
+
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @PreDestroy
+  void close() {
+    client.shutdownNow();
   }
 
   @Override

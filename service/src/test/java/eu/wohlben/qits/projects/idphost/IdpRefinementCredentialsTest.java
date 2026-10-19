@@ -9,6 +9,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,7 +35,15 @@ class IdpRefinementCredentialsTest {
           + "\"dev-qits-projects\",\"contextKind\":\"refinement\",\"contextId\":\"42\","
           + "\"createdAt\":\"2026-09-12T10:00:00Z\"}";
 
-  private static IdpRefinementCredentials credentials(String authServerUrl) {
+  /** Every credential a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<IdpRefinementCredentials> built = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    built.forEach(IdpRefinementCredentials::close);
+  }
+
+  private IdpRefinementCredentials credentials(String authServerUrl) {
     IdpRefinementCredentials credentials = new IdpRefinementCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null));
     credentials.objectMapper = new ObjectMapper();
     credentials.tokensEnabled = true;
@@ -41,6 +51,7 @@ class IdpRefinementCredentialsTest {
     credentials.clientId = "dev-qits-projects";
     credentials.clientSecret = Optional.of("own-secret");
     credentials.requestTimeout = Duration.ofSeconds(2);
+    built.add(credentials);
     return credentials;
   }
 

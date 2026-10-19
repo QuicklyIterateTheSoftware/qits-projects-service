@@ -52,6 +52,14 @@ class HttpWorkspaceAgentDispatchTest {
           "{\"agent\":{\"agentId\":\"agent-1\",\"workspaceRowId\":41,"
               + "\"repositoryId\":\"repo-1\"},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\"}");
 
+  /** Every adapter a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpWorkspaceAgentDispatch> adapters = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    adapters.forEach(HttpWorkspaceAgentDispatch::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -90,6 +98,7 @@ class HttpWorkspaceAgentDispatchTest {
     adapter.workspacesUrl = Optional.ofNullable(base);
     adapter.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     adapter.bearer = () -> authorization;
+    adapters.add(adapter);
     return adapter;
   }
 

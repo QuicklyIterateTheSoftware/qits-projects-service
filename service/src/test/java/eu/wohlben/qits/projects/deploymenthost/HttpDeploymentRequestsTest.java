@@ -46,6 +46,14 @@ class HttpDeploymentRequestsTest {
               + "\"createdAt\":\"2026-09-16T11:00:00Z\"},{\"id\":\"dr-1\","
               + "\"deploymentStatus\":\"SUPERSEDED\",\"createdAt\":\"2026-09-16T10:00:00Z\"}]}");
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpDeploymentRequests> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpDeploymentRequests::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -79,6 +87,7 @@ class HttpDeploymentRequestsTest {
   private HttpDeploymentRequests against(String base) {
     HttpDeploymentRequests requests = new HttpDeploymentRequests(QitsHttpClients.of(OpenTelemetry.noop(), null));
     requests.deploymentsUrl = Optional.ofNullable(base);
+    ports.add(requests);
     return requests;
   }
 

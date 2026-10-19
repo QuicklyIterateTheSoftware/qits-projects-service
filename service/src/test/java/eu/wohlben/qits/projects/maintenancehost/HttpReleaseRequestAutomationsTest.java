@@ -61,6 +61,14 @@ class HttpReleaseRequestAutomationsTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>(ANSWER);
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpReleaseRequestAutomations> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpReleaseRequestAutomations::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -99,6 +107,7 @@ class HttpReleaseRequestAutomationsTest {
     HttpReleaseRequestAutomations port = new HttpReleaseRequestAutomations(QitsHttpClients.of(OpenTelemetry.noop(), null));
     port.maintenanceUrl = Optional.ofNullable(base);
     port.bearer = () -> authorization;
+    ports.add(port);
     return port;
   }
 

@@ -45,6 +45,14 @@ class HttpBackingBranchMergerTest {
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"outcome\":\"merged\",\"sha\":\"fold-sha\",\"parents\":[]}");
 
+  /** Every merger a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpBackingBranchMerger> mergers = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    mergers.forEach(HttpBackingBranchMerger::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -79,6 +87,7 @@ class HttpBackingBranchMergerTest {
     HttpBackingBranchMerger merger = new HttpBackingBranchMerger(QitsHttpClients.of(OpenTelemetry.noop(), null));
     merger.githostUrl = Optional.ofNullable(base);
     merger.bearer = () -> Optional.of("machine-token");
+    mergers.add(merger);
     return merger;
   }
 

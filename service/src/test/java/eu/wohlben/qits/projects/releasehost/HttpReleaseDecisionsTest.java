@@ -44,6 +44,14 @@ class HttpReleaseDecisionsTest {
              "decision":"unchanged","unchangedSince":"2026.1001.7","runId":"r1","decidedAt":null}]}
           """);
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpReleaseDecisions> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpReleaseDecisions::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -76,6 +84,7 @@ class HttpReleaseDecisionsTest {
     HttpReleaseDecisions decisions = new HttpReleaseDecisions(QitsHttpClients.of(OpenTelemetry.noop(), null));
     decisions.ciUrl = Optional.ofNullable(base);
     decisions.bearer = new IdpCiBearer();
+    ports.add(decisions);
     return decisions;
   }
 

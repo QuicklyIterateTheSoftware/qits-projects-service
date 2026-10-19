@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.http.QitsHttpClients;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -84,6 +85,12 @@ public class IdpTokens {
   @Inject
   public IdpTokens(QitsHttpClients clients) {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
+
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @PreDestroy
+  void close() {
+    client.shutdownNow();
   }
 
   /** Whether this process can commission at all: the switch is on and a secret is configured. */
