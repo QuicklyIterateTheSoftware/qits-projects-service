@@ -141,7 +141,7 @@
              runner is told to upgrade to, so the frames this service speaks and the binary it hands
              out are one release. Moved by qits-maintenance on maintenance/dependencies, gated here;
              never by hand. -->
-        <qits.projects-desk-runner-protocol.version>2026.1018.211743</qits.projects-desk-runner-protocol.version>
+        <qits.projects-desk-runner-protocol.version>2026.1019.82130</qits.projects-desk-runner-protocol.version>
         <!-- qits-runner-javalib (qits-771): the lifecycle frames and their codec
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
@@ -241,7 +241,7 @@
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1019.65035</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1018.165353</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
-        <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1018.211743</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
+        <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1019.82130</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-configuration, qits-containers and
