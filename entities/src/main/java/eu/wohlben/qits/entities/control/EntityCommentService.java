@@ -34,7 +34,8 @@ import java.util.UUID;
  * ({@link WorkEntityService#auditRootOf}). So an epic's history includes what was said on its tasks,
  * and still answers after they are deleted.
  *
- * <p>{@code changedBy} is stored as the {@code author} and is never client-supplied; an edit does
+ * <p>{@code changedBy} is stored as the {@code author} (or, for an agent's comment, the agent id the
+ * door resolved from the caller — qits-1448) and is never client-supplied; an edit does
  * not re-stamp it, because who wrote a remark and who last changed it are different facts and the
  * second one is the log's.
  */
@@ -66,8 +67,21 @@ public class EntityCommentService {
         .orElseThrow(() -> new NotFoundException("Comment not found: " + id));
   }
 
-  /** A new comment on an existing entity of any archetype (404 if there is none). */
+  /**
+   * A new comment on an existing entity of any archetype (404 if there is none), authored by the
+   * writer itself. Every in-service writer stamps this way.
+   */
   public EntityComment addComment(String entityId, String body, String changedBy) {
+    return addComment(entityId, body, changedBy, null, changedBy);
+  }
+
+  /**
+   * A new comment whose author is not the credential that writes it (qits-1448): an agent's comment
+   * is authored by its agent id, with the agent's work item beside it, while the audit row keeps
+   * {@code changedBy} — who wrote the remark and which credential made the write are different facts.
+   */
+  public EntityComment addComment(
+      String entityId, String body, String author, String authorWorkId, String changedBy) {
     Validations.requireText(body, "body");
     return writes.hold(
         "comment create",
@@ -76,7 +90,8 @@ public class EntityCommentService {
           EntityComment comment = new EntityComment();
           comment.id = UUID.randomUUID().toString();
           comment.entityId = entity.id;
-          comment.author = changedBy;
+          comment.author = author;
+          comment.authorWorkId = authorWorkId;
           comment.body = body;
           commentRepository.persist(comment);
           auditService.record(

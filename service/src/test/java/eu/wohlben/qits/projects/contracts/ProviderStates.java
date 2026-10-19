@@ -1296,12 +1296,17 @@ public class ProviderStates {
         List.of(token));
   }
 
+  /**
+   * The comment is the caller's own: only a comment's author may edit it (qits-1448), and the
+   * recording and the pact verification both call as the {@code %test} dev user, so the {@code
+   * editWorkComment} door answers 200 for its author rather than 403 for somebody else.
+   */
   private Setup aTicketWithAComment() {
     String token = token();
     Project project = project(token, A_TICKET_WITH_A_COMMENT);
     String ticket = ticket(project, "Export fails for an empty quarter");
     String comment =
-        comments.addComment(ticket, "It answers 500 when the range holds no invoice.", PERSON).id;
+        comments.addComment(ticket, "It answers 500 when the range holds no invoice.", DEV_USER).id;
     return new Setup(
         params(
             "commentId", comment,
@@ -1593,6 +1598,9 @@ public class ProviderStates {
 
   /** A person on the threads, and an agent. */
   private static final String PERSON = "dana.weber";
+
+  /** The {@code %test} dev user every recorded and verified call is made as. */
+  private static final String DEV_USER = "dev";
 
   private static final String AGENT = "qits-agent";
 

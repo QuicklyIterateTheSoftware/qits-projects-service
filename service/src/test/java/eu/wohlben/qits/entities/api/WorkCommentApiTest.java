@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Test;
  * epic taking its descendants' remarks with it — each with a
  * DELETE audit row, because a remark that vanished through the FK cascade never happened as far as
  * the log is concerned. The binding of an agent to its project is {@link EntityAgentBoundsTest}'s,
+ * who may edit (the author alone) is {@link WorkCommentAuthorshipTest}'s,
  * and the wire shapes are pinned in the golden masters ({@code listWorkComments}).
  */
 @QuarkusTest
@@ -116,8 +117,9 @@ class WorkCommentApiTest {
         .path("comment.id");
   }
 
+  /** As alice, who writes every comment here: only a comment's author may edit it (qits-1448). */
   private static ValidatableResponse patch(String entityId, String commentId, String json) {
-    return as("bob")
+    return as("alice")
         .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
         .body(json)
         .when()
@@ -151,7 +153,7 @@ class WorkCommentApiTest {
         .body("comment.id", equalTo(id))
         .body("comment.body", equalTo("better words"))
         .body("comment.entityId", equalTo(epic.id))
-        // Who wrote it is not who changed it: bob's edit is the audit log's fact, not the row's.
+        // The edit leaves the author alone; who changed it is the audit log's fact, not the row's.
         .body("comment.author", equalTo("alice"));
 
     Map<String, Object> after = onlyRemarkOn(epic.id);
@@ -167,14 +169,14 @@ class WorkCommentApiTest {
             .toList();
     assertTrue(
         rows.stream()
-            .anyMatch(e -> e.operation == AuditOperation.UPDATE && "bob".equals(e.changedBy)),
+            .anyMatch(e -> e.operation == AuditOperation.UPDATE && "alice".equals(e.changedBy)),
         "the edit is audited under the editor, on the epic's history: " + rows);
   }
 
   @Test
   void plainJsonIsAcceptedBesideTheMergePatchType() {
     String id = comment("alice", task.id, "on the task");
-    as("bob")
+    as("alice")
         .contentType(ContentType.JSON)
         .body("{\"body\":\"on the task, again\"}")
         .when()

@@ -36,7 +36,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p>{@code {qualifiedId}} is the qualified id or the UUID ({@link EntityIdResolver#resolve}). The
  * rules are {@link WorkEntityDoors}', shared with the {@code /entities} doors, and so are the roles:
  * reading and commenting admit {@code qits:agent} and {@code qits:system} (an agent's comment bound
- * to its own project), the edit admits the agent bound the same way, and the delete is {@code
+ * to its own project), the edit admits the agent bound the same way and only the comment's author
+ * (qits-1448), and the delete is {@code
  * qits:admin} alone — an agent that could delete what it disagrees with could erase the record of
  * its own mistake.
  */
@@ -74,8 +75,9 @@ public class WorkCommentController {
       name = "WorkCommentPatch",
       description =
           "A JSON merge patch (RFC 7396) of one comment. body is the only property and is required:"
-              + " it replaces the text, and may not be null or blank. id, entityId, author, createdAt"
-              + " and updatedAt are server-owned; any other property is refused as unknown.")
+              + " it replaces the text, and may not be null or blank. id, entityId, author,"
+              + " authorAgentOf, createdAt, updatedAt and editable are server-owned; any other"
+              + " property is refused as unknown.")
   public record WorkCommentPatch(
       @Schema(required = true, description = "The remark as it should now read, Markdown.")
           String body) {}
@@ -101,7 +103,9 @@ public class WorkCommentController {
   @APIResponse(responseCode = "404", description = "No entity with this id")
   public WorkCommentList list(@PathParam("qualifiedId") String qualifiedId) {
     return new WorkCommentList(
-        doors.comments(ids.resolve(qualifiedId)).stream().map(WorkCommentListEntry::new).toList());
+        doors.comments(identity, ids.resolve(qualifiedId)).stream()
+            .map(WorkCommentListEntry::new)
+            .toList());
   }
 
   @POST
@@ -112,7 +116,8 @@ public class WorkCommentController {
       summary = "Comment on a work entity",
       description =
           "Adds a remark to the thread of an entity of any archetype, named by qualified id or"
-              + " UUID. The author is stamped from the caller.")
+              + " UUID. The author is stamped from the caller. An agent's comment is authored by its"
+              + " agent (the bearer's agent claim), and authorAgentOf names that agent's work item.")
   @APIResponse(
       responseCode = "200",
       description = "The comment as written",
@@ -140,7 +145,8 @@ public class WorkCommentController {
       summary = "Edit a comment's text (JSON merge patch)",
       description =
           "Replaces the body of a comment on a work entity's thread. Only body is written; the"
-              + " author stays who wrote it, and updatedAt moves.")
+              + " author stays who wrote it, and updatedAt moves. Only the comment's author may edit"
+              + " it.")
   @APIResponse(
       responseCode = "200",
       description = "The comment as it stands after the edit",
@@ -155,7 +161,9 @@ public class WorkCommentController {
               + " or not a string, a server-owned or unknown property")
   @APIResponse(
       responseCode = "403",
-      description = "An agent editing a comment outside its own project; nothing is written")
+      description =
+          "An agent editing a comment outside its own project, or a caller who is not the"
+              + " comment's author; nothing is written")
   @APIResponse(
       responseCode = "404",
       description = "No entity with this id, or no comment with this id on its thread")

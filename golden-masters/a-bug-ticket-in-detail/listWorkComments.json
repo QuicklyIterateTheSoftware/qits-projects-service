@@ -5,9 +5,11 @@
         "id": "00000000-0000-4000-8000-000000000013",
         "entityId": "00000000-0000-4000-8000-000000000001",
         "author": "dana.weber",
+        "authorAgentOf": null,
         "body": "Three invoices from October are affected; see the dossier.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     },
     {
@@ -15,9 +17,11 @@
         "id": "00000000-0000-4000-8000-000000000014",
         "entityId": "00000000-0000-4000-8000-000000000001",
         "author": "qits-agent",
+        "authorAgentOf": null,
         "body": "The fix is ready, but the expected totals need finance's sign-off.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     },
     {
@@ -25,9 +29,11 @@
         "id": "00000000-0000-4000-8000-000000000015",
         "entityId": "00000000-0000-4000-8000-000000000001",
         "author": "qits-agent",
+        "authorAgentOf": null,
         "body": "Blocked: Waiting for finance to confirm the expected totals of the affected invoices.",
         "createdAt": "2026-01-01T00:00:00Z",
-        "updatedAt": "2026-01-01T00:00:00Z"
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "editable": false
       }
     }
   ]

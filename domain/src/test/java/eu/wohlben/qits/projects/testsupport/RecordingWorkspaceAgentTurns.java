@@ -6,6 +6,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A TEST-SCOPE implementation of the {@link WorkspaceAgentTurns} port that records what was said to
@@ -45,13 +47,37 @@ public class RecordingWorkspaceAgentTurns implements WorkspaceAgentTurns {
 
   private RuntimeException failure;
 
+  /** When set, a delivery waits for it before answering — a slow far side. */
+  private CountDownLatch gate;
+
   @Override
-  public synchronized Turn deliver(String workId, String text) {
-    calls.add(new Spoken(workId, text));
-    if (failure != null) {
-      throw failure;
+  public Turn deliver(String workId, String text) {
+    CountDownLatch waitFor;
+    synchronized (this) {
+      calls.add(new Spoken(workId, text));
+      waitFor = gate;
     }
-    return scripted;
+    if (waitFor != null) {
+      try {
+        waitFor.await(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    synchronized (this) {
+      if (failure != null) {
+        throw failure;
+      }
+      return scripted;
+    }
+  }
+
+  /**
+   * Every delivery from now on waits for {@code latch} (at most 30 s), outside the lock, so a test
+   * can show a caller did not wait on it.
+   */
+  public synchronized void willBlockOn(CountDownLatch latch) {
+    this.gate = latch;
   }
 
   public synchronized List<Spoken> calls() {
@@ -84,5 +110,6 @@ public class RecordingWorkspaceAgentTurns implements WorkspaceAgentTurns {
     calls.clear();
     scripted = new Turn(Outcome.NO_AGENT, "");
     failure = null;
+    gate = null;
   }
 }
