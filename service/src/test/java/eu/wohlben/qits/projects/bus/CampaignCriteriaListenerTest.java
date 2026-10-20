@@ -61,7 +61,8 @@ class CampaignCriteriaListenerTest {
   void theConsumerIdAndSignaturesArePinned() {
     assertEquals("projects-campaign-criteria", listener.consumerId());
     assertEquals(
-        Set.of("EntityTransitioned", "DeploymentActive", "SCMRelease"), listener.signatures());
+        Set.of("EntityTransitioned", "DeploymentActive", "ReleaseRequestStateChanged"),
+        listener.signatures());
   }
 
   @Test
@@ -126,25 +127,38 @@ class CampaignCriteriaListenerTest {
   }
 
   @Test
-  void anScmReleaseDecodes() {
-    SCMRelease release =
-        new SCMRelease(
-            "qits",
-            "repo-1",
-            "qits-qits",
-            "release/req-1",
-            "2026.927.101010",
-            "abc123",
-            "req-1",
-            Instant.parse("2026-09-27T10:00:00Z"),
-            "MEDIUM");
-
-    listener.onFrame(frameOf(release));
+  void aFinalizedReleaseRequestStateChangedDecodes() {
+    listener.onFrame(frameOf(stateChanged("FINALIZED", "2026.927.101010")));
 
     assertEquals(1, evaluator.observed.size());
     Observation.Released released = (Observation.Released) evaluator.observed.get(0).observation();
     assertEquals("qits-qits", released.repositoryName());
     assertEquals("2026.927.101010", released.version());
+  }
+
+  @Test
+  void aReleasedReleaseRequestStateChangedDoesNotLatch() {
+    // RELEASED is the tag cut; the request can still go OBSOLETE and never ship.
+    listener.onFrame(frameOf(stateChanged("RELEASED", "2026.927.101010")));
+
+    assertTrue(evaluator.observed.isEmpty());
+    assertTrue(fired.fired.isEmpty());
+  }
+
+  @Test
+  void anObsoleteReleaseRequestStateChangedDoesNotLatch() {
+    listener.onFrame(frameOf(stateChanged("OBSOLETE", "2026.927.101010")));
+
+    assertTrue(evaluator.observed.isEmpty());
+    assertTrue(fired.fired.isEmpty());
+  }
+
+  @Test
+  void aFinalizedReleaseRequestStateChangedWithNoVersionDoesNotLatch() {
+    listener.onFrame(frameOf(stateChanged("FINALIZED", null)));
+
+    assertTrue(evaluator.observed.isEmpty());
+    assertTrue(fired.fired.isEmpty());
   }
 
   @Test
@@ -170,7 +184,7 @@ class CampaignCriteriaListenerTest {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
-            "SCMRelease",
+            "ReleaseRequestStateChanged",
             Instant.parse("2026-09-27T10:00:00Z"),
             "not json at all",
             null,
@@ -269,7 +283,7 @@ class CampaignCriteriaListenerTest {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
-            "SCMRelease",
+            "ReleaseRequestStateChanged",
             Instant.parse("2026-09-27T10:00:00Z"),
             "not json at all",
             null,
@@ -280,6 +294,23 @@ class CampaignCriteriaListenerTest {
   }
 
   // -------------------------------------------------------------------------------------------
+
+  private static ReleaseRequestStateChanged stateChanged(String state, String version) {
+    return new ReleaseRequestStateChanged(
+        "req-1",
+        "qits-qits-rr-1",
+        "qits",
+        "repo-1",
+        "qits-qits",
+        "release/qits-qits-rr-1",
+        state,
+        "READY",
+        Instant.parse("2026-09-27T10:00:00Z"),
+        "abc123",
+        version,
+        null,
+        null);
+  }
 
   private static EntityTransitioned.Entity entity(String entityId, String status, String statusBefore) {
     return new EntityTransitioned.Entity(

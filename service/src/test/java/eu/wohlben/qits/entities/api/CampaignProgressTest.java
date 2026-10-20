@@ -193,7 +193,7 @@ class CampaignProgressTest {
     assertEquals(
         "DeploymentActive of qits-projects at or above 2026.930.1 in dev",
         criteria.get(5).wouldBeSatisfiedBy());
-    assertEquals("SCMRelease of qits-qits", criteria.get(6).wouldBeSatisfiedBy());
+    assertEquals("a finalized release of qits-qits", criteria.get(6).wouldBeSatisfiedBy());
     assertEquals("a person approves", criteria.get(7).wouldBeSatisfiedBy());
 
     assertEquals(
@@ -292,7 +292,7 @@ class CampaignProgressTest {
     assertNull(outstanding.approval());
     assertNull(outstanding.satisfiedAt());
     assertEquals(
-        "SCMRelease of qits-qits at or above 2026.930.1 in project p-qits",
+        "a finalized release of qits-qits at or above 2026.930.1 in project p-qits",
         outstanding.wouldBeSatisfiedBy());
 
     assertTrue(progress.members().get(1).groups().get(0).satisfied());

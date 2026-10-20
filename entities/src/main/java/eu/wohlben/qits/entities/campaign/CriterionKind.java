@@ -9,8 +9,10 @@ package eu.wohlben.qits.entities.campaign;
  *       EntityTransitioned}).
  *   <li>{@link #DEPLOYMENT_ACTIVE} — an application goes live, optionally in one environment and at
  *       least at a version ({@code DeploymentActive}).
- *   <li>{@link #SCM_RELEASE} — a repository releases, optionally at least at a version ({@code
- *       SCMRelease}).
+ *   <li>{@link #SCM_RELEASE} — a repository's release request is FINALIZED, optionally at least at
+ *       a version ({@code ReleaseRequestStateChanged} at {@code state == "FINALIZED"}; never
+ *       {@code SCMRelease}'s {@code READY → RELEASED}, since a {@code RELEASED} request can still
+ *       go {@code OBSOLETE} and never ship).
  *   <li>{@link #APPROVAL} — a person says yes. It never matches an event and is latched only by the
  *       approve door.
  * </ul>

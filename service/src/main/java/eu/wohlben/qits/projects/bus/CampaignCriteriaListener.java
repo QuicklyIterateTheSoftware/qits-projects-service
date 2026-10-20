@@ -50,8 +50,13 @@ import org.jboss.logging.Logger;
  *       DeploymentActiveListener#DeploymentActivePayload}, the SAME local record that consumption
  *       already binds and already registers for reflection. A second record here naming the same
  *       three fields would be a second place a rename over there has to be caught.
- *   <li>{@code SCMRelease} — this service's own, decoded straight into the class already published
- *       with, exactly as {@code EntityTransitioned} is.
+ *   <li>{@code ReleaseRequestStateChanged} at {@code FINALIZED} — this service's own, decoded
+ *       straight into the class already published with, exactly as {@code EntityTransitioned} is.
+ *       <b>Not {@code SCMRelease}</b>: that event fires on {@code READY → RELEASED}, the tag cut,
+ *       and a {@code RELEASED} request can still go {@code OBSOLETE} and never ship — so latching a
+ *       campaign criterion on it would dispatch the next member on a release that turned out not to
+ *       happen. {@code FINALIZED} is the green light: the release reached {@code main} and nothing
+ *       can obsolete it from there.
  * </ul>
  *
  * <h2>The retry arm</h2>
@@ -123,7 +128,10 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
 
   static final String ENTITY_TRANSITIONED_SIGNATURE = "EntityTransitioned";
   static final String DEPLOYMENT_ACTIVE_SIGNATURE = "DeploymentActive";
-  static final String SCM_RELEASE_SIGNATURE = "SCMRelease";
+  static final String RELEASE_REQUEST_STATE_CHANGED_SIGNATURE = "ReleaseRequestStateChanged";
+
+  /** The only state this consumer latches a criterion on — see the class javadoc. */
+  private static final String FINALIZED = "FINALIZED";
 
   /**
    * This consumer's storage key, in {@code consumed_event} and {@code consumer_watermark}. <b>Never
@@ -151,7 +159,10 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
 
   @Override
   public Set<String> signatures() {
-    return Set.of(ENTITY_TRANSITIONED_SIGNATURE, DEPLOYMENT_ACTIVE_SIGNATURE, SCM_RELEASE_SIGNATURE);
+    return Set.of(
+        ENTITY_TRANSITIONED_SIGNATURE,
+        DEPLOYMENT_ACTIVE_SIGNATURE,
+        RELEASE_REQUEST_STATE_CHANGED_SIGNATURE);
   }
 
   @Override
@@ -169,7 +180,7 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
     switch (frame.name()) {
       case ENTITY_TRANSITIONED_SIGNATURE -> onEntityTransitioned(frame);
       case DEPLOYMENT_ACTIVE_SIGNATURE -> onDeploymentActive(frame);
-      case SCM_RELEASE_SIGNATURE -> onScmRelease(frame);
+      case RELEASE_REQUEST_STATE_CHANGED_SIGNATURE -> onReleaseRequestStateChanged(frame);
       default ->
           // The dispatcher only ever offers what signatures() named; this is defensive rather than
           // reachable.
@@ -218,9 +229,17 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
     epicsTransaction.accept(() -> fire(observe(observation, eventId, frame), eventId));
   }
 
-  private void onScmRelease(EventFrame frame) {
-    SCMRelease release = decode(frame, SCMRelease.class);
-    if (release == null) {
+  /**
+   * Latches on {@code FINALIZED} alone — see the class javadoc for why {@code RELEASED} is not
+   * enough. Anything else (another state, or a version this payload does not carry) returns before
+   * any transaction opens, exactly as a poison payload does.
+   */
+  private void onReleaseRequestStateChanged(EventFrame frame) {
+    ReleaseRequestStateChanged changed = decode(frame, ReleaseRequestStateChanged.class);
+    if (changed == null) {
+      return;
+    }
+    if (!FINALIZED.equals(changed.state()) || isBlank(changed.version())) {
       return;
     }
     UUID eventId = eventIdOf(frame);
@@ -228,8 +247,12 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
       return;
     }
     Observation observation =
-        new Observation.Released(release.projectId(), release.repositoryName(), release.version());
+        new Observation.Released(changed.projectId(), changed.repoName(), changed.version());
     epicsTransaction.accept(() -> fire(observe(observation, eventId, frame), eventId));
+  }
+
+  private static boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 
   private List<String> observe(Observation observation, UUID eventId, EventFrame frame) {
