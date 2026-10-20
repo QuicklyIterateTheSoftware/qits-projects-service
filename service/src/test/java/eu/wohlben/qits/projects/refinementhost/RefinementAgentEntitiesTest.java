@@ -19,14 +19,15 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link RefinementAgentEntities} — plain JUnit over a directly-constructed bean, a Vert.x server
- * standing in for the far end of the tunnel (qits-614, qits-617).
+ * standing in for the far end of the tunnel (qits-614, qits-617, qits-1285).
  *
  * <p>What is pinned is what the proxy would otherwise have done for this hop and nothing does now:
  * the path keeps the proxy prefix (the daemon refuses anything outside the base it was told), the
  * bearer is the daemon api token, the {@code Host} is the daemon's own authority, and the body is
- * {@code {"title": …, "status": …, "blocked": …}}; that a daemon older than {@code agents/entity}
- * is told the flag on {@code agents/blocked}; and that nothing — no refinement, no tunnel, a daemon
- * older than both routes, a lookup that throws — escapes as an exception.
+ * {@code {"title": …, "status": …, "blocked": …}}; that the entity id rides in the path as the
+ * agent id, with no second id to carry; that a 404 — no agent started in the room yet — is logged
+ * and never retried; and that nothing — no refinement, no tunnel, any other refusal, a lookup that
+ * throws — escapes as an exception.
  *
  * <p><b>Every request is issued from a Vert.x worker</b> ({@code executeBlocking}), never from the
  * JUnit thread: a client driven from a thread with no context mints a new context per call and can
@@ -41,15 +42,6 @@ class RefinementAgentEntitiesTest {
   private HttpClient client;
   private final List<Received> received = new CopyOnWriteArrayList<>();
   private final AtomicInteger status = new AtomicInteger(200);
-  /** A route suffix this daemon does not serve: 404 there, whatever {@link #status} says. */
-  private final List<String> unserved = new CopyOnWriteArrayList<>();
-
-  /**
-   * A route suffix this daemon's router rejects the method for: 405 there, whatever {@link #status}
-   * says. Plays an older daemon whose {@code /agents/*} router answers 405 rather than 404 for a
-   * sub-path it does not know (qits-617).
-   */
-  private final List<String> methodNotAllowed = new CopyOnWriteArrayList<>();
 
   @BeforeEach
   void start() throws Exception {
@@ -70,13 +62,7 @@ class RefinementAgentEntitiesTest {
                                       request.getHeader("Authorization"),
                                       request.getHeader("Host"),
                                       body.toString()));
-                              boolean served =
-                                  unserved.stream().noneMatch(request.uri()::endsWith);
-                              boolean rejectedMethod =
-                                  methodNotAllowed.stream().anyMatch(request.uri()::endsWith);
-                              int code =
-                                  !served ? 404 : rejectedMethod ? 405 : status.get();
-                              request.response().setStatusCode(code).end();
+                              request.response().setStatusCode(status.get()).end();
                             }))
             .listen(0, "127.0.0.1")
             .toCompletionStage()
@@ -144,7 +130,7 @@ class RefinementAgentEntitiesTest {
     assertEquals(2, received.size(), "one POST per signal, no fallback on a 200: " + received);
     Received first = received.get(0);
     assertEquals("POST", first.method());
-    assertEquals("/projects/refinement-container/7/agents/entity", first.uri());
+    assertEquals("/projects/refinement-container/7/agent-worktrees/epic-1/entity", first.uri());
     assertEquals("Bearer daemon-token", first.auth());
     assertEquals("localhost:13338", first.host());
     // A title is a person's text: it is JSON-encoded, never concatenated.
@@ -178,68 +164,25 @@ class RefinementAgentEntitiesTest {
         received.get(1).body());
   }
 
-  /** A daemon older than {@code agents/entity} is told the flag on the route it does have. */
-  @Test
-  void anOlderDaemonIsToldTheFlagOnTheBlockedRoute() throws Exception {
-    unserved.add("/agents/entity");
-    RefinementAgentEntities blocks = blocks(refinement(7), true);
-
-    onAWorker(
-        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
-
-    assertEquals(2, received.size(), "the entity route, then the blocked route: " + received);
-    assertEquals("/projects/refinement-container/7/agents/entity", received.get(0).uri());
-    assertEquals("/projects/refinement-container/7/agents/blocked", received.get(1).uri());
-    assertEquals("Bearer daemon-token", received.get(1).auth());
-    assertEquals("{\"blocked\":true}", received.get(1).body());
-  }
-
   /**
-   * The 405 sibling: a daemon whose {@code /agents/*} router rejects the method for a sub-path it
-   * does not know, answering 405 rather than 404, is told the flag on the route it does have
-   * (qits-617; measured live against 2026.1001.72420).
+   * A 404 is the ordinary case — no agent has been started in this refinement room yet — so it is
+   * never a throw, never retried on a second route (there is no second route any more), and asks
+   * only once.
    */
   @Test
-  void aDaemonThatAnswers405OnEntityIsToldTheFlagOnTheBlockedRoute() throws Exception {
-    methodNotAllowed.add("/agents/entity");
-    RefinementAgentEntities blocks = blocks(refinement(7), true);
-
-    onAWorker(
-        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
-
-    assertEquals(2, received.size(), "the entity route, then the blocked route: " + received);
-    assertEquals("/projects/refinement-container/7/agents/entity", received.get(0).uri());
-    assertEquals("/projects/refinement-container/7/agents/blocked", received.get(1).uri());
-    assertEquals("{\"blocked\":true}", received.get(1).body());
-  }
-
-  /** A daemon older than both routes answers 404 twice: one WARN, never a throw, no third ask. */
-  @Test
-  void aDaemonOlderThanBothRoutesIsNeverAThrow() throws Exception {
+  void aDaemonThatHasNoAgentStartedYetIsNeverAThrow() throws Exception {
     status.set(404);
     RefinementAgentEntities blocks = blocks(refinement(7), true);
 
     onAWorker(
         () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
 
-    assertEquals(2, received.size());
+    assertEquals(1, received.size(), "exactly one POST, no retry on a 404: " + received);
   }
 
-  /** A daemon older than both routes, both 405: the same no-throw, no-third-ask shape as 404. */
+  /** Any other refusal is the one WARN, never a throw, and asks only once. */
   @Test
-  void aDaemonThatAnswers405OnBothRoutesIsNeverAThrow() throws Exception {
-    status.set(405);
-    RefinementAgentEntities blocks = blocks(refinement(7), true);
-
-    onAWorker(
-        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
-
-    assertEquals(2, received.size());
-  }
-
-  /** Any refusal other than a 404 is not an older daemon, and is not retried on the old route. */
-  @Test
-  void aRefusalOtherThan404IsNotRetried() throws Exception {
+  void aRefusalOtherThan404IsNeverAThrow() throws Exception {
     status.set(500);
     RefinementAgentEntities blocks = blocks(refinement(7), true);
 
