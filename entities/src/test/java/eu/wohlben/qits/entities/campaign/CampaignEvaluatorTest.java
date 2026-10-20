@@ -126,7 +126,7 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
 
     assertEquals(List.of(f.membershipId()), observe(now(hit)));
     assertEquals(
-        "SCMRelease: " + hit.repositoryName() + " 2026.1001.93000",
+        "ReleaseRequestStateChanged: " + hit.repositoryName() + " 2026.1001.93000",
         only(f.campaign(), f.membershipId()).evidenceSummary);
   }
 
@@ -336,7 +336,7 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
         switch (observation) {
           case EntityReached r -> "EntityTransitioned";
           case DeploymentWentActive d -> "DeploymentActive";
-          case Released r -> "SCMRelease";
+          case Released r -> "ReleaseRequestStateChanged";
         };
     return new Observed(observation, UUID.randomUUID(), signature, occurredAt);
   }

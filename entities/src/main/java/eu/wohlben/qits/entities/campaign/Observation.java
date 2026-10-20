@@ -39,7 +39,11 @@ public sealed interface Observation {
     }
   }
 
-  /** An {@code SCMRelease}. */
+  /**
+   * A finalized release — {@code ReleaseRequestStateChanged} at {@code state == "FINALIZED"}, never
+   * {@code SCMRelease}'s {@code READY → RELEASED}: a {@code RELEASED} request can still go {@code
+   * OBSOLETE} and never ship, and {@code FINALIZED} is the fact that it did.
+   */
   record Released(String projectId, String repositoryName, String version) implements Observation {
     @Override
     public CriterionKind kind() {

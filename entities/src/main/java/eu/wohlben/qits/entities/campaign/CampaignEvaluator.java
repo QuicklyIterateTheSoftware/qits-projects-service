@@ -265,8 +265,8 @@ public class CampaignEvaluator {
 
   /**
    * The one-line evidence, per the catalogue: {@code EntityTransitioned: qits-412 IMPLEMENTED →
-   * VERIFIED}, {@code DeploymentActive: qits-projects 2026.1001.91244 in dev}, {@code SCMRelease:
-   * qits-qits 2026.1001.93000}.
+   * VERIFIED}, {@code DeploymentActive: qits-projects 2026.1001.91244 in dev}, {@code
+   * ReleaseRequestStateChanged: qits-qits 2026.1001.93000}.
    */
   private String summary(Observation.Observed observed) {
     String body =

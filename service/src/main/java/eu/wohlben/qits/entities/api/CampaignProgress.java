@@ -142,7 +142,7 @@ public final class CampaignProgress {
   /**
    * The sentence that would latch {@code predicate}: {@code "qits-280 (Campaigns in the SPA) reaches
    * VERIFIED"}, {@code "DeploymentActive of qits-projects at or above 2026.930.1 in dev"}, {@code
-   * "SCMRelease of qits-qits at or above 2026.930.1"}, {@code "a person approves"}.
+   * "a finalized release of qits-qits at or above 2026.930.1"}, {@code "a person approves"}.
    */
   public static String wouldBeSatisfiedBy(
       CriterionPredicate predicate,
@@ -163,7 +163,7 @@ public final class CampaignProgress {
               + floor(p.minimumVersion())
               + (p.environmentName() == null ? "" : " in " + p.environmentName());
       case CriterionPredicate.ScmRelease p ->
-          "SCMRelease of "
+          "a finalized release of "
               + p.repositoryName()
               + floor(p.minimumVersion())
               + (p.projectId() == null ? "" : " in project " + p.projectId());
