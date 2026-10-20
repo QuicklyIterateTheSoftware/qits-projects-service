@@ -441,6 +441,36 @@ public class BackupPushServiceTest {
   }
 
   /**
+   * A project's {@code qits-agent-config} is platform state and is never mirrored (qits-1382) —
+   * even under a wrapper that names a forge, where a blank component would derive a twin from it.
+   * Its url stays null, so neither the sweep's nor the project button's list carries it, and a
+   * push-triggered run skips it like any other row with no twin.
+   */
+  @Test
+  public void anAgentConfigRepositoryIsNeverBackedUp() {
+    var project = projectService.create("Backup Agent Config", "backup-agent-config", null);
+    var wrapper = projectService.findWrapper(project.id).orElseThrow();
+    io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                repositoryService.get(wrapper.id).url =
+                    "https://forge.example.test/backup-agent-config/"
+                        + "backup-agent-config-backup-agent-config.git");
+
+    String id = projectService.ensureAgentConfigRepository(project.id).repository().id;
+
+    assertEquals(
+        null,
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+            .call(() -> repositoryService.get(id).url),
+        "no twin is derived for it, whatever the wrapper names");
+    assertTrue(!repositoryService.repositoryIdsWithBackupTwin(project.id).contains(id));
+    assertTrue(!repositoryService.repositoryIdsWithBackupTwin().contains(id));
+    backupPushService.backupNow(id);
+    assertEquals(null, outcomeOf(id), "skipped, not failed");
+  }
+
+  /**
    * The classifier, against the sentences git actually prints. Three outcomes rather than one,
    * because each asks something different of a person — and matching on git's English is only safe
    * because {@code GitExecutor} pins {@code LC_ALL=C}.

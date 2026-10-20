@@ -1,0 +1,3 @@
+# Every release request of this repository waits for a person's approval: what it merges into main
+# is what every agent of the project inherits from then on (qits-1382).
+manual-review: true

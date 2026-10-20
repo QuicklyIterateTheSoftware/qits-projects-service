@@ -467,9 +467,9 @@ public class ProjectController {
       responseCode = "400",
       description =
           "Neither or both of url/name, an archetype that is not a component of a project"
-              + " (PROJECT, SERVICE_TEMPLATE, FORK), a name that carries no role suffix when no"
-              + " archetype is stated, a name already taken in the project, or a wrapper commit the"
-              + " git host refused")
+              + " (PROJECT, SERVICE_TEMPLATE, FORK, AGENT_CONFIG), a name that carries no role suffix"
+              + " when no archetype is stated, a name already taken in the project, or a wrapper"
+              + " commit the git host refused")
   public CreateProjectRepositoryRequest.Response createRepository(
       @PathParam("projectId") String projectId, @Valid CreateProjectRepositoryRequest request) {
     var created =
@@ -481,6 +481,63 @@ public class ProjectController {
             request.component());
     return new CreateProjectRepositoryRequest.Response(
         repositoryMapper.toDto(created.repository()), projectId, created.wrapperPath());
+  }
+
+  /**
+   * Makes sure the project has its {@code qits-agent-config} — the repository its Claude Code agents'
+   * memories, skills and enabled plugins live in (qits-1382) — and answers it.
+   *
+   * <p><b>201 when this call created it, 200 when it was already there</b>, with the same {@code
+   * RepositoryDto} either way, so a caller that only needs the id presses it unconditionally. No
+   * body: the name ({@code qits-agent-config}) and the kind ({@code AGENT_CONFIG}) are not the
+   * caller's to choose — and so any content type is accepted, a missing one included, rather than
+   * the class's JSON: a bodiless press that forgot the header is not a reason for a 415.
+   *
+   * <p>A door of its own rather than an archetype on {@code POST …/repositories}, which refuses
+   * {@code AGENT_CONFIG} like every kind that is not a component of its project: what that door
+   * does after creating — the wrapper entry, the main workspace, the derived backup twin — is
+   * exactly what this repository must not get. It is platform state, not software.
+   *
+   * <p>Roles are the create door's, spelled in full for the same reason: a method-level {@code
+   * @RolesAllowed} replaces the class-level one. The agent is here because the workspace daemon that
+   * writes the agents' branches asks on their behalf, and all it can do is create the one repository
+   * a project is meant to have, or read it back.
+   */
+  @POST
+  @Path("/{projectId}/agent-config-repository")
+  @Consumes(MediaType.WILDCARD)
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @Operation(
+      operationId = "ensureAgentConfigRepository",
+      summary = "Create the project's qits-agent-config, or answer the one it has",
+      description =
+          "The repository a project's agents inherit memories, skills and enabled plugins from."
+              + " Seeded from the agent configuration template as one commit on main; never added to"
+              + " the wrapper, never given a backup twin. Idempotent on the name.")
+  @APIResponse(
+      responseCode = "201",
+      description = "Created, seeded and served by the git host",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = RepositoryDto.class)))
+  @APIResponse(
+      responseCode = "200",
+      description = "The project already had it; answered as it stands",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = RepositoryDto.class)))
+  @APIResponse(responseCode = "404", description = "No such project")
+  public jakarta.ws.rs.core.Response ensureAgentConfigRepository(
+      @PathParam("projectId") String projectId) {
+    var ensured = projectService.ensureAgentConfigRepository(projectId);
+    return jakarta.ws.rs.core.Response.status(
+            ensured.created()
+                ? jakarta.ws.rs.core.Response.Status.CREATED
+                : jakarta.ws.rs.core.Response.Status.OK)
+        .entity(repositoryMapper.toDto(ensured.repository()))
+        .build();
   }
 
   /**

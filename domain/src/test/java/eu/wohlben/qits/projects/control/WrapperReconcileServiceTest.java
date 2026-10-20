@@ -230,6 +230,27 @@ public class WrapperReconcileServiceTest {
   }
 
   /**
+   * A project's {@code qits-agent-config} is not a component either (qits-1382): no entry names it,
+   * the reconcile reports nothing about it, and — since only a row an entry matched is ever
+   * re-pointed — it keeps having no backup twin under a wrapper that names a forge.
+   */
+  @Test
+  public void theAgentConfigRepositoryIsNeitherReportedNorRepointed() throws Exception {
+    Project project = projectWithManifest("Reconcile Agent Config");
+    String id = projectService.ensureAgentConfigRepository(project.id).repository().id;
+
+    var reconciliation = reconcileService.reconcile(project.id);
+
+    assertTrue(
+        reconciliation.entries().stream().noneMatch(e -> id.equals(e.repositoryId())),
+        "no line at all: " + reconciliation.entries());
+    assertEquals(
+        1,
+        repositoryRepository.count("id = ?1 and url is null", id),
+        "the row stays, still with no twin");
+  }
+
+  /**
    * An empty manifest is not a manifest. Calling every component of a project undeclared because its
    * wrapper has not started declaring them would report the whole project as strays on the strength
    * of a file that is not there.

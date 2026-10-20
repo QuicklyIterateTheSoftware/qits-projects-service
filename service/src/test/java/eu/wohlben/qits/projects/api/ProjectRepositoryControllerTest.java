@@ -309,6 +309,29 @@ public class ProjectRepositoryControllerTest {
     // the name declares nothing either — see aNameWithNoRoleSuffixAndNoArchetypeIsRefused.
   }
 
+  /**
+   * {@code AGENT_CONFIG} is not a component of its project either (qits-1382), so this door refuses
+   * it even under the very name its own door mints — {@code POST …/agent-config-repository} is the
+   * only way one comes to exist, and nothing is left behind by the refusal.
+   */
+  @Test
+  public void theAgentConfigArchetypeIsRefusedHere() {
+    String projectId = createProject("Agent Config Not Here");
+
+    postRepository(projectId, null, "qits-agent-config", RepositoryArchetype.AGENT_CONFIG)
+        .then()
+        .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
+        .body("message", containsString("is not a component of a project"));
+
+    given()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/repositories")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("entries", hasSize(1))
+        .body("entries[0].repository.archetype", equalTo("PROJECT"));
+  }
+
   // --- reconcile ---
 
   @Test

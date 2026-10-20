@@ -2212,6 +2212,7 @@ components:
       - IMAGE
       - SERVICE_TEMPLATE
       - FORK
+      - AGENT_CONFIG
     RepositoryCoordinatesDto:
       type: object
       properties:
@@ -3879,6 +3880,46 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+  /projects/api/projects/{projectId}/agent-config-repository:
+    post:
+      summary: "Create the project's qits-agent-config, or answer the one it has"
+      description: "The repository a project's agents inherit memories, skills and\
+        \ enabled plugins from. Seeded from the agent configuration template as one\
+        \ commit on main; never added to the wrapper, never given a backup twin. Idempotent\
+        \ on the name."
+      operationId: ensureAgentConfigRepository
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "201":
+          description: "Created, seeded and served by the git host"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDto"
+        "200":
+          description: The project already had it; answered as it stands
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryDto"
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:agent
   /projects/api/projects/{projectId}/agent-container:
     get:
       parameters:
@@ -4200,9 +4241,9 @@ paths:
                 $ref: "#/components/schemas/Response8"
         "400":
           description: "Neither or both of url/name, an archetype that is not a component\
-            \ of a project (PROJECT, SERVICE_TEMPLATE, FORK), a name that carries\
-            \ no role suffix when no archetype is stated, a name already taken in\
-            \ the project, or a wrapper commit the git host refused"
+            \ of a project (PROJECT, SERVICE_TEMPLATE, FORK, AGENT_CONFIG), a name\
+            \ that carries no role suffix when no archetype is stated, a name already\
+            \ taken in the project, or a wrapper commit the git host refused"
         "401":
           description: Not Authorized
         "403":

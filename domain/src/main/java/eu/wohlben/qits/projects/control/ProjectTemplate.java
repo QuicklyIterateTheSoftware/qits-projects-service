@@ -25,7 +25,7 @@ import java.util.stream.Stream;
  * The committed skeletons a repository's first commit is made of, and the one reader that walks
  * them off the classpath.
  *
- * <p>Two of them, for the two greenfield creation paths:
+ * <p>Three of them, for the three greenfield creation paths:
  *
  * <ul>
  *   <li><b>{@code project-template/}</b> — every wrapper repository's first commit: the empty
@@ -39,11 +39,16 @@ import java.util.stream.Stream;
  *       smaller, and deliberately so: what a component contains is the author's business, and all
  *       this has to do is give {@code main} a commit for the wrapper's gitlink to pin and a
  *       workspace container's clone to land on.
+ *   <li><b>{@code agent-config-template/}</b> — a project's {@code qits-agent-config}'s first commit
+ *       (qits-1382): the empty {@code memory/}, {@code skills/} and {@code settings.json} the
+ *       workspace daemon writes agents' branches over, the {@code .claude-plugin/plugin.json} that
+ *       ships the skills as a plugin, and the {@code .config/qits/release-requests.yml} that puts
+ *       every merge into {@code main} in front of a person.
  * </ul>
  *
- * <p>Both live as ordinary committed files rather than as strings in Java, so they stay reviewable
- * and can grow without touching code. Nothing in either is project-specific, so both are committed
- * <b>verbatim</b> — no placeholders, no template engine.
+ * <p>All three live as ordinary committed files rather than as strings in Java, so they stay
+ * reviewable and can grow without touching code. Nothing in any of them is project-specific, so
+ * each is committed <b>verbatim</b> — no placeholders, no template engine.
  */
 @ApplicationScoped
 public class ProjectTemplate {
@@ -52,6 +57,9 @@ public class ProjectTemplate {
 
   /** The blank-component skeleton — see the class doc. */
   static final String REPOSITORY_RESOURCE_ROOT = "repository-template";
+
+  /** The agent configuration skeleton — see the class doc. */
+  static final String AGENT_CONFIG_RESOURCE_ROOT = "agent-config-template";
 
   /**
    * Marks a resource whose <em>content</em> is a symlink target rather than file content. Maven
@@ -103,6 +111,11 @@ public class ProjectTemplate {
   /** The blank-component skeleton's entries, same ordering rule. */
   public List<TemplateEntry> repositoryEntries() {
     return entriesOf(REPOSITORY_RESOURCE_ROOT);
+  }
+
+  /** The agent configuration skeleton's entries, same ordering rule. */
+  public List<TemplateEntry> agentConfigEntries() {
+    return entriesOf(AGENT_CONFIG_RESOURCE_ROOT);
   }
 
   private List<TemplateEntry> entriesOf(String resourceRoot) {

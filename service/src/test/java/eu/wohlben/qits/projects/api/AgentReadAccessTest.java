@@ -165,9 +165,13 @@ class AgentReadAccessTest {
    * and may not take anything out of it, which is the same line the four {@link #ADMIN_ONLY_WRITES}
    * draw. {@code ProjectController.adoptRepository} is not here either, for a different reason: it
    * is {@code qits:system} alone, because its caller supplies a git-host storage id.
+   *
+   * <p>{@code ProjectController.ensureAgentConfigRepository} is the same argument once more
+   * (qits-1382): it creates the project's one {@code qits-agent-config} if it has none, and
+   * otherwise only reads it back.
    */
   private static final Set<String> CATALOGUE_AGENT_WRITES =
-      Set.of("ProjectController.createRepository");
+      Set.of("ProjectController.createRepository", "ProjectController.ensureAgentConfigRepository");
 
   /**
    * <b>The campaign build doors an agent reaches</b> (qits-413): the four membership writes — each bound to the agent's own project by {@code

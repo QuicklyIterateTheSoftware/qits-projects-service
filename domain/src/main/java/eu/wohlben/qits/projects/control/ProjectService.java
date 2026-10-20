@@ -652,6 +652,50 @@ public class ProjectService {
   }
 
   /**
+   * The project's agent configuration repository, and whether this call is what created it.
+   *
+   * @param created false when the project already had a repository named {@link
+   *     RepositoryService#AGENT_CONFIG_NAME}, which is then the one answered
+   */
+  public record AgentConfigRepository(Repository repository, boolean created) {}
+
+  /**
+   * The project's {@code qits-agent-config}, created when it has none yet (qits-1382) — the seam
+   * behind {@code POST /projects/api/projects/{projectId}/agent-config-repository}.
+   *
+   * <p><b>Idempotent on the name.</b> A repository already answering to {@link
+   * RepositoryService#AGENT_CONFIG_NAME} in this project is answered as it stands, untouched. Two
+   * presses racing each other converge too: the loser's create fails on the taken name, and the read
+   * after it finds the winner's row.
+   *
+   * <p>Unlike {@link #createRepository}, <b>the wrapper is not written</b>: {@link
+   * RepositoryArchetype#AGENT_CONFIG} is not a component of its project, so no {@code .gitmodules}
+   * entry ever names it, and the membership rules that read {@link
+   * RepositoryArchetype#isComponentOfItsProject} leave it alone. See {@link
+   * RepositoryService#createAgentConfigRepository} for what else it is born without.
+   */
+  public AgentConfigRepository ensureAgentConfigRepository(String projectId) {
+    Project project = get(projectId);
+    Optional<Repository> existing = agentConfigOf(projectId);
+    if (existing.isPresent()) {
+      return new AgentConfigRepository(existing.get(), false);
+    }
+    try {
+      return new AgentConfigRepository(
+          repositoryService.createAgentConfigRepository(project), true);
+    } catch (RuntimeException e) {
+      return agentConfigOf(projectId)
+          .map(raced -> new AgentConfigRepository(raced, false))
+          .orElseThrow(() -> e);
+    }
+  }
+
+  private Optional<Repository> agentConfigOf(String projectId) {
+    return repositoryNameRepository.findRepositoryByProjectAndName(
+        projectId, RepositoryService.AGENT_CONFIG_NAME);
+  }
+
+  /**
    * A repository and the wrapper entry that makes it part of the project.
    *
    * @param wrapperPath where the wrapper mounts it, e.g. {@code services/checkout}

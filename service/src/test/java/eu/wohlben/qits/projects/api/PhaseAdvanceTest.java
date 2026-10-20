@@ -1171,6 +1171,52 @@ public class PhaseAdvanceTest {
   }
 
   /**
+   * <b>The project's {@code qits-agent-config} is released like any other repository of the
+   * project</b> (qits-1382): the workspace daemon writes an agent's memories and skills on a branch
+   * named exactly like its wrapper branch, the agent reports it, and VERIFIED asks for it in its own
+   * repository — before the wrapper, which always goes last. Nothing here knows the archetype: it
+   * is in scope because it is the work item's project's repository and the branch is in the agent's
+   * scope.
+   */
+  @Test
+  public void aMoveIntoVerifiedAsksForTheAgentConfigBranchBeforeTheWrapper() {
+    String projectId = createProject("Advance Release Agent Config");
+    String ticketId = createTicket(projectId, "Remember this");
+    String wrapperId = wrapperIdOf(projectId);
+    String agentConfigId = projects.ensureAgentConfigRepository(projectId).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch),
+            new WorkspaceAgentDispatch.Branch(agentConfigId, branch)));
+    onTheGitHost(wrapperId, branch);
+    onTheGitHost(agentConfigId, branch);
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> agentConfig = releaseRequestsOf(agentConfigId);
+    List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
+    assertEquals(1, agentConfig.size(), "one request in qits-agent-config: " + agentConfig);
+    assertEquals(1, wrapper.size(), "and one in the wrapper: " + wrapper);
+    assertTrue(
+        sourceNamesOf(agentConfig.get(0)).contains(branch),
+        "the agent's own branch, in its own repository: " + sourceNamesOf(agentConfig.get(0)));
+    assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch), sourceNamesOf(wrapper.get(0)).toString());
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(
+        said.indexOf((String) agentConfig.get(0).get("qualifiedId"))
+            < said.indexOf((String) wrapper.get(0).get("qualifiedId")),
+        "the agent configuration is asked for before the wrapper: " + said);
+  }
+
+  /**
    * <b>The agent's list is its word, and only what lies in its scope is released</b> (qits-1152).
    * Another work item's branch, {@code main}, a name that only looks like the wrapper branch and the
    * agent's own branch name in another project's repository are each left off (D28: the repository
