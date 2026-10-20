@@ -157,8 +157,9 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     `TransitionAnnouncer` implementation — so the bulk `POST /work/transition` is covered, and a move signals exactly once), and a retitle (the
     `entities` port `RetitleAnnouncer`, told by `WorkEntityService.update` only when the title
     changed). It also asks the entity's refinement through `refinementhost/RefinementAgentEntities`
-    (`POST <proxy base> agents/entity` down the tunnel, falling back to `agents/blocked` on a 404).
-    The dispatch seeds the same three values (`entityTitle`, `entityStatus`, `entityBlocked`), and
+    (`POST <proxy base> agent-worktrees/{entityId}/entity` down the tunnel, the entity id doubling as
+    the agent id; a 404 there just means no agent has been started in that room yet, logged at DEBUG
+    and never retried, qits-1285). The dispatch seeds the same three values (`entityTitle`, `entityStatus`, `entityBlocked`), and
     a refinement container is given them as `QITS_WORKSPACE_DAEMON_ENTITY_TITLE` / `_STATUS` /
     `_BLOCKED` at every bring-up.
 

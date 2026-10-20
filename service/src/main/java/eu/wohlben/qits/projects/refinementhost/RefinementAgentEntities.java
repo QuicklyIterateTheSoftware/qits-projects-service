@@ -29,32 +29,33 @@ import org.jboss.logging.Logger;
  * person's requests through. This class is the host-initiated hop down that same tunnel, the way
  * {@code agenthost/AgentCapabilityRelay} reads a project agent's daemon down its own.
  *
- * <h2>The contract</h2>
+ * <h2>The contract (qits-1285)</h2>
  *
  * <pre>
- *   POST /projects/refinement-container/{id}/agents/entity       (through the tunnel)
+ *   POST /projects/refinement-container/{id}/agent-worktrees/{entityId}/entity   (through the tunnel)
  *   Authorization: Bearer &lt;qits.projects.refinement-daemon-api-token&gt;
  *   Host: localhost:&lt;qits.projects.refinement-daemon-api-port&gt;
  *
  *   {"title": "…", "status": "REFINED", "blocked": true, "blockSource": "AGENT_WAITING"}
  * </pre>
  *
+ * <p><b>{@code entityId} IS the agent id</b>: since qits-1152 the daemon has no container-wide
+ * {@code /agents/*} door at all, only this per-agent one. A refinement room starts exactly one
+ * agent, and the refining page starts it ({@code POST <proxy base>agent-worktrees}) under {@link
+ * Refinement#entityId}, so that is the id this class addresses it by. There is no second id to
+ * carry.
+ *
  * <p><b>{@code blockSource} (qits-895)</b> is the effective block's source —
  * {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or
- * {@code "BOTH"} — omitted whenever {@code blocked} is false. A daemon old enough to answer 404 or
- * 405 on {@code agents/entity} never sees it; the fallback below still carries only the flag, as it
- * always has.
+ * {@code "BOTH"} — omitted whenever {@code blocked} is false.
  *
- * <p><b>A 404 OR A 405 there is retried once on {@code agents/blocked} with {@code {"blocked":
- * …}}</b>: both are what a daemon older than the entity route answers — a refinement container is
- * only re-created at a wake, so one started on an older image stays on it for as long as it runs —
- * and that daemon knows the flag. 405 is the same absence read a different way: measured live
- * 2026-10-01 against workspace-daemon 2026.1001.72420, its {@code /agents/*} router rejects a
- * method it does not recognise for a sub-path before it ever resolves the path, so {@code POST
- * /agents/entity} answers 405 there rather than 404 (qits-617). Treating only 404 as "older than
- * the route" left such a daemon falling through to the generic non-2xx WARN below instead of the
- * fallback. The title and status reach it at its next wake, through the environment below. A 404 or
- * 405 on both is a daemon older than both, and is the one WARN.
+ * <p><b>A 404 means no agent has been started in this room yet</b>, and it is the ordinary case
+ * rather than an exception: a room's one agent is started by whatever the SPA's refining page does
+ * first, which can easily run after the entity's title, status or block flag has already changed
+ * once. There is no fallback to retry on — the container-wide routes a 404 used to mean "this daemon
+ * predates" are gone — so a 404 is logged at DEBUG and nothing more is asked. The agent that starts
+ * later is seeded with the entity as it then stands, by the start request and by the environment
+ * {@link RefinementContainerFactory} puts on the spec.
  *
  * <p><b>The path keeps the proxy prefix</b>, and it has to: the daemon was told {@link
  * RefinementPaths#proxyBase} as {@code QITS_WORKSPACE_DAEMON_API_BASE_PATH} at creation and refuses
@@ -67,10 +68,14 @@ import org.jboss.logging.Logger;
  * <p><b>Never throws</b>, for the port's reason: it runs after a block, a transition or a retitle
  * already recorded. No refinement for the entity, or one whose daemon is not connected (a stopped container
  * — {@link RefinementTunnels#originFor} answers empty rather than waking anything), is the ordinary
- * case and costs one indexed read. Anything else — a timeout, a non-2xx, a daemon older than the
- * route answering 404 or 405 — is one WARN. A refinement that missed a signal is corrected at its
- * next wake: {@link RefinementContainerFactory} puts {@code QITS_WORKSPACE_DAEMON_ENTITY_TITLE},
+ * case and costs one indexed read. A 404 — no agent started yet — is DEBUG. Anything else — a
+ * timeout, a non-2xx, an exception — is one WARN. A refinement that missed a signal is corrected at
+ * its next wake: {@link RefinementContainerFactory} puts {@code QITS_WORKSPACE_DAEMON_ENTITY_TITLE},
  * {@code _STATUS} and {@code _BLOCKED} on the spec from the row as it then stands.
+ *
+ * <p>This is qits-1285's stop-gap for a container epic qits-770 is going to delete outright:
+ * refinement containers are on the list to go, and this class with them. Nothing here is written to
+ * outlive that epic.
  *
  * <p>It is synchronous with a short bound rather than fire-and-forget so that a block followed by an
  * unblock — or a transition followed by the next — arrives in that order; the tunnel is loopback to a connected daemon, so the bound is
@@ -82,16 +87,6 @@ public class RefinementAgentEntities {
   private static final Logger LOG = Logger.getLogger(RefinementAgentEntities.class);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-
-  /** The daemon's route, relative to its proxied base path. */
-  static final String ENTITY_PATH = "agents/entity";
-
-  /**
-   * The qits-614 route {@link #ENTITY_PATH} widened, asked only when a daemon 404s or 405s the new
-   * one (qits-617: a 405 is the same "does not know this route" answer, from a router that rejects
-   * the method before it resolves the path).
-   */
-  static final String BLOCKED_PATH = "agents/blocked";
 
   @Inject RefinementService refinements;
 
@@ -143,7 +138,7 @@ public class RefinementAgentEntities {
             refinementId, entityId);
         return;
       }
-      send(refinementId, origin.get(), title, status, blocked, blockSource);
+      send(refinementId, origin.get(), entityId, title, status, blocked, blockSource);
     } catch (RuntimeException e) {
       couldNot("of entity " + entityId, blocked, e.toString());
     }
@@ -153,6 +148,7 @@ public class RefinementAgentEntities {
   void send(
       long refinementId,
       RefinementTunnels.TunnelOrigin origin,
+      String entityId,
       String title,
       String status,
       boolean blocked,
@@ -168,16 +164,12 @@ public class RefinementAgentEntities {
     }
     int answer;
     try {
-      answer = post(refinementId, origin, ENTITY_PATH, MAPPER.writeValueAsString(entity));
-      if (answer == 404 || answer == 405) {
-        // A daemon older than the entity route: tell it the one value it knows. 405 is the same
-        // absence read a different way — an older router rejecting the method before it resolves
-        // the path (qits-617).
-        LOG.debugf(
-            "Refinement %s's daemon has no %s (status %s); telling it only blocked=%s",
-            (Object) refinementId, ENTITY_PATH, Integer.valueOf(answer), Boolean.valueOf(blocked));
-        answer = post(refinementId, origin, BLOCKED_PATH, "{\"blocked\":" + blocked + "}");
-      }
+      answer =
+          post(
+              refinementId,
+              origin,
+              "agent-worktrees/" + entityId + "/entity",
+              MAPPER.writeValueAsString(entity));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       couldNot("of refinement " + refinementId, blocked, "interrupted");
@@ -186,15 +178,17 @@ public class RefinementAgentEntities {
       couldNot("of refinement " + refinementId, blocked, e.toString());
       return;
     }
+    if (answer == 404) {
+      // The ordinary case: no agent has been started in this room yet (qits-1285). There is
+      // nothing to retry — the room's title and status reach it once an agent starts.
+      LOG.debugf(
+          "Refinement %s has no agent started for entity %s yet; its entity state arrives once"
+              + " one is",
+          (Object) refinementId, entityId);
+      return;
+    }
     if (answer / 100 != 2) {
-      couldNot(
-          "of refinement " + refinementId,
-          blocked,
-          "the daemon answered "
-              + answer
-              + (answer == 404 || answer == 405
-                  ? " (a daemon older than " + BLOCKED_PATH + ")"
-                  : ""));
+      couldNot("of refinement " + refinementId, blocked, "the daemon answered " + answer);
       return;
     }
     LOG.infof(
