@@ -117,25 +117,12 @@ class ConsumerPactVerificationTest {
     }
   }
 
-  private static final String NO_PERSON_CREDENTIAL =
-      "the interaction sends no Authorization, but approve and decline are a person's decision:"
-          + " PersonCheck answers 403 to anything but a browser session or a person's qits CLI"
-          + " token, and the CLI really sends that token. The states now record it as the"
-          + " 'authorization' param with 'Authorization: {authorization}' (qits-1149); the CLI's"
-          + " next pact sends ${authorization}";
-
-  static final List<KnownWrong> KNOWN_WRONG =
-      List.of(
-          new KnownWrong(
-              "qits-platform-access-cli",
-              "2026.1019.65035",
-              "qits release-request approve: approveReleaseRequest",
-              NO_PERSON_CREDENTIAL),
-          new KnownWrong(
-              "qits-platform-access-cli",
-              "2026.1019.65035",
-              "qits release-request decline: declineReleaseRequest",
-              NO_PERSON_CREDENTIAL));
+  /**
+   * Empty: qits-platform-access-cli's 2026.1019.65035 approve and decline rows sent no
+   * Authorization, and its 2026.1019.195617 pact sends the person's CLI bearer, so they verify for
+   * real (qits-1149).
+   */
+  static final List<KnownWrong> KNOWN_WRONG = List.of();
 
   @Inject ProviderStates states;
 
