@@ -35,9 +35,12 @@ import org.eclipse.microprofile.config.ConfigProvider;
  * @param blockedBy who set the explicit block, or {@code null} — always null for a derived block
  *     alone, which nobody set
  * @param waitingOn the label of the declared wait the session is waiting on (qits-1153), or {@code
- *     null}. While it is set the session is not waiting for a person, so it derives no block: the
- *     entity reads "waiting on" this label instead. It stands at once, with no debounce — the agent
- *     said what it waits on — and beside an explicit block, which it does not clear
+ *     null}. It stands whether or not the session is also flagged waiting for a person — a wait can
+ *     be open, or freshly declared, while the agent is busy (qits-1460), and the entity keeps
+ *     reading "waiting on" this label rather than losing it until the agent goes idle. While it is
+ *     set the row derives no block from the agent wait regardless of {@link WorkEntity#agentWaitingSince}.
+ *     It stands at once, with no debounce — the agent said what it waits on — and beside an explicit
+ *     block, which it does not clear
  */
 public record EntityBlockState(
     boolean blocked, String source, String reason, String blockedBy, String waitingOn) {
@@ -82,11 +85,14 @@ public record EntityBlockState(
   }
 
   /**
-   * The label of the declared wait the session is waiting on, or null: set only while the session
-   * waits (qits-1153).
+   * The label of the declared wait the session is waiting on, or null. Read straight off the row
+   * (qits-1460): the label stands whether or not the session is also waiting for a person — an
+   * agent can declare, or still be holding, a wait while its turn is busy, and the item keeps
+   * showing it. It is cleared the same way it was before: a frame without it, an unblock, or any
+   * status move.
    */
   public static String waitingOn(WorkEntity row) {
-    return row.agentWaitingSince == null ? null : row.agentWaitingOn;
+    return row.agentWaitingOn;
   }
 
   /**

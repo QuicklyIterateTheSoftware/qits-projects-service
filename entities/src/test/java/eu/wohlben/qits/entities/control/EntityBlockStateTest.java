@@ -110,12 +110,20 @@ class EntityBlockStateTest {
     assertEquals("ci run 42", state.waitingOn());
   }
 
-  /** The label counts only while the session waits. */
+  /**
+   * The label is read regardless of {@code agentWaitingSince}, which can be null while the agent is
+   * still busy with the turn that declared it (qits-1460). The derived block's meaning does not
+   * change: it still needs {@code since != null} and stands at zero here either way.
+   */
   @Test
-  void aLabelWithNoWaitIsNotRead() {
+  void aLabelWithNoOpenWaitForAPersonIsStillRead() {
     WorkEntity row = row(false, null);
-    row.agentWaitingOn = "stale";
-    assertNull(EntityBlockState.of(row, NOW, DEBOUNCE).waitingOn());
+    row.agentWaitingOn = "release of qits-ci-service";
+    EntityBlockState state = EntityBlockState.of(row, NOW, DEBOUNCE);
+    assertEquals("release of qits-ci-service", state.waitingOn());
+    assertFalse(state.blocked());
+    assertNull(state.source());
+    assertFalse(EntityBlockState.agentWaitingEffective(row, NOW, DEBOUNCE));
   }
 
   @Test

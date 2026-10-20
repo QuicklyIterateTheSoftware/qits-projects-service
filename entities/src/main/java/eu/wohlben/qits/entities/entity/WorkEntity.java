@@ -307,9 +307,11 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>The label of the declared wait the session is waiting on</b>, or {@code null} (qits-1153).
-   * While it is set, the session is not waiting for a person: the derived block does not stand and
-   * the entity reads "waiting on" this label ({@code EntityBlockState#waitingOn}). Set and cleared
-   * with {@link #agentWaitingSince}.
+   * Read regardless of {@link #agentWaitingSince} (qits-1460): a wait can be open, or freshly
+   * declared, while the agent is still busy, and the entity keeps reading "waiting on" this label
+   * ({@code EntityBlockState#waitingOn}) rather than losing it until the agent goes idle. While it
+   * is set the derived block does not stand. Cleared the same way it was set: a frame without it, an
+   * explicit unblock and every transition.
    */
   @JsonIgnore
   @Column(name = "agent_waiting_on")

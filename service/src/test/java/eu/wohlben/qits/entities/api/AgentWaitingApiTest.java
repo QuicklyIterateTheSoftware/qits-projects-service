@@ -349,6 +349,35 @@ class AgentWaitingApiTest {
     assertNull(row(ticket).agentWaitingOn, "working again clears it");
   }
 
+  /**
+   * The label is kept whether or not the frame says the session is waiting for a person (qits-1460):
+   * a wait can be declared, or still open, while the agent is busy with its turn. A {@code
+   * waiting=false} frame carrying {@code waitingOn} leaves the label readable on the item, and a
+   * {@code waiting=false} frame with no label clears it.
+   */
+  @Test
+  void aBusyFrameCarryingTheLabelLeavesItReadable() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting While Busy");
+    String ticket = EntityFixtures.ticket(project.id());
+
+    report(ticket, map("waiting", false, "cause", "Wait", "sessionId", "s-1", "waitingOn",
+            "release-request 42"))
+        .statusCode(204);
+
+    read(ticket)
+        .body("waitingOn", equalTo("release-request 42"))
+        .body("blocked", equalTo(false))
+        .body("$", not(hasKey("blockSource")));
+    assertNull(row(ticket).agentWaitingSince, "waiting=false never starts a wait for a person");
+    assertEquals("release-request 42", row(ticket).agentWaitingOn);
+
+    report(ticket, map("waiting", false, "cause", "UserPromptSubmit", "sessionId", "s-1"))
+        .statusCode(204);
+
+    read(ticket).body("$", not(hasKey("waitingOn")));
+    assertNull(row(ticket).agentWaitingOn, "a frame with no label clears it");
+  }
+
   // --- the two sources ---------------------------------------------------------------------------
 
   /**

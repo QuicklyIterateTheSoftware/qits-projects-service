@@ -1663,12 +1663,16 @@ suite calls it) announces each wait as it crosses the debounce: the archetype's 
 a wait the agent declared in qits-workspaces (`{waiting, cause, sessionId, at, waitingOn?}`).
 qits-workspaces sends it with cause `Wait`, the open waits' labels joined by `; `; a `Wait` frame
 without a label reads `a declared wait`. `WaitMatched`/`WaitTimedOut`/`WaitCancelled` are ordinary
-reports. It is stored in `agent_waiting_on` beside the wait and
-cleared with it — a frame without it, `waiting=false`, an unblock and every status move. While it is
-set the session waits on the platform, not on a person: `EntityBlockState` derives no block from the
-wait (the sweep skips the row too), and `waitingOn` (NON_NULL, no debounce) is on
-`TransitionedEntity`, `EntitySummary` and `EntityDispatchStateDto`. A frame that starts, changes or
-ends it is announced at once. The campaign DTOs do not carry it yet.
+reports. It is stored in `agent_waiting_on`, kept whether or not the same frame's `waiting` is true
+(qits-1460: a wait can be open, or freshly declared, while the agent is still busy with its turn, and
+the item keeps showing it rather than losing the label until the agent goes idle), and cleared by a
+frame without it, an unblock and every status move. `EntityBlockState.waitingOn` reads the column
+unconditionally, with no coupling to `agentWaitingSince`; `EntityBlockState.agentWaitingEffective`
+still derives a block only when `agentWaitingSince != null`, `waitingOn` is null and the debounce has
+passed — so a non-null `waitingOn` keeps derived blocking off exactly as it always did, whatever
+`waiting` says. `waitingOn` (NON_NULL, no debounce) is on `TransitionedEntity`, `EntitySummary` and
+`EntityDispatchStateDto`. A frame that starts, changes or ends it is announced at once. The campaign
+DTOs do not carry it yet.
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after

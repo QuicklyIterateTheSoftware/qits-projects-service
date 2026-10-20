@@ -82,8 +82,9 @@ public class AgentWaitingService {
    *
    * @param waiting whether the session is now waiting for a person
    * @param cause what it says it is waiting for, or null
-   * @param waitingOn the label of the declared wait it is waiting on, or null (qits-1153); kept only
-   *     while {@code waiting}, and a waiting frame without it clears it
+   * @param waitingOn the label of the declared wait it is waiting on, or null (qits-1153); kept
+   *     whether or not {@code waiting} is set — a wait can be open, or declared, while the agent is
+   *     busy (qits-1460) — and a frame without it clears it
    * @param at when the session stamped the frame; null or in the future reads as {@code now}
    * @param now this process's clock, passed in so a test can stand anywhere on it
    * @param skew how much older than the row's activity a frame may be and still apply
@@ -126,7 +127,10 @@ public class AgentWaitingService {
           Instant since =
               !waiting ? null : row.agentWaitingSince != null ? row.agentWaitingSince : stamped;
           String said = waiting && cause != null && !cause.isBlank() ? cause.trim() : null;
-          String on = !waiting ? null : declaredWait(cause, waitingOn);
+          // The label is stored whether or not the session is waiting for a person (qits-1460): a
+          // wait can be declared, or still open, while the agent is busy, and the item should keep
+          // showing it rather than losing it until the agent goes idle.
+          String on = declaredWait(cause, waitingOn);
           // Typed binds: a null bound untyped reaches postgres as bytea, which no timestamptz takes.
           em.createNativeQuery(
                   "update entity set agent_activity_at = ?1, agent_waiting_since = ?2,"
