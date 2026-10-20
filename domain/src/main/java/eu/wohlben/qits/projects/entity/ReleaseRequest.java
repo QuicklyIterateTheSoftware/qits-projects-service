@@ -43,7 +43,9 @@ import org.hibernate.annotations.DynamicUpdate;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to
  * {@code PENDING}; {@code WITHDRAWN} is reserved for an explicit withdrawal, and {@code OBSOLETE}
- * for a released-but-unfinalized request a later release of the same repository has overtaken.
+ * for a released-but-unfinalized request that went red — its publish run or its deployment failed
+ * — and that a later release of the same repository has superseded (qits-1471: one still in flight
+ * is waited for, never superseded).
  * Stored as a string with no check constraint, the platform's usual reasoning — which is why
  * CONFLICTED cost no DDL and neither did these two.
  *
@@ -133,9 +135,12 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
      */
     FINALIZED,
     /**
-     * A later release of the same repository overtook this one before it was finalized, so nothing
+     * This one went red before it was finalized — its publish run FAILED, or its deployment failed
+     * and never went live — and a later release of the same repository superseded it, so nothing
      * will ever finish it: the new release folds this one's tag in and supersedes it whole. {@link
-     * #supersededBy} names the request that did it and {@link #detail} says so in a sentence.
+     * #supersededBy} names the request that did it and {@link #detail} says so, and why, in a
+     * sentence. A release still in flight is never made OBSOLETE; a later request waits for it to
+     * finalize instead (qits-1471).
      */
     OBSOLETE
   }
@@ -359,10 +364,10 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /**
    * The request that made this one {@link State#OBSOLETE} — a later release of the same repository
-   * that overtook this one before it was finalized. Null in every other state, and it is a plain id
-   * with no foreign key for the reason {@link #gateTicketId} states one field down in reverse: the
-   * row it names is in this very table, but a delete of it must not cascade into the record of what
-   * superseded what.
+   * that superseded this one after it went red and before it was finalized. Null in every other
+   * state, and it is a plain id with no foreign key for the reason {@link #gateTicketId} states one
+   * field down in reverse: the row it names is in this very table, but a delete of it must not
+   * cascade into the record of what superseded what.
    */
   @Column(name = "superseded_by")
   public String supersededBy;

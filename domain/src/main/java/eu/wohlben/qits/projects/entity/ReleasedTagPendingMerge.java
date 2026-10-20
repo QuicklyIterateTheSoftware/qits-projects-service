@@ -148,9 +148,12 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
   public Instant deploymentActiveAt;
 
   /**
-   * When a later release of the same repository overtook this one, so nothing will ever finalize it
-   * (V23). The successor folds this tag in and supersedes it whole, which is what makes abandoning
-   * it safe: its content is not lost, it simply reaches {@code main} under the successor's name.
+   * When a later release of the same repository superseded this one after it went red — its
+   * {@link #publishState} FAILED, or its deployment failed and never went live — so nothing will
+   * ever finalize it (V23; only a red one since qits-1471, a release in flight is waited for and its
+   * row is never abandoned). The successor folds this tag in and supersedes it whole, which is what
+   * makes abandoning it safe: its content is not lost, it simply reaches {@code main} under the
+   * successor's name.
    *
    * <p>An abandoned row leaves {@code listOwedMerges} and {@code listUngated} — the sweep must stop
    * trying to merge a tag whose request is OBSOLETE — and deliberately <b>stays</b> in {@code

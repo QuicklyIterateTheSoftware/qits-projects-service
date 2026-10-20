@@ -103,9 +103,10 @@ public interface UnattendedGateTickets {
    *
    * <p><b>It does not resolve the ticket</b>, and RELEASED is the wrong moment to: a RELEASED request
    * is still open — its tag has yet to reach {@code main}, it may still be owed a publish run or a
-   * deployment, and a later release can still overtake it — so there is still a request for the
-   * ticket to be about. What closes the ticket is {@link #ended}, when the request does. The comment
-   * says as much, so a reader of the thread knows the close is coming rather than owed by them.
+   * deployment, and should it go red a later release supersedes it — so there is still a request
+   * for the ticket to be about. What closes the ticket is {@link #ended}, when the request does. The
+   * comment says as much, so a reader of the thread knows the close is coming rather than owed by
+   * them.
    *
    * <p>{@code requestId} here and in {@link #ended} is the request's <b>qualified id</b> (qits-1158):
    * both only write sentences a person reads.

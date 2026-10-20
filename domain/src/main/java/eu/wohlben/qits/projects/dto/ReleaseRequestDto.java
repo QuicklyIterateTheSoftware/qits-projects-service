@@ -25,11 +25,14 @@ import java.util.List;
  * is still open rather than as a state it moved to. What RELEASED does mean is that nothing about
  * the request may change any more — no source, no approval, no re-fold.
  *
- * <p><b>{@code supersededBy} is the whole of what {@code OBSOLETE} means</b>: a later release of the
- * same repository was asked for before this one finalized, folded this one's tag in and released
- * past it, so nothing will ever finish this request. It names that later request and is null in
- * every other state. The release itself was real and its tag stands — this says only that the tag
- * reaches {@code main} inside the successor rather than under its own name.
+ * <p><b>{@code supersededBy} is the whole of what {@code OBSOLETE} means</b>: this release went red
+ * before it finalized — its publish run failed, or its deployment failed and never went live — and
+ * a later release of the same repository folded its tag in and released past it, so nothing will
+ * ever finish this request. It names that later request and is null in every other state. A
+ * release still in flight is never superseded: the later request waits PENDING, its {@code detail}
+ * naming this one, until it finalizes (qits-1471). The release itself was real and its tag stands
+ * — this says only that the tag reaches {@code main} inside the successor rather than under its
+ * own name.
  *
  * <p><b>A request is a merge of {@code sources}, not a branch head.</b> {@code backingBranch} is
  * the ref the git host folds them into, stored on the request: {@code release/<qualifiedId>} since

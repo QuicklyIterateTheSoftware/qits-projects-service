@@ -1204,10 +1204,19 @@ one tree listing, both gates, and the merge to `main` when every configured one 
 - **`onReleased` finalizes only what nothing else will ever finalize** — a released tree declaring
   *neither* gate. It used to finalize every non-deployable at the tag, which shipped SPAs whose
   publish run had not started.
-- **A new request OBSOLETES a release that never finalized.** The successor folds the earlier tag in,
-  so `ReleaseRequests.obsolete` marks the earlier request `OBSOLETE` with `superseded_by`, cancels
-  its runs and abandons its owed merge. It cannot fight convergence: every convergence read is over
-  `ReleaseRequestRepository.UNRELEASED` and this is over `RELEASED`, two disjoint sets.
+- **A new request WAITS behind a release in flight and OBSOLETES only a red one (qits-1471).**
+  Finalization is the green light, not the tag. The successor folds the earlier tag in either way;
+  while the earlier request is RELEASED and not red it is left alone, and the successor runs every
+  gate and then stays PENDING with `detail` "Waiting for `<qualifiedId>` (`<version>`) to finalize"
+  until the earlier tag reaches `main` (`settleTagsOnMain` re-folds and re-evaluates it; the sweep
+  re-asks too). **Red** is `publish_state = FAILED`, or the newest `DeploymentRequests.forRelease`
+  status folding to FAILED (`ReleasePipelineAssembler.deploymentStateOf`) with no
+  `deployment_active_at` — unreadable, unported or no DEPLOYMENT gate at `main` all count as in
+  flight. A red one is made `OBSOLETE` by `ReleaseRequests.obsolete` — at create, or by
+  `supersedeRedSiblings` when the successor releases — with `superseded_by`, its QA runs cancelled
+  and its owed merge abandoned. `ReleaseRequests.releasedSiblingsOf` is the one predicate. It
+  cannot fight convergence: every convergence read is over `ReleaseRequestRepository.UNRELEASED`
+  and this is over `RELEASED`, two disjoint sets.
 
 `OPEN` (what a listing answers) and `UNRELEASED` (what may still be folded, added to or approved) are
 two different constants now, and mixing them up is the defect to watch for.

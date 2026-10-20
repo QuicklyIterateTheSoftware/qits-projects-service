@@ -1293,8 +1293,17 @@ public class ReleaseRequestFlowTest {
     assertEquals("RELEASED", stateOf(id), "a reap that blew up is not a release that failed");
     given().get(base() + "/" + id).then().body("request.version", equalTo("2026.831.90000"));
 
-    // And the worker is still there.
+    // And the worker is still there. The first release goes red first (its release run FAILED):
+    // one still in flight would hold the next request before READY (qits-1471), and what this
+    // asserts is the worker, not that wait.
     releasedBranchWorkspaces.failWith(false);
+    verdictOn(
+        "2026.831.90000",
+        "BuildFailed",
+        "publish-sha",
+        "run-" + UUID.randomUUID(),
+        null,
+        ",\"outcome\":\"FAILED\"");
     String next = create("work-after");
     verdict("BuildSuccessful", mergedShaOf(next), "");
     awaitState(next, "RELEASED");

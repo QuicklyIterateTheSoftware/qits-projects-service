@@ -386,8 +386,15 @@ public class ReleasePipelineAssembler {
    * <p>{@code DECOMMISSIONED} is mapped although qits-deployments' enum does not carry it today. The
    * mapping costs a line and the alternative is a word arriving later and reading as {@code
    * UNKNOWN} until somebody notices.
+   *
+   * <p><b>Package-visible because it is also what "red" means to a release still in flight</b>
+   * (qits-1471): {@code ReleaseRequests} holds a fresh request behind an earlier release of the same
+   * repository until that one finalizes, and supersedes it only when it went red — a {@code FAILED}
+   * here with no {@code deploymentActiveAt} beside it being one of the two ways. One fold of
+   * qits-deployments' vocabulary, read by both, so the pipeline view and the hold cannot disagree
+   * about which words are red.
    */
-  private static String deploymentStateOf(String status) {
+  static String deploymentStateOf(String status) {
     if (status == null) {
       return "UNKNOWN";
     }
