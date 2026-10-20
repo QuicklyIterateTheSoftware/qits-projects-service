@@ -280,8 +280,13 @@ import org.jboss.logging.Logger;
  *       ReleaseRequestRepository#UNRELEASED}.</b> It is open — a listing shows it, its gates keep
  *       reporting — and it is past changing: nothing re-folds it, no source may be added and nobody
  *       may approve it. Every write path in this class reads the second set.
- *   <li><b>A new request obsoletes a release it overtook</b>, because the fresh fold contains that
- *       release's tag and nothing will ever finish the earlier request. See {@link #obsolete}.
+ *   <li><b>A new request waits behind a release in flight, and supersedes only a red one</b>
+ *       (qits-1471). FINALIZATION is the green light, not the tag: while an earlier release of the
+ *       same repository is still publishing or deploying, the fresh request runs every gate and
+ *       then stays PENDING, saying which release it waits for, until that one finalizes. Only a
+ *       release that went red — its publish run FAILED, or its deployment failed and never went
+ *       live — is made OBSOLETE, because nothing will ever finish it and the fresh fold already
+ *       contains its tag. See {@link #releasedSiblingsOf} and {@link #obsolete}.
  *   <li><b>Nothing here decides a post-release gate.</b> A publish verdict and a deployment are
  *       {@link ReleaseFinalization}'s to read; this class learns the outcome when a tag reaches
  *       {@code main}.
@@ -540,14 +545,30 @@ public class ReleaseRequests {
    * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
    * named, and a summary that is somebody else's. See {@code ReleaseRequestController.create}.
    *
-   * <h2>A fresh request OBSOLETES the releases it overtakes</h2>
+   * <h2>A fresh request WAITS behind a release in flight, and OBSOLETES only a red one</h2>
    *
    * <p>A RELEASED request stays open until its tag reaches {@code main}, so a repository can be
    * asked for a new release while an earlier one is still owed its publish run or its deployment.
-   * The fresh request folds that earlier tag in, so it <em>is</em> the earlier release plus more:
-   * the earlier request is marked {@link ReleaseRequest.State#OBSOLETE}, its runs are cancelled and
-   * its owed merge abandoned. {@link #obsolete} holds the rule, and states there why obsolescence
-   * and convergence cannot fight — the short of it is that the convergence read is over {@link
+   * The fresh request folds that earlier tag in either way, so its content is a superset of what is
+   * shipping. What it does to the earlier <em>request</em> depends on whether that release can still
+   * finish (qits-1471):
+   *
+   * <ul>
+   *   <li><b>In flight</b> — still publishing or deploying, nothing red. It is left RELEASED and
+   *       its tag row is not abandoned: it finalizes as it would have, and the fresh request runs
+   *       its gates and then waits before READY ({@link #evaluate}) until it has. This used to
+   *       obsolete it unconditionally, which kept its publish run (qits-733) but meant it never
+   *       finalized and its tag never merged, so a release that was deploying fine was thrown away
+   *       the moment anybody asked for the next one.
+   *   <li><b>Red</b> — its publish run FAILED, or its deployment failed and never went live. Nothing
+   *       will finish it, so it is marked {@link ReleaseRequest.State#OBSOLETE} exactly as before:
+   *       its QA runs are cancelled and its owed merge abandoned.
+   * </ul>
+   *
+   * <p>Which siblings are red is read <b>before</b> the transaction below opens, because a
+   * deployment is an HTTP read ({@link #releasedSiblingsOf}); inside it, {@link #obsolete}
+   * re-reads the RELEASED rows and touches only those. It also states why obsolescence and
+   * convergence cannot fight — the short of it is that the convergence read is over {@link
    * ReleaseRequestRepository#UNRELEASED} and the obsolescence read is over RELEASED, two disjoint
    * sets, so a converging ask never reaches this at all.
    *
@@ -582,10 +603,14 @@ public class ReleaseRequests {
     // joining the repository's open request is the same content change an explicit addSource is, and
     // the announcement should say which branch arrived rather than claim a creation.
     AtomicReference<String> why = new AtomicReference<>("created");
+    // The red releases a fresh request may supersede, read HERE and not in the transaction below:
+    // whether a deployment failed is an HTTP read into qits-deployments (qits-1471). A release in
+    // flight is not in it and is left RELEASED; evaluate() holds the fresh request behind it.
+    Map<String, String> red = redOf(releasedSiblingsOf(repoId, null));
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
-    List<Obsoleted> overtaken = new ArrayList<>();
+    List<Obsoleted> ended = new ArrayList<>();
     AtomicReference<String> qualified = new AtomicReference<>();
     String id =
         QuarkusTransaction.requiringNew()
@@ -651,20 +676,11 @@ public class ReleaseRequests {
                   if (!mainWasNamed) {
                     addSourceRow(fresh.id, named, requester, orDefault(stated));
                   }
-                  overtaken.addAll(obsolete(repoId, fresh));
+                  ended.addAll(obsolete(repoId, fresh, red));
                   qualified.set(fresh.qualifiedId);
                   return fresh.id;
                 });
-    for (Obsoleted earlier : overtaken) {
-      stopFinalizing(earlier);
-      cancel(repoId, earlier.requestId(), "was superseded by release request " + qualified.get());
-      closeGateTicket(
-          earlier.requestId(),
-          earlier.gateTicketId(),
-          earlier.repoName(),
-          UnattendedGateTickets.Ending.OBSOLETE,
-          id);
-    }
+    endSuperseded(repoId, ended, id, qualified.get());
     remerge(id, why.get());
     return get(id);
   }
@@ -689,24 +705,35 @@ public class ReleaseRequests {
   }
 
   /**
-   * One request this create overtook, carried out of the transaction that marked it — with its gate
-   * ticket, which is closed after that transaction commits and never inside it.
+   * One red request a later one superseded, carried out of the transaction that marked it — with its
+   * gate ticket, which is closed after that transaction commits and never inside it.
    */
   private record Obsoleted(
       String requestId, String version, String gateTicketId, String repoName) {}
 
   /**
-   * <b>Mark every release of this repository that never finalized OBSOLETE.</b> Called from the
-   * fresh arm of {@link #request} and from nowhere else.
+   * <b>Mark the RED releases of this repository that never finalized OBSOLETE</b> — and only those
+   * (qits-1471). Called inside a transaction from two places: the fresh arm of {@link #request},
+   * and {@link #supersedeRedSiblings} once a successor has released. {@code red} is what {@link
+   * #releasedSiblingsOf} found red <b>before</b> that transaction opened, keyed by request id with
+   * the reason as its value; this re-reads the RELEASED rows and touches a listed one only if it is
+   * still RELEASED, so a release that finalized in the meantime is left alone.
    *
    * <p>A RELEASED request is open until its tag reaches {@code main}, so a repository can be asked
-   * for a new release while an earlier one is still owed its publish run or its deployment. The new
-   * request folds that earlier tag in — it is an implicit source, which is what makes every release
-   * a superset of the ones in flight — so the earlier release <b>is</b> the new one now, in content.
-   * What is left of it is a request that nothing will ever finish and a merge the sweep would go on
-   * attempting for a version the platform has moved past. Both are ended here: the row says which
-   * request superseded it ({@link ReleaseRequest#supersededBy}), its queued runs are cancelled, and
-   * its tag row is abandoned so the finalization sweep stops asking.
+   * for a new release while an earlier one is still owed its publish run or its deployment. <b>One
+   * still in flight is not touched</b>: FINALIZATION is the green light, not the tag, so it is left
+   * to publish, deploy and merge, and the successor waits for it before READY ({@link #evaluate}).
+   * Until qits-1471 every such release was obsoleted here, and a release that was deploying fine
+   * never finalized and its tag never merged.
+   *
+   * <p><b>A red one is ended</b>: its publish run FAILED, or its deployment failed and never went
+   * live, so nothing will ever finish it. The successor folds its tag in — an implicit source, which
+   * is what makes every release a superset of the ones in flight — so its content is not lost, and
+   * what is left of it is a request nothing will finish and a merge the sweep would go on attempting
+   * for a version the platform has moved past. Both are ended here: the row says which request
+   * superseded it ({@link ReleaseRequest#supersededBy}) and why, and its tag row is abandoned so the
+   * finalization sweep stops asking. Its QA runs are cancelled and its gate ticket closed afterwards,
+   * outside the transaction, by {@link #endSuperseded}.
    *
    * <h2>Obsolescence and convergence cannot fight, and this is why</h2>
    *
@@ -714,18 +741,23 @@ public class ReleaseRequests {
    * {@link #request} converges through {@link #openOfRepository}, which reads {@link
    * ReleaseRequestRepository#UNRELEASED}, so a converging ask answers a request whose tag has
    * <em>not</em> been cut and never gets here at all. This runs only after that read
-   * came back empty and a fresh request was minted, and it looks only at RELEASED rows, which no
-   * convergence read can return. The two operate on disjoint sets by construction rather than by
-   * ordering, which is what makes "a second workspace joins the repository's open request" and "a
-   * new release overtakes one still publishing" both true of one repository at the same time.
+   * came back empty and a fresh request was minted (or once a successor has released), and it looks
+   * only at RELEASED rows, which no convergence read can return. The two operate on disjoint sets by
+   * construction rather than by ordering, which is what makes "a second workspace joins the
+   * repository's open request" and "a new release supersedes a red one" both true of one repository
+   * at the same time.
    *
    * <p>The tag itself stays in the implicit source set: it was really cut and every later fold must
    * still contain it, or the next release would be a step backwards from something that shipped.
    */
-  private List<Obsoleted> obsolete(String repoId, ReleaseRequest successor) {
-    List<Obsoleted> overtaken = new ArrayList<>();
+  private List<Obsoleted> obsolete(
+      String repoId, ReleaseRequest successor, Map<String, String> red) {
+    List<Obsoleted> ended = new ArrayList<>();
+    if (red.isEmpty()) {
+      return ended;
+    }
     for (ReleaseRequest earlier : requests.listReleasedUnfinalized(repoId)) {
-      if (earlier.id.equals(successor.id)) {
+      if (earlier.id.equals(successor.id) || !red.containsKey(earlier.id)) {
         continue;
       }
       states.move(earlier, ReleaseRequest.State.OBSOLETE);
@@ -734,21 +766,218 @@ public class ReleaseRequests {
           "Superseded by release request "
               + successor.qualifiedId
               + (earlier.version == null
-                  ? ", which was asked for before this one finalized"
-                  : ", which folds " + earlier.version + " in and releases past it");
+                  ? ""
+                  : ", which folds " + earlier.version + " in and releases past it")
+              + ": "
+              + red.get(earlier.id);
       earlier.retryable = false;
       earlier.updatedAt = Instant.now();
       pendingTags
           .findByRequest(earlier.id)
           .filter(tag -> tag.mergedAt == null && tag.abandonedAt == null)
           .ifPresent(tag -> tag.abandonedAt = Instant.now());
-      overtaken.add(
+      ended.add(
           new Obsoleted(earlier.id, earlier.version, earlier.gateTicketId, earlier.repoName));
       LOG.infof(
-          "Release request %s (%s) is obsolete: %s releases past it",
-          earlier.id, earlier.version, successor.id);
+          "Release request %s (%s) is obsolete: %s; %s releases past it",
+          earlier.id, earlier.version, red.get(earlier.id), successor.id);
     }
-    return overtaken;
+    return ended;
+  }
+
+  /**
+   * The half of a supersession that reaches out of this database, after the transaction that wrote
+   * {@link #obsolete}'s rows has committed — the one place both of its callers end a red release,
+   * so the create arm and the release arm cannot drift. Per request: the automations note is
+   * dropped, its QA runs are cancelled (QA-only, and never its publish run — see {@link #cancel}),
+   * and its gate ticket is closed naming the successor.
+   */
+  private void endSuperseded(
+      String repoId, List<Obsoleted> superseded, String successorId, String successorQualifiedId) {
+    for (Obsoleted earlier : superseded) {
+      stopFinalizing(earlier);
+      cancel(
+          repoId, earlier.requestId(), "was superseded by release request " + successorQualifiedId);
+      closeGateTicket(
+          earlier.requestId(),
+          earlier.gateTicketId(),
+          earlier.repoName(),
+          UnattendedGateTickets.Ending.OBSOLETE,
+          successorId);
+    }
+  }
+
+  /**
+   * <b>A successor released: end every red release it now supersedes</b> (qits-1471). A release
+   * that went red while its successor was held behind it — or after the successor was created and
+   * before it released — is past what the create arm saw, so it is caught here, with the same
+   * bookkeeping: {@link #obsolete} under the repository's row lock, the lock {@link #request} takes,
+   * so the two arms never both end one row, and {@link #endSuperseded} after the commit. Which
+   * siblings are red is read first and outside every transaction, because a deployment is an HTTP
+   * read. A sibling still in flight is left alone, as it is everywhere.
+   */
+  private void supersedeRedSiblings(String repoId, String successorId) {
+    Map<String, String> red = redOf(releasedSiblingsOf(repoId, successorId));
+    if (red.isEmpty()) {
+      return;
+    }
+    List<Obsoleted> superseded = new ArrayList<>();
+    AtomicReference<String> qualified = new AtomicReference<>();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
+              ReleaseRequest successor = requests.findByIdOptional(successorId).orElse(null);
+              if (successor == null) {
+                return;
+              }
+              qualified.set(successor.qualifiedId);
+              superseded.addAll(obsolete(repoId, successor, red));
+            });
+    endSuperseded(repoId, superseded, successorId, qualified.get());
+  }
+
+  /**
+   * One RELEASED, unfinalized request of a repository as the hold and the supersession read it.
+   *
+   * @param red why it is red, in a clause a detail can carry — or null for a release still in
+   *     flight, which is every one that is not known to have failed
+   */
+  record ReleasedSibling(String id, String qualifiedId, String version, String red) {}
+
+  /**
+   * <b>The one predicate behind the hold and the supersession</b> (qits-1471): every RELEASED,
+   * unfinalized request of {@code repoId} other than {@code exceptId}, oldest first, each marked red
+   * or not. {@link #inFlightReleasesOf} and {@link #redOf} are its two halves.
+   *
+   * <p><b>Red is a fact somebody stated, never an inference from silence.</b> A release is red when
+   * <ul>
+   *   <li>its tag row's {@link ReleasedTagPendingMerge#publishState} is {@code FAILED} — its release
+   *       run came back red; or
+   *   <li>its deployment failed: the newest of {@link DeploymentRequests#forRelease} folds to {@code
+   *       FAILED} under {@link ReleasePipelineAssembler#deploymentStateOf} ({@code IMAGE_MISSING},
+   *       {@code SPEC_UNREADABLE}, {@code FAILED}, {@code DECLARATION_REFUSED}) <b>and</b> the row's
+   *       {@link ReleasedTagPendingMerge#deploymentActiveAt} is null — a version that once went live
+   *       did ship, whatever happened to it afterwards.
+   * </ul>
+   * Everything else is in flight and holds: a deployment that could not be read, no deployments
+   * port, a repository whose gate set (read at {@code main}, the way {@link #deploymentOf} reads
+   * it) does not require {@link ReleaseGates.Kind#DEPLOYMENT}, an unknown gate set, a deployment
+   * still queued. Holding wrongly costs a wait the sweep re-asks about every thirty seconds;
+   * superseding wrongly throws away a release that would have finished.
+   *
+   * <p><b>Never call it inside a transaction.</b> The rows are read in one short transaction of
+   * its own, the gate set in another (the resolver reads the repository's row, and the release
+   * worker that calls this has no transaction or request context of its own), and qits-deployments
+   * is asked after both, the shape {@link #deploymentOf} and {@code
+   * ReleasePipelineAssembler.deployPhase} already take; and only for a sibling whose publish is not
+   * already red, that has a tag, and has not gone live, so a repository with nothing released in
+   * flight costs one indexed read and no call at all.
+   */
+  List<ReleasedSibling> releasedSiblingsOf(String repoId, String exceptId) {
+    record Row(
+        String id,
+        String qualifiedId,
+        String version,
+        String tagName,
+        ReleasedTagPendingMerge.PublishState publish,
+        Instant deploymentActiveAt) {}
+    List<Row> rows =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests.listReleasedUnfinalized(repoId).stream()
+                        .filter(row -> !row.id.equals(exceptId))
+                        .map(
+                            row -> {
+                              ReleasedTagPendingMerge tag =
+                                  pendingTags.findByRequest(row.id).orElse(null);
+                              return new Row(
+                                  row.id,
+                                  row.qualifiedId,
+                                  row.version,
+                                  tag != null && tag.tagName != null ? tag.tagName : row.version,
+                                  tag == null ? null : tag.publishState,
+                                  tag == null ? null : tag.deploymentActiveAt);
+                            })
+                        .toList());
+    if (rows.isEmpty()) {
+      return List.of();
+    }
+    ReleaseGates.GateSet set = null;
+    List<ReleasedSibling> siblings = new ArrayList<>();
+    for (Row row : rows) {
+      String red = null;
+      if (row.publish() == ReleasedTagPendingMerge.PublishState.FAILED) {
+        red = "the release run of " + row.version() + " FAILED";
+      } else if (row.deploymentActiveAt() == null
+          && row.tagName() != null
+          && !row.tagName().isBlank()) {
+        if (set == null) {
+          // Its own short transaction: the resolver reads the repository's row, and this runs on
+          // the release worker too, where nothing else has opened one. The deployment read below
+          // stays outside it.
+          set = QuarkusTransaction.requiringNew().call(() -> gates.resolve(repoId));
+        }
+        if (deploymentFailed(set, repoId, row.tagName())) {
+          red = "the deployment of " + row.tagName() + " FAILED and never went live";
+        }
+      }
+      siblings.add(new ReleasedSibling(row.id(), row.qualifiedId(), row.version(), red));
+    }
+    return siblings;
+  }
+
+  /** The siblings still in flight — the ones a fresh request waits behind. */
+  List<ReleasedSibling> inFlightReleasesOf(String repoId, String exceptId) {
+    return releasedSiblingsOf(repoId, exceptId).stream()
+        .filter(sibling -> sibling.red() == null)
+        .toList();
+  }
+
+  /** The red ones among {@code siblings}, keyed by request id with why each is red. */
+  private static Map<String, String> redOf(List<ReleasedSibling> siblings) {
+    Map<String, String> red = new LinkedHashMap<>();
+    for (ReleasedSibling sibling : siblings) {
+      if (sibling.red() != null) {
+        red.put(sibling.id(), sibling.red());
+      }
+    }
+    return red;
+  }
+
+  /**
+   * Whether qits-deployments says the newest deployment of {@code version} failed. False for
+   * everything that is not that statement — see {@link #releasedSiblingsOf}. Outside every
+   * transaction.
+   */
+  private boolean deploymentFailed(ReleaseGates.GateSet set, String repoId, String version) {
+    if (!set.requires(ReleaseGates.Kind.DEPLOYMENT) || !deploymentRequests.isResolvable()) {
+      return false;
+    }
+    Optional<List<DeploymentRequests.DeploymentRequestView>> answered;
+    try {
+      answered = deploymentRequests.get().forRelease(repoId, version);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not read the deployment of %s %s; it is held as in flight: %s",
+          repoId, version, e.toString());
+      return false;
+    }
+    if (answered == null || answered.isEmpty() || answered.get().isEmpty()) {
+      return false;
+    }
+    String newest = answered.get().get(0).status();
+    return "FAILED".equals(ReleasePipelineAssembler.deploymentStateOf(newest));
+  }
+
+  /** The sentence a request held behind {@code inFlight} carries on its detail. */
+  private static String waitingFor(List<ReleasedSibling> inFlight) {
+    return "Waiting for "
+        + inFlight.stream()
+            .map(sibling -> sibling.qualifiedId() + " (" + sibling.version() + ")")
+            .collect(Collectors.joining(", "))
+        + " to finalize";
   }
 
   /**
@@ -760,8 +989,8 @@ public class ReleaseRequests {
     automationLedger.forget(earlier.requestId());
     if (earlier.version() != null) {
       LOG.infof(
-          "The released tag %s is abandoned: its request was superseded before it reached main, and"
-              + " the release that superseded it folds it in",
+          "The released tag %s is abandoned: it went red and its request was superseded before it"
+              + " reached main, and the release that superseded it folds it in",
           earlier.version());
     }
   }
@@ -782,8 +1011,9 @@ public class ReleaseRequests {
    * ReleaseRequestRepository#OPEN}</b>, and since RELEASED became an open state that distinction is
    * what keeps this correct: a request whose tag is cut and is waiting on its publish run or its
    * deployment must not be joined by a new branch, because its content is already tagged. Such an
-   * ask mints a fresh request — and {@link #obsolete} then supersedes the released one, which is
-   * the honest outcome.
+   * ask mints a fresh request, which waits before READY until the released one finalizes, and
+   * supersedes it ({@link #obsolete}) only if it went red (qits-1471) — the honest outcome either
+   * way: a release that can still finish is let finish, and one that cannot is ended.
    */
   private ReleaseRequest openOfRepository(String repoId, String named) {
     List<ReleaseRequest> open = requests.listUnreleasedByRepo(repoId);
@@ -3047,11 +3277,12 @@ public class ReleaseRequests {
    * This asks for {@link QaRunCancellations#cancelQaRunsOf} (qits-ci's {@code RELEASE_REQUEST}
    * phase). A publish run carries the same {@code releaseRequestId}, but it belongs to a tag that was
    * really cut, not to this request's lifecycle. Two call sites can meet one in flight: RELEASED,
-   * whose tag push may have queued it first (qits-1264), and {@link #obsolete}, because a RELEASED
-   * request stays open until its tag reaches {@code main} and a new request can overtake it while it
-   * is still publishing (qits-733). Everywhere else there is no publish run, so QA-only is the same
-   * set and the rule needs no exceptions. {@link QaRunCancellations#cancelRunsOf} is not called
-   * from here.
+   * whose tag push may have queued it first (qits-1264), and {@link #endSuperseded}, because a
+   * RELEASED request stays open until its tag reaches {@code main} and a red one is superseded
+   * whatever its publish run is doing — a deployment can fail while the run is still going, and a
+   * failed run can be retried (qits-733, qits-1471). Everywhere else there is no publish run, so
+   * QA-only is the same set and the rule needs no exceptions. {@link
+   * QaRunCancellations#cancelRunsOf} is not called from here.
    */
   private void cancel(String repoId, String requestId, String reason) {
     if (!cancellations.isResolvable()) {
@@ -3433,12 +3664,38 @@ public class ReleaseRequests {
    *
    * <p>The verdicts read below are then read <em>at</em> {@code mergedSha} for the same reason, so a
    * request whose fold moved between the two reads is simply evaluated against the newer one.
+   *
+   * <p><b>Every gate passing is not yet READY while an earlier release is in flight</b> (qits-1471).
+   * FINALIZATION is the green light, not the tag: a RELEASED, unfinalized sibling that is not red
+   * ({@link #releasedSiblingsOf}) holds the request PENDING, with a detail naming that sibling, at
+   * the very last step — after the pre-run, QA and approval have all been asked, so nothing about
+   * the request itself is left to wait for once the sibling finishes. What releases it is the
+   * sibling's tag reaching {@code main}: {@link #settleTagsOnMain} re-folds every unreleased request
+   * of the repository and the fold evaluates it again, and the {@link #sweep} re-evaluates every
+   * PENDING row besides. A sibling that goes red stops holding on the next evaluation, and the
+   * release that follows supersedes it ({@link #supersedeRedSiblings}).
    */
   void evaluate(String id, String verdictSha) {
     // A FRESH NOTE IS CONFIRMED BEFORE IT ANNOUNCES QA (qits-1249) — one status read, here and not
     // under the row lock below, because it is an HTTP round trip into qits-maintenance. Only for a
     // fold whose QA has not been announced yet; see confirmAutomationsBeforeQa.
     confirmAutomationsBeforeQa(id, verdictSha);
+    // THE RELEASES THIS REQUEST WAITS BEHIND (qits-1471), read before the gate transaction opens and
+    // never under its row lock: whether a sibling's deployment failed is an HTTP read into
+    // qits-deployments. Only for a PENDING request with a fold, which is the only one the gate below
+    // can move to READY; for every other row it is one indexed read and nothing more.
+    String gatedRepo =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests
+                        .findByIdOptional(id)
+                        .filter(row -> row.state == ReleaseRequest.State.PENDING)
+                        .filter(row -> row.mergedSha != null)
+                        .map(row -> row.repoId)
+                        .orElse(null));
+    List<ReleasedSibling> releasesInFlight =
+        gatedRepo == null ? List.of() : inFlightReleasesOf(gatedRepo, id);
     // Filled INSIDE the gate transaction and acted on outside it: a ticket write is another module's
     // database and belongs nowhere near the transaction that decides a gate. Null on every
     // evaluation that does not reject an unattended request, which is nearly all of them.
@@ -3723,6 +3980,17 @@ public class ReleaseRequests {
                       return false;
                     }
                     // APPROVED: fall through, exactly as a green verdict does.
+                  }
+                  // THE RELEASE IN FLIGHT, asked after EVERY gate and standing in front of READY
+                  // alone (qits-1471). An earlier release of this repository that is still
+                  // publishing or deploying has not finalized, and finalization — not the tag — is
+                  // the green light: releasing past it used to obsolete it, so it never reached main.
+                  // Held PENDING with the sibling named; its tag reaching main re-folds and
+                  // re-evaluates this request (settleTagsOnMain), and the sweep re-asks besides. A
+                  // red sibling is not in the list: it holds nothing, and the release supersedes it.
+                  if (!releasesInFlight.isEmpty()) {
+                    waiting(row, waitingFor(releasesInFlight));
+                    return false;
                   }
                   states.move(row, ReleaseRequest.State.READY);
                   row.detail = null;
@@ -4256,6 +4524,18 @@ public class ReleaseRequests {
     if (ask == null) {
       return;
     }
+    // THE BELT UNDER THE HOLD (qits-1471). evaluate() does not move a request to READY while an
+    // earlier release of its repository is in flight, but a READY row can still meet one — a sibling
+    // that released between that evaluation and this worker, or a retryable FAILED row the sweep
+    // re-enqueues. Releasing now would supersede a release that can still finish, so nothing is
+    // released and nothing is written: the row keeps its state and the sweep asks again.
+    List<ReleasedSibling> inFlight = inFlightReleasesOf(ask.repoId(), id);
+    if (!inFlight.isEmpty()) {
+      LOG.infof(
+          "Release request %s is not released yet: %s; the sweep asks again",
+          ask.qualifiedId(), waitingFor(inFlight));
+      return;
+    }
     if (!executors.isResolvable()) {
       settle(
           id,
@@ -4284,6 +4564,11 @@ public class ReleaseRequests {
           ask.repoName() != null ? ask.repoName() : ask.repoId(),
           ask.backingBranch(),
           outcome.version());
+      // A RED SIBLING IS SUPERSEDED NOW (qits-1471): one that went red while this request waited
+      // behind it, or after this request was created. This release folds its tag in, so it ends
+      // exactly as the create arm ends one — OBSOLETE, its tag abandoned, its QA runs cancelled and
+      // its gate ticket closed naming this request. A sibling still in flight is left alone.
+      supersedeRedSiblings(ask.repoId(), id);
       // The consumed branches go only NOW, with the row RELEASED, and never inside release(): the
       // git host announces each deletion, and onBranchDeleted reads only unreleased requests, so
       // this request's own deletions cannot come back to withdraw or re-fold it (qits-886). See
@@ -4368,7 +4653,8 @@ public class ReleaseRequests {
    * and nothing more.
    *
    * <p><b>The ticket is left where it is at RELEASED</b>, because a RELEASED request has not ended:
-   * its tag has still to reach {@code main}, and a later request can still overtake it. The close
+   * its tag has still to reach {@code main}, and should it go red a later request supersedes it
+   * (qits-1471). The close
    * comes with the ending — {@link #closeGateTicket}, from whichever write reaches FINALIZED,
    * WITHDRAWN or OBSOLETE — and only for a ticket still typed MAINTENANCE.
    *

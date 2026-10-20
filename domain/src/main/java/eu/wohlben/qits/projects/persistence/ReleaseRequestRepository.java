@@ -201,7 +201,8 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
 
   /**
    * The repository's requests that have released and not been finalized, oldest first — what a fresh
-   * request of the same repository <b>obsoletes</b>. See {@code ReleaseRequests.request}.
+   * request of the same repository <b>waits behind</b> before READY, or <b>obsoletes</b> where one
+   * went red (qits-1471). See {@code ReleaseRequests.releasedSiblingsOf}.
    */
   public List<ReleaseRequest> listReleasedUnfinalized(String repoId) {
     return list(

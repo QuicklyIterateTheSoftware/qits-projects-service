@@ -480,14 +480,17 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * A fresh ask overtakes a RELEASED request that has not finalized; the earlier one goes OBSOLETE
-   * and its ticket is dropped naming the request that superseded it.
+   * A fresh ask supersedes a RELEASED request that went red before it finalized; the earlier one
+   * goes OBSOLETE and its ticket is dropped naming the request that superseded it. Red, because a
+   * release still in flight is waited for and never superseded (qits-1471): its release run comes
+   * back FAILED first.
    */
   @Test
   public void anObsoletingRequestDropsTheTicketNamingItsSuccessor() {
-    Released released =
-        releasedWithTicket(uniqueVersion(), RecordingBackingBranchMerger.freshSha());
+    String version = uniqueVersion();
+    Released released = releasedWithTicket(version, RecordingBackingBranchMerger.freshSha());
     awaitComment(released.ticketId(), "released as");
+    redPublish(version);
 
     String successor = create("maintenance/dependencies", ROBOT);
     assertNotEquals(released.requestId(), successor, "a released request is never converged onto");
@@ -867,6 +870,30 @@ public class UnattendedGateTicketTest {
                 + "\""
                 + extra
                 + "}",
+            null,
+            null,
+            null));
+  }
+
+  /**
+   * The released tag's own release run comes back FAILED — a publish verdict, whose branch is the
+   * version — which is what makes a RELEASED request red and so supersedable (qits-1471).
+   */
+  private void redPublish(String version) {
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "BuildFailed",
+            Instant.now(),
+            "{\"branch\":\""
+                + version
+                + "\",\"commitSha\":\""
+                + RecordingBackingBranchMerger.freshSha()
+                + "\",\"repoId\":\""
+                + repoId
+                + "\",\"runId\":\"run-"
+                + UUID.randomUUID()
+                + "\",\"outcome\":\"FAILED\"}",
             null,
             null,
             null));
