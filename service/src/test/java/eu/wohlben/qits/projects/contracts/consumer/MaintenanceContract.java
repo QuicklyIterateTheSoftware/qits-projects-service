@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.contracts.consumer;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import eu.wohlben.qits.projects.maintenancehost.HttpDownstreamComponents;
+import eu.wohlben.qits.projects.maintenancehost.HttpDownstreamPins;
 import eu.wohlben.qits.projects.maintenancehost.HttpReleaseRequestAutomations;
 import eu.wohlben.qits.projects.maintenancehost.MaintenanceBearer;
 import java.util.List;
@@ -15,6 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * <b>What qits-projects asks qits-maintenance</b> (ticket qits-1149): the downstream closure of a
  * repository, and a release request's automations — settled, read, and run again.
+ *
+ * <p>The approval question's contract source (qits-1291) asks two more: the closure again, for each
+ * entry's {@code catalogId} and {@code depth} too, and a consumer's pins ({@code getRepository}).
+ * The second stays pending until qits-maintenance records a provider state that answers it — today
+ * its golden masters hold no {@code getRepository} at all.
  */
 final class MaintenanceContract {
 
@@ -46,8 +52,49 @@ final class MaintenanceContract {
         new HttpReleaseRequestAutomations(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
   }
 
+  private static HttpDownstreamPins pins(String base) {
+    return Fields.with(
+        new HttpDownstreamPins(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
+  }
+
   static final List<ConsumerRow> ROWS =
       List.of(
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getRepositoryDownstream",
+              "a repository with downstream components",
+              "GET",
+              "/maintenance/api/repositories/{repositoryId}/downstream",
+              Map.of(),
+              null,
+              List.of(
+                  "$.downstream[*].repository",
+                  "$.downstream[*].catalogId",
+                  "$.downstream[*].depth"),
+              200,
+              Trigger.operation("approveReleaseRequest"),
+              (base, p) ->
+                  assertFalse(
+                      pins(base).downstreamOf(p.get("repositoryId")).orElseThrow().isEmpty()),
+              "GET .../repositories/{repositoryId}/downstream answering 200 with downstream[] naming"
+                  + " each repository, its catalogId and its depth"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getRepository",
+              "a repository whose manifests pin golden masters",
+              "GET",
+              "/maintenance/api/repositories/{repoName}",
+              Map.of(),
+              null,
+              List.of("$.pins[*].ecosystem", "$.pins[*].name"),
+              200,
+              Trigger.operation("approveReleaseRequest"),
+              (base, p) ->
+                  assertFalse(pins(base).pinsOf(p.get("repoName")).orElseThrow().isEmpty()),
+              "GET .../repositories/{repoName} answering 200 with pins[] (ecosystem, name) holding"
+                  + " a maven or npm pin on another repository's <app>-golden-masters package"),
           new ConsumerRow(
               PROVIDER,
               APP,

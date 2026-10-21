@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
 import eu.wohlben.qits.projects.control.DeskRunners;
+import eu.wohlben.qits.projects.control.ProjectConfig;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.dto.DeskRunnerDto;
 import eu.wohlben.qits.projects.entity.DeskRunner;
@@ -162,6 +163,16 @@ class FrontDeskTest {
   private void setLifecycle(String projectId, FrontDeskLifecycle lifecycle) {
     QuarkusTransaction.requiringNew()
         .run(() -> projectRows.findById(projectId).frontDeskLifecycle = lifecycle);
+  }
+
+  private void setDelivery(String projectId, boolean enabled) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> projectRows.findById(projectId).deliveryEnabled = enabled);
+  }
+
+  private static ProjectConfig.DeliverySettings delivery(boolean enabled) {
+    return new ProjectConfig.DeliverySettings(
+        enabled, 2, false, java.util.Set.of(), Duration.ofMinutes(10));
   }
 
   private FrontDesk row(String projectId) {
@@ -740,6 +751,106 @@ class FrontDeskTest {
     assertTrue(tokens.isLive(claimed));
     assertTrue(tokens.isLive("young"));
     assertTrue(tokens.isLive("runner"));
+  }
+
+  // --- the delivery loop (epic qits-1440) ---------------------------------------------------------
+
+  /** {@link DeliveryDemand} wants an ON_DEMAND desk while the loop is on, and only then. */
+  @Test
+  void theDeliveryLoopWantsAnOnDemandDesk() {
+    DeliveryDemand source = new DeliveryDemand();
+    assertEquals("delivery", source.name());
+    Project project = new Project();
+    project.frontDeskLifecycle = FrontDeskLifecycle.ON_DEMAND;
+    assertFalse(source.wants(project, null, Instant.now()));
+    project.deliveryEnabled = true;
+    assertTrue(source.wants(project, null, Instant.now()));
+    assertFalse(source.wants(null, null, Instant.now()));
+
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    setDelivery(projectId, true);
+    sweep.sweep(Instant.now());
+    assertEquals(FrontDeskDesired.RUNNING, row(projectId).desired, "the sweep creates a wanted desk");
+    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
+  }
+
+  /**
+   * Enabling the loop mints exactly one delivery token, of kind {@code desk-delivery}, beside the
+   * desk's own — however often the hook and the sweep run — and disabling it revokes and clears it
+   * while the desk keeps its own token.
+   */
+  @Test
+  void enablingMintsOneDeliveryTokenAndDisablingRevokesIt() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    setDelivery(projectId, true);
+
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    sweep.sweep(Instant.now());
+
+    FrontDesk row = row(projectId);
+    assertNotNull(row.deliveryTokenId);
+    assertNotNull(row.deliveryTokenValue);
+    assertTrue(row.deliveryTokenSubject.startsWith("tok-"));
+    assertEquals(1, tokens.deliveryMintsFor(projectId));
+    assertEquals(1, tokens.mintsFor(projectId), "the desk's own token is minted once too");
+    assertEquals(FrontDeskTokens.CONTEXT_KIND_DELIVERY, tokens.kindOf(row.deliveryTokenId));
+    assertEquals("desk-delivery", tokens.kindOf(row.deliveryTokenId));
+    assertEquals(FrontDeskTokens.CONTEXT_KIND, tokens.kindOf(row.tokenId));
+    assertEquals(FrontDeskDesired.RUNNING, row.desired);
+    String deliveryToken = row.deliveryTokenId;
+    String deskToken = row.tokenId;
+
+    setDelivery(projectId, false);
+    hooks.onDeliveryChanged(projectId, delivery(false));
+
+    FrontDesk after = row(projectId);
+    assertNull(after.deliveryTokenId);
+    assertNull(after.deliveryTokenValue);
+    assertNull(after.deliveryTokenSubject);
+    assertFalse(tokens.isLive(deliveryToken));
+    assertTrue(tokens.revoked().contains(deliveryToken));
+    assertTrue(tokens.isLive(deskToken), "the desk keeps its own token");
+    assertEquals(FrontDeskDesired.STOPPED, after.desired, "nothing else wants the desk");
+
+    sweep.sweep(Instant.now());
+    assertEquals(1, tokens.deliveryMintsFor(projectId), "an off loop is never minted for");
+  }
+
+  /** A failed delivery mint leaves the desk usable; the sweep mints it later. */
+  @Test
+  void aFailedDeliveryMintIsRetriedBySweep() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    frontDesks.ensureRow(projectId);
+    setDelivery(projectId, true);
+    tokens.failMint(true);
+
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    assertNull(row(projectId).deliveryTokenId);
+    assertNull(row(projectId).failureDetail, "the desk itself is not failed");
+
+    tokens.failMint(false);
+    sweep.sweep(Instant.now());
+    assertNotNull(row(projectId).deliveryTokenId);
+  }
+
+  /** The delivery token goes with the desk, and the reconcile reaps an unclaimed one. */
+  @Test
+  void theDeliveryTokenGoesWithTheDeskAndTheReconcileReapsItsOrphans() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    setDelivery(projectId, true);
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    String claimed = row(projectId).deliveryTokenId;
+    Instant old = Instant.now().minus(Duration.ofHours(2));
+    tokens.plant(
+        new FrontDeskTokens.Live("delivery-orphan", FrontDeskTokens.CONTEXT_KIND_DELIVERY, "gone", old));
+
+    assertEquals(1, tokenReconcile.reconcile(Instant.now()));
+    assertFalse(tokens.isLive("delivery-orphan"));
+    assertTrue(tokens.isLive(claimed));
+
+    person().delete(base(projectId)).then().statusCode(204);
+    assertFalse(tokens.isLive(claimed));
   }
 
   /** {@code removed} for an unplaced, once-placed row completes it: row dropped, token revoked. */

@@ -179,9 +179,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   it, and **the delivery hop reads the same two keys in the same order** rather than renaming either
   or inventing a third address.
 - `service/…/maintenancehost/` — qits-maintenance, the same `@DefaultBean` HTTP-client shape once
-  more: the seam is `control/DownstreamComponents` and the whole of what lives here is ONE GET,
+  more. `control/DownstreamComponents` is one GET,
   `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so
-  `ReleaseRequestChanged` can carry what is built on top of the repository. It is addressed by this
+  `ReleaseRequestChanged` can carry what is built on top of the repository. (The automations and
+  `control/DownstreamPins`, the contract-change approval source's two reads, live here too.) It is addressed by this
   service's own repository row id, which is qits-maintenance's `catalogId`. Everything about it is
   advisory: unset, unreachable, refused and 404 are one behaviour — a WARN and `Optional.empty()`,
   which becomes an absent event key a consumer reads as "unknown". A 200 with an empty array is a
@@ -674,7 +675,8 @@ write** (user ruling, 2026-09-12):
   and `WorkController.delete`, which admit the agent at the method for the kinds whose moves and
   deletes an agent makes (freezing or resolving a plan from the board is a person's door; an agent
   claims its own phase with `POST /work/{id}/status`, bound to the epic's project) — `WorkDispatchController.dispatch` and `WorkRefinementController.open` (standing a workspace
-  or a room up is a person's press; their GETs are reads and admit the agent), and
+  or a room up is a person's press; their GETs are reads and admit the agent — the dispatch press
+  also admits the project's delivery desk, `qits:desk`, below), and
   `WorkCommentController.delete` (deleting is on neither surface: an agent that could delete what it
   disagrees with could erase the record of its own mistake).
 - **Five of the generic entity doors also take `qits:system`, UNBOUND (qits-621/qits-667):**
@@ -1234,8 +1236,8 @@ bean; the gate, the doors, the DTO and the event read the list. Sources today: `
 (configuration, `person`), `config-directory` (the fold changes `.config/qits/`, `person`; also what
 an unreadable fold fails closed into), `artifact-declarations` (the fold's only `.config/qits/`
 change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
-`contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule) and `no-changes`
-(qits-760, `person`). A content source reads the fold through `ApprovalSubject`, lazily and once; a
+`contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule), `no-changes`
+(qits-760, `person`) and `contract:<slug>` (qits-1291, below). A content source reads the fold through `ApprovalSubject`, lazily and once; a
 failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no
 git: `manual-review` from configuration, else one satisfied `recorded` requirement with the recorded
 approval's roles. The display path stores the content requirements as JSON objects in
@@ -1265,6 +1267,21 @@ approval's roles. The display path stores the content requirements as JSON objec
   OPEN is recorded when `evaluate` reaches the approval gate; a door's decision moves only what is
   already announced; every evaluation voids what an older fold announced. An OPEN also comments on
   the work item a `ticket/<qid>`/`epic/<qid>` source names (`entitieshost/WorkItemApprovalComments`).
+- **Contract changes** (`ContractChangeSource`, qits-1291): the fold changes a path under
+  `golden-masters/` (against the newest release tag, like every content source). The fold's own
+  `.config/qits/release.yml` `contracts.application` names the packages
+  (`eu.wohlben.qits:<app>-golden-masters`, `@qits/<app without qits->-golden-masters`; no
+  application, no contract). qits-maintenance is asked through `control/DownstreamPins` →
+  `maintenancehost/HttpDownstreamPins` — `GET /maintenance/api/repositories/{repoId}/downstream`,
+  then `GET /maintenance/api/repositories/{name}` for each depth-1 entry's `pins[]`, because the
+  closure also names the providers that pin this repository's consumer pacts. Same address and
+  credential as `HttpDownstreamComponents`. A consumer's project is its row (the closure's
+  `catalogId`, else the one project knowing the name). One `contract:<slug>` per other project,
+  admitting `person` and `agent@<slug>`, excluding authors; the reason names the pinning
+  repositories, the detail up to 20 paths. Same-project consumers add nothing. Every failure to
+  tell (no address, unreachable, a consumer's pins unread, no project) is a WARN and no
+  requirement, never fail-closed. The `getRepository` consumer row is pending until
+  qits-maintenance records a provider state for it.
 
 ### One class per gate (2026-10-09)
 
@@ -1636,7 +1653,8 @@ The agent door refuses `SUPERSEDED`: an operation on a plan is a person's, from 
 
 **Putting an agent on an epic or a ticket is one action**, `POST /projects/api/work/{qualifiedId}/dispatch`
 (`projects/api/WorkDispatchController` → `DispatchDoors` → `EntityDispatch`; it was `POST
-/entities/{id}/dispatch` until qits-976), `qits:admin` alone. It starts the phase
+/entities/{id}/dispatch` until qits-976), `qits:admin` (and `qits:admin-agent`) — and, since epic
+qits-1440, the project's delivery desk (see "The delivery desk presses" below). It starts the phase
 the entity's **status** implies — REPORTED starts refine, READY_FOR_DEV and IMPLEMENTING implement (a
 press on a READY_FOR_DEV entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING
 verify (a
@@ -1682,6 +1700,26 @@ press never touches it, and any move to DROPPED clears it (`WorkEntityService.mo
 `EntityTransitionService`). So the registry's `flow` describes a person's press: REPORTED runs
 refine, implement, verify, REFINED runs implement, verify, and REFINED's `next` stays null; the
 read's `dispatchable` is true at an unblocked REFINED.
+
+**The delivery desk presses too, inside its project's declaration (epic qits-1440).** The press
+admits `qits:desk` at the method (`@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})`;
+a plain `qits:agent` is still a 403). `EntityMovers.of` makes a `qits:desk` caller holding neither
+admin role a `Mover.desk(principal, project claim)` — a machine — and the body names the rule it
+presses under (`{"mode", "rule"}`; `rule` is ignored for anyone else). `EntityDispatch` refuses a
+desk, with no side effect and before every other refusal, in this order: an item of another project
+(403 "The delivery desk may dispatch only the items of its own project."), no rule (400 "The
+delivery desk names the rule it dispatches under."), the project's `delivery_enabled` false (409
+"The delivery loop is off for this project (front_desk.delivery.enabled in
+.config/qits/project.yml)."), a campaign (409 — `DispatchDoors` never sends a desk down the campaign
+path), the project at `delivery_max_running` (409 naming the count, the limit and the running
+qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, with an assignee and an ACTIVE
+agent from `WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself), and REFINED
+while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refined is off."). With
+`start_refined` on, a desk's FLOW press at REFINED is the scheduling, exactly as a person's: REFINED
+→ READY_FOR_DEV under the desk mover stamped `withDeclaredApproval`, which `PersonApprovalGate`
+accepts in a person's place (every other gate still runs), and `preApprovedBy` records `delivery
+desk (start-refined, .config/qits/project.yml)`. Every other machine is unchanged. The dispatch
+comment ends ``Dispatched by the delivery desk under rule `<rule>`.``.
 
 **The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
 (declaration only: `entity.assignee` is on every row), and every successful press — refine, implement
@@ -2264,7 +2302,8 @@ keeps it so. The agent-container doors keep their paths:
 | `DELETE …/agent-container` | `remove` to the runner (container **and** volume), row deleted (which unplaces it), token revoked; 204. A wanted desk is created afresh and QUEUED by the next sweep |
 
 - **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans): RUNNING while the
-  project is `ALWAYS_ON` or `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
+  project is `ALWAYS_ON`, its delivery loop is enabled (`DeliveryDemand`, epic qits-1440), or
+  `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
   Demand is the ensure door and the daemon frames `AgentDaemonRegistry` counts as use, at most once
   a minute per project and only on a wanted desk. `FrontDeskSweep` (`agent-idle-sweep-interval`,
   and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, re-mints a missing token,
@@ -2294,6 +2333,14 @@ keeps it so. The agent-container doors keep their paths:
   on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
   never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
   `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+- **The delivery token** (epic qits-1440, V48) is a second `qits_tok_` per desk, idp kind
+  `desk-delivery` (`qits:agent` + `qits:desk`), claims `{project}`, `gitRefs []`, held in
+  `front_desk.delivery_token_*` only while the project's `front_desk.delivery.enabled` is true:
+  `FrontDesks.syncDeliveryToken` mints it (on the project.yml flip, at row creation and every
+  sweep) and revokes and clears it when the loop is off; it goes with the desk, and
+  `FrontDeskTokenReconcile` reaps unclaimed ones of its kind too. A failed mint is a WARN, not
+  FAILED: the desk is usable, the loop just has no credential until the sweep mints it. The sweep
+  also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`.
 - **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
   clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
   deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every
@@ -2322,7 +2369,10 @@ belts).
 | `QITS_PROJECTS_DAEMON_CLAUDE_MOUNT` | `/claude-home` |
 | `QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH` / `_AGENT_CONFIGURATION` | `qits.projects.agent-configuration-path` and the resolved document (both or neither) |
 | `QITS_PROJECTS_DAEMON_LIFECYCLE` | `ALWAYS_ON` or `ON_DEMAND` |
+| `QITS_PROJECTS_DAEMON_DELIVERY` | `on` or `off`: the project's `front_desk.delivery.enabled` |
+| `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
 | `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
+| `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` | only while delivery is `on`: `delivery_token_value` / `delivery_token_subject`, for the `project.delivery` session alone |
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |

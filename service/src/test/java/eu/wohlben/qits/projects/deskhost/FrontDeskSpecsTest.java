@@ -104,6 +104,8 @@ class FrontDeskSpecsTest {
         "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH", "/tmp/qits/agent-configuration.json");
     expected.put("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION", DOCUMENT);
     expected.put("QITS_PROJECTS_DAEMON_LIFECYCLE", "ALWAYS_ON");
+    expected.put("QITS_PROJECTS_DAEMON_DELIVERY", "off");
+    expected.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", "PT10M");
     expected.put("QITS_TOKEN", "qits_tok_secret");
     expected.put("QITS_TOKEN_SUBJECT", "tok-abc");
     expected.put("QITS_DOMAIN", "example.test");
@@ -139,6 +141,45 @@ class FrontDeskSpecsTest {
                 assertFalse(value.contains(".localhost"), name + "=" + value);
               });
     }
+  }
+
+  /**
+   * The delivery loop (epic qits-1440): on, the desk is told so with its interval and handed the
+   * delivery token and its subject; off, it is told so and holds neither. The token vars sit right
+   * after the desk's own, and the hash moves with the loop.
+   */
+  @Test
+  void theDeliveryTokenIsCarriedOnlyWhileTheLoopIsOn() {
+    Project off = project(FrontDeskLifecycle.ON_DEMAND);
+    FrontDesk row = row();
+    row.deliveryTokenId = "d-1";
+    row.deliveryTokenValue = "qits_tok_delivery";
+    row.deliveryTokenSubject = "tok-delivery";
+    Map<String, String> offEnv =
+        FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).spec().env();
+    assertEquals("off", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertEquals("PT10M", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN"));
+    assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
+
+    Project on = project(FrontDeskLifecycle.ON_DEMAND);
+    on.deliveryEnabled = true;
+    on.deliveryInterval = "PT5M";
+    FrontDeskSpecs.Composed composed =
+        FrontDeskSpecs.compose(settings("example.test"), on, row, identity(), DOCUMENT);
+    Map<String, String> onEnv = composed.spec().env();
+    assertEquals("on", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertEquals("PT5M", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertEquals("qits_tok_delivery", onEnv.get("QITS_DELIVERY_TOKEN"));
+    assertEquals("tok-delivery", onEnv.get("QITS_DELIVERY_TOKEN_SUBJECT"));
+    assertEquals("qits_tok_secret", onEnv.get("QITS_TOKEN"), "the desk's own token is unchanged");
+    List<String> names = List.copyOf(onEnv.keySet());
+    assertEquals(names.indexOf("QITS_TOKEN_SUBJECT") + 1, names.indexOf("QITS_DELIVERY_TOKEN"));
+
+    assertFalse(
+        composed.hash().equals(
+            FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).hash()),
+        "turning the loop on moves the hash, so the spec roll recreates the desk");
   }
 
   /** TZ only when a zone is configured. */

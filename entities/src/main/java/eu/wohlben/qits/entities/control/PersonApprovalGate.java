@@ -17,7 +17,12 @@ import java.util.Optional;
  * <p><b>Every archetype</b>, so a piece's own scheduling is covered too (the piece rule refuses it
  * first anyway) and a campaign's REFINED → READY_FOR_DEV is a person's move as decision 19 says. A
  * schedule's cascade is judged once, on the entity that moves. Unscheduling (READY_FOR_DEV →
- * REFINED) is a BACK move and is never judged; system approval is a later epic.
+ * REFINED) is a BACK move and is never judged.
+ *
+ * <p><b>One machine passes: a delivery desk carrying a {@link Mover#declaredApproval}</b> (epic
+ * qits-1440) — the project's own {@code front_desk.delivery.start_refined} in its {@code
+ * .config/qits/project.yml}, which a person committed and a release request approved. Only the
+ * dispatch path stamps one, and only on a desk whose project declares it.
  */
 @ApplicationScoped
 public class PersonApprovalGate implements TransitionGate {
@@ -36,7 +41,7 @@ public class PersonApprovalGate implements TransitionGate {
 
   @Override
   public Optional<String> refusal(WorkEntity row, Mover mover) {
-    if (mover.isPerson()) {
+    if (mover.isPerson() || (mover.isDesk() && mover.declaredApproval() != null)) {
       return Optional.empty();
     }
     return Optional.of(

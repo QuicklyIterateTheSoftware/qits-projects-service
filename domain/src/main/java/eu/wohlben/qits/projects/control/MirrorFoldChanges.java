@@ -88,4 +88,21 @@ public class MirrorFoldChanges implements FoldChanges {
       return commits.readBlobById(repoId, blobSha);
     }
   }
+
+  /**
+   * A path at the fold. {@code git show} answers "no such path" and "no such commit" alike, so the
+   * commit is probed first, with the one refresh {@link #changes} allows itself: a fold still absent
+   * after it is a failure to read, never "the file is not there".
+   */
+  @Override
+  public String fileAt(String repoId, String mergedSha, String path) {
+    if (!commits.hasCommit(repoId, mergedSha)) {
+      gitMirrors.of(repoId).markStale();
+      if (!commits.hasCommit(repoId, mergedSha)) {
+        throw new IllegalStateException(
+            "the fold " + mergedSha + " is not in the repository's mirror");
+      }
+    }
+    return commits.readBlob(repoId, mergedSha, path);
+  }
 }

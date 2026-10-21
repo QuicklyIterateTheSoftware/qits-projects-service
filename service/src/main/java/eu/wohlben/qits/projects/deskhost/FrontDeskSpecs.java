@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
@@ -44,7 +45,16 @@ import org.jboss.logging.Logger;
  * <p><b>Edge-only.</b> The desk runs on a runner's node and reaches the platform only through the
  * public edge, so every address it is given is a {@code <app>.qits.<domain>} one: there is no {@code
  * QITS_COMMISSIONED_*}, no {@code *_AUTH_TOKEN_URL} and no {@code *.internal}, {@code -qits-} or
- * {@code *.localhost} value. It authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN}).
+ * {@code *.localhost} value.
+ *
+ * <p><b>Two tokens.</b> The desk authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN},
+ * idp kind {@code agent-container}, {@code qits:agent}). A desk whose project runs the delivery loop
+ * (epic qits-1440, {@code QITS_PROJECTS_DAEMON_DELIVERY=on}) is also handed the delivery token
+ * ({@code QITS_DELIVERY_TOKEN}, kind {@code desk-delivery}, {@code qits:agent} and {@code
+ * qits:desk}) — and that one is for the {@code project.delivery} session only: the daemon gives it
+ * to nothing else. {@code QITS_PROJECTS_DAEMON_DELIVERY} and {@code
+ * QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL} are always stated; the delivery token and its subject
+ * only while the loop is on.
  * A domain that is blank, has no dot, or is {@code localhost}/{@code *.localhost} refuses to compose
  * ({@link EdgePlaneUnconfigured}, the belt qits-workspaces-service's {@code WorkspaceAddressPlane}
  * carries), and the desk reads FAILED with {@link #EDGE_PLANE_UNCONFIGURED}.
@@ -291,8 +301,14 @@ public class FrontDeskSpecs {
       env.put(AGENT_CONFIGURATION_ENV, document);
     }
     env.put("QITS_PROJECTS_DAEMON_LIFECYCLE", lifecycle.name());
+    env.put("QITS_PROJECTS_DAEMON_DELIVERY", project.deliveryEnabled ? "on" : "off");
+    env.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", DeliverySettings.of(project).interval().toString());
     env.put("QITS_TOKEN", nullToEmpty(row.tokenValue));
     env.put("QITS_TOKEN_SUBJECT", nullToEmpty(row.tokenSubject));
+    if (project.deliveryEnabled) {
+      env.put("QITS_DELIVERY_TOKEN", nullToEmpty(row.deliveryTokenValue));
+      env.put("QITS_DELIVERY_TOKEN_SUBJECT", nullToEmpty(row.deliveryTokenSubject));
+    }
     env.put("QITS_DOMAIN", d);
     env.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
     env.put("QITS_GIT_AUTH_HOST", host("githost", d));

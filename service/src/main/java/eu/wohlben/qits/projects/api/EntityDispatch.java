@@ -14,13 +14,19 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
+import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
 
 /**
@@ -119,6 +125,23 @@ import org.jboss.logging.Logger;
  *       #REFINED_WAITS}. A refused press writes nothing, the pre-approval included.
  * </ul>
  *
+ * <h2>The delivery desk presses too, inside its project's declaration (epic qits-1440)</h2>
+ *
+ * <p>A {@link Mover#isDesk() desk} mover — a {@code qits:desk} token, bound to its {@code project}
+ * claim — is refused, with no side effect and before every refusal above, in this order: an item of
+ * another project (403), no rule named (400), the project's loop off (409), a campaign (409: the
+ * campaign path is a person's), the project at its {@code max_running} (409 naming the count, the
+ * limit and the running items), and a REFINED item while {@code start_refined} is off (the {@link
+ * #REFINED_WAITS} 409, saying so). "Running" is an epic or a ticket of the project, not DONE or
+ * DROPPED, with an assignee and an ACTIVE agent ({@link WorkspaceAgentDispatch#agentsFor}); the
+ * item pressed is never counted against itself.
+ *
+ * <p><b>Start-refined.</b> With {@code front_desk.delivery.start_refined} on, a desk's FLOW press at
+ * REFINED is the scheduling, exactly as a person's is: REFINED → READY_FOR_DEV under the mover
+ * {@link Mover#withDeclaredApproval stamped} with the declaration, which {@code PERSON_APPROVAL}
+ * accepts in a person's place (every other gate still runs), and {@code preApprovedBy} records
+ * {@link #DESK_PRE_APPROVAL}. Every other machine is unchanged. The thread's comment names the rule.
+ *
  * <h2>Why a bean and not the controller's body</h2>
  *
  * <p>Three doors reach it and must not be three implementations; the old ones add nothing but their
@@ -148,6 +171,9 @@ public class EntityDispatch {
   @Inject ReadPatience reads;
 
   @Inject ProjectChangePublisher publisher;
+
+  /** The project's delivery settings, for the desk's refusals (epic qits-1440). */
+  @Inject ProjectService projects;
 
   /** Optional, like every port here. Absent is a 503 naming what is missing. */
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
@@ -212,6 +238,14 @@ public class EntityDispatch {
   }
 
   /**
+   * The same press by id, naming the {@code rule} it is made under — read for a {@link
+   * Mover#isDesk() desk} mover only, which is refused without one (epic qits-1440).
+   */
+  public Outcome dispatch(String id, DispatchMode mode, Mover mover, String rule) {
+    return dispatch(entities.fresh(id), mode, mover, rule); // 404
+  }
+
+  /**
    * The same press by id, refused with a {@link DispatchRefused} unless the phase the row's status
    * starts is {@code requiredPhase} — the campaign executor's door (qits-417), which starts a member
    * at its implement phase and nothing else (READY_FOR_DEV or IMPLEMENTING since qits-887; a
@@ -239,6 +273,21 @@ public class EntityDispatch {
     return checked(entity).phase().word();
   }
 
+  /**
+   * {@link #precheck(WorkEntity)} for a press by {@code mover} in {@code mode}: a {@link
+   * Mover#isDesk() desk}'s own refusals first (epic qits-1440, see the class javadoc), then the
+   * ones every press makes — with the phase a scheduling press would start where the press is the
+   * scheduling. Still no side effect.
+   *
+   * @return the phase a press would start now
+   */
+  public String precheck(WorkEntity entity, DispatchMode mode, Mover mover, String rule) {
+    Mover effective = deskChecked(entity, mode, mover, rule);
+    return (schedulesAtThePress(entity, mode, effective) ? checkedAsScheduled(entity) : checked(entity))
+        .phase()
+        .word();
+  }
+
   /** {@link #precheck}, and a {@link DispatchRefused} unless that phase is {@code requiredPhase}. */
   public String precheck(WorkEntity entity, String requiredPhase) {
     requirePhase(entity, requiredPhase);
@@ -257,6 +306,17 @@ public class EntityDispatch {
 
   /** {@link #dispatch(WorkEntity, DispatchMode, String)} by {@code mover} — see the class javadoc. */
   public Outcome dispatch(WorkEntity entity, DispatchMode mode, Mover mover) {
+    return dispatch(entity, mode, mover, null);
+  }
+
+  /**
+   * {@link #dispatch(WorkEntity, DispatchMode, Mover)} naming the {@code rule} a desk presses under
+   * (epic qits-1440); ignored for every other mover.
+   */
+  public Outcome dispatch(WorkEntity entity, DispatchMode mode, Mover pressedBy, String rule) {
+    // The desk's refusals come before every other, and a desk whose project declares start_refined
+    // comes back stamped with that declaration for the scheduling move.
+    Mover mover = deskChecked(entity, mode, pressedBy, rule);
     String changedBy = mover.name();
     boolean schedules = schedulesAtThePress(entity, mode, mover);
     // Every refusal first, with no side effect (a DispatchRefused); everything after this line is
@@ -289,7 +349,10 @@ public class EntityDispatch {
     recorded = entities.setAssignee(recorded.id, made.assignee(), changedBy);
 
     comments.addComment(
-        recorded.id, comment(noun(recorded), branch, made, started.phase(), mode), changedBy);
+        recorded.id,
+        comment(noun(recorded), branch, made, started.phase(), mode)
+            + (mover.isDesk() ? deskSuffix(rule) : ""),
+        changedBy);
     publisher.fire(recorded.projectId, ProjectChangeHint.Topic.of(recorded.archetype));
     LOG.infof(
         "Dispatched agent %s onto %s %s (%s) for the %s phase (%s) in workspace %s on %s",
@@ -387,7 +450,7 @@ public class EntityDispatch {
    */
   private static boolean schedulesAtThePress(WorkEntity entity, DispatchMode mode, Mover mover) {
     return mode == DispatchMode.FLOW
-        && mover.isPerson()
+        && (mover.isPerson() || (mover.isDesk() && mover.declaredApproval() != null))
         && nextPhaseAware(entity)
         && isRefined(entity);
   }
@@ -445,6 +508,12 @@ public class EntityDispatch {
    */
   private WorkEntity recordPreApproval(
       WorkEntity entity, DispatchMode mode, Mover mover, boolean scheduled) {
+    if (mover.isDesk() && scheduled) {
+      // Start-refined (epic qits-1440): the declaration the scheduling was made under, on the row.
+      return java.util.Objects.equals(entity.preApprovedBy, DESK_PRE_APPROVAL)
+          ? entity
+          : entities.setPreApprovedBy(entity.id, DESK_PRE_APPROVAL, mover.name());
+    }
     if (!mover.isPerson()) {
       // A machine never grants a pre-approval and never takes a person's away either.
       return entity;
@@ -611,6 +680,132 @@ public class EntityDispatch {
    */
   static final String REFINED_WAITS =
       "REFINED waits for a person to schedule it (READY_FOR_DEV) before it can be dispatched.";
+
+  // ---- the delivery desk (epic qits-1440) ----------------------------------------------------
+
+  /** What a desk's start-refined scheduling records as {@code preApprovedBy}. */
+  public static final String DESK_PRE_APPROVAL =
+      "delivery desk (start-refined, .config/qits/project.yml)";
+
+  /** The 403 a desk reaching for another project's item answers. */
+  static final String DESK_OTHER_PROJECT =
+      "The delivery desk may dispatch only the items of its own project.";
+
+  /** The 400 a desk naming no rule answers. */
+  static final String DESK_NO_RULE = "The delivery desk names the rule it dispatches under.";
+
+  /** The 409 a desk answers while its project's loop is off. */
+  static final String DESK_LOOP_OFF =
+      "The delivery loop is off for this project (front_desk.delivery.enabled in"
+          + " .config/qits/project.yml).";
+
+  /** What a REFINED refusal adds for a desk whose project does not declare start_refined. */
+  static final String DESK_START_REFINED_OFF = "start_refined is off.";
+
+  /**
+   * The desk's refusals, in the class javadoc's order and with no side effect; answers the mover
+   * the press goes on as — the desk stamped with its project's start-refined declaration where the
+   * press is a FLOW press at REFINED and the project declares it. Any other mover passes through
+   * untouched.
+   */
+  private Mover deskChecked(WorkEntity entity, DispatchMode mode, Mover mover, String rule) {
+    if (!mover.isDesk()) {
+      return mover;
+    }
+    if (mover.deskProject() == null || !mover.deskProject().equals(entity.projectId)) {
+      throw new DispatchRefused(403, DESK_OTHER_PROJECT);
+    }
+    if (rule == null || rule.isBlank()) {
+      throw new DispatchRefused(400, DESK_NO_RULE);
+    }
+    DeliverySettings delivery = deliveryOf(entity.projectId);
+    if (!delivery.enabled()) {
+      throw new DispatchRefused(409, DESK_LOOP_OFF);
+    }
+    if (entity.archetype == Archetype.CAMPAIGN) {
+      throw new DispatchRefused(
+          409,
+          "Campaign "
+              + entity.id
+              + " is not the delivery desk's to start — a campaign is started by a person pressing"
+              + " dispatch on it, and its executor dispatches its members.");
+    }
+    List<WorkEntity> running = runningBesides(entity);
+    if (running.size() >= delivery.maxRunning()) {
+      throw new DispatchRefused(
+          409,
+          "The delivery desk keeps at most "
+              + delivery.maxRunning()
+              + " items of this project running (front_desk.delivery.max_running), and "
+              + running.size()
+              + " are running: "
+              + running.stream().map(this::nameOf).collect(Collectors.joining(", "))
+              + ".");
+    }
+    if (nextPhaseAware(entity) && isRefined(entity)) {
+      if (!delivery.startRefined()) {
+        throw new DispatchRefused(
+            409,
+            capitalised(noun(entity))
+                + " "
+                + entity.id
+                + " is REFINED. "
+                + REFINED_WAITS
+                + " "
+                + DESK_START_REFINED_OFF);
+      }
+      if (mode == DispatchMode.FLOW) {
+        return mover.withDeclaredApproval(DESK_PRE_APPROVAL);
+      }
+    }
+    return mover;
+  }
+
+  /** The project's stored delivery settings, read in a transaction of its own. */
+  private DeliverySettings deliveryOf(String projectId) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> DeliverySettings.of(projects.get(projectId)));
+  }
+
+  /**
+   * The project's running items besides {@code entity}: epics and tickets that are not DONE or
+   * DROPPED, carry an assignee, and have an ACTIVE agent at qits-workspaces. With no workspaces
+   * context nothing is known to run, and the press goes on to that 503.
+   */
+  private List<WorkEntity> runningBesides(WorkEntity entity) {
+    List<WorkEntity> candidates = new ArrayList<>();
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
+      for (WorkEntity row : lifecycle.listByProject(archetype, entity.projectId)) {
+        if (!row.id.equals(entity.id)
+            && !EntityStatus.DONE.name().equals(row.status)
+            && !EntityStatus.DROPPED.name().equals(row.status)
+            && row.assignee != null
+            && !row.assignee.isBlank()) {
+          candidates.add(row);
+        }
+      }
+    }
+    if (candidates.isEmpty() || dispatch.isUnsatisfied()) {
+      return List.of();
+    }
+    Set<String> active =
+        dispatch.get().agentsFor(candidates.stream().map(row -> row.id).toList()).stream()
+            .filter(WorkspaceAgentDispatch.Agent::active)
+            .map(WorkspaceAgentDispatch.Agent::workId)
+            .collect(Collectors.toSet());
+    return candidates.stream().filter(row -> active.contains(row.id)).toList();
+  }
+
+  /** An item as a refusal names it: its qualified id, else its id. */
+  private String nameOf(WorkEntity entity) {
+    String qualifiedId = workspaces.qualifiedIdOf(entity);
+    return qualifiedId == null ? entity.id : qualifiedId;
+  }
+
+  /** What a desk's dispatch comment ends with. */
+  private static String deskSuffix(String rule) {
+    return " Dispatched by the delivery desk under rule `" + rule + "`.";
+  }
 
   /**
    * What the entity's thread is told. It names the phase and the assignee the press wrote

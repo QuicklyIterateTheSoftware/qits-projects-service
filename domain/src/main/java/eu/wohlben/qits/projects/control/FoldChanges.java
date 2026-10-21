@@ -59,4 +59,14 @@ public interface FoldChanges {
    * @throws RuntimeException when the blob cannot be read — never null for a blob that exists
    */
   String blob(String repoId, String blobSha);
+
+  /**
+   * The content of {@code path} in the tree of {@code mergedSha}, or null where that tree holds no
+   * such path — {@link CommitService#readBlob}. What {@code ContractChangeSource} reads the fold's
+   * {@code .config/qits/release.yml} by, for the application its golden masters are published under
+   * ({@code contracts.application}), a file the fold need not have changed.
+   *
+   * @throws RuntimeException when the fold cannot be read
+   */
+  String fileAt(String repoId, String mergedSha, String path);
 }

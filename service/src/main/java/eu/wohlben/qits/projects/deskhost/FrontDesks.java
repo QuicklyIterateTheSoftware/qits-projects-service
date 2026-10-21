@@ -64,6 +64,11 @@ import org.jboss.logging.Logger;
  * stored on the row ({@link #mintIfMissing}); a mint that fails leaves the desk FAILED with {@link
  * #TOKEN_UNAVAILABLE} and the sweep retries it. Stop never revokes it; {@link #remove} does.
  *
+ * <p><b>The delivery token</b> (epic qits-1440) follows the project's {@code delivery_enabled}
+ * instead ({@link #syncDeliveryToken}): minted while the loop is on and the row holds none, revoked
+ * and cleared when it is off, and revoked with the desk. A failed mint leaves the desk usable — the
+ * loop simply has no credential yet — and the sweep retries it.
+ *
  * <p><b>The bound subjects</b> — each desk's {@code token_subject} — are also held in memory, loaded
  * at boot and kept with every write here, because the control socket's upgrade check and the
  * dial-back route ask on the event loop.
@@ -245,6 +250,11 @@ public class FrontDesks {
       LOG.warnf(
           "Could not revoke the desk token of project %s; the token reconcile reaps it", projectId);
     }
+    if (gone.deliveryTokenId != null && !tokens.revokeDelivery(gone.deliveryTokenId)) {
+      LOG.warnf(
+          "Could not revoke the delivery token of project %s; the token reconcile reaps it",
+          projectId);
+    }
     tunnels.closeTunnel(projectId);
     daemons.forget(projectId);
   }
@@ -271,7 +281,10 @@ public class FrontDesks {
 
   // --- rows and tokens ---------------------------------------------------------------------------
 
-  /** The row of {@code projectId}, created if absent, holding its token if one could be minted. */
+  /**
+   * The row of {@code projectId}, created if absent, holding its token if one could be minted — and
+   * its delivery token too while the project's loop is enabled.
+   */
   public void ensureRow(String projectId) {
     if (find(projectId).isEmpty()) {
       try {
@@ -294,6 +307,71 @@ public class FrontDesks {
       }
     }
     mintIfMissing(projectId);
+    syncDeliveryToken(projectId);
+  }
+
+  /**
+   * Bring the desk's delivery token in line with the project's {@code delivery_enabled} (epic
+   * qits-1440): enabled and none held, one is minted outside any transaction and stored only on a
+   * row that still holds none (a lost race, or a row deleted meanwhile, revokes what was minted);
+   * disabled and one held, it is cleared from the row and revoked. A desk with no row is left alone.
+   * A failed mint or revoke is a WARN: the sweep calls this again, and the token reconcile reaps
+   * what a failed revoke left.
+   */
+  public void syncDeliveryToken(String projectId) {
+    FrontDesk row = find(projectId).orElse(null);
+    if (row == null) {
+      return;
+    }
+    Project project = QuarkusTransaction.requiringNew().call(() -> projectRows.findById(projectId));
+    boolean enabled = project != null && project.deliveryEnabled;
+    if (enabled && row.deliveryTokenId == null) {
+      FrontDeskTokens.Minted minted;
+      try {
+        minted = tokens.mintDelivery(projectId);
+      } catch (RuntimeException e) {
+        LOG.warnf("Could not mint the delivery token of project %s: %s", projectId, e.getMessage());
+        return;
+      }
+      int stored =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      desks.update(
+                          "deliveryTokenId = ?1, deliveryTokenValue = ?2, deliveryTokenSubject = ?3"
+                              + " where projectId = ?4 and deliveryTokenId is null",
+                          minted.tokenId(),
+                          minted.token(),
+                          minted.subject(),
+                          projectId));
+      if (stored == 0) {
+        tokens.revokeDelivery(minted.tokenId());
+        return;
+      }
+      LOG.infof("Minted the delivery token of project %s", projectId);
+    } else if (!enabled && row.deliveryTokenId != null) {
+      String tokenId = row.deliveryTokenId;
+      int cleared =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      desks.update(
+                          "deliveryTokenId = null, deliveryTokenValue = null,"
+                              + " deliveryTokenSubject = null"
+                              + " where projectId = ?1 and deliveryTokenId = ?2",
+                          projectId,
+                          tokenId));
+      if (cleared == 0) {
+        return;
+      }
+      if (!tokens.revokeDelivery(tokenId)) {
+        LOG.warnf(
+            "Could not revoke the delivery token of project %s; the token reconcile reaps it",
+            projectId);
+      } else {
+        LOG.infof("Revoked the delivery token of project %s: its delivery loop is off", projectId);
+      }
+    }
   }
 
   /**
@@ -648,6 +726,9 @@ public class FrontDesks {
       subjects.remove(projectId);
       if (leftover.tokenId != null) {
         tokens.revoke(leftover.tokenId);
+      }
+      if (leftover.deliveryTokenId != null) {
+        tokens.revokeDelivery(leftover.deliveryTokenId);
       }
       if (placeable(leftover)) {
         registry.backlogChanged();

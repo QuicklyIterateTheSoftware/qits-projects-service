@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -238,8 +239,8 @@ public class WrapperReconcileService {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Brings the project's stored configuration — {@code Project.supportsEnvironments} and {@code
-   * Project.frontDeskLifecycle} — in line with its wrapper's {@code .config/qits/project.yml}, and
+   * Brings the project's stored configuration — {@code Project.supportsEnvironments}, {@code
+   * Project.frontDeskLifecycle} and the {@code Project.delivery*} settings — in line with its wrapper's {@code .config/qits/project.yml}, and
    * announces the change when there is one. Callable alone: it reads the one file and does none of
    * the {@code .gitmodules} work.
    *
@@ -256,7 +257,9 @@ public class WrapperReconcileService {
    *
    * <p>{@code ProjectChanged} is published <b>only when a stored value actually moves</b>, after
    * the transaction that moved it, fire-and-forget like every other announcement here; a moved
-   * front desk lifecycle additionally reaches {@link FrontDeskLifecycleChanged}, best effort.
+   * front desk lifecycle additionally reaches {@link FrontDeskLifecycleChanged}, best effort, and so
+   * do moved delivery settings ({@link FrontDeskLifecycleChanged#onDeliveryChanged}) — which alone
+   * announce nothing, since {@code ProjectChanged} carries none of them.
    *
    * <p>{@link ActivateRequestContext} because the boot pass and the bus consumers call this on
    * threads with no ambient request context.
@@ -279,40 +282,71 @@ public class WrapperReconcileService {
     } catch (RuntimeException e) {
       LOG.warnf(
           "%s in the wrapper of project %s could not be read or does not parse; keeping"
-              + " supports_environments=%s and front_desk.lifecycle=%s as stored: %s",
+              + " supports_environments=%s, front_desk.lifecycle=%s and front_desk.delivery=%s as"
+              + " stored: %s",
           ProjectConfigParser.CONFIG_PATH,
           project.id,
           project.supportsEnvironments,
           project.frontDeskLifecycle,
+          DeliverySettings.of(project),
           e.getMessage());
       return;
     }
     boolean environmentsMoved = config.supportsEnvironments() != project.supportsEnvironments;
     boolean lifecycleMoved = config.frontDeskLifecycle() != project.frontDeskLifecycle;
-    if (!environmentsMoved && !lifecycleMoved) {
+    DeliverySettings storedDelivery = DeliverySettings.of(project);
+    boolean deliveryMoved = !config.delivery().equals(storedDelivery);
+    if (!environmentsMoved && !lifecycleMoved && !deliveryMoved) {
       return;
     }
     LOG.infof(
-        "Reconcile: project %s declares supports_environments=%s, front_desk.lifecycle=%s; stored"
-            + " as %s, %s — updating.",
+        "Reconcile: project %s declares supports_environments=%s, front_desk.lifecycle=%s,"
+            + " front_desk.delivery=%s; stored as %s, %s, %s — updating.",
         project.id,
         config.supportsEnvironments(),
         config.frontDeskLifecycle(),
+        config.delivery(),
         project.supportsEnvironments,
-        project.frontDeskLifecycle);
+        project.frontDeskLifecycle,
+        storedDelivery);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               Project row = projectService.get(project.id);
               row.supportsEnvironments = config.supportsEnvironments();
               row.frontDeskLifecycle = config.frontDeskLifecycle();
+              config.delivery().applyTo(row);
             });
     project.supportsEnvironments = config.supportsEnvironments();
     project.frontDeskLifecycle = config.frontDeskLifecycle();
+    config.delivery().applyTo(project);
     if (lifecycleMoved) {
       notifyLifecycleChanged(project);
     }
-    announceChanged(project);
+    if (deliveryMoved) {
+      // Every delivery move reaches the desk, not only the toggle: the interval is in its spec.
+      notifyDeliveryChanged(project);
+    }
+    if (environmentsMoved || lifecycleMoved) {
+      // ProjectChanged carries neither delivery fact, so a delivery move alone has nothing to say.
+      announceChanged(project);
+    }
+  }
+
+  /** Best effort, outside every transaction and never able to fail a reconcile. */
+  private void notifyDeliveryChanged(Project project) {
+    if (!lifecycleListeners.isResolvable()) {
+      return;
+    }
+    try {
+      lifecycleListeners.get().onDeliveryChanged(project.id, DeliverySettings.of(project));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not act on the front desk delivery settings %s of project %s",
+          DeliverySettings.of(project),
+          project.id);
+    }
   }
 
   /** Best effort, outside every transaction and never able to fail a reconcile. */

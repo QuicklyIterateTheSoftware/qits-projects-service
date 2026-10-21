@@ -42,6 +42,7 @@ public final class ApprovalSubject {
   private Boolean addsNothing;
   private FoldUnreadable addsNothingFailure;
   private final Map<String, String> blobs = new HashMap<>();
+  private final Map<String, java.util.Optional<String>> files = new HashMap<>();
 
   /**
    * @param mergedSha the fold, or null for a request with none yet
@@ -185,6 +186,32 @@ public final class ApprovalSubject {
           "the changes to " + ConfigDirectorySource.DIRECTORY + " could not be read",
           e.getMessage(),
           true,
+          e);
+    }
+  }
+
+  /**
+   * The content of {@code path} in the fold's own tree, or null where the fold holds no such path —
+   * a file the fold need not have changed ({@link FoldChanges#fileAt}). Read on first ask.
+   *
+   * @throws FoldUnreadable when it cannot be read; the caller decides whether that fails closed
+   */
+  public String fileAtFold(String path) {
+    requireReadable();
+    java.util.Optional<String> known = files.get(path);
+    if (known != null) {
+      return known.orElse(null);
+    }
+    try {
+      String content = reader.fileAt(repoId, mergedSha, path);
+      files.put(path, java.util.Optional.ofNullable(content));
+      return content;
+    } catch (RuntimeException e) {
+      throw new FoldUnreadable(
+          UNREADABLE_CHANGES_ID,
+          path + " at the fold could not be read",
+          e.getMessage(),
+          false,
           e);
     }
   }

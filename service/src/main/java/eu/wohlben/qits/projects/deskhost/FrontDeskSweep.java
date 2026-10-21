@@ -24,9 +24,11 @@ import org.jboss.logging.Logger;
  * and once at boot, NORMAL launch mode only:
  *
  * <ol>
- *   <li>every ALWAYS_ON project without a desk gets one (and its token) — so an ALWAYS_ON desk
- *       exists without anyone calling {@code ensure}, and one a DELETE removed is created afresh;
- *   <li>a desk whose token could not be minted is minted again;
+ *   <li>every ALWAYS_ON project, and every project whose delivery loop is enabled (epic qits-1440),
+ *       without a desk gets one (and its token) — so such a desk exists without anyone calling
+ *       {@code ensure}, and one a DELETE removed is created afresh;
+ *   <li>a desk whose token could not be minted is minted again, and its delivery token is brought
+ *       in line with the project's loop;
  *   <li>the edge belt is applied;
  *   <li>every desk's desired state is recomputed — the idle window closing is noticed here — and a
  *       wanted unplaced desk is stamped {@code queued_at};
@@ -75,14 +77,14 @@ public class FrontDeskSweep {
   public int sweep(Instant now) {
     List<Project> all = QuarkusTransaction.requiringNew().call(() -> projects.listAll());
     for (Project project : all) {
-      if (project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON
+      if ((project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON || project.deliveryEnabled)
           && project.slug != null
           && !project.slug.isBlank()
           && frontDesks.find(project.id).isEmpty()) {
         try {
           frontDesks.ensureRow(project.id);
         } catch (RuntimeException e) {
-          LOG.warnf("Could not create the ALWAYS_ON desk of project %s: %s", project.id, e.getMessage());
+          LOG.warnf("Could not create the wanted desk of project %s: %s", project.id, e.getMessage());
         }
       }
     }
@@ -93,6 +95,7 @@ public class FrontDeskSweep {
         if (row.tokenId == null) {
           frontDesks.mintIfMissing(row.projectId);
         }
+        frontDesks.syncDeliveryToken(row.projectId);
         frontDesks.checkEdge(row.projectId);
         UUID runner = frontDesks.reconcile(row.projectId, now);
         if (runner != null) {

@@ -117,6 +117,7 @@ public class RecordingFoldChanges implements FoldChanges {
     mirrored.clear();
     reads.clear();
     blobs.clear();
+    files.clear();
   }
 
   @Override
@@ -227,5 +228,29 @@ public class RecordingFoldChanges implements FoldChanges {
   /** A moved gitlink. */
   public static CommitFileChangeDto gitlink(String path) {
     return new CommitFileChangeDto(path, null, "MODIFIED", "160000", "160000", null, null, null);
+  }
+
+  /** A file at every fold of a repository, keyed {@code repoId + ":" + path}. */
+  private final Map<String, String> files = new ConcurrentHashMap<>();
+
+  /**
+   * Every fold of {@code repoId} holds {@code content} at {@code path}, until the next reset.
+   * Unscripted, a path is absent at every fold — which is the answer the real read gives for a file
+   * the tree does not hold.
+   */
+  public void scriptFile(String repoId, String path, String content) {
+    files.put(repoId + ":" + path, content);
+  }
+
+  @Override
+  public String fileAt(String repoId, String mergedSha, String path) {
+    if (mirrored.contains(repoId)) {
+      return mirror.fileAt(repoId, mergedSha, path);
+    }
+    String failure = unreadable.get(repoId);
+    if (failure != null) {
+      throw new IllegalStateException(failure);
+    }
+    return files.get(repoId + ":" + path);
   }
 }

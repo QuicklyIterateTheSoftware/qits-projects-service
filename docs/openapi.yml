@@ -1840,6 +1840,22 @@ components:
           $ref: "#/components/schemas/RefinementDto"
         technicalProcessId:
           type: string
+    ProjectDeliveryDto:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        maxRunning:
+          type: integer
+          format: int32
+        startRefined:
+          type: boolean
+        approves:
+          type: array
+          items:
+            type: string
+        interval:
+          type: string
     ProjectDnsRecordDto:
       type: object
       properties:
@@ -1870,6 +1886,8 @@ components:
           $ref: "#/components/schemas/ProjectDnsRecordDto"
         frontDeskLifecycle:
           $ref: "#/components/schemas/FrontDeskLifecycle"
+        delivery:
+          $ref: "#/components/schemas/ProjectDeliveryDto"
     ProjectReleaseRequest:
       type: object
       description: "One release request, as getReleaseRequest answers it."
@@ -3105,6 +3123,11 @@ components:
           type: string
           description: "FLOW (Dispatch: run the whole flow) or PHASE (Run the next\
             \ phase: one, then stop)"
+        rule:
+          type: string
+          description: "The delivery desk's rule id this press is made under (backlog-newest-first,\
+            \ start-refined). Required for a qits:desk caller, ignored for anyone\
+            \ else."
     WorkDispatchState:
       type: object
       description: What a press would start now.
@@ -7814,22 +7837,24 @@ paths:
                 - $ref: "#/components/schemas/WorkDispatchAnswer"
                 - $ref: "#/components/schemas/WorkProgressAnswer"
         "400":
-          description: A missing or unknown mode
+          description: "A missing or unknown mode, or a delivery desk naming no rule"
+        "403":
+          description: A delivery desk reaching for another project's item
         "404":
           description: No entity with this id
         "409":
           description: "A status that starts no phase, a feature or a task, a blocked\
-            \ entity, a project with no wrapper"
+            \ entity, a project with no wrapper; for the delivery desk also its loop\
+            \ off, a campaign, or its cap reached"
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Work Dispatch Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/work/{qualifiedId}/dossier:
     get:
       summary: Read a work entity's dossier

@@ -11,6 +11,8 @@ import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
  * @param frontDeskLifecycle how the project's front desk is kept, as its wrapper's {@code
  *     .config/qits/project.yml} declares it under {@code front_desk.lifecycle}; {@code ON_DEMAND}
  *     when it declares nothing.
+ * @param delivery the front desk's delivery loop, as {@code front_desk.delivery} declares it
+ *     (epic qits-1440); never null, {@code enabled: false} when it declares nothing.
  */
 public record ProjectDto(
     String id,
@@ -18,4 +20,5 @@ public record ProjectDto(
     String slug,
     String description,
     ProjectDnsRecordDto dns,
-    FrontDeskLifecycle frontDeskLifecycle) {}
+    FrontDeskLifecycle frontDeskLifecycle,
+    ProjectDeliveryDto delivery) {}
