@@ -17,6 +17,7 @@ import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.AutomationKinds;
 import eu.wohlben.qits.projects.control.DownstreamPins;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -24,6 +25,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApprovalNotice;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.maintenancehost.FakeAutomationKinds;
 import eu.wohlben.qits.projects.maintenancehost.FakeDownstreamPins;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -93,12 +95,31 @@ public class ReleaseRequestApprovalRolesTest {
 
   @Inject FakeDownstreamPins downstreamPins;
 
+  @Inject FakeAutomationKinds automationKinds;
+
+  /** qits-maintenance's catalogue as it answers today: two kinds declare roles. */
+  private static final List<AutomationKinds.Kind> KINDS =
+      List.of(
+          new AutomationKinds.Kind(
+              "dependency-bump", "Dependency bump", List.of(":(glob)**/pom.xml"), List.of()),
+          new AutomationKinds.Kind(
+              "entity-diagram",
+              "Entity diagram",
+              List.of(":(glob)docs/database/**"),
+              List.of("agent", "person")),
+          new AutomationKinds.Kind(
+              "screenshot-baselines",
+              "Screenshot baselines",
+              List.of(":(glob)**/__screenshots__/**", ":(glob)**/testing/browser/renderer.txt"),
+              List.of("agent", "person")));
+
   private String projectId;
   private String otherProjectId;
   private String declarationRepoId;
   private String manualRepoId;
   private String contractRepoId;
   private String consumerRepoId;
+  private String screenshotRepoId;
   private WorkEntity ticket;
   private String ticketBranch;
   private final List<String> requestIds = new ArrayList<>();
@@ -112,6 +133,7 @@ public class ReleaseRequestApprovalRolesTest {
     foldChanges.reset();
     announcer.reset();
     downstreamPins.reset();
+    automationKinds.reset();
     requestIds.clear();
     activeBuilds.answer(Optional.of(0));
     gitHost.gatedTree("refs/heads/main", Map.of("README.md", "a service"));
@@ -122,6 +144,7 @@ public class ReleaseRequestApprovalRolesTest {
     manualRepoId = "roles-manual-" + UUID.randomUUID();
     contractRepoId = "roles-contract-" + UUID.randomUUID();
     consumerRepoId = "roles-consumer-" + UUID.randomUUID();
+    screenshotRepoId = "roles-screenshots-" + UUID.randomUUID();
     gitHost.gatedTreeFor(
         manualRepoId,
         "refs/heads/main",
@@ -137,6 +160,7 @@ public class ReleaseRequestApprovalRolesTest {
               repository(project, manualRepoId);
               repository(project, contractRepoId);
               repository(other, consumerRepoId);
+              repository(project, screenshotRepoId);
             });
     // The declaration repository's fold changes release.yml, and only by declaring an artifact.
     foldChanges.changes(
@@ -170,6 +194,7 @@ public class ReleaseRequestApprovalRolesTest {
             });
     foldChanges.reset();
     downstreamPins.reset();
+    automationKinds.reset();
   }
 
   // ---- an agent acknowledges a declaration -----------------------------------------------------
@@ -468,6 +493,111 @@ public class ReleaseRequestApprovalRolesTest {
         List.of(new DownstreamPins.Downstream("telemetry-consumer-service", consumerRepoId, 1)));
     downstreamPins.pins(
         "telemetry-consumer-service", List.of(new DownstreamPins.Pin("maven", pin)));
+  }
+
+  // ---- automation content (qits-1046) ------------------------------------------------------------
+
+  /**
+   * The owner's "agent acknowledgement" case: a fold that regenerates screenshot baselines holds at
+   * approval with "Screenshot baselines changed" admitting {@code agent, person}; the request's own
+   * agent approves through the door and the request releases.
+   */
+  @Test
+  void regeneratedScreenshotsAreAcknowledgedByTheRequestsOwnAgent() {
+    automationKinds.answer(KINDS);
+    foldChanges.changes(
+        screenshotRepoId,
+        List.of(
+            RecordingFoldChanges.file("MODIFIED", "webui/src/app/__screenshots__/home.png", null),
+            RecordingFoldChanges.file("MODIFIED", "webui/src/app/home.ts", null)));
+    String id = create(screenshotRepoId, ticketBranch);
+    String fold = mergedShaOf(screenshotRepoId, id);
+    verdict(screenshotRepoId, fold);
+
+    JsonPath held = request(screenshotRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals("WAITING", held.getString("approvalState"));
+    assertEquals(
+        List.of("automation:screenshot-baselines"),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        "Screenshot baselines changed", held.getString("approvalRequirements[0].reason"));
+    assertEquals(
+        List.of("agent", "person"), held.getList("approvalRequirements[0].admits", String.class));
+    assertEquals(false, held.getBoolean("approvalRequirements[0].excludesAuthors"));
+    assertEquals(
+        "webui/src/app/__screenshots__/home.png", held.getString("approvalRequirements[0].detail"));
+    assertEquals(
+        List.of("automation:screenshot-baselines:OPEN@" + fold.substring(0, 7)),
+        announcer.statesOf(id));
+
+    agent(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(screenshotRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalRequirements[0].satisfiedBy.roles", equalTo(List.of("agent")));
+
+    awaitState(screenshotRepoId, id, "RELEASED");
+  }
+
+  /**
+   * The owner's "one approval, several requirements": a fold that changes {@code .config/qits/} and
+   * regenerates screenshots needs a person for the one and an agent or a person for the other, and a
+   * single person's approval satisfies both.
+   */
+  @Test
+  void onePersonsApprovalSatisfiesAConfigChangeAndScreenshotsTogether() {
+    automationKinds.answer(KINDS);
+    foldChanges.changes(
+        screenshotRepoId,
+        List.of(
+            RecordingFoldChanges.file("MODIFIED", ".config/qits/release-requests.yml", null),
+            RecordingFoldChanges.file("ADDED", "webui/src/app/__screenshots__/new.png", null)));
+    String id = create(screenshotRepoId, ticketBranch);
+    String fold = mergedShaOf(screenshotRepoId, id);
+    verdict(screenshotRepoId, fold);
+
+    JsonPath held = request(screenshotRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        List.of("config-directory", "automation:screenshot-baselines"),
+        held.getList("approvalRequirements.id", String.class));
+
+    person("ada")
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(screenshotRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"))
+        .body("request.approvalRequirements[0].satisfiedBy.approver", equalTo("ada"))
+        .body("request.approvalRequirements[1].satisfiedBy.approver", equalTo("ada"));
+    person("ada")
+        .get(base(screenshotRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals.size()", equalTo(1));
+
+    awaitState(screenshotRepoId, id, "RELEASED");
+  }
+
+  /** An unreachable catalogue with nothing cached holds the fold for a person. */
+  @Test
+  void anUnreachableCatalogueHoldsTheFoldForAPerson() {
+    automationKinds.unreachable();
+    foldChanges.changes(
+        screenshotRepoId,
+        List.of(RecordingFoldChanges.file("MODIFIED", "webui/src/app/home.ts", null)));
+    String id = create(screenshotRepoId, ticketBranch);
+    String fold = mergedShaOf(screenshotRepoId, id);
+    verdict(screenshotRepoId, fold);
+
+    JsonPath held = request(screenshotRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        List.of("automation:catalogue"), held.getList("approvalRequirements.id", String.class));
+    assertEquals(List.of("person"), held.getList("approvalRequirements[0].admits", String.class));
   }
 
   // ---- fixtures ------------------------------------------------------------------------------------

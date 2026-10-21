@@ -182,7 +182,8 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   more. `control/DownstreamComponents` is one GET,
   `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so
   `ReleaseRequestChanged` can carry what is built on top of the repository. (The automations and
-  `control/DownstreamPins`, the contract-change approval source's two reads, live here too.) It is addressed by this
+  `control/DownstreamPins`, the contract-change approval source's two reads, and
+  `control/AutomationKinds`, the automation-content source's kinds catalogue, live here too.) It is addressed by this
   service's own repository row id, which is qits-maintenance's `catalogId`. Everything about it is
   advisory: unset, unreachable, refused and 404 are one behaviour — a WARN and `Optional.empty()`,
   which becomes an absent event key a consumer reads as "unknown". A 200 with an empty array is a
@@ -1236,7 +1237,8 @@ bean; the gate, the doors, the DTO and the event read the list. Sources today: `
 an unreadable fold fails closed into), `artifact-declarations` (the fold's only `.config/qits/`
 change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
 `contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule), `no-changes`
-(qits-760, `person`) and `contract:<slug>` (qits-1291, below). A content source reads the fold through `ApprovalSubject`, lazily and once; a
+(qits-760, `person`), `automation:<kind>` (qits-1046, below) and `contract:<slug>` (qits-1291,
+below). A content source reads the fold through `ApprovalSubject`, lazily and once; a
 failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no
 git: `manual-review` from configuration, else one satisfied `recorded` requirement with the recorded
 approval's roles. The display path stores the content requirements as JSON objects in
@@ -1281,6 +1283,31 @@ approval's roles. The display path stores the content requirements as JSON objec
   tell (no address, unreachable, a consumer's pins unread, no project) is a WARN and no
   requirement, never fail-closed. The `getRepository` consumer row is pending until
   qits-maintenance records a provider state for it.
+- **Automation content** (`AutomationContentSource`, qits-1046): qits-maintenance's kinds catalogue
+  (`control/AutomationKinds` → `maintenancehost/HttpAutomationKinds`, `GET
+  /maintenance/api/automations/kinds` → `{kinds: [{kind, label, committablePaths, approvalRoles}]}`,
+  same address and credential as `HttpDownstreamPins`) says which paths each release-request
+  automation commits and which roles a fold it wrote into needs; this service keeps no kind table.
+  For each kind with roles, a changed path of the fold (gitlinks skipped, a rename by either path,
+  the same base as every content source) matching one of its `committablePaths` opens
+  `automation:<kind>`, reason `<label> changed`, admitting the kind's roles as `ApprovalRole` parses
+  them (`screenshot-baselines` and `entity-diagram`: `agent`, `person`), not excluding authors, the
+  detail up to 20 matching paths. A kind with no roles (`dependency-bump`, `estate-pins`) adds
+  nothing. `approval/GitPathspec` matches the kinds' pathspecs: `:(glob)` with `**`, `*`, `?` (`*`
+  and `?` never cross `/`, `**/` is zero or more directories, a trailing `/**` everything inside),
+  and plain pathspecs as whole-segment prefixes; every other magic (`:(icase)`, `:(exclude)`, `:!`,
+  `:/`, `:(attr…)`, unknown), a bracket expression and a wildcard without `:(glob)` are
+  `Unsupported`. **It fails closed, unlike the contract source**: a kind whose pathspec or role word
+  cannot be read opens `automation:<kind>` admitting `person` (where the fold changed anything), and
+  a catalogue that is configured but cannot be read with nothing ever cached is one
+  `automation:catalogue` admitting `person`, thrown as `FoldUnreadable` so the reading is incomplete
+  and never stored. **The cache** is the source's: the last good answer is served unasked for 5
+  minutes, then asked again, and served (WARN) for as long as qits-maintenance cannot answer.
+  A blank `qits.projects.release-requests.maintenance-url` — which also turns the automations gate
+  off, so no automation ran — adds nothing; the suite's `FakeAutomationKinds` answers "not
+  configured" until a test scripts it. The `listAutomationKinds` consumer row is pending until the
+  pinned qits-maintenance golden masters reach 2026.1021.154504, the first release recording "the
+  automation kinds catalogue" (verified against it with `-Dqits.maintenance-golden-masters.version`).
 
 ### One class per gate (2026-10-09)
 

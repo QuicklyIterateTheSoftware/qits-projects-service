@@ -14,8 +14,8 @@ import java.util.Objects;
  * requirement it qualifies for.
  *
  * @param id stable per source: {@code manual-review}, {@code config-directory}, {@code
- *     artifact-declarations}, {@code no-changes}, {@code recorded}, and later {@code
- *     automation:<kind>} and {@code contract:<consumer project slug>}
+ *     artifact-declarations}, {@code no-changes}, {@code recorded}, {@code automation:<kind>}
+ *     and {@code contract:<consumer project slug>}
  * @param reason the sentence the page and the gate detail print
  * @param admits the roles that may satisfy it — never empty
  * @param excludesAuthors whether the request's own authors (the principals that added its branch

@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.contracts.consumer;
 
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
+import eu.wohlben.qits.projects.maintenancehost.HttpAutomationKinds;
 import eu.wohlben.qits.projects.maintenancehost.HttpDownstreamComponents;
 import eu.wohlben.qits.projects.maintenancehost.HttpDownstreamPins;
 import eu.wohlben.qits.projects.maintenancehost.HttpReleaseRequestAutomations;
@@ -21,6 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * entry's {@code catalogId} and {@code depth} too, and a consumer's pins ({@code getRepository}).
  * The second stays pending until qits-maintenance records a provider state that answers it — today
  * its golden masters hold no {@code getRepository} at all.
+ *
+ * <p>The automation content source (qits-1046) reads the kinds catalogue ({@code
+ * listAutomationKinds}, state "the automation kinds catalogue"). qits-maintenance records that state
+ * from 2026.1021.154504 on; until the pinned golden masters reach that version the row is pending.
  */
 final class MaintenanceContract {
 
@@ -52,6 +57,11 @@ final class MaintenanceContract {
         new HttpReleaseRequestAutomations(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
   }
 
+  private static HttpAutomationKinds kinds(String base) {
+    return Fields.with(
+        new HttpAutomationKinds(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
+  }
+
   private static HttpDownstreamPins pins(String base) {
     return Fields.with(
         new HttpDownstreamPins(RowClients.clients()), "maintenanceUrl", Optional.of(base), "bearer", BEARER);
@@ -79,6 +89,25 @@ final class MaintenanceContract {
                       pins(base).downstreamOf(p.get("repositoryId")).orElseThrow().isEmpty()),
               "GET .../repositories/{repositoryId}/downstream answering 200 with downstream[] naming"
                   + " each repository, its catalogId and its depth"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listAutomationKinds",
+              "the automation kinds catalogue",
+              "GET",
+              "/maintenance/api/automations/kinds",
+              Map.of(),
+              null,
+              List.of(
+                  "$.kinds[*].kind",
+                  "$.kinds[*].label",
+                  "$.kinds[*].committablePaths",
+                  "$.kinds[*].approvalRoles"),
+              200,
+              Trigger.operation("approveReleaseRequest"),
+              (base, p) -> assertFalse(kinds(base).kinds().orElseThrow().isEmpty()),
+              "GET .../automations/kinds answering 200 with kinds[] (kind, label, committablePaths[],"
+                  + " approvalRoles[])"),
           new ConsumerRow(
               PROVIDER,
               APP,
