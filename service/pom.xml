@@ -359,6 +359,71 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- The frontends' shell pacts (qits-1284): what @qits/ui-components asks this
+                 provider from inside each frontend, one jar per frontend carrying
+                 `pacts/<frontend>_qits-ui-components-jslib_qits-projects-service.json` — the same
+                 `_qits-projects-service.json` suffix, so the same loader finds them. The projects
+                 frontend's shell pact rides in its existing jar above, beside its direct pact. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-ci-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-docs-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-events-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-githost-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-maintenance-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-artifacts-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-configuration-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-deployments-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-mirror-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-observability-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-orchestrator-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-system-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <scope>test</scope>

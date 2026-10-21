@@ -232,13 +232,18 @@
              githost, the projects desk runner daemon, artifacts, the bootstrap CLI, ci and the
              orchestrator), each carrying
              `pacts/<consumer>_qits-projects-service.json`, and ConsumerPactVerificationTest loads
-             every such resource off the test classpath. Test
+             every such resource off the test classpath. Thirteen frontends besides (qits-1284:
+             every one but qits-idp-frontend, whose shell pacts only the edge) publish what
+             @qits/ui-components' shell asks this provider on their behalf, as
+             `pacts/<frontend>_qits-ui-components-jslib_qits-projects-service.json`; the projects
+             frontend's one jar carries that pact beside its direct one, the other twelve are the
+             twelve *-frontend pins after the orchestrator's. Test
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1020.105843</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1019.192834</qits.landing-app-pacts-qits-projects-service.version>
-        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1019.192504</qits.projects-frontend-pacts-qits-projects-service.version>
+        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1021.193038</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1019.195617</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1020.65554</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
@@ -247,6 +252,18 @@
         <qits.bootstrap-cli-pacts-qits-projects-service.version>2026.1019.194129</qits.bootstrap-cli-pacts-qits-projects-service.version>
         <qits.ci-service-pacts-qits-projects-service.version>2026.1018.160604</qits.ci-service-pacts-qits-projects-service.version>
         <qits.orchestrator-service-pacts-qits-projects-service.version>2026.1018.172917</qits.orchestrator-service-pacts-qits-projects-service.version>
+        <qits.ci-frontend-pacts-qits-projects-service.version>2026.1021.191659</qits.ci-frontend-pacts-qits-projects-service.version>
+        <qits.docs-frontend-pacts-qits-projects-service.version>2026.1021.193215</qits.docs-frontend-pacts-qits-projects-service.version>
+        <qits.events-frontend-pacts-qits-projects-service.version>2026.1021.193347</qits.events-frontend-pacts-qits-projects-service.version>
+        <qits.githost-frontend-pacts-qits-projects-service.version>2026.1021.193358</qits.githost-frontend-pacts-qits-projects-service.version>
+        <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1021.193655</qits.maintenance-frontend-pacts-qits-projects-service.version>
+        <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1021.193823</qits.artifacts-frontend-pacts-qits-projects-service.version>
+        <qits.configuration-frontend-pacts-qits-projects-service.version>2026.1021.193835</qits.configuration-frontend-pacts-qits-projects-service.version>
+        <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1021.193850</qits.deployments-frontend-pacts-qits-projects-service.version>
+        <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1021.194056</qits.mirror-frontend-pacts-qits-projects-service.version>
+        <qits.observability-frontend-pacts-qits-projects-service.version>2026.1021.194102</qits.observability-frontend-pacts-qits-projects-service.version>
+        <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1021.194108</qits.orchestrator-frontend-pacts-qits-projects-service.version>
+        <qits.system-frontend-pacts-qits-projects-service.version>2026.1021.194304</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-configuration, qits-containers and
@@ -527,6 +544,90 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-orchestrator-service-pacts-qits-projects-service</artifactId>
                 <version>${qits.orchestrator-service-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-ci-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.ci-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-docs-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.docs-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-events-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.events-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-githost-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.githost-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-maintenance-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.maintenance-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-artifacts-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.artifacts-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-configuration-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.configuration-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-deployments-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.deployments-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-mirror-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.mirror-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-observability-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.observability-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-orchestrator-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.orchestrator-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-system-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.system-frontend-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->
