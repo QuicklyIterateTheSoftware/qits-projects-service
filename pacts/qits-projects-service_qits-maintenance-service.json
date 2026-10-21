@@ -786,6 +786,134 @@
         "references": {
           "qits-call": {
             "app": "qits-maintenance-service",
+            "operationId": "listAutomationKinds"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "approveReleaseRequest"
+          }
+        }
+      },
+      "description": "approveReleaseRequest: listAutomationKinds",
+      "key": "7ce16f87",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the automation kinds catalogue"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/maintenance/api/automations/kinds"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "kinds": [
+              {
+                "approvalRoles": [
+                  "agent"
+                ],
+                "committablePaths": [
+                  ":(glob)**/pom.xml"
+                ],
+                "kind": "dependency-bump",
+                "label": "Dependency bump"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.kinds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.kinds[*].approvalRoles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.kinds[*].approvalRoles[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.kinds[*].committablePaths": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.kinds[*].committablePaths[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.kinds[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.kinds[*].label": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-maintenance-service",
             "operationId": "getRepositoryDownstream"
           },
           "qits-trigger": {
