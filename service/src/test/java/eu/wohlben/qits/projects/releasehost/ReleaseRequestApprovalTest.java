@@ -160,7 +160,7 @@ public class ReleaseRequestApprovalTest {
     gitHost.reset();
     for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
       assertFalse(
-          policy.requirementFor(repoIdOf(archetype), null).required(),
+          !policy.requirementsFor(repoIdOf(archetype), null).isEmpty(),
           archetype + " releases on what it configures, and it configures no approval");
     }
   }
@@ -175,12 +175,16 @@ public class ReleaseRequestApprovalTest {
           repoId,
           "refs/heads/main",
           java.util.Map.of(".config/qits/release-requests.yml", "manual-review: true\n"));
-      ApprovalPolicy.ApprovalRequirement requirement = policy.requirementFor(repoId, null);
-      assertTrue(
-          requirement.required(), archetype + " requires a person because its own main says so");
+      var requirements = policy.requirementsFor(repoId, null);
+      assertEquals(
+          1, requirements.size(), archetype + " requires a person because its own main says so");
+      assertEquals("manual-review", requirements.get(0).id());
+      assertEquals(
+          java.util.List.of(eu.wohlben.qits.projects.control.approval.ApprovalRole.PERSON),
+          requirements.get(0).admits());
       assertEquals(
           "configured by manual-review",
-          requirement.detail(),
+          requirements.get(0).sentence(),
           "and says which rule asked — a request with no fold yet has no content to add a reason");
     }
   }
@@ -191,10 +195,9 @@ public class ReleaseRequestApprovalTest {
    */
   @Test
   void aRepositoryWithNoRowRequiresNoApproval() {
-    ApprovalPolicy.ApprovalRequirement requirement =
-        policy.requirementFor(
+    var requirements =
+        policy.requirementsFor(
             "approval-vanished-" + UUID.randomUUID(), "sha-of-a-fold-nobody-can-read-any-more");
-    assertFalse(requirement.required(), "not even the content rule holds settled history");
-    assertEquals(null, requirement.detail());
+    assertTrue(requirements.isEmpty(), "not even the content rule holds settled history");
   }
 }

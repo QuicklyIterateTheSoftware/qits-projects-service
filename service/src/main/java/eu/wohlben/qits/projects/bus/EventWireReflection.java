@@ -112,6 +112,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       RepositoryRenamed.class,
       ReleaseRequestChanged.class,
       ReleaseRequestStateChanged.class,
+      ApprovalRequirementChanged.class,
       SCMRelease.class,
       ProjectCreated.class,
       ProjectChanged.class,

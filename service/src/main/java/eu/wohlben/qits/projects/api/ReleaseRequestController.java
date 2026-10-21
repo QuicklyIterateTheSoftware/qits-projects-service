@@ -13,6 +13,9 @@ import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.security.AgentAccess;
+import eu.wohlben.qits.projects.control.approval.Approver;
+import eu.wohlben.qits.projects.dto.ApprovalEligibilityDto;
+import eu.wohlben.qits.projects.security.ApproverCheck;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -73,23 +76,24 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * watches — so both are spelled at the class and every read and every ordinary write is open to
  * both.
  *
- * <p><b>The two exceptions are {@code approve} and {@code decline}, which are {@code qits:admin}
- * alone, and the narrowing is the feature rather than a hardening.</b> {@code qits:system} can ask
- * for a release and can withdraw one — those are asks, and a machine is entitled to make them — but
- * it cannot sign off the estate. A wrapper release moves the whole platform's version, and the
- * approval gate exists precisely because a green build is not, on its own, a decision that it should
- * happen; <b>a gate a machine could satisfy is not this gate</b>. Leaving these two on the class pair
- * would have let the same bump robot that opened the request approve it, which is a gate whose
- * subject is also its judge. {@code GET /approvals} stays on the class pair: reading who decided is
- * not deciding, and a machine assembling a release report has an honest reason to ask.
+ * <p><b>The two exceptions are {@code approve} and {@code decline}, which leave {@code qits:system}
+ * out, and the narrowing is the feature rather than a hardening.</b> {@code qits:system} can ask for
+ * a release and can withdraw one — those are asks, and a machine is entitled to make them — but it
+ * cannot sign off a release: <b>a gate a service client could satisfy is not this gate</b>. Since
+ * epic qits-1038 they admit {@code qits:agent} at the filter, because a requirement may admit an
+ * agent (an agent acknowledging regenerated screenshots, a consumer project's agent reviewing a
+ * contract change); who counts is {@link ApproverCheck}'s proof — never a header — and which
+ * requirement the caller may satisfy is the domain's. {@code GET /approvals} stays on the class
+ * pair: reading who decided is not deciding.
  *
  * <p><b>An agent reads everything here and writes only for its own work.</b> {@code qits:agent} is
  * on the class list, so every read is open to it with no restriction. The four writes it reaches —
  * create, sources, priority and withdraw — bind a caller that holds it and neither of the other
  * two: the repository must be in the project its token names ({@code project}) and a request must
  * be one of that repository; on create and sources the branch must also be one its token may push
- * ({@code git_refs}). Anything else is a 403. Approve and decline stay {@code qits:admin}: an
- * agent never judges its own release.
+ * ({@code git_refs}). Anything else is a 403. Approve and decline are <b>not</b> bound to the
+ * agent's project: a requirement says whom it admits, including {@code agent@<another project>}, and
+ * that is the binding.
  */
 @Path("/repositories/{repoId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
@@ -106,6 +110,8 @@ public class ReleaseRequestController {
   @Inject SecurityIdentity identity;
 
   @Inject PersonCheck persons;
+
+  @Inject ApproverCheck approvers;
 
   /**
    * @param branch the branch to release. {@code main} is <b>implied</b> and is never asked for — a
@@ -334,25 +340,26 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/approve")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "approveReleaseRequest",
-      summary = "Sign off this request's current fold, so it may release",
+      summary = "Approve this request's current fold, satisfying what the caller may satisfy",
       description =
-          "The person's half of the second gate: where the repository's releases have to be approved"
-              + " — today the project wrapper — a request that has passed every build gate still"
-              + " waits for this. mergedSha is required and names the fold being approved; a stale"
-              + " one answers 409 naming the fold the request is on now, because an approval is a"
-              + " statement about content and a push may have landed while the page was open. The"
-              + " gate is re-asked immediately, so a fold whose build is already green releases on"
-              + " the click. 409 also for a request that has concluded or is already being"
-              + " released, for one with no fold yet, and for a repository that needs no approval at"
-              + " all — approving what has no gate is a caller error, not a no-op. A person only:"
-              + " qits:admin, verified by this service from a browser session or a person's qits"
-              + " CLI token — asserted identity headers alone answer 403. A machine may ask for a"
-              + " release and withdraw one, and may not sign off the estate. qits:admin-agent is"
-              + " admitted too (qits-628 follow-up); remove it here if this door must stay"
-              + " human-only — the verification below still refuses a commissioned bearer today.")
+          "The approval gate holds a request while any of its approval requirements"
+              + " (approvalRequirements) is open; each names the approval roles that may satisfy"
+              + " it — person, agent (an agent of the request's own project) or agent@<project"
+              + " slug>. An approval records the caller and the roles it holds, and satisfies every"
+              + " requirement it qualifies for. mergedSha is required and names the fold being"
+              + " approved; a stale one answers 409 naming the fold the request is on now. The gate"
+              + " is re-asked immediately, so a fold whose build is already green releases on the"
+              + " click. 409 also for a request that has concluded or is already being released, for"
+              + " one with no fold yet, for a fold with no approval requirement, and for one whose"
+              + " requirements are all satisfied already. 403 when the caller holds no role an open"
+              + " requirement admits, or is one of the request's authors where a requirement"
+              + " excludes them; the message names each open requirement and its roles. Who counts"
+              + " is proved by this service: a person is qits:admin from a browser session or a"
+              + " person's qits CLI token; an agent is its own workspace token carrying its"
+              + " project. Asserted identity headers, service clients and qits:system answer 403.")
   public ApproveReleaseRequest.Response approve(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -380,7 +387,7 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/decline")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "declineReleaseRequest",
       summary = "Refuse this request's current fold, answerably",
@@ -391,10 +398,12 @@ public class ReleaseRequestController {
               + " branch, the request re-folds, the decision no longer names the fold it is on, and"
               + " it is pending both gates again — while withdraw judges the ASK, is terminal, frees"
               + " the branches and makes the next release ask mint a fresh request. Same body and"
-              + " same refusals as approve, mergedSha included. No unattended-gate ticket is filed:"
-              + " a person just said no, so somebody is watching by definition. A person only,"
-              + " verified exactly as approve verifies one — qits:admin-agent admitted too on the"
-              + " same terms as approve (qits-628 follow-up).")
+              + " same refusals as approve, mergedSha included, except that a decline needs no open"
+              + " requirement: 409 only where the fold has none, and 403 where the caller qualifies"
+              + " for none of them. A decline holds the fold only when its approver qualified for a"
+              + " requirement, until a re-fold or the same approver approves. No unattended-gate"
+              + " ticket is filed: somebody just said no, so somebody is watching by definition."
+              + " Verified exactly as approve verifies its caller.")
   public DeclineReleaseRequest.Response decline(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -409,19 +418,43 @@ public class ReleaseRequestController {
   }
 
   /**
-   * Who is deciding. Deliberately <b>not</b> {@link #actorFor(String)}: the other routes take an
-   * optional stated actor because their machine callers act on somebody's behalf and attribution is
-   * data there, while a decision's actor is the gate's whole subject and a body field would let a
-   * caller sign somebody else's name to it. There is no anonymous arm either — these two routes are
-   * {@code qits:admin}, so an unauthenticated call is refused at the mechanism and never reaches
-   * this method.
+   * Who is deciding, and which approval roles they hold. Deliberately <b>not</b> {@link
+   * #actorFor(String)}: the other routes take an optional stated actor because their machine callers
+   * act on somebody's behalf and attribution is data there, while a decision's actor is the gate's
+   * whole subject and a body field would let a caller sign somebody else's name to it.
    *
-   * <p>The role is only the first filter: the name comes from {@link PersonCheck}, which answers 403
-   * unless this service verified a person itself (qits-891) — so it is the proof's name, not the
-   * forwarded principal's.
+   * <p>The role is only the first filter: the approver comes from {@link ApproverCheck}, which
+   * answers 403 unless this service proved a person (qits-891) or an agent itself — so the name is
+   * the proof's, never the forwarded principal's.
    */
-  private String decider() {
-    return persons.requireAdmin();
+  private Approver decider() {
+    return approvers.requireApprover();
+  }
+
+  public static record GetReleaseRequestApprovalEligibility() {
+    public record Response(ApprovalEligibilityDto eligibility) {}
+  }
+
+  @GET
+  @Path("/{requestId}/approval-eligibility")
+  @Operation(
+      operationId = "getReleaseRequestApprovalEligibility",
+      summary = "What the caller may approve or decline on this request's current fold",
+      description =
+          "The per-viewer read behind the Approve and Decline buttons (epic qits-1038), from the"
+              + " same proof the doors check. viewer is the name the caller would decide under (its"
+              + " principal where it holds no approval role); heldRoles the approval roles this"
+              + " service proved it holds, relative to the request (agent for an agent of the"
+              + " request's own project); eligibleRequirementIds every requirement of the current"
+              + " fold it may satisfy, open or already satisfied. Approve is meaningful where an id"
+              + " names an open requirement, Decline where there is any. Asserted headers prove"
+              + " nothing and answer empty roles, never a 403.")
+  public GetReleaseRequestApprovalEligibility.Response approvalEligibility(
+      @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
+    String principal = identity.isAnonymous() ? null : identity.getPrincipal().getName();
+    return new GetReleaseRequestApprovalEligibility.Response(
+        releaseRequests.eligibility(requestId, approvers.approver().orElse(null), principal));
   }
 
   public static record ListReleaseRequestApprovals() {
@@ -812,7 +845,7 @@ public class ReleaseRequestController {
       @PathParam("requestId") String requestId,
       WaiveReleaseRequestAutomations body) {
     requestId = releaseRequests.resolveId(repoId, requestId);
-    String actor = decider();
+    String actor = persons.requireAdmin();
     return new WaiveReleaseRequestAutomations.Response(
         releaseRequests.waiveAutomations(
             repoId,

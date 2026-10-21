@@ -646,14 +646,16 @@ write** (user ruling, 2026-09-12):
 - **Four writes take it, bound to the agent's own work:** create, sources, priority and withdraw
   on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
   belong to that repository, and on create and sources the branch must be in the token's
-  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline stay `qits:admin`.
+  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline admit the agent too
+  since epic qits-1038, unbound — see "Approval requirements and roles" below.
 - **A fifth write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
   gate and no row, and the new run reports on the bus exactly as the first one did, so there is
   nothing for a binding to protect — an agent re-asks a phase of any request, including one in a
   repository its token does not cover. It is open at all because gates die on estate conditions
   rather than on the change (an OOM-killed native-image step, a sibling service redeployed so
   buildkit cannot resolve its name), and whoever is watching a request should be able to re-ask the
-  question. Approve and decline are the sign-off and stay `qits:admin` alone; that is the line.
+  question. Approve and decline are the sign-off: they admit an agent only where a requirement of the
+  fold admits one (epic qits-1038), never `qits:system`.
 - **The entity write doors take it, where an agent's work needs the write.** A write route in
   `entities/api` admits `qits:agent` for the writes a dispatched agent makes. The central `qits`
   MCP server reaches them with the agent's own bearer, so the door is the only check. Bound by the
@@ -698,7 +700,8 @@ write** (user ruling, 2026-09-12):
   …/members/{membershipId}/condition`). **`POST …/criteria/{criterionId}/approve` is `qits:admin`
   alone** — an approval is the sign-off on a gated member — and `AgentReadAccessTest` pins both
   (`CAMPAIGN_AGENT_WRITES`, and approve in `ADMIN_ONLY_WRITES`). The role is only the first filter:
-  approve, and the release-request approve and decline, then require `security/PersonCheck` — the
+  approve then requires `security/PersonCheck` (the release-request approve and decline require
+  `security/ApproverCheck`, which counts PersonCheck's proof as `person`) — the
   one definition of a person (qits-891): a `qits-session` cookie this service introspects at idp
   itself, or a person's `qits` CLI bearer (`credential_type=cli`, no `context_kind`, no `clients/…`
   group), holding `qits:admin`. Asserted `X-Qits-*` headers alone are a 403, and the recorded name
@@ -1109,7 +1112,7 @@ both answers in memory, but a miss was still read on the page's own thread, ever
   fold have not been read yet", i.e. approval required, failing closed until the reading lands. The
   entity maps both columns read-only so no other flush writes an older value back.
 
-Decisions keep `ApprovalPolicy.requirementFor` and `resolve`, reading afresh; nothing that decides
+Decisions keep `ApprovalPolicy.requirementsFor` and `resolve`, reading afresh; nothing that decides
 reads either stored value. **The suite renders synchronously** —
 `qits.projects.release-requests.display-reads-synchronously=true` in the test properties, beside a
 freshness of `0` — because its tests rewrite main or rescript `RecordingFoldChanges` for the same sha
@@ -1221,6 +1224,47 @@ one tree listing, both gates, and the merge to `main` when every configured one 
 
 `OPEN` (what a listing answers) and `UNRELEASED` (what may still be folded, added to or approved) are
 two different constants now, and mixing them up is the defect to watch for.
+
+### Approval requirements and roles (epic qits-1038)
+
+**A request has a list of approval requirements, not one yes/no.** `ApprovalPolicy` gathers every
+`control/approval/ApprovalRequirementSource` bean (`Instance<…>`, by `order()`) and answers
+`List<ApprovalRequirement>` — `{id, reason, admits, excludesAuthors, detail}`. A new kind is one
+bean; the gate, the doors, the DTO and the event read the list. Sources today: `manual-review`
+(configuration, `person`), `config-directory` (the fold changes `.config/qits/`, `person`; also what
+an unreadable fold fails closed into), `artifact-declarations` (the fold's only `.config/qits/`
+change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
+`contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule) and `no-changes`
+(qits-760, `person`). A content source reads the fold through `ApprovalSubject`, lazily and once; a
+failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no
+git: `manual-review` from configuration, else one satisfied `recorded` requirement with the recorded
+approval's roles. The display path stores the content requirements as JSON objects in
+`approval_content_reasons` (`StoredRequirements`); the older string array reads as "not read yet".
+
+- **Roles** (`ApprovalRole`): `person`, `agent` (the request's own project), `agent@<slug>`. An
+  approval row records the roles held in `approver_roles` (V47, backfilled `person`), relative to
+  the request. `ApprovalStanding` is the one matcher: each approver's newest row at the fold counts;
+  satisfied = an APPROVED row holding an admitted role (and not an excluded author — authors are
+  `ReleaseRequestSource.addedBy`); declined = a DECLINED row by an approver who qualified for a
+  requirement, lifted by a re-fold or the same approver approving.
+- **Doors**: approve/decline admit `qits:agent` at the filter; `security/ApproverCheck` proves the
+  roles (PersonCheck's proof = `person`; a validated idp JWT with `qits:agent`, `context_kind`
+  `workspace`/`workspace-admin`, no `clients/…` group but its own `clients/<sub>` — qits-idp mints
+  that self-role into every client token — and a `project` claim = `agent` of that project, named
+  by its principal as `addedBy` records it, with `sub` as an alias for the author check; headers
+  prove nothing). The domain decides eligibility: approve 409 when
+  nothing is open, 403 when the caller qualifies for no open requirement; decline 409 when the fold
+  has none, 403 when the caller qualifies for none; the 403 names each requirement and its roles.
+  `GET …/{requestId}/approval-eligibility` answers `{viewer, heldRoles, eligibleRequirementIds}`.
+- **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,
+  detail, satisfied, satisfiedBy}`), the old approval fields derived from it; `GET …/approvals` rows
+  carry `roles`.
+- **Event** `ApprovalRequirementChanged` (`OPEN`/`SATISFIED`/`DECLINED`/`VOID`), via
+  `control/ApprovalNotices` → `ApprovalRequirementAnnouncer` → `bus/ApprovalRequirementChangedAnnouncer`,
+  after the commit, once per (request, fold, requirement, state) by `release_request_approval_notice`.
+  OPEN is recorded when `evaluate` reaches the approval gate; a door's decision moves only what is
+  already announced; every evaluation voids what an older fold announced. An OPEN also comments on
+  the work item a `ticket/<qid>`/`epic/<qid>` source names (`entitieshost/WorkItemApprovalComments`).
 
 ### One class per gate (2026-10-09)
 

@@ -520,6 +520,14 @@ class GoldenMasterRecordingTest {
     }
     String awaiting = ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL;
     all.add(read(awaiting, "listRepositoryReleaseRequests", repository + "/release-requests"));
+    // What the person at the page may decide (epic qits-1038): the Approve and Decline buttons.
+    all.add(
+        read(awaiting, "getReleaseRequestApprovalEligibility", request + "/approval-eligibility"));
+    all.add(
+        read(
+            ProviderStates.AN_APPROVED_RELEASE_REQUEST,
+            "getReleaseRequestApprovalEligibility",
+            request + "/approval-eligibility"));
     // Every automation kind is listed, the one that does not apply included — on both answers.
     String notApplicable = ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY;
     all.add(read(notApplicable, "getReleaseRequest", request));

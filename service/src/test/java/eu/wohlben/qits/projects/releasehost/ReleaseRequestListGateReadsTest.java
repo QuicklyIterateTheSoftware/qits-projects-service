@@ -407,9 +407,16 @@ public class ReleaseRequestListGateReadsTest {
     recorder.enqueue(config, fold(0));
     recorder.enqueue(empty, fold(1));
     await(() -> storedFold(configRow) != null && storedFold(emptyRow) != null, "both stored");
+    // Stored as requirements since epic qits-1038: id, reason, admitted roles, and the paths.
     assertEquals(
-        "[\"changes .config/qits/: .config/qits/release-requests.yml\"]", storedReasons(configRow));
-    assertEquals("[\"" + ApprovalPolicy.NO_CHANGES_DETAIL + "\"]", storedReasons(emptyRow));
+        "[{\"id\":\"config-directory\",\"reason\":\"changes .config/qits/\",\"admits\":[\"person\"],"
+            + "\"excludesAuthors\":false,\"detail\":\".config/qits/release-requests.yml\"}]",
+        storedReasons(configRow));
+    assertEquals(
+        "[{\"id\":\"no-changes\",\"reason\":\""
+            + ApprovalPolicy.NO_CHANGES_DETAIL
+            + "\",\"admits\":[\"person\"],\"excludesAuthors\":false}]",
+        storedReasons(emptyRow));
     int readsBefore = foldChanges.reads(config) + foldChanges.reads(empty);
 
     JsonPath page = page();

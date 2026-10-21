@@ -2463,6 +2463,19 @@
           }
         },
         {
+          "operationId": "getReleaseRequestApprovalEligibility",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approval-eligibility",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequestApprovalEligibility.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getReleaseRequestArtifacts",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
@@ -2778,6 +2791,7 @@
             ],
             "instants": [
               "$.request.approvedAt",
+              "$.request.approvalRequirements[*].satisfiedBy.at",
               "$.request.automations[*].updatedAt",
               "$.request.createdAt",
               "$.request.updatedAt",
@@ -5223,6 +5237,7 @@
             ],
             "instants": [
               "$.request.approvedAt",
+              "$.request.approvalRequirements[*].satisfiedBy.at",
               "$.request.automations[*].updatedAt",
               "$.request.createdAt",
               "$.request.updatedAt",
@@ -5235,6 +5250,19 @@
               "$.request.qualityGates[*].detail",
               "$.request.qualityGates[*].checks[*].name"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestApprovalEligibility",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approval-eligibility",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequestApprovalEligibility.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },

@@ -17,9 +17,12 @@ public final class AgentTokens {
 
   /** A caller with a token carrying {@code claims}, holding {@code roles}. */
   public static SecurityIdentity token(Map<String, Object> claims, String... roles) {
-    Object sub = claims.getOrDefault("sub", "dyn-client");
+    // The principal quarkus-oidc derives: upn, then preferred_username, then sub.
+    Object name =
+        claims.getOrDefault(
+            "upn", claims.getOrDefault("preferred_username", claims.getOrDefault("sub", "dyn-client")));
     return QuarkusSecurityIdentity.builder()
-        .setPrincipal(new FakeJwt(String.valueOf(sub), claims))
+        .setPrincipal(new FakeJwt(String.valueOf(name), claims))
         .addRoles(Set.of(roles))
         .build();
   }

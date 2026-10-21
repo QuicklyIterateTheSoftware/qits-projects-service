@@ -116,6 +116,7 @@ public class RecordingFoldChanges implements FoldChanges {
     empty.clear();
     mirrored.clear();
     reads.clear();
+    blobs.clear();
   }
 
   @Override
@@ -174,6 +175,43 @@ public class RecordingFoldChanges implements FoldChanges {
   }
 
   /** A changed blob, as the mirror read reports one. */
+  private final Map<String, String> blobs = new ConcurrentHashMap<>();
+
+  /** Scripts the content of a blob {@link #fileWithBlobs} named. */
+  public void scriptBlob(String blobSha, String content) {
+    blobs.put(blobSha, content);
+  }
+
+  @Override
+  public String blob(String repoId, String blobSha) {
+    if (mirrored.contains(repoId)) {
+      return mirror.blob(repoId, blobSha);
+    }
+    String failure = unreadable.get(repoId);
+    if (failure != null) {
+      throw new IllegalStateException(failure);
+    }
+    String content = blobs.get(blobSha);
+    if (content == null) {
+      throw new IllegalStateException("no blob " + blobSha + " scripted");
+    }
+    return content;
+  }
+
+  /** An entry naming the blobs on both sides, for a test that scripts their contents. */
+  public static CommitFileChangeDto fileWithBlobs(
+      String changeType, String path, String oldSha, String newSha) {
+    return new CommitFileChangeDto(
+        path,
+        null,
+        changeType,
+        "ADDED".equals(changeType) ? null : "100644",
+        "DELETED".equals(changeType) ? null : "100644",
+        oldSha,
+        newSha,
+        null);
+  }
+
   public static CommitFileChangeDto file(String changeType, String path, String oldPath) {
     return new CommitFileChangeDto(
         path,

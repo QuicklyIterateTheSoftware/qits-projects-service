@@ -57,6 +57,9 @@ public class EventWireReflectionTest {
   /** And the one that says how a release request stands (qits-1153). */
   @Inject Instance<ReleaseRequestStateChangedAnnouncer> shippedStateAnnouncer;
 
+  /** And the one that says an approval requirement changed (epic qits-1038). */
+  @Inject Instance<ApprovalRequirementChangedAnnouncer> shippedApprovalRequirementAnnouncer;
+
   /** And the third, which is the release itself. */
   @Inject Instance<SCMReleaseAnnouncer> shippedScmReleaseAnnouncer;
 
@@ -80,6 +83,7 @@ public class EventWireReflectionTest {
             RepositoryRenamed.class,
             ReleaseRequestChanged.class,
             ReleaseRequestStateChanged.class,
+            ApprovalRequirementChanged.class,
             SCMRelease.class,
             ProjectCreated.class,
             ProjectChanged.class,
@@ -120,6 +124,10 @@ public class EventWireReflectionTest {
         targets.contains(ReleaseRequestStateChanged.class),
         "ReleaseRequestStateChangedAnnouncer publishes this; it is what wakes an agent waiting on a"
             + " release request");
+    assertTrue(
+        targets.contains(ApprovalRequirementChanged.class),
+        "ApprovalRequirementChangedAnnouncer publishes this (epic qits-1038); an OPEN requirement is"
+            + " what a reviewer is sent to");
     assertTrue(
         targets.contains(SCMRelease.class),
         "SCMReleaseAnnouncer publishes this — the event qits-workspaces used to publish and this"
@@ -166,6 +174,12 @@ public class EventWireReflectionTest {
   @Test
   public void theProjectLifecycleAnnouncerShipsAsABean() {
     assertTrue(!shippedProjectAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  @Test
+  public void theApprovalRequirementAnnouncerShipsAsABean() {
+    assertTrue(
+        !shippedApprovalRequirementAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   @Test

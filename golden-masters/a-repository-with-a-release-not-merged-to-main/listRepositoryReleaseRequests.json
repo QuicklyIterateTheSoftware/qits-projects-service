@@ -29,6 +29,7 @@
       "approvedBy": null,
       "approvedAt": null,
       "approvalNote": null,
+      "approvalRequirements": [],
       "gates": [
         {
           "kind": "AUTOMATIONS",
@@ -107,6 +108,7 @@
       "approvedBy": null,
       "approvedAt": null,
       "approvalNote": null,
+      "approvalRequirements": [],
       "gates": [
         {
           "kind": "AUTOMATIONS",
@@ -200,6 +202,7 @@
       "approvedBy": null,
       "approvedAt": null,
       "approvalNote": null,
+      "approvalRequirements": [],
       "gates": [
         {
           "kind": "AUTOMATIONS",

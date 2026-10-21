@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * One decision a person made about one fold of a release request, as the API answers it — an entry
@@ -29,6 +30,10 @@ import java.time.Instant;
  *
  * <p>Rows are never updated and never deleted, so an entry that has been answered is still here. The
  * list is <b>newest first</b>, the order a trail is read in.
+ *
+ * <p>{@code roles} are the approval roles the decider held (epic qits-1038), sorted — {@code
+ * person}, {@code agent} (an agent of the request's own project) or {@code agent@<project slug>}.
+ * Every decision from before roles were recorded was a verified person's and says {@code person}.
  */
 public record ReleaseRequestApprovalDto(
     String id,
@@ -36,4 +41,5 @@ public record ReleaseRequestApprovalDto(
     String decision,
     String actor,
     String note,
-    Instant decidedAt) {}
+    Instant decidedAt,
+    List<String> roles) {}

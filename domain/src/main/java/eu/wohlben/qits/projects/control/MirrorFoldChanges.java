@@ -77,4 +77,15 @@ public class MirrorFoldChanges implements FoldChanges {
     }
     return answer.addsNothing();
   }
+
+  @Override
+  public String blob(String repoId, String blobSha) {
+    try {
+      return commits.readBlobById(repoId, blobSha);
+    } catch (RuntimeException first) {
+      // A blob of a fold the mirror has not fetched yet: refresh once and ask again.
+      gitMirrors.of(repoId).markStale();
+      return commits.readBlobById(repoId, blobSha);
+    }
+  }
 }

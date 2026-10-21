@@ -1,0 +1,11 @@
+{
+  "eligibility": {
+    "viewer": "dev",
+    "heldRoles": [
+      "person"
+    ],
+    "eligibleRequirementIds": [
+      "manual-review"
+    ]
+  }
+}
