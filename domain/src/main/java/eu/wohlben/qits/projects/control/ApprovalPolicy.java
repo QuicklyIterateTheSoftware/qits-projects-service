@@ -34,8 +34,9 @@ import org.jboss.logging.Logger;
  * <p><b>The sources</b>, in order: {@link ManualReviewSource} ({@code manual-review: true} at {@code
  * main}, a person), {@link ConfigDirectorySource} (the fold changes {@value #CONFIG_DIRECTORY}, a
  * person), {@code ArtifactDeclarationSource} (the fold only declares what a release publishes in
- * {@code release.yml}, a person or the request's own agent) and {@link NoChangesSource} (the fold adds
- * nothing to {@code main}, qits-760, a person). <b>A new kind of requirement is one more bean</b>:
+ * {@code release.yml}, a person or the request's own agent), {@link NoChangesSource} (the fold adds
+ * nothing to {@code main}, qits-760, a person) and {@code ContractChangeSource} (the fold changes
+ * golden masters another project consumes, a person or that project's agent, qits-1291). <b>A new kind of requirement is one more bean</b>:
  * this class, the gate, the doors, the DTO and the event read whatever the list holds.
  *
  * <p>"Changes" is the diff the request's {@code …/changes} view shows — {@code mergedSha} against

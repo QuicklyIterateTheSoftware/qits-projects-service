@@ -682,6 +682,115 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "operation",
+            "operationId": "approveReleaseRequest"
+          }
+        }
+      },
+      "description": "approveReleaseRequest: getRepositoryDownstream",
+      "key": "f0a7b18f",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository with downstream components",
+          "params": {
+            "repoName": "contract-ui-jslib",
+            "repositoryId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/maintenance/api/repositories/${repositoryId}/downstream",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/maintenance/api/repositories/00000000-0000-4000-8000-000000000001/downstream"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "downstream": [
+              {
+                "catalogId": "00000000-0000-4000-8000-000000000002",
+                "depth": 1,
+                "repository": "contract-frontend"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.downstream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.downstream[*].catalogId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.downstream[*].depth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.downstream[*].repository": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-maintenance-service",
+            "operationId": "getRepositoryDownstream"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
             "operationId": "createReleaseRequest"
           }
         }

@@ -179,9 +179,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   it, and **the delivery hop reads the same two keys in the same order** rather than renaming either
   or inventing a third address.
 - `service/…/maintenancehost/` — qits-maintenance, the same `@DefaultBean` HTTP-client shape once
-  more: the seam is `control/DownstreamComponents` and the whole of what lives here is ONE GET,
+  more. `control/DownstreamComponents` is one GET,
   `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so
-  `ReleaseRequestChanged` can carry what is built on top of the repository. It is addressed by this
+  `ReleaseRequestChanged` can carry what is built on top of the repository. (The automations and
+  `control/DownstreamPins`, the contract-change approval source's two reads, live here too.) It is addressed by this
   service's own repository row id, which is qits-maintenance's `catalogId`. Everything about it is
   advisory: unset, unreachable, refused and 404 are one behaviour — a WARN and `Optional.empty()`,
   which becomes an absent event key a consumer reads as "unknown". A 200 with an empty array is a
@@ -1234,8 +1235,8 @@ bean; the gate, the doors, the DTO and the event read the list. Sources today: `
 (configuration, `person`), `config-directory` (the fold changes `.config/qits/`, `person`; also what
 an unreadable fold fails closed into), `artifact-declarations` (the fold's only `.config/qits/`
 change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
-`contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule) and `no-changes`
-(qits-760, `person`). A content source reads the fold through `ApprovalSubject`, lazily and once; a
+`contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule), `no-changes`
+(qits-760, `person`) and `contract:<slug>` (qits-1291, below). A content source reads the fold through `ApprovalSubject`, lazily and once; a
 failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no
 git: `manual-review` from configuration, else one satisfied `recorded` requirement with the recorded
 approval's roles. The display path stores the content requirements as JSON objects in
@@ -1265,6 +1266,21 @@ approval's roles. The display path stores the content requirements as JSON objec
   OPEN is recorded when `evaluate` reaches the approval gate; a door's decision moves only what is
   already announced; every evaluation voids what an older fold announced. An OPEN also comments on
   the work item a `ticket/<qid>`/`epic/<qid>` source names (`entitieshost/WorkItemApprovalComments`).
+- **Contract changes** (`ContractChangeSource`, qits-1291): the fold changes a path under
+  `golden-masters/` (against the newest release tag, like every content source). The fold's own
+  `.config/qits/release.yml` `contracts.application` names the packages
+  (`eu.wohlben.qits:<app>-golden-masters`, `@qits/<app without qits->-golden-masters`; no
+  application, no contract). qits-maintenance is asked through `control/DownstreamPins` →
+  `maintenancehost/HttpDownstreamPins` — `GET /maintenance/api/repositories/{repoId}/downstream`,
+  then `GET /maintenance/api/repositories/{name}` for each depth-1 entry's `pins[]`, because the
+  closure also names the providers that pin this repository's consumer pacts. Same address and
+  credential as `HttpDownstreamComponents`. A consumer's project is its row (the closure's
+  `catalogId`, else the one project knowing the name). One `contract:<slug>` per other project,
+  admitting `person` and `agent@<slug>`, excluding authors; the reason names the pinning
+  repositories, the detail up to 20 paths. Same-project consumers add nothing. Every failure to
+  tell (no address, unreachable, a consumer's pins unread, no project) is a WARN and no
+  requirement, never fail-closed. The `getRepository` consumer row is pending until
+  qits-maintenance records a provider state for it.
 
 ### One class per gate (2026-10-09)
 

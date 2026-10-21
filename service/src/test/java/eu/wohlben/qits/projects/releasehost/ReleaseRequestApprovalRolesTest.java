@@ -17,12 +17,14 @@ import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.DownstreamPins;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApprovalNotice;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.maintenancehost.FakeDownstreamPins;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
@@ -89,10 +91,14 @@ public class ReleaseRequestApprovalRolesTest {
 
   @Inject EntityCommentService comments;
 
+  @Inject FakeDownstreamPins downstreamPins;
+
   private String projectId;
   private String otherProjectId;
   private String declarationRepoId;
   private String manualRepoId;
+  private String contractRepoId;
+  private String consumerRepoId;
   private WorkEntity ticket;
   private String ticketBranch;
   private final List<String> requestIds = new ArrayList<>();
@@ -105,6 +111,7 @@ public class ReleaseRequestApprovalRolesTest {
     gitHost.reset();
     foldChanges.reset();
     announcer.reset();
+    downstreamPins.reset();
     requestIds.clear();
     activeBuilds.answer(Optional.of(0));
     gitHost.gatedTree("refs/heads/main", Map.of("README.md", "a service"));
@@ -113,6 +120,8 @@ public class ReleaseRequestApprovalRolesTest {
     otherProjectId = "roles-other-" + token;
     declarationRepoId = "roles-declaration-" + UUID.randomUUID();
     manualRepoId = "roles-manual-" + UUID.randomUUID();
+    contractRepoId = "roles-contract-" + UUID.randomUUID();
+    consumerRepoId = "roles-consumer-" + UUID.randomUUID();
     gitHost.gatedTreeFor(
         manualRepoId,
         "refs/heads/main",
@@ -123,9 +132,11 @@ public class ReleaseRequestApprovalRolesTest {
         .run(
             () -> {
               Project project = project(projectId);
-              project(otherProjectId);
+              Project other = project(otherProjectId);
               repository(project, declarationRepoId);
               repository(project, manualRepoId);
+              repository(project, contractRepoId);
+              repository(other, consumerRepoId);
             });
     // The declaration repository's fold changes release.yml, and only by declaring an artifact.
     foldChanges.changes(
@@ -158,6 +169,7 @@ public class ReleaseRequestApprovalRolesTest {
               }
             });
     foldChanges.reset();
+    downstreamPins.reset();
   }
 
   // ---- an agent acknowledges a declaration -----------------------------------------------------
@@ -370,6 +382,92 @@ public class ReleaseRequestApprovalRolesTest {
             "artifact-declarations:OPEN@" + second.substring(0, 7)),
         announcer.statesOf(id));
     assertEquals(2, comments.listComments(ticket.id).size(), "one comment per fold");
+  }
+
+  // ---- a contract another project consumes (qits-1291) ------------------------------------------
+
+  /**
+   * The owner's "cross-project" case: the contract repository's fold changes its golden masters,
+   * and a repository of the other project pins them — so the request needs {@code
+   * agent@<other project>} or a person. An agent of the request's own project is refused with a 403
+   * naming the requirement; the consumer project's agent satisfies it and the request releases.
+   */
+  @Test
+  void aContractConsumedByAnotherProjectNeedsThatProjectsAgent() {
+    consumesTheContract("eu.wohlben.qits:qits-roles-golden-masters");
+    String id = create(contractRepoId, ticketBranch);
+    String fold = mergedShaOf(contractRepoId, id);
+    verdict(contractRepoId, fold);
+
+    JsonPath held = request(contractRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        List.of("contract:" + otherProjectId),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("agent@" + otherProjectId, "person"),
+        held.getList("approvalRequirements[0].admits", String.class));
+    assertEquals(true, held.getBoolean("approvalRequirements[0].excludesAuthors"));
+    assertEquals(
+        "golden-masters/a-state/getThing.json",
+        held.getString("approvalRequirements[0].detail"));
+
+    agent(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(contractRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("contract:" + otherProjectId))
+        .body("message", containsString("admits agent@" + otherProjectId + ", person"));
+
+    agent(otherProjectId)
+        .get(base(contractRepoId) + "/" + id + "/approval-eligibility")
+        .then()
+        .statusCode(200)
+        .body("eligibility.heldRoles", equalTo(List.of("agent@" + otherProjectId)))
+        .body("eligibility.eligibleRequirementIds", equalTo(List.of("contract:" + otherProjectId)));
+    agent(otherProjectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(contractRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body(
+            "request.approvalRequirements[0].satisfiedBy.approver",
+            equalTo("agent-of-" + otherProjectId));
+
+    awaitState(contractRepoId, id, "RELEASED");
+  }
+
+  /** A consumer pinning some other artifact of the repository is no consumer of its contract. */
+  @Test
+  void aConsumerOfAnotherArtifactOpensNoContractRequirement() {
+    consumesTheContract("eu.wohlben.qits:qits-roles-service-pacts-telemetry");
+    String id = create(contractRepoId, ticketBranch);
+    String fold = mergedShaOf(contractRepoId, id);
+    verdict(contractRepoId, fold);
+
+    awaitState(contractRepoId, id, "RELEASED");
+    assertEquals(List.of(), announcer.statesOf(id), "nothing needed approving");
+  }
+
+  /** The contract repository changes its golden masters and the consumer repository pins {@code pin}. */
+  private void consumesTheContract(String pin) {
+    foldChanges.changes(
+        contractRepoId,
+        List.of(
+            RecordingFoldChanges.fileWithBlobs(
+                "MODIFIED", "golden-masters/a-state/getThing.json", "b1ob0000gm0", "b1ob0000gm1")));
+    foldChanges.scriptFile(
+        contractRepoId,
+        ".config/qits/release.yml",
+        "archetype: java-service\ncontracts:\n  application: qits-roles\n"
+            + "  golden-masters: { from: golden-masters/, packages: [maven, npm] }\n");
+    downstreamPins.downstream(
+        contractRepoId,
+        List.of(new DownstreamPins.Downstream("telemetry-consumer-service", consumerRepoId, 1)));
+    downstreamPins.pins(
+        "telemetry-consumer-service", List.of(new DownstreamPins.Pin("maven", pin)));
   }
 
   // ---- fixtures ------------------------------------------------------------------------------------
