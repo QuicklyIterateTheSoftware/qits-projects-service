@@ -672,7 +672,8 @@ write** (user ruling, 2026-09-12):
   and `WorkController.delete`, which admit the agent at the method for the kinds whose moves and
   deletes an agent makes (freezing or resolving a plan from the board is a person's door; an agent
   claims its own phase with `POST /work/{id}/status`, bound to the epic's project) — `WorkDispatchController.dispatch` and `WorkRefinementController.open` (standing a workspace
-  or a room up is a person's press; their GETs are reads and admit the agent), and
+  or a room up is a person's press; their GETs are reads and admit the agent — the dispatch press
+  also admits the project's delivery desk, `qits:desk`, below), and
   `WorkCommentController.delete` (deleting is on neither surface: an agent that could delete what it
   disagrees with could erase the record of its own mistake).
 - **Five of the generic entity doors also take `qits:system`, UNBOUND (qits-621/qits-667):**
@@ -1592,7 +1593,8 @@ The agent door refuses `SUPERSEDED`: an operation on a plan is a person's, from 
 
 **Putting an agent on an epic or a ticket is one action**, `POST /projects/api/work/{qualifiedId}/dispatch`
 (`projects/api/WorkDispatchController` → `DispatchDoors` → `EntityDispatch`; it was `POST
-/entities/{id}/dispatch` until qits-976), `qits:admin` alone. It starts the phase
+/entities/{id}/dispatch` until qits-976), `qits:admin` (and `qits:admin-agent`) — and, since epic
+qits-1440, the project's delivery desk (see "The delivery desk presses" below). It starts the phase
 the entity's **status** implies — REPORTED starts refine, READY_FOR_DEV and IMPLEMENTING implement (a
 press on a READY_FOR_DEV entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING
 verify (a
@@ -1638,6 +1640,26 @@ press never touches it, and any move to DROPPED clears it (`WorkEntityService.mo
 `EntityTransitionService`). So the registry's `flow` describes a person's press: REPORTED runs
 refine, implement, verify, REFINED runs implement, verify, and REFINED's `next` stays null; the
 read's `dispatchable` is true at an unblocked REFINED.
+
+**The delivery desk presses too, inside its project's declaration (epic qits-1440).** The press
+admits `qits:desk` at the method (`@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})`;
+a plain `qits:agent` is still a 403). `EntityMovers.of` makes a `qits:desk` caller holding neither
+admin role a `Mover.desk(principal, project claim)` — a machine — and the body names the rule it
+presses under (`{"mode", "rule"}`; `rule` is ignored for anyone else). `EntityDispatch` refuses a
+desk, with no side effect and before every other refusal, in this order: an item of another project
+(403 "The delivery desk may dispatch only the items of its own project."), no rule (400 "The
+delivery desk names the rule it dispatches under."), the project's `delivery_enabled` false (409
+"The delivery loop is off for this project (front_desk.delivery.enabled in
+.config/qits/project.yml)."), a campaign (409 — `DispatchDoors` never sends a desk down the campaign
+path), the project at `delivery_max_running` (409 naming the count, the limit and the running
+qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, with an assignee and an ACTIVE
+agent from `WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself), and REFINED
+while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refined is off."). With
+`start_refined` on, a desk's FLOW press at REFINED is the scheduling, exactly as a person's: REFINED
+→ READY_FOR_DEV under the desk mover stamped `withDeclaredApproval`, which `PersonApprovalGate`
+accepts in a person's place (every other gate still runs), and `preApprovedBy` records `delivery
+desk (start-refined, .config/qits/project.yml)`. Every other machine is unchanged. The dispatch
+comment ends ``Dispatched by the delivery desk under rule `<rule>`.``.
 
 **The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
 (declaration only: `entity.assignee` is on every row), and every successful press — refine, implement

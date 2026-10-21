@@ -24,15 +24,18 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * id or UUID ({@link EntityIdResolver#resolve}).
  *
  * <pre>
- *   POST /work/{qualifiedId}/dispatch   {"mode":"FLOW"|"PHASE"}  → {"dispatch": EntityDispatchDto}
+ *   POST /work/{qualifiedId}/dispatch   {"mode":"FLOW"|"PHASE", "rule"?}  → {"dispatch": EntityDispatchDto}
  *                                        on a campaign            → {"progress": CampaignProgressDto}
  *   GET  /work/{qualifiedId}/dispatch                             → {"state": EntityDispatchStateDto}
  * </pre>
  *
  * <p>Every rule is {@link DispatchDoors}' (it was shared with the deleted {@code /entities} door), and so are the
- * roles: the press is {@code qits:admin} alone (standing a workspace up is a person's press), the
- * read admits {@code qits:agent}. In {@code projects.api} for {@link EntityDispatch}'s reason: it
- * needs {@code domain}.
+ * roles: the press is {@code qits:admin} (and {@code qits:admin-agent}) — standing a workspace up is
+ * a person's press — and, since epic qits-1440, a project's delivery desk ({@code qits:desk}), which
+ * names the rule it dispatches under and is bound to its own project, its loop and its cap ({@link
+ * EntityDispatch}'s desk refusals). A plain {@code qits:agent} is still refused. The read admits
+ * {@code qits:agent}. In {@code projects.api} for {@link EntityDispatch}'s reason: it needs {@code
+ * domain}.
  */
 @Path("/work/{qualifiedId}/dispatch")
 @Produces(MediaType.APPLICATION_JSON)
@@ -46,7 +49,7 @@ public class WorkDispatchController {
 
   @Inject SecurityIdentity identity;
 
-  /** The press's body: which of the two actions. */
+  /** The press's body: which of the two actions, and — for the delivery desk — under which rule. */
   @Schema(name = "WorkDispatchRequest", description = "Which of the two dispatch actions to press.")
   public record WorkDispatchRequest(
       @Schema(
@@ -54,7 +57,18 @@ public class WorkDispatchController {
               description =
                   "FLOW (Dispatch: run the whole flow) or PHASE (Run the next phase: one, then"
                       + " stop)")
-          String mode) {}
+          String mode,
+      @Schema(
+              description =
+                  "The delivery desk's rule id this press is made under (backlog-newest-first,"
+                      + " start-refined). Required for a qits:desk caller, ignored for anyone else.")
+          String rule) {
+
+    /** A press with no rule: every caller but the delivery desk. */
+    public WorkDispatchRequest(String mode) {
+      this(mode, null);
+    }
+  }
 
   @Schema(name = "WorkDispatchAnswer", description = "The dispatch a press made.")
   public record WorkDispatchAnswer(EntityDispatchDto dispatch) {}
@@ -63,6 +77,7 @@ public class WorkDispatchController {
   public record WorkDispatchState(EntityDispatchStateDto state) {}
 
   @POST
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "dispatchWork",
       summary = "Put an agent on an epic or a ticket, or start a campaign",
@@ -79,18 +94,25 @@ public class WorkDispatchController {
               mediaType = MediaType.APPLICATION_JSON,
               schema =
                   @Schema(oneOf = {WorkDispatchAnswer.class, WorkProgressAnswer.class})))
-  @APIResponse(responseCode = "400", description = "A missing or unknown mode")
+  @APIResponse(
+      responseCode = "400",
+      description = "A missing or unknown mode, or a delivery desk naming no rule")
+  @APIResponse(
+      responseCode = "403",
+      description = "A delivery desk reaching for another project's item")
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(
       responseCode = "409",
       description =
           "A status that starts no phase, a feature or a task, a blocked entity, a project with no"
-              + " wrapper")
+              + " wrapper; for the delivery desk also its loop off, a campaign, or its cap reached")
   public Response dispatch(
       @PathParam("qualifiedId") String qualifiedId, WorkDispatchRequest request) {
     String mode = request == null ? null : request.mode();
+    String rule = request == null ? null : request.rule();
     DispatchMode.parse(mode); // the 400 first, before the entity is looked up
-    DispatchDoors.Pressed pressed = doors.press(identity, ids.resolve(qualifiedId).id, mode);
+    DispatchDoors.Pressed pressed =
+        doors.press(identity, ids.resolve(qualifiedId).id, mode, rule);
     if (pressed.progress() != null) {
       return Response.ok(new WorkProgressAnswer(pressed.progress())).build();
     }

@@ -67,6 +67,25 @@ class PersonApprovalGateTest extends EntitiesTestSupport {
     }
   }
 
+  /**
+   * The delivery desk (epic qits-1440) is a machine: refused like any other, unless the dispatch
+   * path stamped it with its project's start-refined declaration, which the gate accepts.
+   */
+  @Test
+  void aDeskSchedulesOnlyUnderADeclaredApproval() {
+    String id = refined(Archetype.TICKET);
+    Mover desk = Mover.desk("tok-desk", "proj-1");
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, id, "READY_FOR_DEV", desk));
+    assertEquals("REFINED", status(Archetype.TICKET, id));
+    assertThrows(IllegalStateException.class, () -> Mover.machine("x").withDeclaredApproval("r"));
+
+    workEntities.transition(
+        Archetype.TICKET, id, "READY_FOR_DEV", desk.withDeclaredApproval("start-refined"));
+    assertEquals("READY_FOR_DEV", status(Archetype.TICKET, id));
+  }
+
   @Test
   void aPersonSchedulesAndTheMoveIsAuditedUnderThePersonsName() {
     String id = refined(Archetype.EPIC);

@@ -45,12 +45,24 @@ public class DispatchDoors {
    * was, then the entity's 404.
    */
   public Pressed press(SecurityIdentity identity, String entityId, String mode) {
+    return press(identity, entityId, mode, null);
+  }
+
+  /**
+   * The press, naming the rule it is made under — read only for a delivery desk (epic qits-1440),
+   * whose press never reaches the campaign branch: {@link EntityDispatch}'s desk refusals answer a
+   * campaign, in their own order, before anything else is decided.
+   */
+  public Pressed press(SecurityIdentity identity, String entityId, String mode, String rule) {
     DispatchMode parsed = DispatchMode.parse(mode);
     // Who presses, as qits-891's person check says (qits-1075): a person's FLOW press pre-approves
     // the scheduling. Its name is the changedBy a person's press always recorded; a machine's is the
     // caller's principal, as before.
     Mover mover = movers.of(identity);
     WorkEntity entity = dispatch.get(entityId); // 404
+    if (mover.isDesk()) {
+      return new Pressed(dispatch.dispatch(entityId, parsed, mover, rule).toDto(), null);
+    }
     if (entity.archetype == Archetype.CAMPAIGN) {
       // Out of qits-1075's scope: a campaign's press is its start and grants no pre-approval.
       CampaignService.ProgressRead started =
