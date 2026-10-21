@@ -677,6 +677,104 @@
         "references": {
           "qits-call": {
             "app": "qits-maintenance-service",
+            "operationId": "getRepository"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "approveReleaseRequest"
+          }
+        }
+      },
+      "description": "approveReleaseRequest: getRepository",
+      "key": "f4e419e6",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository whose manifests pin golden masters",
+          "params": {
+            "repoName": "contract-service"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/maintenance/api/repositories/${repoName}",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/maintenance/api/repositories/contract-service"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "pins": [
+              {
+                "ecosystem": "npm",
+                "name": "@qits/contract-service-golden-masters"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.pins": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.pins[*].ecosystem": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pins[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-maintenance-service",
             "operationId": "getRepositoryDownstream"
           },
           "qits-trigger": {
