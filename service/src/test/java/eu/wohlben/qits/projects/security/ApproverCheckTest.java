@@ -55,6 +55,45 @@ class ApproverCheckTest {
     }
   }
 
+  /**
+   * qits-idp mints {@code clients/<client id>} into the groups of every client token, a
+   * commissioned agent's included: its OWN self-role is not a service client's mark. Anybody
+   * else's still refuses.
+   */
+  @Test
+  void anAgentsOwnClientGroupIsAllowedAndAnotherIsNot() {
+    assertEquals(
+        Optional.of(Approver.agent("agent-client-1", "project-a")),
+        check.decide(
+            agent("workspace", "project-a", "qits:agent", "clients/agent-client-1"),
+            null,
+            LaunchMode.NORMAL));
+    assertEquals(
+        Optional.empty(),
+        check.decide(
+            agent("workspace", "project-a", "qits:agent", "clients/agent-client-1", "clients/other"),
+            null,
+            LaunchMode.NORMAL));
+  }
+
+  /**
+   * The agent is named by its principal — what {@code addedBy} records for it on every other door
+   * — and keeps its {@code sub} as an alias, so an excluded author is excluded under either name.
+   */
+  @Test
+  void anAgentIsNamedByItsPrincipalWithItsSubAsAnAlias() {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("sub", "agent-client-1");
+    claims.put("preferred_username", "workspace-agent-a");
+    claims.put("context_kind", "workspace");
+    claims.put("project", "project-a");
+    claims.put("groups", List.of("qits:agent", "clients/agent-client-1"));
+    Approver approver =
+        check.decide(AgentTokens.token(claims, "qits:agent"), null, LaunchMode.NORMAL).orElseThrow();
+    assertEquals("workspace-agent-a", approver.name());
+    assertEquals(java.util.Set.of("workspace-agent-a", "agent-client-1"), approver.names());
+  }
+
   @Test
   void anAgentTokenOfAnotherContextKindOrWithoutAProjectHoldsNothing() {
     assertEquals(

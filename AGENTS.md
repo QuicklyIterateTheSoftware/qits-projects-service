@@ -1249,8 +1249,10 @@ approval's roles. The display path stores the content requirements as JSON objec
   requirement, lifted by a re-fold or the same approver approving.
 - **Doors**: approve/decline admit `qits:agent` at the filter; `security/ApproverCheck` proves the
   roles (PersonCheck's proof = `person`; a validated idp JWT with `qits:agent`, `context_kind`
-  `workspace`/`workspace-admin`, no `clients/…` group and a `project` claim = `agent` of that
-  project, named by `sub`; headers prove nothing). The domain decides eligibility: approve 409 when
+  `workspace`/`workspace-admin`, no `clients/…` group but its own `clients/<sub>` — qits-idp mints
+  that self-role into every client token — and a `project` claim = `agent` of that project, named
+  by its principal as `addedBy` records it, with `sub` as an alias for the author check; headers
+  prove nothing). The domain decides eligibility: approve 409 when
   nothing is open, 403 when the caller qualifies for no open requirement; decline 409 when the fold
   has none, 403 when the caller qualifies for none; the 403 names each requirement and its roles.
   `GET …/{requestId}/approval-eligibility` answers `{viewer, heldRoles, eligibleRequirementIds}`.

@@ -1354,6 +1354,10 @@ public class ReleaseRequests {
                   Set.copyOf(ApprovalNotices.authorsOf(sources.listByRequest(row.id)));
               List<ApprovalRole> held =
                   approver == null ? List.of() : approver.heldRelativeTo(row.projectId);
+              Set<String> names = new LinkedHashSet<>(Set.of(actor));
+              if (approver != null) {
+                names.addAll(approver.names());
+              }
               List<ReleaseRequestApproval> atFold = approvals.atFold(row.id, row.mergedSha);
               ApprovalStanding standing =
                   ApprovalStanding.of(requirements, atFold, authors, approvalRoles::rolesOf);
@@ -1382,10 +1386,10 @@ public class ReleaseRequests {
                   concerned.stream()
                       .anyMatch(
                           requirement ->
-                              ApprovalStanding.qualifies(requirement, held, actor, authors));
+                              ApprovalStanding.qualifies(requirement, held, names, authors));
               if (!eligible) {
                 throw new DomainException(
-                    403, notEligible(row, decision, concerned, held, actor, authors));
+                    403, notEligible(row, decision, concerned, held, names, authors));
               }
               ReleaseRequestApproval approval = new ReleaseRequestApproval();
               approval.id = UUID.randomUUID().toString();
@@ -1427,12 +1431,13 @@ public class ReleaseRequests {
       ReleaseRequestApproval.Decision decision,
       List<ApprovalRequirement> concerned,
       List<ApprovalRole> held,
-      String actor,
+      Set<String> names,
       Set<String> authors) {
     List<String> each = new ArrayList<>();
     boolean excludedAsAuthor = false;
     for (ApprovalRequirement requirement : concerned) {
-      boolean author = requirement.excludesAuthors() && authors.contains(actor);
+      boolean author =
+          requirement.excludesAuthors() && names.stream().anyMatch(authors::contains);
       excludedAsAuthor |= author;
       each.add(
           requirement.id()
@@ -1757,13 +1762,20 @@ public class ReleaseRequests {
             : principal;
     List<ApprovalRole> held =
         viewer == null ? List.of() : viewer.heldRelativeTo(row.projectId);
+    Set<String> names = new LinkedHashSet<>();
+    if (name != null) {
+      names.add(name);
+    }
+    if (viewer != null) {
+      names.addAll(viewer.names());
+    }
     Set<String> authors =
         Set.copyOf(ApprovalNotices.authorsOf(page.named().getOrDefault(row.id, List.of())));
     List<String> eligible =
         held.isEmpty()
             ? List.of()
             : requirements.stream()
-                .filter(requirement -> ApprovalStanding.qualifies(requirement, held, name, authors))
+                .filter(requirement -> ApprovalStanding.qualifies(requirement, held, names, authors))
                 .map(ApprovalRequirement::id)
                 .toList();
     return new ApprovalEligibilityDto(name, approvalRoles.renderAll(held), eligible);

@@ -400,18 +400,61 @@ public class ReleaseRequestApprovalRolesTest {
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(name));
   }
 
-  /** An agent's own workspace token, as qits-workspaces commissions it for {@code project}. */
+  /**
+   * An agent's own workspace token, as qits-idp mints it for a commission of {@code project}: the
+   * client id as {@code sub}, and {@code clients/<client id>} beside {@code qits:agent} in its
+   * groups — qits-idp adds that self-role to every client token it mints.
+   */
   private static RequestSpecification agent(String project) {
     String token =
         MockIdp.attach()
             .token()
             .subject("agent-of-" + project)
             .audience("qits-platform")
-            .groups("qits:agent")
+            .groups("qits:agent", "clients/agent-of-" + project)
             .claim("context_kind", "workspace")
             .claim("project", project)
             .mint();
     return given().contentType(ContentType.JSON).header("Authorization", "Bearer " + token);
+  }
+
+  /**
+   * The decision is recorded under the token's principal — {@code preferred_username} where it has
+   * one, what {@code addedBy} records for the same caller on every other door — not its {@code sub}.
+   */
+  @Test
+  void anAgentDecidesUnderItsPrincipal() {
+    String id = create(declarationRepoId, ticketBranch);
+    String fold = mergedShaOf(declarationRepoId, id);
+    String token =
+        MockIdp.attach()
+            .token()
+            .subject("client-of-" + projectId)
+            .audience("qits-platform")
+            .groups("qits:agent", "clients/client-of-" + projectId)
+            .claim("preferred_username", "workspace-agent-" + projectId)
+            .claim("context_kind", "workspace")
+            .claim("project", projectId)
+            .mint();
+    RequestSpecification agent =
+        given().contentType(ContentType.JSON).header("Authorization", "Bearer " + token);
+    agent
+        .get(base(declarationRepoId) + "/" + id + "/approval-eligibility")
+        .then()
+        .statusCode(200)
+        .body("eligibility.viewer", equalTo("workspace-agent-" + projectId));
+    given()
+        .contentType(ContentType.JSON)
+        .header("Authorization", "Bearer " + token)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(declarationRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200);
+    person("ada")
+        .get(base(declarationRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].actor", equalTo("workspace-agent-" + projectId));
   }
 
   private static String base(String repoId) {

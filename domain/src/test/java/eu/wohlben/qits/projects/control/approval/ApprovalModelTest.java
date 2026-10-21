@@ -122,6 +122,17 @@ class ApprovalModelTest {
             REVIEW, List.of(ApprovalRole.agentOf("p-b")), "reviewer", Set.of("author")));
   }
 
+  /** An author recorded under an agent's sub is excluded though the agent decides under another name. */
+  @Test
+  void anAuthorIsExcludedUnderAnyOfItsNames() {
+    Approver agent = Approver.agent("workspace-agent-b", "agent-client-b", "p-b");
+    List<ApprovalRole> held = agent.heldRelativeTo("p-a");
+    assertTrue(ApprovalStanding.qualifies(REVIEW, held, agent.names(), Set.of("somebody-else")));
+    assertFalse(ApprovalStanding.qualifies(REVIEW, held, agent.names(), Set.of("agent-client-b")));
+    assertFalse(
+        ApprovalStanding.qualifies(REVIEW, held, agent.names(), Set.of("workspace-agent-b")));
+  }
+
   @Test
   void anAgentsDeclineDoesNotOverturnAPersonsApprovalOfWhatItCannotSatisfy() {
     ApprovalStanding standing =

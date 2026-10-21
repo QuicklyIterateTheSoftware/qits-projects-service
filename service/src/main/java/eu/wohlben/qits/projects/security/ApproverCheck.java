@@ -27,11 +27,21 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  *   <li><b>{@link PersonCheck}'s proof</b> — a {@code qits-session} cookie this service introspects,
  *       or a person's {@code qits} CLI bearer — is {@code person}, under the proof's name.
  *   <li><b>A validated idp JWT of an agent</b> is {@code agent} of the project its {@code project}
- *       claim names, under its {@code sub}: {@code qits:agent} in its {@code groups}, a {@code
- *       context_kind} of {@code workspace} or {@code workspace-admin} (what qits-workspaces'
- *       commissioner mints for an agent), no {@code clients/…} group (a service client is not an
- *       agent) and a non-blank {@code project} claim. The groups are read off the token, not off the
- *       identity, so an augmentor that added a role cannot make a machine look like an agent.
+ *       claim names: {@code qits:agent} in its {@code groups}, a {@code context_kind} of {@code
+ *       workspace} or {@code workspace-admin} (what qits-workspaces' commissioner mints for an
+ *       agent), no {@code clients/…} group other than its own and a non-blank {@code project} claim.
+ *       The groups are read off the token, not off the identity, so an augmentor that added a role
+ *       cannot make a machine look like an agent.
+ *       <p><b>Its own {@code clients/<sub>} is not a service client's mark.</b> qits-idp's {@code
+ *       ClientRoles.mintedFor} adds {@code clients/<client id>} to the groups of <em>every</em> client
+ *       token it mints, a commissioned agent's included, with the client id as {@code sub}; refusing
+ *       any {@code clients/…} group would refuse every real agent. What sets a service client apart
+ *       is that it carries no {@code context_kind}; a second {@code clients/…} group still refuses.
+ *       <p><b>Its name is the token's principal</b> ({@link JsonWebToken#getName()}) — the name
+ *       every other door, and so {@code ReleaseRequestSource.addedBy}, records for it — with its
+ *       {@code sub} as an alias where the two differ, so an excluded author is excluded under
+ *       either. (qits-idp sets neither {@code upn} nor {@code preferred_username} on a client token
+ *       today, so the two are the same client id.)
  *   <li><b>Anything else</b> — asserted headers, a service client, {@code qits:system}, CI, a
  *       workstation token — holds nothing.
  * </ul>
@@ -94,17 +104,23 @@ public class ApproverCheck {
     if (kind == null || !AGENT_CONTEXT_KINDS.contains(kind)) {
       return Optional.empty();
     }
+    String subject = token.getSubject();
+    String ownGroup = subject == null ? null : PersonCheck.CLIENT_GROUP_PREFIX + subject;
     List<String> groups = groups(token);
     if (!groups.contains(AgentAccess.AGENT_ROLE)
-        || groups.stream().anyMatch(group -> group.startsWith(PersonCheck.CLIENT_GROUP_PREFIX))) {
+        || groups.stream()
+            .anyMatch(
+                group ->
+                    group.startsWith(PersonCheck.CLIENT_GROUP_PREFIX) && !group.equals(ownGroup))) {
       return Optional.empty();
     }
     String project = text(token.getClaim(PROJECT_CLAIM));
-    String subject = token.getSubject();
-    if (project == null || project.isBlank() || subject == null || subject.isBlank()) {
+    String principal = token.getName();
+    String name = principal == null || principal.isBlank() ? subject : principal;
+    if (project == null || project.isBlank() || name == null || name.isBlank()) {
       return Optional.empty();
     }
-    return Optional.of(Approver.agent(subject, project.trim()));
+    return Optional.of(Approver.agent(name, subject, project.trim()));
   }
 
   /** {@code groups}, as quarkus-oidc (strings) or smallrye-jwt (JSON strings) hands it back. */

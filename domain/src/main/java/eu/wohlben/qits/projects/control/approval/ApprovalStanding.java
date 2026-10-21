@@ -121,7 +121,22 @@ public final class ApprovalStanding {
       Collection<ApprovalRole> held,
       String name,
       Set<String> authors) {
-    if (requirement.excludesAuthors() && name != null && authors != null && authors.contains(name)) {
+    return qualifies(requirement, held, name == null ? Set.of() : Set.of(name), authors);
+  }
+
+  /**
+   * The same, for an approver known by several names (an agent's principal and its {@code sub}):
+   * an author under any of them is excluded.
+   */
+  public static boolean qualifies(
+      ApprovalRequirement requirement,
+      Collection<ApprovalRole> held,
+      Collection<String> names,
+      Set<String> authors) {
+    if (requirement.excludesAuthors()
+        && authors != null
+        && names != null
+        && names.stream().anyMatch(authors::contains)) {
       return false;
     }
     return requirement.admits().stream().anyMatch(held::contains);
