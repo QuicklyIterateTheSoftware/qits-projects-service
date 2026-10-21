@@ -44,6 +44,25 @@
     "approvedBy": "dev",
     "approvedAt": "2026-01-01T00:00:00Z",
     "approvalNote": "Read the diff: the pin moves to the export release.",
+    "approvalRequirements": [
+      {
+        "id": "manual-review",
+        "reason": "configured by manual-review",
+        "admits": [
+          "person"
+        ],
+        "excludesAuthors": false,
+        "detail": null,
+        "satisfied": true,
+        "satisfiedBy": {
+          "approver": "dev",
+          "roles": [
+            "person"
+          ],
+          "at": "2026-01-01T00:00:00Z"
+        }
+      }
+    ],
     "gates": [
       {
         "kind": "AUTOMATIONS",

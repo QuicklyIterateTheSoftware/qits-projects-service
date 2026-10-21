@@ -44,6 +44,19 @@
     "approvedBy": "dev",
     "approvedAt": "2026-01-01T00:00:00Z",
     "approvalNote": "The README promises an approval policy nobody has signed off yet.",
+    "approvalRequirements": [
+      {
+        "id": "manual-review",
+        "reason": "configured by manual-review",
+        "admits": [
+          "person"
+        ],
+        "excludesAuthors": false,
+        "detail": null,
+        "satisfied": false,
+        "satisfiedBy": null
+      }
+    ],
     "gates": [
       {
         "kind": "AUTOMATIONS",

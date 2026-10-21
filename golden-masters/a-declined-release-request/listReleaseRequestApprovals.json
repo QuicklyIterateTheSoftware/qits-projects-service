@@ -6,7 +6,10 @@
       "decision": "DECLINED",
       "actor": "dana.weber",
       "note": "The README promises an approval policy nobody has signed off yet.",
-      "decidedAt": "2026-01-01T00:00:00Z"
+      "decidedAt": "2026-01-01T00:00:00Z",
+      "roles": [
+        "person"
+      ]
     }
   ]
 }

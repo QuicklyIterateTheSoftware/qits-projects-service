@@ -223,6 +223,38 @@ components:
             $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
         shipped:
           type: boolean
+    ApprovalEligibilityDto:
+      type: object
+      properties:
+        viewer:
+          type: string
+        heldRoles:
+          type: array
+          items:
+            type: string
+        eligibleRequirementIds:
+          type: array
+          items:
+            type: string
+    ApprovalRequirementDto:
+      type: object
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+        admits:
+          type: array
+          items:
+            type: string
+        excludesAuthors:
+          type: boolean
+        detail:
+          type: string
+        satisfied:
+          type: boolean
+        satisfiedBy:
+          $ref: "#/components/schemas/SatisfiedBy"
     ApproveReleaseRequest:
       type: object
       required:
@@ -2062,6 +2094,10 @@ components:
           type: string
         decidedAt:
           $ref: "#/components/schemas/Instant"
+        roles:
+          type: array
+          items:
+            type: string
     ReleaseRequestChangesDto:
       type: object
       properties:
@@ -2141,6 +2177,10 @@ components:
           $ref: "#/components/schemas/Instant"
         approvalNote:
           type: string
+        approvalRequirements:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalRequirementDto"
         gates:
           type: array
           deprecated: true
@@ -2349,19 +2389,24 @@ components:
     Response23:
       type: object
       properties:
+        eligibility:
+          $ref: "#/components/schemas/ApprovalEligibilityDto"
+    Response24:
+      type: object
+      properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
-    Response24:
+    Response25:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response25:
+    Response26:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response26:
+    Response27:
       type: object
       properties:
         repository:
@@ -2370,11 +2415,6 @@ components:
           type: string
         changed:
           type: boolean
-    Response27:
-      type: object
-      properties:
-        technicalProcessId:
-          type: string
     Response28:
       type: object
       properties:
@@ -2383,10 +2423,8 @@ components:
     Response29:
       type: object
       properties:
-        repositories:
-          type: array
-          items:
-            $ref: "#/components/schemas/RepositoryCoordinatesDto"
+        technicalProcessId:
+          type: string
     Response3:
       type: object
       properties:
@@ -2397,13 +2435,15 @@ components:
     Response30:
       type: object
       properties:
-        repository:
-          $ref: "#/components/schemas/RepositoryDto"
+        repositories:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepositoryCoordinatesDto"
     Response31:
       type: object
       properties:
-        success:
-          type: boolean
+        repository:
+          $ref: "#/components/schemas/RepositoryDto"
     Response32:
       type: object
       properties:
@@ -2412,25 +2452,30 @@ components:
     Response33:
       type: object
       properties:
+        success:
+          type: boolean
+    Response34:
+      type: object
+      properties:
         builds:
           type: array
           items:
             $ref: "#/components/schemas/CommitBuildStatusDto"
-    Response34:
+    Response35:
       type: object
       properties:
         branches:
           type: array
           items:
             $ref: "#/components/schemas/BranchDto"
-    Response35:
+    Response36:
       type: object
       properties:
         repositoryId:
           type: string
         scheduled:
           type: boolean
-    Response36:
+    Response37:
       type: object
       properties:
         technicalProcessId:
@@ -2497,6 +2542,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RevisionDto"
+    SatisfiedBy:
+      type: object
+      properties:
+        approver:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        at:
+          $ref: "#/components/schemas/Instant"
     SaveRequest:
       type: object
       required:
@@ -5104,7 +5160,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response29"
+                $ref: "#/components/schemas/Response30"
         "401":
           description: Not Authorized
         "403":
@@ -5146,7 +5202,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response26"
+                $ref: "#/components/schemas/Response27"
         "400":
           description: "An invalid name, a name another repository in this project\
             \ already answers to, or the project's wrapper repository (whose name\
@@ -5177,7 +5233,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response30"
+                $ref: "#/components/schemas/Response31"
         "401":
           description: Not Authorized
         "403":
@@ -5211,7 +5267,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response32"
+                $ref: "#/components/schemas/Response33"
         "401":
           description: Not Authorized
         "403":
@@ -5236,7 +5292,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response36"
+                $ref: "#/components/schemas/Response37"
         "401":
           description: Not Authorized
         "403":
@@ -5267,7 +5323,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response35"
+                $ref: "#/components/schemas/Response36"
         "404":
           description: No such repository
         "401":
@@ -5300,7 +5356,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response31"
+                $ref: "#/components/schemas/Response32"
         "401":
           description: Not Authorized
         "403":
@@ -5328,7 +5384,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response34"
+                $ref: "#/components/schemas/Response35"
         "401":
           description: Not Authorized
         "403":
@@ -5442,7 +5498,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response33"
+                $ref: "#/components/schemas/Response34"
         "401":
           description: Not Authorized
         "403":
@@ -5557,7 +5613,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response25"
+                $ref: "#/components/schemas/Response26"
         "401":
           description: Not Authorized
         "403":
@@ -5585,7 +5641,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response28"
+                $ref: "#/components/schemas/Response29"
         "401":
           description: Not Authorized
         "403":
@@ -5611,7 +5667,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response27"
+                $ref: "#/components/schemas/Response28"
         "401":
           description: Not Authorized
         "403":
@@ -5756,6 +5812,49 @@ paths:
         - qits:admin-agent
         - qits:system
         - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/approval-eligibility:
+    get:
+      summary: What the caller may approve or decline on this request's current fold
+      description: "The per-viewer read behind the Approve and Decline buttons (epic\
+        \ qits-1038), from the same proof the doors check. viewer is the name the\
+        \ caller would decide under (its principal where it holds no approval role);\
+        \ heldRoles the approval roles this service proved it holds, relative to the\
+        \ request (agent for an agent of the request's own project); eligibleRequirementIds\
+        \ every requirement of the current fold it may satisfy, open or already satisfied.\
+        \ Approve is meaningful where an id names an open requirement, Decline where\
+        \ there is any. Asserted headers prove nothing and answer empty roles, never\
+        \ a 403."
+      operationId: getReleaseRequestApprovalEligibility
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response23"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approvals:
     get:
       summary: "Every decision made about this request, newest first"
@@ -5801,22 +5900,24 @@ paths:
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approve:
     post:
-      summary: "Sign off this request's current fold, so it may release"
-      description: "The person's half of the second gate: where the repository's releases\
-        \ have to be approved — today the project wrapper — a request that has passed\
-        \ every build gate still waits for this. mergedSha is required and names the\
+      summary: "Approve this request's current fold, satisfying what the caller may\
+        \ satisfy"
+      description: "The approval gate holds a request while any of its approval requirements\
+        \ (approvalRequirements) is open; each names the approval roles that may satisfy\
+        \ it — person, agent (an agent of the request's own project) or agent@<project\
+        \ slug>. An approval records the caller and the roles it holds, and satisfies\
+        \ every requirement it qualifies for. mergedSha is required and names the\
         \ fold being approved; a stale one answers 409 naming the fold the request\
-        \ is on now, because an approval is a statement about content and a push may\
-        \ have landed while the page was open. The gate is re-asked immediately, so\
-        \ a fold whose build is already green releases on the click. 409 also for\
-        \ a request that has concluded or is already being released, for one with\
-        \ no fold yet, and for a repository that needs no approval at all — approving\
-        \ what has no gate is a caller error, not a no-op. A person only: qits:admin,\
-        \ verified by this service from a browser session or a person's qits CLI token\
-        \ — asserted identity headers alone answer 403. A machine may ask for a release\
-        \ and withdraw one, and may not sign off the estate. qits:admin-agent is admitted\
-        \ too (qits-628 follow-up); remove it here if this door must stay human-only\
-        \ — the verification below still refuses a commissioned bearer today."
+        \ is on now. The gate is re-asked immediately, so a fold whose build is already\
+        \ green releases on the click. 409 also for a request that has concluded or\
+        \ is already being released, for one with no fold yet, for a fold with no\
+        \ approval requirement, and for one whose requirements are all satisfied already.\
+        \ 403 when the caller holds no role an open requirement admits, or is one\
+        \ of the request's authors where a requirement excludes them; the message\
+        \ names each open requirement and its roles. Who counts is proved by this\
+        \ service: a person is qits:admin from a browser session or a person's qits\
+        \ CLI token; an agent is its own workspace token carrying its project. Asserted\
+        \ identity headers, service clients and qits:system answer 403."
       operationId: approveReleaseRequest
       parameters:
       - name: repoId
@@ -5854,6 +5955,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/artifacts:
     get:
       summary: "What this release published, and whether anything deploys it"
@@ -6249,10 +6351,12 @@ paths:
         \ no longer names the fold it is on, and it is pending both gates again —\
         \ while withdraw judges the ASK, is terminal, frees the branches and makes\
         \ the next release ask mint a fresh request. Same body and same refusals as\
-        \ approve, mergedSha included. No unattended-gate ticket is filed: a person\
-        \ just said no, so somebody is watching by definition. A person only, verified\
-        \ exactly as approve verifies one — qits:admin-agent admitted too on the same\
-        \ terms as approve (qits-628 follow-up)."
+        \ approve, mergedSha included, except that a decline needs no open requirement:\
+        \ 409 only where the fold has none, and 403 where the caller qualifies for\
+        \ none of them. A decline holds the fold only when its approver qualified\
+        \ for a requirement, until a re-fold or the same approver approves. No unattended-gate\
+        \ ticket is filed: somebody just said no, so somebody is watching by definition.\
+        \ Verified exactly as approve verifies its caller."
       operationId: declineReleaseRequest
       parameters:
       - name: repoId
@@ -6290,6 +6394,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun:
     post:
       summary: Run one phase of this release again
@@ -6375,7 +6480,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response23"
+                $ref: "#/components/schemas/Response24"
         "401":
           description: Not Authorized
         "403":
@@ -6502,7 +6607,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response24"
+                $ref: "#/components/schemas/Response25"
         "401":
           description: Not Authorized
         "403":
@@ -8531,4 +8636,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1019.61020
+  version: 2026.1021.140659

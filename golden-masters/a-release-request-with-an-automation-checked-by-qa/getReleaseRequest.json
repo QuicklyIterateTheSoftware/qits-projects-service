@@ -44,6 +44,19 @@
     "approvedBy": null,
     "approvedAt": null,
     "approvalNote": null,
+    "approvalRequirements": [
+      {
+        "id": "manual-review",
+        "reason": "configured by manual-review",
+        "admits": [
+          "person"
+        ],
+        "excludesAuthors": false,
+        "detail": null,
+        "satisfied": false,
+        "satisfiedBy": null
+      }
+    ],
     "gates": [
       {
         "kind": "AUTOMATIONS",
@@ -166,7 +179,7 @@
         "label": "Approval",
         "position": "qa-publish",
         "state": "PENDING",
-        "detail": "configured by manual-review",
+        "detail": "configured by manual-review (person)",
         "checks": [],
         "runId": null,
         "link": null
