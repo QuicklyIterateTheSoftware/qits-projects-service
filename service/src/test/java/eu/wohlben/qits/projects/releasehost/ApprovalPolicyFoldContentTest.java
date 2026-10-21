@@ -256,6 +256,7 @@ public class ApprovalPolicyFoldContentTest {
         "archetype: java-service\n"
             + "artifacts:\n"
             + "  - { type: docker, name: qits/thing, sbom: .sbom/sbom.json }\n"
+            + "  - { type: docker, name: qits/thing-worker, sbom: .sbom/worker.json }\n"
             + "  # the API document, published as docs\n"
             + "  - { type: docs, name: \"@apidocs/thing\", path: docs/openapi.yml }\n"
             + "\n"
@@ -266,7 +267,7 @@ public class ApprovalPolicyFoldContentTest {
             + "    qits-ci-service: { packages: [maven] }\n"
             + "    qits-projects-service: { packages: [maven] }\n");
     write(work, "src/Main.java", "class Main {}\n");
-    commitAll(work, "Declare the API docs and a pact");
+    commitAll(work, "Declare a worker image, the API docs and a pact");
     String fold = push(work, repo, "work");
 
     List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, fold);

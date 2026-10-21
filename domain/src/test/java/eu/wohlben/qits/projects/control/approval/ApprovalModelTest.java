@@ -206,6 +206,16 @@ class ApprovalModelTest {
   }
 
   @Test
+  void anAddedDockerImageIsADeclaration() {
+    assertTrue(
+        ReleaseDeclarations.declarationOnly(
+            BEFORE,
+            BEFORE.replace(
+                "qits/x }\n",
+                "qits/x }\n  - { type: docker, name: qits/x-worker, sbom: .sbom/worker.json }\n")));
+  }
+
+  @Test
   void slotsArchetypesAndOtherTypesAreNot() {
     assertFalse(ReleaseDeclarations.declarationOnly(BEFORE, BEFORE + "release: [a]\n"));
     assertFalse(ReleaseDeclarations.declarationOnly(BEFORE, BEFORE + "release-request: [a]\n"));

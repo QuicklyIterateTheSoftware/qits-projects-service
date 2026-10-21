@@ -1233,7 +1233,7 @@ two different constants now, and mixing them up is the defect to watch for.
 bean; the gate, the doors, the DTO and the event read the list. Sources today: `manual-review`
 (configuration, `person`), `config-directory` (the fold changes `.config/qits/`, `person`; also what
 an unreadable fold fails closed into), `artifact-declarations` (the fold's only `.config/qits/`
-change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docs or the
+change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
 `contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule) and `no-changes`
 (qits-760, `person`). A content source reads the fold through `ApprovalSubject`, lazily and once; a
 failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no

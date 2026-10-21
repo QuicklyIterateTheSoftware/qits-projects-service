@@ -20,7 +20,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * <ul>
  *   <li><b>comments and blank lines</b> — the YAML reading does not see them at all;
  *   <li><b>{@code artifacts:}</b> — a list whose entries are mappings; every entry the fold adds or
- *       changes names a {@code type} of {@code maven}, {@code npm}, {@code oci} or {@code docs};
+ *       changes names a {@code type} of {@code maven}, {@code npm}, {@code oci}, {@code docker} (how
+ *       the estate's release.yml files spell an image) or {@code docs};
  *   <li><b>{@code contracts:}</b> — a mapping of {@code application:}, {@code golden-masters:} and
  *       {@code pacts:}, whose entries are {@code <provider>: { packages: [...] }}; any other key there
  *       must be left exactly as it was.
@@ -42,7 +43,7 @@ final class ReleaseDeclarations {
   static final String PACKAGES = "packages";
 
   /** The artifact types a declaration may add. */
-  static final Set<String> DECLARABLE_TYPES = Set.of("maven", "npm", "oci", "docs");
+  static final Set<String> DECLARABLE_TYPES = Set.of("maven", "npm", "oci", "docker", "docs");
 
   /** The keys a {@code contracts:} block may change. */
   static final Set<String> CONTRACT_KEYS = Set.of("application", "golden-masters", PACTS);
