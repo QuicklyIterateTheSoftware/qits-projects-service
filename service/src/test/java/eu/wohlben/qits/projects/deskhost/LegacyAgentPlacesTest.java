@@ -4,12 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.containers.client.ContainersClient;
+import eu.wohlben.qits.http.ClosableQitsHttpClients;
 import eu.wohlben.qits.projects.containershost.StubContainersServer;
+import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
 import eu.wohlben.qits.projects.idphost.IdpRunnerCommissionerFixture;
 import eu.wohlben.qits.projects.idphost.RoutingIdpServer;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,12 +30,33 @@ class LegacyAgentPlacesTest {
       "[{\"clientId\":\"c-1\",\"contextKind\":\"agent-container\",\"contextId\":\"p-1\"},"
           + "{\"clientId\":\"r-1\",\"contextKind\":\"desk-runner\",\"contextId\":\"x\"}]";
 
-  private static LegacyAgentPlaces wired(StubContainersServer containers, RoutingIdpServer idp) {
+  /** Every containers client a test built, shut down after it so the fork keeps no idle threads. */
+  private final List<ClosableQitsHttpClients> containersClients = new CopyOnWriteArrayList<>();
+
+  /** Every commissioner a test built, shut down after it the same way (its own client, and its
+   * {@code IdpTokens}' — qits-1149). */
+  private final List<IdpRunnerCommissioner> commissioners = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    containersClients.forEach(ClosableQitsHttpClients::close);
+    commissioners.forEach(IdpRunnerCommissionerFixture::close);
+  }
+
+  private LegacyAgentPlaces wired(StubContainersServer containers, RoutingIdpServer idp) {
+    ClosableQitsHttpClients containersHttpClients = new ClosableQitsHttpClients();
+    containersClients.add(containersHttpClients);
     LegacyAgentPlaces places = new LegacyAgentPlaces();
     places.containers =
         new ContainersClient(
-            containers.url(), Duration.ofSeconds(2), Duration.ofSeconds(5), Optional::empty);
-    places.idp = IdpRunnerCommissionerFixture.pointedAt(idp.url());
+            containers.url(),
+            Duration.ofSeconds(2),
+            Duration.ofSeconds(5),
+            Optional::empty,
+            containersHttpClients);
+    IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(idp.url());
+    commissioners.add(commissioner);
+    places.idp = commissioner;
     places.owner = OWNER;
     return places;
   }

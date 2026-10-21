@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -27,13 +29,22 @@ class IdpSessionIntrospectionTest {
       "{\"userId\":\"7\",\"username\":\"ada\",\"roles\":[\"qits:admin\",\"qits:system\"],"
           + "\"expiresAt\":\"2026-10-06T10:00:00Z\"}";
 
-  private static IdpSessionIntrospection introspection(String authServerUrl) {
+  /** Every introspection a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<IdpSessionIntrospection> built = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    built.forEach(IdpSessionIntrospection::close);
+  }
+
+  private IdpSessionIntrospection introspection(String authServerUrl) {
     IdpSessionIntrospection introspection = new IdpSessionIntrospection(QitsHttpClients.of(OpenTelemetry.noop(), null));
     introspection.objectMapper = new ObjectMapper();
     introspection.tokensEnabled = true;
     introspection.authServerUrl = authServerUrl;
     introspection.clientId = "dev-qits-projects";
     introspection.clientSecret = Optional.of("own-secret");
+    built.add(introspection);
     return introspection;
   }
 
