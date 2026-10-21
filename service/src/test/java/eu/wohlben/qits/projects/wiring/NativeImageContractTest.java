@@ -35,6 +35,7 @@ public class NativeImageContractTest {
             eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentLookup.class,
             eu.wohlben.qits.projects.maintenancehost.HttpDownstreamComponents.class,
             eu.wohlben.qits.projects.maintenancehost.HttpDownstreamPins.class,
+            eu.wohlben.qits.projects.maintenancehost.HttpAutomationKinds.class,
             eu.wohlben.qits.projects.idphost.IdpTokens.class,
             eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner.class)) {
       for (Field field : type.getDeclaredFields()) {
