@@ -74,6 +74,12 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
   }
 
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @jakarta.annotation.PreDestroy
+  void close() {
+    client.shutdownNow();
+  }
+
   @Override
   public void deployAgain(Redeploy ask) {
     if (deploymentsUrl.isEmpty() || deploymentsUrl.get().isBlank()) {

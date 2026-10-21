@@ -32,6 +32,14 @@ class HttpQaRunCancellationsTest {
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
 
+  /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
+  private final List<HttpQaRunCancellations> ports = new CopyOnWriteArrayList<>();
+
+  @AfterEach
+  void closeClients() {
+    ports.forEach(HttpQaRunCancellations::close);
+  }
+
   @AfterEach
   void stopServer() {
     if (server != null) {
@@ -61,6 +69,7 @@ class HttpQaRunCancellationsTest {
         new HttpQaRunCancellations(QitsHttpClients.of(OpenTelemetry.noop(), null));
     cancellations.ciUrl = Optional.ofNullable(base);
     cancellations.bearer = new IdpCiBearer();
+    ports.add(cancellations);
     return cancellations;
   }
 

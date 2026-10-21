@@ -59,7 +59,8 @@ final class ContainersContract {
   private ContainersContract() {}
 
   private static ContainersClient client(String base) {
-    return new ContainersClient(base, Duration.ofSeconds(5), Duration.ofSeconds(10), Optional::empty);
+    return new ContainersClient(
+        base, Duration.ofSeconds(5), Duration.ofSeconds(10), Optional::empty, RowClients.clients());
   }
 
   /** {@link #ENSURE} exactly as the client's own writer puts it on the wire. */

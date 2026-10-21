@@ -61,6 +61,12 @@ public class IdpSessionIntrospection implements SessionIntrospection {
     this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
   }
 
+  /** Shuts the client down with the bean: a leaked SelectorManager thread per instance (qits-1149). */
+  @jakarta.annotation.PreDestroy
+  void close() {
+    client.shutdownNow();
+  }
+
   @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;
 
