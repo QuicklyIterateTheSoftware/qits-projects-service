@@ -27,6 +27,9 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
 
   private final List<String> minted = new ArrayList<>();
 
+  /** Every delivery mint, by project (epic qits-1440). */
+  private final List<String> mintedDelivery = new ArrayList<>();
+
   private volatile boolean failMint;
 
   private volatile boolean failList;
@@ -43,6 +46,25 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
       minted.add(projectId);
     }
     return new Minted(id, "qits_tok_" + id, subject);
+  }
+
+  @Override
+  public Minted mintDelivery(String projectId) {
+    if (failMint) {
+      throw new IllegalStateException("qits-idp unreachable minting a token for " + projectId);
+    }
+    String id = "d-" + UUID.randomUUID();
+    String subject = "tok-" + UUID.randomUUID();
+    live.put(id, new Live(id, CONTEXT_KIND_DELIVERY, projectId, Instant.now().minusSeconds(3600)));
+    synchronized (mintedDelivery) {
+      mintedDelivery.add(projectId);
+    }
+    return new Minted(id, "qits_tok_" + id, subject);
+  }
+
+  @Override
+  public boolean revokeDelivery(String tokenId) {
+    return revoke(tokenId);
   }
 
   @Override
@@ -80,6 +102,18 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     }
   }
 
+  public long deliveryMintsFor(String projectId) {
+    synchronized (mintedDelivery) {
+      return mintedDelivery.stream().filter(projectId::equals).count();
+    }
+  }
+
+  /** The kind of a live token, or null when it is not live. */
+  public String kindOf(String tokenId) {
+    Live token = live.get(tokenId);
+    return token == null ? null : token.contextKind();
+  }
+
   public void failMint(boolean fail) {
     this.failMint = fail;
   }
@@ -95,6 +129,9 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     }
     synchronized (minted) {
       minted.clear();
+    }
+    synchronized (mintedDelivery) {
+      mintedDelivery.clear();
     }
     failMint = false;
     failList = false;

@@ -2220,7 +2220,8 @@ keeps it so. The agent-container doors keep their paths:
 | `DELETE …/agent-container` | `remove` to the runner (container **and** volume), row deleted (which unplaces it), token revoked; 204. A wanted desk is created afresh and QUEUED by the next sweep |
 
 - **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans): RUNNING while the
-  project is `ALWAYS_ON` or `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
+  project is `ALWAYS_ON`, its delivery loop is enabled (`DeliveryDemand`, epic qits-1440), or
+  `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
   Demand is the ensure door and the daemon frames `AgentDaemonRegistry` counts as use, at most once
   a minute per project and only on a wanted desk. `FrontDeskSweep` (`agent-idle-sweep-interval`,
   and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, re-mints a missing token,
@@ -2250,6 +2251,14 @@ keeps it so. The agent-container doors keep their paths:
   on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
   never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
   `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+- **The delivery token** (epic qits-1440, V48) is a second `qits_tok_` per desk, idp kind
+  `desk-delivery` (`qits:agent` + `qits:desk`), claims `{project}`, `gitRefs []`, held in
+  `front_desk.delivery_token_*` only while the project's `front_desk.delivery.enabled` is true:
+  `FrontDesks.syncDeliveryToken` mints it (on the project.yml flip, at row creation and every
+  sweep) and revokes and clears it when the loop is off; it goes with the desk, and
+  `FrontDeskTokenReconcile` reaps unclaimed ones of its kind too. A failed mint is a WARN, not
+  FAILED: the desk is usable, the loop just has no credential until the sweep mints it. The sweep
+  also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`.
 - **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
   clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
   deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every
@@ -2278,7 +2287,10 @@ belts).
 | `QITS_PROJECTS_DAEMON_CLAUDE_MOUNT` | `/claude-home` |
 | `QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH` / `_AGENT_CONFIGURATION` | `qits.projects.agent-configuration-path` and the resolved document (both or neither) |
 | `QITS_PROJECTS_DAEMON_LIFECYCLE` | `ALWAYS_ON` or `ON_DEMAND` |
+| `QITS_PROJECTS_DAEMON_DELIVERY` | `on` or `off`: the project's `front_desk.delivery.enabled` |
+| `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
 | `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
+| `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` | only while delivery is `on`: `delivery_token_value` / `delivery_token_subject`, for the `project.delivery` session alone |
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |

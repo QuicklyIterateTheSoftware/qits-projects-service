@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 
 /**
@@ -25,4 +26,14 @@ public interface FrontDeskLifecycleChanged {
    * @param lifecycle the value as it now stands, never null
    */
   void onChanged(String projectId, FrontDeskLifecycle lifecycle);
+
+  /**
+   * The project's stored {@code front_desk.delivery} settings moved (epic qits-1440): enabled or
+   * disabled, or any value of an enabled loop changed. The desk mints or revokes its delivery token
+   * and recomputes its desired state. A no-op unless an implementation acts on it.
+   *
+   * @param projectId the project whose delivery settings moved
+   * @param delivery the settings as they now stand, never null
+   */
+  default void onDeliveryChanged(String projectId, DeliverySettings delivery) {}
 }

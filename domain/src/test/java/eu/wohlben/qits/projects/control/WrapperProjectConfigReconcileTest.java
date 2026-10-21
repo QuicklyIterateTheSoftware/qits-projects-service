@@ -336,4 +336,81 @@ public class WrapperProjectConfigReconcileTest {
     assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
     assertEquals(List.of(), lifecycleListener.callsOf(project.id));
   }
+
+  // -------------------------------------------------------------------------------------------
+  // front_desk.delivery (epic qits-1440)
+  // -------------------------------------------------------------------------------------------
+
+  private ProjectConfig.DeliverySettings storedDeliveryOf(String projectId) {
+    return io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .call(() -> ProjectConfig.DeliverySettings.of(projectService.get(projectId)));
+  }
+
+  /** A new project's loop is off; a pass that finds it so calls nothing. */
+  @Test
+  public void aNewProjectsDeliveryLoopIsOffAndTheReconcileCallsNothing() {
+    Project project = greenfield("projcfg-delivery-new");
+    assertEquals(ProjectConfig.DeliverySettings.OFF, storedDeliveryOf(project.id));
+
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(ProjectConfig.DeliverySettings.OFF, storedDeliveryOf(project.id));
+    assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
+  }
+
+  /**
+   * The reconcile applies every delivery value, hands the port the settings once per change, and
+   * announces nothing for it — {@code ProjectChanged} carries no delivery fact. Disabling is a
+   * change too.
+   */
+  @Test
+  public void theDeliverySettingsAreStoredAndHandedToThePortOnlyOnAChange() throws Exception {
+    Project project = greenfield("projcfg-delivery-on");
+    projectYml.commit(
+        wrapperOf(project),
+        "front_desk:\n  delivery:\n    enabled: true\n    max_running: 3\n"
+            + "    start_refined: true\n    approves: [manual-review]\n    interval: PT5M\n");
+
+    reconcileService.reconcileProjectConfig(project.id);
+    reconcileService.reconcileProjectConfig(project.id);
+
+    ProjectConfig.DeliverySettings expected =
+        new ProjectConfig.DeliverySettings(
+            true, 3, true, java.util.Set.of("manual-review"), java.time.Duration.ofMinutes(5));
+    assertEquals(expected, storedDeliveryOf(project.id));
+    Project row =
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+            .call(() -> projectService.get(project.id));
+    assertEquals("manual-review", row.deliveryApproves);
+    assertEquals("PT5M", row.deliveryInterval);
+    assertEquals(
+        List.of(new RecordingFrontDeskLifecycleChanged.DeliveryCall(project.id, expected)),
+        lifecycleListener.deliveryCallsOf(project.id));
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id), "the lifecycle did not move");
+    assertEquals(List.of(), announcer.changedOf(project.id), "ProjectChanged carries no delivery fact");
+
+    projectYml.commit(wrapperOf(project), "front_desk:\n  delivery:\n    enabled: false\n");
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(ProjectConfig.DeliverySettings.OFF, storedDeliveryOf(project.id));
+    assertEquals(2, lifecycleListener.deliveryCallsOf(project.id).size());
+    assertFalse(lifecycleListener.deliveryCallsOf(project.id).get(1).delivery().enabled());
+  }
+
+  /** A malformed delivery keeps every stored value, the delivery settings included. */
+  @Test
+  public void aDeliveryThatWillNotParseLeavesTheStoredSettingsAlone() throws Exception {
+    Project project = greenfield("projcfg-delivery-typo");
+    projectYml.commit(wrapperOf(project), "front_desk:\n  delivery:\n    enabled: true\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    lifecycleListener.clear();
+
+    projectYml.commit(
+        wrapperOf(project),
+        "front_desk:\n  delivery:\n    enabled: false\n    approves: [config-directory]\n");
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertTrue(storedDeliveryOf(project.id).enabled(), "a typo may not switch the loop off");
+    assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
+  }
 }

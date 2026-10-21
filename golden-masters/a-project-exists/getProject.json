@@ -9,6 +9,13 @@
       "type": "A",
       "value": "203.0.113.9"
     },
-    "frontDeskLifecycle": "ON_DEMAND"
+    "frontDeskLifecycle": "ON_DEMAND",
+    "delivery": {
+      "enabled": false,
+      "maxRunning": 2,
+      "startRefined": false,
+      "approves": [],
+      "interval": "PT10M"
+    }
   }
 }

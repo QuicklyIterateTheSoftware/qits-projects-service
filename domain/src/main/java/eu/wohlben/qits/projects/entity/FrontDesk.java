@@ -27,7 +27,8 @@ import org.hibernate.type.SqlTypes;
  *   <li><b>The token</b> — one {@code qits_tok_} per desk, minted at row creation and carried in the
  *       spec: {@link #tokenId} to revoke it, {@link #tokenValue} so the spec is reproducible,
  *       {@link #tokenSubject} because the control socket and the dial-back bind a {@code tok-}
- *       bearer to it.
+ *       bearer to it. The {@code delivery_token_*} columns hold a second one, the delivery
+ *       loop's, only while the project's loop is enabled (epic qits-1440).
  *   <li><b>The spec</b> — {@link #specJson} is the spec last <em>sent</em> (the applied one) and
  *       {@link #specHash} its SHA-256 over canonical JSON; the runner labels the container with the
  *       hash and recreates it when an estate carries another.
@@ -71,6 +72,21 @@ public class FrontDesk extends PanacheEntityBase {
 
   @Column(name = "token_subject")
   public String tokenSubject;
+
+  /**
+   * The delivery token (epic qits-1440, V48): a second {@code qits_tok_}, of idp context kind {@code
+   * desk-delivery}, held only while the project's {@code delivery_enabled} is true — minted when the
+   * loop is enabled, revoked and cleared when it is disabled. The desk's {@code project.delivery}
+   * session carries it; nothing else does.
+   */
+  @Column(name = "delivery_token_id")
+  public String deliveryTokenId;
+
+  @Column(name = "delivery_token_value")
+  public String deliveryTokenValue;
+
+  @Column(name = "delivery_token_subject")
+  public String deliveryTokenSubject;
 
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "spec_json", columnDefinition = "jsonb")

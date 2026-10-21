@@ -24,6 +24,10 @@ import org.jboss.logging.Logger;
  * front_desk.token_id} names — a DELETE whose revoke could not reach the idp, a lost mint race, a
  * desk dropped with its project. A failed listing reaps nothing, and a token minted within {@link
  * #MINT_GRACE} is left alone: it may be a mint whose row write has not landed yet.
+ *
+ * <p>Delivery tokens (kind {@code desk-delivery}, epic qits-1440) are reaped the same way against
+ * {@code front_desk.delivery_token_id} — which also catches one whose revoke on a disabled loop
+ * could not reach the idp.
  */
 @ApplicationScoped
 public class FrontDeskTokenReconcile {
@@ -69,22 +73,29 @@ public class FrontDeskTokenReconcile {
       return 0;
     }
     Set<String> claimed = new HashSet<>();
+    Set<String> claimedDelivery = new HashSet<>();
     for (FrontDesk row : QuarkusTransaction.requiringNew().call(() -> desks.listAll())) {
       if (row.tokenId != null) {
         claimed.add(row.tokenId);
       }
+      if (row.deliveryTokenId != null) {
+        claimedDelivery.add(row.deliveryTokenId);
+      }
     }
     int reaped = 0;
     for (FrontDeskTokens.Live token : listed.get()) {
-      if (!FrontDeskTokens.CONTEXT_KIND.equals(token.contextKind())
-          || claimed.contains(token.tokenId())
+      boolean desk = FrontDeskTokens.CONTEXT_KIND.equals(token.contextKind());
+      boolean delivery = FrontDeskTokens.CONTEXT_KIND_DELIVERY.equals(token.contextKind());
+      if ((!desk && !delivery)
+          || (desk && claimed.contains(token.tokenId()))
+          || (delivery && claimedDelivery.contains(token.tokenId()))
           || (token.createdAt() != null && token.createdAt().isAfter(now.minus(MINT_GRACE)))) {
         continue;
       }
-      if (tokens.revoke(token.tokenId())) {
+      if (desk ? tokens.revoke(token.tokenId()) : tokens.revokeDelivery(token.tokenId())) {
         LOG.infof(
-            "Revoked desk token %s (project %s): no front desk claims it",
-            token.tokenId(), token.contextId());
+            "Revoked %s token %s (project %s): no front desk claims it",
+            desk ? "desk" : "delivery", token.tokenId(), token.contextId());
         reaped++;
       }
     }

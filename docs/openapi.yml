@@ -1808,6 +1808,22 @@ components:
           $ref: "#/components/schemas/RefinementDto"
         technicalProcessId:
           type: string
+    ProjectDeliveryDto:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        maxRunning:
+          type: integer
+          format: int32
+        startRefined:
+          type: boolean
+        approves:
+          type: array
+          items:
+            type: string
+        interval:
+          type: string
     ProjectDnsRecordDto:
       type: object
       properties:
@@ -1838,6 +1854,8 @@ components:
           $ref: "#/components/schemas/ProjectDnsRecordDto"
         frontDeskLifecycle:
           $ref: "#/components/schemas/FrontDeskLifecycle"
+        delivery:
+          $ref: "#/components/schemas/ProjectDeliveryDto"
     ProjectReleaseRequest:
       type: object
       description: "One release request, as getReleaseRequest answers it."

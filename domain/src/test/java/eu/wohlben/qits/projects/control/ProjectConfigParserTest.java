@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectConfigParser.ProjectConfigException;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
+import java.time.Duration;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -143,5 +146,124 @@ class ProjectConfigParserTest {
       assertTrue(e.getMessage().contains(ProjectConfigParser.CONFIG_PATH), bad);
       assertTrue(e.getMessage().contains(ProjectConfigParser.FRONT_DESK), bad);
     }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // front_desk.delivery (epic qits-1440)
+  // -------------------------------------------------------------------------------------------
+
+  /** Absent at every level is the loop off with every value at its default. */
+  @Test
+  void anAbsentDeliveryIsOff() {
+    for (String absent :
+        new String[] {
+          null, "", "supports_environments: false\n", "front_desk:\n",
+          "front_desk:\n  lifecycle: ALWAYS_ON\n", "front_desk:\n  delivery:\n"
+        }) {
+      assertEquals(DeliverySettings.OFF, parser.parse(absent).delivery(), String.valueOf(absent));
+    }
+    assertEquals(DeliverySettings.OFF, ProjectConfig.DEFAULT.delivery());
+    assertFalse(DeliverySettings.OFF.enabled());
+    assertEquals(2, DeliverySettings.OFF.maxRunning());
+    assertFalse(DeliverySettings.OFF.startRefined());
+    assertEquals(Set.of(), DeliverySettings.OFF.approves());
+    assertEquals(Duration.ofMinutes(10), DeliverySettings.OFF.interval());
+  }
+
+  /** An absent key inside the mapping is that key's default, and an unknown key is ignored. */
+  @Test
+  void anEnabledLoopTakesTheDefaultsItDoesNotState() {
+    DeliverySettings delivery =
+        parser.parse("front_desk:\n  delivery:\n    enabled: true\n    later-key: 1\n").delivery();
+    assertEquals(
+        new DeliverySettings(true, 2, false, Set.of(), Duration.ofMinutes(10)), delivery);
+  }
+
+  @Test
+  void everyKeyIsReadBesideTheLifecycle() {
+    ProjectConfig config =
+        parser.parse(
+            "front_desk:\n"
+                + "  lifecycle: ALWAYS_ON\n"
+                + "  delivery:\n"
+                + "    enabled: true\n"
+                + "    max_running: 20\n"
+                + "    start_refined: true\n"
+                + "    approves: [manual-review, artifact-declarations]\n"
+                + "    interval: PT1H\n");
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
+    assertEquals(
+        new DeliverySettings(
+            true, 20, true, Set.of("artifact-declarations", "manual-review"), Duration.ofHours(1)),
+        config.delivery());
+    assertEquals("artifact-declarations manual-review", config.delivery().approvesColumn());
+  }
+
+  @Test
+  void theBoundsAreInclusive() {
+    DeliverySettings low =
+        parser
+            .parse("front_desk:\n  delivery:\n    max_running: 1\n    interval: PT2M\n")
+            .delivery();
+    assertEquals(1, low.maxRunning());
+    assertEquals(Duration.ofMinutes(2), low.interval());
+    assertEquals(Set.of(), parser.parse("front_desk:\n  delivery:\n    approves: []\n").delivery().approves());
+  }
+
+  /**
+   * Every malformed value throws, naming the file and the key — the reconcile then keeps the stored
+   * settings. {@code config-directory} and {@code no-changes} are requirements the desk may never
+   * satisfy, so naming either is malformed too.
+   */
+  @Test
+  void aMalformedDeliveryThrows() {
+    String[][] bad = {
+      {"front_desk:\n  delivery: true\n", "front_desk.delivery"},
+      {"front_desk:\n  delivery:\n    - enabled\n", "front_desk.delivery"},
+      {"front_desk:\n  delivery:\n    enabled: 'true'\n", "front_desk.delivery.enabled"},
+      {"front_desk:\n  delivery:\n    enabled: yes-please\n", "front_desk.delivery.enabled"},
+      {"front_desk:\n  delivery:\n    enabled: 1\n", "front_desk.delivery.enabled"},
+      {"front_desk:\n  delivery:\n    max_running: 0\n", "front_desk.delivery.max_running"},
+      {"front_desk:\n  delivery:\n    max_running: 21\n", "front_desk.delivery.max_running"},
+      {"front_desk:\n  delivery:\n    max_running: -1\n", "front_desk.delivery.max_running"},
+      {"front_desk:\n  delivery:\n    max_running: 2.5\n", "front_desk.delivery.max_running"},
+      {"front_desk:\n  delivery:\n    max_running: 'two'\n", "front_desk.delivery.max_running"},
+      {"front_desk:\n  delivery:\n    start_refined: 'false'\n", "front_desk.delivery.start_refined"},
+      {"front_desk:\n  delivery:\n    approves: manual-review\n", "front_desk.delivery.approves"},
+      {"front_desk:\n  delivery:\n    approves: [config-directory]\n", "front_desk.delivery.approves"},
+      {"front_desk:\n  delivery:\n    approves: [no-changes]\n", "front_desk.delivery.approves"},
+      {
+        "front_desk:\n  delivery:\n    approves: [manual-review, config-directory]\n",
+        "front_desk.delivery.approves"
+      },
+      {"front_desk:\n  delivery:\n    approves: [Manual-Review]\n", "front_desk.delivery.approves"},
+      {"front_desk:\n  delivery:\n    approves: [1]\n", "front_desk.delivery.approves"},
+      {"front_desk:\n  delivery:\n    interval: 10m\n", "front_desk.delivery.interval"},
+      {"front_desk:\n  delivery:\n    interval: 600\n", "front_desk.delivery.interval"},
+      {"front_desk:\n  delivery:\n    interval: PT1M\n", "front_desk.delivery.interval"},
+      {"front_desk:\n  delivery:\n    interval: PT1H1S\n", "front_desk.delivery.interval"},
+      {"front_desk:\n  delivery:\n    interval: P1D\n", "front_desk.delivery.interval"},
+    };
+    for (String[] c : bad) {
+      ProjectConfigException e =
+          assertThrows(ProjectConfigException.class, () -> parser.parse(c[0]), c[0]);
+      assertTrue(e.getMessage().contains(ProjectConfigParser.CONFIG_PATH), c[0]);
+      assertTrue(e.getMessage().contains(c[1]), c[0] + " -> " + e.getMessage());
+    }
+  }
+
+  /** The approves column round-trips, sorted and space-separated. */
+  @Test
+  void theApprovesColumnRoundTrips() {
+    assertEquals(Set.of(), DeliverySettings.approvesOf(""));
+    assertEquals(Set.of(), DeliverySettings.approvesOf(null));
+    assertEquals(
+        Set.of("manual-review", "artifact-declarations"),
+        DeliverySettings.approvesOf("artifact-declarations manual-review"));
+    assertEquals(
+        "artifact-declarations manual-review",
+        new DeliverySettings(
+                true, 2, false, Set.of("manual-review", "artifact-declarations"), null)
+            .approvesColumn());
   }
 }
