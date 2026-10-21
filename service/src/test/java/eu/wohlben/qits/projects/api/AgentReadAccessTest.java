@@ -96,10 +96,11 @@ class AgentReadAccessTest {
 
   /**
    * <b>The release-request writes an agent reaches.</b> The first four are bound to the agent's
-   * project and {@code git_refs}; the last two, {@code rerunPhase} and {@code rerunAutomation}
-   * (qits-978), are deliberately unbound — they decide nothing, so there is nothing to bind. {@code
-   * approve}, {@code decline} and {@code waiveAutomations} are not here and must not arrive: those
-   * are the sign-off, and that distinction is what this set is a list of.
+   * project and {@code git_refs}; {@code rerunPhase} and {@code rerunAutomation} (qits-978) are
+   * deliberately unbound — they decide nothing, so there is nothing to bind. {@code approve} and
+   * {@code decline} (epic qits-1038) admit the agent at the filter and are bound by eligibility
+   * instead: a requirement says which roles may satisfy it, and {@code ApproverCheck} proves the
+   * agent's from its own token. {@code waiveAutomations} is not here and must not arrive.
    */
   private static final Set<String> RELEASE_REQUEST_AGENT_WRITES =
       Set.of(
@@ -108,7 +109,9 @@ class AgentReadAccessTest {
           "ReleaseRequestController.setSourcePriority",
           "ReleaseRequestController.withdraw",
           "ReleaseRequestController.rerunPhase",
-          "ReleaseRequestController.rerunAutomation");
+          "ReleaseRequestController.rerunAutomation",
+          "ReleaseRequestController.approve",
+          "ReleaseRequestController.decline");
 
   /**
    * <b>The entity writes an agent reaches, and the MCP tool surface is the test for membership.</b>

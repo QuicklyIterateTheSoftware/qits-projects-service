@@ -50,4 +50,13 @@ public interface FoldChanges {
    *     which would say "this fold carries something" and wave it past the person it is held for
    */
   boolean addsNothingToMain(String repoId, String mergedSha);
+
+  /**
+   * The content of the blob {@code blobSha} in {@code repoId} — one side of an entry {@link #changes}
+   * answered, by its {@code oldSha} or {@code newSha}. What {@code ApprovalPolicy}'s artifact
+   * declarations rule reads {@code release.yml} by, before and after the fold.
+   *
+   * @throws RuntimeException when the blob cannot be read — never null for a blob that exists
+   */
+  String blob(String repoId, String blobSha);
 }

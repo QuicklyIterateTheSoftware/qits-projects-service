@@ -2,7 +2,6 @@ package eu.wohlben.qits.projects.releasehost;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.ApprovalPolicy;
@@ -11,6 +10,8 @@ import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
+import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
+import eu.wohlben.qits.projects.control.approval.ApprovalRole;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
@@ -21,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -99,11 +101,13 @@ public class ApprovalPolicyFoldContentTest {
     commit(work, "Rewrite the rules");
     String fold = push(work, repo, "work");
 
-    ApprovalPolicy.ApprovalRequirement requirement = policy.requirementFor(repo.id, fold);
+    List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, fold);
 
-    assertTrue(requirement.required(), requirement.toString());
+    assertEquals(List.of("config-directory"), ids(requirements), requirements.toString());
+    assertEquals(List.of(ApprovalRole.PERSON), requirements.get(0).admits());
     String prefix = "changes .config/qits/: ";
-    assertTrue(requirement.detail().startsWith(prefix), requirement.detail());
+    String detail = detail(requirements);
+    assertTrue(detail.startsWith(prefix), detail);
     assertEquals(
         new TreeSet<>(
             Set.of(
@@ -113,7 +117,7 @@ public class ApprovalPolicyFoldContentTest {
                 ".config/qits/renamed.yml",
                 ".config/qits/renamed-to.yml",
                 ".config/qits/moved-out.yml")),
-        new TreeSet<>(Arrays.asList(requirement.detail().substring(prefix.length()).split(", "))),
+        new TreeSet<>(Arrays.asList(detail.substring(prefix.length()).split(", "))),
         "every side of every change under the directory, the gitlink and the README excluded");
     assertTrue(
         foldChanges.changes(repo.id, fold, ApprovalPolicy.CONFIG_DIRECTORY).stream()
@@ -138,11 +142,11 @@ public class ApprovalPolicyFoldContentTest {
     commit(work, "Ordinary work");
     String ordinary = push(work, repo, "work");
 
-    assertEquals(ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED, policy.requirementFor(repo.id, pinsOnly));
-    assertEquals(ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED, policy.requirementFor(repo.id, ordinary));
+    assertEquals(List.of(), policy.requirementsFor(repo.id, pinsOnly));
+    assertEquals(List.of(), policy.requirementsFor(repo.id, ordinary));
     assertEquals(
-        ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED,
-        policy.requirementFor(repo.id, null),
+        List.of(),
+        policy.requirementsFor(repo.id, null),
         "no fold yet: there is no content to have an opinion about");
   }
 
@@ -155,13 +159,17 @@ public class ApprovalPolicyFoldContentTest {
     Repository repo = cloned("Config Approval Unreadable");
     String nowhere = "3333333333333333333333333333333333333333";
 
-    ApprovalPolicy.ApprovalRequirement requirement = policy.requirementFor(repo.id, nowhere);
+    List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, nowhere);
 
-    assertTrue(requirement.required());
+    assertEquals(
+        List.of("config-directory"),
+        ids(requirements),
+        "one fail-closed requirement, and no second read: " + requirements);
+    assertEquals(List.of(ApprovalRole.PERSON), requirements.get(0).admits(), "a person only");
     assertTrue(
-        requirement.detail().startsWith("the changes to .config/qits/ could not be read: "),
-        requirement.detail());
-    assertFalse(requirement.detail().contains("; "), "manual-review is not configured here");
+        detail(requirements).startsWith("the changes to .config/qits/ could not be read: "),
+        detail(requirements));
+    assertFalse(detail(requirements).contains("; "), "manual-review is not configured here");
   }
 
   /**
@@ -194,23 +202,122 @@ public class ApprovalPolicyFoldContentTest {
     commit(work, "Main moves");
     push(work, repo, main);
 
-    ApprovalPolicy.ApprovalRequirement expected =
-        new ApprovalPolicy.ApprovalRequirement(true, ApprovalPolicy.NO_CHANGES_DETAIL);
-    assertEquals(expected, policy.requirementFor(repo.id, mainHead), "main's own (old) head");
-    assertEquals(expected, policy.requirementFor(repo.id, emptyCommit), "an empty commit on main");
+    List<ApprovalRequirement> expected =
+        List.of(ApprovalRequirement.person("no-changes", ApprovalPolicy.NO_CHANGES_DETAIL, null));
+    assertEquals(expected, policy.requirementsFor(repo.id, mainHead), "main's own (old) head");
     assertEquals(
-        ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED,
-        policy.requirementFor(repo.id, something),
+        expected, policy.requirementsFor(repo.id, emptyCommit), "an empty commit on main");
+    assertEquals(
+        List.of(),
+        policy.requirementsFor(repo.id, something),
         "a fold carrying a change is not held by this rule");
   }
 
   /** A repository with no row is settled history, and no rule holds it. */
   @Test
   public void aRepositoryWithNoRowRequiresNothing() {
-    ApprovalPolicy.ApprovalRequirement requirement =
-        policy.requirementFor("config-approval-vanished-" + UUID.randomUUID(), "4444444444444444444444444444444444444444");
-    assertFalse(requirement.required());
-    assertNull(requirement.detail());
+    assertEquals(
+        List.of(),
+        policy.requirementsFor(
+            "config-approval-vanished-" + UUID.randomUUID(),
+            "4444444444444444444444444444444444444444"));
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // Artifact declarations (epic qits-1038): release.yml declaring what a release publishes
+  // -----------------------------------------------------------------------------------------
+
+  private static final String RELEASE_YML_BEFORE =
+      "archetype: java-service\n"
+          + "artifacts:\n"
+          + "  - { type: docker, name: qits/thing, sbom: .sbom/sbom.json }\n"
+          + "contracts:\n"
+          + "  application: thing\n"
+          + "  pacts:\n"
+          + "    qits-ci-service: { packages: [maven] }\n";
+
+  /**
+   * <b>Declaring what a release publishes is the agent's own change to acknowledge</b>: a fold whose
+   * only {@code .config/qits/} change adds an artifact entry, a pact package and a comment is held by
+   * {@code artifact-declarations}, which a person or the request's own agent may approve — and not
+   * by {@code config-directory}.
+   */
+  @Test
+  public void aReleaseYmlThatOnlyDeclaresArtifactsAdmitsTheAgent() throws Exception {
+    Repository repo = cloned("Artifact Declarations");
+    Path work = checkout(repo);
+    write(work, ".config/qits/release.yml", RELEASE_YML_BEFORE);
+    commitAll(work, "Configure");
+    git.exec(work.toFile(), "git", "tag", "2026.900.100000", "HEAD");
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "work");
+    write(
+        work,
+        ".config/qits/release.yml",
+        "archetype: java-service\n"
+            + "artifacts:\n"
+            + "  - { type: docker, name: qits/thing, sbom: .sbom/sbom.json }\n"
+            + "  # the API document, published as docs\n"
+            + "  - { type: docs, name: \"@apidocs/thing\", path: docs/openapi.yml }\n"
+            + "\n"
+            + "contracts:\n"
+            + "  application: thing\n"
+            + "  golden-masters: { from: golden-masters/, packages: [maven, npm] }\n"
+            + "  pacts:\n"
+            + "    qits-ci-service: { packages: [maven] }\n"
+            + "    qits-projects-service: { packages: [maven] }\n");
+    write(work, "src/Main.java", "class Main {}\n");
+    commitAll(work, "Declare the API docs and a pact");
+    String fold = push(work, repo, "work");
+
+    List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, fold);
+
+    assertEquals(List.of("artifact-declarations"), ids(requirements), requirements.toString());
+    assertEquals(
+        List.of(ApprovalRole.PERSON, ApprovalRole.AGENT), requirements.get(0).admits());
+    assertEquals(".config/qits/release.yml", requirements.get(0).detail());
+    assertFalse(requirements.get(0).excludesAuthors());
+  }
+
+  /**
+   * <b>A slot is never a declaration</b>: the same file gaining a {@code release:} slot beside a
+   * declaration is the directory's ordinary person requirement, and so is a second file under the
+   * directory changing beside a pure declaration.
+   */
+  @Test
+  public void aReleaseSlotOrASecondFileIsAPersonsToApprove() throws Exception {
+    Repository repo = cloned("Release Slot");
+    Path work = checkout(repo);
+    write(work, ".config/qits/release.yml", RELEASE_YML_BEFORE);
+    commitAll(work, "Configure");
+    git.exec(work.toFile(), "git", "tag", "2026.900.100000", "HEAD");
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "work");
+    write(
+        work,
+        ".config/qits/release.yml",
+        RELEASE_YML_BEFORE
+            + "release:\n  - { name: publish, run: ./publish.sh }\n");
+    commitAll(work, "Add a release slot");
+    String slot = push(work, repo, "work");
+    write(work, ".config/qits/release.yml", RELEASE_YML_BEFORE + "# only a comment\n");
+    write(work, ".config/qits/deployments.yml", "application: thing\n");
+    commitAll(work, "A comment, and a deployment");
+    String twoFiles = push(work, repo, "work");
+
+    List<ApprovalRequirement> forSlot = policy.requirementsFor(repo.id, slot);
+    assertEquals(List.of("config-directory"), ids(forSlot), forSlot.toString());
+    assertEquals(List.of(ApprovalRole.PERSON), forSlot.get(0).admits());
+    List<ApprovalRequirement> forTwo = policy.requirementsFor(repo.id, twoFiles);
+    assertEquals(List.of("config-directory"), ids(forTwo), forTwo.toString());
+  }
+
+  private static List<String> ids(List<ApprovalRequirement> requirements) {
+    return requirements.stream().map(ApprovalRequirement::id).toList();
+  }
+
+  /** The requirements' sentences, joined as the deprecated single detail joins them. */
+  private static String detail(List<ApprovalRequirement> requirements) {
+    return String.join(
+        "; ", requirements.stream().map(ApprovalRequirement::sentence).toList());
   }
 
   // -----------------------------------------------------------------------------------------

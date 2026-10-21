@@ -817,6 +817,30 @@ public class CommitService {
   }
 
   /**
+   * The content of the blob {@code blobSha} in {@code repoId}'s mirror ({@code git cat-file blob}).
+   * Unlike {@link #readBlob}, a blob that is not there is a failure rather than an answer: the
+   * caller holds the sha from a diff of this very repository, so its absence means the mirror is
+   * behind, and the caller refreshes it.
+   *
+   * @throws InternalServerErrorException when the blob cannot be read
+   */
+  public String readBlobById(String repoId, String blobSha) {
+    requireRef(blobSha, "blob");
+    RepoMirror mirror = requireMirror(repoId);
+    GitExecutor.ExecResult result;
+    try {
+      result =
+          git.execAllowNonZero(mirror.gitDir().toFile(), "git", "cat-file", "blob", blobSha);
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git cat-file failed: " + e.getMessage());
+    }
+    if (result.exitCode() != 0) {
+      throw new InternalServerErrorException("No blob " + blobSha + " in " + repoId);
+    }
+    return result.output();
+  }
+
+  /**
    * The unified diff of a single {@code path} in {@code commit}, relative to the same base as
    * {@link #listChanges}. The diff text is empty when the file has no textual change (binary or
    * pure rename).

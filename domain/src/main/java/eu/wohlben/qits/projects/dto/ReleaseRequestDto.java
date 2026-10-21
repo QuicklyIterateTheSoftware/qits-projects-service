@@ -114,6 +114,15 @@ import java.util.List;
  * neutral trio: {@code approvalState} already says which it was, and two sets of the same three
  * fields is how a caller comes to read one and miss the other.
  *
+ * <p><b>{@code approvalRequirements} is the list those fields are derived from</b> (epic qits-1038):
+ * one entry per approval requirement of the current fold, each with the roles it admits and whether
+ * an approval at the fold satisfies it — see {@link ApprovalRequirementDto}. The older fields stay,
+ * derived from it: {@code approvalRequired} is the list being non-empty, {@code approvalState} is
+ * {@code NOT_REQUIRED} for an empty list, {@code DECLINED} where an approver who qualified for one of
+ * them declined, {@code APPROVED} where every entry is satisfied and {@code WAITING} otherwise, and
+ * {@code approvedBy}/{@code approvedAt}/{@code approvalNote} are the newest decision at the fold. The
+ * list is the same for every viewer; what the caller may decide is {@code …/approval-eligibility}.
+ *
  * <p><b>{@code gates} is the whole set, and it is what the approval fields are one member of.</b>
  * Each entry is a gate the repository <em>configures</em> — or, for {@code APPROVAL}, one the
  * request's own content requires — together with what that gate says about this request's current
@@ -174,6 +183,7 @@ public record ReleaseRequestDto(
     String approvedBy,
     Instant approvedAt,
     String approvalNote,
+    List<ApprovalRequirementDto> approvalRequirements,
     @Deprecated List<ReleaseGateDto> gates,
     List<ReleaseAutomationDto> automations,
     MergeConflictDto conflict,

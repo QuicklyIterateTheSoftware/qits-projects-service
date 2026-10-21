@@ -4,11 +4,13 @@ import eu.wohlben.qits.projects.control.ReleaseGates;
 import jakarta.enterprise.context.ApplicationScoped;
 
 /**
- * A person approved the current fold. Configured by {@code manual-review} at {@code main}, or
- * required by the fold's own content ({@code ApprovalPolicy}). The approve and decline doors write
- * the decision; this class reads it.
+ * Every approval requirement of the current fold is satisfied (epic qits-1038). The requirements
+ * come from {@code ApprovalPolicy} — {@code manual-review} at {@code main}, or the fold's own content
+ * — and each names the approval roles that may satisfy it. The approve and decline doors write the
+ * decisions; this class reads where they stand.
  *
- * <p>APPROVED is PASSED, DECLINED is FAILED, anything else PENDING.
+ * <p>APPROVED is PASSED, DECLINED (an approver who qualified for a requirement declined) is FAILED,
+ * anything else PENDING with each open requirement and the roles it admits as the detail.
  */
 @ApplicationScoped
 public class ApprovalGate implements ReleaseGate {

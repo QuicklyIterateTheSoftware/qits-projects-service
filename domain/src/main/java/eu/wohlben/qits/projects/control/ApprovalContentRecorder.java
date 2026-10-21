@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.control;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
+import eu.wohlben.qits.projects.control.approval.ConfigDirectorySource;
+import eu.wohlben.qits.projects.control.approval.StoredRequirements;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import io.quarkus.arc.Arc;
@@ -12,7 +12,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,9 +24,10 @@ import org.jboss.logging.Logger;
 
 /**
  * <b>The content half of the approval question, read in the background and written onto the
- * request</b> (qits-1201) — whether a fold changes {@code .config/qits/} and whether it adds anything
- * to {@code main}, {@link ApprovalPolicy#readContent}, stored as {@code
- * release_request.approval_content_reasons} for the fold named by {@code approval_content_fold}.
+ * request</b> (qits-1201) — what every content source of {@link ApprovalPolicy} requires of a fold
+ * ({@link ApprovalPolicy#readContent}), stored as {@code release_request.approval_content_reasons}
+ * for the fold named by {@code approval_content_fold}, in {@link StoredRequirements}' shape (epic
+ * qits-1038; a value from before it reads as not read yet).
  *
  * <p><b>Why it is stored rather than remembered.</b> qits-1203's {@code DisplayApprovals} kept the
  * answer in memory per {@code (repoId, mergedSha)}, and every miss was read on the list's own thread:
@@ -65,7 +65,7 @@ import org.jboss.logging.Logger;
  * and the next trigger reads again.
  *
  * <p><b>Only a display reads what this writes.</b> Every decision — the executor, the gates, an
- * approve or a decline — asks {@link ApprovalPolicy#requirementFor(ReleaseRequest)}, which reads the
+ * approve or a decline — asks {@link ApprovalPolicy#requirementsFor(ReleaseRequest)}, which reads the
  * fold afresh as it always has.
  *
  * <p><b>The suite reads synchronously</b> ({@code
@@ -83,8 +83,13 @@ public class ApprovalContentRecorder {
   /** What a list shows for an open request whose current fold has not been read yet. */
   public static final String NOT_YET_READ = "the changes of this fold have not been read yet";
 
-  /** Trees only — a JSON array of strings needs nothing registered for a native image. */
-  private static final ObjectMapper JSON = new ObjectMapper();
+  /**
+   * What a list shows for such a fold: one requirement only a person may satisfy, failing closed as
+   * an unreadable fold always has.
+   */
+  public static List<ApprovalRequirement> notYetRead() {
+    return List.of(ApprovalRequirement.person(ConfigDirectorySource.ID, NOT_YET_READ, null));
+  }
 
   @Inject ApprovalPolicy policy;
 
@@ -190,34 +195,29 @@ public class ApprovalContentRecorder {
 
   /**
    * The suite's path: read the fold on the caller's thread, store it when complete, and answer its
-   * reasons either way (an incomplete reading's reasons are the fail-closed sentences).
+   * requirements either way (an incomplete reading's are the fail-closed ones).
    */
-  public List<String> readNow(String repoId, String mergedSha) {
+  public List<ApprovalRequirement> readNow(String repoId, String mergedSha) {
     return readAndStore(new Fold(repoId, mergedSha));
   }
 
   /**
-   * The reasons stored on {@code row} for its <b>current</b> fold, or empty where the stored ones are
-   * about another fold, there are none, or they will not parse — all three mean "not read yet".
+   * The requirements stored on {@code row} for its <b>current</b> fold, or empty where the stored
+   * ones are about another fold, there are none, or they will not parse (a value from before epic
+   * qits-1038 included) — all of which mean "not read yet".
    */
-  public static Optional<List<String>> storedFor(ReleaseRequest row) {
+  public static Optional<List<ApprovalRequirement>> storedFor(ReleaseRequest row) {
     if (row.mergedSha == null
         || row.approvalContentReasons == null
         || !row.mergedSha.equals(row.approvalContentFold)) {
       return Optional.empty();
     }
-    try {
-      JsonNode node = JSON.readTree(row.approvalContentReasons);
-      if (node == null || !node.isArray()) {
-        return Optional.empty();
-      }
-      List<String> reasons = new ArrayList<>(node.size());
-      node.forEach(reason -> reasons.add(reason.asText()));
-      return Optional.of(List.copyOf(reasons));
-    } catch (Exception e) {
-      LOG.debugf(e, "Release request %s has unreadable approval content reasons", row.id);
-      return Optional.empty();
+    Optional<List<ApprovalRequirement>> stored =
+        StoredRequirements.read(row.approvalContentReasons);
+    if (stored.isEmpty()) {
+      LOG.debugf("Release request %s has approval content in no shape this reads", row.id);
     }
+    return stored;
   }
 
   private void submit(String repoId, String mergedSha, boolean invalidate) {
@@ -280,24 +280,22 @@ public class ApprovalContentRecorder {
   }
 
   /** One read of one fold, and the write when it is complete. */
-  private List<String> readAndStore(Fold fold) {
+  private List<ApprovalRequirement> readAndStore(Fold fold) {
     ApprovalPolicy.ContentReading reading =
         policy.readContent(true, fold.repoId(), fold.mergedSha());
     if (!reading.complete()) {
       // An answer about an outage is not written: the stored one (if any) keeps showing, and the
       // next trigger — a list meeting the fold, a fold, a main move — reads again.
-      return reading.reasons();
+      return reading.requirements();
     }
     try {
-      ArrayNode array = JSON.createArrayNode();
-      reading.reasons().forEach(array::add);
-      String reasons = JSON.writeValueAsString(array);
+      String reasons = StoredRequirements.write(reading.requirements());
       QuarkusTransaction.requiringNew()
           .run(() -> requests.recordApprovalContent(fold.repoId(), fold.mergedSha(), reasons));
     } catch (Exception e) {
       LOG.warnf(e, "Could not record the approval content of %s", fold);
     }
-    return reading.reasons();
+    return reading.requirements();
   }
 
   /**

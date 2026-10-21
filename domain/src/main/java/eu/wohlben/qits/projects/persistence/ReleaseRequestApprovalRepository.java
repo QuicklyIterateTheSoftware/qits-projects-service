@@ -88,6 +88,45 @@ public class ReleaseRequestApprovalRepository
   }
 
   /**
+   * <b>Every decision made about this fold</b> of this request, newest first — what the approval
+   * requirements are matched against (epic qits-1038): each approver's newest row counts, so the
+   * whole fold is read rather than its single newest row.
+   */
+  public List<ReleaseRequestApproval> atFold(String requestId, String mergedSha) {
+    if (requestId == null || mergedSha == null) {
+      return List.of();
+    }
+    return list(
+        "requestId = ?1 and mergedSha = ?2 order by decidedAt desc", requestId, mergedSha);
+  }
+
+  /**
+   * {@link #atFold} for a whole page of requests in one query, {@link #currentForEach}'s shape and
+   * for its reason. A request with no decision at its fold is absent.
+   */
+  public Map<String, List<ReleaseRequestApproval>> atFoldForEach(
+      Map<String, String> mergedShaByRequest) {
+    Map<String, String> wanted =
+        mergedShaByRequest.entrySet().stream()
+            .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a));
+    if (wanted.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, List<ReleaseRequestApproval>> atFold = new HashMap<>();
+    for (ReleaseRequestApproval row :
+        list(
+            "requestId in ?1 and mergedSha in ?2 order by decidedAt desc",
+            List.copyOf(wanted.keySet()),
+            List.copyOf(Set.copyOf(wanted.values())))) {
+      if (row.mergedSha.equals(wanted.get(row.requestId))) {
+        atFold.computeIfAbsent(row.requestId, key -> new java.util.ArrayList<>()).add(row);
+      }
+    }
+    return atFold;
+  }
+
+  /**
    * One request's whole decision trail, newest first, across every fold it has ever had — the
    * history read. Rows about superseded shas are in it deliberately: what a person refused and why
    * is the part of the trail worth showing, and the sha on each row says which fold it judged.

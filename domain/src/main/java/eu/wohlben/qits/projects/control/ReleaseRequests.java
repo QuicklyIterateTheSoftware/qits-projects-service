@@ -1,12 +1,19 @@
 package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
+import eu.wohlben.qits.projects.control.approval.ApprovalRole;
+import eu.wohlben.qits.projects.control.approval.ApprovalRoles;
+import eu.wohlben.qits.projects.control.approval.ApprovalStanding;
+import eu.wohlben.qits.projects.control.approval.Approver;
 import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.control.gate.CiVerdicts;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.control.gate.LegacyGates;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
+import eu.wohlben.qits.projects.dto.ApprovalEligibilityDto;
+import eu.wohlben.qits.projects.dto.ApprovalRequirementDto;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitDto;
 import eu.wohlben.qits.projects.dto.FoldParentDto;
@@ -322,6 +329,12 @@ public class ReleaseRequests {
   @Inject ApprovalPolicy approvalPolicy;
 
   @Inject ReleaseRequestApprovalRepository approvals;
+
+  /** Approval roles written down and read back, with project slugs (epic qits-1038). */
+  @Inject ApprovalRoles approvalRoles;
+
+  /** What is announced about each approval requirement, once per state (epic qits-1038). */
+  @Inject ApprovalNotices approvalNotices;
 
   /**
    * Which gates this repository configures — resolved per request from its {@code main}, never stored
@@ -1187,8 +1200,13 @@ public class ReleaseRequests {
    *     nothing, which is why this is nullable where {@code mergedSha} is not.
    * @param actor who decided — the forwarded principal, and the point of the whole gate.
    */
-  public ReleaseRequestDto approve(String id, String mergedSha, String note, String actor) {
-    return decide(id, mergedSha, note, actor, ReleaseRequestApproval.Decision.APPROVED);
+  public ReleaseRequestDto approve(String id, String mergedSha, String note, Approver approver) {
+    return decide(id, mergedSha, note, approver, ReleaseRequestApproval.Decision.APPROVED);
+  }
+
+  /** {@link #approve} by a verified person — every decider before epic qits-1038. */
+  public ReleaseRequestDto approve(String id, String mergedSha, String note, String person) {
+    return approve(id, mergedSha, note, Approver.person(person));
   }
 
   /**
@@ -1206,8 +1224,13 @@ public class ReleaseRequests {
    * <p>So the two are not ranked and a caller must not treat one as a stronger form of the other.
    * "Not this content" is a decline; "not this release" is a withdrawal.
    */
-  public ReleaseRequestDto decline(String id, String mergedSha, String note, String actor) {
-    return decide(id, mergedSha, note, actor, ReleaseRequestApproval.Decision.DECLINED);
+  public ReleaseRequestDto decline(String id, String mergedSha, String note, Approver approver) {
+    return decide(id, mergedSha, note, approver, ReleaseRequestApproval.Decision.DECLINED);
+  }
+
+  /** {@link #decline} by a verified person. */
+  public ReleaseRequestDto decline(String id, String mergedSha, String note, String person) {
+    return decline(id, mergedSha, note, Approver.person(person));
   }
 
   /**
@@ -1231,7 +1254,7 @@ public class ReleaseRequests {
    *       be a row nothing ever reads. PENDING, REJECTED, FAILED and CONFLICTED are all decidable —
    *       a request rejected by a decline is exactly the one somebody may want to approve after a
    *       conversation, and a re-fold of any of them puts the decision to work.
-   *   <li><b>The repository has no approval gate.</b> A caller error rather than a no-op, and
+   *   <li><b>The fold has no approval requirement.</b> A caller error rather than a no-op, and
    *       loudly: a door that quietly recorded an approval nobody would ever read is a door an
    *       operator believes they have used. It is also the exact shape of a UI showing an Approve
    *       button on a repository that never needed one, which is a bug worth hearing about.
@@ -1239,7 +1262,17 @@ public class ReleaseRequests {
    *       has been computed — and an approval with no sha would be a standing yes to whatever this
    *       request becomes next, which is the one thing the whole design refuses.
    *   <li><b>The stated fold is not the current one</b>, and this is the point of the parameter.
+   *   <li><b>Approve: no requirement is open at the fold</b> — every one is satisfied already — a
+   *       409, unless the caller's own decline at the fold is what this approval lifts.
+   *   <li><b>The caller may satisfy none of them</b> (epic qits-1038) — a <b>403</b>, the one refusal
+   *       here about who is asking rather than about the request: approve needs a role an <em>open</em>
+   *       requirement admits, decline a role <em>any</em> requirement admits, and a requirement that
+   *       excludes the request's authors refuses an author whatever they hold. The sentence names
+   *       every requirement concerned and the roles it admits, so the caller learns whom to ask.
    * </ol>
+   *
+   * <p><b>The approver is not bound to the request's project.</b> A reviewer from project A
+   * approves in project B; eligibility — a role the requirement admits — is the binding.
    *
    * <p><b>Why {@code mergedSha} is a required argument and not read off the row.</b> A person
    * approves <em>content</em>: they opened the request, read what the fold brought in, and said yes
@@ -1267,10 +1300,14 @@ public class ReleaseRequests {
       String id,
       String mergedSha,
       String note,
-      String actor,
+      Approver approver,
       ReleaseRequestApproval.Decision decision) {
     String fold = requireStatedFold(mergedSha, decision);
     String said = (note == null || note.isBlank()) ? null : note.trim();
+    String actor =
+        approver == null || approver.name() == null || approver.name().isBlank()
+            ? "an operator"
+            : approver.name().trim();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -1280,7 +1317,8 @@ public class ReleaseRequests {
                       .orElseThrow(
                           () -> new NotFoundException("Release request not found: " + id));
               requireDecidable(row, decision);
-              if (!approvalPolicy.requirementFor(row).required()) {
+              List<ApprovalRequirement> requirements = approvalPolicy.requirementsFor(row);
+              if (requirements.isEmpty()) {
                 throw new DomainException(
                     409,
                     "Release request "
@@ -1312,12 +1350,50 @@ public class ReleaseRequests {
                         + verb(decision)
                         + " the fold you are looking at.");
               }
+              Set<String> authors =
+                  Set.copyOf(ApprovalNotices.authorsOf(sources.listByRequest(row.id)));
+              List<ApprovalRole> held =
+                  approver == null ? List.of() : approver.heldRelativeTo(row.projectId);
+              List<ReleaseRequestApproval> atFold = approvals.atFold(row.id, row.mergedSha);
+              ApprovalStanding standing =
+                  ApprovalStanding.of(requirements, atFold, authors, approvalRoles::rolesOf);
+              List<ApprovalRequirement> concerned = requirements;
+              if (decision == ReleaseRequestApproval.Decision.APPROVED) {
+                boolean liftsOwnDecline =
+                    atFold.stream()
+                        .filter(previous -> previous.actor.equals(actor))
+                        .findFirst()
+                        .map(previous -> previous.decision == ReleaseRequestApproval.Decision.DECLINED)
+                        .orElse(false);
+                if (standing.open().isEmpty() && !liftsOwnDecline) {
+                  throw new DomainException(
+                      409,
+                      "Every approval requirement of release request "
+                          + row.qualifiedId
+                          + " at "
+                          + shortSha(row.mergedSha)
+                          + " is satisfied already, so there is nothing to approve.");
+                }
+                if (!standing.open().isEmpty()) {
+                  concerned = standing.open();
+                }
+              }
+              boolean eligible =
+                  concerned.stream()
+                      .anyMatch(
+                          requirement ->
+                              ApprovalStanding.qualifies(requirement, held, actor, authors));
+              if (!eligible) {
+                throw new DomainException(
+                    403, notEligible(row, decision, concerned, held, actor, authors));
+              }
               ReleaseRequestApproval approval = new ReleaseRequestApproval();
               approval.id = UUID.randomUUID().toString();
               approval.requestId = row.id;
               approval.mergedSha = row.mergedSha;
               approval.decision = decision;
-              approval.actor = actor == null || actor.isBlank() ? "an operator" : actor.trim();
+              approval.actor = actor;
+              approval.approverRoles = approvalRoles.stored(held);
               approval.note = said;
               approval.decidedAt = Instant.now();
               approval.persist();
@@ -1325,12 +1401,61 @@ public class ReleaseRequests {
               // request somebody has just answered belongs at the top of it whether or not the gate
               // that follows changes the state.
               row.updatedAt = approval.decidedAt;
+              // A requirement already announced at this fold moves on now — SATISFIED, DECLINED —
+              // rather than at the gate's next pass; one never announced waits for the gate.
+              List<ReleaseRequestApproval> after = new ArrayList<>(atFold);
+              after.add(approval);
+              approvalNotices.reconcile(
+                  row,
+                  requirements,
+                  ApprovalStanding.of(requirements, after, authors, approvalRoles::rolesOf),
+                  false);
               LOG.infof(
-                  "Release request %s %s by %s at %s",
-                  id, decision, approval.actor, shortSha(row.mergedSha));
+                  "Release request %s %s by %s (%s) at %s",
+                  id, decision, approval.actor, approval.approverRoles, shortSha(row.mergedSha));
             });
     evaluate(id, null);
     return get(id);
+  }
+
+  /**
+   * The 403's sentence: what the caller asked, which requirements were concerned and whom each
+   * admits, what the caller holds — so the caller learns whom to ask instead.
+   */
+  private String notEligible(
+      ReleaseRequest row,
+      ReleaseRequestApproval.Decision decision,
+      List<ApprovalRequirement> concerned,
+      List<ApprovalRole> held,
+      String actor,
+      Set<String> authors) {
+    List<String> each = new ArrayList<>();
+    boolean excludedAsAuthor = false;
+    for (ApprovalRequirement requirement : concerned) {
+      boolean author = requirement.excludesAuthors() && authors.contains(actor);
+      excludedAsAuthor |= author;
+      each.add(
+          requirement.id()
+              + " ("
+              + requirement.reason()
+              + ") admits "
+              + String.join(", ", approvalRoles.renderAll(requirement.admits()))
+              + (requirement.excludesAuthors() ? ", not the request's authors" : ""));
+    }
+    return "You may not "
+        + verb(decision)
+        + " release request "
+        + row.qualifiedId
+        + " at "
+        + shortSha(row.mergedSha)
+        + ": "
+        + (decision == ReleaseRequestApproval.Decision.APPROVED ? "its open" : "its")
+        + " approval requirements are "
+        + String.join("; ", each)
+        + ". You hold "
+        + (held.isEmpty() ? "no approval role" : String.join(", ", approvalRoles.renderAll(held)))
+        + (excludedAsAuthor ? ", and you are one of the request's authors" : "")
+        + ".";
   }
 
   /**
@@ -1591,9 +1716,57 @@ public class ReleaseRequests {
                               row.decision.name(),
                               row.actor,
                               row.note,
-                              row.decidedAt))
+                              row.decidedAt,
+                              approvalRoles.renderAll(approvalRoles.rolesOf(row))))
                   .toList();
             });
+  }
+
+  /**
+   * <b>What {@code viewer} may decide on this request's current fold</b> (epic qits-1038) — the
+   * per-viewer read a page asks before it draws Approve and Decline. The requirements are the ones
+   * the request's own read shows ({@link #get}), matched exactly as the doors match them: a
+   * requirement is eligible where it admits a role the viewer holds and does not exclude the viewer
+   * as an author. An open one makes Approve meaningful; any one makes Decline.
+   *
+   * @param viewer the roles this service proved the caller holds; null or empty-handed for a caller
+   *     it proved nothing about
+   * @param principal the caller's principal, named where the viewer holds no role
+   */
+  public ApprovalEligibilityDto eligibility(String id, Approver viewer, String principal) {
+    Page page =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    loadOne(
+                        requests
+                            .findByIdOptional(id)
+                            .orElseThrow(
+                                () -> new NotFoundException("Release request not found: " + id))));
+    ReleaseRequest row = page.rows().get(0);
+    Map<String, ReleaseGates.GateSet> gateSets =
+        gates.forDisplay(page.mainBranchByRepo(), page.storedGateSets());
+    List<ApprovalRequirement> requirements =
+        (contentRecorder.displayReadsSynchronously()
+                ? withRequestContext(() -> approvalRequirements(page, gateSets))
+                : approvalRequirements(page, gateSets))
+            .getOrDefault(row.id, List.of());
+    String name =
+        viewer != null && viewer.name() != null && !viewer.name().isBlank()
+            ? viewer.name()
+            : principal;
+    List<ApprovalRole> held =
+        viewer == null ? List.of() : viewer.heldRelativeTo(row.projectId);
+    Set<String> authors =
+        Set.copyOf(ApprovalNotices.authorsOf(page.named().getOrDefault(row.id, List.of())));
+    List<String> eligible =
+        held.isEmpty()
+            ? List.of()
+            : requirements.stream()
+                .filter(requirement -> ApprovalStanding.qualifies(requirement, held, name, authors))
+                .map(ApprovalRequirement::id)
+                .toList();
+    return new ApprovalEligibilityDto(name, approvalRoles.renderAll(held), eligible);
   }
 
   /**
@@ -3737,6 +3910,10 @@ public class ReleaseRequests {
                         id, shortSha(verdictSha), shortSha(row.mergedSha));
                     return false;
                   }
+                  // A RE-FOLD LEAVES THE OLD FOLD'S REQUIREMENTS BEHIND (epic qits-1038): every one
+                  // announced at another fold of this request and not yet void is announced VOID,
+                  // once, after this transaction commits.
+                  approvalNotices.voidLeftBehind(row);
                   // THE PRE-RUN, AND IT IS ASKED FIRST (qits-1133). Every release-request automation
                   // that applies to this repository (dependency bumps, estate pins, the entity
                   // diagram, screenshot baselines, …) has to be fresh for THIS fold; the ledger holds
@@ -3953,33 +4130,41 @@ public class ReleaseRequests {
                   // service owns, and approving is itself a re-evaluation trigger, so a door that
                   // records a decision calls evaluate() after its write and the request settles
                   // here on the next pass.
-                  if (approvalPolicy.requirementFor(row).required()) {
-                    ReleaseRequestApproval decision =
-                        approvals.latestFor(row.id, row.mergedSha).orElse(null);
-                    if (decision == null) {
-                      // No decision about THIS fold. A decision about a superseded one is the same
-                      // answer: the re-arm carries the invalidation, so there is nothing to clear.
-                      waiting(
-                          row, "Waiting for a person to approve " + shortSha(row.mergedSha));
-                      return false;
-                    }
-                    if (decision.decision == ReleaseRequestApproval.Decision.DECLINED) {
+                  // THE REQUIREMENTS (epic qits-1038): the fold is held while any of them is open,
+                  // and rejected by a decline from an approver who qualified for one. Reaching here
+                  // is what OPENS them on the bus — the automations have passed, so the fold is
+                  // final — and each state is announced once, after this transaction commits.
+                  List<ApprovalRequirement> requirements = approvalPolicy.requirementsFor(row);
+                  if (!requirements.isEmpty()) {
+                    ApprovalStanding standing =
+                        ApprovalStanding.of(
+                            requirements,
+                            approvals.atFold(row.id, row.mergedSha),
+                            Set.copyOf(ApprovalNotices.authorsOf(sources.listByRequest(row.id))),
+                            approvalRoles::rolesOf);
+                    approvalNotices.reconcile(row, requirements, standing, true);
+                    ReleaseRequestApproval declined = standing.decline();
+                    if (declined != null) {
                       states.move(row, ReleaseRequest.State.REJECTED);
                       // NO rejecting run, and the null is load-bearing rather than incidental: it
                       // is what stops a CI verdict from ever undoing a person's no. A decline is
-                      // answered by a push or by the same person changing their mind, and no run
+                      // answered by a push or by the same approver changing their mind, and no run
                       // that could be retried had anything to do with it.
                       row.rejectingRunId = null;
                       row.rejectingGate = null;
-                      row.detail = declinedDetail(decision);
+                      row.detail = declinedDetail(declined);
                       row.updatedAt = Instant.now();
                       // NO unattended-gate ticket, and that is the whole difference from a red
-                      // build: a person just said no, so somebody is demonstrably watching. Filing
-                      // them a ticket about their own decision is noise on the one repository where
-                      // a human is already engaged.
+                      // build: somebody just said no, so somebody is demonstrably watching.
                       return false;
                     }
-                    // APPROVED: fall through, exactly as a green verdict does.
+                    if (!standing.open().isEmpty()) {
+                      // No approval at THIS fold satisfies them. A decision about a superseded one
+                      // is the same answer: the re-arm carries the invalidation.
+                      waiting(row, waitingForApproval(row.mergedSha, standing.open()));
+                      return false;
+                    }
+                    // Every requirement satisfied: fall through, exactly as a green verdict does.
                   }
                   // THE RELEASE IN FLIGHT, asked after EVERY gate and standing in front of READY
                   // alone (qits-1471). An earlier release of this repository that is still
@@ -4854,6 +5039,7 @@ public class ReleaseRequests {
       Map<String, List<ReleasedTagPendingMerge>> implicit,
       Map<String, ReleasedTagPendingMerge> released,
       Map<String, ReleaseRequestApproval> decisions,
+      Map<String, List<ReleaseRequestApproval>> atFold,
       Map<String, Boolean> automationsApplyTo,
       Set<String> waived,
       Map<BuildStatusLedger.VerdictKey, List<CommitBuildStatusDto>> verdicts,
@@ -4896,12 +5082,14 @@ public class ReleaseRequests {
     Map<String, ReleasedTagPendingMerge> released =
         pendingTags.listByRequests(ids).stream()
             .collect(Collectors.toMap(tag -> tag.releaseRequestId, tag -> tag, (a, b) -> a));
-    Map<String, ReleaseRequestApproval> decisions =
-        approvals.currentForEach(
-            rows.stream()
-                .filter(row -> row.mergedSha != null)
-                .collect(
-                    Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
+    Map<String, String> folds =
+        rows.stream()
+            .filter(row -> row.mergedSha != null)
+            .collect(Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a));
+    Map<String, ReleaseRequestApproval> decisions = approvals.currentForEach(folds);
+    // Every decision at each request's own fold, which the approval requirements are matched
+    // against (epic qits-1038) — the same batched shape, one query for the page.
+    Map<String, List<ReleaseRequestApproval>> atFold = approvals.atFoldForEach(folds);
     // The automations gate's two durable halves, batched the same way: whether it holds a
     // repository at all (once per distinct repository), and the waivers at each request's own fold
     // (one query). The third half is the in-memory ledger and costs nothing to ask per row.
@@ -4935,6 +5123,7 @@ public class ReleaseRequests {
         implicit,
         released,
         decisions,
+        atFold,
         automationsApplyTo,
         Set.copyOf(waived),
         verdicts,
@@ -4964,8 +5153,13 @@ public class ReleaseRequests {
     // The newest decision at the current fold: what the approval question reads for a settled
     // request, and what the answer shows wherever a person was asked.
     Map<String, ReleaseRequestApproval> decisions = new HashMap<>();
+    Map<String, List<ReleaseRequestApproval>> atFold = new HashMap<>();
     if (row.mergedSha != null) {
-      approvals.latestFor(row.id, row.mergedSha).ifPresent(decision -> decisions.put(row.id, decision));
+      List<ReleaseRequestApproval> all = approvals.atFold(row.id, row.mergedSha);
+      if (!all.isEmpty()) {
+        decisions.put(row.id, all.get(0));
+        atFold.put(row.id, all);
+      }
     }
     Set<String> waived =
         row.mergedSha != null && waivers.latestFor(row.id, row.mergedSha).isPresent()
@@ -4984,6 +5178,7 @@ public class ReleaseRequests {
         Map.of(row.repoId, implicitFor(row.repoId)),
         releasedById,
         decisions,
+        atFold,
         Map.of(row.repoId, automationsApply(row.repoId)),
         waived,
         verdicts,
@@ -5049,19 +5244,25 @@ public class ReleaseRequests {
   private List<ReleaseRequestDto> render(Page page) {
     Map<String, ReleaseGates.GateSet> gateSets =
         gates.forDisplay(page.mainBranchByRepo(), page.storedGateSets());
-    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired =
+    Map<String, List<ApprovalRequirement>> approvalRequired =
         contentRecorder.displayReadsSynchronously()
             ? withRequestContext(() -> approvalRequirements(page, gateSets))
             : approvalRequirements(page, gateSets);
     return page.rows().stream()
         .map(
             row -> {
-              ReleaseRequestApproval decision = page.decisions().get(row.id);
+              List<ApprovalRequirement> requirements =
+                  approvalRequired.getOrDefault(row.id, List.of());
               ApprovalView approval =
-                  ApprovalView.of(
-                      approvalRequired.getOrDefault(
-                          row.id, ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED),
-                      decision);
+                  approvalView(
+                      requirements,
+                      ApprovalStanding.of(
+                          requirements,
+                          page.atFold().getOrDefault(row.id, List.of()),
+                          Set.copyOf(
+                              ApprovalNotices.authorsOf(
+                                  page.named().getOrDefault(row.id, List.of()))),
+                          approvalRoles::rolesOf));
               ReleasedTagPendingMerge released = page.released().get(row.id);
               return dto(
                   row,
@@ -5093,44 +5294,47 @@ public class ReleaseRequests {
         .toList();
   }
 
-  private Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequirements(
+  private Map<String, List<ApprovalRequirement>> approvalRequirements(
       Page page, Map<String, ReleaseGates.GateSet> gateSets) {
     boolean synchronous = contentRecorder.displayReadsSynchronously();
     // Read once per fold in the page, however many rows share it (the suite's synchronous path).
-    Map<ApprovalContentRecorder.Fold, List<String>> readNow = new HashMap<>();
-    Map<String, ApprovalPolicy.ApprovalRequirement> required = new HashMap<>();
+    Map<ApprovalContentRecorder.Fold, List<ApprovalRequirement>> readNow = new HashMap<>();
+    Map<String, List<ApprovalRequirement>> required = new HashMap<>();
     for (ReleaseRequest row : page.rows()) {
       ReleaseGates.GateSet set =
           gateSets.getOrDefault(
               row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved"));
       ReleaseRequestApproval decision = page.decisions().get(row.id);
-      boolean approvedAtFold =
-          decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED;
-      List<String> reasons = List.of();
+      ReleaseRequestApproval recorded =
+          decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED
+              ? decision
+              : null;
+      List<ApprovalRequirement> content = List.of();
       // Only an open request on a fold of a repository that still exists has a content half.
       if (!ApprovalPolicy.isSettled(row.state)
           && row.mergedSha != null
           && !row.mergedSha.isBlank()
           && page.existingRepos().contains(row.repoId)) {
         if (synchronous) {
-          reasons =
+          content =
               readNow.computeIfAbsent(
                   new ApprovalContentRecorder.Fold(row.repoId, row.mergedSha),
                   fold -> contentRecorder.readNow(fold.repoId(), fold.mergedSha()));
         } else {
-          java.util.Optional<List<String>> stored = ApprovalContentRecorder.storedFor(row);
+          java.util.Optional<List<ApprovalRequirement>> stored =
+              ApprovalContentRecorder.storedFor(row);
           if (stored.isPresent()) {
-            reasons = stored.get();
+            content = stored.get();
           } else {
             contentRecorder.enqueue(row.repoId, row.mergedSha);
-            reasons = List.of(ApprovalContentRecorder.NOT_YET_READ);
+            content = ApprovalContentRecorder.notYetRead();
           }
         }
       }
       required.put(
           row.id,
-          approvalPolicy.requirementForDisplay(
-              set, row.state, ApprovalPolicy.isSettled(row.state) && approvedAtFold, reasons));
+          approvalPolicy.requirementsForDisplay(
+              set, row.state, ApprovalPolicy.isSettled(row.state) ? recorded : null, content));
     }
     return required;
   }
@@ -5213,10 +5417,10 @@ public class ReleaseRequests {
             new GateSubject.Approval(
                 approval.required(),
                 approval.state(),
-                approval.actor(),
+                approval.gateActor(),
                 approval.decidedAt(),
-                approval.note(),
-                approval.detail()),
+                approval.gateNote(),
+                approval.openDetail()),
             new GateSubject.Automations(
                 automations.applies(), automations.gate(), automations.rows()),
             verdicts,
@@ -5505,34 +5709,85 @@ public class ReleaseRequests {
       String actor,
       Instant decidedAt,
       String note,
-      String detail) {
+      String detail,
+      String gateActor,
+      String gateNote,
+      String openDetail,
+      List<ApprovalRequirementDto> requirements) {}
 
-    /**
-     * @param decision the newest decision at the request's <b>current</b> {@code mergedSha}, or null
-     *     where there is none — a fold nobody has judged, and one whose decisions were all made
-     *     against a sha the request has moved past, which are one answer on purpose.
-     */
-    static ApprovalView of(
-        ApprovalPolicy.ApprovalRequirement requirement, ReleaseRequestApproval decision) {
-      if (!requirement.required()) {
-        // Not asked, which is deliberately not the same word as approved. The decision fields stay
-        // null even where a row exists: a policy that stopped requiring approval must not leave the
-        // answer looking like somebody is still gating on it.
-        return new ApprovalView(
-            false, ReleaseRequest.ApprovalState.NOT_REQUIRED, null, null, null, null);
-      }
-      String detail = requirement.detail();
-      if (decision == null) {
-        return new ApprovalView(
-            true, ReleaseRequest.ApprovalState.WAITING, null, null, null, detail);
-      }
-      ReleaseRequest.ApprovalState state =
-          decision.decision == ReleaseRequestApproval.Decision.DECLINED
-              ? ReleaseRequest.ApprovalState.DECLINED
-              : ReleaseRequest.ApprovalState.APPROVED;
+  /**
+   * The approval as a read answers it (epic qits-1038): the requirements with what satisfied each,
+   * and the older fields derived from them.
+   *
+   * <ul>
+   *   <li>{@code required}: the list is not empty; {@code state}: {@link ApprovalStanding#state()}.
+   *   <li>{@code actor}/{@code decidedAt}/{@code note}: the newest decision at the fold, by anybody —
+   *       null together where there is none, and where nothing is required: a policy that stopped
+   *       requiring approval must not leave the answer looking like somebody is still gating on it.
+   *   <li>{@code detail}: every requirement's sentence joined with {@code "; "} — the deprecated
+   *       single reason, unchanged in shape; a settled request's {@code recorded} requirement adds
+   *       none, so it is null there as it always was.
+   *   <li>{@code gateActor}/{@code gateNote}: whose decision the gate reports — the decline that
+   *       holds the fold where there is one, else the newest decision.
+   *   <li>{@code openDetail}: what the gate says while it waits — each open requirement with the
+   *       roles it admits.
+   * </ul>
+   */
+  private ApprovalView approvalView(
+      List<ApprovalRequirement> requirements, ApprovalStanding standing) {
+    if (requirements.isEmpty()) {
       return new ApprovalView(
-          true, state, decision.actor, decision.decidedAt, decision.note, detail);
+          false,
+          ReleaseRequest.ApprovalState.NOT_REQUIRED,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          List.of());
     }
+    // A settled request's recorded approval speaks for itself: no sentence, as before the list.
+    String detail =
+        requirements.stream()
+            .filter(requirement -> !ApprovalPolicy.RECORDED_ID.equals(requirement.id()))
+            .map(ApprovalRequirement::sentence)
+            .collect(Collectors.joining("; "));
+    if (detail.isEmpty()) {
+      detail = null;
+    }
+    ReleaseRequestApproval newest = standing.newest();
+    ReleaseRequestApproval reported = standing.decline() != null ? standing.decline() : newest;
+    List<ApprovalRequirementDto> dtos =
+        standing.entries().stream()
+            .map(
+                entry ->
+                    new ApprovalRequirementDto(
+                        entry.requirement().id(),
+                        entry.requirement().reason(),
+                        approvalRoles.renderAll(entry.requirement().admits()),
+                        entry.requirement().excludesAuthors(),
+                        entry.requirement().detail(),
+                        entry.satisfied(),
+                        entry.satisfied()
+                            ? new ApprovalRequirementDto.SatisfiedBy(
+                                entry.satisfiedBy().actor,
+                                approvalRoles.renderAll(entry.roles()),
+                                entry.satisfiedBy().decidedAt)
+                            : null))
+            .toList();
+    return new ApprovalView(
+        true,
+        standing.state(),
+        newest == null ? null : newest.actor,
+        newest == null ? null : newest.decidedAt,
+        newest == null ? null : newest.note,
+        detail,
+        reported == null ? null : reported.actor,
+        reported == null ? null : reported.note,
+        standing.open().isEmpty() ? detail : openWithRoles(standing.open()),
+        dtos);
   }
 
   /**
@@ -5546,6 +5801,31 @@ public class ReleaseRequests {
     return "Declined by "
         + decision.actor
         + (note == null || note.isEmpty() ? "" : ": " + note);
+  }
+
+  /**
+   * What a request held by open approval requirements says. Where only a person may satisfy every
+   * one of them the sentence is the one it has always been; otherwise it names each open
+   * requirement and whom it admits, because "a person" would be wrong.
+   */
+  private String waitingForApproval(String mergedSha, List<ApprovalRequirement> open) {
+    if (open.stream().allMatch(ApprovalRequirement::personOnly)) {
+      return "Waiting for a person to approve " + shortSha(mergedSha);
+    }
+    return "Waiting for approval of " + shortSha(mergedSha) + ": " + openWithRoles(open);
+  }
+
+  /** Each open requirement's sentence and the roles it admits, joined. */
+  private String openWithRoles(List<ApprovalRequirement> open) {
+    return open.stream()
+        .map(
+            requirement ->
+                requirement.sentence()
+                    + " ("
+                    + String.join(", ", approvalRoles.renderAll(requirement.admits()))
+                    + (requirement.excludesAuthors() ? ", not the request's authors" : "")
+                    + ")")
+        .collect(Collectors.joining("; "));
   }
 
   private List<ReleasedTagPendingMerge> implicitFor(String repoId) {
@@ -5620,6 +5900,7 @@ public class ReleaseRequests {
         approval.actor(),
         approval.decidedAt(),
         approval.note(),
+        approval.requirements(),
         gates.gates(),
         gates.automations(),
         conflictOf(row),

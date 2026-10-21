@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One <b>person's decision</b> about one fold of a release request — the record behind the approval
+ * One <b>approver's decision</b> about one fold of a release request — the record behind the approval
  * gate a wrapper release is held by, in addition to the build gate.
  *
  * <p><b>A decision is about a sha, not about a request.</b> The row carries the {@link
@@ -75,6 +75,15 @@ public class ReleaseRequestApproval extends PanacheEntityBase implements CausedR
 
   /** What they said about it; null where they said nothing, which an approval often does. */
   @Column public String note;
+
+  /**
+   * The approval roles the approver held when deciding (epic qits-1038), rendered, sorted and
+   * space-separated relative to the request's project — {@code person}, {@code agent}, {@code
+   * agent@<project slug>}. A requirement is satisfied only by an approval whose roles it admits.
+   * Every row from before V47 was a verified person's and reads {@code person}.
+   */
+  @Column(name = "approver_roles", nullable = false)
+  public String approverRoles = "person";
 
   /** When they decided. The tiebreak between two rows about the same fold, newest wins. */
   @Column(name = "decided_at", nullable = false)
