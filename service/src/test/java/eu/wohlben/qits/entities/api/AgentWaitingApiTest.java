@@ -317,6 +317,81 @@ class AgentWaitingApiTest {
     read(ticket).body("blocked", equalTo(true)).body("blockSource", equalTo("AGENT_WAITING"));
   }
 
+  /**
+   * Restates {@code ticket} through {@code POST /work/transition} with its status unchanged — a
+   * reshape that keeps both blocks, announced like every transition (qits-1511).
+   */
+  private static void restate(String ticket) {
+    Map<String, Object> row = new java.util.LinkedHashMap<>();
+    row.put("archetype", "TICKET");
+    row.put("title", "The ticket, restated");
+    row.put("impetus", "it occurs");
+    row.put("ticketType", "BUG");
+    row.put("status", "REPORTED");
+    row.put("membership", java.util.Collections.singletonMap("parent", null));
+    given()
+        .contentType(ContentType.JSON)
+        .body(Map.of(ticket, row))
+        .when()
+        .post("/projects/api/work/transition")
+        .then()
+        .statusCode(200);
+  }
+
+  /** The one signal the agent of {@code workId} was sent since the last reset. */
+  private Told onlyToldTo(String workId) {
+    List<Told> told = agents.callsOn(workId);
+    assertEquals(1, told.size(), "one signal: " + agents.calls());
+    return told.get(0);
+  }
+
+  /**
+   * A ticket blocked only because its agent stands waiting, announced by a transition that keeps its
+   * status, reaches the workspace as AGENT_WAITING — never relabelled EXPLICIT (qits-1511), which
+   * would stop qits-workspaces' idle-agent nudge — and with no author: nobody set a derived block.
+   */
+  @Test
+  void aTransitionAnnouncementKeepsTheDerivedBlocksSource() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Restated");
+    String ticket = EntityFixtures.ticket(project.id());
+    stop(ticket);
+    backdate(ticket, 70);
+    read(ticket).body("blocked", equalTo(true)).body("blockSource", equalTo("AGENT_WAITING"));
+    agents.reset();
+
+    restate(ticket);
+
+    Told told = onlyToldTo(ticket);
+    assertEquals("REPORTED", told.status());
+    assertTrue(told.blocked());
+    assertEquals("AGENT_WAITING", told.blockSource());
+    assertNull(told.blockedBy());
+  }
+
+  /**
+   * The explicit block's author rides with it (qits-1511): from the block door, and from a transition
+   * announcement while the explicit block stands beside a derived one.
+   */
+  @Test
+  void theExplicitBlocksAuthorIsRelayed() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Author Relayed");
+    String ticket = EntityFixtures.ticket(project.id());
+
+    setBlocked(ticket, true, "the owner has to choose").statusCode(200);
+    Told blocked = onlyToldTo(ticket);
+    assertEquals("EXPLICIT", blocked.blockSource());
+    assertEquals("dana", blocked.blockedBy());
+
+    stop(ticket);
+    backdate(ticket, 70);
+    agents.reset();
+    restate(ticket);
+
+    Told restated = onlyToldTo(ticket);
+    assertEquals("BOTH", restated.blockSource());
+    assertEquals("dana", restated.blockedBy());
+  }
+
   /** A derived block that stood ends when the session says it waits on a declared wait. */
   @Test
   void aDeclaredWaitEndsAStandingDerivedBlock() {

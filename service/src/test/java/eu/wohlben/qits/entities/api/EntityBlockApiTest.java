@@ -47,7 +47,9 @@ class EntityBlockApiTest {
    * the epic's title ({@link EntityFixtures#epic} names every epic "The plan") and the given status.
    */
   private Told told(String projectId, String epicId, String status, boolean blocked) {
-    return new Told(epicId, "The plan", status, blocked, blocked ? "EXPLICIT" : null);
+    // An explicit block set through the door as the %test dev user carries that user as its author.
+    return new Told(
+        epicId, "The plan", status, blocked, blocked ? "EXPLICIT" : null, blocked ? "dev" : null);
   }
 
   private static ValidatableResponse setBlocked(String id, boolean blocked, String reason) {

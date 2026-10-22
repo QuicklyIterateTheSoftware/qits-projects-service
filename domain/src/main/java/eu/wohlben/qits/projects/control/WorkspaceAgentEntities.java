@@ -63,7 +63,8 @@ package eu.wohlben.qits.projects.control;
 public interface WorkspaceAgentEntities {
 
   /**
-   * Tell the ACTIVE agent of {@code workId} its work item's title, status and block flag.
+   * Tell the ACTIVE agent of {@code workId} its work item's title, status and block flag, with the
+   * block's source and, for an explicit block, who set it.
    *
    * <p><b>Never throws</b>; see the class javadoc.
    *
@@ -73,6 +74,26 @@ public interface WorkspaceAgentEntities {
    * @param blocked whether the row reads as blocked now (the effective flag, qits-895)
    * @param blockSource {@code EXPLICIT}, {@code AGENT_WAITING} or {@code BOTH} while blocked, else
    *     {@code null}
+   * @param blockedBy who set the EXPLICIT block — the subject recorded on the row ({@code
+   *     WorkEntity.blockedBy}) — or {@code null}: no explicit block stands, or nobody recorded who
+   *     set it. Carried so the far side can tell a block the agent's own credential set (the agent
+   *     declaring it is stuck) from one a person or another caller set (qits-1511). A derived
+   *     {@code AGENT_WAITING} block has no author, and an implementation never sends one for it
    */
-  void changed(String workId, String title, String status, boolean blocked, String blockSource);
+  void changed(
+      String workId,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy);
+
+  /**
+   * {@link #changed(String, String, String, boolean, String, String)} with no block author — a
+   * caller that does not know who set the block.
+   */
+  default void changed(
+      String workId, String title, String status, boolean blocked, String blockSource) {
+    changed(workId, title, status, blocked, blockSource, null);
+  }
 }
