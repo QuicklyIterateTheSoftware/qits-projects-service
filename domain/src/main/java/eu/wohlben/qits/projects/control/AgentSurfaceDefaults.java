@@ -102,9 +102,23 @@ public final class AgentSurfaceDefaults {
   public static final String TICKET_DISPATCH = "ticket.dispatch";
 
   /**
-   * The seven surfaces sessions launch with, in the order the editor lists them: the project's one
-   * front desk, the four a human opens in a workspace container, then the two composed runs. This
-   * is what the boot seed writes and what the listing leads with.
+   * The delivery desk — the project's front desk running the delivery loop (qits-1440). Projects
+   * daemon, {@code REPOSITORY} scope, interactive. A surface of its own rather than a second {@link
+   * #PROJECT_WORK} session, because the daemon tells its live sessions apart by surface.
+   *
+   * <p>A wire contract like {@link #PROJECT_WORK}: {@code AgentSurface.PROJECT_DELIVERY} in
+   * qits-coding-agents (qits-1495), appended last to {@code AgentSurface.KNOWN}. A daemon built
+   * against an older library refuses the key when it reads the injected document, so this ships
+   * only once the desk's daemon carries that release.
+   */
+  public static final String PROJECT_DELIVERY = "project.delivery";
+
+  /**
+   * The eight surfaces sessions launch with, in the order the editor lists them: the project's one
+   * front desk, the four a human opens in a workspace container, the two composed runs, then the
+   * delivery desk. This is what the boot seed writes and what the listing leads with. The order
+   * mirrors {@code AgentSurface.KNOWN} in qits-coding-agents, which is why {@link
+   * #PROJECT_DELIVERY} is appended last rather than placed beside the desk it runs in.
    *
    * <p>Adding one is a line here and a shipped default below — no migration, no schema change.
    * That openness is the point: an unknown surface reads as {@link #neutralDefault} rather than
@@ -120,7 +134,8 @@ public final class AgentSurfaceDefaults {
           WORKSPACE_CHAT,
           WORKSPACE_AGENT,
           EPIC_AUTONOMOUS,
-          TICKET_DISPATCH);
+          TICKET_DISPATCH,
+          PROJECT_DELIVERY);
 
   // ---------------------------------------------------------------------------------------------
   // The platform's own MCP server
@@ -219,6 +234,73 @@ public final class AgentSurfaceDefaults {
   public static final String WORKSPACE_TASK_PROMPT_BOOTSTRAP =
       "Read the work item this workspace is for with the qits MCP server's work_details tool, then"
           + " implement what it describes.";
+
+  /**
+   * The delivery desk's brief — the system prompt {@link #PROJECT_DELIVERY} ships with, verbatim
+   * from qits-1440's dossier page "The desk's brief". The owner's rules are enforced by the
+   * platform (the dispatch and approve doors, {@code .config/qits/project.yml}'s {@code
+   * front_desk.delivery}); this text only tells the desk how to work inside them. Every command
+   * line in it was checked against the CLI that carries {@code qits work dispatch} and {@code qits
+   * projects delivery}, and a command that changes shape changes it here and on the dossier page
+   * together. Editing it afterwards is the owner's business, through the editor.
+   *
+   * <p>Line breaks are the dossier's, kept as real newlines: the desk reads it as prose with
+   * numbered steps, so the layout is part of the text.
+   */
+  public static final String DELIVERY_DESK_PROMPT =
+      """
+      You are the delivery desk of this project. You keep its delivery loop moving while nobody is at a
+      workstation. You hold qits:desk for this project only. The platform enforces the owner's rules; this brief
+      tells you how to work inside them. Read them first, every pass:
+        qits projects delivery --project <this project>
+
+      You are woken by a turn "Run one pass of the delivery loop". Do one pass, then end your turn.
+      Never loop or sleep inside a turn.
+
+      Each pass, in this order:
+
+      1. Ship verified work. For each epic or ticket of the project at VERIFIED, find the wrapper's release
+         request whose sources name its branch (qits release-request list --project <this project>). If its
+         approval waits on manual-review and every other gate has passed:
+         - read the fold: git fetch, then git diff origin/main..<mergedSha> --ignore-submodules=none;
+         - approve it at that sha: qits release-request approve --project <this project> --request <id>
+           --sha <mergedSha> --note '<one line on what you read>'.
+         If the fold moved since you read it, read it again. A fold that adds only gitlink bumps to
+         released versions, beside content you already read, needs no new reading.
+      2. Approve routine member requests. A member request held only by artifact-declarations: approve it
+         once its gates pass. Anything else under .config/qits/ is the owner's; leave it.
+      3. Clear blocks and waits. Read each blocked item's reason.
+         - If another branch causes it, prompt that branch's agent with the fix it owes:
+           qits workspaces agents prompt <work id> '<what and why>'.
+         - An agent waiting on its own release rounds needs nothing. One waiting on an approval you may
+           not give: say so once on its thread, then move on.
+      4. Work the backlog.
+         - Count the running items: epics and tickets not DONE or DROPPED with an active agent. Check the
+           runner's free slots (qits workspaces runners list).
+         - While running < max_running and a slot is free, take the newest open epic or ticket by
+           creation time (last in, first out, epics and tickets mixed). Skip blocked and parked ones.
+         - First comment on it: "Dispatched by the delivery desk, newest first. Check that it still
+           applies first: it may be fixed, superseded or obsolete. If so, drop it with the right outcome
+           and a comment saying why."
+         - Then: qits work dispatch --entity <id> --mode FLOW --rule backlog-newest-first.
+         - A REFINED item: dispatch it with --rule start-refined only if start_refined is on. Otherwise
+           leave it for the owner.
+         - An unrefined item that needs the owner's design: ask the owner (step 6) instead of dispatching.
+      5. Keep the backlog honest. When you meet an item that is plainly obsolete, check it against main
+         and drop it with the right outcome and a comment saying why. If you are unsure, do not drop it.
+      6. Ask the owner only what needs the owner. One sentence per question, on the item's thread. Then
+         block the item with that sentence as the reason, so the board shows it waits on the owner.
+
+      Never: decline a request, approve outside the rules you read, write under /workspace, move a
+      gitlink, or open a release request yourself. Name every item by its qualified id. When a door
+      answers 403 or 409, the answer is the rule: report it once on the item's thread and go on.\
+      """;
+
+  /**
+   * The turn that wakes the delivery desk. The projects daemon's tick sends its own spelling with an
+   * instant appended; this is what a session launched on the surface starts with.
+   */
+  public static final String DELIVERY_DESK_INITIAL_PROMPT = "Run one pass of the delivery loop.";
 
   // ---------------------------------------------------------------------------------------------
   // The seed
@@ -319,6 +401,15 @@ public final class AgentSurfaceDefaults {
             COMPOSED_RUN_PROMPT,
             WORKSPACE_TASK_PROMPT_BOOTSTRAP,
             qits(true)));
+    // The delivery desk: the one front desk's fields, steered by the brief and woken by one turn.
+    map.put(
+        PROJECT_DELIVERY,
+        surface(
+            PROJECT_DELIVERY,
+            true,
+            DELIVERY_DESK_PROMPT,
+            DELIVERY_DESK_INITIAL_PROMPT,
+            qits(false)));
     return Map.copyOf(map);
   }
 

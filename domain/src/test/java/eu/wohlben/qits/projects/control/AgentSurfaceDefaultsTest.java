@@ -92,12 +92,66 @@ public class AgentSurfaceDefaultsTest {
       changed before you say the work is done.\
       """;
 
+  /**
+   * The delivery desk's brief, copied from qits-1440's dossier page "The desk's brief" — a second,
+   * independent copy of the bytes, so an edit to the shipped constant that the dossier did not make
+   * turns this red.
+   */
+  private static final String DELIVERY_DESK_BRIEF =
+      """
+      You are the delivery desk of this project. You keep its delivery loop moving while nobody is at a
+      workstation. You hold qits:desk for this project only. The platform enforces the owner's rules; this brief
+      tells you how to work inside them. Read them first, every pass:
+        qits projects delivery --project <this project>
+
+      You are woken by a turn "Run one pass of the delivery loop". Do one pass, then end your turn.
+      Never loop or sleep inside a turn.
+
+      Each pass, in this order:
+
+      1. Ship verified work. For each epic or ticket of the project at VERIFIED, find the wrapper's release
+         request whose sources name its branch (qits release-request list --project <this project>). If its
+         approval waits on manual-review and every other gate has passed:
+         - read the fold: git fetch, then git diff origin/main..<mergedSha> --ignore-submodules=none;
+         - approve it at that sha: qits release-request approve --project <this project> --request <id>
+           --sha <mergedSha> --note '<one line on what you read>'.
+         If the fold moved since you read it, read it again. A fold that adds only gitlink bumps to
+         released versions, beside content you already read, needs no new reading.
+      2. Approve routine member requests. A member request held only by artifact-declarations: approve it
+         once its gates pass. Anything else under .config/qits/ is the owner's; leave it.
+      3. Clear blocks and waits. Read each blocked item's reason.
+         - If another branch causes it, prompt that branch's agent with the fix it owes:
+           qits workspaces agents prompt <work id> '<what and why>'.
+         - An agent waiting on its own release rounds needs nothing. One waiting on an approval you may
+           not give: say so once on its thread, then move on.
+      4. Work the backlog.
+         - Count the running items: epics and tickets not DONE or DROPPED with an active agent. Check the
+           runner's free slots (qits workspaces runners list).
+         - While running < max_running and a slot is free, take the newest open epic or ticket by
+           creation time (last in, first out, epics and tickets mixed). Skip blocked and parked ones.
+         - First comment on it: "Dispatched by the delivery desk, newest first. Check that it still
+           applies first: it may be fixed, superseded or obsolete. If so, drop it with the right outcome
+           and a comment saying why."
+         - Then: qits work dispatch --entity <id> --mode FLOW --rule backlog-newest-first.
+         - A REFINED item: dispatch it with --rule start-refined only if start_refined is on. Otherwise
+           leave it for the owner.
+         - An unrefined item that needs the owner's design: ask the owner (step 6) instead of dispatching.
+      5. Keep the backlog honest. When you meet an item that is plainly obsolete, check it against main
+         and drop it with the right outcome and a comment saying why. If you are unsure, do not drop it.
+      6. Ask the owner only what needs the owner. One sentence per question, on the item's thread. Then
+         block the item with that sentence as the reason, so the board shows it waits on the owner.
+
+      Never: decline a request, approve outside the rules you read, write under /workspace, move a
+      gitlink, or open a release request yourself. Name every item by its qualified id. When a door
+      answers 403 or 409, the answer is the rule: report it once on the item's thread and go on.\
+      """;
+
   // -------------------------------------------------------------------------------------------
   // The vocabulary
   // -------------------------------------------------------------------------------------------
 
   @Test
-  public void theVocabularyIsTheSevenSurfacesSessionsLaunchWith() {
+  public void theVocabularyIsTheEightSurfacesSessionsLaunchWith() {
     assertEquals(
         List.of(
             "project.work",
@@ -106,10 +160,11 @@ public class AgentSurfaceDefaultsTest {
             "workspace.chat",
             "workspace.agent",
             "epic.autonomous",
-            "ticket.dispatch"),
+            "ticket.dispatch",
+            "project.delivery"),
         AgentSurfaceDefaults.SURFACES,
-        "the five a human opens plus the two composed runs; another is a line here and a default"
-            + " below, never a migration");
+        "the desk, the four a human opens, the two composed runs and the delivery desk last, as in"
+            + " AgentSurface.KNOWN; another is a line here and a default below, never a migration");
     for (String surface : AgentSurfaceDefaults.SURFACES) {
       assertNotNull(
           AgentSurfaceDefaults.SHIPPED.get(surface), surface + " is in the vocabulary but unseeded");
@@ -298,6 +353,55 @@ public class AgentSurfaceDefaultsTest {
   }
 
   // -------------------------------------------------------------------------------------------
+  // The delivery desk
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * The literal is a wire contract with {@code AgentSurface.PROJECT_DELIVERY} in qits-coding-agents,
+   * which appends it last to {@code KNOWN}; the order here mirrors that list.
+   */
+  @Test
+  public void theDeliveryDeskLaunchesAsProjectDeliveryAndIsListedLast() {
+    assertEquals("project.delivery", AgentSurfaceDefaults.PROJECT_DELIVERY);
+    List<String> surfaces = AgentSurfaceDefaults.SURFACES;
+    assertEquals("project.delivery", surfaces.get(surfaces.size() - 1));
+    assertEquals(1, surfaces.stream().filter("project.delivery"::equals).count());
+  }
+
+  /** The brief is the dossier's text, byte for byte, and the desk is woken by one turn. */
+  @Test
+  public void theDeliveryDeskShipsTheDossiersBriefAndOneTurn() {
+    assertEquals(DELIVERY_DESK_BRIEF, AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, "the constant");
+    AgentSurfaceConfigurationDto delivery = AgentSurfaceDefaults.SHIPPED.get("project.delivery");
+    assertEquals("project.delivery", delivery.surface());
+    assertEquals(DELIVERY_DESK_BRIEF, delivery.systemPrompt());
+    assertEquals("Run one pass of the delivery loop.", delivery.initialPrompt());
+  }
+
+  /** Everything but the surface key and the two prompts is the one front desk's. */
+  @Test
+  public void theDeliveryDeskCarriesTheOneDesksOtherFields() {
+    AgentSurfaceConfigurationDto work = AgentSurfaceDefaults.SHIPPED.get("project.work");
+    AgentSurfaceConfigurationDto delivery = AgentSurfaceDefaults.SHIPPED.get("project.delivery");
+    assertEquals(
+        new AgentSurfaceConfigurationDto(
+            "project.delivery",
+            work.harness(),
+            work.model(),
+            work.effort(),
+            work.remoteControl(),
+            work.permissionMode(),
+            work.activityTracking(),
+            delivery.systemPrompt(),
+            delivery.initialPrompt(),
+            work.mcpServers(),
+            work.externalMcpServers(),
+            work.shipped()),
+        delivery);
+    assertEquals(List.of(QITS), delivery.mcpServers());
+  }
+
+  // -------------------------------------------------------------------------------------------
   // Remote control
   // -------------------------------------------------------------------------------------------
 
@@ -323,6 +427,9 @@ public class AgentSurfaceDefaultsTest {
           AgentSurfaceDefaults.SHIPPED.get(chat).remoteControl(),
           chat + " is a chat, and claudeChatProtocol bridges every chat");
     }
+    assertTrue(
+        AgentSurfaceDefaults.SHIPPED.get("project.delivery").remoteControl(),
+        "project.delivery carries the one desk's flag, as the library's shippedRemoteControl does");
     for (String interactive : List.of("epic.agent", "workspace.agent")) {
       assertFalse(
           AgentSurfaceDefaults.SHIPPED.get(interactive).remoteControl(),

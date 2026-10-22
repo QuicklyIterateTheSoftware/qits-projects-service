@@ -2532,7 +2532,7 @@ in `AgentDaemonRegistry` and still reads `FAILED` with its `failureDetail`.
 
 **What a session runs as is a row here now, not a constant in a daemon.** A *session surface* is
 where in the product a session was started from — `project.work`, `epic.chat`, `epic.agent`,
-`workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
+`workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch`, `project.delivery` — and one
 configuration per surface, **platform-wide**, holds the harness, model, effort, remote control,
 permission mode, activity tracking, the system prompt, the initial prompt, and whether the one built-in
 MCP server, `qits`, attaches and is read-only. Schema in `V16`; entities, store and shipped
@@ -2554,6 +2554,13 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   `PROJECT_TICKETS` are gone from `AgentSurfaceDefaults` along with their `SHIPPED` entries and the
   now-unused `TICKETS_DESK_PROMPT` constant — so a container old enough to still name either key now
   reads the neutral default rather than the tickets prompt or the empty epics prompt it used to.
+- **`project.delivery` is the delivery desk (qits-1496, epic qits-1440).** The project's front desk
+  runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
+  order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
+  the one desk's fields with the brief from qits-1440's dossier page "The desk's brief" as its system
+  prompt (`DELIVERY_DESK_PROMPT`, verbatim; a CLI command that changes shape changes it here and on
+  the dossier together) and `Run one pass of the delivery loop.` as its initial prompt. The seed
+  writes the row at boot; no migration.
 - **The seed is the safety.** `control/AgentSurfaceDefaults` carries the seven surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
