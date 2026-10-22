@@ -1,0 +1,21 @@
+# The template every repository a test JVM creates is born from (qits-1284): the root pom points
+# GIT_TEMPLATE_DIR here for surefire and failsafe, so `git init`, `git init --bare` and `git clone`
+# copy this file in as the new repository's own config.
+#
+# It carries the same three switches the pom's GIT_CONFIG_COUNT sets (qits-965), for the one git
+# that env never reaches: the far side of a push or fetch over a local path. git starts
+# `git-receive-pack` / `git-upload-pack` with GIT_CONFIG_COUNT unset, and the fixtures pin
+# GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM to /dev/null, so the receiving repository's own config is
+# all that side reads. Without these, every push into a test's bare origin ends in receive-pack's
+# auto maintenance, which detaches (git >= 2.47 daemonizes it unconditionally) and orphans itself —
+# a zombie for the rest of a qits-ci step, whose PID 1 reaps nothing. A full verify under a current git
+# (the step image ships 2.54) left 3.9k of them against the step's pids limit of 4096; with this
+# template, 20.
+#
+# hooks/ is kept so the tests that write a hook straight into it still find the directory.
+[gc]
+	auto = 0
+[maintenance]
+	auto = false
+[receive]
+	autogc = false

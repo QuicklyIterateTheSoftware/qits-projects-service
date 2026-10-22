@@ -3417,9 +3417,13 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   reaps nothing: every orphan stays a zombie holding a pid until the step ends. The step runs with
   `--pids-limit 4096` (and 6g memory, the runner's `stepMemoryLimit`), and qits-965's gate counted
   3822 `git` zombies at the limit — `OutOfMemoryError: unable to create native thread`, with the
-  step's memory at 2.2 of 6 GB. Memory was never the constraint. Other git paths still leave ~1.8k
-  zombies over a full run, so the headroom is finite: a change that multiplies git calls in the
-  suite should look at this number again.
+  step's memory at 2.2 of 6 GB. Memory was never the constraint. The env does not reach the far
+  side of a push or fetch over a local path — git starts receive-pack/upload-pack with
+  `GIT_CONFIG_COUNT` unset — so the pom also sets `GIT_TEMPLATE_DIR` to `.config/git-template/`,
+  whose `config` carries the same switches into every repository a test creates (qits-1284: a full
+  verify under the step image's git had climbed back to 3.9k zombies, nearly all of them receive-pack's; with the
+  template it leaves ~20). A test that builds a repository some other way than `git init`/`clone`
+  (copying a committed bare, say) and then pushes into it gets no template, so give it the config.
 - A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake
   (`migration-plan.md` §9 item 14) — `@QuarkusTest` restarts racing for the test port. Re-run first.
 - `GitFixtures.path("<name>.git")` is how a test gets a git origin to clone. It returns the

@@ -796,7 +796,13 @@
                              step's pids limit of 4096, and the next thread the JVM asked for failed
                              as "unable to create native thread". Command-level config
                              (GIT_CONFIG_COUNT) outranks GIT_CONFIG_GLOBAL=/dev/null in the fixtures,
-                             and every git the tests start inherits it. -->
+                             and every git the tests start inherits it — except the far side of a
+                             push or fetch over a local path: git starts receive-pack/upload-pack
+                             with GIT_CONFIG_COUNT unset, so a push into a test's bare origin still
+                             detached its auto maintenance (3.9k zombies on a full run, qits-1284).
+                             GIT_TEMPLATE_DIR closes that: every repository a test creates is born
+                             with the same three switches in its own config, the one place that side
+                             reads (.config/git-template/config). -->
                         <environmentVariables>
                             <GIT_CONFIG_COUNT>3</GIT_CONFIG_COUNT>
                             <GIT_CONFIG_KEY_0>gc.auto</GIT_CONFIG_KEY_0>
@@ -805,6 +811,7 @@
                             <GIT_CONFIG_VALUE_1>false</GIT_CONFIG_VALUE_1>
                             <GIT_CONFIG_KEY_2>receive.autogc</GIT_CONFIG_KEY_2>
                             <GIT_CONFIG_VALUE_2>false</GIT_CONFIG_VALUE_2>
+                            <GIT_TEMPLATE_DIR>${maven.multiModuleProjectDirectory}/.config/git-template</GIT_TEMPLATE_DIR>
                         </environmentVariables>
                         <excludedEnvironmentVariables>
                             <excludedEnvironmentVariable>QITS_DOMAIN</excludedEnvironmentVariable>
@@ -824,6 +831,7 @@
                             <GIT_CONFIG_VALUE_1>false</GIT_CONFIG_VALUE_1>
                             <GIT_CONFIG_KEY_2>receive.autogc</GIT_CONFIG_KEY_2>
                             <GIT_CONFIG_VALUE_2>false</GIT_CONFIG_VALUE_2>
+                            <GIT_TEMPLATE_DIR>${maven.multiModuleProjectDirectory}/.config/git-template</GIT_TEMPLATE_DIR>
                         </environmentVariables>
                         <!-- Same reasoning as the surefire plugin above: don't let the platform's
                              QITS_DOMAIN leak into the forked test JVM. -->
