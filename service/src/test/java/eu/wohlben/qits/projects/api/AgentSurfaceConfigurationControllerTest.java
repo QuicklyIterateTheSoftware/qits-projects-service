@@ -14,6 +14,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -303,6 +304,73 @@ public class AgentSurfaceConfigurationControllerTest {
             "surfaces.find { it.configuration.surface == 'project.work' }.configuration.mcpServers.server",
             String.class),
         is(List.of("qits")));
+  }
+
+  /**
+   * qits-1496: the delivery desk's surface is seeded once, listed last, and answers its brief. A
+   * second seed writes nothing, and the listing names the surface exactly once.
+   */
+  @Test
+  public void theDeliveryDeskIsSeededOnceAndAnswersItsBrief() {
+    assertThat(seed.seed(), is(0));
+    List<String> listed =
+        given()
+            .when()
+            .get("/projects/api/agent-surfaces")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath()
+            .getList("surfaces.surface", String.class);
+    assertThat(listed.stream().filter("project.delivery"::equals).count(), is(1L));
+    assertThat(listed.get(listed.size() - 1), is("project.delivery"));
+
+    JsonPath answer =
+        given()
+            .when()
+            .get("/projects/api/agent-surfaces/project.delivery")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertThat(answer.getString("systemPrompt"), is(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT));
+    assertThat(answer.getString("initialPrompt"), is("Run one pass of the delivery loop."));
+  }
+
+  /**
+   * The editor's door takes the key, and the container's document carries it. The edit writes the
+   * shipped prompts back, so the other tests in this suite still read the brief.
+   */
+  @Test
+  public void theDeliveryDeskIsEditableAndTravelsInTheContainersDocument() {
+    Map<String, Object> body = new HashMap<>(update("CLAUDE", "SKIP_PERMISSIONS", List.of()));
+    body.put("remoteControl", true);
+    body.put("systemPrompt", AgentSurfaceDefaults.DELIVERY_DESK_PROMPT);
+    body.put("initialPrompt", AgentSurfaceDefaults.DELIVERY_DESK_INITIAL_PROMPT);
+    body.put("mcpServers", List.of(Map.of("server", "qits")));
+    given()
+        .contentType(ContentType.JSON)
+        .body(body)
+        .when()
+        .put("/projects/api/agent-surfaces/project.delivery")
+        .then()
+        .statusCode(200)
+        .body("surface", is("project.delivery"))
+        .body("systemPrompt", is(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT));
+
+    JsonPath document =
+        given()
+            .when()
+            .get("/projects/api/agent-configuration")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertThat(
+        document.getString(
+            "surfaces.find { it.configuration.surface == 'project.delivery' }"
+                + ".configuration.systemPrompt"),
+        is(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT));
   }
 
   private static Map<String, Object> update(

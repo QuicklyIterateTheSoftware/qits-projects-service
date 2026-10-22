@@ -42,6 +42,13 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  *       {@code sub} as an alias where the two differ, so an excluded author is excluded under
  *       either. (qits-idp sets neither {@code upn} nor {@code preferred_username} on a client token
  *       today, so the two are the same client id.)
+ *   <li><b>A validated idp JWT of the project's delivery desk</b> (epic qits-1440) is {@code desk}
+ *       and {@code agent} of the project its {@code project} claim names, and never {@code person}:
+ *       {@code qits:agent} <em>and</em> {@code qits:desk} in its {@code groups}, a {@code
+ *       context_kind} of {@value #DESK_CONTEXT_KIND} (what this service commissions for the desk's
+ *       delivery token), no {@code clients/…} group other than its own — the agent's rule, for the
+ *       agent's reason — and a non-blank {@code project} claim. <b>Its name is its {@code sub}</b>,
+ *       the delivery token's subject, with the principal as an alias where the two differ.
  *   <li><b>Anything else</b> — asserted headers, a service client, {@code qits:system}, CI, a
  *       workstation token — holds nothing.
  * </ul>
@@ -56,6 +63,12 @@ public class ApproverCheck {
   static final Set<String> AGENT_CONTEXT_KINDS = Set.of("workspace", "workspace-admin");
 
   static final String PROJECT_CLAIM = "project";
+
+  /** The {@code context_kind} of the delivery desk's token (epic qits-1440). */
+  static final String DESK_CONTEXT_KIND = "desk-delivery";
+
+  /** The role the delivery desk's token carries beside {@code qits:agent}. */
+  static final String DESK_ROLE = "qits:desk";
 
   @Inject PersonCheck persons;
 
@@ -75,8 +88,9 @@ public class ApproverCheck {
                 new DomainException(
                     403,
                     "Only a verified approver may make this decision: a person (a browser session"
-                        + " or a person's qits CLI, holding qits:admin) or an agent (its own"
-                        + " workspace token, carrying its project). Asserted identity headers,"
+                        + " or a person's qits CLI, holding qits:admin), an agent (its own"
+                        + " workspace token, carrying its project) or the project's delivery desk"
+                        + " (its delivery token). Asserted identity headers,"
                         + " service clients, CI and workstation tokens do not count."));
   }
 
@@ -93,9 +107,42 @@ public class ApproverCheck {
       return Optional.of(Approver.person(person.get()));
     }
     if (caller != null && caller.getPrincipal() instanceof JsonWebToken token) {
-      return agent(token);
+      Optional<Approver> desk = desk(token);
+      return desk.isPresent() ? desk : agent(token);
     }
     return Optional.empty();
+  }
+
+  /**
+   * A validated bearer that is the delivery desk's own token, as the desk of its project (and
+   * nothing else); else empty.
+   */
+  static Optional<Approver> desk(JsonWebToken token) {
+    if (!DESK_CONTEXT_KIND.equals(text(token.getClaim(PersonCheck.CONTEXT_KIND_CLAIM)))) {
+      return Optional.empty();
+    }
+    String subject = token.getSubject();
+    List<String> groups = groups(token);
+    if (subject == null
+        || subject.isBlank()
+        || !groups.contains(AgentAccess.AGENT_ROLE)
+        || !groups.contains(DESK_ROLE)
+        || foreignClientGroup(groups, subject)) {
+      return Optional.empty();
+    }
+    String project = text(token.getClaim(PROJECT_CLAIM));
+    if (project == null || project.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(Approver.desk(subject, token.getName(), project.trim()));
+  }
+
+  /** Whether {@code groups} carries a {@code clients/…} group other than {@code subject}'s own. */
+  private static boolean foreignClientGroup(List<String> groups, String subject) {
+    String ownGroup = subject == null ? null : PersonCheck.CLIENT_GROUP_PREFIX + subject;
+    return groups.stream()
+        .anyMatch(
+            group -> group.startsWith(PersonCheck.CLIENT_GROUP_PREFIX) && !group.equals(ownGroup));
   }
 
   /** A validated bearer that is an agent's own token, as the agent of its project; else empty. */
@@ -105,13 +152,8 @@ public class ApproverCheck {
       return Optional.empty();
     }
     String subject = token.getSubject();
-    String ownGroup = subject == null ? null : PersonCheck.CLIENT_GROUP_PREFIX + subject;
     List<String> groups = groups(token);
-    if (!groups.contains(AgentAccess.AGENT_ROLE)
-        || groups.stream()
-            .anyMatch(
-                group ->
-                    group.startsWith(PersonCheck.CLIENT_GROUP_PREFIX) && !group.equals(ownGroup))) {
+    if (!groups.contains(AgentAccess.AGENT_ROLE) || foreignClientGroup(groups, subject)) {
       return Optional.empty();
     }
     String project = text(token.getClaim(PROJECT_CLAIM));

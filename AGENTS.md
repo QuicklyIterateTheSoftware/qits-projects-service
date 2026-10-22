@@ -1260,6 +1260,23 @@ approval's roles. The display path stores the content requirements as JSON objec
   nothing is open, 403 when the caller qualifies for no open requirement; decline 409 when the fold
   has none, 403 when the caller qualifies for none; the 403 names each requirement and its roles.
   `GET …/{requestId}/approval-eligibility` answers `{viewer, heldRoles, eligibleRequirementIds}`.
+- **The delivery desk** (epic qits-1440, qits-1498): role `desk` / `desk@<slug>`
+  (`ApprovalRole.Kind.DESK`, project-scoped like `agent`). `ApproverCheck` gives a validated idp JWT
+  with `qits:agent` **and** `qits:desk`, `context_kind` `desk-delivery`, no `clients/…` group but its
+  own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`),
+  named by its `sub`.
+  No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
+  requirement whose id the project's `front_desk.delivery.approves` lists, intersected with
+  `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`), so `config-directory`,
+  `no-changes`, `automation:*` and `contract:*` never admit it. When a desk approves a requirement
+  through `desk`, `control/DeskApprovalPolicy` holds it to the owner's rule, each refusal a 403 naming
+  the rule (`manual-review-verified` or `artifact-declarations`): its own project only; every gate the
+  request's read reports before `approval` (order 300) PASSED; and for `manual-review` every branch
+  source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
+  (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is VERIFIED
+  or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
+  403 "The delivery desk does not decline; it asks the owner on the item's thread." Holding no
+  `agent` role, the desk cannot approve or decline an unlisted `artifact-declarations` as an agent.
 - **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,
   detail, satisfied, satisfiedBy}`), the old approval fields derived from it; `GET …/approvals` rows
   carry `roles`.
@@ -2532,7 +2549,7 @@ in `AgentDaemonRegistry` and still reads `FAILED` with its `failureDetail`.
 
 **What a session runs as is a row here now, not a constant in a daemon.** A *session surface* is
 where in the product a session was started from — `project.work`, `epic.chat`, `epic.agent`,
-`workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
+`workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch`, `project.delivery` — and one
 configuration per surface, **platform-wide**, holds the harness, model, effort, remote control,
 permission mode, activity tracking, the system prompt, the initial prompt, and whether the one built-in
 MCP server, `qits`, attaches and is read-only. Schema in `V16`; entities, store and shipped
@@ -2554,6 +2571,13 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   `PROJECT_TICKETS` are gone from `AgentSurfaceDefaults` along with their `SHIPPED` entries and the
   now-unused `TICKETS_DESK_PROMPT` constant — so a container old enough to still name either key now
   reads the neutral default rather than the tickets prompt or the empty epics prompt it used to.
+- **`project.delivery` is the delivery desk (qits-1496, epic qits-1440).** The project's front desk
+  runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
+  order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
+  the one desk's fields with the brief from qits-1440's dossier page "The desk's brief" as its system
+  prompt (`DELIVERY_DESK_PROMPT`, verbatim; a CLI command that changes shape changes it here and on
+  the dossier together) and `Run one pass of the delivery loop.` as its initial prompt. The seed
+  writes the row at boot; no migration.
 - **The seed is the safety.** `control/AgentSurfaceDefaults` carries the seven surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),

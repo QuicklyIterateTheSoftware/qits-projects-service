@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import eu.wohlben.qits.projects.control.approval.ApprovalRole;
 import eu.wohlben.qits.projects.control.approval.Approver;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -122,6 +124,63 @@ class ApproverCheckTest {
     assertEquals(
         Optional.empty(),
         check.decide(AgentTokens.token(claims, "qits:system"), null, LaunchMode.NORMAL));
+  }
+
+  // ---- the delivery desk (epic qits-1440) --------------------------------------------------------
+
+  /**
+   * The desk's delivery token — {@code qits:agent} and {@code qits:desk}, {@code desk-delivery},
+   * its own {@code clients/<sub>} and a project — holds {@code desk} and {@code agent} of that
+   * project, never {@code person}, under its {@code sub}.
+   */
+  @Test
+  void theDeliveryDesksTokenHoldsDeskAndAgentOfItsProjectUnderItsSub() {
+    Approver desk =
+        check
+            .decide(
+                agent(
+                    "desk-delivery",
+                    "project-a",
+                    "qits:agent",
+                    "qits:desk",
+                    "clients/agent-client-1"),
+                null,
+                LaunchMode.NORMAL)
+            .orElseThrow();
+    assertEquals("agent-client-1", desk.name());
+    assertEquals(
+        List.of(ApprovalRole.deskOf("project-a")), desk.held());
+    assertEquals("project-a", desk.deskProject());
+    assertFalse(desk.held().contains(ApprovalRole.PERSON));
+  }
+
+  @Test
+  void aDeskTokenMissingARoleAProjectOrItsKindIsNoDesk() {
+    assertEquals(
+        Optional.empty(),
+        check.decide(agent("desk-delivery", "project-a", "qits:agent"), null, LaunchMode.NORMAL),
+        "no qits:desk: an agent's roles under a kind no agent is minted with");
+    assertEquals(
+        Optional.empty(),
+        check.decide(agent("desk-delivery", "project-a", "qits:desk"), null, LaunchMode.NORMAL),
+        "no qits:agent");
+    assertEquals(
+        Optional.empty(),
+        check.decide(
+            agent("desk-delivery", null, "qits:agent", "qits:desk"), null, LaunchMode.NORMAL),
+        "no project");
+    assertEquals(
+        Optional.of(Approver.agent("agent-client-1", "project-a")),
+        check.decide(
+            agent("workspace", "project-a", "qits:agent", "qits:desk"), null, LaunchMode.NORMAL),
+        "qits:desk on a workspace token is only an agent");
+    assertEquals(
+        Optional.empty(),
+        check.decide(
+            agent("desk-delivery", "project-a", "qits:agent", "qits:desk", "clients/other"),
+            null,
+            LaunchMode.NORMAL),
+        "another client's group is a service client's mark");
   }
 
   @Test
