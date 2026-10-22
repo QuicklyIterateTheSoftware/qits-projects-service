@@ -328,6 +328,9 @@ public class ReleaseRequests {
    */
   @Inject ApprovalPolicy approvalPolicy;
 
+  /** The rest of the owner's rule for a delivery-desk approval (epic qits-1440). */
+  @Inject DeskApprovalPolicy deskApprovals;
+
   @Inject ReleaseRequestApprovalRepository approvals;
 
   /** Approval roles written down and read back, with project slugs (epic qits-1038). */
@@ -1308,6 +1311,14 @@ public class ReleaseRequests {
         approver == null || approver.name() == null || approver.name().isBlank()
             ? "an operator"
             : approver.name().trim();
+    // The delivery desk approves only once every gate before approval has passed (epic
+    // qits-1440): read them as the request's own read answers them, before the decision's
+    // transaction, since that read is made outside any transaction. The fold it was of is checked
+    // against the locked row below.
+    ReleaseRequestDto deskRead =
+        decision == ReleaseRequestApproval.Decision.APPROVED && approver != null && approver.isDesk()
+            ? get(id)
+            : null;
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -1382,6 +1393,23 @@ public class ReleaseRequests {
                   concerned = standing.open();
                 }
               }
+              // The delivery desk (epic qits-1440): approving as the desk is checked against the
+              // owner's rule first, so its refusals name the rule; declining it does not do.
+              String recordedNote = said;
+              if (decision == ReleaseRequestApproval.Decision.APPROVED) {
+                Optional<String> rule = deskApprovals.ruleFor(approver, concerned);
+                if (rule.isPresent()) {
+                  deskApprovals.requireAllowed(
+                      rule.get(),
+                      row,
+                      approver,
+                      deskRead == null ? null : deskRead.mergedSha(),
+                      deskRead == null ? List.of() : deskRead.qualityGates(),
+                      sources.listByRequest(row.id),
+                      mainOf(row.repoId));
+                  recordedNote = DeskApprovalPolicy.note(rule.get(), said);
+                }
+              }
               boolean eligible =
                   concerned.stream()
                       .anyMatch(
@@ -1391,6 +1419,9 @@ public class ReleaseRequests {
                 throw new DomainException(
                     403, notEligible(row, decision, concerned, held, names, authors));
               }
+              if (decision == ReleaseRequestApproval.Decision.DECLINED) {
+                deskApprovals.refuseDecline(held, concerned, names, authors);
+              }
               ReleaseRequestApproval approval = new ReleaseRequestApproval();
               approval.id = UUID.randomUUID().toString();
               approval.requestId = row.id;
@@ -1398,7 +1429,7 @@ public class ReleaseRequests {
               approval.decision = decision;
               approval.actor = actor;
               approval.approverRoles = approvalRoles.stored(held);
-              approval.note = said;
+              approval.note = recordedNote;
               approval.decidedAt = Instant.now();
               approval.persist();
               // A decision is movement, and the project worklist is ordered by this column: a
@@ -5346,7 +5377,11 @@ public class ReleaseRequests {
       required.put(
           row.id,
           approvalPolicy.requirementsForDisplay(
-              set, row.state, ApprovalPolicy.isSettled(row.state) ? recorded : null, content));
+              set,
+              row.state,
+              ApprovalPolicy.isSettled(row.state) ? recorded : null,
+              content,
+              row.projectId));
     }
     return required;
   }

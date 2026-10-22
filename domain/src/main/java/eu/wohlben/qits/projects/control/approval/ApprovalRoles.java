@@ -19,8 +19,8 @@ import org.jboss.logging.Logger;
  * directions are remembered once looked up; a lookup is its own short transaction, callable inside
  * another one or outside any.
  *
- * <p>Only {@code agent@<slug>} ever needs a lookup — {@code person} and {@code agent} (the request's
- * own project) are spelled without one.
+ * <p>Only {@code agent@<slug>} and {@code desk@<slug>} ever need a lookup — {@code person}, {@code
+ * agent} and {@code desk} (the request's own project) are spelled without one.
  */
 @ApplicationScoped
 public class ApprovalRoles {

@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
+import eu.wohlben.qits.projects.control.approval.ApprovalRole;
 import eu.wohlben.qits.projects.control.approval.ApprovalRequirementSource;
 import eu.wohlben.qits.projects.control.approval.ApprovalRoles;
 import eu.wohlben.qits.projects.control.approval.ApprovalSubject;
@@ -11,8 +12,10 @@ import eu.wohlben.qits.projects.control.approval.NoChangesSource;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -65,6 +68,16 @@ import org.jboss.logging.Logger;
  * second reading spelled inline at a gate, in the API or in the announcement is an answer that the
  * next change would have to find and replace one by one. Ask here.
  *
+ * <p><b>The delivery desk is admitted here, and only here</b> (epic qits-1440): once the sources
+ * have answered, a requirement whose id the request's project lists in {@code
+ * front_desk.delivery.approves} admits {@code desk} beside its own roles ({@link #admitDesk}). No
+ * source knows the desk exists. The list is a subset of {@link
+ * ProjectConfig.DeliverySettings#APPROVABLE} — {@code manual-review} and {@code
+ * artifact-declarations} — and the admission intersects with that set again, so {@code
+ * config-directory}, {@code no-changes}, {@code automation:*} and {@code contract:*} never admit the
+ * desk, whatever a row holds. Admitting is not approving: what the desk may then approve, and when,
+ * is the approve door's {@code DeskApprovalPolicy}.
+ *
  * <p><b>A repository whose gate configuration cannot be read is not held by the configuration
  * source</b>, and that is not a hole: the evaluation has already refused to release an unknown gate
  * set before it reaches this question. <b>A repository with no row has no content half</b>: a
@@ -101,6 +114,8 @@ public class ApprovalPolicy {
 
   @Inject ApprovalRoles roles;
 
+  @Inject ProjectRepository projects;
+
   @Inject Instance<ApprovalRequirementSource> sources;
 
   /**
@@ -127,7 +142,7 @@ public class ApprovalPolicy {
                   .latestFor(request.id, request.mergedSha)
                   .filter(decision -> decision.decision == ReleaseRequestApproval.Decision.APPROVED)
                   .orElse(null);
-      return settled(gates.resolve(request.repoId), recorded);
+      return admitDesk(settled(gates.resolve(request.repoId), recorded), request.projectId);
     }
     return requirementsFor(request.repoId, request.projectId, request.mergedSha);
   }
@@ -158,7 +173,7 @@ public class ApprovalPolicy {
             foldChanges);
     List<ApprovalRequirement> all = new ArrayList<>(configuration(subject));
     all.addAll(content(subject).requirements());
-    return merged(all);
+    return admitDesk(merged(all), subject.projectId());
   }
 
   /** Whether {@code state} is past the point where the fold's content is read. */
@@ -203,20 +218,81 @@ public class ApprovalPolicy {
    *     settled request only
    * @param content the content requirements of the request's current fold — empty for a settled
    *     request, which reads no git
+   * @param projectId the request's project, whose delivery desk {@link #admitDesk} may admit
    */
   public List<ApprovalRequirement> requirementsForDisplay(
       ReleaseGates.GateSet gateSet,
       ReleaseRequest.State state,
       ReleaseRequestApproval recorded,
-      List<ApprovalRequirement> content) {
+      List<ApprovalRequirement> content,
+      String projectId) {
     if (isSettled(state)) {
-      return settled(gateSet, recorded);
+      return admitDesk(settled(gateSet, recorded), projectId);
     }
     List<ApprovalRequirement> all =
         new ArrayList<>(
             configuration(new ApprovalSubject(null, null, null, state, gateSet, false, null)));
     all.addAll(content);
-    return merged(all);
+    return admitDesk(merged(all), projectId);
+  }
+
+  /**
+   * <b>The one place the delivery desk is admitted</b> (epic qits-1440): each requirement whose id
+   * {@code projectId}'s {@code front_desk.delivery.approves} lists, and which {@link
+   * ProjectConfig.DeliverySettings#APPROVABLE} allows at all, admits {@link ApprovalRole#DESK} — the
+   * request's own project's desk — beside its own roles. Every other requirement is returned as the
+   * sources answered it.
+   *
+   * <p>The project is read only when a requirement could be admitted, in a short transaction of its
+   * own (callable inside the decide transaction and outside any, as {@link ApprovalRoles}' lookups
+   * are). A project that cannot be read admits nothing: failing closed leaves the requirement to the
+   * roles its source named.
+   */
+  List<ApprovalRequirement> admitDesk(List<ApprovalRequirement> requirements, String projectId) {
+    if (projectId == null
+        || requirements.stream()
+            .noneMatch(r -> ProjectConfig.DeliverySettings.APPROVABLE.contains(r.id()))) {
+      return requirements;
+    }
+    Set<String> approves = deskApproves(projectId);
+    if (approves.isEmpty()) {
+      return requirements;
+    }
+    List<ApprovalRequirement> admitted = new ArrayList<>(requirements.size());
+    for (ApprovalRequirement requirement : requirements) {
+      if (approves.contains(requirement.id())
+          && ProjectConfig.DeliverySettings.APPROVABLE.contains(requirement.id())
+          && !requirement.admits().contains(ApprovalRole.DESK)) {
+        List<ApprovalRole> admits = new ArrayList<>(requirement.admits());
+        admits.add(ApprovalRole.DESK);
+        admitted.add(
+            new ApprovalRequirement(
+                requirement.id(),
+                requirement.reason(),
+                admits,
+                requirement.excludesAuthors(),
+                requirement.detail()));
+      } else {
+        admitted.add(requirement);
+      }
+    }
+    return List.copyOf(admitted);
+  }
+
+  /** {@code projectId}'s {@code front_desk.delivery.approves}; empty where it cannot be read. */
+  private Set<String> deskApproves(String projectId) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () ->
+                  projects
+                      .findByIdOptional(projectId)
+                      .map(project -> ProjectConfig.DeliverySettings.of(project).approves())
+                      .orElse(Set.of()));
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "Could not read the delivery settings of project %s", projectId);
+      return Set.of();
+    }
   }
 
   /**

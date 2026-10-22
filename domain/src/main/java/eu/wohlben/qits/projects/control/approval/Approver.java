@@ -48,6 +48,36 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
     return new Approver(name, List.of(ApprovalRole.agentOf(projectId)), aliases);
   }
 
+  /**
+   * The delivery desk of {@code projectId} (epic qits-1440): {@code desk} and {@code agent} of that
+   * project, never {@code person}. Named by its token's {@code sub}, also known as {@code
+   * principal} where the two differ.
+   */
+  public static Approver desk(String subject, String principal, String projectId) {
+    Set<String> aliases = new LinkedHashSet<>();
+    if (principal != null && !principal.isBlank() && !principal.equals(subject)) {
+      aliases.add(principal);
+    }
+    return new Approver(
+        subject,
+        List.of(ApprovalRole.deskOf(projectId), ApprovalRole.agentOf(projectId)),
+        aliases);
+  }
+
+  /** The project whose delivery desk this approver is, or null where it holds no desk role. */
+  public String deskProject() {
+    return held.stream()
+        .filter(role -> role.kind() == ApprovalRole.Kind.DESK)
+        .map(ApprovalRole::projectId)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** Whether this approver holds a desk role of any project. */
+  public boolean isDesk() {
+    return held.stream().anyMatch(role -> role.kind() == ApprovalRole.Kind.DESK);
+  }
+
   /** Every name this approver goes by: {@link #name} first, then the aliases. */
   public Set<String> names() {
     Set<String> names = new LinkedHashSet<>();

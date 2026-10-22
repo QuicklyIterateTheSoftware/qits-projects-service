@@ -58,6 +58,32 @@ class ApprovalModelTest {
     assertEquals(ApprovalRole.PERSON, new ApprovalRole(ApprovalRole.Kind.PERSON, "p-a"));
   }
 
+  /** The delivery desk (epic qits-1440): {@code desk}, scoped by project like {@code agent}. */
+  @Test
+  void theDeskRendersAndParsesLikeAnAgentAndIsDeskOfItsOwnProject() {
+    Function<String, String> slugOf = id -> SLUGS.get(id);
+    Function<String, String> idOf = slug -> "alpha".equals(slug) ? "p-a" : null;
+    assertEquals("desk", ApprovalRole.DESK.render(slugOf));
+    assertEquals("desk@alpha", ApprovalRole.deskOf("p-a").render(slugOf));
+    assertEquals(ApprovalRole.DESK, ApprovalRole.parse("desk", idOf));
+    assertEquals(ApprovalRole.deskOf("p-a"), ApprovalRole.parse("desk@alpha", idOf));
+    assertEquals(ApprovalRole.DESK, ApprovalRole.deskOf("p-a").relativeTo("p-a"));
+    assertEquals(ApprovalRole.deskOf("p-b"), ApprovalRole.deskOf("p-b").relativeTo("p-a"));
+    assertEquals(
+        List.of(ApprovalRole.AGENT, ApprovalRole.DESK), ApprovalRole.parseAll("agent desk", idOf));
+    assertEquals(
+        List.of("agent", "desk"),
+        ApprovalRole.renderAll(List.of(ApprovalRole.DESK, ApprovalRole.AGENT), slugOf));
+
+    Approver desk = Approver.desk("tok-desk", "tok-desk", "p-a");
+    assertEquals("tok-desk", desk.name());
+    assertEquals(Set.of("tok-desk"), desk.names());
+    assertTrue(desk.isDesk());
+    assertEquals("p-a", desk.deskProject());
+    assertEquals(List.of(ApprovalRole.DESK, ApprovalRole.AGENT), desk.heldRelativeTo("p-a"));
+    assertFalse(Approver.agent("a", "p-a").isDesk());
+  }
+
   @Test
   void aRequirementAdmitsSomebody() {
     assertThrows(
