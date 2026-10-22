@@ -99,27 +99,26 @@ public class AgentEntitySignals implements RetitleAnnouncer {
    * when a derived block starts or ends. <b>The block's source rides beside the flag</b> —
    * {@code EXPLICIT}, {@code AGENT_WAITING} or {@code BOTH}, {@code null} while unblocked — so a far
    * side that wants to tell "waiting for a person" apart from "blocked" can, without either target
-   * re-deriving the debounce itself.
+   * re-deriving the debounce itself. <b>So does the explicit block's author</b> (qits-1511), so
+   * qits-workspaces can tell a block the agent set on its own work from one somebody else set; the
+   * workspace target alone is told it.
    *
-   * @param entity the row <b>after</b> the write — its title, status and flag are what is sent, and
-   *     its archetype, id, project and slug address the targets
+   * @param entity the row <b>after</b> the write — its title, status and block are what is sent,
+   *     and its archetype and id address the targets
    */
   public void changed(WorkEntity entity) {
-    if (entity == null
-        || (entity.archetype != Archetype.TICKET && entity.archetype != Archetype.EPIC)) {
+    if (entity == null) {
       return;
     }
     EntityBlockState block = EntityBlockState.of(entity);
-    boolean blocked = block.blocked();
-    String blockSource = block.source();
-    tellTheWorkspace(entity, blocked, blockSource);
-    try {
-      refinementEntities.changed(entity.id, entity.title, entity.status, blocked, blockSource);
-    } catch (RuntimeException e) {
-      LOG.warnf(
-          e, "Could not tell the refinement of %s %s its entity changed", entity.archetype,
-          entity.id);
-    }
+    tell(
+        entity.id,
+        entity.archetype,
+        entity.title,
+        entity.status,
+        block.blocked(),
+        block.source(),
+        block.blockedBy());
   }
 
   /**
@@ -131,27 +130,28 @@ public class AgentEntitySignals implements RetitleAnnouncer {
    * it, and the move committed in a transaction of its own — so a {@code find(id)} here answers the
    * row as it stood <em>before</em> the move: the old status, and a flag the move had cleared.
    * Measured, by {@code EntityBlockApiTest}, and the trap {@code TransitionedEntity.edited} records
-   * for the same reason. So the values come off the announcement, and the transient row built here
-   * only carries them and the four fields the targets are addressed by — id, archetype, project and
-   * slug; it is never persisted.
+   * for the same reason. So every value comes off the announcement.
+   *
+   * <p><b>The block is sent as the announcement states it, never re-derived</b> (qits-1511). The
+   * announcement's {@code blocked} is already the EFFECTIVE flag and its {@code blockSource} says
+   * why; rebuilding a row from the flag alone and asking {@code EntityBlockState} again answered
+   * {@code EXPLICIT} for every block, so a ticket blocked only because its agent stood waiting — and
+   * announced in a reshape that kept its status ({@code EntityTransitionService.apply}) — reached
+   * qits-workspaces as an explicit block, which stops its idle-agent nudge. A row the announcement
+   * carries no author for sends none: a status move clears the explicit block anyway.
    */
   public void changed(TransitionedEntity moved) {
     if (moved == null) {
       return;
     }
-    WorkEntity row = new WorkEntity();
-    row.id = moved.id();
-    row.archetype = moved.archetype();
-    row.projectId = moved.projectId();
-    row.number = moved.number();
-    row.slug = moved.slug();
-    row.slugScope = moved.slugScope();
-    row.title = moved.title();
-    row.status = moved.status();
-    // The announcement's flag is already the effective one; carried as the explicit flag of a row
-    // with no agent wait, EntityBlockState reads it back unchanged.
-    row.blocked = Boolean.TRUE.equals(moved.blocked());
-    changed(row);
+    tell(
+        moved.id(),
+        moved.archetype(),
+        moved.title(),
+        moved.status(),
+        Boolean.TRUE.equals(moved.blocked()),
+        moved.blockSource(),
+        moved.blockedBy());
   }
 
   /** The retitle trigger — see the class javadoc. <b>Never throws.</b> */
@@ -160,19 +160,48 @@ public class AgentEntitySignals implements RetitleAnnouncer {
     changed(entity);
   }
 
-  private void tellTheWorkspace(WorkEntity entity, boolean blocked, String blockSource) {
+  /**
+   * The one place both triggers' values reach the two targets. The archetype filter is here, once
+   * (see the class javadoc), and so is the belt over each target.
+   */
+  private void tell(
+      String id,
+      Archetype archetype,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy) {
+    if (archetype != Archetype.TICKET && archetype != Archetype.EPIC) {
+      return;
+    }
+    tellTheWorkspace(id, archetype, title, status, blocked, blockSource, blockedBy);
+    try {
+      refinementEntities.changed(id, title, status, blocked, blockSource);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not tell the refinement of %s %s its entity changed", archetype, id);
+    }
+  }
+
+  private void tellTheWorkspace(
+      String id,
+      Archetype archetype,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy) {
     if (workspaceEntities.isUnsatisfied()) {
       return;
     }
     try {
       // Keyed by the work item (qits-1152): the far side finds its ACTIVE agent, whatever branch it
       // stands on.
-      workspaceEntities.get().changed(entity.id, entity.title, entity.status, blocked, blockSource);
+      workspaceEntities.get().changed(id, title, status, blocked, blockSource, blockedBy);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug, and it may not touch a write that is
       // already recorded.
-      LOG.warnf(
-          e, "Could not tell the agent of %s %s its entity changed", entity.archetype, entity.id);
+      LOG.warnf(e, "Could not tell the agent of %s %s its entity changed", archetype, id);
     }
   }
 }

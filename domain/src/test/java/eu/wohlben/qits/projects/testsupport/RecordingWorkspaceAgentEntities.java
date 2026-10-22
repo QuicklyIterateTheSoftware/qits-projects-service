@@ -25,7 +25,12 @@ public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   /** One signal, exactly as the caller sent it. */
   public record Told(
-      String workId, String title, String status, boolean blocked, String blockSource) {}
+      String workId,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy) {}
 
   private final List<Told> calls = new ArrayList<>();
 
@@ -33,8 +38,13 @@ public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   @Override
   public synchronized void changed(
-      String workId, String title, String status, boolean blocked, String blockSource) {
-    calls.add(new Told(workId, title, status, blocked, blockSource));
+      String workId,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy) {
+    calls.add(new Told(workId, title, status, blocked, blockSource, blockedBy));
     if (failure != null) {
       throw failure;
     }

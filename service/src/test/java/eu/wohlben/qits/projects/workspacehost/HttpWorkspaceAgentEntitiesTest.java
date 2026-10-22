@@ -275,4 +275,61 @@ class HttpWorkspaceAgentEntitiesTest {
         !MAPPER.readValue(received.get(0).body(), Map.class).containsKey("blockSource"),
         "no blockSource key on " + received.get(0).body());
   }
+
+  /**
+   * An explicit block names who set it (qits-1511) — under EXPLICIT and under BOTH — so qits-workspaces
+   * can tell a block the agent set on its own work from one somebody else set.
+   */
+  @Test
+  void anExplicitBlockRelaysWhoSetIt() throws Exception {
+    String base = startServer();
+
+    against(base).changed("t-1", "Puce button", "REFINED", true, "EXPLICIT", "tok-agent-7");
+    against(base).changed("t-2", "Puce button", "REFINED", true, "BOTH", "dana");
+
+    assertEquals(
+        Map.of(
+            "workId", "t-1",
+            "title", "Puce button",
+            "status", "REFINED",
+            "blocked", true,
+            "blockSource", "EXPLICIT",
+            "blockedBy", "tok-agent-7"),
+        MAPPER.readValue(received.get(0).body(), Map.class));
+    assertEquals("dana", MAPPER.readValue(received.get(1).body(), Map.class).get("blockedBy"));
+  }
+
+  /**
+   * A derived block has no author: nothing is sent beside AGENT_WAITING even when a caller hands one
+   * over, nor while unblocked, nor when the author is unknown.
+   */
+  @Test
+  void anAgentWaitingBlockRelaysNoAuthor() throws Exception {
+    String base = startServer();
+
+    against(base).changed("w-1", "X", "REFINED", true, "AGENT_WAITING", "dana");
+    against(base).changed("w-2", "X", "REFINED", false, null, "dana");
+    against(base).changed("w-3", "X", "REFINED", true, "EXPLICIT", null);
+
+    assertEquals(3, received.size());
+    for (Received request : received) {
+      assertTrue(
+          !MAPPER.readValue(request.body(), Map.class).containsKey("blockedBy"),
+          "no blockedBy key on " + request.body());
+    }
+  }
+
+  /** The {@code /blocked} fallback gets the same body, the author included. */
+  @Test
+  void theBlockedFallbackCarriesTheAuthorToo() throws Exception {
+    String base = startServer();
+    unserved.add("/workspaces/api/agent-dispatches/entity");
+
+    against(base).changed("w-1", "X", "REFINED", true, "EXPLICIT", "dana");
+
+    assertEquals(2, received.size(), "the entity door, then the blocked door: " + received);
+    assertEquals("/workspaces/api/agent-dispatches/blocked", received.get(1).path());
+    assertEquals(received.get(0).body(), received.get(1).body());
+    assertEquals("dana", MAPPER.readValue(received.get(1).body(), Map.class).get("blockedBy"));
+  }
 }
