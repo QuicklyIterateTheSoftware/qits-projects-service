@@ -88,6 +88,13 @@ class ConsumerPactsTest {
   /** What pact-jvm finds wrong with the recorded answer, held against the row's interaction. */
   static List<Mismatch> againstRecording(ConsumerGoldenMasters masters, ConsumerRow row) {
     ConsumerGoldenMasters.Recorded recorded = row.recorded(masters).orElseThrow();
+    // A status-only row has no recorded body to read.
+    return against(masters, row, row.consumes().isEmpty() ? null : recorded.body().toString());
+  }
+
+  /** What pact-jvm finds wrong with {@code body}, answered with the recorded status. */
+  static List<Mismatch> against(ConsumerGoldenMasters masters, ConsumerRow row, String body) {
+    ConsumerGoldenMasters.Recorded recorded = row.recorded(masters).orElseThrow();
     IResponse expected =
         ConsumerInteractions.pact(masters, List.of(row))
             .getInteractions()
@@ -95,14 +102,13 @@ class ConsumerPactsTest {
             .asSynchronousRequestResponse()
             .getResponse();
     HashMap<String, List<String>> headers = new HashMap<>();
-    OptionalBody body = OptionalBody.missing();
+    OptionalBody answer = OptionalBody.missing();
     if (!row.consumes().isEmpty()) {
       headers.put("Content-Type", List.of("application/json"));
-      body =
-          OptionalBody.body(
-              recorded.body().toString().getBytes(StandardCharsets.UTF_8), ContentType.Companion.getJSON());
+      answer =
+          OptionalBody.body(body.getBytes(StandardCharsets.UTF_8), ContentType.Companion.getJSON());
     }
-    HttpResponse actual = new HttpResponse(recorded.status(), headers, body);
+    HttpResponse actual = new HttpResponse(recorded.status(), headers, answer);
     return ResponseMatching.responseMismatches(expected, actual);
   }
 

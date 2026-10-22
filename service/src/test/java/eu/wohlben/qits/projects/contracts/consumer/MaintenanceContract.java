@@ -26,6 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The automation content source (qits-1046) reads the kinds catalogue ({@code
  * listAutomationKinds}, state "the automation kinds catalogue"). qits-maintenance records that state
  * from 2026.1021.154504 on; until the pinned golden masters reach that version the row is pending.
+ *
+ * <p>Both automations answers read {@code branch}, {@code bumpId} and {@code failure} as a value or
+ * null ({@link #AUTOMATIONS_NULLABLE}, qits-1516): the recorded state holds a row for every kind it
+ * seeded, but the provider also lists each kind with no row — NOT_APPLICABLE at the fold, since the
+ * trigger accepts that word — with all three null, wherever it sorts among the others.
  */
 final class MaintenanceContract {
 
@@ -49,6 +54,11 @@ final class MaintenanceContract {
           "$.automations[*].resultSha",
           "$.automations[*].updatedAt",
           "$.automations[*].failure");
+
+  /** What an automations entry with no row behind it answers null ({@code NOT_APPLICABLE}). */
+  private static final String[] AUTOMATIONS_NULLABLE = {
+    "$.automations[*].branch", "$.automations[*].bumpId", "$.automations[*].failure"
+  };
 
   private MaintenanceContract() {}
 
@@ -180,7 +190,8 @@ final class MaintenanceContract {
                 assertFalse(answer.automations().isEmpty());
               },
               "POST .../release-requests/{requestId}/automations answering 200 with requestId,"
-                  + " foldSha and automations[] (one with a failure object)"),
+                  + " foldSha and automations[] (one with a failure object)")
+              .withNullable(AUTOMATIONS_NULLABLE),
           new ConsumerRow(
               PROVIDER,
               APP,
@@ -199,7 +210,8 @@ final class MaintenanceContract {
                           .status(p.get("repoName"), p.get("requestId"), p.get("foldSha"))
                           .isPresent()),
               "GET .../release-requests/{requestId}/automations?foldSha answering 200 with the same"
-                  + " shape"),
+                  + " shape")
+              .withNullable(AUTOMATIONS_NULLABLE),
           new ConsumerRow(
               PROVIDER,
               APP,

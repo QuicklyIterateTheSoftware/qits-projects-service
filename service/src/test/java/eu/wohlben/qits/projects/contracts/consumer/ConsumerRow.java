@@ -33,6 +33,10 @@ import java.util.Optional;
  * @param formBody an {@code application/x-www-form-urlencoded} request body, sent exactly as
  *     written (pact-jvm has no provider-state generator for a form body), or null ({@link
  *     #withFormBody}); a row carries this or {@code requestBody}, never both
+ * @param nullable consumed response paths this service reads as "a value, or null" although the
+ *     recording happens to hold a value in every element — the provider legitimately answers null
+ *     there for an entry its state did not record ({@link #withNullable}); each must be one of
+ *     {@code consumes}
  */
 public record ConsumerRow(
     String provider,
@@ -49,7 +53,8 @@ public record ConsumerRow(
     Call call,
     String needs,
     Map<String, String> headers,
-    String formBody) {
+    String formBody,
+    List<String> nullable) {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -58,6 +63,13 @@ public record ConsumerRow(
     query = query == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(query));
     consumes = consumes == null ? List.of() : List.copyOf(consumes);
     headers = headers == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(headers));
+    nullable = nullable == null ? List.of() : List.copyOf(nullable);
+    for (String declared : nullable) {
+      if (!consumes.contains(declared)) {
+        throw new IllegalArgumentException(
+            operationId + ": " + declared + " is nullable but not consumed");
+      }
+    }
     if (formBody != null && requestBody != null) {
       throw new IllegalArgumentException(operationId + ": a JSON body or a form body, not both");
     }
@@ -80,21 +92,28 @@ public record ConsumerRow(
       String needs) {
     this(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, Map.of(), null);
+        status, trigger, call, needs, Map.of(), null, List.of());
   }
 
   /** This row, sending {@code headers} too. */
   public ConsumerRow withHeaders(Map<String, String> headers) {
     return new ConsumerRow(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, headers, formBody);
+        status, trigger, call, needs, headers, formBody, nullable);
   }
 
   /** This row, sending {@code body} as a form instead of a JSON body. */
   public ConsumerRow withFormBody(String body) {
     return new ConsumerRow(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, headers, body);
+        status, trigger, call, needs, headers, body, nullable);
+  }
+
+  /** This row, reading each of {@code paths} as a value or null (see {@code nullable} above). */
+  public ConsumerRow withNullable(String... paths) {
+    return new ConsumerRow(
+        provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
+        status, trigger, call, needs, headers, formBody, List.of(paths));
   }
 
   /** What the row does with the real client, given the mock server and the state's params. */
