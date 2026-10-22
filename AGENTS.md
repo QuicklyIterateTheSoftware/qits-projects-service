@@ -2387,7 +2387,9 @@ keeps it so. The agent-container doors keep their paths:
   sweep) and revokes and clears it when the loop is off; it goes with the desk, and
   `FrontDeskTokenReconcile` reaps unclaimed ones of its kind too. A failed mint is a WARN, not
   FAILED: the desk is usable, the loop just has no credential until the sweep mints it. The sweep
-  also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`.
+  also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`. Since
+  qits-1482 it is in **no** environment: it travels only in the `sessionCredentials` frame, under
+  `front-desk` (see "The sessions' credentials ride the control socket" below).
 - **The session token** (qits-1482, V49) is a third `qits_tok_` per desk, idp kind `desk-session`
   (`qits:agent`), context id and claim the project, `gitRefs []`, in `front_desk.session_token_*`.
   The delivery loop runs in the front desk itself (owner ruling 2026-10-22: one session, no second
@@ -2395,10 +2397,9 @@ keeps it so. The agent-container doors keep their paths:
   daemon's. `FrontDesks.mintSessionIfMissing` mints it beside the desk token (at row creation and
   every sweep); it is revoked with the row (DELETE, project deletion, `removed` of an unplaced row)
   and `FrontDeskTokenReconcile` reaps a live `desk-session` token no row's `session_token_id` names.
-  It is in **no** environment: `FrontDesks.sessionToken(projectId)` holds it for the daemon's coming
-  `sessionCredentials` push over the control socket. A failed mint (an idp that does not know the
-  kind yet) is a WARN and leaves the desk usable. The `QITS_DELIVERY_TOKEN*` env below stays until
-  that push carries the delivery token too.
+  It is in **no** environment: it reaches the daemon only in the `sessionCredentials` frame, under
+  `desk-agents` always and under `front-desk` while the loop is off (below). A failed mint (an idp
+  that does not know the kind yet) is a WARN and leaves the desk usable.
 - **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
   clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
   deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every
@@ -2430,7 +2431,6 @@ belts).
 | `QITS_PROJECTS_DAEMON_DELIVERY` | `on` or `off`: the project's `front_desk.delivery.enabled` |
 | `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
 | `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
-| `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` | only while delivery is `on`: `delivery_token_value` / `delivery_token_subject`, for the `project.delivery` session alone |
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |
@@ -2439,6 +2439,61 @@ belts).
 | `CLAUDE_CONFIG_DIR` / `KIMI_CODE_HOME` | `/claude-home/.claude` / `/claude-home/.kimi-code` |
 | `MAVEN_OPTS` | `-Dmaven.repo.local=/caches/m2` |
 | `npm_config_store_dir` | `/caches/pnpm/store` |
+
+`QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` were in this table until qits-1482 and are
+gone on purpose: no session's token is in the environment, which every process under the
+container's uid can read. `FrontDeskSpecsTest` asserts their absence with the loop on.
+
+### The sessions' credentials ride the control socket (qits-1482)
+
+The desk's daemon runs every session on a credential qits hands it, never on its own
+`QITS_TOKEN`. `deskhost/DeskSessionCredentials` composes the list and sends it as one
+`SessionCredentials` frame (server → daemon, `type: sessionCredentials`) over the project's control
+socket: `{credentials: [{key, token, subject}]}`, **always the full list** — a frame replaces
+everything the daemon held, so a key left out has no credential any more. Three kinds of key:
+
+| key | token | who runs on it |
+| --- | --- | --- |
+| `front-desk` (`SessionCredentials.FRONT_DESK_KEY`) | the desk-delivery token (`qits:agent` + `qits:desk`) while `project.deliveryEnabled` and the row holds one; else the desk-session token | the ONE front desk session, which runs the delivery loop as turns (owner ruling 2026-10-22) |
+| `desk-agents` (`SessionCredentials.DESK_AGENTS_KEY`) | the desk-session token (`qits:agent`), always | every launch a person starts from the desk panel, so a person-started session never holds `qits:desk` |
+| an entity id | that refinement room's own token (`RefinementTokens.credentialOf`) | one per refinement row of the project holding a token — the key qits-770's sessions will use |
+
+**A key with no token is omitted**, never sent blank: after its first frame the daemon **fails
+closed** on a missing key (the session is not launched) rather than falling back to another
+credential. `DeskSessionCredentials.compose(Project, FrontDesk, List<Refinement>)` is pure and
+unit-tested (`DeskSessionCredentialsTest`). Token values are never logged — the protocol's
+`Credential.toString` redacts, and the send logs keys and subjects only.
+
+**When it is sent** (`DeskSessionCredentials.push`, never throws, reads nothing unless a capable
+daemon is connected):
+
+- right after a `hello` is accepted (`AgentDaemonRegistry`, after the `Ack`) — a capability-2
+  daemon defers every launch until this frame arrives (its grace window, PT20S);
+- a session or delivery token minted or revoked (`FrontDesks.mintSessionIfMissing`,
+  `syncDeliveryToken` both ways, `removeDesk` — which sends an empty list — and `removed`);
+- the delivery setting toggled (`FrontDeskHooks.onDeliveryChanged`, the project.yml reconcile);
+- a refinement room created or discarded, or its token minted (`RefinementService` fires the CDI
+  event `refinementhost/RefinementCredentialsChanged`, which this bean observes — so
+  `refinementhost` names no `deskhost` type);
+- once per `FrontDeskSweep` pass, the safety net under all of the above.
+
+Re-sending an unchanged list is harmless: the daemon restarts the front desk session only when the
+`front-desk` credential itself changed (the loop toggled, a rotation). Nothing is sent per
+heartbeat.
+
+**Only to capability 2 or later** (`AgentDaemonRegistry.SESSION_CREDENTIALS_CAPABILITY`, a fixed 2
+rather than `DaemonProtocol.CAPABILITY_VERSION`, which moves with every bump): an older daemon
+drops an unknown frame type, so it is never sent one. Received from a daemon, the frame is ignored
+like `RunCommand`/`Describe` — it is the server's own. (`AgentTunnels` likewise gates on its own
+fixed floor, `TUNNEL_CAPABILITY = 1`, so the bump to 2 did not strand capability-1 daemons.)
+
+**Rollout: the env removal ships together with the daemon pin.** An old daemon (capability 1) reads
+the delivery loop's rights only from `QITS_DELIVERY_TOKEN` and never receives the frame, so a desk
+composed by this release but running an old daemon would **lose the loop's rights** — it would run
+the loop on its own `QITS_TOKEN`, which holds no `qits:desk`. That is why the removal and the move of
+`qits.projects-daemon-protocol.version` to the capability-2 daemon are one release: the spec hash
+moves with both, the spec roll recreates each desk on the new image, and the new daemon reads the
+frame from its first `hello`. Never ship one without the other.
 
 ## Project agent harness
 
@@ -2965,8 +3020,9 @@ Where it differs from the agent harness, each difference is the domain line:
   `RefinementTokenReconcile` (boot + `refinement-credentials.reconcile-interval`, NORMAL only)
   mints for every row holding none and revokes every live `refinement` token no row names (5 min
   mint grace). Revoked by `discard` before the row goes, so `EntityResolutions` revokes it too.
-  `RefinementService.credentialOf` answers `{key: entityId, token, subject}` for the daemon's
-  coming `sessionCredentials` push. **The `entity` claim binds**: `EntitiesAgentAccess.requireEntity`
+  `RefinementService.credentialOf` answers `{key: entityId, token, subject}`; the room's
+  credential is in its project's desk's `sessionCredentials` frame under the entity id (see "The
+  sessions' credentials ride the control socket"). **The `entity` claim binds**: `EntitiesAgentAccess.requireEntity`
   (via `api/RefinementAccess.reach`) answers 403 on every `/refinements/{id}/…` door and on
   `POST|GET /work/{qualifiedId}/refinement` when the bearer carries an `entity` claim naming another
   entity; `GET /projects/{projectId}/refinements` filters to the claimed entity's row rather than

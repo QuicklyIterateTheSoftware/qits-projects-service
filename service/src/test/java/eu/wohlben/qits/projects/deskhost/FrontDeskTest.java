@@ -718,7 +718,8 @@ class FrontDeskTest {
       FrontDesk row = row(projectId);
       assertFalse(desk.take().specHash().equals(row.specHash), "rolled");
       assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
-      assertEquals("qits_tok_" + row.deliveryTokenId, env(row, "QITS_DELIVERY_TOKEN"));
+      assertNotNull(row.deliveryTokenId, "the loop's token is minted");
+      assertNull(env(row, "QITS_DELIVERY_TOKEN"), "it rides the control socket, never the env");
       assertNull(row.rollRequestedAt);
       estateWith(desk.runner(), row.specHash);
     } finally {

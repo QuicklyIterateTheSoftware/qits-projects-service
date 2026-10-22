@@ -144,12 +144,13 @@ class FrontDeskSpecsTest {
   }
 
   /**
-   * The delivery loop (epic qits-1440): on, the desk is told so with its interval and handed the
-   * delivery token and its subject; off, it is told so and holds neither. The token vars sit right
-   * after the desk's own, and the hash moves with the loop.
+   * The delivery loop (epic qits-1440): on or off, the desk is told so with its interval — and since
+   * qits-1482 it holds the delivery token in no environment either way: that token travels only in
+   * the {@code sessionCredentials} frame, under the {@code front-desk} key. The hash still moves
+   * with the loop.
    */
   @Test
-  void theDeliveryTokenIsCarriedOnlyWhileTheLoopIsOn() {
+  void theDeliveryTokenIsInNoSpecWhileTheLoopIsOnOrOff() {
     Project off = project(FrontDeskLifecycle.ON_DEMAND);
     FrontDesk row = row();
     row.deliveryTokenId = "d-1";
@@ -170,16 +171,24 @@ class FrontDeskSpecsTest {
     Map<String, String> onEnv = composed.spec().env();
     assertEquals("on", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
     assertEquals("PT5M", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
-    assertEquals("qits_tok_delivery", onEnv.get("QITS_DELIVERY_TOKEN"));
-    assertEquals("tok-delivery", onEnv.get("QITS_DELIVERY_TOKEN_SUBJECT"));
+    assertFalse(onEnv.containsKey("QITS_DELIVERY_TOKEN"), "the token rides the control socket");
+    assertFalse(onEnv.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
+    onEnv.forEach(
+        (name, value) -> {
+          assertFalse(value.contains("qits_tok_delivery"), name);
+          assertFalse(value.equals("tok-delivery"), name);
+        });
     assertEquals("qits_tok_secret", onEnv.get("QITS_TOKEN"), "the desk's own token is unchanged");
-    List<String> names = List.copyOf(onEnv.keySet());
-    assertEquals(names.indexOf("QITS_TOKEN_SUBJECT") + 1, names.indexOf("QITS_DELIVERY_TOKEN"));
 
     assertFalse(
         composed.hash().equals(
             FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).hash()),
         "turning the loop on moves the hash, so the spec roll recreates the desk");
+    FrontDesk tokenless = row();
+    assertEquals(
+        FrontDeskSpecs.compose(settings("example.test"), on, tokenless, identity(), DOCUMENT).hash(),
+        composed.hash(),
+        "the delivery token never moves the hash");
   }
 
   /** The session token (qits-1482) is in no spec: it goes over the control socket. */

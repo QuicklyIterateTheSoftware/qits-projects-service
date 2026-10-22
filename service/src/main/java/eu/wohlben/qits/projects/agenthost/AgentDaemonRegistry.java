@@ -18,6 +18,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.ProjectInfo;
 import eu.wohlben.qits.projectsdaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.projectsdaemon.protocol.Provisioned;
 import eu.wohlben.qits.projectsdaemon.protocol.RunCommand;
+import eu.wohlben.qits.projectsdaemon.protocol.SessionCredentials;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -79,6 +80,20 @@ public class AgentDaemonRegistry {
    * stamped at most once a minute per project. Optional for the same reason the relay is.
    */
   @Inject Instance<eu.wohlben.qits.projects.deskhost.FrontDeskDemand> frontDeskDemand;
+
+  /**
+   * The desk's session credentials (qits-1482), pushed right after a {@link Hello} is accepted.
+   * Optional for the same reason the relay is — and an {@code Instance<>} because it sends through
+   * this registry.
+   */
+  @Inject Instance<eu.wohlben.qits.projects.deskhost.DeskSessionCredentials> sessionCredentials;
+
+  /**
+   * The first daemon capability that reads {@link SessionCredentials} (qits-1482). A fixed 2 rather
+   * than {@link DaemonProtocol#CAPABILITY_VERSION}, which moves with every later bump; an older
+   * daemon would drop the frame as an unknown type, so it is never sent one.
+   */
+  public static final int SESSION_CREDENTIALS_CAPABILITY = 2;
 
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
@@ -402,6 +417,44 @@ public class AgentDaemonRegistry {
   }
 
   /**
+   * Whether {@code projectId}'s daemon is connected and has said, in its {@link Hello}, that it reads
+   * {@link SessionCredentials} — capability {@value #SESSION_CREDENTIALS_CAPABILITY} or later. A
+   * daemon that has not said hello yet reads as not capable.
+   */
+  public boolean acceptsSessionCredentials(String projectId) {
+    DaemonConnection client = clients.get(projectId);
+    return client != null
+        && client.connection.isOpen()
+        && client.capabilityVersion >= SESSION_CREDENTIALS_CAPABILITY;
+  }
+
+  /**
+   * Hand {@code projectId}'s daemon the full list of its sessions' credentials (qits-1482). Sent
+   * only to a daemon {@link #acceptsSessionCredentials} — never to one below capability {@value
+   * #SESSION_CREDENTIALS_CAPABILITY} — and answers whether it was sent. Never throws: a failed send
+   * is a WARN naming the project, and the next change (or the desk sweep's resend) sends the list
+   * again. Nothing here logs a token: the frame's credentials redact themselves.
+   *
+   * <p>Awaited, like the {@link Ack}: every caller is off the event loop — the {@code hello} handler
+   * runs on a virtual thread, and every other trigger has just written a row.
+   */
+  public boolean sendSessionCredentials(String projectId, SessionCredentials frame) {
+    if (!acceptsSessionCredentials(projectId)) {
+      return false;
+    }
+    DaemonConnection client = clients.get(projectId);
+    try {
+      client.connection.sendTextAndAwait(codec.encode(frame));
+      return true;
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not send the session credentials to the projects-daemon of project %s: %s",
+          projectId, e.getClass().getSimpleName());
+      return false;
+    }
+  }
+
+  /**
    * Whether this frame is evidence that a <b>person or an agent is doing something</b> in the
    * project's container — the one question {@link #lastAgentActivity} stores the answer to, and the
    * only thing that may stamp it.
@@ -449,8 +502,8 @@ public class AgentDaemonRegistry {
    *       is most of the time it could have been acting.
    *   <li>{@link Provisioned}, {@link ProvisionFailed}, {@link ProjectInfo} — boot results and replies
    *       to questions this host asked. Nobody is in the container.
-   *   <li>{@link RunCommand}, {@link Describe}, {@link OpenStream} — this host's own outbound frames,
-   *       handled here only because an echo must not break the socket.
+   *   <li>{@link RunCommand}, {@link Describe}, {@link OpenStream}, {@link SessionCredentials} — this
+   *       host's own outbound frames, handled here only because an echo must not break the socket.
    * </ul>
    *
    * <p>A {@code switch} over the sealed permits-list rather than an {@code instanceof} chain, so
@@ -473,6 +526,7 @@ public class AgentDaemonRegistry {
       case RunCommand ignored -> false;
       case Describe ignored -> false;
       case OpenStream ignored -> false;
+      case SessionCredentials ignored -> false;
     };
   }
 
@@ -512,6 +566,11 @@ public class AgentDaemonRegistry {
         if (capabilityRelay != null && capabilityRelay.isResolvable()) {
           capabilityRelay.get().onDaemonHello(projectId);
         }
+        // The sessions' credentials (qits-1482), now that the daemon has said it reads them: a
+        // capability-2 daemon defers every launch until this frame arrives. Below 2 nothing is sent.
+        if (sessionCredentials != null && sessionCredentials.isResolvable()) {
+          sessionCredentials.get().push(projectId);
+        }
       }
       case Heartbeat ignored -> {
         /* liveness only — the touch above is the whole handling */
@@ -546,6 +605,7 @@ public class AgentDaemonRegistry {
       case RunCommand ignored -> {}
       case Describe ignored -> {}
       case OpenStream ignored -> {}
+      case SessionCredentials ignored -> {}
     }
   }
 

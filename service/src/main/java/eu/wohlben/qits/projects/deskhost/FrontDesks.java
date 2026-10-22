@@ -72,6 +72,8 @@ import org.jboss.logging.Logger;
  * <p><b>The session token</b> (qits-1482) is minted beside the desk token ({@link
  * #mintSessionIfMissing}) and goes with the row; a failed mint is a WARN, never a FAILED desk, and
  * the sweep retries it. It is in no spec: {@link #sessionToken} holds it for the control socket.
+ * Every mint or revoke of the session or the delivery token re-sends the desk's daemon its session
+ * credentials ({@link DeskSessionCredentials#push}).
  *
  * <p><b>The bound subjects</b> — each desk's {@code token_subject} — are also held in memory, loaded
  * at boot and kept with every write here, because the control socket's upgrade check and the
@@ -109,6 +111,9 @@ public class FrontDesks {
   @Inject AgentTunnels tunnels;
 
   @Inject FrontDeskEstates estates;
+
+  /** Re-sent to the desk's daemon whenever a session or delivery token comes or goes (qits-1482). */
+  @Inject DeskSessionCredentials sessionCredentials;
 
   /** Each desk's bound {@code tok-} subject, by project. */
   private final ConcurrentHashMap<String, String> subjects = new ConcurrentHashMap<>();
@@ -278,6 +283,8 @@ public class FrontDesks {
           "Could not revoke the session token of project %s; the token reconcile reaps it",
           projectId);
     }
+    // The row is gone and its tokens with it: a daemon still connected is told it holds nothing.
+    sessionCredentials.push(projectId);
     tunnels.closeTunnel(projectId);
     daemons.forget(projectId);
   }
@@ -368,6 +375,7 @@ public class FrontDesks {
       return;
     }
     LOG.infof("Minted the session token of project %s", projectId);
+    sessionCredentials.push(projectId);
   }
 
   /**
@@ -409,6 +417,7 @@ public class FrontDesks {
         return;
       }
       LOG.infof("Minted the delivery token of project %s", projectId);
+      sessionCredentials.push(projectId);
     } else if (!enabled && row.deliveryTokenId != null) {
       String tokenId = row.deliveryTokenId;
       int cleared =
@@ -424,6 +433,8 @@ public class FrontDesks {
       if (cleared == 0) {
         return;
       }
+      // The front desk session goes back to the session token before the old one stops working.
+      sessionCredentials.push(projectId);
       if (!tokens.revokeDelivery(tokenId)) {
         LOG.warnf(
             "Could not revoke the delivery token of project %s; the token reconcile reaps it",
@@ -831,6 +842,7 @@ public class FrontDesks {
       if (placeable(leftover)) {
         registry.backlogChanged();
       }
+      sessionCredentials.push(projectId);
     }
   }
 

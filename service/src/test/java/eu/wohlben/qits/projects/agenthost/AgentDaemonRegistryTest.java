@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.deskhost.DeskSessionCredentials;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
 import eu.wohlben.qits.projectsdaemon.protocol.CommandChunk;
 import eu.wohlben.qits.projectsdaemon.protocol.CommandExit;
@@ -19,6 +20,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.Hello;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectChanged;
 import eu.wohlben.qits.projectsdaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.projectsdaemon.protocol.Provisioned;
+import eu.wohlben.qits.projectsdaemon.protocol.SessionCredentials;
 import eu.wohlben.qits.projectsdaemon.protocol.Stream;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.inject.Instance;
@@ -544,5 +546,104 @@ class AgentDaemonRegistryTest {
     assertTrue(registry.isDaemonLive(PROJECT), "the reconnect's socket is the live one");
     registry.unregister(PROJECT, second);
     assertFalse(registry.isDaemonLive(PROJECT));
+  }
+
+  // --- sessionCredentials (qits-1482) --------------------------------------------------------------
+
+  private static final SessionCredentials FRAME =
+      new SessionCredentials(
+          List.of(
+              new SessionCredentials.Credential(
+                  SessionCredentials.FRONT_DESK_KEY, "qits_tok_session", "tok-session"),
+              new SessionCredentials.Credential(
+                  SessionCredentials.DESK_AGENTS_KEY, "qits_tok_session", "tok-session")));
+
+  /**
+   * A push of a fixed list straight through the registry's send, so the hello path and the
+   * registry's capability gate are what is tested ({@code DeskSessionCredentialsTest} has the list).
+   */
+  private void wireSessionCredentials() {
+    DeskSessionCredentials credentials =
+        new DeskSessionCredentials() {
+          @Override
+          public boolean push(String projectId) {
+            return registry.sendSessionCredentials(projectId, FRAME);
+          }
+        };
+    @SuppressWarnings("unchecked")
+    Instance<DeskSessionCredentials> instance =
+        (Instance<DeskSessionCredentials>)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {Instance.class},
+                (proxy, method, args) ->
+                    switch (method.getName()) {
+                      case "isResolvable" -> Boolean.TRUE;
+                      case "get" -> credentials;
+                      default -> null;
+                    });
+    registry.sessionCredentials = instance;
+  }
+
+  private List<SessionCredentials> credentialFrames() {
+    DaemonMessageCodec codec = registry.codec;
+    return sent.stream()
+        .map(codec::decode)
+        .filter(SessionCredentials.class::isInstance)
+        .map(SessionCredentials.class::cast)
+        .toList();
+  }
+
+  /** A capability-2 hello is acked, then handed the full list at once. */
+  @Test
+  void aCapabilityTwoHelloIsSentTheSessionCredentialsRightAfterTheAck() {
+    wireSessionCredentials();
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    registry.onMessage(PROJECT, connection, new Hello(PROJECT, "demo-demo", 2, "2026.1022.1", null));
+
+    assertEquals(2, sent.size());
+    assertTrue(sent.get(0).contains("\"type\":\"ack\""), "the ack comes first");
+    assertEquals(List.of(FRAME), credentialFrames());
+    assertTrue(registry.acceptsSessionCredentials(PROJECT));
+  }
+
+  /** Below capability 2 the frame is never sent — not on hello, not on a change. */
+  @Test
+  void aDaemonBelowCapabilityTwoIsNeverSentTheFrame() {
+    wireSessionCredentials();
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    registry.onMessage(PROJECT, connection, new Hello(PROJECT, "demo-demo", 1, "2026.1021.1", null));
+
+    assertEquals(1, sent.size(), "the ack and nothing else");
+    assertFalse(registry.acceptsSessionCredentials(PROJECT));
+    assertFalse(registry.sendSessionCredentials(PROJECT, FRAME));
+    assertEquals(List.of(), credentialFrames());
+  }
+
+  /** A daemon that has not said hello yet has announced nothing, so it reads as not capable. */
+  @Test
+  void noFrameBeforeTheHelloAndNoneToAProjectWithNoDaemon() {
+    registry.register(PROJECT, connection("c1"));
+
+    assertFalse(registry.sendSessionCredentials(PROJECT, FRAME));
+    assertFalse(registry.sendSessionCredentials("project-unknown", FRAME));
+    assertEquals(List.of(), sent);
+  }
+
+  /** The frame is the server's own: one echoed back is dropped, and it is no evidence of use. */
+  @Test
+  void anEchoedSessionCredentialsFrameIsIgnored() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    registry.onMessage(PROJECT, connection, FRAME);
+
+    assertEquals(List.of(), sent);
+    assertEquals(List.of(), fired);
+    assertTrue(registry.lastAgentActivityAt(PROJECT).isEmpty(), "not a frame that stamps use");
   }
 }

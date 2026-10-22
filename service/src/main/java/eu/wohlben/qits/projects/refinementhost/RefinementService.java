@@ -24,6 +24,7 @@ import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -92,6 +93,12 @@ public class RefinementService {
 
   /** The room's own token (qits-1482): minted at the open, revoked by the discard. */
   @Inject RefinementTokens tokens;
+
+  /**
+   * Told whenever a room's token or row comes or goes (qits-1482), so the front desk re-sends its
+   * daemon the session credentials. Null in a hand-built service; a fire that fails is a WARN.
+   */
+  @Inject Event<RefinementCredentialsChanged> credentialsChanged;
   @Inject TechnicalProcessRegistry processes;
   @Inject RefinementChangePublisher changes;
   @Inject RefinementDrift drift;
@@ -243,7 +250,12 @@ public class RefinementService {
     LOG.infof(
         "Created refinement %s for %s %s on %s (%s)",
         refinement.id, noun, entityId, ProjectService.wrapperName(project), branch);
-    return mintTokenIfMissing(refinement);
+    Refinement opened = mintTokenIfMissing(refinement);
+    if (opened.tokenId == null) {
+      // A mint announces itself; a room created without one is a row the list should still hear of.
+      announceCredentialsChanged(refinement.projectId);
+    }
+    return opened;
   }
 
   // ---- the room's own token (qits-1482) -----------------------------------------------------
@@ -300,6 +312,7 @@ public class RefinementService {
     LOG.infof(
         "Minted the token of refinement %s (entity %s) as %s",
         refinement.id, refinement.entityId, minted.subject());
+    announceCredentialsChanged(refinement.projectId);
     return refinement;
   }
 
@@ -311,6 +324,23 @@ public class RefinementService {
     return QuarkusTransaction.requiringNew()
         .call(() -> store.findByIdOptional(id))
         .flatMap(RefinementTokens::credentialOf);
+  }
+
+  /**
+   * Announce that {@code projectId}'s refinement credentials may have moved (qits-1482). Never
+   * throws: the desk's sweep re-sends the list anyway, so a failure here costs one interval.
+   */
+  private void announceCredentialsChanged(String projectId) {
+    if (credentialsChanged == null || projectId == null) {
+      return;
+    }
+    try {
+      credentialsChanged.fire(new RefinementCredentialsChanged(projectId));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not announce a refinement credential change for project %s: %s",
+          projectId, e.getMessage());
+    }
   }
 
   /**
@@ -515,6 +545,7 @@ public class RefinementService {
     revokeToken(refinement);
     deleteBranchQuietly(refinement);
     QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
+    announceCredentialsChanged(refinement.projectId);
     lastErrors.remove(id);
     drift.forget(id);
     LOG.infof("Discarded refinement %s (entity %s)", id, refinement.entityId);
@@ -594,6 +625,7 @@ public class RefinementService {
                 .call(() -> store.findByIdOptional(id))
                 .orElse(refinement));
         QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
+        announceCredentialsChanged(refinement.projectId);
         process.appendLine("container", "The refinement was torn down.");
         process.settleSegment("container", false);
         process.failProvision(
