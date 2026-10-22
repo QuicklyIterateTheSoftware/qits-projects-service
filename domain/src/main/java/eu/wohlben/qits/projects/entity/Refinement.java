@@ -92,6 +92,21 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   @Column(name = "commissioned_client_secret", columnDefinition = "text")
   public String commissionedClientSecret;
 
+  /**
+   * This room's own {@code qits_tok_} at qits-idp (qits-1482, V50): kind {@code refinement}, claims
+   * {@code {project, entity}}. Its id, to revoke it with; null until a mint has landed.
+   */
+  @Column(name = "token_id", columnDefinition = "text")
+  public String tokenId;
+
+  /** The token's value — a credential, never logged and never on the wire of a read. */
+  @Column(name = "token_value", columnDefinition = "text")
+  public String tokenValue;
+
+  /** The {@code sub} the token introspects as ({@code tok-…}). */
+  @Column(name = "token_subject", columnDefinition = "text")
+  public String tokenSubject;
+
   @Column(name = "created_at", nullable = false)
   public Instant createdAt;
 

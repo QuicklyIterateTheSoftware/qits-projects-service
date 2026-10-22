@@ -4,6 +4,7 @@ import eu.wohlben.qits.projects.entity.RefinementPromptDraft;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.refinementhost.RefinementPromptDrafts;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotNull;
@@ -27,6 +28,8 @@ public class RefinementPromptDraftController {
 
   @Inject RefinementService refinements;
 
+  @Inject SecurityIdentity identity;
+
   @Inject RefinementPromptDrafts drafts;
 
   public record SaveRequest(@NotNull String content, String serializedPrompt) {}
@@ -46,7 +49,7 @@ public class RefinementPromptDraftController {
   @GET
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public DraftResponse get(@PathParam("id") long id) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     RefinementPromptDraft draft =
         drafts.find(id).orElseThrow(() -> new NotFoundException("No draft"));
     return new DraftResponse(dto(draft));
@@ -54,14 +57,14 @@ public class RefinementPromptDraftController {
 
   @PUT
   public DraftResponse save(@PathParam("id") long id, SaveRequest request) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     return new DraftResponse(dto(drafts.save(id, request.content(), request.serializedPrompt())));
   }
 
   /** 204 always — deleting an absent draft is the asked-for state. */
   @DELETE
   public void delete(@PathParam("id") long id) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     drafts.delete(id);
   }
 

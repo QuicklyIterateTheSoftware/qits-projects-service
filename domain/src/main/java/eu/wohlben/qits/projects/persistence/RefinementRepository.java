@@ -23,6 +23,16 @@ public class RefinementRepository implements PanacheRepositoryBase<Refinement, L
     return list("commissionedClientId is not null");
   }
 
+  /** Every refinement holding its own token (qits-1482) — the token reconcile's inventory. */
+  public List<Refinement> holdingAToken() {
+    return list("tokenId is not null");
+  }
+
+  /** Every refinement holding no token yet — what the token reconcile mints for. */
+  public List<Refinement> holdingNoToken() {
+    return list("tokenId is null order by id");
+  }
+
   /** A project's refinements, oldest first — the activity bar's row and the find-only read. */
   public List<Refinement> listByProject(String projectId) {
     return list("projectId = ?1 order by createdAt, id", projectId);

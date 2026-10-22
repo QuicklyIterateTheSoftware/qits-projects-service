@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.api;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
+import java.util.Optional;
 
 /**
  * <b>What an agent may write on the entity surface: the rows of its own project, and nothing
@@ -61,6 +62,39 @@ public final class EntitiesAgentAccess {
         && !AgentAccess.coversProject(identity, projectId)) {
       throw new ForbiddenException("An agent may write only the entities of its own project.");
     }
+  }
+
+  /**
+   * Refuses a bearer bound to one entity — its token carries an {@link EntitiesPrincipal#ENTITY_CLAIM}
+   * claim, as a refinement room's own token does (qits-1482) — when that entity is not {@code
+   * entityId}. A bearer with no such claim (a person, a platform service, a workspace agent, the
+   * desk) passes untouched: the claim only ever narrows. Called beside {@link #requireProject} on
+   * every door that names a refinement, with the row's {@code entityId}, after the row is resolved
+   * so an unknown id still answers 404.
+   *
+   * <p>Unlike {@link #requireProject} it applies whatever roles the caller holds, because nothing
+   * wider than {@code qits:agent} is ever minted with an entity claim, and a token that somehow
+   * were would still have been minted to reach one room.
+   */
+  public static void requireEntity(SecurityIdentity identity, String entityId) {
+    Optional<String> bound = EntitiesPrincipal.entityOf(identity);
+    if (bound.isPresent() && !bound.get().equals(entityId)) {
+      throw new ForbiddenException(
+          "This credential is bound to entity "
+              + bound.get()
+              + " and may not reach the refinement of entity "
+              + entityId
+              + ".");
+    }
+  }
+
+  /**
+   * True when this caller may see the refinement of {@code entityId}: the listing's filter, the same
+   * rule as {@link #requireEntity} answered rather than thrown.
+   */
+  public static boolean seesEntity(SecurityIdentity identity, String entityId) {
+    Optional<String> bound = EntitiesPrincipal.entityOf(identity);
+    return bound.isEmpty() || bound.get().equals(entityId);
   }
 
   /**

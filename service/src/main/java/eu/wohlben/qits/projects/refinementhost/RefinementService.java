@@ -89,6 +89,9 @@ public class RefinementService {
   @Inject RefinementDaemonRegistry registry;
   @Inject RefinementTunnels tunnels;
   @Inject RefinementCommissions commissions;
+
+  /** The room's own token (qits-1482): minted at the open, revoked by the discard. */
+  @Inject RefinementTokens tokens;
   @Inject TechnicalProcessRegistry processes;
   @Inject RefinementChangePublisher changes;
   @Inject RefinementDrift drift;
@@ -172,7 +175,8 @@ public class RefinementService {
     Optional<Refinement> existing =
         QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
     if (existing.isPresent()) {
-      return existing.get();
+      // A room opened while qits-idp was away holds no token yet; the open is a cheap retry.
+      return mintTokenIfMissing(existing.get());
     }
     WorkEntity entity = entities.get(entityId); // 404, of any archetype
     String noun = nounOf(entity);
@@ -232,14 +236,102 @@ public class RefinementService {
       Optional<Refinement> won =
           QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
       if (won.isPresent()) {
-        return won.get();
+        return mintTokenIfMissing(won.get());
       }
       throw maybeRace;
     }
     LOG.infof(
         "Created refinement %s for %s %s on %s (%s)",
         refinement.id, noun, entityId, ProjectService.wrapperName(project), branch);
+    return mintTokenIfMissing(refinement);
+  }
+
+  // ---- the room's own token (qits-1482) -----------------------------------------------------
+
+  /**
+   * Mint the room's token when the row holds none, and answer the row as it now stands. <b>Never
+   * throws</b>: a mint that fails is one WARN and the row answered without a token — opening a room
+   * must not depend on qits-idp, and {@link RefinementTokenReconcile} mints it on its next pass. The
+   * token is stored only on a row that still holds none; a lost race (or a row discarded meanwhile)
+   * revokes what was minted, so one row never orphans a second live token.
+   */
+  public Refinement mintTokenIfMissing(Refinement refinement) {
+    if (refinement == null || refinement.id == null || refinement.tokenId != null) {
+      return refinement;
+    }
+    RefinementTokens.Minted minted;
+    try {
+      minted = tokens.mint(refinement.id, refinement.projectId, refinement.entityId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not mint the token of refinement %s (entity %s); the token reconcile retries it: %s",
+          refinement.id, refinement.entityId, e.getMessage());
+      return refinement;
+    }
+    int stored;
+    try {
+      stored =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      store.update(
+                          "tokenId = ?1, tokenValue = ?2, tokenSubject = ?3"
+                              + " where id = ?4 and tokenId is null",
+                          minted.tokenId(),
+                          minted.token(),
+                          minted.subject(),
+                          refinement.id));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not store the token of refinement %s; revoking it, the reconcile mints again: %s",
+          refinement.id, e.getMessage());
+      tokens.revoke(minted.tokenId());
+      return refinement;
+    }
+    if (stored == 0) {
+      tokens.revoke(minted.tokenId());
+      return QuarkusTransaction.requiringNew()
+          .call(() -> store.findByIdOptional(refinement.id))
+          .orElse(refinement);
+    }
+    refinement.tokenId = minted.tokenId();
+    refinement.tokenValue = minted.token();
+    refinement.tokenSubject = minted.subject();
+    LOG.infof(
+        "Minted the token of refinement %s (entity %s) as %s",
+        refinement.id, refinement.entityId, minted.subject());
     return refinement;
+  }
+
+  /**
+   * The credential a refinement's session runs on — {@code {key: entityId, token, subject}} — for
+   * the daemon's {@code sessionCredentials} push (qits-1482 §3). Empty while the row holds none.
+   */
+  public Optional<RefinementTokens.SessionCredential> credentialOf(long id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> store.findByIdOptional(id))
+        .flatMap(RefinementTokens::credentialOf);
+  }
+
+  /**
+   * Revoke the token the row holds, before the row goes. Never throws: a revoke that could not reach
+   * qits-idp is a WARN, and {@link RefinementTokenReconcile} reaps the token once no row names it.
+   */
+  private void revokeToken(Refinement refinement) {
+    if (refinement.tokenId == null) {
+      return;
+    }
+    boolean gone;
+    try {
+      gone = tokens.revoke(refinement.tokenId);
+    } catch (RuntimeException e) {
+      gone = false;
+    }
+    if (!gone) {
+      LOG.warnf(
+          "Could not revoke the token of refinement %s; the token reconcile reaps it",
+          refinement.id);
+    }
   }
 
   /**
@@ -407,8 +499,9 @@ public class RefinementService {
   }
 
   /**
-   * The end of a refinement: container, volume, credential, branch, row — in that order, so a
-   * failure leaves nothing orphaned ahead of it. The entity's DROPPED transition is its own call on
+   * The end of a refinement: container, volume, credential (the commissioned client and the room's
+   * own token, qits-1482), branch, row — in that order, so a failure leaves nothing orphaned ahead
+   * of it. The entity's DROPPED transition is its own call on
    * its archetype's surface; this tears down only what this service hosts.
    */
   public void discard(long id) {
@@ -419,6 +512,7 @@ public class RefinementService {
     stopBeforeDelete(id);
     runtime.delete(id);
     commissions.handBack(refinement);
+    revokeToken(refinement);
     deleteBranchQuietly(refinement);
     QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
     lastErrors.remove(id);
@@ -495,6 +589,10 @@ public class RefinementService {
         stopBeforeDelete(id);
         runtime.delete(id);
         commissions.handBack(refinement);
+        revokeToken(
+            QuarkusTransaction.requiringNew()
+                .call(() -> store.findByIdOptional(id))
+                .orElse(refinement));
         QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
         process.appendLine("container", "The refinement was torn down.");
         process.settleSegment("container", false);

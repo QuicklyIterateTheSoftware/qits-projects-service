@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import eu.wohlben.qits.projects.entity.RefinementPromptAttachment;
 import eu.wohlben.qits.projects.refinementhost.RefinementPromptAttachments;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotBlank;
@@ -31,6 +32,8 @@ import java.util.List;
 public class RefinementPromptAttachmentController {
 
   @Inject RefinementService refinements;
+
+  @Inject SecurityIdentity identity;
 
   @Inject RefinementPromptAttachments attachments;
 
@@ -63,7 +66,7 @@ public class RefinementPromptAttachmentController {
   @GET
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public ListResponse list(@PathParam("id") long id) {
-    var refinement = refinements.get(id);
+    var refinement = RefinementAccess.reach(refinements, identity, id);
     var rows = attachments.list(id);
     java.util.Set<String> inUse =
         // Dossier assets are epic-owned (epics V8), so a ticket's room answers "in use" for nothing:
@@ -76,7 +79,7 @@ public class RefinementPromptAttachmentController {
   /** 201 with the row sans bytes — the caller just sent them. */
   @POST
   public Response add(@PathParam("id") long id, NewAttachment request) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     RefinementPromptAttachment row =
         attachments.add(id, request.label(), request.source(), request.dataBase64());
     return Response.status(Response.Status.CREATED).entity(dto(row, false)).build();
@@ -88,7 +91,7 @@ public class RefinementPromptAttachmentController {
       @PathParam("id") long id,
       @PathParam("attachmentId") String attachmentId,
       NewAttachment request) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     return dto(
         attachments.replace(id, attachmentId, request.label(), request.source(), request.dataBase64()),
         false);
@@ -100,7 +103,7 @@ public class RefinementPromptAttachmentController {
   @Path("/{attachmentId}/content")
   @Produces({"image/png", "image/jpeg"})
   public Response content(@PathParam("id") long id, @PathParam("attachmentId") String attachmentId) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     RefinementPromptAttachment row = attachments.get(id, attachmentId);
     return Response.ok(row.bytes, row.mimeType).header("Cache-Control", "no-cache").build();
   }
@@ -108,7 +111,7 @@ public class RefinementPromptAttachmentController {
   @DELETE
   @Path("/{attachmentId}")
   public void delete(@PathParam("id") long id, @PathParam("attachmentId") String attachmentId) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     attachments.delete(id, attachmentId);
   }
 

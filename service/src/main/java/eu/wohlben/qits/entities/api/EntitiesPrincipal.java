@@ -29,7 +29,34 @@ public final class EntitiesPrincipal {
    */
   public static final String AGENT_CLAIM = "agent";
 
+  /**
+   * The claim a refinement room's own token carries (qits-1482, {@code RefinementTokens}): the id
+   * of the one entity whose refinement it may reach. {@code EntitiesAgentAccess.requireEntity}
+   * binds to it.
+   */
+  public static final String ENTITY_CLAIM = "entity";
+
   private EntitiesPrincipal() {}
+
+  /**
+   * The bearer's {@code entity} claim, trimmed; empty for a caller without a token or without the
+   * claim. Not parsed as a uuid: a malformed claim must still bind (and so match nothing), never
+   * read as "unbound".
+   */
+  public static Optional<String> entityOf(SecurityIdentity identity) {
+    if (identity == null || !(identity.getPrincipal() instanceof JsonWebToken jwt)) {
+      return Optional.empty();
+    }
+    Object claim = jwt.getClaim(ENTITY_CLAIM);
+    if (claim == null) {
+      return Optional.empty();
+    }
+    String value =
+        claim instanceof JsonString json
+            ? json.getString()
+            : claim instanceof String text ? text : claim.toString();
+    return Optional.of(value.trim());
+  }
 
   public static String changedBy(SecurityIdentity identity) {
     if (identity == null || identity.isAnonymous() || identity.getPrincipal() == null) {

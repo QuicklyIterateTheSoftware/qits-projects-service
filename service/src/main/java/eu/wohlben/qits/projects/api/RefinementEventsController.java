@@ -4,6 +4,7 @@ import eu.wohlben.qits.projects.refinementhost.RefinementEventBroadcaster;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Multi;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -29,13 +30,15 @@ public class RefinementEventsController {
 
   @Inject RefinementService refinements;
 
+  @Inject SecurityIdentity identity;
+
   /** {@code @Blocking} because the subscribe 404s an unknown row, which is a database read. */
   @GET
   @Produces(MediaType.SERVER_SENT_EVENTS)
   @RestStreamElementType(MediaType.TEXT_PLAIN)
   @Blocking
   public Multi<String> events(@PathParam("id") long id) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     return broadcaster.withHeartbeat(broadcaster.subscribe(id));
   }
 }
