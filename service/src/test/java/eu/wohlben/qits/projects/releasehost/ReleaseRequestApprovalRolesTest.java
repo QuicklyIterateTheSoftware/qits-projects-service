@@ -229,7 +229,13 @@ public class ReleaseRequestApprovalRolesTest {
     String body = told.get(0).body;
     assertTrue(body.contains(".config/qits/release.yml"), body);
     assertTrue(
-        body.contains("qits release-request approve " + qualifiedIdOf(declarationRepoId, id) + " --sha " + fold),
+        body.contains(
+            "qits release-request --project "
+                + projectId
+                + " approve --request "
+                + qualifiedIdOf(declarationRepoId, id)
+                + " --sha "
+                + fold),
         body);
     assertTrue(body.contains("Who may run it: agent, person."), body);
 

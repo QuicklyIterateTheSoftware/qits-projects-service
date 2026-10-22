@@ -64,7 +64,8 @@ public class WorkItemApprovalComments implements ApprovalRequirementComments {
     if (items.isEmpty()) {
       return;
     }
-    String body = body(opened, changesLink(opened));
+    String slug = slug(opened);
+    String body = body(opened, changesLink(opened, slug), slug);
     for (CommitSubjectEntities.NamedEntity item : items.values()) {
       try {
         QuarkusTransaction.suspendingExisting()
@@ -136,30 +137,41 @@ public class WorkItemApprovalComments implements ApprovalRequirementComments {
     return Optional.empty();
   }
 
-  /** The request's Changes tab, or null where this deployment names no domain. */
-  private String changesLink(Opened opened) {
-    String base = domain.map(String::trim).filter(value -> !value.isEmpty()).orElse(null);
-    if (base == null || opened.projectId() == null) {
+  /** The request's project slug, or null where it could not be read. */
+  private String slug(Opened opened) {
+    if (opened.projectId() == null) {
       return null;
     }
     try {
-      String slug =
-          QuarkusTransaction.requiringNew().call(() -> projects.get(opened.projectId()).slug);
-      return "https://projects.qits."
-          + base
-          + "/"
-          + slug
-          + "/release-requests/"
-          + opened.releaseRequestQualifiedId()
-          + "?tab=changes";
+      return QuarkusTransaction.requiringNew().call(() -> projects.get(opened.projectId()).slug);
     } catch (RuntimeException e) {
       LOG.debugf(e, "Could not read the slug of project %s", opened.projectId());
       return null;
     }
   }
 
-  /** The comment: what changed, where to read it, and the command, with who may run it. */
-  static String body(Opened opened, String link) {
+  /** The request's Changes tab, or null where this deployment names no domain or no slug. */
+  private String changesLink(Opened opened, String slug) {
+    String base = domain.map(String::trim).filter(value -> !value.isEmpty()).orElse(null);
+    if (base == null || slug == null) {
+      return null;
+    }
+    return "https://projects.qits."
+        + base
+        + "/"
+        + slug
+        + "/release-requests/"
+        + opened.releaseRequestQualifiedId()
+        + "?tab=changes";
+  }
+
+  /**
+   * The comment: what changed, where to read it, and the command, with who may run it.
+   *
+   * @param slug the project's slug for the {@code --project} flag, or null to fall back to the
+   *     project id (the command still parses; the id is simply less readable)
+   */
+  static String body(Opened opened, String link, String slug) {
     StringBuilder text = new StringBuilder();
     text.append("**Release request `")
         .append(opened.releaseRequestQualifiedId())
@@ -186,7 +198,9 @@ public class WorkItemApprovalComments implements ApprovalRequirementComments {
     if (link != null) {
       text.append("Changes: ").append(link).append("\n\n");
     }
-    text.append("Approve it with:\n\n    qits release-request approve ")
+    text.append("Approve it with:\n\n    qits release-request --project ")
+        .append(slug != null ? slug : opened.projectId())
+        .append(" approve --request ")
         .append(opened.releaseRequestQualifiedId())
         .append(" --sha ")
         .append(opened.mergedSha())
