@@ -572,7 +572,7 @@ public class FrontDesks {
                     .createNativeQuery(
                         "update front_desk set runner_id = :runner, placed_at = :now,"
                             + " spec_json = cast(:json as jsonb), spec_hash = :hash,"
-                            + " failure_detail = null"
+                            + " failure_detail = null, roll_requested_at = null"
                             + " where project_id = :project and runner_id is null"
                             + " and desired = 'RUNNING'")
                     .setParameter("runner", runnerId)
@@ -583,7 +583,10 @@ public class FrontDesks {
                     .executeUpdate());
   }
 
-  /** Store a rolled spec on a desk still on {@code runnerId}; 1 when it landed. */
+  /**
+   * Store a rolled spec on a desk still on {@code runnerId}; 1 when it landed. A pending roll
+   * request (qits-1514) is answered by it, so it is cleared in the same update.
+   */
   int storeSpec(String projectId, UUID runnerId, FrontDeskSpecs.Composed composed) {
     return QuarkusTransaction.requiringNew()
         .call(
@@ -591,12 +594,44 @@ public class FrontDesks {
                 desks
                     .getEntityManager()
                     .createNativeQuery(
-                        "update front_desk set spec_json = cast(:json as jsonb), spec_hash = :hash"
+                        "update front_desk set spec_json = cast(:json as jsonb), spec_hash = :hash,"
+                            + " roll_requested_at = null"
                             + " where project_id = :project and runner_id = :runner")
                     .setParameter("json", composed.json())
                     .setParameter("hash", composed.hash())
                     .setParameter("project", projectId)
                     .setParameter("runner", runnerId)
+                    .executeUpdate());
+  }
+
+  /**
+   * Ask for the desk of {@code projectId} to roll between turns (qits-1514): a front-desk settings
+   * change. Answers the rows touched — 0 for a project with no desk.
+   */
+  public int requestRoll(String projectId, Instant now) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                desks
+                    .getEntityManager()
+                    .createNativeQuery(
+                        "update front_desk set roll_requested_at = :now where project_id = :project")
+                    .setParameter("now", now)
+                    .setParameter("project", projectId)
+                    .executeUpdate());
+  }
+
+  /** Drop a pending roll request: the composed spec is the applied one, nothing to roll. */
+  public int clearRollRequest(String projectId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                desks
+                    .getEntityManager()
+                    .createNativeQuery(
+                        "update front_desk set roll_requested_at = null"
+                            + " where project_id = :project and roll_requested_at is not null")
+                    .setParameter("project", projectId)
                     .executeUpdate());
   }
 

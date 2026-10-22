@@ -31,7 +31,8 @@ import org.hibernate.type.SqlTypes;
  *       loop's, only while the project's loop is enabled (epic qits-1440).
  *   <li><b>The spec</b> — {@link #specJson} is the spec last <em>sent</em> (the applied one) and
  *       {@link #specHash} its SHA-256 over canonical JSON; the runner labels the container with the
- *       hash and recreates it when an estate carries another.
+ *       hash and recreates it when an estate carries another. {@link #rollRequestedAt} marks a
+ *       settings change waiting to roll between turns (qits-1514).
  *   <li><b>The report</b> — {@code reported_*} is the runner's last inventory of the desk; {@link
  *       #failureDetail} why it is not usable, when it is not.
  * </ul>
@@ -94,6 +95,15 @@ public class FrontDesk extends PanacheEntityBase {
 
   @Column(name = "spec_hash")
   public String specHash;
+
+  /**
+   * When a front-desk settings change ({@code front_desk.lifecycle} or {@code front_desk.delivery})
+   * asked for the desk to roll (qits-1514, V51), or null when none is pending. While set, the spec
+   * roll replaces a RUNNING desk's spec as soon as its agent is not busy, without the quiet window;
+   * storing a spec, or finding the composed spec already applied, clears it.
+   */
+  @Column(name = "roll_requested_at")
+  public Instant rollRequestedAt;
 
   @Column(name = "reported_state")
   public String reportedState;

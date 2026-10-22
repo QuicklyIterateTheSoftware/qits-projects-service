@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
+import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
 import eu.wohlben.qits.projects.control.DeskRunners;
 import eu.wohlben.qits.projects.control.ProjectConfig;
@@ -24,6 +26,8 @@ import eu.wohlben.qits.projects.persistence.DeskRunnerRepository;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.security.MockIdpTenant;
+import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol.AgentState;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerBinary;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerProtocol;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskState;
@@ -39,6 +43,7 @@ import eu.wohlben.qits.runner.protocol.Ack;
 import eu.wohlben.qits.runner.protocol.Nothing;
 import eu.wohlben.qits.runner.protocol.Reserve;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
+import io.quarkus.arc.Arc;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.common.http.TestHTTPResource;
@@ -50,6 +55,7 @@ import jakarta.inject.Inject;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -639,6 +645,194 @@ class FrontDeskTest {
     } finally {
       daemons.forget(projectId);
     }
+  }
+
+  // --- a settings change rolls between turns (qits-1514) -------------------------------------------
+
+  /** A placed desk its runner reports RUNNING on the spec it was taken with. */
+  private record Running(String projectId, FakeDeskRunner runner, Take take) {}
+
+  private Running placedRunning(String clientId, FrontDeskLifecycle lifecycle) throws Exception {
+    runner(clientId, 2);
+    FakeDeskRunner runner = greeted(clientId);
+    String projectId = project(lifecycle);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    runner.send(new Reserve());
+    Take take = runner.expect(Take.class);
+    runner.send(
+        new Inventory(
+            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
+    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "not RUNNING");
+    return new Running(projectId, runner, take);
+  }
+
+  private static AgentDaemonRegistry daemons() {
+    return Arc.container()
+        .instance(AgentDaemonRegistry.class)
+        .get();
+  }
+
+  /**
+   * The desk's agent was in use a minute ago and its rollup now says {@code state} — the frame a
+   * daemon sends, which also stamps the use clock.
+   */
+  private void usedRecentlyAndNow(String projectId, String state) {
+    daemons()
+        .onMessage(
+            projectId,
+            null,
+            new AgentActivity(
+                "cmd-1", "session-1", state, "Stop", null, null, 0L));
+    daemons().touchAgentActivity(projectId, Instant.now().minus(Duration.ofMinutes(1)));
+    assertFalse(specRoll.quiet(projectId, Instant.now()), "inside the quiet window");
+  }
+
+  /** The first estate whose desk carries {@code hash}, skipping earlier ones. */
+  private static Estate estateWith(FakeDeskRunner runner, String hash) throws InterruptedException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
+    while (System.nanoTime() < deadline) {
+      Estate estate = runner.await(Estate.class);
+      if (!estate.desks().isEmpty() && hash.equals(estate.desks().get(0).specHash())) {
+        return estate;
+      }
+    }
+    return fail("no estate carried spec " + hash);
+  }
+
+  private static String env(FrontDesk row, String name) {
+    return FrontDeskSpecs.parse(row.specJson).env().get(name);
+  }
+
+  /** A delivery flip on a desk used a minute ago but idle now rolls it at once. */
+  @Test
+  void aDeliveryFlipRollsARecentlyUsedIdleDeskAtOnce() throws Exception {
+    Running desk = placedRunning("fd-settings-idle", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.IDLE);
+      setDelivery(projectId, true);
+
+      hooks.onDeliveryChanged(projectId, delivery(true));
+
+      FrontDesk row = row(projectId);
+      assertFalse(desk.take().specHash().equals(row.specHash), "rolled");
+      assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
+      assertEquals("qits_tok_" + row.deliveryTokenId, env(row, "QITS_DELIVERY_TOKEN"));
+      assertNull(row.rollRequestedAt);
+      estateWith(desk.runner(), row.specHash);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /** Busy when the flip lands, it waits for the turn — not for the quiet window. */
+  @Test
+  void aDeliveryFlipOnABusyDeskRollsWhenTheTurnEnds() throws Exception {
+    Running desk = placedRunning("fd-settings-busy", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.BUSY);
+      setDelivery(projectId, true);
+
+      hooks.onDeliveryChanged(projectId, delivery(true));
+
+      assertEquals(desk.take().specHash(), row(projectId).specHash, "a busy desk is not rolled");
+      assertNotNull(row(projectId).rollRequestedAt, "the request waits");
+
+      usedRecentlyAndNow(projectId, AgentState.IDLE);
+      assertEquals(1, specRoll.roll(Instant.now()));
+      FrontDesk row = row(projectId);
+      assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
+      assertNull(row.rollRequestedAt);
+      estateWith(desk.runner(), row.specHash);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /** A lifecycle flip rolls the same way: waits out a busy turn, then rolls on the next pass. */
+  @Test
+  void aLifecycleFlipRollsBetweenTurns() throws Exception {
+    Running desk = placedRunning("fd-settings-lifecycle", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.WAITING);
+      setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
+
+      hooks.onChanged(projectId, FrontDeskLifecycle.ALWAYS_ON);
+
+      assertEquals(desk.take().specHash(), row(projectId).specHash, "WAITING is busy too");
+      assertNotNull(row(projectId).rollRequestedAt);
+
+      usedRecentlyAndNow(projectId, AgentState.IDLE);
+      assertEquals(1, specRoll.roll(Instant.now()));
+      FrontDesk row = row(projectId);
+      assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
+      assertNull(row.rollRequestedAt);
+      estateWith(desk.runner(), row.specHash);
+
+      // And idle when it lands, it rolls inside the hook.
+      setLifecycle(projectId, FrontDeskLifecycle.ON_DEMAND);
+      hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
+      assertEquals("ON_DEMAND", env(row(projectId), "QITS_PROJECTS_DAEMON_LIFECYCLE"));
+      assertNull(row(projectId).rollRequestedAt);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /** A spec change nobody requested — a pin bump, say — still waits for quiet. */
+  @Test
+  void anUnrequestedSpecChangeStillWaitsForQuiet() throws Exception {
+    Running desk = placedRunning("fd-settings-pin", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.IDLE);
+      // The project row moves with no hook: the spec changes the way a pin bump changes it.
+      setDelivery(projectId, true);
+
+      assertEquals(0, specRoll.roll(Instant.now()));
+      assertEquals(0, specRoll.roll(projectId, Instant.now()));
+      assertEquals(desk.take().specHash(), row(projectId).specHash);
+      assertNull(row(projectId).rollRequestedAt);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /** The hook fired with unchanged settings restarts nothing and leaves no request behind. */
+  @Test
+  void anUnchangedSettingsHookClearsTheRequestAndKeepsTheSpec() throws Exception {
+    Running desk = placedRunning("fd-settings-same", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.BUSY);
+
+      hooks.onDeliveryChanged(projectId, delivery(false));
+      hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
+
+      assertEquals(desk.take().specHash(), row(projectId).specHash);
+      assertNull(row(projectId).rollRequestedAt);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /** The request is stored on the row, and an unplaced desk is never rolled for it. */
+  @Test
+  void aRollRequestPersistsOnTheRow() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    frontDesks.ensureRow(projectId);
+    Instant at = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+
+    assertEquals(1, frontDesks.requestRoll(projectId, at));
+    assertEquals(at, row(projectId).rollRequestedAt);
+    assertEquals(0, specRoll.roll(projectId, Instant.now()), "an unplaced desk is not rolled");
+    assertEquals(at, row(projectId).rollRequestedAt);
+
+    assertEquals(1, frontDesks.clearRollRequest(projectId));
+    assertNull(row(projectId).rollRequestedAt);
+    assertEquals(0, frontDesks.requestRoll("no-such-project", at), "no desk, no row touched");
   }
 
   // --- the token ---------------------------------------------------------------------------------

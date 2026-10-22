@@ -1,0 +1,11 @@
+-- A FRONT-DESK SETTINGS CHANGE ROLLS THE DESK BETWEEN TURNS (qits-1514).
+--
+-- Set by the project.yml hooks (`front_desk.lifecycle`, `front_desk.delivery`) when the project's
+-- desk settings change, and cleared whenever a spec is stored or the composed spec turns out to be
+-- the applied one. While it is set the spec roll replaces a RUNNING desk's spec as soon as its
+-- agent is not BUSY or WAITING, instead of waiting out the quiet window that pin bumps wait for.
+-- V51 rather than V49 because V49 and V50 are taken in parallel on another branch.
+--
+-- Nullable, with no default: null means no settings change is pending, which is what every
+-- existing row means.
+alter table front_desk add column roll_requested_at timestamptz;
