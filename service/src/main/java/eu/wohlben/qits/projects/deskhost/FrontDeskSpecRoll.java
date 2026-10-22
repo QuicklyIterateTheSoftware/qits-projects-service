@@ -36,9 +36,11 @@ import org.jboss.logging.Logger;
  * <ul>
  *   <li><b>A requested roll</b> ({@code roll_requested_at} set, by {@code FrontDeskHooks} on a
  *       {@code front_desk.lifecycle} or {@code front_desk.delivery} change) rolls <b>between
- *       turns</b>: as soon as the activity rollup is not BUSY or WAITING, whatever the use stamp
- *       says. A settings change is somebody asking for the desk to behave differently, and a desk in
- *       steady use would otherwise never pick it up.
+ *       turns</b>: as soon as a turn is not actually {@link #turnRunning running} ({@link
+ *       #turnRunning(String)}, qits-1514), whatever the use stamp says. A settings change is
+ *       somebody asking for the desk to behave differently, and a desk in steady use would
+ *       otherwise never pick it up. <b>WAITING does not hold this up</b>, unlike the quiet rule
+ *       below — see {@link #turnRunning(String)} for why.
  *   <li><b>Everything else</b> — a pin bump, the service's own configuration (image, agent
  *       configuration), a token rotation, a domain change — rolls <b>only when the desk is not
  *       reported RUNNING, or is quiet</b>: no evidence of use for {@code
@@ -141,7 +143,7 @@ public class FrontDeskSpecRoll {
     }
     if (row.specJson != null && DeskState.RUNNING.name().equals(row.reportedState)) {
       boolean requested = row.rollRequestedAt != null;
-      if (requested && busy(row.projectId)) {
+      if (requested && turnRunning(row.projectId)) {
         LOG.warnf(
             "The front desk of project %s has new settings and is busy; it rolls when the current"
                 + " turn ends",
@@ -179,5 +181,30 @@ public class FrontDeskSpecRoll {
     String state = daemons.agentActivity(projectId).orElse(null);
     return DaemonProtocol.AgentState.BUSY.equals(state)
         || DaemonProtocol.AgentState.WAITING.equals(state);
+  }
+
+  /**
+   * The activity rollup says a turn is actually running: BUSY alone, never WAITING (qits-1514).
+   *
+   * <p>WAITING is a Claude Code {@code Notification} hook, and it is not only a permission prompt
+   * genuinely waiting on somebody. Every daemon before projects-daemon 2026.1022.193344 also
+   * reports Claude Code's idle-prompt reminder as WAITING — the same word for "please answer me"
+   * and for "nothing happened for a while" — and {@link AgentDaemonRegistry#agentActivity} keeps
+   * either one in the rollup for up to {@code qits.projects.agent.stale-activity-ttl-ms} (4h,
+   * {@link AgentDaemonRegistry#staleActivityTtlMs}): a session can stop reporting without ever
+   * saying it ended, so the rollup cannot age WAITING out any sooner than it ages out a real BUSY.
+   * Seen live on 2026-10-22 from 19:57Z: an idle desk read as "waiting" and a requested settings
+   * change sat deferred for hours behind it. A requested roll is somebody asking the desk to behave
+   * differently <em>now</em>, and even a genuine permission prompt nobody has answered must not
+   * hold that back — the agent's session resumes with its transcript intact, so rolling the desk
+   * out from under an unanswered prompt costs nothing durable. The quiet rule for an
+   * <em>unrequested</em> roll ({@link #quiet(String, Instant)}) keeps treating BUSY and WAITING
+   * alike: that path already waits for a window with no activity at all, so a stale WAITING costs
+   * it nothing extra, and a pin bump or a config change is in no hurry the way a settings change
+   * is.
+   */
+  boolean turnRunning(String projectId) {
+    String state = daemons.agentActivity(projectId).orElse(null);
+    return DaemonProtocol.AgentState.BUSY.equals(state);
   }
 }

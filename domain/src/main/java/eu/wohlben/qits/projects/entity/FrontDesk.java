@@ -116,8 +116,10 @@ public class FrontDesk extends PanacheEntityBase {
   /**
    * When a front-desk settings change ({@code front_desk.lifecycle} or {@code front_desk.delivery})
    * asked for the desk to roll (qits-1514, V51), or null when none is pending. While set, the spec
-   * roll replaces a RUNNING desk's spec as soon as its agent is not busy, without the quiet window;
-   * storing a spec, or finding the composed spec already applied, clears it.
+   * roll replaces a RUNNING desk's spec as soon as no turn is actually running on it — a WAITING
+   * rollup does not hold this up, unlike the quiet rule for an unrequested roll (see {@code
+   * deskhost/FrontDeskSpecRoll#turnRunning}) — without the quiet window; storing a spec, or finding
+   * the composed spec already applied, clears it.
    */
   @Column(name = "roll_requested_at")
   public Instant rollRequestedAt;
