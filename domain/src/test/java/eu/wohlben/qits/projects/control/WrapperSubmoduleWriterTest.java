@@ -12,9 +12,12 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.QuarkusTestProfile;
+import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -25,9 +28,24 @@ import org.junit.jupiter.api.Test;
  * <p>Everything here is asserted against the <b>git host's</b> bare rather than the mirror, because
  * that is the repository of record — a wrapper commit that only moved a mirror ref would be
  * invisible to every clone.
+ *
+ * <p>The class carries its own {@link TestProfile}: {@link #readFile} must see a main move the
+ * mirror has not fetched yet even while the mirror is well inside {@code
+ * qits.projects.git.mirror-freshness-ms} — the regression this guards is qits-1440's "the reconcile
+ * read main as it stood before the move" — and proving that needs the freshness window widened past
+ * anything a test could race.
  */
 @QuarkusTest
+@TestProfile(WrapperSubmoduleWriterTest.LongMirrorFreshness.class)
 public class WrapperSubmoduleWriterTest {
+
+  /** An hour, so nothing in this class can outrun the window by accident. */
+  public static class LongMirrorFreshness implements QuarkusTestProfile {
+    @Override
+    public Map<String, String> getConfigOverrides() {
+      return Map.of("qits.projects.git.mirror-freshness-ms", "3600000");
+    }
+  }
 
   @Inject ProjectService projectService;
   @Inject RepositoryService repositoryService;
@@ -276,6 +294,70 @@ public class WrapperSubmoduleWriterTest {
     if (!hook.toFile().setExecutable(true)) {
       throw new IllegalStateException("could not make the pre-push hook executable: " + hook);
     }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // readFile must see main as it is now, not as the mirror last saw it (qits-1440)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * The regression, reproduced live: a main move the mirror never fetched, pushed straight to the
+   * host's bare exactly as {@code ReleaseFinalization}'s fast-forward does, well inside this test's
+   * widened {@code qits.projects.git.mirror-freshness-ms} — so a throttled {@link
+   * eu.wohlben.qits.projects.gitmirror.RepoMirror#refresh()} would see the mirror as fresh from the
+   * first read and skip the fetch entirely.
+   *
+   * <p>Without the fix ({@link WrapperSubmoduleWriter#readFile} calling {@code refresh()}), the
+   * second read answers the pre-move content — the first read already warmed the mirror, so the
+   * window swallows the fetch and the move is invisible. With it ({@code refreshNow()}), the second
+   * read always sees the pushed commit.
+   */
+  @Test
+  public void readFileSeesAMainMoveEvenWellInsideTheMirrorsFreshnessWindow() throws Exception {
+    var project = projectService.create("Wrapper Fresh Read", "wfreshread", null);
+    var wrapper = wrapperOf(project);
+
+    // Warms the mirror — fetchedAtMillis is now inside the (hour-long) freshness window.
+    String before = writer.readFile(wrapper, ProjectConfigParser.CONFIG_PATH);
+    assertTrue(before.contains("supports_environments: true"), before);
+
+    // A main move the mirror never saw, made directly on the host's bare — not through the
+    // mirror, and not through writer — exactly as ReleaseFinalization's fast-forward moves main
+    // out from under a mirror this service already fetched.
+    pushProjectYmlDirectlyToHost(wrapper, "supports_environments: false\n");
+
+    String after = writer.readFile(wrapper, ProjectConfigParser.CONFIG_PATH);
+    assertTrue(
+        after.contains("supports_environments: false"),
+        "a read right after a main move must see that move, not the mirror's last fetch: " + after);
+  }
+
+  /**
+   * Clones the host's bare into a throwaway working copy, rewrites {@code project.yml} and pushes
+   * straight back to the host — the mirror this test's {@link WrapperSubmoduleWriter} owns is never
+   * touched, which is what makes this a main move the mirror has not fetched.
+   */
+  private void pushProjectYmlDirectlyToHost(Repository wrapper, String content) throws Exception {
+    Path parent = Files.createTempDirectory("qits-wrapper-main-move");
+    Path clone = parent.resolve("wrapper");
+    git.exec(parent.toFile(), "git", "clone", "--quiet", hostOf(wrapper.id).toString(), clone.toString());
+    Path file = clone.resolve(ProjectConfigParser.CONFIG_PATH);
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, content);
+    git.exec(clone.toFile(), "git", "add", ProjectConfigParser.CONFIG_PATH);
+    git.exec(
+        clone.toFile(),
+        Map.of(
+            "GIT_AUTHOR_NAME", "other",
+            "GIT_AUTHOR_EMAIL", "other@local",
+            "GIT_COMMITTER_NAME", "other",
+            "GIT_COMMITTER_EMAIL", "other@local"),
+        "git",
+        "commit",
+        "--quiet",
+        "-m",
+        "move main directly, behind the mirror's back");
+    git.exec(clone.toFile(), "git", "push", "--quiet", "origin", "HEAD:" + wrapper.mainBranch);
   }
 
   // -------------------------------------------------------------------------------------------

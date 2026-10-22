@@ -191,11 +191,22 @@ public class WrapperSubmoduleWriter {
    * <p><b>Absent and unreadable are not the same</b>, which is why this throws rather than
    * answering {@code null} when the mirror cannot be refreshed or git cannot be run. A declaration
    * that turns into its default because a read failed is a project re-routed by an outage.
+   *
+   * <p><b>This fetches unconditionally ({@link RepoMirror#refreshNow()}), never the throttled
+   * {@link RepoMirror#refresh()}.</b> The one caller is {@code WrapperReconcileService
+   * .reconcileProjectConfig}, invoked from {@code ReleaseRequests.onMainMoved} the moment the
+   * wrapper's {@code main} moves — and {@code ReleaseFinalization} refreshes the very same mirror,
+   * for the same repository, just before it fast-forwards that branch. A throttled refresh here
+   * would see the mirror as fresh from that unrelated read and skip the fetch, so this read would
+   * resolve the branch exactly as it stood <em>before</em> the move it exists to notice: a read
+   * right after a main move must see that move, and the freshness window would serve the pre-move
+   * tree. Measured live 2026-10-22: qits' own {@code front_desk.delivery} flip, released in tag
+   * 2026.1022.113640, was read as "no change" and silently never applied.
    */
   public String readFile(Repository wrapper, String path) {
     RepoMirror mirror = gitMirrors.of(wrapper.id);
     try {
-      mirror.refresh();
+      mirror.refreshNow();
     } catch (GitMirrorException e) {
       throw new InternalServerErrorException(
           "Could not refresh the wrapper's mirror: " + e.getMessage());

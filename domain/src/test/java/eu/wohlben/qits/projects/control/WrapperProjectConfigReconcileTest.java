@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
-import eu.wohlben.qits.projects.gitmirror.RepoMirror;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.gitmirror.PushOutcome;
+import eu.wohlben.qits.projects.gitmirror.PushSpec;
+import eu.wohlben.qits.projects.gitmirror.RepoMirror;
 import eu.wohlben.qits.projects.testsupport.RecordingFrontDeskLifecycleChanged;
 import eu.wohlben.qits.projects.testsupport.RecordingProjectAnnouncer;
 import eu.wohlben.qits.projects.testsupport.WrapperProjectYml;
@@ -38,7 +40,6 @@ public class WrapperProjectConfigReconcileTest {
   @Inject ProjectService projectService;
   @Inject WrapperReconcileService reconcileService;
   @Inject GitMirrorRegistry gitMirrors;
-  @Inject GitExecutor git;
   @Inject GitIdentity gitIdentity;
   @Inject RecordingProjectAnnouncer announcer;
   @Inject RecordingFrontDeskLifecycleChanged lifecycleListener;
@@ -66,12 +67,15 @@ public class WrapperProjectConfigReconcileTest {
 
   /**
    * Commits {@code content} at {@code .config/qits/project.yml} on the wrapper's {@code main}, with
-   * no working tree — {@code amendTree} + {@code commit-tree} + {@code update-ref}, which is what
-   * every commit this service makes does.
+   * no working tree — {@code amendTree} + {@code commit-tree} + a real {@link RepoMirror#push} —
+   * which is what every commit this service makes does, and what a reconcile's now-unconditional
+   * {@code readFile} fetch (qits-1440) has to see: see {@link WrapperProjectYml}'s javadoc for why a
+   * local {@code update-ref} is no longer enough.
    */
   private void commitProjectYml(Repository wrapper, String content) throws Exception {
     RepoMirror mirror = gitMirrors.of(wrapper.id);
-    String tip = git.exec(mirror.gitDir().toFile(), "git", "rev-parse", "refs/heads/main").trim();
+    mirror.refreshNow();
+    String tip = mirror.resolve("refs/heads/main").orElseThrow();
     String tree =
         mirror.amendTree(
             tip,
@@ -85,19 +89,28 @@ public class WrapperProjectConfigReconcileTest {
     String commit =
         mirror.commitTree(
             tree, List.of(tip), "Declare supports_environments", gitIdentity.asCommitIdentity());
-    git.exec(mirror.gitDir().toFile(), "git", "update-ref", "refs/heads/main", commit);
+    PushOutcome outcome = mirror.push(PushSpec.of(PushSpec.Ref.branch(commit, "main")));
+    if (!outcome.accepted()) {
+      throw new IllegalStateException(
+          "Could not push project.yml onto the wrapper's main: " + outcome.output());
+    }
   }
 
   /** Removes the file entirely, so the reconcile sees a wrapper that declares nothing. */
   private void removeProjectYml(Repository wrapper) throws Exception {
     RepoMirror mirror = gitMirrors.of(wrapper.id);
-    String tip = git.exec(mirror.gitDir().toFile(), "git", "rev-parse", "refs/heads/main").trim();
+    mirror.refreshNow();
+    String tip = mirror.resolve("refs/heads/main").orElseThrow();
     String tree =
         mirror.amendTree(tip, List.of(), List.of(), List.of(ProjectConfigParser.CONFIG_PATH));
     String commit =
         mirror.commitTree(
             tree, List.of(tip), "Drop the project declaration", gitIdentity.asCommitIdentity());
-    git.exec(mirror.gitDir().toFile(), "git", "update-ref", "refs/heads/main", commit);
+    PushOutcome outcome = mirror.push(PushSpec.of(PushSpec.Ref.branch(commit, "main")));
+    if (!outcome.accepted()) {
+      throw new IllegalStateException(
+          "Could not push project.yml onto the wrapper's main: " + outcome.output());
+    }
   }
 
   private boolean storedFlagOf(String projectId) {
