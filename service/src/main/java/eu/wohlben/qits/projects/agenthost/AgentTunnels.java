@@ -52,6 +52,15 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class AgentTunnels {
 
+  /**
+   * The first daemon capability that serves {@code OpenStream} over a loopback-bound API — 1, and
+   * deliberately not {@code DaemonProtocol.CAPABILITY_VERSION}: that constant moves with every bump
+   * (2 is {@code sessionCredentials}, qits-1482), and a tunnel gated on it would refuse every daemon
+   * one release behind for a feature the tunnel does not use.
+   */
+  static final int TUNNEL_CAPABILITY = 1;
+
+
   private static final Logger LOG = Logger.getLogger(AgentTunnels.class);
 
   /**
@@ -162,7 +171,7 @@ public class AgentTunnels {
       return Optional.empty();
     }
     AgentDaemonRegistry.DaemonInfo info = registry.lookup(projectId).orElse(null);
-    if (info == null || info.capabilityVersion() < DaemonProtocol.CAPABILITY_VERSION) {
+    if (info == null || info.capabilityVersion() < TUNNEL_CAPABILITY) {
       // No daemon, or one that has not said hello yet. Capability 1 already binds loopback and
       // serves OpenStream, so there is no older shape to fall back to: this project is simply not
       // reachable, and the proxy says so rather than inventing an address.

@@ -16,11 +16,14 @@ import org.jboss.logging.Logger;
  *   <li>{@link FrontDeskLifecycleChanged} — a {@code project.yml} flip: an ALWAYS_ON project gets
  *       its desk (and token) now, and the desk's desired state is recomputed and pushed. The spec
  *       carries the lifecycle too, so the desk is asked to roll ({@code roll_requested_at},
- *       qits-1514) and rolls at once between turns: now when its agent is not busy, otherwise when
- *       the current turn ends (the spec roll's next pass), not after the quiet window a pin bump
- *       waits for. Its delivery half (epic qits-1440): an enabled loop gets the desk and its
- *       delivery token now, a disabled one loses the token, and the desired state is recomputed and
- *       pushed; the spec carries the loop's env and the token, so the desk rolls the same way. A
+ *       qits-1514) and rolls at once between turns: now when no turn is actually running ({@link
+ *       FrontDeskSpecRoll#turnRunning}; WAITING does not hold this up — see that method), otherwise
+ *       when the current turn ends (the spec roll's next pass), not after the quiet window a pin
+ *       bump waits for. Its delivery half (epic qits-1440): an enabled loop gets the desk and its
+ *       delivery token now, a disabled one loses the token, the desk's daemon is sent its session
+ *       credentials again (qits-1482: the {@code front-desk} key follows the loop), and the desired
+ *       state is recomputed and pushed; the spec carries the loop's env, so the desk rolls the same
+ *       way. A
  *       hook fired with unchanged settings composes the applied spec, which clears the request and
  *       restarts nothing.
  *   <li>{@link ProjectFrontDeskRemoval} — a project being deleted takes its desk with it: {@code
@@ -35,6 +38,8 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
   @Inject FrontDesks desks;
 
   @Inject FrontDeskSpecRoll specRoll;
+
+  @Inject DeskSessionCredentials sessionCredentials;
 
   @Override
   public void onChanged(String projectId, FrontDeskLifecycle lifecycle) {
@@ -54,6 +59,9 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
     } else {
       desks.syncDeliveryToken(projectId);
     }
+    // The front-desk key follows the loop (qits-1482): sent again even when no token moved, since
+    // the delivery token only stands under that key while the loop is on.
+    sessionCredentials.push(projectId);
     desks.reconcileAndPush(projectId, now);
     rollBetweenTurns(projectId, now);
   }

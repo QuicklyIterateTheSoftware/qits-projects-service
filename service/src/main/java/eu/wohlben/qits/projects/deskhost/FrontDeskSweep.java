@@ -29,6 +29,8 @@ import org.jboss.logging.Logger;
  *       {@code ensure}, and one a DELETE removed is created afresh;
  *   <li>a desk whose token or session token (qits-1482) could not be minted is minted again, and
  *       its delivery token is brought in line with the project's loop;
+ *   <li>its connected daemon is sent its session credentials again ({@link
+ *       DeskSessionCredentials#push}, capability 2 only), the safety net under every change trigger;
  *   <li>the edge belt is applied;
  *   <li>every desk's desired state is recomputed — the idle window closing is noticed here — and a
  *       wanted unplaced desk is stamped {@code queued_at};
@@ -47,6 +49,8 @@ public class FrontDeskSweep {
   @Inject ProjectRepository projects;
 
   @Inject FrontDeskEstates estates;
+
+  @Inject DeskSessionCredentials sessionCredentials;
 
   void onStart(@Observes StartupEvent event) {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
@@ -99,6 +103,8 @@ public class FrontDeskSweep {
           frontDesks.mintSessionIfMissing(row.projectId);
         }
         frontDesks.syncDeliveryToken(row.projectId);
+        // The safety net (qits-1482): a change whose send was missed is caught here.
+        sessionCredentials.push(row.projectId);
         frontDesks.checkEdge(row.projectId);
         UUID runner = frontDesks.reconcile(row.projectId, now);
         if (runner != null) {

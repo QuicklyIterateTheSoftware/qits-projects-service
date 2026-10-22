@@ -47,14 +47,16 @@ import org.jboss.logging.Logger;
  * QITS_COMMISSIONED_*}, no {@code *_AUTH_TOKEN_URL} and no {@code *.internal}, {@code -qits-} or
  * {@code *.localhost} value.
  *
- * <p><b>Two tokens.</b> The desk authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN},
- * idp kind {@code agent-container}, {@code qits:agent}). A desk whose project runs the delivery loop
- * (epic qits-1440, {@code QITS_PROJECTS_DAEMON_DELIVERY=on}) is also handed the delivery token
- * ({@code QITS_DELIVERY_TOKEN}, kind {@code desk-delivery}, {@code qits:agent} and {@code
- * qits:desk}) — and that one is for the {@code project.delivery} session only: the daemon gives it
- * to nothing else. {@code QITS_PROJECTS_DAEMON_DELIVERY} and {@code
- * QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL} are always stated; the delivery token and its subject
- * only while the loop is on.
+ * <p><b>One token.</b> The desk authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN},
+ * idp kind {@code agent-container}, {@code qits:agent}) — the daemon's, and nothing a session runs
+ * on. {@code QITS_PROJECTS_DAEMON_DELIVERY} and {@code QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL} are
+ * always stated. The tokens the desk's sessions run on — the delivery token ({@code desk-delivery},
+ * {@code qits:agent} and {@code qits:desk}) while the loop is on, the session token and every
+ * refinement room's — are in <b>no</b> spec (qits-1482): {@link DeskSessionCredentials} hands them to
+ * the daemon over the control socket ({@code sessionCredentials}), because anything in the
+ * container's environment is readable by every process in it. {@code QITS_DELIVERY_TOKEN} left the
+ * env with the daemon pin that reads the frame (capability 2): an older daemon would read no
+ * delivery token at all, so the two ship together.
  * A domain that is blank, has no dot, or is {@code localhost}/{@code *.localhost} refuses to compose
  * ({@link EdgePlaneUnconfigured}, the belt qits-workspaces-service's {@code WorkspaceAddressPlane}
  * carries), and the desk reads FAILED with {@link #EDGE_PLANE_UNCONFIGURED}.
@@ -305,10 +307,6 @@ public class FrontDeskSpecs {
     env.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", DeliverySettings.of(project).interval().toString());
     env.put("QITS_TOKEN", nullToEmpty(row.tokenValue));
     env.put("QITS_TOKEN_SUBJECT", nullToEmpty(row.tokenSubject));
-    if (project.deliveryEnabled) {
-      env.put("QITS_DELIVERY_TOKEN", nullToEmpty(row.deliveryTokenValue));
-      env.put("QITS_DELIVERY_TOKEN_SUBJECT", nullToEmpty(row.deliveryTokenSubject));
-    }
     env.put("QITS_DOMAIN", d);
     env.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
     env.put("QITS_GIT_AUTH_HOST", host("githost", d));
