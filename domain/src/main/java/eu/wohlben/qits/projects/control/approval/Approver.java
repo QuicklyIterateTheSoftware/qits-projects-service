@@ -49,8 +49,9 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
   }
 
   /**
-   * The delivery desk of {@code projectId} (epic qits-1440): {@code desk} and {@code agent} of that
-   * project, never {@code person}. Named by its token's {@code sub}, also known as {@code
+   * The delivery desk of {@code projectId} (epic qits-1440): {@code desk} of that project and
+   * nothing else — not {@code agent}, so the desk satisfies only the requirements the project
+   * handed it in {@code front_desk.delivery.approves}, and never {@code person}. Named by its token's {@code sub}, also known as {@code
    * principal} where the two differ.
    */
   public static Approver desk(String subject, String principal, String projectId) {
@@ -60,7 +61,7 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
     }
     return new Approver(
         subject,
-        List.of(ApprovalRole.deskOf(projectId), ApprovalRole.agentOf(projectId)),
+        List.of(ApprovalRole.deskOf(projectId)),
         aliases);
   }
 

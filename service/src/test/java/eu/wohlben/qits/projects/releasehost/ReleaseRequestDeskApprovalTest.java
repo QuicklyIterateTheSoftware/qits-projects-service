@@ -164,7 +164,7 @@ public class ReleaseRequestDeskApprovalTest {
   /**
    * The owner's case: the project lists {@code manual-review}, the wrapper request's gates are
    * green and its ticket is VERIFIED — the desk approves, the note names the rule, and the trail
-   * says {@code agent, desk}.
+   * says {@code desk}.
    */
   @Test
   void theDeskApprovesManualReviewOnAWrapperRequestWhenListedGreenAndVerified() {
@@ -184,7 +184,7 @@ public class ReleaseRequestDeskApprovalTest {
         .then()
         .statusCode(200)
         .body("eligibility.viewer", equalTo("desk-of-" + projectId))
-        .body("eligibility.heldRoles", equalTo(List.of("agent", "desk")))
+        .body("eligibility.heldRoles", equalTo(List.of("desk")))
         .body("eligibility.eligibleRequirementIds", equalTo(List.of("manual-review")));
 
     desk(projectId)
@@ -200,7 +200,7 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(wrapperRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
+        .body("approvals[0].roles", equalTo(List.of("desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule manual-review-verified: read the fold: one README line"));
@@ -379,8 +379,30 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(declarationRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
+        .body("approvals[0].roles", equalTo(List.of("desk")))
         .body("approvals[0].note", equalTo("delivery desk, rule artifact-declarations: -"));
+  }
+
+  /**
+   * Not listed, {@code artifact-declarations} is not the desk's, although it admits the request's
+   * agents: the desk holds {@code desk} alone, so it neither approves nor declines it as an agent.
+   */
+  @Test
+  void artifactDeclarationsTheProjectDoesNotListRefusesTheDesk() {
+    String id = create(declarationRepoId, "work");
+    String fold = mergedShaOf(declarationRepoId, id);
+    verdict(declarationRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(declarationRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403);
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(declarationRepoId) + "/" + id + "/decline")
+        .then()
+        .statusCode(403);
   }
 
   /** {@code config-directory} never admits the desk, whatever the project lists. */

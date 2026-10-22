@@ -149,7 +149,7 @@ class ApproverCheckTest {
             .orElseThrow();
     assertEquals("agent-client-1", desk.name());
     assertEquals(
-        List.of(ApprovalRole.deskOf("project-a"), ApprovalRole.agentOf("project-a")), desk.held());
+        List.of(ApprovalRole.deskOf("project-a")), desk.held());
     assertEquals("project-a", desk.deskProject());
     assertFalse(desk.held().contains(ApprovalRole.PERSON));
   }

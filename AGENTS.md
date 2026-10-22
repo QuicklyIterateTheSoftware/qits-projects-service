@@ -1263,7 +1263,8 @@ approval's roles. The display path stores the content requirements as JSON objec
 - **The delivery desk** (epic qits-1440, qits-1498): role `desk` / `desk@<slug>`
   (`ApprovalRole.Kind.DESK`, project-scoped like `agent`). `ApproverCheck` gives a validated idp JWT
   with `qits:agent` **and** `qits:desk`, `context_kind` `desk-delivery`, no `clients/…` group but its
-  own and a `project` claim `desk` and `agent` of that project (never `person`), named by its `sub`.
+  own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`),
+  named by its `sub`.
   No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
   requirement whose id the project's `front_desk.delivery.approves` lists, intersected with
   `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`), so `config-directory`,
@@ -1273,10 +1274,9 @@ approval's roles. The display path stores the content requirements as JSON objec
   request's read reports before `approval` (order 300) PASSED; and for `manual-review` every branch
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is VERIFIED
-  or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A decline by a caller
-  whose only qualifying role is `desk` is a 403 "The delivery desk does not decline; it asks the
-  owner on the item's thread." A desk token that qualifies through its `agent` role alone (an
-  unlisted `artifact-declarations`) approves and declines as any agent of the project.
+  or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
+  403 "The delivery desk does not decline; it asks the owner on the item's thread." Holding no
+  `agent` role, the desk cannot approve or decline an unlisted `artifact-declarations` as an agent.
 - **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,
   detail, satisfied, satisfiedBy}`), the old approval fields derived from it; `GET …/approvals` rows
   carry `roles`.

@@ -114,8 +114,8 @@ public class ApproverCheck {
   }
 
   /**
-   * A validated bearer that is the delivery desk's own token, as the desk (and an agent) of its
-   * project; else empty.
+   * A validated bearer that is the delivery desk's own token, as the desk of its project (and
+   * nothing else); else empty.
    */
   static Optional<Approver> desk(JsonWebToken token) {
     if (!DESK_CONTEXT_KIND.equals(text(token.getClaim(PersonCheck.CONTEXT_KIND_CLAIM)))) {
