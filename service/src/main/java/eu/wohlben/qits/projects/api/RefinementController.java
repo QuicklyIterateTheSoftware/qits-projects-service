@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -37,6 +38,8 @@ public class RefinementController {
 
   @Inject RefinementService refinements;
 
+  @Inject SecurityIdentity identity;
+
   public record RefinementResponse(RefinementDto refinement) {}
 
   @Schema(
@@ -53,7 +56,8 @@ public class RefinementController {
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{id}")
   public RefinementResponse get(@PathParam("id") long id) {
-    return new RefinementResponse(RefinementDto.of(refinements.view(refinements.get(id))));
+    return new RefinementResponse(
+        RefinementDto.of(refinements.view(RefinementAccess.reach(refinements, identity, id))));
   }
 
   @POST
@@ -78,6 +82,7 @@ public class RefinementController {
       responseCode = "409",
       description = "The container is already being worked on and no process is live")
   public ProcessResponse ensure(@PathParam("id") long id) {
+    RefinementAccess.reach(refinements, identity, id);
     String processId = refinements.ensureContainer(id);
     return new ProcessResponse(
         RefinementDto.of(refinements.view(refinements.get(id))), processId);
@@ -86,6 +91,7 @@ public class RefinementController {
   @POST
   @Path("/{id}/recreate-container")
   public ProcessResponse recreate(@PathParam("id") long id) {
+    RefinementAccess.reach(refinements, identity, id);
     String processId = refinements.recreateContainer(id);
     return new ProcessResponse(
         RefinementDto.of(refinements.view(refinements.get(id))), processId);
@@ -94,6 +100,7 @@ public class RefinementController {
   @POST
   @Path("/{id}/stop-container")
   public RefinementResponse stop(@PathParam("id") long id) {
+    RefinementAccess.reach(refinements, identity, id);
     return new RefinementResponse(RefinementDto.of(refinements.view(refinements.stopContainer(id))));
   }
 
@@ -101,7 +108,8 @@ public class RefinementController {
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{id}/active-process")
   public ActiveProcessResponse activeProcess(@PathParam("id") long id) {
-    refinements.get(id); // 404 an unknown row rather than answering a hopeful null
+    // 404 an unknown row rather than answering a hopeful null; 403 another entity's room.
+    RefinementAccess.reach(refinements, identity, id);
     return new ActiveProcessResponse(refinements.activeProcessId(id));
   }
 
@@ -132,6 +140,7 @@ public class RefinementController {
               schema = @Schema(implementation = DiscardResponse.class)))
   @APIResponse(responseCode = "404", description = "No refinement with this id")
   public DiscardResponse discard(@PathParam("id") long id) {
+    RefinementAccess.reach(refinements, identity, id);
     refinements.discard(id);
     return new DiscardResponse(true);
   }

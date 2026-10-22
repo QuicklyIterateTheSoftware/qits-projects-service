@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.api.EntitiesAgentAccess;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -29,6 +31,11 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * and {@code view} the deleted {@code /entities} door called — and so are the roles: the open is {@code
  * qits:admin} alone, the read admits {@code qits:agent}. The path's 404 is the resolver's, for an id
  * that names no entity, so the read's {@code null} still means "no room" and nothing else.
+ *
+ * <p>Both verbs are bound to the caller's {@code entity} claim when its bearer carries one
+ * (qits-1482, {@link EntitiesAgentAccess#requireEntity}): a refinement room's own token reaches its
+ * own entity's room and answers 403 on any other, after the path resolved (so 404 still comes
+ * first) and before a room is created.
  */
 @Path("/work/{qualifiedId}/refinement")
 @Produces(MediaType.APPLICATION_JSON)
@@ -38,6 +45,8 @@ public class WorkRefinementController {
   @Inject EntityIdResolver ids;
 
   @Inject RefinementService refinements;
+
+  @Inject SecurityIdentity identity;
 
   @Schema(
       name = "WorkRefinementAnswer",
@@ -60,11 +69,15 @@ public class WorkRefinementController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = WorkRefinementAnswer.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "Not Allowed, or the credential is bound to another entity")
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(responseCode = "409", description = "The entity cannot be refined now")
   @APIResponse(responseCode = "502", description = "The git host would not cut the branch")
   public WorkRefinementAnswer open(@PathParam("qualifiedId") String qualifiedId) {
     String id = ids.resolve(qualifiedId).id;
+    EntitiesAgentAccess.requireEntity(identity, id);
     return new WorkRefinementAnswer(RefinementDto.of(refinements.view(refinements.findOrCreate(id))));
   }
 
@@ -83,9 +96,13 @@ public class WorkRefinementController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = WorkRefinementAnswer.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "Not Allowed, or the credential is bound to another entity")
   @APIResponse(responseCode = "404", description = "No entity with this id")
   public WorkRefinementAnswer find(@PathParam("qualifiedId") String qualifiedId) {
     String id = ids.resolve(qualifiedId).id;
+    EntitiesAgentAccess.requireEntity(identity, id);
     return new WorkRefinementAnswer(
         refinements.findByEntity(id).map(row -> RefinementDto.of(refinements.view(row))).orElse(null));
   }

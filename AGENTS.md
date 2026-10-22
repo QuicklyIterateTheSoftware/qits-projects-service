@@ -2969,6 +2969,21 @@ Where it differs from the agent harness, each difference is the domain line:
   in that order; a front desk's removal is its DELETE door, on its runner. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
   clients no row claims (its own CONTEXT_KIND, invisible to the desk token reconcile and vice versa).
+- **Each room holds its own token (qits-1482, V50)** — the successor of the commissioned client
+  above, which qits-770 retires; the two live side by side until then. `RefinementTokens`
+  (`idphost/IdpRefinementTokens`, the suite's `FakeRefinementTokens`) mints a `qits_tok_` of idp
+  kind `refinement` (→ `qits:agent` only), contextId the row id, claims `{project, entity}`,
+  `gitRefs []`, onto `refinement.token_*`. Minted by `RefinementService.findOrCreate` (create, and
+  a later open of a row holding none) and **never fails the open**: a failed mint is a WARN and
+  `RefinementTokenReconcile` (boot + `refinement-credentials.reconcile-interval`, NORMAL only)
+  mints for every row holding none and revokes every live `refinement` token no row names (5 min
+  mint grace). Revoked by `discard` before the row goes, so `EntityResolutions` revokes it too.
+  `RefinementService.credentialOf` answers `{key: entityId, token, subject}` for the daemon's
+  coming `sessionCredentials` push. **The `entity` claim binds**: `EntitiesAgentAccess.requireEntity`
+  (via `api/RefinementAccess.reach`) answers 403 on every `/refinements/{id}/…` door and on
+  `POST|GET /work/{qualifiedId}/refinement` when the bearer carries an `entity` claim naming another
+  entity; `GET /projects/{projectId}/refinements` filters to the claimed entity's row rather than
+  refusing. A bearer with no `entity` claim is judged as before (`RefinementEntityBindingTest`).
 - **Resolving the entity is what calls that verb, and it is a rule of the service rather than a
   browser dance.** `refinementhost/EntityResolutions` (`EpicResolutions` until qits-395) is the only
   thing a door may use to move an epic's or a ticket's status: it previews the move

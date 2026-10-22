@@ -94,7 +94,7 @@ public class RefinementDesignController {
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(operationId = "listRefinementDesigns", summary = "A refinement's designs, oldest first, without their documents")
   public ListResponse list(@PathParam("id") long id) {
-    var refinement = refinements.get(id);
+    var refinement = RefinementAccess.reach(refinements, identity, id);
     List<RefinementDesign> rows = designs.list(id);
     Set<String> inUse =
         // Dossier assets are epic-owned (epics V8), so a ticket's room answers "in use" for nothing:
@@ -109,7 +109,8 @@ public class RefinementDesignController {
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(operationId = "addRefinementDesign", summary = "Add a design to a refinement")
   public Response add(@PathParam("id") long id, NewDesign request) {
-    EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
+    EntitiesAgentAccess.requireProject(
+        identity, RefinementAccess.reach(refinements, identity, id).projectId);
     RefinementDesign row =
         designs.put(
             id,
@@ -129,7 +130,7 @@ public class RefinementDesignController {
   @Path("/{designId}")
   @Operation(operationId = "getRefinementDesign", summary = "One design with its whole document")
   public DesignDto get(@PathParam("id") long id, @PathParam("designId") String designId) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     return dto(designs.get(id, designId), true);
   }
 
@@ -144,7 +145,8 @@ public class RefinementDesignController {
   @Operation(operationId = "updateRefinementDesign", summary = "Rewrite a design in place, from the version last read")
   public DesignDto update(
       @PathParam("id") long id, @PathParam("designId") String designId, UpdateDesign request) {
-    EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
+    EntitiesAgentAccess.requireProject(
+        identity, RefinementAccess.reach(refinements, identity, id).projectId);
     RefinementDesign row =
         designs.put(
             id,
@@ -162,7 +164,7 @@ public class RefinementDesignController {
   @Path("/{designId}")
   @Operation(operationId = "deleteRefinementDesign", summary = "Delete a design")
   public void delete(@PathParam("id") long id, @PathParam("designId") String designId) {
-    refinements.get(id);
+    RefinementAccess.reach(refinements, identity, id);
     designs.delete(id, designId);
   }
 

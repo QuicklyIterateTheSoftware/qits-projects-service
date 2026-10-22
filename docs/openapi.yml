@@ -8522,6 +8522,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkRefinementAnswer"
+        "403":
+          description: "Not Allowed, or the credential is bound to another entity"
         "404":
           description: No entity with this id
         "409":
@@ -8530,8 +8532,6 @@ paths:
           description: The git host would not cut the branch
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Work Refinement Controller
       security:
@@ -8556,12 +8556,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkRefinementAnswer"
+        "403":
+          description: "Not Allowed, or the credential is bound to another entity"
         "404":
           description: No entity with this id
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Work Refinement Controller
       security:
