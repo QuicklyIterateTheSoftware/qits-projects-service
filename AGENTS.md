@@ -2368,7 +2368,8 @@ keeps it so. The agent-container doors keep their paths:
   (`agent-stale-sweep-interval`) applies a new spec only while the desk is not reported RUNNING or is
   quiet (`agent-stale-quiet-window`) — except a front-desk settings change (qits-1514): the
   `front_desk.lifecycle`/`front_desk.delivery` hooks set `roll_requested_at` (V51) and roll the desk
-  at once if its rollup is not BUSY/WAITING, else on the next pass after the turn ends; the quiet
+  at once unless a turn is actually running (BUSY; WAITING does not hold it up — qits-1514), else on
+  the next pass after the turn ends; the quiet
   window does not apply to a requested roll. The image is `registry.qits.<d>/qits/project-agent:<pin>`
   (the pin rule moved here: the override, else `ProjectAgentImage.VERSION`); `user` is
   `qits.projects.agent-user`, else the host uid; memory and swap `agent-memory-limit`, then

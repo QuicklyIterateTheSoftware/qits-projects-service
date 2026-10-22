@@ -752,9 +752,13 @@ class FrontDeskTest {
     }
   }
 
-  /** A lifecycle flip rolls the same way: waits out a busy turn, then rolls on the next pass. */
+  /**
+   * A lifecycle flip with the rollup WAITING rolls at once, inside the hook: WAITING is not a
+   * running turn (qits-1514), so a requested roll does not wait for it the way the quiet rule
+   * would.
+   */
   @Test
-  void aLifecycleFlipRollsBetweenTurns() throws Exception {
+  void aLifecycleFlipOnAWaitingDeskRollsAtOnce() throws Exception {
     Running desk = placedRunning("fd-settings-lifecycle", FrontDeskLifecycle.ON_DEMAND);
     String projectId = desk.projectId();
     try {
@@ -763,17 +767,14 @@ class FrontDeskTest {
 
       hooks.onChanged(projectId, FrontDeskLifecycle.ALWAYS_ON);
 
-      assertEquals(desk.take().specHash(), row(projectId).specHash, "WAITING is busy too");
-      assertNotNull(row(projectId).rollRequestedAt);
-
-      usedRecentlyAndNow(projectId, AgentState.IDLE);
-      assertEquals(1, specRoll.roll(Instant.now()));
       FrontDesk row = row(projectId);
+      assertFalse(
+          desk.take().specHash().equals(row.specHash), "WAITING is not a running turn; it rolls at once");
       assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
       assertNull(row.rollRequestedAt);
       estateWith(desk.runner(), row.specHash);
 
-      // And idle when it lands, it rolls inside the hook.
+      // And idle when it lands, it rolls inside the hook too.
       setLifecycle(projectId, FrontDeskLifecycle.ON_DEMAND);
       hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
       assertEquals("ON_DEMAND", env(row(projectId), "QITS_PROJECTS_DAEMON_LIFECYCLE"));
@@ -795,6 +796,34 @@ class FrontDeskTest {
 
       assertEquals(0, specRoll.roll(Instant.now()));
       assertEquals(0, specRoll.roll(projectId, Instant.now()));
+      assertEquals(desk.take().specHash(), row(projectId).specHash);
+      assertNull(row(projectId).rollRequestedAt);
+    } finally {
+      daemons().forget(projectId);
+    }
+  }
+
+  /**
+   * An unrequested spec change still waits while the rollup is WAITING — unlike a requested roll,
+   * {@code quiet()} keeps treating WAITING like BUSY (qits-1514), so this never rolls, not even
+   * well past the quiet window with no fresher activity in between.
+   */
+  @Test
+  void anUnrequestedSpecChangeWithWaitingNeverRolls() throws Exception {
+    Running desk = placedRunning("fd-settings-pin-waiting", FrontDeskLifecycle.ON_DEMAND);
+    String projectId = desk.projectId();
+    try {
+      usedRecentlyAndNow(projectId, AgentState.WAITING);
+      Instant wellPastQuietWindow = Instant.now().plus(Duration.ofHours(1));
+      assertFalse(
+          specRoll.quiet(projectId, wellPastQuietWindow),
+          "WAITING alone keeps it from being quiet, however long ago it was last used");
+
+      // The project row moves with no hook: the spec changes the way a pin bump changes it.
+      setDelivery(projectId, true);
+
+      assertEquals(0, specRoll.roll(wellPastQuietWindow));
+      assertEquals(0, specRoll.roll(projectId, wellPastQuietWindow));
       assertEquals(desk.take().specHash(), row(projectId).specHash);
       assertNull(row(projectId).rollRequestedAt);
     } finally {
