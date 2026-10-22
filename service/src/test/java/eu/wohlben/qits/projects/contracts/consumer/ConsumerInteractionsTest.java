@@ -203,8 +203,8 @@ class ConsumerInteractionsTest {
    * An object null in some elements: pact-jvm refuses a null against an object example before it
    * consults any matcher ("Type mismatch: Expected null (Null) to be the same type as {...}"), so
    * "object or null" on one template never verifies (qits-maintenance found it in the automations'
-   * {@code failure}). The array's example is the recorded elements instead, each matched at its
-   * index, under the template's {@code [*]} rules: the object's fields stay bound by type where the
+   * {@code failure}). The array's example is the recorded elements instead, matched ignoring order
+   * under the template's {@code [*]} rules: the object's fields stay bound by type where the
    * provider answers one, and the null element is held against null.
    */
   @Test
@@ -246,6 +246,102 @@ class ConsumerInteractionsTest {
         1,
         rules.path("$.entries").path("matchers").path(0).path("min").asInt(),
         "still at least one element, in any count");
+    assertEquals(
+        "ignore-order",
+        rules.path("$.entries").path("matchers").path(0).path("match").asText(),
+        "matched in any order, never index by index: " + rules);
+    assertEquals(
+        "type",
+        rules.path("$.entries[*]").path("matchers").path(0).path("match").asText(),
+        "every further element is held against the first example: " + rules);
+  }
+
+  /**
+   * qits-1516: qits-maintenance answered two NOT_APPLICABLE kinds sorted between the recorded ones,
+   * and index by index the object {@code failure} met a null and the null one an object. Ignoring
+   * order, every recorded element finds an answered one of its shape wherever it sits, and an extra
+   * element is still checked — against the first example — so a broken one is refused.
+   */
+  @Test
+  void anObjectNullInSomeElementsVerifiesWhereverTheProviderSortsItsElements() throws Exception {
+    ConsumerRow entries =
+        row(
+            "listEntries",
+            "GET",
+            "/fixture/api/entries",
+            Map.of(),
+            null,
+            List.of("$.entries[*].item.name", "$.entries[*].item.failure"),
+            200,
+            (base, p) -> {});
+    String first = "{\"item\":{\"name\":\"first\",\"failure\":null}}";
+    String extra = "{\"item\":{\"name\":\"extra\",\"failure\":null}}";
+    String second = "{\"item\":{\"name\":\"second\",\"failure\":{\"code\":3,\"excerpt\":\"boom\"}}}";
+    for (String answer :
+        List.of(
+            "[" + first + "," + extra + "," + extra + "," + second + "]",
+            "[" + second + "," + first + "]",
+            "[" + extra + "," + second + "," + first + "]")) {
+      assertEquals(
+          List.of(),
+          ConsumerPactsTest.against(FIXTURE, entries, "{\"entries\":" + answer + "}").stream()
+              .map(au.com.dius.pact.core.matchers.Mismatch::description)
+              .toList(),
+          "accepted: " + answer);
+    }
+    String broken = "{\"item\":{\"name\":7,\"failure\":null}}";
+    assertFalse(
+        ConsumerPactsTest.against(
+                FIXTURE, entries, "{\"entries\":[" + first + "," + broken + "," + second + "]}")
+            .isEmpty(),
+        "an extra element is still held against the first example");
+    assertFalse(
+        ConsumerPactsTest.against(FIXTURE, entries, "{\"entries\":[" + first + "," + extra + "]}")
+            .isEmpty(),
+        "the recorded object element must still be answered");
+  }
+
+  /**
+   * qits-1516: a path the row declares nullable matches type-or-null although the recording holds a
+   * value in every element; a declared path the row does not consume is refused.
+   */
+  @Test
+  void aDeclaredNullablePathMatchesTypeOrNull() throws Exception {
+    ConsumerRow entries =
+        row(
+                "listEntries",
+                "GET",
+                "/fixture/api/entries",
+                Map.of(),
+                null,
+                List.of("$.entries[*].item.name"),
+                200,
+                (base, p) -> {})
+            .withNullable("$.entries[*].item.name");
+    JsonNode name =
+        pactOf(entries)
+            .path("interactions")
+            .path(0)
+            .path("response")
+            .path("matchingRules")
+            .path("body")
+            .path("$.entries[*].item.name");
+    assertEquals("OR", name.path("combine").asText(), "type or null: " + name);
+    assertTrue(name.toString().contains("\"null\""), "type or null: " + name);
+    assertEquals(
+        List.of(),
+        ConsumerPactsTest.against(
+                FIXTURE,
+                entries,
+                "{\"entries\":[{\"item\":{\"name\":null}},{\"item\":{\"name\":\"x\"}}]}")
+            .stream()
+            .map(au.com.dius.pact.core.matchers.Mismatch::description)
+            .toList());
+    IllegalArgumentException refused =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> entries.withNullable("$.entries[*].item.doneAt"));
+    assertTrue(refused.getMessage().contains("not consumed"), refused.getMessage());
   }
 
   /** The answer the published 2026.1018.195756 pact made: refused by pact-jvm, which is the bug. */

@@ -8,8 +8,12 @@ import au.com.dius.pact.consumer.dsl.PactDslJsonBody;
 import au.com.dius.pact.consumer.dsl.PactDslJsonRootValue;
 import au.com.dius.pact.core.model.PactSpecVersion;
 import au.com.dius.pact.core.model.V4Pact;
+import au.com.dius.pact.core.model.matchingrules.MatchingRule;
+import au.com.dius.pact.core.model.matchingrules.MatchingRuleGroup;
+import au.com.dius.pact.core.model.matchingrules.MinEqualsIgnoreOrderMatcher;
 import au.com.dius.pact.core.model.matchingrules.NullMatcher;
 import au.com.dius.pact.core.model.matchingrules.RegexMatcher;
+import au.com.dius.pact.core.model.matchingrules.RuleLogic;
 import au.com.dius.pact.core.model.matchingrules.TypeMatcher;
 import au.com.dius.pact.core.support.Json;
 import au.com.dius.pact.core.support.json.JsonParser;
@@ -42,15 +46,22 @@ import java.util.regex.Pattern;
  *   <li>a path the provider listed under {@code frozen.ids}: a UUID regex;
  *   <li>under {@code frozen.instants}: an ISO-8601 regex ({@link #ISO_INSTANT});
  *   <li>any other leaf: a type match; {@code null} exactly where the recording holds only null;
+ *       type-or-null where the row declares the path {@link ConsumerRow#nullable} (a field the
+ *       provider answers null for an entry its state did not record: qits-maintenance's
+ *       NOT_APPLICABLE automations, qits-1516);
  *   <li>a non-empty array: "at least one element like this", the template merged from every
  *       recorded element (a leaf null or absent in some element matches type-or-null, at any
  *       depth; an array empty in some element matches "zero or more like this"). This
  *       service reads each element in a loop, so neither the count nor the order is its business;
  *   <li>except that an object or array null or absent in some element makes the array's example
- *       its recorded elements, in order, under the same {@code [*]} rules: pact-jvm refuses a
- *       null against an object example before any matcher is consulted, so "this object or null"
- *       has no rule that verifies; each answered element is held against the recorded one at its
- *       index instead (qits-maintenance's automations {@code failure}, qits-1149);
+ *       its recorded elements, under the same {@code [*]} rules: pact-jvm refuses a null against
+ *       an object example before any matcher is consulted, so "this object or null" has no rule
+ *       that verifies (qits-maintenance's automations {@code failure}, qits-1149). Such an array
+ *       is matched ignoring order ({@code ignore-order}, the same minimum) rather than index by
+ *       index: every recorded element must find an answered one of its own shape, wherever it
+ *       sits, and each further answered element is held against the first recorded one (a {@code
+ *       [*]} type rule, which is what makes pact-jvm check it at all). By index, one entry more
+ *       ahead of the object one shifted it onto a null example and failed (qits-1516);
  *   <li>an empty array: empty, exactly, because there is nothing to build a template from.
  * </ul>
  *
@@ -108,7 +119,8 @@ public final class ConsumerInteractions {
           where + " records status " + op.status() + ", but the row expects " + row.status());
     }
     Map<String, String> params = op.params();
-    DslPart answer = row.consumes().isEmpty() ? null : responseBody(op, row.consumes());
+    DslPart answer =
+        row.consumes().isEmpty() ? null : responseBody(op, row.consumes(), row.nullable());
     DslPart request = row.requestBody() == null ? null : requestBody(row.requestBody(), params, where);
     Map<String, Object> references = new LinkedHashMap<>();
     Map<String, String> call = new LinkedHashMap<>();
@@ -266,18 +278,31 @@ public final class ConsumerInteractions {
 
   /** The recorded body, cut down to {@code consumes}, with the matchers the class javadoc lists. */
   static DslPart responseBody(ConsumerGoldenMasters.Recorded op, List<String> consumes) {
+    return responseBody(op, consumes, List.of());
+  }
+
+  /** As above, {@code nullable} matching type-or-null whatever the recording holds there. */
+  static DslPart responseBody(
+      ConsumerGoldenMasters.Recorded op, List<String> consumes, List<String> nullable) {
     Need need = Need.of(consumes, op);
     JsonNode recorded = op.body();
+    Unordered unordered = new Unordered(nullable);
     if (recorded.isObject()) {
       PactDslJsonBody root = new PactDslJsonBody();
-      fillObject(root, recorded, need, "$", op, new Nullable());
+      fillObject(root, recorded, need, "$", op, new Nullable(unordered));
+      unordered.apply(root);
       return root;
     }
+    return rootArray(op, recorded, need, unordered);
+  }
+
+  private static DslPart rootArray(
+      ConsumerGoldenMasters.Recorded op, JsonNode recorded, Need need, Unordered unordered) {
     if (recorded.isArray()) {
       if (recorded.isEmpty()) {
         throw unsupported(op, "$", "an empty root array, which leaves nothing to bind");
       }
-      Nullable nullable = new Nullable();
+      Nullable nullable = new Nullable(unordered);
       JsonNode template = merge(recorded, "$[*]", nullable);
       Need element = need.element("$", op);
       if (template.isObject()) {
@@ -286,7 +311,9 @@ public final class ConsumerInteractions {
         PactDslJsonArray root = (PactDslJsonArray) body.closeObject();
         if (nullable.perElement) {
           examplesAsRecorded(root, recorded, need);
+          unordered.add("$", 1);
         }
+        unordered.apply(root);
         return root;
       }
       return PactDslJsonArray.arrayMinLike(1, 1, rootLeaf(template, "$[*]", op));
@@ -318,7 +345,7 @@ public final class ConsumerInteractions {
       } else if (value.isArray()) {
         nullable.perElement |= nullable.contains(childPath);
         nullable.perElement |=
-            array(target, name, value, child, childPath, op, nullable.mayBeEmpty(childPath));
+            array(target, name, value, child, childPath, op, nullable);
       } else {
         leaf(target, name, value, childPath, op, nullable.contains(childPath));
       }
@@ -336,12 +363,13 @@ public final class ConsumerInteractions {
       Need need,
       String path,
       ConsumerGoldenMasters.Recorded op,
-      boolean mayBeEmpty) {
+      Nullable enclosing) {
+    boolean mayBeEmpty = enclosing.mayBeEmpty(path);
     if (value.isEmpty()) {
       target.array(name).closeArray();
       return false;
     }
-    Nullable nullable = new Nullable();
+    Nullable nullable = new Nullable(enclosing.unordered);
     String elementPath = path + "[*]";
     JsonNode template = merge(value, elementPath, nullable);
     Need element = need.whole ? Need.WHOLE : need.element(path, op);
@@ -354,6 +382,7 @@ public final class ConsumerInteractions {
       array.closeArray();
       if (nullable.perElement) {
         examplesAsRecorded(array, value, need);
+        nullable.unordered.add(path, min);
       }
       return nullable.perElement;
     } else if (template.isArray()) {
@@ -544,10 +573,17 @@ public final class ConsumerInteractions {
    * are empty in some element.
    */
   private static final class Nullable {
+    final Unordered unordered;
     private final java.util.Set<String> paths = new java.util.HashSet<>();
     private final java.util.Set<String> empty = new java.util.HashSet<>();
     /** The array's example must be its recorded elements ({@link #examplesAsRecorded}). */
     boolean perElement;
+
+    Nullable(Unordered unordered) {
+      this.unordered = unordered;
+      // The row's declared paths count as null in some element, whatever the recording holds.
+      paths.addAll(unordered.declared);
+    }
 
     void add(String path) {
       paths.add(path);
@@ -563,6 +599,34 @@ public final class ConsumerInteractions {
 
     boolean mayBeEmpty(String path) {
       return empty.contains(path);
+    }
+  }
+
+  /**
+   * One answer's build: the row's {@link ConsumerRow#nullable} paths, and the arrays whose example
+   * is their recorded elements, with their minimum — matched ignoring order, every further element
+   * against the first example ({@link #apply}, once the body is built and every nested part's rules
+   * have reached the root).
+   */
+  private static final class Unordered {
+    final java.util.Set<String> declared;
+    private final Map<String, Integer> arrays = new LinkedHashMap<>();
+
+    Unordered(List<String> declared) {
+      this.declared = java.util.Set.copyOf(declared);
+    }
+
+    void add(String path, int min) {
+      arrays.put(path, min);
+    }
+
+    void apply(DslPart root) {
+      arrays.forEach(
+          (path, min) -> {
+            List<MatchingRule> rules = new ArrayList<>(List.of(new MinEqualsIgnoreOrderMatcher(min)));
+            root.getMatchers().setRules(path, new MatchingRuleGroup(rules, RuleLogic.AND, false));
+            root.getMatchers().addRule(path + "[*]", TypeMatcher.INSTANCE, RuleLogic.AND);
+          });
     }
   }
 

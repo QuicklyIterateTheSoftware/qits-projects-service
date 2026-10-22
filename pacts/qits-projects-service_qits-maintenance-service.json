@@ -138,12 +138,12 @@
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
+                  "match": "ignore-order",
                   "min": 1
                 }
               ]
             },
-            "$.automations[*].branch": {
+            "$.automations[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -151,12 +151,26 @@
                 }
               ]
             },
+            "$.automations[*].branch": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
             "$.automations[*].bumpId": {
-              "combine": "AND",
+              "combine": "OR",
               "matchers": [
                 {
                   "match": "regex",
-                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
                 }
               ]
             },
@@ -515,12 +529,12 @@
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
+                  "match": "ignore-order",
                   "min": 1
                 }
               ]
             },
-            "$.automations[*].branch": {
+            "$.automations[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -528,12 +542,26 @@
                 }
               ]
             },
+            "$.automations[*].branch": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
             "$.automations[*].bumpId": {
-              "combine": "AND",
+              "combine": "OR",
               "matchers": [
                 {
                   "match": "regex",
-                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
                 }
               ]
             },
