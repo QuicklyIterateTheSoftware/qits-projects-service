@@ -27,7 +27,7 @@ class AgentControlSocketAccessTest {
 
           @Override
           public String pathParam(String name) {
-            return "deskId".equals(name) ? projectId : null;
+            return "projectId".equals(name) ? projectId : null;
           }
 
           @Override
@@ -125,38 +125,5 @@ class AgentControlSocketAccessTest {
                 "p-1",
                 p -> "tok-mine")
             .isUpgradePermitted());
-  }
-
-  // --- desks, not projects (qits-1482) -------------------------------------------------------------
-
-  /** An agent of the project opens its DELIVERY desk's socket: the desk id names the project. */
-  @Test
-  void aDeliveryDesksSocketIsItsProjects() {
-    SecurityIdentity agent = AgentTokens.token(Map.of("project", "p-1"), "qits:agent");
-
-    assertTrue(upgrade(agent, "p-1-delivery").isUpgradePermitted());
-    assertEquals(403, upgrade(agent, "p-2-delivery").getHttpResponseCode());
-  }
-
-  /**
-   * The DELIVERY desk's own token opens that desk and not the front desk; the front desk's token
-   * opens the front desk and not the DELIVERY desk — the bound subject is the desk's.
-   */
-  @Test
-  void eachDesksTokenOpensItsOwnDeskOnly() {
-    java.util.function.Function<String, String> bound =
-        desk -> desk.equals("p-1") ? "tok-front" : desk.equals("p-1-delivery") ? "tok-loop" : null;
-
-    assertTrue(
-        AgentControlSocketAccess.decide(deskToken("tok-loop", "p-1"), "p-1-delivery", bound)
-            .isUpgradePermitted());
-    assertEquals(
-        403,
-        AgentControlSocketAccess.decide(deskToken("tok-loop", "p-1"), "p-1", bound)
-            .getHttpResponseCode());
-    assertEquals(
-        403,
-        AgentControlSocketAccess.decide(deskToken("tok-front", "p-1"), "p-1-delivery", bound)
-            .getHttpResponseCode());
   }
 }

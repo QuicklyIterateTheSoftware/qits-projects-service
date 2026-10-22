@@ -20,9 +20,9 @@ public class IdpFrontDeskTokens implements FrontDeskTokens {
   @Inject IdpTokens tokens;
 
   @Override
-  public Minted mint(String deskId, String projectId) {
+  public Minted mint(String projectId) {
     IdpTokens.Issued issued =
-        tokens.commission(CONTEXT_KIND, deskId, Map.of(IdpCommissionWire.PROJECT_CLAIM, projectId),
+        tokens.commission(CONTEXT_KIND, projectId, Map.of(IdpCommissionWire.PROJECT_CLAIM, projectId),
         IdpCommissionWire.NO_GIT_REFS);
     return new Minted(issued.tokenId(), issued.token(), issued.subject());
   }
@@ -45,22 +45,6 @@ public class IdpFrontDeskTokens implements FrontDeskTokens {
 
   @Override
   public boolean revokeDelivery(String tokenId) {
-    return tokens.delete(tokenId);
-  }
-
-  @Override
-  public Minted mintSession(String projectId) {
-    IdpTokens.Issued issued =
-        tokens.commission(
-            CONTEXT_KIND_SESSION,
-            projectId,
-            Map.of(IdpCommissionWire.PROJECT_CLAIM, projectId),
-            IdpCommissionWire.NO_GIT_REFS);
-    return new Minted(issued.tokenId(), issued.token(), issued.subject());
-  }
-
-  @Override
-  public boolean revokeSession(String tokenId) {
     return tokens.delete(tokenId);
   }
 

@@ -14,14 +14,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * A project's desk (qits-767, V37): an agent container, as this service wants it and as the
+ * A project's front desk (qits-767, V37): its agent container, as this service wants it and as the
  * front-desk runner holding it last reported it.
- *
- * <p><b>A project has a desk per {@link DeskRole}</b> (qits-1482, V49): its FRONT desk, and while its
- * delivery loop is enabled a DELIVERY desk the loop runs in alone. The row is keyed by {@link
- * #deskId} — {@link DeskRole#deskId}: the project id for the FRONT desk, {@code
- * <projectId>-delivery} for the DELIVERY one — and everything keyed by a desk (the runner's entries
- * and reports, the control socket, the proxy, the spec roll) is keyed by it.
  *
  * <ul>
  *   <li><b>Placement</b> — {@link #runnerId} is null until a runner's {@code reserve} claims the row
@@ -50,17 +44,9 @@ import org.hibernate.type.SqlTypes;
 @Uncaused
 public class FrontDesk extends PanacheEntityBase {
 
-  /** The desk's key: {@link DeskRole#deskId} of its project and role. */
   @Id
-  @Column(name = "desk_id")
-  public String deskId;
-
-  @Column(name = "project_id", nullable = false)
+  @Column(name = "project_id")
   public String projectId;
-
-  @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
-  public DeskRole role = DeskRole.FRONT;
 
   @Column(name = "runner_id")
   public UUID runnerId;
@@ -89,10 +75,9 @@ public class FrontDesk extends PanacheEntityBase {
 
   /**
    * The delivery token (epic qits-1440, V48): a second {@code qits_tok_}, of idp context kind {@code
-   * desk-delivery}, held by the project's DELIVERY desk (qits-1482) — which exists only while the
-   * project's {@code delivery_enabled} is true and goes, token revoked, when it is disabled. The
-   * desk's {@code project.delivery} session carries it; nothing else does. A FRONT desk holds none:
-   * one left from before V49 is revoked and cleared.
+   * desk-delivery}, held only while the project's {@code delivery_enabled} is true — minted when the
+   * loop is enabled, revoked and cleared when it is disabled. The desk's {@code project.delivery}
+   * session carries it; nothing else does.
    */
   @Column(name = "delivery_token_id")
   public String deliveryTokenId;
@@ -102,21 +87,6 @@ public class FrontDesk extends PanacheEntityBase {
 
   @Column(name = "delivery_token_subject")
   public String deliveryTokenSubject;
-
-  /**
-   * The FRONT desk's session token (qits-1482, V49): a {@code qits_tok_} of idp context kind {@code
-   * desk-session} ({@code qits:agent}), claims {@code {project}}, minted beside the desk token and
-   * revoked with the row. It is in no container's environment: the daemon is to receive it over the
-   * control socket, so the desk's sessions run on a principal other than the daemon's.
-   */
-  @Column(name = "session_token_id")
-  public String sessionTokenId;
-
-  @Column(name = "session_token_value")
-  public String sessionTokenValue;
-
-  @Column(name = "session_token_subject")
-  public String sessionTokenSubject;
 
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "spec_json", columnDefinition = "jsonb")
@@ -143,25 +113,6 @@ public class FrontDesk extends PanacheEntityBase {
   /** Whether a runner holds the desk. */
   public boolean placed() {
     return runnerId != null;
-  }
-
-  /** A new, unplaced, stopped row of {@code projectId}'s desk of {@code role}. */
-  public static FrontDesk of(String projectId, DeskRole role) {
-    FrontDesk row = new FrontDesk();
-    row.deskId = role.deskId(projectId);
-    row.projectId = projectId;
-    row.role = role;
-    return row;
-  }
-
-  /** The desk's role; a row built by hand without one is a FRONT desk. */
-  public DeskRole role() {
-    return role == null ? DeskRole.FRONT : role;
-  }
-
-  /** The desk's key; a row built by hand without one is keyed by its role and project. */
-  public String deskId() {
-    return deskId != null ? deskId : role().deskId(projectId);
   }
 
   /** Whether the desk should be running. */

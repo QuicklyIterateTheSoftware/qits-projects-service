@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.agenthost;
 
 import eu.wohlben.qits.projects.deskhost.FrontDesks;
-import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.websockets.next.HttpUpgradeCheck;
@@ -21,15 +20,10 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * token names (the {@code project} claim). Any other project is a 403 at the upgrade, before a
  * connection exists. A {@code qits:system} caller is judged as before.
  *
- * <p><b>A desk's own token is bound to its desk</b> (qits-767). The edge forwards a desk's {@code
- * qits_tok_} as a JWT whose {@code sub} starts with {@link #TOKEN_SUBJECT_PREFIX}; such a bearer
- * must also be the one the desk's {@code front_desk.token_subject} names, or it is a 403 — a token
- * of another desk, or one a DELETE revoked and the edge still caches, opens nothing.
- *
- * <p><b>The path names a desk, not a project</b> (qits-1482). The project a {@code qits:agent}
- * caller must be bound to is the desk's ({@link DeskRole#projectIdOf}, read off the id without a
- * database read), and the bound subject is the desk's own — so the FRONT desk's token cannot open
- * its project's DELIVERY desk, nor the other way round.
+ * <p><b>A front desk's own token is bound to its desk</b> (qits-767). The edge forwards a desk's
+ * {@code qits_tok_} as a JWT whose {@code sub} starts with {@link #TOKEN_SUBJECT_PREFIX}; such a
+ * bearer must also be the one the project's {@code front_desk.token_subject} names, or it is a 403 —
+ * a token of another desk, or one a DELETE revoked and the edge still caches, opens nothing.
  */
 @ApplicationScoped
 public class AgentControlSocketAccess implements HttpUpgradeCheck {
@@ -47,37 +41,37 @@ public class AgentControlSocketAccess implements HttpUpgradeCheck {
 
   @Override
   public Uni<CheckResult> perform(HttpUpgradeContext context) {
-    String deskId = context.pathParam("deskId");
+    String projectId = context.pathParam("projectId");
     return context
         .securityIdentity()
         .chain(
             identity -> {
               if (!isTokenSubject(subjectOf(identity))) {
-                return Uni.createFrom().item(decide(identity, deskId, p -> null));
+                return Uni.createFrom().item(decide(identity, projectId, p -> null));
               }
               // The bound subject may need a database read: off the event loop.
               return Uni.createFrom()
-                  .item(() -> decide(identity, deskId, this::boundSubject))
+                  .item(() -> decide(identity, projectId, this::boundSubject))
                   .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
             });
   }
 
-  private String boundSubject(String deskId) {
-    return desks != null && desks.isResolvable() ? desks.get().tokenSubject(deskId) : null;
+  private String boundSubject(String projectId) {
+    return desks != null && desks.isResolvable() ? desks.get().tokenSubject(projectId) : null;
   }
 
-  static CheckResult decide(SecurityIdentity identity, String deskId) {
-    return decide(identity, deskId, p -> null);
+  static CheckResult decide(SecurityIdentity identity, String projectId) {
+    return decide(identity, projectId, p -> null);
   }
 
   static CheckResult decide(
-      SecurityIdentity identity, String deskId, Function<String, String> boundSubject) {
+      SecurityIdentity identity, String projectId, Function<String, String> boundSubject) {
     if (AgentAccess.isBoundAgent(identity, AgentAccess.SYSTEM_ROLE)
-        && !AgentAccess.coversProject(identity, DeskRole.projectIdOf(deskId))) {
+        && !AgentAccess.coversProject(identity, projectId)) {
       return CheckResult.rejectUpgradeSync(403);
     }
     String subject = subjectOf(identity);
-    if (isTokenSubject(subject) && !subject.equals(boundSubject.apply(deskId))) {
+    if (isTokenSubject(subject) && !subject.equals(boundSubject.apply(projectId))) {
       return CheckResult.rejectUpgradeSync(403);
     }
     return CheckResult.permitUpgradeSync();

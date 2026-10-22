@@ -313,9 +313,7 @@ class DeskRunnerControllerTest {
   void aRunnerThatHoldsADeskIsNotDeleted() {
     String id = create(as("qits:admin"), "attic", 1).getString("runner.id");
     UUID runnerId = UUID.fromString(id);
-    desks.hold(
-        runnerId,
-        List.of(new DeskRunnerDto.DeskRunnerDesk("project-1", "alpha", "RUNNING", "FRONT")));
+    desks.hold(runnerId, List.of(new DeskRunnerDto.DeskRunnerDesk("project-1", "alpha", "RUNNING")));
 
     as("qits:agent")
         .when()
@@ -323,8 +321,7 @@ class DeskRunnerControllerTest {
         .then()
         .statusCode(200)
         .body("desks[0].projectId", equalTo("project-1"))
-        .body("desks[0].slug", equalTo("alpha"))
-        .body("desks[0].role", equalTo("FRONT"));
+        .body("desks[0].slug", equalTo("alpha"));
     as("qits:admin")
         .when()
         .delete(RUNNERS + "/" + id)

@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
@@ -105,8 +104,8 @@ class FrontDeskSpecsTest {
         "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH", "/tmp/qits/agent-configuration.json");
     expected.put("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION", DOCUMENT);
     expected.put("QITS_PROJECTS_DAEMON_LIFECYCLE", "ALWAYS_ON");
-    expected.put("QITS_PROJECTS_DAEMON_ROLE", "front");
     expected.put("QITS_PROJECTS_DAEMON_DELIVERY", "off");
+    expected.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", "PT10M");
     expected.put("QITS_TOKEN", "qits_tok_secret");
     expected.put("QITS_TOKEN_SUBJECT", "tok-abc");
     expected.put("QITS_DOMAIN", "example.test");
@@ -144,139 +143,43 @@ class FrontDeskSpecsTest {
     }
   }
 
-  /** The DELIVERY desk of {@link #PROJECT_ID}, holding its own token and the delivery token. */
-  private static FrontDesk deliveryRow() {
-    FrontDesk row = FrontDesk.of(PROJECT_ID, DeskRole.DELIVERY);
-    row.tokenId = "t-2";
-    row.tokenValue = "qits_tok_delivery_desk";
-    row.tokenSubject = "tok-delivery-desk";
+  /**
+   * The delivery loop (epic qits-1440): on, the desk is told so with its interval and handed the
+   * delivery token and its subject; off, it is told so and holds neither. The token vars sit right
+   * after the desk's own, and the hash moves with the loop.
+   */
+  @Test
+  void theDeliveryTokenIsCarriedOnlyWhileTheLoopIsOn() {
+    Project off = project(FrontDeskLifecycle.ON_DEMAND);
+    FrontDesk row = row();
     row.deliveryTokenId = "d-1";
     row.deliveryTokenValue = "qits_tok_delivery";
     row.deliveryTokenSubject = "tok-delivery";
-    return row;
-  }
+    Map<String, String> offEnv =
+        FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).spec().env();
+    assertEquals("off", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertEquals("PT10M", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN"));
+    assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
 
-  /**
-   * The FRONT desk never carries the delivery token (qits-1482): not with the project's loop on, and
-   * not even when its row still holds one from before the loop had a desk of its own. It is told the
-   * loop is off whatever the project says, and nothing about the loop moves its hash.
-   */
-  @Test
-  void theFrontDeskNeverCarriesTheDeliveryToken() {
-    FrontDesk legacy = row();
-    legacy.deliveryTokenId = "d-1";
-    legacy.deliveryTokenValue = "qits_tok_delivery";
-    legacy.deliveryTokenSubject = "tok-delivery";
-    legacy.sessionTokenId = "s-1";
-    legacy.sessionTokenValue = "qits_tok_session";
-    legacy.sessionTokenSubject = "tok-session";
-    Project off = project(FrontDeskLifecycle.ON_DEMAND);
     Project on = project(FrontDeskLifecycle.ON_DEMAND);
     on.deliveryEnabled = true;
     on.deliveryInterval = "PT5M";
-
-    for (Project project : List.of(off, on)) {
-      FrontDeskSpecs.Composed composed =
-          FrontDeskSpecs.compose(settings("example.test"), project, legacy, identity(), DOCUMENT);
-      Map<String, String> env = composed.spec().env();
-      assertEquals("front", env.get("QITS_PROJECTS_DAEMON_ROLE"));
-      assertEquals("off", env.get("QITS_PROJECTS_DAEMON_DELIVERY"));
-      assertFalse(env.containsKey("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
-      assertFalse(env.containsKey("QITS_DELIVERY_TOKEN"));
-      assertFalse(env.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
-      env.forEach(
-          (name, value) -> {
-            assertFalse(value.contains("qits_tok_delivery"), name + " carries the delivery token");
-            assertFalse(value.contains("qits_tok_session"), name + " carries the session token");
-            assertFalse(value.contains("tok-session"), name + " carries the session subject");
-          });
-      assertEquals("qits_tok_secret", env.get("QITS_TOKEN"));
-    }
-    assertEquals(
-        FrontDeskSpecs.compose(settings("example.test"), off, legacy, identity(), DOCUMENT).hash(),
-        FrontDeskSpecs.compose(settings("example.test"), on, legacy, identity(), DOCUMENT).hash(),
-        "the loop is not the front desk's: turning it on must not roll the front desk");
-  }
-
-  /**
-   * The DELIVERY desk's golden (qits-1482): its own desk id in the control socket's and the proxy's
-   * addresses, the real project id, ON_DEMAND whatever the project's lifecycle, role {@code
-   * delivery}, the loop on with its interval, its own token and the delivery token.
-   */
-  @Test
-  void theDeliveryDeskIsPinnedWhole() {
-    Project project = project(FrontDeskLifecycle.ALWAYS_ON);
-    project.deliveryEnabled = true;
-    project.deliveryInterval = "PT5M";
     FrontDeskSpecs.Composed composed =
-        FrontDeskSpecs.compose(
-            settings("example.test"), project, deliveryRow(), identity(), DOCUMENT);
-    DeskSpec spec = composed.spec();
-    String deskId = PROJECT_ID + "-delivery";
-
-    assertEquals("registry.qits.example.test/qits/project-agent:2026.1001.1", spec.image());
-    assertEquals("1000", spec.user());
-
-    Map<String, String> expected = new LinkedHashMap<>();
-    expected.put(
-        "QITS_PROJECTS_DAEMON_URL", "wss://projects.qits.example.test/projects/daemon/" + deskId);
-    expected.put("QITS_PROJECTS_DAEMON_API_BASE_PATH", "/projects/container/" + deskId + "/");
-    expected.put("QITS_PROJECTS_DAEMON_PROJECT_ID", PROJECT_ID);
-    expected.put("QITS_PROJECTS_DAEMON_REPO_NAME", "qits-qits");
-    expected.put("QITS_PROJECTS_DAEMON_GIT_BASE", "https://githost.qits.example.test/git");
-    expected.put("QITS_PROJECTS_DAEMON_API_TOKEN", "qits-projects-daemon");
-    expected.put("QITS_PROJECTS_DAEMON_API_PORT", "13338");
-    expected.put("QITS_PROJECTS_DAEMON_HOOKS_PORT", "13337");
-    expected.put("QITS_PROJECTS_DAEMON_CLAUDE_MOUNT", "/claude-home");
-    expected.put(
-        "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH", "/tmp/qits/agent-configuration.json");
-    expected.put("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION", DOCUMENT);
-    expected.put("QITS_PROJECTS_DAEMON_LIFECYCLE", "ON_DEMAND");
-    expected.put("QITS_PROJECTS_DAEMON_ROLE", "delivery");
-    expected.put("QITS_PROJECTS_DAEMON_DELIVERY", "on");
-    expected.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", "PT5M");
-    expected.put("QITS_TOKEN", "qits_tok_delivery_desk");
-    expected.put("QITS_TOKEN_SUBJECT", "tok-delivery-desk");
-    expected.put("QITS_DELIVERY_TOKEN", "qits_tok_delivery");
-    expected.put("QITS_DELIVERY_TOKEN_SUBJECT", "tok-delivery");
-    expected.put("QITS_DOMAIN", "example.test");
-    expected.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
-    expected.put("QITS_GIT_AUTH_HOST", "githost.qits.example.test");
-    expected.put("QITS_PLATFORM_MCP_URL", "https://mcp.qits.example.test/mcp");
-    expected.putAll(identity());
-    expected.put("CLAUDE_CONFIG_DIR", "/claude-home/.claude");
-    expected.put("KIMI_CODE_HOME", "/claude-home/.kimi-code");
-    expected.put("MAVEN_OPTS", "-Dmaven.repo.local=/caches/m2");
-    expected.put("npm_config_store_dir", "/caches/pnpm/store");
-    assertEquals(expected, spec.env());
-    assertEquals(List.copyOf(expected.keySet()), List.copyOf(spec.env().keySet()));
-    assertEquals(FrontDeskSpecs.sha256(composed.json()), composed.hash());
+        FrontDeskSpecs.compose(settings("example.test"), on, row, identity(), DOCUMENT);
+    Map<String, String> onEnv = composed.spec().env();
+    assertEquals("on", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertEquals("PT5M", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertEquals("qits_tok_delivery", onEnv.get("QITS_DELIVERY_TOKEN"));
+    assertEquals("tok-delivery", onEnv.get("QITS_DELIVERY_TOKEN_SUBJECT"));
+    assertEquals("qits_tok_secret", onEnv.get("QITS_TOKEN"), "the desk's own token is unchanged");
+    List<String> names = List.copyOf(onEnv.keySet());
+    assertEquals(names.indexOf("QITS_TOKEN_SUBJECT") + 1, names.indexOf("QITS_DELIVERY_TOKEN"));
 
     assertFalse(
         composed.hash().equals(
-            FrontDeskSpecs.compose(settings("example.test"), project, row(), identity(), DOCUMENT)
-                .hash()),
-        "the two desks of one project are two specs");
-  }
-
-  /** The DELIVERY desk carries nothing internal either. */
-  @Test
-  void theDeliveryDeskCarriesNothingInternal() {
-    Project project = project(FrontDeskLifecycle.ON_DEMAND);
-    project.deliveryEnabled = true;
-    DeskSpec spec =
-        FrontDeskSpecs.compose(
-                settings("example.test"), project, deliveryRow(), identity(), DOCUMENT)
-            .spec();
-    spec.env()
-        .forEach(
-            (name, value) -> {
-              assertFalse(name.startsWith("QITS_COMMISSIONED_"), name);
-              assertFalse(name.endsWith("_AUTH_TOKEN_URL"), name);
-              assertFalse(value.contains(".internal"), name + "=" + value);
-              assertFalse(value.contains("-qits-"), name + "=" + value);
-              assertFalse(value.contains(".localhost"), name + "=" + value);
-            });
+            FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).hash()),
+        "turning the loop on moves the hash, so the spec roll recreates the desk");
   }
 
   /** TZ only when a zone is configured. */

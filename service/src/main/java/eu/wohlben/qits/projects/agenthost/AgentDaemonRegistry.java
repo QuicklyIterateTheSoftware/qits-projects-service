@@ -2,7 +2,6 @@ package eu.wohlben.qits.projects.agenthost;
 
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
-import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projectsdaemon.protocol.Ack;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
 import eu.wohlben.qits.projectsdaemon.protocol.CommandChunk;
@@ -51,15 +50,6 @@ import org.jboss.logging.Logger;
  * which daemon build a container is on), a last-heard-from stamp (so the idle sweep can stop a
  * container nobody is using), the change nudges, and {@link #requestStream} — the reverse tunnel's
  * one outbound message.
- *
- * <h2>Keyed by desk, not by project (qits-1482)</h2>
- *
- * <p>Every map here is keyed by the id the daemon dialled, which is a desk id: a FRONT desk's is its
- * project id, so nothing changed for it; a DELIVERY desk's is {@code <projectId>-delivery}. Desk
- * state — the connection, the build stamp, activity, provisioning — lands on the desk that said it.
- * What is about the <em>project</em> is taken from the FRONT desk alone: the change nudges onto the
- * project's SSE stream and the harness capability relay. And a {@link Hello} is held to the desk's
- * project: one naming another project is refused and its socket closed.
  */
 @ApplicationScoped
 public class AgentDaemonRegistry {
@@ -89,12 +79,6 @@ public class AgentDaemonRegistry {
    * stamped at most once a minute per project. Optional for the same reason the relay is.
    */
   @Inject Instance<eu.wohlben.qits.projects.deskhost.FrontDeskDemand> frontDeskDemand;
-
-  /**
-   * The desks (qits-1482): which project a desk belongs to, which a {@link Hello} is held to. An
-   * {@code Instance<>} for the cycle's sake — the desks reach back to this registry.
-   */
-  @Inject Instance<eu.wohlben.qits.projects.deskhost.FrontDesks> frontDesks;
 
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
@@ -506,16 +490,6 @@ public class AgentDaemonRegistry {
     DaemonConnection client = clients.get(projectId);
     switch (message) {
       case Hello hello -> {
-        String expected = projectOf(projectId);
-        if (hello.projectId() != null && !hello.projectId().equals(expected)) {
-          LOG.warnf(
-              "projects-daemon HELLO on desk %s names project %s, but the desk is project %s's;"
-                  + " closing its socket",
-              projectId, hello.projectId(), expected);
-          unregister(projectId, connection);
-          connection.close().subscribe().with(ignored -> {}, failure -> {});
-          return;
-        }
         LOG.infof(
             "projects-daemon HELLO for project %s (repo %s, capability %d, daemon %s built %s)",
             hello.projectId(),
@@ -535,8 +509,7 @@ public class AgentDaemonRegistry {
         // API binds loopback). It returns at once and runs off this event loop; see the relay.
         // Null when this registry was built by hand rather than by the container — the unit suite
         // does exactly that, and a hello it drives must not die on an optional collaborator.
-        // The capability report is the project's harnesses, so it is read from the FRONT desk only.
-        if (isFront(projectId) && capabilityRelay != null && capabilityRelay.isResolvable()) {
+        if (capabilityRelay != null && capabilityRelay.isResolvable()) {
           capabilityRelay.get().onDaemonHello(projectId);
         }
       }
@@ -609,9 +582,7 @@ public class AgentDaemonRegistry {
           .computeIfAbsent(projectId, id -> new ConcurrentHashMap<>())
           .put(key, new ActivityEntry(activity.state(), at));
     }
-    if (isFront(projectId)) {
-      changePublisher.fire(projectId, ProjectChangeHint.Topic.AGENT_ACTIVITY);
-    }
+    changePublisher.fire(projectId, ProjectChangeHint.Topic.AGENT_ACTIVITY);
   }
 
   /**
@@ -629,11 +600,6 @@ public class AgentDaemonRegistry {
    * needs no change here. Anything else is dropped with a debug line.
    */
   private void onProjectChanged(String projectId, ProjectChanged changed) {
-    if (!isFront(projectId)) {
-      // The project's stream is told by its FRONT desk only (qits-1482); a DELIVERY desk's nudges
-      // are about a container nobody's page shows.
-      return;
-    }
     ProjectChangeHint.Topic topic = topicOf(changed.topic());
     if (topic == null) {
       LOG.debugf(
@@ -656,27 +622,6 @@ public class AgentDaemonRegistry {
     } catch (IllegalArgumentException unknown) {
       return null;
     }
-  }
-
-  /** Whether {@code deskId} is a project's FRONT desk, whose id is the project's. */
-  private static boolean isFront(String deskId) {
-    return DeskRole.ofDeskId(deskId) == DeskRole.FRONT;
-  }
-
-  /**
-   * The project the desk {@code deskId} belongs to: its row's, else what the id itself says. A
-   * registry built by hand has no desks to ask.
-   */
-  private String projectOf(String deskId) {
-    String known = null;
-    if (frontDesks != null && frontDesks.isResolvable()) {
-      try {
-        known = frontDesks.get().projectOf(deskId);
-      } catch (RuntimeException e) {
-        LOG.debugf("Could not read the project of desk %s: %s", deskId, e.getMessage());
-      }
-    }
-    return known != null ? known : DeskRole.projectIdOf(deskId);
   }
 
   /**

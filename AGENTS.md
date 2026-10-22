@@ -2345,21 +2345,9 @@ keeps it so. The agent-container doors keep their paths:
 | `GET …/agent-container` | the state; `+ qits:agent` |
 | `DELETE …/agent-container` | `remove` to the runner (container **and** volume), row deleted (which unplaces it), token revoked; 204. A wanted desk is created afresh and QUEUED by the next sweep |
 
-- **A project has a desk per role** (qits-1482, V49): `front_desk.role` is `FRONT` or `DELIVERY`,
-  the primary key is `desk_id`, `(project_id, role)` is unique and the cascade to `project` stays on
-  `project_id`. A FRONT desk's id **is** its project id (`DeskRole.deskId`), so every path, socket,
-  proxy URL and runner key addressing it is byte for byte what it was; a DELIVERY desk's is
-  `<projectId>-delivery`. The agent-container doors and the lifecycle hook mean the FRONT desk;
-  everything a runner or a daemon drives (entries, inventory, `launchFailed`, `removed`, the spec
-  roll, `AgentDaemonRegistry`, `ContainerProxyRoute`, the bound subject) is keyed by desk id, and
-  `DeskRole.projectIdOf` reads a desk id back without a database read. The DELIVERY desk exists only
-  while the project's loop is enabled (`FrontDesks.syncDeliveryDesk`, from the project.yml flip and
-  the sweep); turned off, it is desired STOPPED, its runner told, then removed whole — container,
-  volume, row and tokens (`retireDesk`). The runner listing's `desks[]` carries `role`.
-- **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans, each speaking for
-  one role): a FRONT desk is RUNNING while the project is `ALWAYS_ON` or `last_demand_at` is inside
-  `qits.projects.agent-idle-timeout` (PT4H); a DELIVERY desk while the loop is enabled
-  (`DeliveryDemand`, epic qits-1440) — the loop no longer wants the FRONT desk.
+- **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans): RUNNING while the
+  project is `ALWAYS_ON`, its delivery loop is enabled (`DeliveryDemand`, epic qits-1440), or
+  `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
   Demand is the ensure door and the daemon frames `AgentDaemonRegistry` counts as use, at most once
   a minute per project and only on a wanted desk. `FrontDeskSweep` (`agent-idle-sweep-interval`,
   and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, re-mints a missing token,
@@ -2369,7 +2357,6 @@ keeps it so. The agent-container doors keep their paths:
   `update … where runner_id is null`; one row updated answers `take`, else the next is tried, else
   `nothing`. The server's count of the runner's wanted desks gates it against the row's slots, and
   only new placement: an owned desk wanted again is started whatever the count. A desk is sticky.
-  A project's two desks are two desks to a runner and take two slots.
 - **The estate** — the full list of a runner's desks, desired state and applied spec — is pushed on
   the runner's greeting, on every change and every `qits.projects.desk-runner.estate-interval`;
   `inventory` lands in `reported_*`, `launchFailed` in `failure_detail`, `removed` completes a
@@ -2379,32 +2366,25 @@ keeps it so. The agent-container doors keep their paths:
 - **The spec** is `FrontDeskSpecs.compose`, pure and golden-tested (`FrontDeskSpecsTest`); its
   `spec_hash` is SHA-256 over canonical JSON (sorted keys, env included). `FrontDeskSpecRoll`
   (`agent-stale-sweep-interval`) applies a new spec only while the desk is not reported RUNNING or is
-  quiet (`agent-stale-quiet-window`; a DELIVERY desk skips the window and waits only for no session
-  BUSY or WAITING, since its loop wakes every few minutes). The image is
-  `registry.qits.<d>/qits/project-agent:<pin>`
+  quiet (`agent-stale-quiet-window`). The image is `registry.qits.<d>/qits/project-agent:<pin>`
   (the pin rule moved here: the override, else `ProjectAgentImage.VERSION`); `user` is
   `qits.projects.agent-user`, else the host uid; memory and swap `agent-memory-limit`, then
   `agent-pids-limit`, `agent-cpus`, `agent-oom-score-adj`. Mounts, network, init and restart policy
   are the runner's. A blank, dotless or `localhost` `qits.domain` refuses to compose: FAILED
   `EDGE_PLANE_UNCONFIGURED`.
-- **The token** is one `qits_tok_` per desk row (`FrontDeskTokens`, idp kind `agent-container`,
-  context id the desk id, claims `{project}`, `gitRefs []`), minted at row creation before the desk
-  can be QUEUED, revoked on DELETE, on project deletion (`ProjectFrontDeskRemoval`, every desk of the
-  project) and on `removed` of an unplaced row, never by stop; `FrontDeskTokenReconcile` reaps
-  unclaimed ones. A failed mint is FAILED `TOKEN_UNAVAILABLE: …` until the sweep mints it.
-- **The delivery token** (epic qits-1440, V48) is the DELIVERY desk's second `qits_tok_`, idp kind
-  `desk-delivery` (`qits:agent` + `qits:desk`), claims `{project}`, `gitRefs []`, in
-  `front_desk.delivery_token_*`: `FrontDesks.syncTokens` mints it while the row holds none and the
-  loop is on, and it goes with the desk. A FRONT desk never holds one: one left from before qits-1482
-  is cleared and revoked by the next sweep, and the reconcile reaps any live `desk-delivery` token no
-  DELIVERY row claims. A failed mint is a WARN, not FAILED.
-- **The session token** (qits-1482, V49) is the FRONT desk's second `qits_tok_`, idp kind
-  `desk-session` (`qits:agent`, from qits-idp's qits-1482 release), context id and claim the project,
-  `gitRefs []`, in `front_desk.session_token_*`: minted beside the desk token by `syncTokens`,
-  revoked with the row, reconciled like the others, offered by `FrontDesks.sessionToken` — and in no
-  environment: the daemon is to be handed it over the control socket (`sessionCredentials`, a later
-  change). A failed mint — an idp that does not know the kind yet — is a WARN and leaves the desk
-  usable.
+- **The token** is one `qits_tok_` per desk (`FrontDeskTokens`, idp kind `agent-container`,
+  claims `{project}`, `gitRefs []`), minted at row creation before the desk can be QUEUED, revoked
+  on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
+  never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
+  `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+- **The delivery token** (epic qits-1440, V48) is a second `qits_tok_` per desk, idp kind
+  `desk-delivery` (`qits:agent` + `qits:desk`), claims `{project}`, `gitRefs []`, held in
+  `front_desk.delivery_token_*` only while the project's `front_desk.delivery.enabled` is true:
+  `FrontDesks.syncDeliveryToken` mints it (on the project.yml flip, at row creation and every
+  sweep) and revokes and clears it when the loop is off; it goes with the desk, and
+  `FrontDeskTokenReconcile` reaps unclaimed ones of its kind too. A failed mint is a WARN, not
+  FAILED: the desk is usable, the loop just has no credential until the sweep mints it. The sweep
+  also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`.
 - **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
   clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
   deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every
@@ -2412,38 +2392,31 @@ keeps it so. The agent-container doors keep their paths:
   survives its place is named in a WARN for a person — there is deliberately no volume door. It is
   the one production class left naming the `project-agent` workload.
 - **Binding**: `AgentControlSocketAccess` and `DaemonStreamRoute` require a `tok-` subject to be
-  the desk's `token_subject` — the desk the path names, so a FRONT desk's token opens no DELIVERY
-  desk and the other way round; a bound `qits:agent` must cover the desk's project. A `hello` naming
-  a project other than the desk's is refused and its socket closed; project-level frames (the SSE
-  nudges, the capability relay) are taken from the FRONT desk alone. The dial-back requires an
-  authenticated caller (the nonce stays the second factor). `ContainerProxyRoute` forwards to a
-  DELIVERY desk only for a caller holding `qits:admin` and none of `qits:agent`,
-  `qits:admin-agent`, `qits:desk` — 403 otherwise; a FRONT desk keeps its rule.
-  `SocketBearerLifetime` keeps `/projects/daemon/*` and `/projects/daemon/stream/*`
+  the desk's `token_subject`; the dial-back requires an authenticated caller (the nonce stays the
+  second factor). `SocketBearerLifetime` keeps `/projects/daemon/*` and `/projects/daemon/stream/*`
   open past the edge's 300 s JWT for `tok-` subjects.
 
 **The desk's environment, exactly** — and nothing else: no `QITS_COMMISSIONED_*`, no
 `*_AUTH_TOKEN_URL`, no `*.internal`, `-qits-` or `.localhost` value (the golden test asserts the
-belts, and pins both roles' specs whole). `<deskId>` is the project id for the FRONT desk.
+belts).
 
 | name | value |
 | --- | --- |
 | `TZ` | `qits.projects.agent-timezone`, only when set |
-| `QITS_PROJECTS_DAEMON_URL` | `wss://projects.qits.<d>/projects/daemon/<deskId>` |
-| `QITS_PROJECTS_DAEMON_API_BASE_PATH` | `/projects/container/<deskId>/` |
-| `QITS_PROJECTS_DAEMON_PROJECT_ID` | `<projectId>`, the real one on either desk |
+| `QITS_PROJECTS_DAEMON_URL` | `wss://projects.qits.<d>/projects/daemon/<projectId>` |
+| `QITS_PROJECTS_DAEMON_API_BASE_PATH` | `/projects/container/<projectId>/` |
+| `QITS_PROJECTS_DAEMON_PROJECT_ID` | `<projectId>` |
 | `QITS_PROJECTS_DAEMON_REPO_NAME` | the wrapper, `<slug>-<slug>` |
 | `QITS_PROJECTS_DAEMON_GIT_BASE` | `https://githost.qits.<d>/git` |
 | `QITS_PROJECTS_DAEMON_API_TOKEN` | `qits.projects.daemon-api-token` |
 | `QITS_PROJECTS_DAEMON_API_PORT` / `_HOOKS_PORT` | `13338` / `13337` |
 | `QITS_PROJECTS_DAEMON_CLAUDE_MOUNT` | `/claude-home` |
 | `QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH` / `_AGENT_CONFIGURATION` | `qits.projects.agent-configuration-path` and the resolved document (both or neither) |
-| `QITS_PROJECTS_DAEMON_LIFECYCLE` | FRONT: `ALWAYS_ON` or `ON_DEMAND`; DELIVERY: `ON_DEMAND` always |
-| `QITS_PROJECTS_DAEMON_ROLE` | `front` or `delivery` (qits-1482) |
-| `QITS_PROJECTS_DAEMON_DELIVERY` | FRONT: `off` always; DELIVERY: `on` |
-| `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | DELIVERY only: `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
+| `QITS_PROJECTS_DAEMON_LIFECYCLE` | `ALWAYS_ON` or `ON_DEMAND` |
+| `QITS_PROJECTS_DAEMON_DELIVERY` | `on` or `off`: the project's `front_desk.delivery.enabled` |
+| `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
 | `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
-| `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` | DELIVERY only: `delivery_token_value` / `delivery_token_subject`, for the `project.delivery` session alone. Never on a FRONT desk |
+| `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` | only while delivery is `on`: `delivery_token_value` / `delivery_token_subject`, for the `project.delivery` session alone |
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |

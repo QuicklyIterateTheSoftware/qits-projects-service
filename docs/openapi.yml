@@ -1056,8 +1056,6 @@ components:
           type: string
         state:
           type: string
-        role:
-          type: string
     DeskRunnerDto:
       type: object
       properties:

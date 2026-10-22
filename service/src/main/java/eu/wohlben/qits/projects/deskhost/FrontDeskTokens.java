@@ -5,23 +5,15 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * A desk's own {@code qits_tok_} at qits-idp (qits-767): minted when the desk's row is created,
+ * A front desk's own {@code qits_tok_} at qits-idp (qits-767): minted when the desk's row is created,
  * revoked when the desk is deleted (by its door, with its project, or on the runner's {@code removed}
  * of an unplaced row), and reconciled against the rows by {@link FrontDeskTokenReconcile}. Stop never
  * revokes it: the spec carries it, and a stopped desk starts again with the same one.
  *
- * <p><b>Every desk has one, per row</b> (qits-1482): the FRONT desk's has context id {@code
- * <projectId>}, as it always had; a DELIVERY desk's has its desk id, {@code <projectId>-delivery}.
- * Both claim {@code {project: <projectId>}}.
- *
- * <p><b>The DELIVERY desk holds a second one</b> (epic qits-1440), of kind {@link
- * #CONTEXT_KIND_DELIVERY}: minted while the row exists and holds none, revoked with the desk — which
- * goes when the loop is disabled — and reconciled the same way. Only the desk's {@code
- * project.delivery} session carries it.
- *
- * <p><b>The FRONT desk holds a session token</b> (qits-1482), of kind {@link #CONTEXT_KIND_SESSION}:
- * minted beside its desk token, revoked with the row, reconciled like the others, and carried in no
- * environment — the daemon is to be handed it over the control socket.
+ * <p><b>A desk whose project runs the delivery loop holds a second one</b> (epic qits-1440), of kind
+ * {@link #CONTEXT_KIND_DELIVERY}: minted while {@code delivery_enabled} is true and the row holds
+ * none, revoked and cleared when the loop is disabled or the desk goes, and reconciled the same way.
+ * Only the desk's {@code project.delivery} session carries it.
  *
  * <p>A seam rather than {@code IdpTokens} itself so a suite can stand in for qits-idp; {@code
  * idphost/IdpFrontDeskTokens} is the {@code @DefaultBean}.
@@ -37,12 +29,6 @@ public interface FrontDeskTokens {
    */
   String CONTEXT_KIND_DELIVERY = "desk-delivery";
 
-  /**
-   * The idp context kind of a FRONT desk's session token (qits-1482); {@code CommissionRoles} maps it
-   * to {@code qits:agent}.
-   */
-  String CONTEXT_KIND_SESSION = "desk-session";
-
   /** A minted token: its id, its value (a credential) and the {@code sub} it introspects as. */
   record Minted(String tokenId, String token, String subject) {
     @Override
@@ -55,12 +41,10 @@ public interface FrontDeskTokens {
   record Live(String tokenId, String contextKind, String contextId, Instant createdAt) {}
 
   /**
-   * Mint the desk token of the desk {@code deskId} of {@code projectId}: {@code {contextKind:
-   * agent-container, contextId: <deskId>, claims: {project: <projectId>}, gitRefs: []}}. A FRONT
-   * desk's id is its project id, so its token is commissioned exactly as before. Throws when it
-   * cannot.
+   * Mint the desk token of {@code projectId}: {@code {contextKind: agent-container, contextId:
+   * <projectId>, claims: {project: <projectId>}, gitRefs: []}}. Throws when it cannot.
    */
-  Minted mint(String deskId, String projectId);
+  Minted mint(String projectId);
 
   /** Revoke a token; a 404 counts as done. False when it could not be asked. */
   boolean revoke(String tokenId);
@@ -73,15 +57,6 @@ public interface FrontDeskTokens {
 
   /** Revoke a delivery token; a 404 counts as done. False when it could not be asked. */
   boolean revokeDelivery(String tokenId);
-
-  /**
-   * Mint the FRONT desk's session token of {@code projectId}: {@code {contextKind: desk-session,
-   * contextId: <projectId>, claims: {project: <projectId>}, gitRefs: []}}. Throws when it cannot.
-   */
-  Minted mintSession(String projectId);
-
-  /** Revoke a session token; a 404 counts as done. False when it could not be asked. */
-  boolean revokeSession(String tokenId);
 
   /** Every live token this service commissioned, or empty when the listing failed. */
   Optional<List<Live>> list();
