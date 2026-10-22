@@ -35,7 +35,7 @@ public class FrontDeskRunnerDesks implements DeskRunnerDesks {
           project == null ? null : frontDesks.state(project, row, now).runtimeStatus().name();
       desks.add(
           new DeskRunnerDto.DeskRunnerDesk(
-              row.projectId, project == null ? null : project.slug, state));
+              row.projectId, project == null ? null : project.slug, state, row.role().name()));
     }
     return List.copyOf(desks);
   }

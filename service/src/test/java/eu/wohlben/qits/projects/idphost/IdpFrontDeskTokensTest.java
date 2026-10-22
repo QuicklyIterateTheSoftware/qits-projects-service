@@ -13,9 +13,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * What a desk's two tokens are commissioned as (qits-767, epic qits-1440): the desk token is kind
- * {@code agent-container} and the delivery token kind {@code desk-delivery}, both for the project,
- * claiming it, and allowed to push nothing. Plain JUnit over a fake {@link IdpTokens} that records
+ * What a desk's tokens are commissioned as (qits-767, epic qits-1440, qits-1482): the desk token is
+ * kind {@code agent-container} for its desk id, the delivery token kind {@code desk-delivery} and the
+ * front desk's session token kind {@code desk-session}, both for the project — every one claiming
+ * the project and allowed to push nothing. Plain JUnit over a fake {@link IdpTokens} that records
  * the commission instead of sending it.
  */
 class IdpFrontDeskTokensTest {
@@ -81,10 +82,37 @@ class IdpFrontDeskTokensTest {
 
   @Test
   void theDeskTokenIsStillKindAgentContainer() {
-    tokens().mint(PROJECT);
+    tokens().mint(PROJECT, PROJECT);
 
     assertEquals(
         List.of(new Commission("agent-container", PROJECT, Map.of("project", PROJECT), List.of())),
         idp.commissions);
+  }
+
+  /** A DELIVERY desk's own token: kind agent-container, context its desk id, claiming the project. */
+  @Test
+  void aDeliveryDesksTokenIsForItsDeskAndClaimsItsProject() {
+    tokens().mint(PROJECT + "-delivery", PROJECT);
+
+    assertEquals(
+        List.of(
+            new Commission(
+                "agent-container", PROJECT + "-delivery", Map.of("project", PROJECT), List.of())),
+        idp.commissions);
+  }
+
+  /** The front desk's session token (qits-1482): kind desk-session, for and claiming the project. */
+  @Test
+  void theSessionTokenIsOneCommissionOfKindDeskSession() {
+    FrontDeskTokens.Minted minted = tokens().mintSession(PROJECT);
+
+    assertEquals(
+        List.of(new Commission("desk-session", PROJECT, Map.of("project", PROJECT), List.of())),
+        idp.commissions);
+    assertEquals(FrontDeskTokens.CONTEXT_KIND_SESSION, idp.commissions.get(0).kind());
+    assertEquals("t-1", minted.tokenId());
+
+    assertTrue(tokens().revokeSession("t-1"));
+    assertEquals(List.of("t-1"), idp.deleted);
   }
 }

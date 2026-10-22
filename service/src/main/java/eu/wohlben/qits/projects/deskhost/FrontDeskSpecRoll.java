@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.deskhost;
 
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
+import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
@@ -80,14 +81,15 @@ public class FrontDeskSpecRoll {
       if (project == null) {
         continue;
       }
+      String deskId = row.deskId();
       FrontDeskSpecs.Composed composed;
       try {
         composed = specs.compose(project, row);
       } catch (FrontDeskSpecs.EdgePlaneUnconfigured unconfigured) {
-        frontDesks.recordFailure(row.projectId, FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED);
+        frontDesks.recordFailure(deskId, FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED);
         continue;
       } catch (RuntimeException e) {
-        LOG.warnf("Could not compose the desk of project %s: %s", row.projectId, e.getMessage());
+        LOG.warnf("Could not compose the desk %s: %s", deskId, e.getMessage());
         continue;
       }
       if (Objects.equals(composed.hash(), row.specHash)) {
@@ -95,14 +97,13 @@ public class FrontDeskSpecRoll {
       }
       if (row.specJson != null
           && DeskState.RUNNING.name().equals(row.reportedState)
-          && !quiet(row.projectId, now)) {
+          && !quiet(deskId, now)) {
         LOG.warnf(
-            "The front desk of project %s has a new spec and is in use; it rolls once it is quiet",
-            row.projectId);
+            "The desk %s has a new spec and is in use; it rolls once it is quiet", deskId);
         continue;
       }
-      if (frontDesks.storeSpec(row.projectId, row.runnerId, composed) == 1) {
-        LOG.infof("Rolling the front desk of project %s onto spec %s", row.projectId, composed.hash());
+      if (frontDesks.storeSpec(deskId, row.runnerId, composed) == 1) {
+        LOG.infof("Rolling the desk %s onto spec %s", deskId, composed.hash());
         runners.add(row.runnerId);
         rolled++;
       }
@@ -111,16 +112,24 @@ public class FrontDeskSpecRoll {
     return rolled;
   }
 
-  /** No evidence of use inside the quiet window, and nothing busy or waiting right now. */
-  boolean quiet(String projectId, Instant now) {
+  /**
+   * No evidence of use inside the quiet window, and nothing busy or waiting right now.
+   *
+   * <p>A DELIVERY desk (qits-1482) skips the window: its loop wakes every few minutes by itself, so
+   * it would never be quiet for half an hour, and nobody works in it — between two passes is quiet
+   * enough.
+   */
+  boolean quiet(String deskId, Instant now) {
     if (quietWindow == null || quietWindow.isZero() || quietWindow.isNegative()) {
       return false;
     }
-    Optional<Instant> last = daemons.lastAgentActivityAt(projectId);
-    if (last.isPresent() && last.get().isAfter(now.minus(quietWindow))) {
+    Optional<Instant> last = daemons.lastAgentActivityAt(deskId);
+    if (DeskRole.ofDeskId(deskId) == DeskRole.FRONT
+        && last.isPresent()
+        && last.get().isAfter(now.minus(quietWindow))) {
       return false;
     }
-    String state = daemons.agentActivity(projectId).orElse(null);
+    String state = daemons.agentActivity(deskId).orElse(null);
     return !DaemonProtocol.AgentState.BUSY.equals(state)
         && !DaemonProtocol.AgentState.WAITING.equals(state);
   }

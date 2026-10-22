@@ -35,7 +35,7 @@ import java.util.UUID;
  * @param pinnedVersion the runner version this process pins and upgrades every runner to
  * @param loginCommand the one command that logs the node's agent home in, run on the node; null
  *     while it cannot be composed yet
- * @param desks the project front desks placed on this runner
+ * @param desks the project desks placed on this runner
  * @param health the newest health check's verdict and each named check's, without their data
  *     ({@code GET /runners/{id}/health} answers that); null until a check has settled
  */
@@ -65,11 +65,13 @@ public record DeskRunnerDto(
   /**
    * One desk a runner holds.
    *
-   * @param projectId the project whose front desk it is
+   * @param projectId the project whose desk it is
    * @param slug that project's slug, or null when it could not be read
    * @param state where the desk stands, or null
+   * @param role which of the project's desks it is (qits-1482): {@code FRONT}, its front desk, or
+   *     {@code DELIVERY}, the desk its delivery loop runs in
    */
-  public record DeskRunnerDesk(String projectId, String slug, String state) {}
+  public record DeskRunnerDesk(String projectId, String slug, String state, String role) {}
 
   /**
    * The newest health check, as the listing reads it.

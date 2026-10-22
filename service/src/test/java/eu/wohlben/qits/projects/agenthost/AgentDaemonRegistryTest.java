@@ -42,6 +42,7 @@ class AgentDaemonRegistryTest {
 
   private final List<ProjectChangeHint> fired = new ArrayList<>();
   private final List<String> sent = new ArrayList<>();
+  private final List<String> closed = new ArrayList<>();
   private final AgentDaemonRegistry registry = new AgentDaemonRegistry();
 
   AgentDaemonRegistryTest() {
@@ -88,6 +89,10 @@ class AgentDaemonRegistryTest {
                   case "sendTextAndAwait" -> {
                     sent.add(String.valueOf(args[0]));
                     yield null;
+                  }
+                  case "close" -> {
+                    closed.add(id);
+                    yield io.smallrye.mutiny.Uni.createFrom().voidItem();
                   }
                   case "equals" -> proxy == args[0];
                   case "hashCode" -> System.identityHashCode(proxy);
@@ -544,5 +549,73 @@ class AgentDaemonRegistryTest {
     assertTrue(registry.isDaemonLive(PROJECT), "the reconnect's socket is the live one");
     registry.unregister(PROJECT, second);
     assertFalse(registry.isDaemonLive(PROJECT));
+  }
+
+  // --- desks, not projects (qits-1482) -------------------------------------------------------------
+
+  private static final String DELIVERY_DESK = PROJECT + "-delivery";
+
+  /**
+   * A DELIVERY desk dials its own desk id and says its real project: it is acked, and everything it
+   * announced lands on the desk — not on the project's front desk.
+   */
+  @Test
+  void aDeliveryDesksHelloNamesItsProjectAndLandsOnTheDesk() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(DELIVERY_DESK, connection);
+
+    registry.onMessage(
+        DELIVERY_DESK,
+        connection,
+        new Hello(PROJECT, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "2026.1022.1", null));
+
+    assertTrue(sent.get(0).contains("\"type\":\"ack\""));
+    assertEquals("2026.1022.1", registry.lookup(DELIVERY_DESK).orElseThrow().daemonVersion());
+    assertTrue(registry.lookup(PROJECT).isEmpty(), "the front desk is another daemon");
+    assertTrue(closed.isEmpty());
+  }
+
+  /** A hello naming a project the desk is not of is refused: no ack, the socket closed, unregistered. */
+  @Test
+  void aHelloNamingAnotherProjectIsRefused() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(DELIVERY_DESK, connection);
+
+    registry.onMessage(
+        DELIVERY_DESK,
+        connection,
+        new Hello("project-2", "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "1", null));
+
+    assertTrue(sent.isEmpty(), "no ack");
+    assertEquals(List.of("c1"), closed);
+    assertFalse(registry.isDaemonLive(DELIVERY_DESK));
+
+    WebSocketConnection front = connection("c2");
+    registry.register(PROJECT, front);
+    registry.onMessage(
+        PROJECT, front, new Hello("project-2", "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "1", null));
+    assertEquals(List.of("c1", "c2"), closed, "a front desk is held to its project too");
+  }
+
+  /**
+   * What a DELIVERY desk reports about its sessions is the desk's — its activity rolls up there — but
+   * it is not the project's news: nothing is fired onto the project's stream.
+   */
+  @Test
+  void aDeliveryDesksNudgesAreNotTheProjectsNews() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(DELIVERY_DESK, connection);
+
+    registry.onMessage(
+        DELIVERY_DESK,
+        connection,
+        new AgentActivity(
+            "cmd-1", "s-1", DaemonProtocol.AgentState.BUSY, null, null, null, System.currentTimeMillis()));
+    registry.onMessage(DELIVERY_DESK, connection, new ProjectChanged(PROJECT, "COMMANDS"));
+
+    assertEquals(List.of(), fired);
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(DELIVERY_DESK).orElseThrow());
+    assertTrue(registry.agentActivity(PROJECT).isEmpty());
+    assertTrue(registry.lastAgentActivityAt(DELIVERY_DESK).isPresent());
   }
 }

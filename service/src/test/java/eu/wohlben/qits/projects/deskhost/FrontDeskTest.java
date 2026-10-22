@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.control.DeskRunners;
 import eu.wohlben.qits.projects.control.ProjectConfig;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.dto.DeskRunnerDto;
+import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projects.entity.DeskRunner;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskDesired;
@@ -134,6 +135,7 @@ class FrontDeskTest {
         .run(
             () -> {
               createdProjects.forEach(desks::deleteById);
+              createdProjects.forEach(id -> desks.deleteById(DeskRole.DELIVERY.deskId(id)));
               createdProjects.forEach(projectRows::deleteById);
               createdRunners.forEach(runnerRows::deleteById);
             });
@@ -177,6 +179,11 @@ class FrontDeskTest {
 
   private FrontDesk row(String projectId) {
     return QuarkusTransaction.requiringNew().call(() -> desks.findById(projectId));
+  }
+
+  /** The project's DELIVERY desk row, or null. */
+  private FrontDesk deliveryRow(String projectId) {
+    return row(DeskRole.DELIVERY.deskId(projectId));
   }
 
   /** A registered runner in service, holding {@code slots}. */
@@ -246,6 +253,9 @@ class FrontDeskTest {
     assertNotNull(row.queuedAt);
     assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
     assertEquals(1, tokens.mintsFor(projectId));
+    assertEquals(DeskRole.FRONT, row.role);
+    assertEquals(projectId, row.deskId, "a front desk's id is its project id");
+    assertEquals(projectId, tokens.contextOf(row.tokenId));
   }
 
   /** A flip to ALWAYS_ON creates the desk at once, through the project.yml hook. */
@@ -755,102 +765,354 @@ class FrontDeskTest {
 
   // --- the delivery loop (epic qits-1440) ---------------------------------------------------------
 
-  /** {@link DeliveryDemand} wants an ON_DEMAND desk while the loop is on, and only then. */
+  /**
+   * {@link DeliveryDemand} speaks for the DELIVERY desk alone (qits-1482): it wants it while the loop
+   * is on, and never the project's FRONT desk.
+   */
   @Test
-  void theDeliveryLoopWantsAnOnDemandDesk() {
+  void theDeliveryLoopWantsItsOwnDeskAndNotTheFrontDesk() {
     DeliveryDemand source = new DeliveryDemand();
     assertEquals("delivery", source.name());
+    assertEquals(DeskRole.DELIVERY, source.role());
     Project project = new Project();
     project.frontDeskLifecycle = FrontDeskLifecycle.ON_DEMAND;
     assertFalse(source.wants(project, null, Instant.now()));
     project.deliveryEnabled = true;
     assertTrue(source.wants(project, null, Instant.now()));
     assertFalse(source.wants(null, null, Instant.now()));
+    assertEquals(
+        FrontDeskDesired.STOPPED,
+        demand.desired(project, FrontDesk.of("p", DeskRole.FRONT), Instant.now()),
+        "the loop does not want the front desk");
+    assertEquals(
+        FrontDeskDesired.RUNNING,
+        demand.desired(project, FrontDesk.of("p", DeskRole.DELIVERY), Instant.now()));
 
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     setDelivery(projectId, true);
     sweep.sweep(Instant.now());
-    assertEquals(FrontDeskDesired.RUNNING, row(projectId).desired, "the sweep creates a wanted desk");
-    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
+    assertNull(row(projectId), "an unused ON_DEMAND project gets no front desk for its loop");
+    FrontDesk delivery = deliveryRow(projectId);
+    assertNotNull(delivery, "the sweep creates the delivery desk");
+    assertEquals(FrontDeskDesired.RUNNING, delivery.desired);
+    assertNotNull(delivery.queuedAt);
   }
 
   /**
-   * Enabling the loop mints exactly one delivery token, of kind {@code desk-delivery}, beside the
-   * desk's own — however often the hook and the sweep run — and disabling it revokes and clears it
-   * while the desk keeps its own token.
+   * The DELIVERY desk (qits-1482): keyed {@code <projectId>-delivery}, of its project, holding its
+   * own {@code agent-container} token for that desk id and exactly one delivery token — however
+   * often the hook and the sweep run — and no session token; its bound subject and its project are
+   * what the control socket checks read.
    */
   @Test
-  void enablingMintsOneDeliveryTokenAndDisablingRevokesIt() {
+  void aDeliveryDeskHoldsItsOwnTokenAndTheDeliveryToken() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    String deskId = DeskRole.DELIVERY.deskId(projectId);
     setDelivery(projectId, true);
 
     hooks.onDeliveryChanged(projectId, delivery(true));
     hooks.onDeliveryChanged(projectId, delivery(true));
     sweep.sweep(Instant.now());
 
-    FrontDesk row = row(projectId);
-    assertNotNull(row.deliveryTokenId);
+    FrontDesk row = deliveryRow(projectId);
+    assertEquals(projectId + "-delivery", row.deskId);
+    assertEquals(projectId, row.projectId);
+    assertEquals(DeskRole.DELIVERY, row.role);
+    assertEquals(1, tokens.mintsForDesk(deskId));
+    assertEquals(FrontDeskTokens.CONTEXT_KIND, tokens.kindOf(row.tokenId));
+    assertEquals(deskId, tokens.contextOf(row.tokenId), "the desk token is for the desk id");
     assertNotNull(row.deliveryTokenValue);
     assertTrue(row.deliveryTokenSubject.startsWith("tok-"));
     assertEquals(1, tokens.deliveryMintsFor(projectId));
-    assertEquals(1, tokens.mintsFor(projectId), "the desk's own token is minted once too");
-    assertEquals(FrontDeskTokens.CONTEXT_KIND_DELIVERY, tokens.kindOf(row.deliveryTokenId));
     assertEquals("desk-delivery", tokens.kindOf(row.deliveryTokenId));
-    assertEquals(FrontDeskTokens.CONTEXT_KIND, tokens.kindOf(row.tokenId));
-    assertEquals(FrontDeskDesired.RUNNING, row.desired);
-    String deliveryToken = row.deliveryTokenId;
-    String deskToken = row.tokenId;
+    assertNull(row.sessionTokenId, "the session token is the front desk's");
+    assertEquals(0, tokens.sessionMintsFor(projectId));
+    assertEquals(row.tokenSubject, frontDesks.tokenSubject(deskId));
+    assertEquals(projectId, frontDesks.projectOf(deskId));
+    assertNull(row(projectId), "the hook makes no front desk for the loop");
+  }
+
+  /**
+   * Turning the loop off stops the DELIVERY desk, then removes it — container and volume on its
+   * runner, the row, and both its tokens — and leaves the FRONT desk as it was.
+   */
+  @Test
+  void disablingTheLoopStopsAndRemovesTheDeliveryDesk() throws Exception {
+    runner("fd-delivery-off", 2);
+    FakeDeskRunner runner = greeted("fd-delivery-off");
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    String deskId = DeskRole.DELIVERY.deskId(projectId);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    runner.send(new Reserve());
+    assertEquals(projectId, runner.expect(Take.class).projectId());
+    setDelivery(projectId, true);
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    runner.send(new Reserve());
+    Take take = runner.expect(Take.class);
+    assertEquals(deskId, take.projectId(), "the runner keys the delivery desk by its desk id");
+    assertEquals("delivery", take.spec().env().get("QITS_PROJECTS_DAEMON_ROLE"));
+    FrontDesk placed = deliveryRow(projectId);
+    String deskToken = placed.tokenId;
+    String deliveryToken = placed.deliveryTokenId;
+    String frontToken = row(projectId).tokenId;
+    runner.drain();
 
     setDelivery(projectId, false);
     hooks.onDeliveryChanged(projectId, delivery(false));
 
-    FrontDesk after = row(projectId);
-    assertNull(after.deliveryTokenId);
-    assertNull(after.deliveryTokenValue);
-    assertNull(after.deliveryTokenSubject);
+    Estate stopped = runner.await(Estate.class);
+    assertTrue(
+        stopped.desks().stream()
+            .anyMatch(d -> d.projectId().equals(deskId) && d.desired() == DesiredState.STOPPED),
+        "stopped first: " + stopped.desks());
+    assertEquals(deskId, runner.await(Remove.class).projectId());
+    assertNull(deliveryRow(projectId));
+    assertFalse(tokens.isLive(deskToken));
     assertFalse(tokens.isLive(deliveryToken));
-    assertTrue(tokens.revoked().contains(deliveryToken));
-    assertTrue(tokens.isLive(deskToken), "the desk keeps its own token");
-    assertEquals(FrontDeskDesired.STOPPED, after.desired, "nothing else wants the desk");
+    assertNull(frontDesks.tokenSubject(deskId));
+    assertNotNull(row(projectId), "the front desk stays");
+    assertTrue(tokens.isLive(frontToken), "and keeps its token");
 
     sweep.sweep(Instant.now());
+    assertNull(deliveryRow(projectId), "an off loop gets no desk back");
     assertEquals(1, tokens.deliveryMintsFor(projectId), "an off loop is never minted for");
   }
 
-  /** A failed delivery mint leaves the desk usable; the sweep mints it later. */
+  /** The sweep retires a DELIVERY desk whose loop was turned off behind its back. */
+  @Test
+  void theSweepRetiresADeliveryDeskWhoseLoopIsOff() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    setDelivery(projectId, true);
+    sweep.sweep(Instant.now());
+    String deliveryToken = deliveryRow(projectId).deliveryTokenId;
+
+    setDelivery(projectId, false);
+    sweep.sweep(Instant.now());
+
+    assertNull(deliveryRow(projectId));
+    assertFalse(tokens.isLive(deliveryToken));
+  }
+
+  /**
+   * One runner holds both desks of a project: each is placed under its own key, carries its own
+   * spec, takes its own inventory, and the listing tells them apart by role.
+   */
+  @Test
+  void bothDesksOfAProjectAreTwoDesksToTheirRunner() throws Exception {
+    DeskRunner held = runner("fd-two-desks", 2);
+    FakeDeskRunner runner = greeted("fd-two-desks");
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    String deskId = DeskRole.DELIVERY.deskId(projectId);
+    setDelivery(projectId, true);
+    hooks.onDeliveryChanged(projectId, delivery(true));
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+
+    runner.send(new Reserve());
+    Take first = runner.expect(Take.class);
+    runner.send(new Reserve());
+    Take second = runner.expect(Take.class);
+    Take front = first.projectId().equals(projectId) ? first : second;
+    Take delivery = front == first ? second : first;
+    assertEquals(projectId, front.projectId());
+    assertEquals(deskId, delivery.projectId());
+    assertEquals("front", front.spec().env().get("QITS_PROJECTS_DAEMON_ROLE"));
+    assertFalse(front.spec().env().containsKey("QITS_DELIVERY_TOKEN"));
+    assertEquals(
+        deliveryRow(projectId).deliveryTokenValue,
+        delivery.spec().env().get("QITS_DELIVERY_TOKEN"));
+    assertTrue(
+        delivery.spec().env().get("QITS_PROJECTS_DAEMON_URL").endsWith("/projects/daemon/" + deskId));
+    assertEquals(projectId, delivery.spec().env().get("QITS_PROJECTS_DAEMON_PROJECT_ID"));
+
+    runner.send(
+        new Inventory(
+            List.of(
+                new HeldDesk(projectId, DeskState.RUNNING, front.specHash(), null),
+                new HeldDesk(deskId, DeskState.FAILED, delivery.specHash(), "no image"))));
+    await(() -> "FAILED".equals(deliveryRow(projectId).reportedState), "delivery not FAILED");
+    assertEquals("RUNNING", row(projectId).reportedState);
+    assertEquals("no image", deliveryRow(projectId).failureDetail);
+    assertEquals(AgentRuntimeStatus.RUNNING, status(projectId), "the door reads the front desk");
+
+    List<DeskRunnerDto.DeskRunnerDesk> owned =
+        QuarkusTransaction.requiringNew().call(() -> runnerDesks.desksOn(held.id));
+    assertEquals(2, owned.size());
+    assertTrue(owned.stream().allMatch(d -> projectId.equals(d.projectId())));
+    assertEquals(
+        java.util.Set.of("FRONT", "DELIVERY"),
+        owned.stream().map(DeskRunnerDto.DeskRunnerDesk::role).collect(java.util.stream.Collectors.toSet()));
+  }
+
+  /** A failed delivery mint leaves the delivery desk usable; the sweep mints it later. */
   @Test
   void aFailedDeliveryMintIsRetriedBySweep() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    frontDesks.ensureRow(projectId);
     setDelivery(projectId, true);
-    tokens.failMint(true);
+    tokens.failKind(FrontDeskTokens.CONTEXT_KIND_DELIVERY, true);
 
     hooks.onDeliveryChanged(projectId, delivery(true));
-    assertNull(row(projectId).deliveryTokenId);
-    assertNull(row(projectId).failureDetail, "the desk itself is not failed");
+    assertNotNull(deliveryRow(projectId).tokenId, "its own token was minted");
+    assertNull(deliveryRow(projectId).deliveryTokenId);
+    assertNull(deliveryRow(projectId).failureDetail, "the desk itself is not failed");
 
-    tokens.failMint(false);
+    tokens.failKind(FrontDeskTokens.CONTEXT_KIND_DELIVERY, false);
     sweep.sweep(Instant.now());
-    assertNotNull(row(projectId).deliveryTokenId);
+    assertNotNull(deliveryRow(projectId).deliveryTokenId);
   }
 
-  /** The delivery token goes with the desk, and the reconcile reaps an unclaimed one. */
+  /**
+   * A FRONT desk never holds a delivery token (qits-1482): one it held from before the loop had a
+   * desk of its own is cleared and revoked by the next sweep.
+   */
   @Test
-  void theDeliveryTokenGoesWithTheDeskAndTheReconcileReapsItsOrphans() {
+  void aFrontDesksLegacyDeliveryTokenIsRevoked() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    frontDesks.ensureRow(projectId);
+    tokens.plant(
+        new FrontDeskTokens.Live(
+            "legacy-delivery",
+            FrontDeskTokens.CONTEXT_KIND_DELIVERY,
+            projectId,
+            Instant.now().minus(Duration.ofHours(2))));
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                desks.update(
+                    "deliveryTokenId = ?1, deliveryTokenValue = ?2, deliveryTokenSubject = ?3"
+                        + " where deskId = ?4",
+                    "legacy-delivery",
+                    "qits_tok_legacy",
+                    "tok-legacy",
+                    projectId));
+
+    sweep.sweep(Instant.now());
+
+    FrontDesk row = row(projectId);
+    assertNull(row.deliveryTokenId);
+    assertNull(row.deliveryTokenValue);
+    assertNull(row.deliveryTokenSubject);
+    assertFalse(tokens.isLive("legacy-delivery"));
+    assertTrue(tokens.revoked().contains("legacy-delivery"));
+  }
+
+  /**
+   * The reconcile claims each kind by its own column, per row: a delivery token is claimed only by a
+   * DELIVERY desk — so one a FRONT desk still names is reaped — and a session token only by a FRONT
+   * desk; orphans of either kind go, claimed ones stay.
+   */
+  @Test
+  void theReconcileClaimsEachKindByItsOwnRow() {
+    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
     setDelivery(projectId, true);
-    hooks.onDeliveryChanged(projectId, delivery(true));
-    String claimed = row(projectId).deliveryTokenId;
+    sweep.sweep(Instant.now());
+    FrontDesk front = row(projectId);
+    FrontDesk delivery = deliveryRow(projectId);
     Instant old = Instant.now().minus(Duration.ofHours(2));
     tokens.plant(
+        new FrontDeskTokens.Live("session-orphan", FrontDeskTokens.CONTEXT_KIND_SESSION, "gone", old));
+    tokens.plant(
         new FrontDeskTokens.Live("delivery-orphan", FrontDeskTokens.CONTEXT_KIND_DELIVERY, "gone", old));
+    tokens.plant(
+        new FrontDeskTokens.Live(
+            "front-held-delivery", FrontDeskTokens.CONTEXT_KIND_DELIVERY, projectId, old));
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                desks.update(
+                    "deliveryTokenId = ?1 where deskId = ?2", "front-held-delivery", projectId));
 
-    assertEquals(1, tokenReconcile.reconcile(Instant.now()));
+    assertEquals(3, tokenReconcile.reconcile(Instant.now()));
+
+    assertFalse(tokens.isLive("session-orphan"));
     assertFalse(tokens.isLive("delivery-orphan"));
-    assertTrue(tokens.isLive(claimed));
+    assertFalse(tokens.isLive("front-held-delivery"), "a front desk does not claim one");
+    assertTrue(tokens.isLive(front.tokenId));
+    assertTrue(tokens.isLive(front.sessionTokenId));
+    assertTrue(tokens.isLive(delivery.tokenId));
+    assertTrue(tokens.isLive(delivery.deliveryTokenId));
+  }
+
+  // --- the session token (qits-1482) --------------------------------------------------------------
+
+  /**
+   * The FRONT desk's session token: minted once beside its desk token, kind {@code desk-session} for
+   * the project, held on the row and offered by {@link FrontDesks#sessionToken}, carried in no spec,
+   * and revoked with the desk.
+   */
+  @Test
+  void theFrontDeskHoldsASessionTokenThatGoesWithIt() throws Exception {
+    runner("fd-session", 1);
+    FakeDeskRunner runner = greeted("fd-session");
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    sweep.sweep(Instant.now());
+
+    FrontDesk row = row(projectId);
+    assertEquals(1, tokens.sessionMintsFor(projectId));
+    assertEquals(FrontDeskTokens.CONTEXT_KIND_SESSION, tokens.kindOf(row.sessionTokenId));
+    assertEquals(projectId, tokens.contextOf(row.sessionTokenId));
+    assertTrue(row.sessionTokenSubject.startsWith("tok-"));
+    assertFalse(row.sessionTokenSubject.equals(row.tokenSubject), "a principal of its own");
+    FrontDeskTokens.Minted session = frontDesks.sessionToken(projectId).orElseThrow();
+    assertEquals(row.sessionTokenValue, session.token());
+    assertEquals(row.sessionTokenSubject, session.subject());
+
+    runner.send(new Reserve());
+    Take take = runner.expect(Take.class);
+    take.spec()
+        .env()
+        .forEach(
+            (name, value) ->
+                assertFalse(
+                    value.contains(row.sessionTokenValue) || value.equals(row.sessionTokenSubject),
+                    name + " carries the session token"));
 
     person().delete(base(projectId)).then().statusCode(204);
-    assertFalse(tokens.isLive(claimed));
+    assertFalse(tokens.isLive(row.sessionTokenId));
+    assertTrue(frontDesks.sessionToken(projectId).isEmpty());
+  }
+
+  /**
+   * An idp that will not mint a session token (one older than qits-1482's {@code desk-session}
+   * kind) leaves the front desk usable — QUEUED, not FAILED — and the sweep mints it once it can.
+   */
+  @Test
+  void aRefusedSessionMintLeavesTheDeskUsable() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    tokens.failKind(FrontDeskTokens.CONTEXT_KIND_SESSION, true);
+
+    person()
+        .post(base(projectId) + "/ensure")
+        .then()
+        .statusCode(200)
+        .body("container.runtimeStatus", is("QUEUED"));
+    assertNull(row(projectId).sessionTokenId);
+    assertNull(row(projectId).failureDetail);
+
+    tokens.failKind(FrontDeskTokens.CONTEXT_KIND_SESSION, false);
+    sweep.sweep(Instant.now());
+    assertNotNull(row(projectId).sessionTokenId);
+  }
+
+  /** Deleting the project takes both its desks, every token with them. */
+  @Test
+  void deletingTheProjectRemovesBothDesks() {
+    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
+    setDelivery(projectId, true);
+    sweep.sweep(Instant.now());
+    FrontDesk front = row(projectId);
+    FrontDesk delivery = deliveryRow(projectId);
+
+    hooks.projectDeleting(projectId);
+
+    assertNull(row(projectId));
+    assertNull(deliveryRow(projectId));
+    for (String token :
+        List.of(
+            front.tokenId, front.sessionTokenId, delivery.tokenId, delivery.deliveryTokenId)) {
+      assertFalse(tokens.isLive(token), token);
+    }
   }
 
   /** {@code removed} for an unplaced, once-placed row completes it: row dropped, token revoked. */
@@ -860,15 +1122,17 @@ class FrontDeskTest {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     frontDesks.ensureRow(projectId);
     String tokenId = row(projectId).tokenId;
+    String sessionTokenId = row(projectId).sessionTokenId;
 
     frontDesks.removed(held.id, projectId);
     assertNotNull(row(projectId), "a never-placed row is not touched");
 
     QuarkusTransaction.requiringNew()
-        .run(() -> desks.update("placedAt = ?1 where projectId = ?2", Instant.now(), projectId));
+        .run(() -> desks.update("placedAt = ?1 where deskId = ?2", Instant.now(), projectId));
     frontDesks.removed(held.id, projectId);
     assertNull(row(projectId));
     assertFalse(tokens.isLive(tokenId));
+    assertFalse(tokens.isLive(sessionTokenId));
   }
 
   // --- refusals ----------------------------------------------------------------------------------
@@ -902,6 +1166,7 @@ class FrontDeskTest {
     assertEquals(projectId, owned.get(0).projectId());
     assertEquals("fd-" + projectId.substring(0, 8), owned.get(0).slug());
     assertNotNull(owned.get(0).state());
+    assertEquals("FRONT", owned.get(0).role());
   }
 
   /** An unknown project is a 404 on every door. */
@@ -941,5 +1206,7 @@ class FrontDeskTest {
     sweep.sweep(Instant.now());
     assertEquals(row(projectId).tokenSubject, frontDesks.tokenSubject(projectId));
     assertNull(frontDesks.tokenSubject(UUID.randomUUID().toString()));
+    assertEquals(projectId, frontDesks.projectOf(projectId));
+    assertNull(frontDesks.projectOf(UUID.randomUUID().toString()));
   }
 }

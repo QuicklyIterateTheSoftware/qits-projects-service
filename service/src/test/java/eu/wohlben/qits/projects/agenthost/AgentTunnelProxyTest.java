@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.agenthost;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -218,6 +219,11 @@ class AgentTunnelProxyTest {
    * request that is simply never answered.
    */
   private void connectAsDaemon(String id, int apiPort) throws Exception {
+    connectAsDaemon(id, id, apiPort);
+  }
+
+  /** {@link #connectAsDaemon(String, int)} on the desk {@code id}, saying {@code helloProject}. */
+  private void connectAsDaemon(String id, String helloProject, int apiPort) throws Exception {
     this.projectId = id;
     wsClient = vertx.createWebSocketClient();
     netClient = vertx.createNetClient();
@@ -248,7 +254,8 @@ class AgentTunnelProxyTest {
         });
 
     controlSocket.writeTextMessage(
-        encode(new Hello(id, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "test", null)));
+        encode(
+            new Hello(helloProject, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "test", null)));
     acked.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
   }
 
@@ -627,5 +634,72 @@ class AgentTunnelProxyTest {
                 .toCompletionStage()
                 .toCompletableFuture()
                 .get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+  }
+
+  // --- the DELIVERY desk (qits-1482) ------------------------------------------------------------
+
+  /** A GET through the proxy as the caller a forwarded {@code X-Qits-Roles: roles} makes. */
+  private HttpResponse<String> getAs(String path, String roles) throws Exception {
+    HttpRequest.Builder request =
+        HttpRequest.newBuilder(URI.create("http://" + root.getHost() + ":" + root.getPort() + path))
+            .version(PROXY_HOP_VERSION)
+            .header("X-Qits-User", "someone")
+            .header("X-Qits-Roles", roles)
+            .GET();
+    return HttpClient.newHttpClient().send(request.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  /**
+   * A DELIVERY desk's daemon dials {@code /projects/daemon/<projectId>-delivery} saying its real
+   * project, and is reached at {@code /projects/container/<projectId>-delivery/} — by a person
+   * holding {@code qits:admin} alone. An agent, an admin workspace's agent, the delivery desk's own
+   * role and any of them beside {@code qits:admin} are 403s, and nothing reaches the daemon.
+   */
+  @Test
+  void aDeliveryDeskIsReachedByAPersonOnly() throws Exception {
+    String project = UUID.randomUUID().toString();
+    String desk = project + "-delivery";
+    int apiPort = startDaemonApi();
+    connectAsDaemon(desk, project, apiPort);
+    String path = ContainerProxyPath.base(desk) + "commands";
+
+    for (String refused :
+        new String[] {
+          "qits:agent", "qits:admin,qits:agent", "qits:admin,qits:admin-agent", "qits:admin,qits:desk"
+        }) {
+      assertEquals(403, getAs(path, refused).statusCode(), refused);
+    }
+    assertFalse(seen.isDone(), "nothing refused reached the daemon");
+
+    HttpResponse<String> person = getAs(path, "qits:admin");
+    assertEquals(200, person.statusCode());
+    assertEquals(path, seen.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).uri());
+  }
+
+  /** The front desk keeps its rule: the same agent the delivery desk refuses is forwarded there. */
+  @Test
+  void aFrontDeskKeepsTodaysRule() throws Exception {
+    String project = UUID.randomUUID().toString();
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    assertEquals(
+        200, getAs(ContainerProxyPath.base(project) + "commands", "qits:agent").statusCode());
+  }
+
+  /** The person check, on its own. */
+  @Test
+  void onlyAPersonHoldingAdminIsAdmittedToADeliveryDesk() {
+    assertTrue(ContainerProxyRoute.admitsDelivery(eu.wohlben.qits.projects.security.AgentTokens.forwarded("qits:admin")));
+    assertFalse(ContainerProxyRoute.admitsDelivery(null));
+    assertFalse(ContainerProxyRoute.admitsDelivery(eu.wohlben.qits.projects.security.AgentTokens.forwarded()));
+    assertFalse(ContainerProxyRoute.admitsDelivery(eu.wohlben.qits.projects.security.AgentTokens.forwarded("qits:system")));
+    assertFalse(
+        ContainerProxyRoute.admitsDelivery(eu.wohlben.qits.projects.security.AgentTokens.forwarded("qits:admin", "qits:agent")));
+    assertFalse(
+        ContainerProxyRoute.admitsDelivery(
+            eu.wohlben.qits.projects.security.AgentTokens.forwarded("qits:admin", "qits:admin-agent")));
+    assertFalse(
+        ContainerProxyRoute.admitsDelivery(eu.wohlben.qits.projects.security.AgentTokens.forwarded("qits:admin", "qits:desk")));
   }
 }

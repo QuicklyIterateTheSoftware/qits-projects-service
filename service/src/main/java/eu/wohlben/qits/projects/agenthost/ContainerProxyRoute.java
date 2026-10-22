@@ -1,5 +1,8 @@
 package eu.wohlben.qits.projects.agenthost;
 
+import eu.wohlben.qits.projects.entity.DeskRole;
+import io.quarkus.security.identity.SecurityIdentity;
+import io.quarkus.vertx.http.runtime.security.QuarkusHttpUser;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -63,6 +66,14 @@ import org.jboss.logging.Logger;
  * <p>Security posture, stated plainly because it is easy to overstate: this route scopes a request
  * to a project with a live daemon and forwards it. It does not authorize the caller, because there
  * is no owner to authorize against — qits is single-user.
+ *
+ * <p><b>One exception: a DELIVERY desk admits a person and nobody else</b> (qits-1482). The path's
+ * first segment is a desk id; a project's FRONT desk is addressed by its project id, as it always
+ * was, and keeps the rule above. A DELIVERY desk ({@code <projectId>-delivery}) runs the delivery
+ * loop, whose rights reach every agent of the project — so a caller who could open a terminal or a
+ * chat on it could make the loop act for them. Only a caller holding {@code qits:admin} and neither
+ * {@code qits:agent}, {@code qits:admin-agent} nor {@code qits:desk} is forwarded ({@link
+ * #admitsDelivery}): the owner can watch the loop; no agent can reach it. Anyone else is a 403.
  */
 @ApplicationScoped
 public class ContainerProxyRoute {
@@ -107,6 +118,10 @@ public class ContainerProxyRoute {
       return;
     }
     String projectId = segments[0];
+    if (DeskRole.ofDeskId(projectId) == DeskRole.DELIVERY && !admitsDelivery(identityOf(rc))) {
+      respond(rc, 403, "The delivery desk is open to a person holding qits:admin only.");
+      return;
+    }
 
     // The request stays untouched while the lookup runs off the event loop — opening a tunnel
     // awaits a bind on first use. The proxy resumes it when forwarding.
@@ -115,6 +130,26 @@ public class ContainerProxyRoute {
         .executeBlocking(() -> tunnels.originFor(projectId).orElse(null))
         .onFailure(e -> respond(rc, 502, "The project agent could not be reached."))
         .onSuccess(origin -> route(rc, origin));
+  }
+
+  /** The roles that keep a caller off a DELIVERY desk, whatever else it holds. */
+  private static final java.util.List<String> NOT_A_PERSON =
+      java.util.List.of("qits:agent", "qits:admin-agent", "qits:desk");
+
+  /**
+   * Whether {@code identity} may reach a DELIVERY desk (qits-1482): an authenticated caller holding
+   * {@code qits:admin} and none of {@link #NOT_A_PERSON}.
+   */
+  static boolean admitsDelivery(SecurityIdentity identity) {
+    if (identity == null || identity.isAnonymous() || !identity.hasRole("qits:admin")) {
+      return false;
+    }
+    return NOT_A_PERSON.stream().noneMatch(identity::hasRole);
+  }
+
+  /** The identity the request authenticated as, or null when none was established. */
+  private static SecurityIdentity identityOf(RoutingContext rc) {
+    return rc.user() instanceof QuarkusHttpUser user ? user.getSecurityIdentity() : null;
   }
 
   /**

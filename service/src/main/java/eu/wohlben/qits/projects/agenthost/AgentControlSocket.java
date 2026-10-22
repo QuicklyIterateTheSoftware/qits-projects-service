@@ -31,14 +31,19 @@ import org.jboss.logging.Logger;
  * <p>Unlike qits-workspaces' equivalent the path parameter needs no parsing: a project id is
  * already a String, which is the only type websockets-next accepts for a {@code @PathParam}.
  *
+ * <p><b>The path parameter is a desk id</b> (qits-1482): a FRONT desk's is its project id, so every
+ * front desk dials exactly the path it always did; a DELIVERY desk dials {@code
+ * /projects/daemon/<projectId>-delivery}, and its {@code hello} still carries the real project id.
+ * The registry keys every daemon by its desk id.
+ *
  * <p>The socket requires {@code qits:system} or {@code qits:agent} during the upgrade. Its daemon
- * callers present their commissioned machine tokens; the project path parameter selects a target
- * and is not accepted as authentication by itself. A {@code qits:agent} caller may open only its own
- * project's socket — {@link AgentControlSocketAccess} answers 403 for any other. The reverse
- * tunnel's nonce remains a second, connection-local guard.
+ * callers present their commissioned machine tokens; the desk path parameter selects a target and is
+ * not accepted as authentication by itself. A {@code qits:agent} caller may open only a desk of its
+ * own project — {@link AgentControlSocketAccess} answers 403 for any other, and a desk's own token
+ * opens only that desk. The reverse tunnel's nonce remains a second, connection-local guard.
  */
 @WebSocket(
-    path = DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + "{projectId}",
+    path = DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + "{deskId}",
     endpointId = AgentControlSocket.ENDPOINT_ID)
 @jakarta.annotation.security.RolesAllowed({"qits:system", "qits:agent"})
 public class AgentControlSocket {
@@ -54,28 +59,27 @@ public class AgentControlSocket {
 
   @OnOpen
   @RunOnVirtualThread
-  public void onOpen(@PathParam("projectId") String projectId, WebSocketConnection connection) {
-    registry.register(projectId, connection);
+  public void onOpen(@PathParam("deskId") String deskId, WebSocketConnection connection) {
+    registry.register(deskId, connection);
   }
 
   @OnTextMessage
   @RunOnVirtualThread
   public void onMessage(
-      String message, @PathParam("projectId") String projectId, WebSocketConnection connection) {
+      String message, @PathParam("deskId") String deskId, WebSocketConnection connection) {
     DaemonMessage decoded;
     try {
       decoded = codec.decode(message);
     } catch (RuntimeException e) {
       LOG.debugf(
-          "Dropped an undecodable projects-daemon frame for project %s: %s",
-          projectId, e.getMessage());
+          "Dropped an undecodable projects-daemon frame for desk %s: %s", deskId, e.getMessage());
       return;
     }
-    registry.onMessage(projectId, connection, decoded);
+    registry.onMessage(deskId, connection, decoded);
   }
 
   @OnClose
-  public void onClose(@PathParam("projectId") String projectId, WebSocketConnection connection) {
-    registry.unregister(projectId, connection);
+  public void onClose(@PathParam("deskId") String deskId, WebSocketConnection connection) {
+    registry.unregister(deskId, connection);
   }
 }

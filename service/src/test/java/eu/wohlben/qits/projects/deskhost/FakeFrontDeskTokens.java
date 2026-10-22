@@ -30,27 +30,56 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
   /** Every delivery mint, by project (epic qits-1440). */
   private final List<String> mintedDelivery = new ArrayList<>();
 
+  /** Every session mint, by project (qits-1482). */
+  private final List<String> mintedSession = new ArrayList<>();
+
+  /** Every desk-token mint, by desk id (qits-1482). */
+  private final List<String> mintedForDesk = new ArrayList<>();
+
+  /** Kinds whose mint fails while the others succeed (qits-1482). */
+  private final java.util.Set<String> failingKinds = ConcurrentHashMap.newKeySet();
+
   private volatile boolean failMint;
 
   private volatile boolean failList;
 
   @Override
-  public Minted mint(String projectId) {
-    if (failMint) {
-      throw new IllegalStateException("qits-idp unreachable minting a token for " + projectId);
+  public Minted mint(String deskId, String projectId) {
+    if (failMint || failingKinds.contains(CONTEXT_KIND)) {
+      throw new IllegalStateException("qits-idp unreachable minting a token for " + deskId);
     }
     String id = "t-" + UUID.randomUUID();
     String subject = "tok-" + UUID.randomUUID();
-    live.put(id, new Live(id, CONTEXT_KIND, projectId, Instant.now().minusSeconds(3600)));
+    live.put(id, new Live(id, CONTEXT_KIND, deskId, Instant.now().minusSeconds(3600)));
     synchronized (minted) {
       minted.add(projectId);
+      mintedForDesk.add(deskId);
     }
     return new Minted(id, "qits_tok_" + id, subject);
   }
 
   @Override
+  public Minted mintSession(String projectId) {
+    if (failMint || failingKinds.contains(CONTEXT_KIND_SESSION)) {
+      throw new IllegalStateException("qits-idp refused a desk-session token for " + projectId);
+    }
+    String id = "s-" + UUID.randomUUID();
+    String subject = "tok-" + UUID.randomUUID();
+    live.put(id, new Live(id, CONTEXT_KIND_SESSION, projectId, Instant.now().minusSeconds(3600)));
+    synchronized (mintedSession) {
+      mintedSession.add(projectId);
+    }
+    return new Minted(id, "qits_tok_" + id, subject);
+  }
+
+  @Override
+  public boolean revokeSession(String tokenId) {
+    return revoke(tokenId);
+  }
+
+  @Override
   public Minted mintDelivery(String projectId) {
-    if (failMint) {
+    if (failMint || failingKinds.contains(CONTEXT_KIND_DELIVERY)) {
       throw new IllegalStateException("qits-idp unreachable minting a token for " + projectId);
     }
     String id = "d-" + UUID.randomUUID();
@@ -102,6 +131,34 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     }
   }
 
+  /** How many desk tokens were minted for the desk {@code deskId}. */
+  public long mintsForDesk(String deskId) {
+    synchronized (minted) {
+      return mintedForDesk.stream().filter(deskId::equals).count();
+    }
+  }
+
+  public long sessionMintsFor(String projectId) {
+    synchronized (mintedSession) {
+      return mintedSession.stream().filter(projectId::equals).count();
+    }
+  }
+
+  /** Fail every mint of {@code kind} while the others succeed. */
+  public void failKind(String kind, boolean fail) {
+    if (fail) {
+      failingKinds.add(kind);
+    } else {
+      failingKinds.remove(kind);
+    }
+  }
+
+  /** The context id a live token was minted for, or null when it is not live. */
+  public String contextOf(String tokenId) {
+    Live token = live.get(tokenId);
+    return token == null ? null : token.contextId();
+  }
+
   public long deliveryMintsFor(String projectId) {
     synchronized (mintedDelivery) {
       return mintedDelivery.stream().filter(projectId::equals).count();
@@ -129,10 +186,15 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     }
     synchronized (minted) {
       minted.clear();
+      mintedForDesk.clear();
     }
     synchronized (mintedDelivery) {
       mintedDelivery.clear();
     }
+    synchronized (mintedSession) {
+      mintedSession.clear();
+    }
+    failingKinds.clear();
     failMint = false;
     failList = false;
   }

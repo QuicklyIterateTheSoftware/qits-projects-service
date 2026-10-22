@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
+import eu.wohlben.qits.projects.entity.DeskRole;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
@@ -47,14 +48,23 @@ import org.jboss.logging.Logger;
  * QITS_COMMISSIONED_*}, no {@code *_AUTH_TOKEN_URL} and no {@code *.internal}, {@code -qits-} or
  * {@code *.localhost} value.
  *
- * <p><b>Two tokens.</b> The desk authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN},
- * idp kind {@code agent-container}, {@code qits:agent}). A desk whose project runs the delivery loop
- * (epic qits-1440, {@code QITS_PROJECTS_DAEMON_DELIVERY=on}) is also handed the delivery token
- * ({@code QITS_DELIVERY_TOKEN}, kind {@code desk-delivery}, {@code qits:agent} and {@code
- * qits:desk}) — and that one is for the {@code project.delivery} session only: the daemon gives it
- * to nothing else. {@code QITS_PROJECTS_DAEMON_DELIVERY} and {@code
- * QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL} are always stated; the delivery token and its subject
- * only while the loop is on.
+ * <p><b>Two roles, two specs</b> (qits-1482). Every desk authenticates with its own {@code
+ * qits_tok_} ({@code QITS_TOKEN}, idp kind {@code agent-container}, {@code qits:agent}) and is told
+ * its role as {@code QITS_PROJECTS_DAEMON_ROLE}.
+ *
+ * <ul>
+ *   <li>A <b>FRONT</b> desk ({@code front}) <em>never</em> carries the delivery token and is told
+ *       {@code QITS_PROJECTS_DAEMON_DELIVERY=off} whatever the project's loop says — so neither a
+ *       daemon that knows its role nor one too old to read it runs the loop there. Its addresses are
+ *       its project id's, as they always were.
+ *   <li>A <b>DELIVERY</b> desk ({@code delivery}, epic qits-1440) is the loop's alone: {@code
+ *       QITS_PROJECTS_DAEMON_DELIVERY=on} with the loop's interval, the delivery token ({@code
+ *       QITS_DELIVERY_TOKEN}, kind {@code desk-delivery}, {@code qits:agent} and {@code qits:desk})
+ *       for the {@code project.delivery} session, lifecycle {@code ON_DEMAND} always (it is wanted
+ *       while the loop is on, never ALWAYS_ON), and its own desk id in the control socket's and the
+ *       proxy's addresses. {@code QITS_PROJECTS_DAEMON_PROJECT_ID} is the real project id.
+ * </ul>
+ *
  * A domain that is blank, has no dot, or is {@code localhost}/{@code *.localhost} refuses to compose
  * ({@link EdgePlaneUnconfigured}, the belt qits-workspaces-service's {@code WorkspaceAddressPlane}
  * carries), and the desk reads FAILED with {@link #EDGE_PLANE_UNCONFIGURED}.
@@ -89,6 +99,15 @@ public class FrontDeskSpecs {
   /** Where the daemon writes {@link #AGENT_CONFIGURATION_ENV} before it starts anything. */
   public static final String AGENT_CONFIGURATION_PATH_ENV =
       "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH";
+
+  /** What a desk is told its role is (qits-1482): {@link #ROLE_FRONT} or {@link #ROLE_DELIVERY}. */
+  public static final String ROLE_ENV = "QITS_PROJECTS_DAEMON_ROLE";
+
+  /** {@link #ROLE_ENV} of a FRONT desk: the daemon never runs the delivery loop. */
+  public static final String ROLE_FRONT = "front";
+
+  /** {@link #ROLE_ENV} of a DELIVERY desk: the daemon runs the delivery loop and nothing else. */
+  public static final String ROLE_DELIVERY = "delivery";
 
   /** Canonical JSON: sorted keys at every level, nulls written. */
   private static final ObjectMapper CANONICAL =
@@ -238,7 +257,7 @@ public class FrontDeskSpecs {
 
   // --- composing ---------------------------------------------------------------------------------
 
-  /** The project's desk spec as it stands now. Throws {@link EdgePlaneUnconfigured}. */
+  /** The desk's spec as it stands now. Throws {@link EdgePlaneUnconfigured}. */
   public Composed compose(Project project, FrontDesk row) {
     Settings settings = settings();
     domainOf(settings.domain()); // refuse before building the document
@@ -276,8 +295,11 @@ public class FrontDeskSpecs {
       String document) {
     String d = domainOf(settings.domain());
     String projectId = project.id;
+    DeskRole role = row.role();
+    boolean delivery = role == DeskRole.DELIVERY;
+    String deskId = row.deskId != null ? row.deskId : role.deskId(projectId);
     FrontDeskLifecycle lifecycle =
-        project.frontDeskLifecycle == null
+        delivery || project.frontDeskLifecycle == null
             ? FrontDeskLifecycle.ON_DEMAND
             : project.frontDeskLifecycle;
     Map<String, String> env = new LinkedHashMap<>();
@@ -286,8 +308,8 @@ public class FrontDeskSpecs {
     }
     env.put(
         "QITS_PROJECTS_DAEMON_URL",
-        "wss://" + host("projects", d) + DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + projectId);
-    env.put("QITS_PROJECTS_DAEMON_API_BASE_PATH", ContainerProxyPath.base(projectId));
+        "wss://" + host("projects", d) + DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + deskId);
+    env.put("QITS_PROJECTS_DAEMON_API_BASE_PATH", ContainerProxyPath.base(deskId));
     env.put("QITS_PROJECTS_DAEMON_PROJECT_ID", projectId);
     env.put("QITS_PROJECTS_DAEMON_REPO_NAME", ProjectService.wrapperName(project));
     env.put("QITS_PROJECTS_DAEMON_GIT_BASE", "https://" + host("githost", d) + "/git");
@@ -301,11 +323,16 @@ public class FrontDeskSpecs {
       env.put(AGENT_CONFIGURATION_ENV, document);
     }
     env.put("QITS_PROJECTS_DAEMON_LIFECYCLE", lifecycle.name());
-    env.put("QITS_PROJECTS_DAEMON_DELIVERY", project.deliveryEnabled ? "on" : "off");
-    env.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", DeliverySettings.of(project).interval().toString());
+    env.put(ROLE_ENV, delivery ? ROLE_DELIVERY : ROLE_FRONT);
+    env.put("QITS_PROJECTS_DAEMON_DELIVERY", delivery ? "on" : "off");
+    if (delivery) {
+      env.put(
+          "QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL",
+          DeliverySettings.of(project).interval().toString());
+    }
     env.put("QITS_TOKEN", nullToEmpty(row.tokenValue));
     env.put("QITS_TOKEN_SUBJECT", nullToEmpty(row.tokenSubject));
-    if (project.deliveryEnabled) {
+    if (delivery) {
       env.put("QITS_DELIVERY_TOKEN", nullToEmpty(row.deliveryTokenValue));
       env.put("QITS_DELIVERY_TOKEN_SUBJECT", nullToEmpty(row.deliveryTokenSubject));
     }
