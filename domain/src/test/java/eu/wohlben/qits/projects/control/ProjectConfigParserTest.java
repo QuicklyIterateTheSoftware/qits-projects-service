@@ -252,6 +252,40 @@ class ProjectConfigParserTest {
     }
   }
 
+  /**
+   * qits-1517: {@code automation} and {@code contract} name a family of requirements and are
+   * approvable; {@code config-directory}, {@code no-changes}, {@code recorded} and a family member's
+   * own id are not.
+   */
+  @Test
+  void automationAndContractAreApprovableAndNothingElseIs() {
+    assertEquals(
+        Set.of("automation", "contract", "manual-review", "artifact-declarations"),
+        DeliverySettings.APPROVABLE);
+    assertEquals(
+        Set.of("automation", "contract"),
+        parser
+            .parse("front_desk:\n  delivery:\n    approves: [automation, contract]\n")
+            .delivery()
+            .approves());
+    for (String refused :
+        new String[] {
+          "config-directory", "no-changes", "recorded", "automation:entity-diagram", "contract:qits",
+          "Automation"
+        }) {
+      ProjectConfigException e =
+          assertThrows(
+              ProjectConfigException.class,
+              () ->
+                  parser.parse(
+                      "front_desk:\n  delivery:\n    approves: [automation, '"
+                          + refused
+                          + "']\n"),
+              refused);
+      assertTrue(e.getMessage().contains("front_desk.delivery.approves"), e.getMessage());
+    }
+  }
+
   /** The approves column round-trips, sorted and space-separated. */
   @Test
   void theApprovesColumnRoundTrips() {

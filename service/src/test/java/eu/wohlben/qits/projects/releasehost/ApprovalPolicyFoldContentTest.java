@@ -12,8 +12,10 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
 import eu.wohlben.qits.projects.control.approval.ApprovalRole;
+import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -211,6 +213,43 @@ public class ApprovalPolicyFoldContentTest {
         List.of(),
         policy.requirementsFor(repo.id, something),
         "a fold carrying a change is not held by this rule");
+  }
+
+  /**
+   * qits-1517: widening {@code front_desk.delivery.approves} to every name it may hold — {@code
+   * manual-review}, {@code artifact-declarations}, {@code automation}, {@code contract} — still
+   * never admits the desk to {@code no-changes} or {@code config-directory}: both stay a person's.
+   */
+  @Test
+  public void aWidenedApprovesListNeverAdmitsTheDeskToNoChangesOrConfigDirectory()
+      throws Exception {
+    Repository repo = cloned("Widened Desk Approval");
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                Project.update(
+                    "deliveryApproves = ?1 where id = ?2",
+                    "artifact-declarations automation contract manual-review",
+                    repo.project.id));
+    Path work = checkout(repo);
+    String main = git.exec(work.toFile(), "git", "rev-parse", "--abbrev-ref", "HEAD").trim();
+
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "work");
+    commit(work, "--allow-empty", "Nothing at all");
+    String emptyFold = push(work, repo, "work");
+    assertEquals(
+        List.of(ApprovalRequirement.person("no-changes", ApprovalPolicy.NO_CHANGES_DETAIL, null)),
+        policy.requirementsFor(repo.id, emptyFold),
+        "no-changes admits a person alone");
+
+    git.exec(work.toFile(), "git", "checkout", "-q", main);
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "config");
+    write(work, ".config/qits/release-requests.yml", "manual-review: false\n");
+    commitAll(work, "Loosen the rules");
+    String configFold = push(work, repo, "config");
+    List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, configFold);
+    assertEquals(List.of("config-directory"), ids(requirements), requirements.toString());
+    assertEquals(List.of(ApprovalRole.PERSON), requirements.get(0).admits());
   }
 
   /** A repository with no row is settled history, and no rule holds it. */

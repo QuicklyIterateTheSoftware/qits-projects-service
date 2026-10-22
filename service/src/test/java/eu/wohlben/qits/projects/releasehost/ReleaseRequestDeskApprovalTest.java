@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.AutomationKinds;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
@@ -19,6 +20,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApprovalNotice;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.maintenancehost.FakeAutomationKinds;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
@@ -44,7 +46,9 @@ import org.junit.jupiter.api.Test;
  * holds {@code desk} and {@code agent} of its project; a requirement the project's {@code
  * front_desk.delivery.approves} lists admits {@code desk}; and the approve door then holds the desk
  * to the owner's rule — its own project, every gate before approval passed, and for {@code
- * manual-review} only work-item branches whose items are VERIFIED or DONE. A desk approval's note
+ * manual-review} only work-item branches whose items are VERIFIED or DONE; for an {@code
+ * automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}) a member
+ * repository, never the wrapper, whose work items are IMPLEMENTING or later. A desk approval's note
  * names the rule; the desk never declines.
  *
  * <p>The suite of {@link ReleaseRequestApprovalRolesTest}, booted the same way ({@link
@@ -76,11 +80,23 @@ public class ReleaseRequestDeskApprovalTest {
 
   @Inject WorkEntityService entities;
 
+  @Inject FakeAutomationKinds automationKinds;
+
+  /** qits-maintenance's catalogue: the entity diagram is acknowledged by an agent or a person. */
+  private static final List<AutomationKinds.Kind> KINDS =
+      List.of(
+          new AutomationKinds.Kind(
+              "entity-diagram",
+              "Entity diagram",
+              List.of(":(glob)docs/database/**"),
+              List.of("agent", "person")));
+
   private String projectId;
   private String otherProjectId;
   private String wrapperRepoId;
   private String declarationRepoId;
   private String configRepoId;
+  private String memberRepoId;
   private WorkEntity ticket;
   private String ticketBranch;
   private final List<String> requestIds = new ArrayList<>();
@@ -93,6 +109,7 @@ public class ReleaseRequestDeskApprovalTest {
     gitHost.reset();
     foldChanges.reset();
     announcer.reset();
+    automationKinds.reset();
     requestIds.clear();
     activeBuilds.answer(Optional.of(0));
     gitHost.gatedTree("refs/heads/main", Map.of("README.md", "a service"));
@@ -102,6 +119,7 @@ public class ReleaseRequestDeskApprovalTest {
     wrapperRepoId = "desk-wrapper-" + UUID.randomUUID();
     declarationRepoId = "desk-declaration-" + UUID.randomUUID();
     configRepoId = "desk-config-" + UUID.randomUUID();
+    memberRepoId = "desk-member-" + UUID.randomUUID();
     // The wrapper says manual-review: true at its main, as the platform's own does.
     gitHost.gatedTreeFor(
         wrapperRepoId,
@@ -117,6 +135,7 @@ public class ReleaseRequestDeskApprovalTest {
               repository(project, wrapperRepoId, RepositoryArchetype.PROJECT);
               repository(project, declarationRepoId, RepositoryArchetype.SERVICE);
               repository(project, configRepoId, RepositoryArchetype.SERVICE);
+              repository(project, memberRepoId, RepositoryArchetype.SERVICE);
               repository(other, "desk-other-repo-" + UUID.randomUUID(), RepositoryArchetype.SERVICE);
             });
     // The declaration repository's fold only declares an artifact in release.yml.
@@ -131,6 +150,12 @@ public class ReleaseRequestDeskApprovalTest {
     foldChanges.changes(
         configRepoId,
         List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release-requests.yml", null)));
+    // The member repository's fold regenerates the entity diagram: automation:entity-diagram.
+    foldChanges.changes(
+        memberRepoId,
+        List.of(
+            RecordingFoldChanges.file("MODIFIED", "docs/database/entities.md", null),
+            RecordingFoldChanges.file("MODIFIED", "src/main/java/Thing.java", null)));
     ticket =
         entities
             .create(
@@ -148,7 +173,8 @@ public class ReleaseRequestDeskApprovalTest {
         .run(
             () -> {
               ReleaseRequest.delete("projectId = ?1", projectId);
-              for (String repoId : List.of(wrapperRepoId, declarationRepoId, configRepoId)) {
+              for (String repoId :
+                  List.of(wrapperRepoId, declarationRepoId, configRepoId, memberRepoId)) {
                 ReleasedTagPendingMerge.delete("repoId = ?1", repoId);
               }
               if (!requestIds.isEmpty()) {
@@ -157,6 +183,7 @@ public class ReleaseRequestDeskApprovalTest {
               }
             });
     foldChanges.reset();
+    automationKinds.reset();
   }
 
   // ---- manual-review ---------------------------------------------------------------------------
@@ -408,7 +435,7 @@ public class ReleaseRequestDeskApprovalTest {
   /** {@code config-directory} never admits the desk, whatever the project lists. */
   @Test
   void configDirectoryIsRefusedEvenWithEverythingListed() {
-    approves("artifact-declarations", "manual-review");
+    approves("artifact-declarations", "manual-review", "automation", "contract");
     String id = create(configRepoId, "work");
     String fold = mergedShaOf(configRepoId, id);
     verdict(configRepoId, fold);
@@ -423,6 +450,138 @@ public class ReleaseRequestDeskApprovalTest {
         .statusCode(403)
         .body("message", containsString("config-directory"))
         .body("message", containsString("admits person"));
+  }
+
+  // ---- member-ci-green (qits-1517) ------------------------------------------------------------
+
+  /**
+   * The owner's case: a member request of a ticket in flight, held by {@code
+   * automation:entity-diagram}, CI green, the project listing {@code automation} — the desk approves
+   * under {@code member-ci-green}.
+   */
+  @Test
+  void theDeskApprovesAMemberRequestOfWorkInFlightWithGreenCi() {
+    automationKinds.answer(KINDS);
+    approves("automation");
+    status(ticket, "IMPLEMENTING");
+    String id = create(memberRepoId, ticketBranch + "-diagram");
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    JsonPath held = request(memberRepoId, id);
+    assertEquals(
+        List.of("automation:entity-diagram"),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("agent", "desk", "person"),
+        held.getList("approvalRequirements[0].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"diagram matches the entity\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalRequirements[0].satisfiedBy.approver", equalTo("desk-of-" + projectId));
+    person("ada")
+        .get(base(memberRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body(
+            "approvals[0].note",
+            equalTo("delivery desk, rule member-ci-green: diagram matches the entity"));
+  }
+
+  /** Not listed: {@code automation:*} is the request's agent's or a person's, never the desk's. */
+  @Test
+  void anAutomationHoldTheProjectDoesNotListIsNotTheDesks() {
+    automationKinds.answer(KINDS);
+    approves("manual-review", "artifact-declarations");
+    status(ticket, "IMPLEMENTING");
+    String id = create(memberRepoId, ticketBranch + "-diagram");
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    assertEquals(
+        List.of("agent", "person"),
+        request(memberRepoId, id).getList("approvalRequirements[0].admits", String.class));
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403);
+  }
+
+  /** A red build: the desk does not approve a member request over it. */
+  @Test
+  void aMemberRequestWithRedCiIsRefused() {
+    automationKinds.answer(KINDS);
+    approves("automation");
+    status(ticket, "IMPLEMENTING");
+    String id = create(memberRepoId, ticketBranch + "-diagram");
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold, "BuildFailed");
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule member-ci-green"))
+        .body("message", containsString("FAILED"));
+  }
+
+  /**
+   * The wrapper is never a member request: its automation hold is refused under {@code
+   * member-ci-green}, even with its ticket VERIFIED and its CI green — the wrapper ships under
+   * {@code manual-review-verified} alone.
+   */
+  @Test
+  void aWrapperRequestIsRefusedUnderTheMemberRule() {
+    automationKinds.answer(KINDS);
+    approves("automation");
+    status(ticket, "VERIFIED");
+    foldChanges.changes(
+        wrapperRepoId,
+        List.of(RecordingFoldChanges.file("MODIFIED", "docs/database/entities.md", null)));
+    String id = create(wrapperRepoId, ticketBranch);
+    String fold = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, fold);
+
+    JsonPath held = request(wrapperRepoId, id);
+    assertEquals(
+        List.of("manual-review", "automation:entity-diagram"),
+        held.getList("approvalRequirements.id", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule member-ci-green"))
+        .body("message", containsString("the project's wrapper"));
+  }
+
+  /** An item the owner has not let start — REFINED, or still REPORTED — is not work in flight. */
+  @Test
+  void aMemberRequestOfAnItemNotYetStartedIsRefused() {
+    automationKinds.answer(KINDS);
+    approves("automation");
+    for (String status : List.of("REFINED", "REPORTED")) {
+      status(ticket, status);
+      String id = create(memberRepoId, ticketBranch + "-" + status.toLowerCase());
+      String fold = mergedShaOf(memberRepoId, id);
+      verdict(memberRepoId, fold);
+
+      desk(projectId)
+          .body("{\"mergedSha\":\"" + fold + "\"}")
+          .post(base(memberRepoId) + "/" + id + "/approve")
+          .then()
+          .statusCode(403)
+          .body("message", containsString("rule member-ci-green"))
+          .body("message", containsString("is " + status + ", not IMPLEMENTING"));
+    }
   }
 
   // ---- fixtures ----------------------------------------------------------------------------------

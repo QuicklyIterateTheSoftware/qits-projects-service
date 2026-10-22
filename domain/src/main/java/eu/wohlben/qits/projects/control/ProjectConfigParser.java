@@ -73,7 +73,11 @@ public class ProjectConfigParser {
   /** Under {@link #DELIVERY}: a boolean, default {@code false}. */
   public static final String DELIVERY_START_REFINED = "start_refined";
 
-  /** Under {@link #DELIVERY}: a list, a subset of {@link DeliverySettings#APPROVABLE}. */
+  /**
+   * Under {@link #DELIVERY}: a list, a subset of {@link DeliverySettings#APPROVABLE} — {@code
+   * manual-review}, {@code artifact-declarations}, {@code automation} and {@code contract}
+   * (qits-1517); never {@code config-directory} or {@code no-changes}.
+   */
   public static final String DELIVERY_APPROVES = "approves";
 
   /** Under {@link #DELIVERY}: an ISO-8601 duration from PT2M to PT1H, default PT10M. */
@@ -240,7 +244,7 @@ public class ProjectConfigParser {
     if (value == null) {
       return Set.of();
     }
-    String expected = "a list of " + String.join(" and ", sortedApprovable());
+    String expected = "a list of any of " + String.join(", ", sortedApprovable());
     if (!(value instanceof List<?> entries)) {
       throw invalid(DELIVERY_APPROVES, expected, value);
     }

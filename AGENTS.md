@@ -1266,15 +1266,23 @@ approval's roles. The display path stores the content requirements as JSON objec
   own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`),
   named by its `sub`.
   No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
-  requirement whose id the project's `front_desk.delivery.approves` lists, intersected with
-  `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`), so `config-directory`,
-  `no-changes`, `automation:*` and `contract:*` never admit it. When a desk approves a requirement
+  requirement the project's `front_desk.delivery.approves` admits (`ApprovalPolicy.deskAdmissible`),
+  intersected with `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`,
+  `automation`, `contract`). The first two name the requirement of that id; since qits-1517
+  `automation` admits it to every `automation:<kind>` requirement that admits more than a person (the
+  fail-closed `automation:catalogue` and unreadable-kind readings stay a person's), and `contract` to
+  every `contract:<slug>` whose consumer project is the request's own (which `ContractChangeSource`
+  never opens today: a same-project consumer adds nothing). `config-directory`, `no-changes` and
+  `recorded` never admit it. When a desk approves a requirement
   through `desk`, `control/DeskApprovalPolicy` holds it to the owner's rule, each refusal a 403 naming
-  the rule (`manual-review-verified` or `artifact-declarations`): its own project only; every gate the
-  request's read reports before `approval` (order 300) PASSED; and for `manual-review` every branch
+  the rule (`manual-review-verified`, `artifact-declarations` or `member-ci-green`, picked in that
+  order): its own project only; every gate the
+  request's read reports before `approval` (order 300) PASSED; for `manual-review` every branch
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is VERIFIED
-  or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
+  or DONE; and for an admitted `automation:*`/`contract:*` (`member-ci-green`, qits-1517) the
+  repository is not the wrapper (`PROJECT` archetype) and every such branch's item is IMPLEMENTING,
+  IMPLEMENTED, VERIFYING, VERIFIED or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
   403 "The delivery desk does not decline; it asks the owner on the item's thread." Holding no
   `agent` role, the desk cannot approve or decline an unlisted `artifact-declarations` as an agent.
 - **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,

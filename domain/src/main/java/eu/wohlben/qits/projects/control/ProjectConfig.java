@@ -72,7 +72,11 @@ public record ProjectConfig(
    *
    * <p>{@code approves} is a subset of {@link #APPROVABLE} — never {@code config-directory} or
    * {@code no-changes}, which the desk may never satisfy. The parser refuses anything else, so a
-   * record holding one was built by hand.
+   * record holding one was built by hand. Two of its names are requirement ids ({@code
+   * manual-review}, {@code artifact-declarations}); the other two name a family (qits-1517): {@link
+   * #AUTOMATION} admits the desk to the {@code automation:<kind>} requirements, and {@link
+   * #CONTRACT} to the {@code contract:<slug>} requirements whose consumer is the request's own
+   * project. {@code ApprovalPolicy.admitDesk} is where the names are read.
    *
    * @param enabled whether the loop runs at all; absent is {@code false}
    * @param maxRunning how many of the project's items the desk keeps running, {@link
@@ -107,8 +111,22 @@ public record ProjectConfig(
     /** {@code interval} when absent. */
     public static final Duration DEFAULT_INTERVAL = Duration.ofMinutes(10);
 
-    /** The approval requirements the delivery desk may ever satisfy. */
-    public static final Set<String> APPROVABLE = Set.of("manual-review", "artifact-declarations");
+    /** {@code approves} naming every {@code automation:<kind>} requirement (qits-1517). */
+    public static final String AUTOMATION = "automation";
+
+    /**
+     * {@code approves} naming every {@code contract:<slug>} requirement whose consumer is the
+     * request's own project (qits-1517).
+     */
+    public static final String CONTRACT = "contract";
+
+    /**
+     * The names {@code approves} may hold: the two requirement ids the delivery desk may satisfy,
+     * and the two families ({@link #AUTOMATION}, {@link #CONTRACT}) it may be admitted to. {@code
+     * config-directory}, {@code no-changes} and {@code recorded} are never among them.
+     */
+    public static final Set<String> APPROVABLE =
+        Set.of("manual-review", "artifact-declarations", AUTOMATION, CONTRACT);
 
     /** No {@code front_desk.delivery}: everything off, every value at its default. */
     public static final DeliverySettings OFF =

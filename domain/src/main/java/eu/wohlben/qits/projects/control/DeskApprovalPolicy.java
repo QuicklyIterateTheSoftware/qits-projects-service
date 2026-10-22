@@ -4,13 +4,16 @@ import eu.wohlben.qits.projects.control.approval.ApprovalRequirement;
 import eu.wohlben.qits.projects.control.approval.ApprovalRole;
 import eu.wohlben.qits.projects.control.approval.ApprovalStanding;
 import eu.wohlben.qits.projects.control.approval.Approver;
+import eu.wohlben.qits.projects.control.approval.AutomationContentSource;
 import eu.wohlben.qits.projects.control.approval.BranchWorkItems;
+import eu.wohlben.qits.projects.control.approval.ContractChangeSource;
 import eu.wohlben.qits.projects.control.gate.ApprovalGate;
 import eu.wohlben.qits.projects.control.gate.ReleaseGate;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
 import eu.wohlben.qits.projects.dto.ReleaseQualityGateDto;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.DomainException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -37,8 +40,21 @@ import org.jboss.logging.Logger;
  *   <li><b>{@value #MANUAL_REVIEW_RULE}</b> — for {@code manual-review}: every branch source other
  *       than the repository's main is {@code maintenance/*} or a work-item branch ({@link
  *       BranchWorkItems}) of the request's project, and every work item so named is VERIFIED or
- *       DONE.
+ *       DONE. It governs the wrapper and every {@code manual-review: true} repository, such as
+ *       {@code qits-agent-config}.
+ *   <li><b>{@value #ARTIFACT_DECLARATIONS_RULE}</b> — for {@code artifact-declarations}: the two
+ *       rules above and nothing more.
+ *   <li><b>{@value #MEMBER_CI_GREEN_RULE}</b> (qits-1517) — for the {@code automation:*} and {@code
+ *       contract:*} requirements the desk is admitted to (a member request of a dispatched item,
+ *       held while its work is in flight): the request's repository is not the project's wrapper
+ *       ({@link RepositoryArchetype#PROJECT}), and every branch source other than main is {@code
+ *       maintenance/*} or a work-item branch of the request's project whose item is IMPLEMENTING,
+ *       IMPLEMENTED, VERIFYING, VERIFIED or DONE.
  * </ol>
+ *
+ * <p>The rule is picked by {@link #ruleFor} in that order — {@code manual-review} first, then
+ * {@code artifact-declarations}, then {@code member-ci-green} — so one approval is held to the
+ * strictest rule any requirement it satisfies carries.
  *
  * <p><b>A desk approval carries its rule</b>: the recorded note is {@code delivery desk, rule <rule
  * id>: <the caller's note, or ->} ({@link #note}), so the trail says which of the owner's rules let
@@ -59,6 +75,12 @@ public class DeskApprovalPolicy {
   /** The rule a desk approval of {@code artifact-declarations} is made under. */
   public static final String ARTIFACT_DECLARATIONS_RULE = "artifact-declarations";
 
+  /**
+   * The rule a desk approval of an {@code automation:*} or {@code contract:*} requirement is made
+   * under (qits-1517): a member request whose CI is green, of work in flight.
+   */
+  public static final String MEMBER_CI_GREEN_RULE = "member-ci-green";
+
   /** The requirement {@link #MANUAL_REVIEW_RULE} answers. */
   static final String MANUAL_REVIEW = "manual-review";
 
@@ -75,6 +97,10 @@ public class DeskApprovalPolicy {
   /** The statuses a named work item must stand at. */
   static final Set<String> SHIPPABLE = Set.of("VERIFIED", "DONE");
 
+  /** The statuses a work item of a member request may stand at under {@link #MEMBER_CI_GREEN_RULE}. */
+  static final List<String> IN_FLIGHT =
+      List.of("IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE");
+
   static final String PASSED = "PASSED";
 
   @Inject ReleaseGateEvaluator gateEvaluator;
@@ -84,8 +110,9 @@ public class DeskApprovalPolicy {
   /**
    * The rule {@code approver} approves under, or empty where it does not approve as the desk: it
    * holds a desk role and one of the {@code concerned} requirements admits {@link
-   * ApprovalRole#DESK}. {@code manual-review} first, because its rule is the stricter one and one
-   * approval satisfies every requirement it qualifies for.
+   * ApprovalRole#DESK}. {@code manual-review} first, because its rule is the strictest and one
+   * approval satisfies every requirement it qualifies for; then {@code artifact-declarations}; then
+   * {@value #MEMBER_CI_GREEN_RULE} for an admitted {@code automation:*} or {@code contract:*}.
    *
    * <p>A desk of another project gets its rule too, so the refusal it meets names it.
    */
@@ -99,12 +126,25 @@ public class DeskApprovalPolicy {
     if (admitsDesk(concerned, ARTIFACT_DECLARATIONS)) {
       return Optional.of(ARTIFACT_DECLARATIONS_RULE);
     }
+    if (concerned.stream()
+        .anyMatch(
+            r ->
+                isMemberRequirement(r.id()) && r.admits().contains(ApprovalRole.DESK))) {
+      return Optional.of(MEMBER_CI_GREEN_RULE);
+    }
     return Optional.empty();
   }
 
   private static boolean admitsDesk(Collection<ApprovalRequirement> concerned, String id) {
     return concerned.stream()
         .anyMatch(r -> r.id().equals(id) && r.admits().contains(ApprovalRole.DESK));
+  }
+
+  /** An {@code automation:*} or {@code contract:*} requirement, which {@link #MEMBER_CI_GREEN_RULE} answers. */
+  private static boolean isMemberRequirement(String id) {
+    return id != null
+        && (id.startsWith(AutomationContentSource.ID_PREFIX)
+            || id.startsWith(ContractChangeSource.ID_PREFIX));
   }
 
   /**
@@ -114,6 +154,8 @@ public class DeskApprovalPolicy {
    * @param readSha the fold that read was of
    * @param sources the request's branch sources
    * @param mainBranch the repository's main, which every request folds and which names no work
+   * @param archetype the request's repository's archetype, or null where it has none or its row is
+   *     gone; {@link #MEMBER_CI_GREEN_RULE} refuses the wrapper ({@link RepositoryArchetype#PROJECT})
    */
   public void requireAllowed(
       String rule,
@@ -122,7 +164,8 @@ public class DeskApprovalPolicy {
       String readSha,
       List<ReleaseQualityGateDto> gates,
       List<ReleaseRequestSource> sources,
-      String mainBranch) {
+      String mainBranch,
+      RepositoryArchetype archetype) {
     String deskProject = approver.deskProject();
     if (deskProject == null || !deskProject.equals(row.projectId)) {
       throw refused(
@@ -139,6 +182,14 @@ public class DeskApprovalPolicy {
           "Release request "
               + row.qualifiedId
               + " moved while its gates were read; re-read it and approve the fold it is on.");
+    }
+    if (MEMBER_CI_GREEN_RULE.equals(rule) && archetype == RepositoryArchetype.PROJECT) {
+      throw refused(
+          rule,
+          row,
+          "its repository is the project's wrapper, which the desk approves only under rule "
+              + MANUAL_REVIEW_RULE
+              + ", once the work is VERIFIED");
     }
     int approvalOrder = approvalOrder();
     Map<String, Integer> orders = new HashMap<>();
@@ -159,12 +210,24 @@ public class DeskApprovalPolicy {
       }
     }
     if (MANUAL_REVIEW_RULE.equals(rule)) {
-      requireVerifiedWork(rule, row, sources, mainBranch);
+      requireWorkAt(rule, row, sources, mainBranch, SHIPPABLE, "VERIFIED or DONE");
+    } else if (MEMBER_CI_GREEN_RULE.equals(rule)) {
+      requireWorkAt(
+          rule, row, sources, mainBranch, Set.copyOf(IN_FLIGHT), String.join(", ", IN_FLIGHT));
     }
   }
 
-  private void requireVerifiedWork(
-      String rule, ReleaseRequest row, List<ReleaseRequestSource> sources, String mainBranch) {
+  /**
+   * Every branch source but main is {@code maintenance/*} or names a work item of the request's
+   * project standing at one of {@code statuses} ({@code said} is how the refusal names them).
+   */
+  private void requireWorkAt(
+      String rule,
+      ReleaseRequest row,
+      List<ReleaseRequestSource> sources,
+      String mainBranch,
+      Set<String> statuses,
+      String said) {
     for (ReleaseRequestSource source : sources == null ? List.<ReleaseRequestSource>of() : sources) {
       if (source.kind != ReleaseRequestSource.Kind.BRANCH || source.name == null) {
         continue;
@@ -183,7 +246,7 @@ public class DeskApprovalPolicy {
                 + " names no work item of this project, and the desk approves only maintenance/*"
                 + " and ticket/, epic/ or task/<qualified id> branches");
       }
-      if (!SHIPPABLE.contains(item.get().status())) {
+      if (!statuses.contains(item.get().status())) {
         throw refused(
             rule,
             row,
@@ -193,7 +256,8 @@ public class DeskApprovalPolicy {
                 + branch
                 + ") is "
                 + item.get().status()
-                + ", not VERIFIED or DONE");
+                + ", not "
+                + said);
       }
     }
   }

@@ -1406,7 +1406,8 @@ public class ReleaseRequests {
                       deskRead == null ? null : deskRead.mergedSha(),
                       deskRead == null ? List.of() : deskRead.qualityGates(),
                       sources.listByRequest(row.id),
-                      mainOf(row.repoId));
+                      mainOf(row.repoId),
+                      archetypeOf(row.repoId));
                   recordedNote = DeskApprovalPolicy.note(rule.get(), said);
                 }
               }
@@ -6074,6 +6075,11 @@ public class ReleaseRequests {
               + "* branches are the backing branches release requests fold into, not sources");
     }
     return named;
+  }
+
+  /** The repository's archetype, or null where it has none or its row is gone. */
+  private RepositoryArchetype archetypeOf(String repoId) {
+    return repositories.findByIdOptional(repoId).map(repository -> repository.archetype).orElse(null);
   }
 
   /** The repository's default branch, for the "nothing but main is left" reading. */

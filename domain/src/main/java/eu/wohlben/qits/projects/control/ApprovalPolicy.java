@@ -5,7 +5,9 @@ import eu.wohlben.qits.projects.control.approval.ApprovalRole;
 import eu.wohlben.qits.projects.control.approval.ApprovalRequirementSource;
 import eu.wohlben.qits.projects.control.approval.ApprovalRoles;
 import eu.wohlben.qits.projects.control.approval.ApprovalSubject;
+import eu.wohlben.qits.projects.control.approval.AutomationContentSource;
 import eu.wohlben.qits.projects.control.approval.ConfigDirectorySource;
+import eu.wohlben.qits.projects.control.approval.ContractChangeSource;
 import eu.wohlben.qits.projects.control.approval.FoldUnreadable;
 import eu.wohlben.qits.projects.control.approval.ManualReviewSource;
 import eu.wohlben.qits.projects.control.approval.NoChangesSource;
@@ -72,11 +74,16 @@ import org.jboss.logging.Logger;
  * have answered, a requirement whose id the request's project lists in {@code
  * front_desk.delivery.approves} admits {@code desk} beside its own roles ({@link #admitDesk}). No
  * source knows the desk exists. The list is a subset of {@link
- * ProjectConfig.DeliverySettings#APPROVABLE} — {@code manual-review} and {@code
- * artifact-declarations} — and the admission intersects with that set again, so {@code
- * config-directory}, {@code no-changes}, {@code automation:*} and {@code contract:*} never admit the
- * desk, whatever a row holds. Admitting is not approving: what the desk may then approve, and when,
- * is the approve door's {@code DeskApprovalPolicy}.
+ * ProjectConfig.DeliverySettings#APPROVABLE} — {@code manual-review}, {@code
+ * artifact-declarations}, {@code automation} and {@code contract} — and the admission intersects
+ * with that set again. {@code manual-review} and {@code artifact-declarations} admit the desk to the
+ * requirement of that id; {@code automation} (qits-1517) to every {@code automation:<kind>}
+ * requirement that admits more than a person (a fail-closed reading — {@code automation:catalogue},
+ * an unreadable kind — admits a person alone and stays a person's); {@code contract} (qits-1517) to
+ * every {@code contract:<slug>} requirement whose consumer project is the request's own. {@code
+ * config-directory}, {@code no-changes} and {@code recorded} never admit the desk, whatever a row
+ * holds. Admitting is not approving: what the desk may then approve, and when, is the approve
+ * door's {@code DeskApprovalPolicy}.
  *
  * <p><b>A repository whose gate configuration cannot be read is not held by the configuration
  * source</b>, and that is not a hole: the evaluation has already refused to release an unknown gate
@@ -237,11 +244,10 @@ public class ApprovalPolicy {
   }
 
   /**
-   * <b>The one place the delivery desk is admitted</b> (epic qits-1440): each requirement whose id
-   * {@code projectId}'s {@code front_desk.delivery.approves} lists, and which {@link
-   * ProjectConfig.DeliverySettings#APPROVABLE} allows at all, admits {@link ApprovalRole#DESK} — the
-   * request's own project's desk — beside its own roles. Every other requirement is returned as the
-   * sources answered it.
+   * <b>The one place the delivery desk is admitted</b> (epic qits-1440): each requirement {@link
+   * #deskAdmissible} under {@code projectId}'s {@code front_desk.delivery.approves} admits {@link
+   * ApprovalRole#DESK} — the request's own project's desk — beside its own roles. Every other
+   * requirement is returned as the sources answered it.
    *
    * <p>The project is read only when a requirement could be admitted, in a short transaction of its
    * own (callable inside the decide transaction and outside any, as {@link ApprovalRoles}' lookups
@@ -251,7 +257,7 @@ public class ApprovalPolicy {
   List<ApprovalRequirement> admitDesk(List<ApprovalRequirement> requirements, String projectId) {
     if (projectId == null
         || requirements.stream()
-            .noneMatch(r -> ProjectConfig.DeliverySettings.APPROVABLE.contains(r.id()))) {
+            .noneMatch(r -> deskAdmissible(r, ProjectConfig.DeliverySettings.APPROVABLE, projectId))) {
       return requirements;
     }
     Set<String> approves = deskApproves(projectId);
@@ -260,8 +266,7 @@ public class ApprovalPolicy {
     }
     List<ApprovalRequirement> admitted = new ArrayList<>(requirements.size());
     for (ApprovalRequirement requirement : requirements) {
-      if (approves.contains(requirement.id())
-          && ProjectConfig.DeliverySettings.APPROVABLE.contains(requirement.id())
+      if (deskAdmissible(requirement, approves, projectId)
           && !requirement.admits().contains(ApprovalRole.DESK)) {
         List<ApprovalRole> admits = new ArrayList<>(requirement.admits());
         admits.add(ApprovalRole.DESK);
@@ -278,6 +283,47 @@ public class ApprovalPolicy {
     }
     return List.copyOf(admitted);
   }
+
+  /**
+   * Whether {@code approves} — intersected with {@link ProjectConfig.DeliverySettings#APPROVABLE},
+   * so a hand-built list naming anything else admits nothing — admits the desk of {@code projectId}
+   * (the request's project) to {@code requirement}:
+   *
+   * <ul>
+   *   <li>{@code manual-review}, {@code artifact-declarations}: the requirement of that very id;
+   *   <li>{@code automation} (qits-1517): an {@code automation:<kind>} requirement admitting more
+   *       than a person — the source's fail-closed readings ({@code automation:catalogue}, a kind
+   *       whose pathspec or role word cannot be read) admit a person alone and stay a person's;
+   *   <li>{@code contract} (qits-1517): a {@code contract:<slug>} requirement admitting the agent of
+   *       the request's own project, i.e. one whose consumer project is the request's own.
+   * </ul>
+   *
+   * Nothing else: {@code config-directory}, {@code no-changes} and {@code recorded} never.
+   */
+  static boolean deskAdmissible(
+      ApprovalRequirement requirement, Set<String> approves, String projectId) {
+    String id = requirement.id();
+    if (id == null) {
+      return false;
+    }
+    if (DESK_EXACT.contains(id)) {
+      return approves.contains(id) && ProjectConfig.DeliverySettings.APPROVABLE.contains(id);
+    }
+    if (id.startsWith(AutomationContentSource.ID_PREFIX)) {
+      return approves.contains(ProjectConfig.DeliverySettings.AUTOMATION)
+          && !id.equals(AutomationContentSource.CATALOGUE_ID)
+          && requirement.admits().stream().anyMatch(role -> role.kind() != ApprovalRole.Kind.PERSON);
+    }
+    if (id.startsWith(ContractChangeSource.ID_PREFIX)) {
+      return approves.contains(ProjectConfig.DeliverySettings.CONTRACT)
+          && requirement.admits().stream()
+              .anyMatch(role -> ApprovalRole.AGENT.equals(role.relativeTo(projectId)));
+    }
+    return false;
+  }
+
+  /** The requirement ids {@code approves} names one for one. */
+  private static final Set<String> DESK_EXACT = Set.of("manual-review", "artifact-declarations");
 
   /** {@code projectId}'s {@code front_desk.delivery.approves}; empty where it cannot be read. */
   private Set<String> deskApproves(String projectId) {
