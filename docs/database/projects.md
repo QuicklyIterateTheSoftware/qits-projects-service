@@ -164,7 +164,11 @@ erDiagram
     instant reported_at
     string reported_spec_hash
     string reported_state
+    instant roll_requested_at
     uuid runner_id
+    string session_token_id
+    string session_token_subject
+    string session_token_value
     string spec_hash
     jsonb spec_json
     string token_id
@@ -184,6 +188,9 @@ erDiagram
     string parent "not null"
     string project_id "not null"
     string repository_id "not null"
+    text token_id
+    text token_subject
+    text token_value
   }
   %% refinement_design: eu.wohlben.qits.projects.entity.RefinementDesign (domain)
   refinement_design {
