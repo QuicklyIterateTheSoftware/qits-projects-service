@@ -284,6 +284,48 @@ public class AgentSurfaceConfigurationService {
     return true;
   }
 
+  /**
+   * Rewrite {@code surfaceKey}'s stored system prompt to {@code replacement}, but only where it is
+   * exactly {@code expected} — byte for byte. Answers whether a row was rewritten.
+   *
+   * <p>This is how a shipped prompt that changed reaches the rows the seed wrote before it changed
+   * (qits-1517), and the equality is the whole safety: a row that still holds the old shipped text
+   * was never edited, and one that holds anything else was, and an owner's edit survives every boot
+   * just as it survives the seed. No row, a row already at {@code replacement}, and an edited row
+   * are all the same answer: nothing written. Everything else on the row — harness, servers,
+   * initial prompt — is written back as it was, through {@link #save}, so the rewrite leaves a
+   * revision like any other write, unattributed like the seed's.
+   */
+  @Transactional
+  public boolean replaceSystemPromptIfUnedited(
+      String surfaceKey, String expected, String replacement) {
+    String key = requireSurfaceKey(surfaceKey);
+    Optional<AgentSurfaceConfiguration> stored = configurations.findByIdOptional(key);
+    if (stored.isEmpty() || !expected.equals(stored.get().systemPrompt)) {
+      return false;
+    }
+    AgentSurfaceConfiguration row = stored.get();
+    AgentSurfaceConfigurationDto current =
+        toDto(row, attachments.forSurface(key), catalog.attachedTo(key));
+    save(
+        key,
+        new AgentSurfaceConfigurationDto(
+            current.surface(),
+            current.harness(),
+            current.model(),
+            current.effort(),
+            current.remoteControl(),
+            current.permissionMode(),
+            current.activityTracking(),
+            replacement,
+            current.initialPrompt(),
+            current.mcpServers(),
+            current.externalMcpServers(),
+            current.shipped()),
+        null);
+    return true;
+  }
+
   // -------------------------------------------------------------------------------------------
   // Validation
   // -------------------------------------------------------------------------------------------

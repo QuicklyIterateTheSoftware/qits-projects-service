@@ -2588,10 +2588,16 @@ defaults in `domain`; two controllers and the boot seed in `service`.
 - **`project.delivery` is the delivery desk (qits-1496, epic qits-1440).** The project's front desk
   runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
   order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
-  the one desk's fields with the brief from qits-1440's dossier page "The desk's brief" as its system
-  prompt (`DELIVERY_DESK_PROMPT`, verbatim; a CLI command that changes shape changes it here and on
-  the dossier together) and `Run one pass of the delivery loop.` as its initial prompt. The seed
-  writes the row at boot; no migration.
+  the one desk's fields with the brief qits-1517 wrote as its system prompt (`DELIVERY_DESK_PROMPT`,
+  verbatim) and `Run one pass of the delivery loop.` as its initial prompt. The seed writes the row
+  at boot; no migration. **The row is platform-wide and the seed never overwrites it**, so the brief
+  that shipped before (qits-1440's dossier text, kept byte for byte as
+  `PREVIOUS_DELIVERY_DESK_PROMPT`) is rolled forward by `startup/DeliveryDeskBriefRollout`, a boot
+  step beside the seed: a stored `project.delivery` prompt **exactly** equal to the previous text is
+  rewritten to the current one through `AgentSurfaceConfigurationService.replaceSystemPromptIfUnedited`
+  (every other field kept, one unattributed revision); any other text is an owner's edit and is left
+  alone, and a row already current, or absent, is a no-op. A future brief change repeats the move:
+  the outgoing text becomes `PREVIOUS_…`.
 - **The seed is the safety.** `control/AgentSurfaceDefaults` carries the seven surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
