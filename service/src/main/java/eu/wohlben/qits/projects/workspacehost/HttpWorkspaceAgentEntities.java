@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.workspacehost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.WorkspaceAgentEntities;
 import io.quarkus.arc.DefaultBean;
@@ -30,7 +31,7 @@ import org.jboss.logging.Logger;
  *   Content-Type: application/json
  *
  *   {"workId": "…", "title": "…", "status": "REFINED", "blocked": true,
- *    "blockSource": "AGENT_WAITING"}
+ *    "blockSource": "EXPLICIT", "blockedBy": "…"}
  *
  *   -&gt; 200 {"agentId": "…", "applied": true}
  *   -&gt; 200 {"agentId": null, "applied": false}
@@ -44,6 +45,14 @@ import org.jboss.logging.Logger;
  * {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or
  * {@code "BOTH"} — carried so the far side can name a session "waiting" rather than "blocked"
  * where that is all that stands. It is omitted whenever the caller passed none.
+ *
+ * <p><b>{@code blockedBy} (qits-1511) is who set the EXPLICIT block</b> — the subject recorded on
+ * the row — so qits-workspaces can nudge an agent whose own credential blocked its item. It is sent
+ * only beside a source of {@code "EXPLICIT"} or {@code "BOTH"}, and omitted whenever it is null: an
+ * {@code AGENT_WAITING} block alone has no author, and a value there would name the setter of a
+ * block that no longer stands. A qits-workspaces older than the member ignores it (it reads unknown
+ * JSON properties without failing), so the member needs no fallback of its own; the {@code /blocked}
+ * fallback gets the same body.
  *
  * <h2>A 404 OR A 405 on {@code /entity} is retried once, on {@code /blocked}</h2>
  *
@@ -128,7 +137,12 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   @Override
   public void changed(
-      String workId, String title, String status, boolean blocked, String blockSource) {
+      String workId,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource,
+      String blockedBy) {
     String what = describe(title, status, blocked);
     Optional<String> base = address();
     if (base.isEmpty()) {
@@ -150,6 +164,11 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
       // blocked, or when the caller does not know it.
       if (blockSource != null) {
         body.put("blockSource", blockSource);
+      }
+      // Who set the explicit block (qits-1511) — only where one stands: a derived block has no
+      // author.
+      if (blockedBy != null && isExplicit(blockSource)) {
+        body.put("blockedBy", blockedBy);
       }
       HttpResponse<String> response = post(base.get() + ENTITY_PATH, authorization.get(), body);
       if (response.statusCode() == 404 || response.statusCode() == 405) {
@@ -181,6 +200,12 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
     } catch (Exception e) {
       couldNot(workId, what, e.toString());
     }
+  }
+
+  /** {@code EXPLICIT} or {@code BOTH}: a source under which an explicit block stands. */
+  private static boolean isExplicit(String blockSource) {
+    return EntityBlockState.EXPLICIT.equals(blockSource)
+        || EntityBlockState.BOTH.equals(blockSource);
   }
 
   private HttpResponse<String> post(String url, String authorization, Map<String, Object> body)
