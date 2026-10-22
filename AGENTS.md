@@ -2385,6 +2385,17 @@ keeps it so. The agent-container doors keep their paths:
   `FrontDeskTokenReconcile` reaps unclaimed ones of its kind too. A failed mint is a WARN, not
   FAILED: the desk is usable, the loop just has no credential until the sweep mints it. The sweep
   also creates the desk of a project whose loop is enabled, as it does for `ALWAYS_ON`.
+- **The session token** (qits-1482, V49) is a third `qits_tok_` per desk, idp kind `desk-session`
+  (`qits:agent`), context id and claim the project, `gitRefs []`, in `front_desk.session_token_*`.
+  The delivery loop runs in the front desk itself (owner ruling 2026-10-22: one session, no second
+  desk), and this token is what the desk's own sessions are to run on, a principal other than the
+  daemon's. `FrontDesks.mintSessionIfMissing` mints it beside the desk token (at row creation and
+  every sweep); it is revoked with the row (DELETE, project deletion, `removed` of an unplaced row)
+  and `FrontDeskTokenReconcile` reaps a live `desk-session` token no row's `session_token_id` names.
+  It is in **no** environment: `FrontDesks.sessionToken(projectId)` holds it for the daemon's coming
+  `sessionCredentials` push over the control socket. A failed mint (an idp that does not know the
+  kind yet) is a WARN and leaves the desk usable. The `QITS_DELIVERY_TOKEN*` env below stays until
+  that push carries the delivery token too.
 - **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
   clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
   deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every

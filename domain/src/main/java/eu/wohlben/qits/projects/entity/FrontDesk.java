@@ -28,7 +28,9 @@ import org.hibernate.type.SqlTypes;
  *       spec: {@link #tokenId} to revoke it, {@link #tokenValue} so the spec is reproducible,
  *       {@link #tokenSubject} because the control socket and the dial-back bind a {@code tok-}
  *       bearer to it. The {@code delivery_token_*} columns hold a second one, the delivery
- *       loop's, only while the project's loop is enabled (epic qits-1440).
+ *       loop's, only while the project's loop is enabled (epic qits-1440); the {@code
+ *       session_token_*} columns a third, the desk's sessions' own (qits-1482), carried in no
+ *       environment.
  *   <li><b>The spec</b> — {@link #specJson} is the spec last <em>sent</em> (the applied one) and
  *       {@link #specHash} its SHA-256 over canonical JSON; the runner labels the container with the
  *       hash and recreates it when an estate carries another.
@@ -87,6 +89,21 @@ public class FrontDesk extends PanacheEntityBase {
 
   @Column(name = "delivery_token_subject")
   public String deliveryTokenSubject;
+
+  /**
+   * The desk's session token (qits-1482, V49): a {@code qits_tok_} of idp context kind {@code
+   * desk-session} ({@code qits:agent}), claims {@code {project}}, minted beside the desk token and
+   * revoked with the row. It is in no container's environment: the daemon is to receive it over the
+   * control socket, so the desk's sessions run on a principal other than the daemon's.
+   */
+  @Column(name = "session_token_id")
+  public String sessionTokenId;
+
+  @Column(name = "session_token_value")
+  public String sessionTokenValue;
+
+  @Column(name = "session_token_subject")
+  public String sessionTokenSubject;
 
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "spec_json", columnDefinition = "jsonb")

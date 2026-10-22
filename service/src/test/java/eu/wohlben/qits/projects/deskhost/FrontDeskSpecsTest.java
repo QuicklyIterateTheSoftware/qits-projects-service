@@ -182,6 +182,31 @@ class FrontDeskSpecsTest {
         "turning the loop on moves the hash, so the spec roll recreates the desk");
   }
 
+  /** The session token (qits-1482) is in no spec: it goes over the control socket. */
+  @Test
+  void theSessionTokenIsInNoSpec() {
+    FrontDesk row = row();
+    row.sessionTokenId = "s-1";
+    row.sessionTokenValue = "qits_tok_session";
+    row.sessionTokenSubject = "tok-session";
+    Project project = project(FrontDeskLifecycle.ON_DEMAND);
+    project.deliveryEnabled = true;
+    FrontDeskSpecs.Composed composed =
+        FrontDeskSpecs.compose(settings("example.test"), project, row, identity(), DOCUMENT);
+    composed
+        .spec()
+        .env()
+        .forEach(
+            (name, value) -> {
+              assertFalse(value.contains("qits_tok_session"), name);
+              assertFalse(value.equals("tok-session"), name);
+            });
+    assertEquals(
+        FrontDeskSpecs.compose(settings("example.test"), project, row(), identity(), DOCUMENT).hash(),
+        composed.hash(),
+        "the session token never moves the hash");
+  }
+
   /** TZ only when a zone is configured. */
   @Test
   void theTimezoneIsStatedOnlyWhenSet() {

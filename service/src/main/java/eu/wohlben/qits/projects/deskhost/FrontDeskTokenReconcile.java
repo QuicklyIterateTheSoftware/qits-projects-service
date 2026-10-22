@@ -28,6 +28,9 @@ import org.jboss.logging.Logger;
  * <p>Delivery tokens (kind {@code desk-delivery}, epic qits-1440) are reaped the same way against
  * {@code front_desk.delivery_token_id} — which also catches one whose revoke on a disabled loop
  * could not reach the idp.
+ *
+ * <p>Session tokens (kind {@code desk-session}, qits-1482) are reaped the same way against {@code
+ * front_desk.session_token_id}.
  */
 @ApplicationScoped
 public class FrontDeskTokenReconcile {
@@ -74,6 +77,7 @@ public class FrontDeskTokenReconcile {
     }
     Set<String> claimed = new HashSet<>();
     Set<String> claimedDelivery = new HashSet<>();
+    Set<String> claimedSession = new HashSet<>();
     for (FrontDesk row : QuarkusTransaction.requiringNew().call(() -> desks.listAll())) {
       if (row.tokenId != null) {
         claimed.add(row.tokenId);
@@ -81,21 +85,32 @@ public class FrontDeskTokenReconcile {
       if (row.deliveryTokenId != null) {
         claimedDelivery.add(row.deliveryTokenId);
       }
+      if (row.sessionTokenId != null) {
+        claimedSession.add(row.sessionTokenId);
+      }
     }
     int reaped = 0;
     for (FrontDeskTokens.Live token : listed.get()) {
       boolean desk = FrontDeskTokens.CONTEXT_KIND.equals(token.contextKind());
       boolean delivery = FrontDeskTokens.CONTEXT_KIND_DELIVERY.equals(token.contextKind());
-      if ((!desk && !delivery)
+      boolean session = FrontDeskTokens.CONTEXT_KIND_SESSION.equals(token.contextKind());
+      if ((!desk && !delivery && !session)
           || (desk && claimed.contains(token.tokenId()))
           || (delivery && claimedDelivery.contains(token.tokenId()))
+          || (session && claimedSession.contains(token.tokenId()))
           || (token.createdAt() != null && token.createdAt().isAfter(now.minus(MINT_GRACE)))) {
         continue;
       }
-      if (desk ? tokens.revoke(token.tokenId()) : tokens.revokeDelivery(token.tokenId())) {
+      boolean revoked =
+          desk
+              ? tokens.revoke(token.tokenId())
+              : delivery
+                  ? tokens.revokeDelivery(token.tokenId())
+                  : tokens.revokeSession(token.tokenId());
+      if (revoked) {
         LOG.infof(
             "Revoked %s token %s (project %s): no front desk claims it",
-            desk ? "desk" : "delivery", token.tokenId(), token.contextId());
+            token.contextKind(), token.tokenId(), token.contextId());
         reaped++;
       }
     }

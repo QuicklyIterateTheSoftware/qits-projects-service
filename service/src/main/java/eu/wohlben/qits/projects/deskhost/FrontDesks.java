@@ -69,6 +69,10 @@ import org.jboss.logging.Logger;
  * and cleared when it is off, and revoked with the desk. A failed mint leaves the desk usable — the
  * loop simply has no credential yet — and the sweep retries it.
  *
+ * <p><b>The session token</b> (qits-1482) is minted beside the desk token ({@link
+ * #mintSessionIfMissing}) and goes with the row; a failed mint is a WARN, never a FAILED desk, and
+ * the sweep retries it. It is in no spec: {@link #sessionToken} holds it for the control socket.
+ *
  * <p><b>The bound subjects</b> — each desk's {@code token_subject} — are also held in memory, loaded
  * at boot and kept with every write here, because the control socket's upgrade check and the
  * dial-back route ask on the event loop.
@@ -164,6 +168,20 @@ public class FrontDesks {
     subjectsLoaded = true;
   }
 
+  /**
+   * The session token of {@code projectId}'s desk (qits-1482) — its id, value and subject — or empty
+   * while it has none. Held for the push that hands it to the daemon over the control socket;
+   * nothing puts it into an environment.
+   */
+  public Optional<FrontDeskTokens.Minted> sessionToken(String projectId) {
+    return find(projectId)
+        .filter(row -> row.sessionTokenValue != null)
+        .map(
+            row ->
+                new FrontDeskTokens.Minted(
+                    row.sessionTokenId, row.sessionTokenValue, row.sessionTokenSubject));
+  }
+
   // --- the doors ---------------------------------------------------------------------------------
 
   /**
@@ -255,6 +273,11 @@ public class FrontDesks {
           "Could not revoke the delivery token of project %s; the token reconcile reaps it",
           projectId);
     }
+    if (gone.sessionTokenId != null && !tokens.revokeSession(gone.sessionTokenId)) {
+      LOG.warnf(
+          "Could not revoke the session token of project %s; the token reconcile reaps it",
+          projectId);
+    }
     tunnels.closeTunnel(projectId);
     daemons.forget(projectId);
   }
@@ -307,7 +330,44 @@ public class FrontDesks {
       }
     }
     mintIfMissing(projectId);
+    mintSessionIfMissing(projectId);
     syncDeliveryToken(projectId);
+  }
+
+  /**
+   * Mint the desk's session token (qits-1482) when it has none: outside any transaction, stored only
+   * on a row that still has none (a lost race, or a row deleted meanwhile, revokes what was minted).
+   * A failed mint — an idp that does not know {@code desk-session} yet, say — is a WARN: the desk is
+   * usable without it, and the sweep calls this again.
+   */
+  public void mintSessionIfMissing(String projectId) {
+    FrontDesk row = find(projectId).orElse(null);
+    if (row == null || row.sessionTokenId != null) {
+      return;
+    }
+    FrontDeskTokens.Minted minted;
+    try {
+      minted = tokens.mintSession(projectId);
+    } catch (RuntimeException e) {
+      LOG.warnf("Could not mint the session token of project %s: %s", projectId, e.getMessage());
+      return;
+    }
+    int stored =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    desks.update(
+                        "sessionTokenId = ?1, sessionTokenValue = ?2, sessionTokenSubject = ?3"
+                            + " where projectId = ?4 and sessionTokenId is null",
+                        minted.tokenId(),
+                        minted.token(),
+                        minted.subject(),
+                        projectId));
+    if (stored == 0) {
+      tokens.revokeSession(minted.tokenId());
+      return;
+    }
+    LOG.infof("Minted the session token of project %s", projectId);
   }
 
   /**
@@ -729,6 +789,9 @@ public class FrontDesks {
       }
       if (leftover.deliveryTokenId != null) {
         tokens.revokeDelivery(leftover.deliveryTokenId);
+      }
+      if (leftover.sessionTokenId != null) {
+        tokens.revokeSession(leftover.sessionTokenId);
       }
       if (placeable(leftover)) {
         registry.backlogChanged();

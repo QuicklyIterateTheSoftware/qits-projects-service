@@ -27,8 +27,8 @@ import org.jboss.logging.Logger;
  *   <li>every ALWAYS_ON project, and every project whose delivery loop is enabled (epic qits-1440),
  *       without a desk gets one (and its token) — so such a desk exists without anyone calling
  *       {@code ensure}, and one a DELETE removed is created afresh;
- *   <li>a desk whose token could not be minted is minted again, and its delivery token is brought
- *       in line with the project's loop;
+ *   <li>a desk whose token or session token (qits-1482) could not be minted is minted again, and
+ *       its delivery token is brought in line with the project's loop;
  *   <li>the edge belt is applied;
  *   <li>every desk's desired state is recomputed — the idle window closing is noticed here — and a
  *       wanted unplaced desk is stamped {@code queued_at};
@@ -94,6 +94,9 @@ public class FrontDeskSweep {
       try {
         if (row.tokenId == null) {
           frontDesks.mintIfMissing(row.projectId);
+        }
+        if (row.sessionTokenId == null) {
+          frontDesks.mintSessionIfMissing(row.projectId);
         }
         frontDesks.syncDeliveryToken(row.projectId);
         frontDesks.checkEdge(row.projectId);

@@ -246,6 +246,7 @@ class FrontDeskTest {
     assertNotNull(row.queuedAt);
     assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
     assertEquals(1, tokens.mintsFor(projectId));
+    assertEquals(1, tokens.sessionMintsFor(projectId));
   }
 
   /** A flip to ALWAYS_ON creates the desk at once, through the project.yml hook. */
@@ -853,6 +854,89 @@ class FrontDeskTest {
     assertFalse(tokens.isLive(claimed));
   }
 
+  // --- the session token (qits-1482) --------------------------------------------------------------
+
+  /**
+   * The desk's session token: minted once beside its desk token, kind {@code desk-session} for the
+   * project, held on the row and offered by {@link FrontDesks#sessionToken}, carried in no spec, and
+   * revoked with the desk.
+   */
+  @Test
+  void theDeskHoldsASessionTokenThatGoesWithIt() throws Exception {
+    runner("fd-session", 1);
+    FakeDeskRunner runner = greeted("fd-session");
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    sweep.sweep(Instant.now());
+
+    FrontDesk row = row(projectId);
+    assertEquals(1, tokens.sessionMintsFor(projectId));
+    assertEquals(FrontDeskTokens.CONTEXT_KIND_SESSION, tokens.kindOf(row.sessionTokenId));
+    assertEquals(projectId, tokens.contextOf(row.sessionTokenId));
+    assertTrue(row.sessionTokenSubject.startsWith("tok-"));
+    assertFalse(row.sessionTokenSubject.equals(row.tokenSubject), "a principal of its own");
+    FrontDeskTokens.Minted session = frontDesks.sessionToken(projectId).orElseThrow();
+    assertEquals(row.sessionTokenId, session.tokenId());
+    assertEquals(row.sessionTokenValue, session.token());
+    assertEquals(row.sessionTokenSubject, session.subject());
+
+    runner.send(new Reserve());
+    Take take = runner.expect(Take.class);
+    take.spec()
+        .env()
+        .forEach(
+            (name, value) ->
+                assertFalse(
+                    value.contains(row.sessionTokenValue) || value.equals(row.sessionTokenSubject),
+                    name + " carries the session token"));
+
+    person().delete(base(projectId)).then().statusCode(204);
+    assertFalse(tokens.isLive(row.sessionTokenId));
+    assertTrue(frontDesks.sessionToken(projectId).isEmpty());
+  }
+
+  /**
+   * An idp that will not mint a session token (one older than qits-1482's {@code desk-session}
+   * kind) leaves the desk usable — QUEUED, not FAILED — and the sweep mints it once it can.
+   */
+  @Test
+  void aRefusedSessionMintLeavesTheDeskUsable() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    tokens.failSession(true);
+
+    person()
+        .post(base(projectId) + "/ensure")
+        .then()
+        .statusCode(200)
+        .body("container.runtimeStatus", is("QUEUED"));
+    assertNull(row(projectId).sessionTokenId);
+    assertNull(row(projectId).failureDetail);
+    assertTrue(frontDesks.sessionToken(projectId).isEmpty());
+
+    tokens.failSession(false);
+    sweep.sweep(Instant.now());
+    assertNotNull(row(projectId).sessionTokenId);
+  }
+
+  /** The reconcile reaps a session token no row names, and spares the one its desk holds. */
+  @Test
+  void theReconcileReapsUnclaimedSessionTokens() {
+    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
+    sweep.sweep(Instant.now());
+    String claimed = row(projectId).sessionTokenId;
+    tokens.plant(
+        new FrontDeskTokens.Live(
+            "session-orphan",
+            FrontDeskTokens.CONTEXT_KIND_SESSION,
+            "gone",
+            Instant.now().minus(Duration.ofHours(2))));
+
+    assertEquals(1, tokenReconcile.reconcile(Instant.now()));
+    assertFalse(tokens.isLive("session-orphan"));
+    assertTrue(tokens.isLive(claimed));
+  }
+
   /** {@code removed} for an unplaced, once-placed row completes it: row dropped, token revoked. */
   @Test
   void removedCompletesAnUnplacedRow() {
@@ -860,6 +944,7 @@ class FrontDeskTest {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     frontDesks.ensureRow(projectId);
     String tokenId = row(projectId).tokenId;
+    String sessionTokenId = row(projectId).sessionTokenId;
 
     frontDesks.removed(held.id, projectId);
     assertNotNull(row(projectId), "a never-placed row is not touched");
@@ -869,6 +954,7 @@ class FrontDeskTest {
     frontDesks.removed(held.id, projectId);
     assertNull(row(projectId));
     assertFalse(tokens.isLive(tokenId));
+    assertFalse(tokens.isLive(sessionTokenId));
   }
 
   // --- refusals ----------------------------------------------------------------------------------

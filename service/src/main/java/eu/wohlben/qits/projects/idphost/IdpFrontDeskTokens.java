@@ -49,6 +49,22 @@ public class IdpFrontDeskTokens implements FrontDeskTokens {
   }
 
   @Override
+  public Minted mintSession(String projectId) {
+    IdpTokens.Issued issued =
+        tokens.commission(
+            CONTEXT_KIND_SESSION,
+            projectId,
+            Map.of(IdpCommissionWire.PROJECT_CLAIM, projectId),
+            IdpCommissionWire.NO_GIT_REFS);
+    return new Minted(issued.tokenId(), issued.token(), issued.subject());
+  }
+
+  @Override
+  public boolean revokeSession(String tokenId) {
+    return tokens.delete(tokenId);
+  }
+
+  @Override
   public Optional<List<Live>> list() {
     return tokens
         .list()

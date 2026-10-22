@@ -30,6 +30,12 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
   /** Every delivery mint, by project (epic qits-1440). */
   private final List<String> mintedDelivery = new ArrayList<>();
 
+  /** Every session mint, by project (qits-1482). */
+  private final List<String> mintedSession = new ArrayList<>();
+
+  /** Whether session mints fail while the others succeed (an idp without the kind). */
+  private volatile boolean failSession;
+
   private volatile boolean failMint;
 
   private volatile boolean failList;
@@ -60,6 +66,25 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
       mintedDelivery.add(projectId);
     }
     return new Minted(id, "qits_tok_" + id, subject);
+  }
+
+  @Override
+  public Minted mintSession(String projectId) {
+    if (failMint || failSession) {
+      throw new IllegalStateException("qits-idp refused a desk-session token for " + projectId);
+    }
+    String id = "s-" + UUID.randomUUID();
+    String subject = "tok-" + UUID.randomUUID();
+    live.put(id, new Live(id, CONTEXT_KIND_SESSION, projectId, Instant.now().minusSeconds(3600)));
+    synchronized (mintedSession) {
+      mintedSession.add(projectId);
+    }
+    return new Minted(id, "qits_tok_" + id, subject);
+  }
+
+  @Override
+  public boolean revokeSession(String tokenId) {
+    return revoke(tokenId);
   }
 
   @Override
@@ -102,6 +127,23 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     }
   }
 
+  public long sessionMintsFor(String projectId) {
+    synchronized (mintedSession) {
+      return mintedSession.stream().filter(projectId::equals).count();
+    }
+  }
+
+  /** Fail every session mint while the others succeed. */
+  public void failSession(boolean fail) {
+    this.failSession = fail;
+  }
+
+  /** The context id a live token was minted for, or null when it is not live. */
+  public String contextOf(String tokenId) {
+    Live token = live.get(tokenId);
+    return token == null ? null : token.contextId();
+  }
+
   public long deliveryMintsFor(String projectId) {
     synchronized (mintedDelivery) {
       return mintedDelivery.stream().filter(projectId::equals).count();
@@ -133,6 +175,10 @@ public class FakeFrontDeskTokens implements FrontDeskTokens {
     synchronized (mintedDelivery) {
       mintedDelivery.clear();
     }
+    synchronized (mintedSession) {
+      mintedSession.clear();
+    }
+    failSession = false;
     failMint = false;
     failList = false;
   }
