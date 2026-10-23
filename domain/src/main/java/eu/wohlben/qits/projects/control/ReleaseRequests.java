@@ -9,9 +9,11 @@ import eu.wohlben.qits.projects.control.approval.Approver;
 import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.control.gate.CiVerdicts;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
+import eu.wohlben.qits.projects.control.gate.GateEvaluation;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.control.gate.LegacyGates;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
+import eu.wohlben.qits.projects.control.gate.UpstreamInFlightGate;
 import eu.wohlben.qits.projects.dto.ApprovalEligibilityDto;
 import eu.wohlben.qits.projects.dto.ApprovalRequirementDto;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
@@ -430,6 +432,15 @@ public class ReleaseRequests {
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
 
   @Inject Instance<DownstreamComponents> downstreamComponents;
+
+  /** Every closure answer is remembered here for gate 3 (epic qits-897). */
+  @Inject UpstreamClosures upstreamClosures;
+
+  /** Gate 3's facts: the open requests upstream of a request, and which of them is building. */
+  @Inject UpstreamRequests upstreamRequests;
+
+  /** Gate 3's triggers: a request that moved has its downstream requests evaluated again. */
+  @Inject DownstreamReevaluation downstreamReevaluation;
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
 
@@ -3730,8 +3741,10 @@ public class ReleaseRequests {
                 return row != null
                     && row.state == ReleaseRequest.State.PENDING
                     && folded.mergedSha().equals(row.mergedSha)
-                    && automationsApply(row.repoId)
-                    && !automationsPassed(row);
+                    && ((automationsApply(row.repoId) && !automationsPassed(row))
+                        // Gate 3 (epic qits-897): an upstream still building holds QA too, so a
+                        // fresh fold it holds is announced PENDING and qits-ci builds nothing.
+                        || upstreamHold(row) != null);
               });
     } catch (RuntimeException e) {
       // Could not tell: say PENDING. The worst it costs is that qits-ci waits for the DONE the
@@ -3829,10 +3842,14 @@ public class ReleaseRequests {
       return null;
     }
     try {
-      return downstreamComponents
-          .get()
-          .downstreamOf(folded.repoId(), folded.repoName())
-          .orElse(null);
+      List<String> closure =
+          downstreamComponents
+              .get()
+              .downstreamOf(folded.repoId(), folded.repoName())
+              .orElse(null);
+      // Gate 3 reads the same answer (epic qits-897): one call serves the event and the gate.
+      upstreamClosures.record(folded.repoId(), closure);
+      return closure;
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not cost the announcement.
       LOG.warnf(
@@ -3929,6 +3946,9 @@ public class ReleaseRequests {
     // The estate wrapper's empty fold this evaluation withdrew (qits-1273), carried out so that the
     // withdrawal's side effects run after the commit; null on nearly every pass.
     AtomicReference<EmptyWrapperWithdrawal> emptyWrapper = new AtomicReference<>();
+    // Whether this evaluation REJECTED the request — with READY, a move its downstream requests'
+    // gate 3 reads (epic qits-897), so they are evaluated again after the commit.
+    AtomicReference<Boolean> rejected = new AtomicReference<>(false);
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -3977,6 +3997,7 @@ public class ReleaseRequests {
                   if (automationsApply(row.repoId) && !automationsPassed(row)) {
                     if (automationsFailedAndSettled(row)) {
                       states.move(row, ReleaseRequest.State.REJECTED);
+                      rejected.set(true);
                       row.rejectingGate = AutomationsGate.KIND;
                       row.rejectingRunId = null;
                       row.detail = automationDetail(row);
@@ -4019,6 +4040,17 @@ public class ReleaseRequests {
                     emptyWrapper.set(
                         new EmptyWrapperWithdrawal(
                             row.id, row.repoId, row.repoName, row.gateTicketId, List.copyOf(named)));
+                    return false;
+                  }
+                  // GATE 3, AN UPSTREAM STILL RELEASING (epic qits-897), asked once the pre-run has
+                  // passed and before QA is: while a request upstream of this one is building — a QA
+                  // run going at its fold, READY, or publishing — this fold is not announced DONE, so
+                  // qits-ci builds nothing for it. Held PENDING with the upstream named; the
+                  // upstream moving re-evaluates this request (DownstreamReevaluation) and the sweep
+                  // re-asks besides. A fold already announced is not touched here (qits-909).
+                  String upstreamHeld = upstreamHold(row);
+                  if (upstreamHeld != null) {
+                    waiting(row, upstreamHeld);
                     return false;
                   }
                   // THE PRE-RUN IS DONE AT THIS FOLD, so its QA may start — announced preRun=DONE AT
@@ -4082,6 +4114,7 @@ public class ReleaseRequests {
                       newest != null && !CiVerdicts.success(newest) ? newest : null;
                   if (red != null) {
                     states.move(row, ReleaseRequest.State.REJECTED);
+                    rejected.set(true);
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
                     // of exactly this run is what may take the rejection back, and reading an id
                     // back out of prose is a parser standing in for a column. See
@@ -4190,6 +4223,7 @@ public class ReleaseRequests {
                     ReleaseRequestApproval declined = standing.decline();
                     if (declined != null) {
                       states.move(row, ReleaseRequest.State.REJECTED);
+                      rejected.set(true);
                       // NO rejecting run, and the null is load-bearing rather than incidental: it
                       // is what stops a CI verdict from ever undoing a person's no. A decline is
                       // answered by a push or by the same approver changing their mind, and no run
@@ -4250,8 +4284,42 @@ public class ReleaseRequests {
       // the ledger and every open request comes back through this line.
       refreshAutomations(id, null);
     }
+    if (ready || Boolean.TRUE.equals(rejected.get())) {
+      // Gate 3's trigger (epic qits-897): a request that went READY is building, one that went
+      // REJECTED is not, and its downstream requests read both. Best effort, after the commit.
+      downstreamReevaluation.upstreamMoved(id);
+    }
     if (ready) {
       enqueueExecution(id);
+    }
+  }
+
+  /**
+   * Gate 3's hold (epic qits-897): the gate's detail where it holds this fold, else null. Asked on a
+   * deciding path, so a closure not on record may be asked for ({@code mayAsk=true}).
+   *
+   * <p>Only a fresh fold is held: PENDING, not yet announced {@code preRun=DONE}, no QA verdict of
+   * its own at the fold, outside the estate wrapper. A fold already announced is the interrupt's
+   * (qits-909), and is not touched here. UNKNOWN never holds, and neither does a failure to read:
+   * the gate postpones, it never protects content.
+   */
+  private String upstreamHold(ReleaseRequest row) {
+    if (row.state != ReleaseRequest.State.PENDING
+        || row.mergedSha == null
+        || row.mergedSha.equals(row.qaAnnouncedSha)) {
+      return null;
+    }
+    try {
+      if (approvalPolicy.isEstateWrapper(row.repoId)
+          || CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+              .isPresent()) {
+        return null;
+      }
+      GateEvaluation said = UpstreamInFlightGate.answer(upstreamRequests.activeFor(row, true));
+      return UpstreamInFlightGate.holds(said) ? said.detail() : null;
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not read what is upstream of release request %s; not holding it", row.id);
+      return null;
     }
   }
 
@@ -4972,6 +5040,11 @@ public class ReleaseRequests {
                           }
                           row.updatedAt = Instant.now();
                         }));
+    if (state == ReleaseRequest.State.RELEASED || state == ReleaseRequest.State.FAILED) {
+      // Gate 3's trigger (epic qits-897): a release that tagged may now be publishing, one that
+      // failed is building nothing — its downstream requests read both. Best effort.
+      downstreamReevaluation.upstreamMoved(id);
+    }
   }
 
   /** A sentence on an open request that changes nothing else — the unreachable-git-host arm. */
@@ -5092,7 +5165,8 @@ public class ReleaseRequests {
       Set<String> existingRepos,
       Map<String, String> successors,
       Map<String, ReleaseGates.Stored> storedGateSets,
-      ReleasePipelineAssembler.DeployReach reach) {}
+      ReleasePipelineAssembler.DeployReach reach,
+      Map<String, GateSubject.Upstreams> upstream) {}
 
   /**
    * Names a list of rows without a query per row: one read of every named source in the page, one
@@ -5180,7 +5254,10 @@ public class ReleaseRequests {
         // page of N released requests is N HTTP calls with nothing to batch — on the busiest read
         // this service has. The deploy phase is simply ABSENT from these rows, which is this
         // block's own word for "not known yet" and is not the same claim as UNKNOWN.
-        ReleasePipelineAssembler.DeployReach.LIST_READ);
+        ReleasePipelineAssembler.DeployReach.LIST_READ,
+        // Gate 3's facts (epic qits-897), batched for the page and never asking qits-maintenance:
+        // the closures are read from the cache alone.
+        upstreamRequests.forPage(rows));
   }
 
   /**
@@ -5231,7 +5308,8 @@ public class ReleaseRequests {
         existingRepositories(repoIds),
         successorsOf(List.of(row)),
         gates.stored(repoIds),
-        ReleasePipelineAssembler.DeployReach.ASK);
+        ReleasePipelineAssembler.DeployReach.ASK,
+        Map.of(row.id, upstreamRequests.forOne(row)));
   }
 
   private Map<String, String> mainBranches(Set<String> repoIds) {
@@ -5332,7 +5410,8 @@ public class ReleaseRequests {
                                   List.of()),
                       released,
                       page.phaseRuns().getOrDefault(row.id, List.of()),
-                      page.reach()),
+                      page.reach(),
+                      page.upstream().getOrDefault(row.id, GateSubject.Upstreams.NOT_READ)),
                   row.supersededBy == null ? null : page.successors().get(row.supersededBy));
             })
         .toList();
@@ -5456,7 +5535,8 @@ public class ReleaseRequests {
       List<CommitBuildStatusDto> verdicts,
       ReleasedTagPendingMerge released,
       List<ReleasePipelineRun> phaseRuns,
-      ReleasePipelineAssembler.DeployReach reach) {
+      ReleasePipelineAssembler.DeployReach reach,
+      GateSubject.Upstreams upstream) {
     // Every gate class answers once; the two deprecated shapes below are that one answer.
     GateSubject subject =
         new GateSubject(
@@ -5473,8 +5553,20 @@ public class ReleaseRequests {
                 automations.applies(), automations.gate(), automations.rows()),
             verdicts,
             released,
-            deploymentOf(set, released, reach));
+            deploymentOf(set, released, reach),
+            upstream);
     List<ReleaseGateEvaluator.Evaluated> evaluated = gateEvaluator.evaluate(subject);
+    // Gate 3 holds this fold (epic qits-897) — as evaluate() decides it: the gate says PENDING, on a
+    // fold not yet announced preRun=DONE. While it holds, the pre-run reads PENDING and the QA phase
+    // WAITING_FOR_PRE_RUN, because the gate stands at pre-run-qa and QA has not been asked for.
+    boolean upstreamHeld =
+        row.mergedSha != null
+            && !row.mergedSha.equals(row.qaAnnouncedSha)
+            && evaluated.stream()
+                .anyMatch(
+                    one ->
+                        UpstreamInFlightGate.KIND.equals(one.gate().kind())
+                            && UpstreamInFlightGate.holds(one.evaluation()));
     // The deprecated gates[] and pipeline.gates[] carry the five kinds ReleaseGates.Kind names, in
     // the same order and with the same details they always had.
     List<ReleaseGates.Gate> decided = LegacyGates.of(evaluated, subject);
@@ -5502,9 +5594,9 @@ public class ReleaseRequests {
                     || (row.state == ReleaseRequest.State.REJECTED
                         && AutomationsGate.KIND.equals(row.rejectingGate)))
                 && row.mergedSha != null
-                && !automations.preRunDone()),
+                && (!automations.preRunDone() || upstreamHeld)),
         evaluated.stream().map(ReleaseGateEvaluator::toDto).toList(),
-        automations.preRun());
+        upstreamHeld && automations.preRunDone() ? PRE_RUN_PENDING : automations.preRun());
   }
 
   /**

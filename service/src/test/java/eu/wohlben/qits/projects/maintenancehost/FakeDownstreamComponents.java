@@ -25,9 +25,21 @@ public class FakeDownstreamComponents implements DownstreamComponents {
 
   private volatile Optional<List<String>> answer = Optional.empty();
 
+  /** Per-repository answers, which win over {@link #answer} for the repositories they name. */
+  private final java.util.Map<String, Optional<List<String>>> byRepo =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
   /** What the next lookups answer. {@code empty()} is "could not ask"; {@code of([])} is a leaf. */
   public void answer(Optional<List<String>> answer) {
     this.answer = answer;
+  }
+
+  /**
+   * What lookups of one repository answer, beside the global {@link #answer} — gate 3's suite gives
+   * each repository of a project its own closure.
+   */
+  public void answerFor(String repoId, Optional<List<String>> answer) {
+    byRepo.put(repoId, answer);
   }
 
   public List<Asked> asked() {
@@ -37,11 +49,12 @@ public class FakeDownstreamComponents implements DownstreamComponents {
   public void reset() {
     asked.clear();
     answer = Optional.empty();
+    byRepo.clear();
   }
 
   @Override
   public Optional<List<String>> downstreamOf(String repoId, String repoName) {
     asked.add(new Asked(repoId, repoName));
-    return answer;
+    return byRepo.getOrDefault(repoId, answer);
   }
 }

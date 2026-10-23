@@ -210,7 +210,8 @@ public class ReleasePipelineAssembler {
    * The same, for a request whose pre-run may not be done yet.
    *
    * @param waitingForPreRun true while the release-request automations are not fresh or waived at
-   *     {@code foldSha} on a request still before its tag: the QA phase is then drawn as {@link
+   *     {@code foldSha} on a request still before its tag, or while gate 3 holds the fold (an
+   *     upstream still releasing, epic qits-897): the QA phase is then drawn as {@link
    *     #WAITING_FOR_PRE_RUN} with no run, and the block is drawn even with nothing mirrored
    */
   public ReleasePipelineDto assemble(

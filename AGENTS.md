@@ -1347,6 +1347,7 @@ module's `TransitionGate`.
 | class | kind | position |
 | --- | --- | --- |
 | `AutomationsGate` | `automations` | `pre-run-qa` |
+| `UpstreamInFlightGate` | `upstream-in-flight` | `pre-run-qa` |
 | `CiBuildGate` | `ci` | `qa-publish` |
 | `ApprovalGate` | `approval` | `qa-publish` |
 | `PublishRunGate` | `publish` | `publish-deploy` |
@@ -1439,6 +1440,34 @@ started four release builds for one change. Now:
   writes the bump. Withdrawing one whose pre-run found nothing to bump is `POST
   …/release-requests/{requestId}/withdraw` with `{"reason":…}`, also `qits:system` (the class role
   list). `ReleaseRequestPreRunTest` drives both, and every behaviour above.
+
+### Gate 3: an upstream still releasing holds QA (epic qits-897, qits-913)
+
+**While a request upstream of this one is building, this fold does not start QA.** Upstream of R is
+an open request in another repository of R's project whose downstream closure names R's repository
+(`control/UpstreamRequests`); building is PENDING with a QA run QUEUED or RUNNING at its fold
+(`release_pipeline_run`, `RELEASE_REQUEST`), READY, or RELEASED with `publish_state` PENDING. A
+request in its pre-run, or waiting only on approval, builds nothing and holds nothing.
+
+- **Closures are cached per repository** (`control/UpstreamClosures`,
+  `qits.projects.release-requests.upstream-closure-ttl-ms`, 5 min). Every announcement's
+  `downstreamOf` answer is recorded there. A deciding caller (`evaluate`) may ask
+  qits-maintenance on a miss (a "could not ask" is re-asked after 30 s); a read never asks, and only
+  an active candidate's closure is ever asked for.
+- **`ReleaseRequests.evaluate` holds a fresh fold** after the wrapper's empty-fold check and before
+  the `qa_announced_sha` stamp: `waiting(row, "Waiting for upstream releases: <qualified ids>")`.
+  `preRunPending` answers true too, so the fold is announced `preRun=PENDING`; while held the
+  answer's `preRun` reads PENDING and the QA phase `WAITING_FOR_PRE_RUN`. A fold already announced
+  DONE is not touched here (the interrupt is qits-909's), and a fold with a QA verdict of its own is
+  past the gate.
+- **UNKNOWN never holds** (a closure that could not be read); the estate wrapper is exempt; a
+  cycle in the closure holds neither side and logs one WARN per pair.
+- **Re-evaluation**: the 30 s sweep is the floor. `control/DownstreamReevaluation` evaluates the
+  PENDING requests of every repository in an upstream's cached closure, on a thread of its own and
+  best effort, after a QA run status change (`ReleasePipelineRuns.record`), a move to READY,
+  REJECTED, RELEASED or FAILED, and a `publish_state` write (`ReleaseFinalization`).
+- `GateSubject.upstream` carries the facts, batched per page. `UpstreamOverride` is always null
+  until qits-914 records a person's override of a pair.
 
 ### The same release read as one pipeline of three phases
 

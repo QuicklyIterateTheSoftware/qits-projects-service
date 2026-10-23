@@ -125,6 +125,9 @@ public class ReleaseFinalization {
 
   @Inject ReleaseRequests releaseRequests;
 
+  /** Gate 3's trigger (epic qits-897): a publish state is what downstream requests read. */
+  @Inject DownstreamReevaluation downstreamReevaluation;
+
   @Inject Instance<BackingBranchMerger> mergers;
 
   @Inject Instance<ReleaseGitHost> gitHosts;
@@ -245,6 +248,8 @@ public class ReleaseFinalization {
                 + " of "
                 + version
                 + " FAILED; the release stays open until it is retried and passes";
+    java.util.concurrent.atomic.AtomicReference<String> published =
+        new java.util.concurrent.atomic.AtomicReference<>();
     Owed owed =
         QuarkusTransaction.requiringNew()
             .call(
@@ -254,6 +259,7 @@ public class ReleaseFinalization {
                         .filter(row -> row.mergedAt == null && row.abandonedAt == null)
                         .map(
                             row -> {
+                              published.set(row.releaseRequestId);
                               row.publishState =
                                   green
                                       ? ReleasedTagPendingMerge.PublishState.PASSED
@@ -263,6 +269,9 @@ public class ReleaseFinalization {
                               return owedOf(row);
                             })
                         .orElse(null));
+    // Gate 3's trigger (epic qits-897), after the commit and best effort: the publish is what the
+    // released request's downstream requests were waiting for.
+    downstreamReevaluation.upstreamMoved(published.get());
     if (owed == null) {
       // The overwhelmingly ordinary case: a verdict for a branch, not for a tag of ours.
       LOG.debugf("No release of %s is waiting on a run for %s", repoId, version);
@@ -442,29 +451,37 @@ public class ReleaseFinalization {
    * is lost by clearing: the column is the gate's own record and there is no gate.
    */
   private Owing owingOf(Owed owed, boolean publishes) {
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () ->
-                pendingTags
-                    .findByIdOptional(owed.id())
-                    .filter(row -> row.mergedAt == null && row.abandonedAt == null)
-                    .map(
-                        row -> {
-                          if (publishes && row.publishState == null) {
-                            row.publishState = ReleasedTagPendingMerge.PublishState.PENDING;
-                            row.publishDetail =
-                                "Waiting for the release run of " + row.tagName + " to finish";
-                          } else if (!publishes && row.publishState != null) {
-                            LOG.infof(
-                                "%s of %s has no release run, so its publish gate (%s) is not a"
-                                    + " gate and is cleared",
-                                row.tagName, row.repoId, row.publishState);
-                            row.publishState = null;
-                            row.publishDetail = null;
-                          }
-                          return new Owing(row.publishState, row.deploymentActiveAt);
-                        })
-                    .orElse(null));
+    java.util.concurrent.atomic.AtomicReference<String> written =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    Owing owing =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags
+                        .findByIdOptional(owed.id())
+                        .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                        .map(
+                            row -> {
+                              if (publishes && row.publishState == null) {
+                                written.set(row.releaseRequestId);
+                                row.publishState = ReleasedTagPendingMerge.PublishState.PENDING;
+                                row.publishDetail =
+                                    "Waiting for the release run of " + row.tagName + " to finish";
+                              } else if (!publishes && row.publishState != null) {
+                                LOG.infof(
+                                    "%s of %s has no release run, so its publish gate (%s) is not a"
+                                        + " gate and is cleared",
+                                    row.tagName, row.repoId, row.publishState);
+                                written.set(row.releaseRequestId);
+                                row.publishState = null;
+                                row.publishDetail = null;
+                              }
+                              return new Owing(row.publishState, row.deploymentActiveAt);
+                            })
+                        .orElse(null));
+    // Gate 3's trigger (epic qits-897): the publish gate was stamped or cleared after the commit.
+    downstreamReevaluation.upstreamMoved(written.get());
+    return owing;
   }
 
   /**

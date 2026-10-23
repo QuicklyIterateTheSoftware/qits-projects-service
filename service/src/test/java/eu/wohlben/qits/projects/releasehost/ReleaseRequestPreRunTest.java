@@ -611,7 +611,9 @@ public class ReleaseRequestPreRunTest {
     assertEquals(List.of("AUTOMATIONS", "CI"), answer.getList("gates.kind"));
     assertEquals("automations", answer.getString("qualityGates[0].kind"));
     assertEquals("pre-run-qa", answer.getString("qualityGates[0].position"));
-    assertEquals("ci", answer.getString("qualityGates[1].kind"));
+    // Gate 3 (qits-913) stands at pre-run-qa too, after the automations and before CI.
+    assertEquals("upstream-in-flight", answer.getString("qualityGates[1].kind"));
+    assertEquals("ci", answer.getString("qualityGates[2].kind"));
     assertEquals(
         "PRE_RUN_QA",
         answer.getString("pipeline.gates.find { it.kind == 'AUTOMATIONS' }.between"));

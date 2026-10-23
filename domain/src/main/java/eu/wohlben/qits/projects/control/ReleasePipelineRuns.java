@@ -101,6 +101,9 @@ public class ReleasePipelineRuns {
 
   @Inject ReleaseRequestRepository requests;
 
+  /** Gate 3's trigger (epic qits-897): a QA run's status is what its downstream requests read. */
+  @Inject DownstreamReevaluation downstreamReevaluation;
+
   /**
    * One transition of one run, as the listener hands it over — plain values, no wire types.
    *
@@ -127,6 +130,10 @@ public class ReleasePipelineRuns {
    * no-op for a frame that is not newer than the row or that correlates to no request.
    */
   public void record(Transition transition) {
+    // The request whose QA run's status this frame changed, carried out of the transaction: its
+    // downstream requests are evaluated again after the commit (gate 3, epic qits-897).
+    java.util.concurrent.atomic.AtomicReference<String> moved =
+        new java.util.concurrent.atomic.AtomicReference<>();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -169,7 +176,13 @@ public class ReleasePipelineRuns {
                 row.finishedAt = transition.occurredAt();
               }
               runs.persist(row);
+              if (PHASE_RELEASE_REQUEST.equals(transition.phase())) {
+                moved.set(requestId);
+              }
             });
+    if (moved.get() != null) {
+      downstreamReevaluation.upstreamMoved(moved.get());
+    }
   }
 
   /**
