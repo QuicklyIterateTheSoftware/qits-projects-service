@@ -30,6 +30,8 @@ import org.jboss.logging.Logger;
  *
  *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;"}
  *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;", "phase": "RELEASE_REQUEST"}
+ *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;", "phase": "RELEASE_REQUEST",
+ *    "reason": "HELD_BY_PRE_RUN_GATE"}
  *
  *   -&gt; 202 (or 200) — the runs of that request are cancelled, or there were none
  * </pre>
@@ -38,6 +40,12 @@ import org.jboss.logging.Logger;
  * {@code "phase":"RELEASE_REQUEST"} appended, and is absent otherwise — byte-identical to the body
  * this class always sent. An older qits-ci that has never heard of the field ignores it and
  * cancels everything, which is the documented fallback on the port.
+ *
+ * <p>The {@code reason} field (qits-909) is sent only by the three-argument {@link
+ * #cancelQaRunsOf(String, String, String)} with a non-blank reason, appended after {@code phase};
+ * qits-ci records it on each run it cancels and answers 400 to a word it does not allowlist. With
+ * no reason the body is the two-argument call's, byte for byte, so qits-ci's default ({@code
+ * RELEASE_REQUEST_CANCELLED}) still applies.
  *
  * <p><b>{@code releaseRequestId} is the whole of the scoping and it is never optional.</b> qits-ci
  * knows which runs belong to a release request because {@code ReleaseRequestChanged} told it: the
@@ -85,7 +93,7 @@ public class HttpQaRunCancellations implements QaRunCancellations {
 
   @Override
   public void cancelRunsOf(String repoId, String releaseRequestId) {
-    send(repoId, releaseRequestId, null);
+    send(repoId, releaseRequestId, null, null);
   }
 
   /**
@@ -96,10 +104,20 @@ public class HttpQaRunCancellations implements QaRunCancellations {
    */
   @Override
   public void cancelQaRunsOf(String repoId, String releaseRequestId) {
-    send(repoId, releaseRequestId, "RELEASE_REQUEST");
+    send(repoId, releaseRequestId, "RELEASE_REQUEST", null);
   }
 
-  private void send(String repoId, String releaseRequestId, String phase) {
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The two-argument body plus {@code "reason"} when one is given; null or blank sends none.
+   */
+  @Override
+  public void cancelQaRunsOf(String repoId, String releaseRequestId, String reason) {
+    send(repoId, releaseRequestId, "RELEASE_REQUEST", reason);
+  }
+
+  private void send(String repoId, String releaseRequestId, String phase, String reason) {
     if (ciUrl.isEmpty() || ciUrl.get().isBlank()) {
       return;
     }
@@ -114,6 +132,9 @@ public class HttpQaRunCancellations implements QaRunCancellations {
       body.put("releaseRequestId", releaseRequestId);
       if (phase != null) {
         body.put("phase", phase);
+      }
+      if (reason != null && !reason.isBlank()) {
+        body.put("reason", reason);
       }
       HttpRequest.Builder builder =
           HttpRequest.newBuilder(URI.create(ciUrl.get() + "/ci/api/runs/cancellations"))

@@ -3613,13 +3613,26 @@ public class ReleaseRequests {
    * QaRunCancellations#cancelRunsOf} is not called from here.
    */
   private void cancel(String repoId, String requestId, String reason) {
+    cancel(repoId, requestId, reason, null);
+  }
+
+  /**
+   * {@link #cancel(String, String, String)} with the word qits-ci records on each run it cancels
+   * ({@code wireReason}, e.g. {@link QaRunCancellations#HELD_BY_PRE_RUN_GATE}); null sends none, which
+   * is every call site but gate 3's interrupt (qits-909).
+   */
+  private void cancel(String repoId, String requestId, String reason, String wireReason) {
     if (!cancellations.isResolvable()) {
       return;
     }
     try {
       LOG.debugf(
           "Release request %s %s; asking qits-ci to cancel its QA runs", requestId, reason);
-      cancellations.get().cancelQaRunsOf(repoId, requestId);
+      if (wireReason == null) {
+        cancellations.get().cancelQaRunsOf(repoId, requestId);
+      } else {
+        cancellations.get().cancelQaRunsOf(repoId, requestId, wireReason);
+      }
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not cost the fold.
       LOG.warnf(e, "Could not ask qits-ci to cancel the runs of release request %s", requestId);
@@ -4049,6 +4062,10 @@ public class ReleaseRequests {
     // Whether this evaluation REJECTED the request — with READY, a move its downstream requests'
     // gate 3 reads (epic qits-897), so they are evaluated again after the commit.
     AtomicReference<Boolean> rejected = new AtomicReference<>(false);
+    // The repository of a fold gate 3 just INTERRUPTED (qits-909): announced preRun=DONE, no QA
+    // verdict yet, and an upstream has started building since. Carried out so that its QA runs are
+    // cancelled after the commit that cleared the stamp; null on nearly every pass.
+    AtomicReference<String> interrupted = new AtomicReference<>();
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4147,9 +4164,29 @@ public class ReleaseRequests {
                   // run going at its fold, READY, or publishing — this fold is not announced DONE, so
                   // qits-ci builds nothing for it. Held PENDING with the upstream named; the
                   // upstream moving re-evaluates this request (DownstreamReevaluation) and the sweep
-                  // re-asks besides. A fold already announced is not touched here (qits-909).
+                  // re-asks besides.
+                  // THE INTERRUPT (qits-909): a fold ALREADY announced DONE that still has no QA
+                  // verdict of its own is held the same way — an upstream started building after
+                  // its QA was asked for, so the run in flight is building against an upstream that
+                  // is about to change. The stamp is cleared here, under the row lock and in this
+                  // transaction (@DynamicUpdate writes just that column), and the request's QA runs
+                  // are cancelled after the commit with HELD_BY_PRE_RUN_GATE — not a verdict, so the
+                  // request stays PENDING. When the hold clears, the stamp arm below finds the
+                  // column behind mergedSha and announces DONE once more at the same sha. A second
+                  // evaluation racing this one waits on the lock, then reads the stamp cleared and
+                  // is an ordinary hold: one cancel. A fold with a verdict (green and waiting on
+                  // approval, READY) is past the gate and upstreamHold never holds it.
                   String upstreamHeld = upstreamHold(row);
                   if (upstreamHeld != null) {
+                    if (row.mergedSha.equals(row.qaAnnouncedSha)) {
+                      row.qaAnnouncedSha = null;
+                      interrupted.set(row.repoId);
+                      LOG.infof(
+                          "Release request %s: QA for %s is interrupted, an upstream started"
+                              + " building (%s); its runs are cancelled and QA is asked for again"
+                              + " once the hold clears",
+                          row.id, shortSha(row.mergedSha), upstreamHeld);
+                    }
                     waiting(row, upstreamHeld);
                     return false;
                   }
@@ -4368,6 +4405,13 @@ public class ReleaseRequests {
     if (emptyWrapper.get() != null) {
       withdrawnEmpty(emptyWrapper.get());
     }
+    if (interrupted.get() != null) {
+      cancel(
+          interrupted.get(),
+          id,
+          "is held by an upstream release that started building",
+          QaRunCancellations.HELD_BY_PRE_RUN_GATE);
+    }
     Folded done = qaAnnouncement.get();
     if (done != null && !announce(done, ReleaseRequestAnnouncer.PRE_RUN_DONE)) {
       unstampQaAnnouncement(done.releaseRequestId(), done.mergedSha(), previousQaStamp.get());
@@ -4398,15 +4442,13 @@ public class ReleaseRequests {
    * Gate 3's hold (epic qits-897): the gate's detail where it holds this fold, else null. Asked on a
    * deciding path, so a closure not on record may be asked for ({@code mayAsk=true}).
    *
-   * <p>Only a fresh fold is held: PENDING, not yet announced {@code preRun=DONE}, no QA verdict of
-   * its own at the fold, outside the estate wrapper. A fold already announced is the interrupt's
-   * (qits-909), and is not touched here. UNKNOWN never holds, and neither does a failure to read:
-   * the gate postpones, it never protects content.
+   * <p>Only a fold not yet answered is held: PENDING, no QA verdict of its own at the fold, outside
+   * the estate wrapper — whether or not it was already announced {@code preRun=DONE}. An announced
+   * one is the interrupt's (qits-909), which {@link #evaluate} tells apart by the stamp. UNKNOWN
+   * never holds, and neither does a failure to read: the gate postpones, it never protects content.
    */
   private String upstreamHold(ReleaseRequest row) {
-    if (row.state != ReleaseRequest.State.PENDING
-        || row.mergedSha == null
-        || row.mergedSha.equals(row.qaAnnouncedSha)) {
+    if (row.state != ReleaseRequest.State.PENDING || row.mergedSha == null) {
       return null;
     }
     try {

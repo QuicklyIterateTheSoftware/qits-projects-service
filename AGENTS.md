@@ -1464,9 +1464,20 @@ request in its pre-run, or waiting only on approval, builds nothing and holds no
 - **`ReleaseRequests.evaluate` holds a fresh fold** after the wrapper's empty-fold check and before
   the `qa_announced_sha` stamp: `waiting(row, "Waiting for upstream releases: <qualified ids>")`.
   `preRunPending` answers true too, so the fold is announced `preRun=PENDING`; while held the
-  answer's `preRun` reads PENDING and the QA phase `WAITING_FOR_PRE_RUN`. A fold already announced
-  DONE is not touched here (the interrupt is qits-909's), and a fold with a QA verdict of its own is
-  past the gate.
+  answer's `preRun` reads PENDING and the QA phase `WAITING_FOR_PRE_RUN`. A fold with a QA verdict
+  of its own (green and waiting on approval, READY) is past the gate and never touched.
+- **The interrupt (qits-909): a fold already announced DONE is held too**, while it has no QA
+  verdict at `mergedSha`. Under the row lock, in the same transaction, `qa_announced_sha` is set
+  back to null; after the commit `cancel(..., HELD_BY_PRE_RUN_GATE)` asks qits-ci to cancel the
+  request's QA runs (`QaRunCancellations.cancelQaRunsOf(repoId, requestId, reason)`, sent as
+  `"reason"` in the `/ci/api/runs/cancellations` body). A cancelled run publishes no verdict, so
+  the request stays PENDING, never REJECTED. With the stamp cleared it reads exactly like a fresh
+  held fold (`preRun` PENDING, QA `WAITING_FOR_PRE_RUN`). When the hold clears the ordinary stamp
+  arm announces `preRun=DONE` once more at the same sha. qits-ci starts a new run for it, because
+  its trigger dedupes by event id and not by sha. Two evaluations racing serialise on the lock: the
+  second one reads the stamp cleared and is a plain hold, so there is one cancel and later one DONE.
+  An override of the upstream, the wrapper exemption and UNKNOWN apply to the interrupt as they do
+  to the hold.
 - **UNKNOWN never holds** (a closure that could not be read); the estate wrapper is exempt; a
   cycle in the closure holds neither side and logs one WARN per pair.
 - **Re-evaluation**: the 30 s sweep is the floor. `control/DownstreamReevaluation` evaluates the

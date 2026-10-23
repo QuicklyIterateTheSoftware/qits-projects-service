@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.QaRunCancellations;
 import eu.wohlben.qits.projects.control.ReleasePipelineRuns;
 import eu.wohlben.qits.projects.control.ReleaseRequestAnnouncer;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -238,6 +239,10 @@ public class UpstreamInFlightGateTest {
     String feSecond = mergedShaOf(feRepo, fe);
     assertNotEquals(feFold, feSecond);
     qaRun(fe, feRepo, feSecond, "run-fe-2", "QUEUED");
+    // The service's first fold was announced and has no verdict: the frontend building again
+    // interrupts it (qits-909) — its QA runs cancelled, the stamp cleared.
+    awaitHeldCancels(svc, 1);
+    assertNull(qaAnnouncedShaOf(svc));
     // The service is pushed too, before any verdict: its new fold is held again.
     releaseRequests.onBranchMoved(svcRepo, "work", freshSha());
     String second = mergedShaOf(svcRepo, svc);
@@ -246,7 +251,7 @@ public class UpstreamInFlightGateTest {
     List<RecordingReleaseRequestAnnouncer.Announced> announced = announcer.announcedFor(svc);
     assertEquals(List.of("PENDING", "DONE", "PENDING"), preRuns(svc));
     assertEquals(second, announced.get(2).mergedSha());
-    assertEquals(first, qaAnnouncedShaOf(svc), "the new fold's QA is not asked for");
+    assertNull(qaAnnouncedShaOf(svc), "the new fold's QA is not asked for");
     JsonPath held = request(svcRepo, svc);
     assertEquals("PENDING", held.getString("state"));
     assertEquals(
@@ -363,6 +368,169 @@ public class UpstreamInFlightGateTest {
     assertTrue(
         logged.stream().anyMatch(line -> line.contains("not a DAG") && line.contains(svcName)),
         "a WARN names the cycle: " + logged);
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // The interrupt (qits-909)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * 11-12. The service fold is announced DONE, then the frontend gets a RUNNING QA run: the
+   * service's QA runs are cancelled with HELD_BY_PRE_RUN_GATE, it stays PENDING (not REJECTED) and
+   * its stamp is cleared, and it reads held. The frontend's publish passing announces DONE once
+   * more, at the same sha.
+   */
+  @Test
+  public void anUpstreamStartingInterruptsAnAnnouncedFoldAndItsPublishPassingAnnouncesDoneAgain() {
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    String feQid = BackingBranches.qualifiedIdOf(fe);
+    assertEquals(List.of("DONE"), preRuns(svc), "nothing upstream builds yet: QA is asked for");
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    cancellations.reset();
+
+    // 11. The frontend starts building: ReleasePipelineRuns.record re-evaluates the service.
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    awaitHeldCancels(svc, 1);
+
+    assertEquals(
+        List.of(
+            new RecordingQaRunCancellations.Cancelled(
+                svcRepo, svc, true, QaRunCancellations.HELD_BY_PRE_RUN_GATE)),
+        cancellations.calls(),
+        "one QA-only cancellation of the service's runs, saying why");
+    assertNull(qaAnnouncedShaOf(svc), "the stamp is given back");
+    assertEquals(List.of("DONE"), preRuns(svc), "the interrupt announces nothing");
+    JsonPath held = request(svcRepo, svc);
+    assertEquals("PENDING", held.getString("state"), "held, never rejected");
+    assertEquals("Waiting for upstream releases: " + feQid, held.getString("detail"));
+    assertEquals("PENDING", gate(held, "state"));
+    assertEquals(List.of("run-fe-1"), held.getList(gatePath("checks.runId")));
+    assertEquals("PENDING", held.getString("preRun.state"), "reads held, like a fresh fold");
+    assertEquals("WAITING_FOR_PRE_RUN", held.getString("pipeline.phases[0].state"));
+
+    // Asked again while it holds: a plain hold, no second cancel.
+    evaluate(svcRepo, svcFold);
+    setState(fe, ReleaseRequest.State.RELEASED);
+    releasedTag(fe, feRepo, feFold, ReleasedTagPendingMerge.PublishState.PENDING);
+    evaluate(svcRepo, svcFold);
+    assertEquals(1, cancellations.calls().size(), cancellations.calls().toString());
+    assertEquals(List.of("DONE"), preRuns(svc));
+
+    // 12. The publish passes: DONE once more, at the same sha, however often it is asked.
+    publishState(fe, ReleasedTagPendingMerge.PublishState.PASSED);
+    evaluate(svcRepo, svcFold);
+    evaluate(svcRepo, svcFold);
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc));
+    assertEquals(svcFold, announcer.announcedFor(svc).get(1).mergedSha());
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(1, cancellations.calls().size());
+    JsonPath released = request(svcRepo, svc);
+    assertEquals("PASSED", gate(released, "state"));
+    assertEquals("PASSED", released.getString("preRun.state"));
+  }
+
+  /** 13. A service fold with a green verdict of its own (still waiting) is never interrupted. */
+  @Test
+  public void aFoldWithAGreenVerdictIsNotInterrupted() {
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    // Green, with a second run of its own still in flight, so it stays PENDING and waits.
+    activeBuilds.answer(Optional.of(1));
+    verdict(svcRepo, svcFold);
+    cancellations.reset();
+
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    evaluate(svcRepo, svcFold);
+    evaluate(svcRepo, svcFold);
+
+    assertTrue(cancellations.calls().isEmpty(), cancellations.calls().toString());
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(List.of("DONE"), preRuns(svc));
+    JsonPath answer = request(svcRepo, svc);
+    assertEquals("PENDING", answer.getString("state"));
+    assertTrue(
+        answer.getString("detail").contains("still in flight"), answer.getString("detail"));
+  }
+
+  /**
+   * 14. Two evaluations racing (the sweep and a listener) over one announced fold an upstream now
+   * holds: the row lock makes it one cancel, and when the hold clears, one more DONE.
+   */
+  @Test
+  public void twoEvaluationsRacingCancelOnceAndLaterAnnounceDoneOnce() throws Exception {
+    String fe = create(feRepo);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+    // READY is building, and setting it directly triggers no background evaluation: the two
+    // racing evaluations below are the only ones.
+    setState(fe, ReleaseRequest.State.READY);
+
+    race(() -> evaluate(svcRepo, svcFold), () -> evaluate(svcRepo, svcFold));
+    assertEquals(1, cancellations.calls().size(), cancellations.calls().toString());
+    assertEquals(QaRunCancellations.HELD_BY_PRE_RUN_GATE, cancellations.calls().get(0).reason());
+    assertNull(qaAnnouncedShaOf(svc));
+    assertEquals(List.of("DONE"), preRuns(svc));
+
+    // The frontend stops building (rejected): both race again, and DONE is announced once.
+    setState(fe, ReleaseRequest.State.REJECTED);
+    race(() -> evaluate(svcRepo, svcFold), () -> evaluate(svcRepo, svcFold));
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc));
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(1, cancellations.calls().size());
+  }
+
+  /** Both bodies started together on threads of their own; rethrows the first failure. */
+  private static void race(Runnable one, Runnable two) throws Exception {
+    java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(2);
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+      for (Runnable body : List.of(one, two)) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  start.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                  body.run();
+                  return null;
+                }));
+      }
+      for (java.util.concurrent.Future<?> future : futures) {
+        future.get(30, java.util.concurrent.TimeUnit.SECONDS);
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  /** Waits until {@code expected} HELD_BY_PRE_RUN_GATE cancellations name {@code id}. */
+  private void awaitHeldCancels(String id, int expected) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (System.currentTimeMillis() < deadline) {
+      long held =
+          cancellations.calls().stream()
+              .filter(call -> id.equals(call.releaseRequestId()))
+              .filter(call -> QaRunCancellations.HELD_BY_PRE_RUN_GATE.equals(call.reason()))
+              .count();
+      if (held == expected) {
+        return;
+      }
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        fail("interrupted");
+      }
+    }
+    fail("request " + id + " was cancelled " + cancellations.calls() + ", never " + expected + " held");
   }
 
   // -----------------------------------------------------------------------------------------

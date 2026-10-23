@@ -23,7 +23,8 @@ import java.util.List;
 @ApplicationScoped
 public class RecordingQaRunCancellations implements QaRunCancellations {
 
-  public record Cancelled(String repoId, String releaseRequestId, boolean qaOnly) {}
+  /** One call; {@code reason} is the word sent to qits-ci, null for the two-argument calls. */
+  public record Cancelled(String repoId, String releaseRequestId, boolean qaOnly, String reason) {}
 
   private final List<Cancelled> calls = Collections.synchronizedList(new ArrayList<>());
 
@@ -47,11 +48,16 @@ public class RecordingQaRunCancellations implements QaRunCancellations {
 
   @Override
   public void cancelRunsOf(String repoId, String releaseRequestId) {
-    calls.add(new Cancelled(repoId, releaseRequestId, false));
+    calls.add(new Cancelled(repoId, releaseRequestId, false, null));
   }
 
   @Override
   public void cancelQaRunsOf(String repoId, String releaseRequestId) {
-    calls.add(new Cancelled(repoId, releaseRequestId, true));
+    calls.add(new Cancelled(repoId, releaseRequestId, true, null));
+  }
+
+  @Override
+  public void cancelQaRunsOf(String repoId, String releaseRequestId, String reason) {
+    calls.add(new Cancelled(repoId, releaseRequestId, true, reason));
   }
 }

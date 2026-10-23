@@ -104,6 +104,29 @@ class HttpQaRunCancellationsTest {
         "the QA-only ask is cancelRunsOf's exact body with the phase field appended");
   }
 
+  /** qits-909: the three-argument call appends the reason; a null reason is the two-argument body. */
+  @Test
+  void cancelQaRunsOfWithAReasonAppendsItAndANullReasonSendsNone() throws Exception {
+    String base = startServer();
+
+    against(base).cancelQaRunsOf("repo-1", "req-1");
+    String qaOnly = received.get(0).body();
+    received.clear();
+
+    against(base).cancelQaRunsOf("repo-1", "req-1", "HELD_BY_PRE_RUN_GATE");
+    String held = received.get(0).body();
+    received.clear();
+
+    against(base).cancelQaRunsOf("repo-1", "req-1", null);
+    String noReason = received.get(0).body();
+
+    assertEquals(
+        qaOnly.substring(0, qaOnly.length() - 1) + ",\"reason\":\"HELD_BY_PRE_RUN_GATE\"}",
+        held,
+        "the QA-only body with the reason appended");
+    assertEquals(qaOnly, noReason, "no reason is the two-argument body, byte for byte");
+  }
+
   @Test
   void cancelQaRunsOfWithNoAddressAsksNobody() {
     // Same best-effort contract as cancelRunsOf: no configured ci-url, no attempt, no throw.

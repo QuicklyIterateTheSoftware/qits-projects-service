@@ -71,4 +71,26 @@ public interface QaRunCancellations {
   default void cancelQaRunsOf(String repoId, String releaseRequestId) {
     cancelRunsOf(repoId, releaseRequestId);
   }
+
+  /**
+   * The cancellation reason qits-ci records when gate 3 interrupts a QA run (epic qits-897,
+   * qits-909): an upstream release started building after this request's QA was announced, so the
+   * run is stopped and QA is asked for again once the upstream stops building. Not a verdict, and
+   * not the request going away either — which is why it is not qits-ci's default, {@code
+   * RELEASE_REQUEST_CANCELLED}.
+   */
+  String HELD_BY_PRE_RUN_GATE = "HELD_BY_PRE_RUN_GATE";
+
+  /**
+   * {@link #cancelQaRunsOf(String, String)} saying why: qits-ci records {@code reason} on every run
+   * it cancels. qits-ci allowlists it ({@code RELEASE_REQUEST_CANCELLED}, {@link
+   * #HELD_BY_PRE_RUN_GATE}); null is the two-argument call, which sends no reason and gets qits-ci's
+   * default.
+   *
+   * <p>The default drops the reason: an implementation that cannot carry it still cancels, which is
+   * the part that saves the build agent. Best effort, exactly as the two-argument form.
+   */
+  default void cancelQaRunsOf(String repoId, String releaseRequestId, String reason) {
+    cancelQaRunsOf(repoId, releaseRequestId);
+  }
 }
