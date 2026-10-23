@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.control.approval.ApprovalStanding;
 import eu.wohlben.qits.projects.control.approval.Approver;
 import eu.wohlben.qits.projects.control.approval.AutomationContentSource;
 import eu.wohlben.qits.projects.control.approval.BranchWorkItems;
+import eu.wohlben.qits.projects.control.approval.ConfigDirectorySource;
 import eu.wohlben.qits.projects.control.approval.ContractChangeSource;
 import eu.wohlben.qits.projects.control.gate.ApprovalGate;
 import eu.wohlben.qits.projects.control.gate.ReleaseGate;
@@ -39,14 +40,16 @@ import org.jboss.logging.Logger;
  *       CI today. A red, pending or unknown one refuses.
  *   <li><b>{@value #MANUAL_REVIEW_RULE}</b> — for {@code manual-review}: every branch source other
  *       than the repository's main is {@code maintenance/*} or a work-item branch ({@link
- *       BranchWorkItems}) of the request's project, and every work item so named is VERIFIED or
- *       DONE. It governs the wrapper and every {@code manual-review: true} repository, such as
- *       {@code qits-agent-config}.
+ *       BranchWorkItems}) of the request's project, and every work item so named is VERIFYING,
+ *       VERIFIED or DONE — VERIFYING since qits-1560, so a verify-phase request (a probe, its
+ *       restore, a fix found in verification) can ship. It governs the wrapper and every {@code
+ *       manual-review: true} repository, such as {@code qits-agent-config}.
  *   <li><b>{@value #ARTIFACT_DECLARATIONS_RULE}</b> — for {@code artifact-declarations}: the two
  *       rules above and nothing more.
  *   <li><b>{@value #MEMBER_CI_GREEN_RULE}</b> (qits-1517) — for the {@code automation:*} and {@code
- *       contract:*} requirements the desk is admitted to (a member request of a dispatched item,
- *       held while its work is in flight): the request's repository is not the project's wrapper
+ *       contract:*} requirements the desk is admitted to, and (qits-1560) a {@code
+ *       config-directory} one (a member request of a dispatched item, held while its work is in
+ *       flight): the request's repository is not the project's wrapper
  *       ({@link RepositoryArchetype#PROJECT}), and every branch source other than main is {@code
  *       maintenance/*} or a work-item branch of the request's project whose item is IMPLEMENTING,
  *       IMPLEMENTED, VERIFYING, VERIFIED or DONE.
@@ -54,7 +57,9 @@ import org.jboss.logging.Logger;
  *
  * <p>The rule is picked by {@link #ruleFor} in that order — {@code manual-review} first, then
  * {@code artifact-declarations}, then {@code member-ci-green} — so one approval is held to the
- * strictest rule any requirement it satisfies carries.
+ * strictest rule any requirement it satisfies carries. On the wrapper {@code manual-review} is
+ * always present, so a wrapper fold that also changes {@code .config/qits/} is approved under
+ * {@value #MANUAL_REVIEW_RULE}, never under {@value #MEMBER_CI_GREEN_RULE}.
  *
  * <p><b>A desk approval carries its rule</b>: the recorded note is {@code delivery desk, rule <rule
  * id>: <the caller's note, or ->} ({@link #note}), so the trail says which of the owner's rules let
@@ -76,8 +81,9 @@ public class DeskApprovalPolicy {
   public static final String ARTIFACT_DECLARATIONS_RULE = "artifact-declarations";
 
   /**
-   * The rule a desk approval of an {@code automation:*} or {@code contract:*} requirement is made
-   * under (qits-1517): a member request whose CI is green, of work in flight.
+   * The rule a desk approval of an {@code automation:*}, {@code contract:*} (qits-1517) or {@code
+   * config-directory} (qits-1560) requirement is made under: a member request whose CI is green, of
+   * work in flight.
    */
   public static final String MEMBER_CI_GREEN_RULE = "member-ci-green";
 
@@ -94,8 +100,12 @@ public class DeskApprovalPolicy {
   /** The branches a maintenance bump pushes, which name no work item and need none. */
   static final String MAINTENANCE_PREFIX = "maintenance/";
 
-  /** The statuses a named work item must stand at. */
-  static final Set<String> SHIPPABLE = Set.of("VERIFIED", "DONE");
+  /**
+   * The statuses a named work item must stand at under {@link #MANUAL_REVIEW_RULE}: VERIFYING too
+   * since qits-1560, because a verify probe ships from an item under verification. The rule keeps
+   * its id, which recorded notes name.
+   */
+  static final Set<String> SHIPPABLE = Set.of("VERIFYING", "VERIFIED", "DONE");
 
   /** The statuses a work item of a member request may stand at under {@link #MEMBER_CI_GREEN_RULE}. */
   static final List<String> IN_FLIGHT =
@@ -112,7 +122,8 @@ public class DeskApprovalPolicy {
    * holds a desk role and one of the {@code concerned} requirements admits {@link
    * ApprovalRole#DESK}. {@code manual-review} first, because its rule is the strictest and one
    * approval satisfies every requirement it qualifies for; then {@code artifact-declarations}; then
-   * {@value #MEMBER_CI_GREEN_RULE} for an admitted {@code automation:*} or {@code contract:*}.
+   * {@value #MEMBER_CI_GREEN_RULE} for an admitted {@code automation:*}, {@code contract:*} or
+   * {@code config-directory} (qits-1560).
    *
    * <p>A desk of another project gets its rule too, so the refusal it meets names it.
    */
@@ -128,8 +139,7 @@ public class DeskApprovalPolicy {
     }
     if (concerned.stream()
         .anyMatch(
-            r ->
-                isMemberRequirement(r.id()) && r.admits().contains(ApprovalRole.DESK))) {
+            r -> isMemberRequirement(r.id()) && r.admits().contains(ApprovalRole.DESK))) {
       return Optional.of(MEMBER_CI_GREEN_RULE);
     }
     return Optional.empty();
@@ -140,11 +150,17 @@ public class DeskApprovalPolicy {
         .anyMatch(r -> r.id().equals(id) && r.admits().contains(ApprovalRole.DESK));
   }
 
-  /** An {@code automation:*} or {@code contract:*} requirement, which {@link #MEMBER_CI_GREEN_RULE} answers. */
+  /**
+   * An {@code automation:*}, {@code contract:*} or {@code config-directory} (qits-1560)
+   * requirement, which {@link #MEMBER_CI_GREEN_RULE} answers. Asked only of a requirement admitting
+   * the desk, and {@link ApprovalPolicy#deskAdmissible} has already kept the fail-closed {@code
+   * config-directory} readings a person's.
+   */
   private static boolean isMemberRequirement(String id) {
     return id != null
         && (id.startsWith(AutomationContentSource.ID_PREFIX)
-            || id.startsWith(ContractChangeSource.ID_PREFIX));
+            || id.startsWith(ContractChangeSource.ID_PREFIX)
+            || id.equals(ConfigDirectorySource.ID));
   }
 
   /**
@@ -189,7 +205,7 @@ public class DeskApprovalPolicy {
           row,
           "its repository is the project's wrapper, which the desk approves only under rule "
               + MANUAL_REVIEW_RULE
-              + ", once the work is VERIFIED");
+              + ", once the work is VERIFYING or later");
     }
     int approvalOrder = approvalOrder();
     Map<String, Integer> orders = new HashMap<>();
@@ -210,7 +226,7 @@ public class DeskApprovalPolicy {
       }
     }
     if (MANUAL_REVIEW_RULE.equals(rule)) {
-      requireWorkAt(rule, row, sources, mainBranch, SHIPPABLE, "VERIFIED or DONE");
+      requireWorkAt(rule, row, sources, mainBranch, SHIPPABLE, "VERIFYING, VERIFIED or DONE");
     } else if (MEMBER_CI_GREEN_RULE.equals(rule)) {
       requireWorkAt(
           rule, row, sources, mainBranch, Set.copyOf(IN_FLIGHT), String.join(", ", IN_FLIGHT));

@@ -216,12 +216,14 @@ public class ApprovalPolicyFoldContentTest {
   }
 
   /**
-   * qits-1517: widening {@code front_desk.delivery.approves} to every name it may hold — {@code
-   * manual-review}, {@code artifact-declarations}, {@code automation}, {@code contract} — still
+   * qits-1517: widening {@code front_desk.delivery.approves} to every other name it may hold —
+   * {@code manual-review}, {@code artifact-declarations}, {@code automation}, {@code contract} —
    * never admits the desk to {@code no-changes} or {@code config-directory}: both stay a person's.
+   * qits-1560: naming {@code config-directory} too admits the desk to a fold that changes {@code
+   * .config/qits/}, and still never to {@code no-changes}.
    */
   @Test
-  public void aWidenedApprovesListNeverAdmitsTheDeskToNoChangesOrConfigDirectory()
+  public void aWidenedApprovesListAdmitsTheDeskToConfigDirectoryOnlyWhenItIsNamed()
       throws Exception {
     Repository repo = cloned("Widened Desk Approval");
     QuarkusTransaction.requiringNew()
@@ -250,6 +252,21 @@ public class ApprovalPolicyFoldContentTest {
     List<ApprovalRequirement> requirements = policy.requirementsFor(repo.id, configFold);
     assertEquals(List.of("config-directory"), ids(requirements), requirements.toString());
     assertEquals(List.of(ApprovalRole.PERSON), requirements.get(0).admits());
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                Project.update(
+                    "deliveryApproves = ?1 where id = ?2",
+                    "artifact-declarations automation config-directory contract manual-review",
+                    repo.project.id));
+    List<ApprovalRequirement> admitted = policy.requirementsFor(repo.id, configFold);
+    assertEquals(List.of("config-directory"), ids(admitted), admitted.toString());
+    assertEquals(List.of(ApprovalRole.PERSON, ApprovalRole.DESK), admitted.get(0).admits());
+    assertEquals(
+        List.of(ApprovalRequirement.person("no-changes", ApprovalPolicy.NO_CHANGES_DETAIL, null)),
+        policy.requirementsFor(repo.id, emptyFold),
+        "no-changes still admits a person alone");
   }
 
   /** A repository with no row is settled history, and no rule holds it. */

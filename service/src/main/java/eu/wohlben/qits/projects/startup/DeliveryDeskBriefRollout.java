@@ -6,18 +6,24 @@ import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import java.util.List;
 import org.jboss.logging.Logger;
 
 /**
- * Rolls the delivery desk's new brief (qits-1517) onto the stored {@code project.delivery} row,
- * where nobody edited the old one.
+ * Rolls the delivery desk's new brief (qits-1560, before it qits-1517) onto the stored {@code
+ * project.delivery} row, where nobody edited an old one.
  *
  * <p><b>Why a boot step and not the seed.</b> {@link AgentSurfaceSeed} is insert-if-absent, so the
  * row it wrote under qits-1440 keeps {@link AgentSurfaceDefaults#PREVIOUS_DELIVERY_DESK_PROMPT}
  * forever, and the desk would never read the brief that ships. Surface rows are global — one per
  * {@code surface_key}, not one per project — so this is one row to look at.
  *
- * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte the previous
+ * <p><b>Every earlier shipped text rolls, not only the last one</b> ({@link #PREVIOUS_BRIEFS}): a
+ * row the qits-1517 rollout never reached still holds qits-1440's brief, and one it did reach holds
+ * qits-1517's ({@link AgentSurfaceDefaults#QITS_1517_DELIVERY_DESK_PROMPT}). Each is compared in
+ * turn, and the first that matches is rewritten straight to the current text.
+ *
+ * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
  * shipped text was never edited, and is rewritten to {@link
  * AgentSurfaceDefaults#DELIVERY_DESK_PROMPT}; anything else is an owner's edit and is left alone; a
  * row already at the new text, and no row at all (the seed then writes the new text), are no-ops. So
@@ -32,6 +38,12 @@ public class DeliveryDeskBriefRollout {
 
   private static final Logger LOG = Logger.getLogger(DeliveryDeskBriefRollout.class);
 
+  /** The briefs that shipped before the current one, oldest first; each rolls to the current. */
+  static final List<String> PREVIOUS_BRIEFS =
+      List.of(
+          AgentSurfaceDefaults.PREVIOUS_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_1517_DELIVERY_DESK_PROMPT);
+
   @Inject AgentSurfaceConfigurationService surfaces;
 
   void onStart(@Observes StartupEvent event) {
@@ -42,15 +54,18 @@ public class DeliveryDeskBriefRollout {
   public boolean rollOut() {
     String surface = AgentSurfaceDefaults.PROJECT_DELIVERY;
     try {
-      boolean rewritten =
-          surfaces.replaceSystemPromptIfUnedited(
-              surface,
-              AgentSurfaceDefaults.PREVIOUS_DELIVERY_DESK_PROMPT,
-              AgentSurfaceDefaults.DELIVERY_DESK_PROMPT);
+      boolean rewritten = false;
+      for (String previous : PREVIOUS_BRIEFS) {
+        if (surfaces.replaceSystemPromptIfUnedited(
+            surface, previous, AgentSurfaceDefaults.DELIVERY_DESK_PROMPT)) {
+          rewritten = true;
+          break;
+        }
+      }
       if (rewritten) {
         LOG.infof(
-            "Rewrote agent surface configuration %s's system prompt from the previous shipped brief"
-                + " to the current one (qits-1517)",
+            "Rewrote agent surface configuration %s's system prompt from a previous shipped brief"
+                + " to the current one (qits-1560)",
             surface);
       } else {
         LOG.infof(

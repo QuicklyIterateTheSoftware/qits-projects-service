@@ -420,7 +420,7 @@ public class WrapperProjectConfigReconcileTest {
 
     projectYml.commit(
         wrapperOf(project),
-        "front_desk:\n  delivery:\n    enabled: false\n    approves: [config-directory]\n");
+        "front_desk:\n  delivery:\n    enabled: false\n    approves: [no-changes]\n");
     reconcileService.reconcileProjectConfig(project.id);
 
     assertTrue(storedDeliveryOf(project.id).enabled(), "a typo may not switch the loop off");

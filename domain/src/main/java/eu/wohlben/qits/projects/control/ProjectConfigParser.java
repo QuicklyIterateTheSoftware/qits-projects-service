@@ -76,7 +76,7 @@ public class ProjectConfigParser {
   /**
    * Under {@link #DELIVERY}: a list, a subset of {@link DeliverySettings#APPROVABLE} — {@code
    * manual-review}, {@code artifact-declarations}, {@code automation} and {@code contract}
-   * (qits-1517); never {@code config-directory} or {@code no-changes}.
+   * (qits-1517), {@code config-directory} (qits-1560); never {@code no-changes}.
    */
   public static final String DELIVERY_APPROVES = "approves";
 

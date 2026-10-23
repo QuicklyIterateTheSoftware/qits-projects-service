@@ -75,15 +75,19 @@ import org.jboss.logging.Logger;
  * front_desk.delivery.approves} admits {@code desk} beside its own roles ({@link #admitDesk}). No
  * source knows the desk exists. The list is a subset of {@link
  * ProjectConfig.DeliverySettings#APPROVABLE} — {@code manual-review}, {@code
- * artifact-declarations}, {@code automation} and {@code contract} — and the admission intersects
- * with that set again. {@code manual-review} and {@code artifact-declarations} admit the desk to the
- * requirement of that id; {@code automation} (qits-1517) to every {@code automation:<kind>}
- * requirement that admits more than a person (a fail-closed reading — {@code automation:catalogue},
- * an unreadable kind — admits a person alone and stays a person's); {@code contract} (qits-1517) to
- * every {@code contract:<slug>} requirement whose consumer project is the request's own. {@code
- * config-directory}, {@code no-changes} and {@code recorded} never admit the desk, whatever a row
- * holds. Admitting is not approving: what the desk may then approve, and when, is the approve
- * door's {@code DeskApprovalPolicy}.
+ * artifact-declarations}, {@code config-directory}, {@code automation} and {@code contract} — and
+ * the admission intersects with that set again. {@code manual-review} and {@code
+ * artifact-declarations} admit the desk to the requirement of that id; {@code config-directory}
+ * (qits-1560) to the requirement of that id only where its reason is {@link
+ * ConfigDirectorySource#REASON} — the fold changes {@value #CONFIG_DIRECTORY} — and never to the
+ * fail-closed readings that reuse the id (an unreadable fold, {@link FoldUnreadable}; a fold not
+ * read yet, {@code ApprovalContentRecorder.notYetRead()}), which stay a person's; {@code
+ * automation} (qits-1517) to every {@code automation:<kind>} requirement that admits more than a
+ * person (a fail-closed reading — {@code automation:catalogue}, an unreadable kind — admits a person
+ * alone and stays a person's); {@code contract} (qits-1517) to every {@code contract:<slug>}
+ * requirement whose consumer project is the request's own. {@code no-changes} and {@code recorded}
+ * never admit the desk, whatever a row holds. Admitting is not approving: what the desk may then
+ * approve, and when, is the approve door's {@code DeskApprovalPolicy}.
  *
  * <p><b>A repository whose gate configuration cannot be read is not held by the configuration
  * source</b>, and that is not a hole: the evaluation has already refused to release an unknown gate
@@ -291,6 +295,11 @@ public class ApprovalPolicy {
    *
    * <ul>
    *   <li>{@code manual-review}, {@code artifact-declarations}: the requirement of that very id;
+   *   <li>{@code config-directory} (qits-1560): the requirement of that very id whose reason is
+   *       {@link ConfigDirectorySource#REASON} — a fold changing {@value #CONFIG_DIRECTORY}. The id
+   *       is reused for the fail-closed readings ({@link FoldUnreadable}'s "could not be read"
+   *       sentences, {@code ApprovalContentRecorder.NOT_YET_READ}), and "could not look" stays a
+   *       person's;
    *   <li>{@code automation} (qits-1517): an {@code automation:<kind>} requirement admitting more
    *       than a person — the source's fail-closed readings ({@code automation:catalogue}, a kind
    *       whose pathspec or role word cannot be read) admit a person alone and stay a person's;
@@ -298,7 +307,7 @@ public class ApprovalPolicy {
    *       the request's own project, i.e. one whose consumer project is the request's own.
    * </ul>
    *
-   * Nothing else: {@code config-directory}, {@code no-changes} and {@code recorded} never.
+   * Nothing else: {@code no-changes} and {@code recorded} never.
    */
   static boolean deskAdmissible(
       ApprovalRequirement requirement, Set<String> approves, String projectId) {
@@ -308,6 +317,10 @@ public class ApprovalPolicy {
     }
     if (DESK_EXACT.contains(id)) {
       return approves.contains(id) && ProjectConfig.DeliverySettings.APPROVABLE.contains(id);
+    }
+    if (id.equals(ConfigDirectorySource.ID)) {
+      return approves.contains(ProjectConfig.DeliverySettings.CONFIG_DIRECTORY)
+          && ConfigDirectorySource.REASON.equals(requirement.reason());
     }
     if (id.startsWith(AutomationContentSource.ID_PREFIX)) {
       return approves.contains(ProjectConfig.DeliverySettings.AUTOMATION)
@@ -421,10 +434,23 @@ public class ApprovalPolicy {
     return all;
   }
 
-  /** One requirement per id — the first one wins, which is the earlier source's. */
+  /**
+   * One requirement per id — the first one wins, which is the earlier source's, except that a
+   * fail-closed {@code config-directory} displaces the fold's own (qits-1560).
+   */
   private static List<ApprovalRequirement> merged(List<ApprovalRequirement> all) {
     Map<String, ApprovalRequirement> byId = new LinkedHashMap<>();
-    all.forEach(requirement -> byId.putIfAbsent(requirement.id(), requirement));
+    for (ApprovalRequirement requirement : all) {
+      ApprovalRequirement first = byId.putIfAbsent(requirement.id(), requirement);
+      // qits-1560: the desk may satisfy a fold's config-directory, never an unreadable one that
+      // reuses the id, so a fail-closed reading displaces the fold's own and stays a person's.
+      if (first != null
+          && ConfigDirectorySource.REASON.equals(first.reason())
+          && !ConfigDirectorySource.REASON.equals(requirement.reason())
+          && ConfigDirectorySource.ID.equals(requirement.id())) {
+        byId.put(requirement.id(), requirement);
+      }
+    }
     return List.copyOf(byId.values());
   }
 
