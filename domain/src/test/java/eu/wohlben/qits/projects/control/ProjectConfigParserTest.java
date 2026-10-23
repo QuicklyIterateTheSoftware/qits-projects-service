@@ -212,8 +212,8 @@ class ProjectConfigParserTest {
 
   /**
    * Every malformed value throws, naming the file and the key — the reconcile then keeps the stored
-   * settings. {@code config-directory} and {@code no-changes} are requirements the desk may never
-   * satisfy, so naming either is malformed too.
+   * settings. {@code no-changes} is a requirement the desk may never satisfy, so naming it is
+   * malformed too ({@code config-directory} is approvable since qits-1560).
    */
   @Test
   void aMalformedDeliveryThrows() {
@@ -230,10 +230,9 @@ class ProjectConfigParserTest {
       {"front_desk:\n  delivery:\n    max_running: 'two'\n", "front_desk.delivery.max_running"},
       {"front_desk:\n  delivery:\n    start_refined: 'false'\n", "front_desk.delivery.start_refined"},
       {"front_desk:\n  delivery:\n    approves: manual-review\n", "front_desk.delivery.approves"},
-      {"front_desk:\n  delivery:\n    approves: [config-directory]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [no-changes]\n", "front_desk.delivery.approves"},
       {
-        "front_desk:\n  delivery:\n    approves: [manual-review, config-directory]\n",
+        "front_desk:\n  delivery:\n    approves: [manual-review, no-changes]\n",
         "front_desk.delivery.approves"
       },
       {"front_desk:\n  delivery:\n    approves: [Manual-Review]\n", "front_desk.delivery.approves"},
@@ -254,13 +253,14 @@ class ProjectConfigParserTest {
 
   /**
    * qits-1517: {@code automation} and {@code contract} name a family of requirements and are
-   * approvable; {@code config-directory}, {@code no-changes}, {@code recorded} and a family member's
-   * own id are not.
+   * approvable; qits-1560 added {@code config-directory}; {@code no-changes}, {@code recorded} and
+   * a family member's own id are not.
    */
   @Test
   void automationAndContractAreApprovableAndNothingElseIs() {
     assertEquals(
-        Set.of("automation", "contract", "manual-review", "artifact-declarations"),
+        Set.of(
+            "automation", "contract", "manual-review", "artifact-declarations", "config-directory"),
         DeliverySettings.APPROVABLE);
     assertEquals(
         Set.of("automation", "contract"),
@@ -270,8 +270,8 @@ class ProjectConfigParserTest {
             .approves());
     for (String refused :
         new String[] {
-          "config-directory", "no-changes", "recorded", "automation:entity-diagram", "contract:qits",
-          "Automation"
+          "no-changes", "recorded", "automation:entity-diagram", "contract:qits", "Automation",
+          "Config-Directory"
         }) {
       ProjectConfigException e =
           assertThrows(
@@ -284,6 +284,27 @@ class ProjectConfigParserTest {
               refused);
       assertTrue(e.getMessage().contains("front_desk.delivery.approves"), e.getMessage());
     }
+  }
+
+  /** qits-1560: {@code config-directory} is accepted, beside the other names. */
+  @Test
+  void configDirectoryIsApprovable() {
+    assertEquals(
+        Set.of("config-directory"),
+        parser
+            .parse("front_desk:\n  delivery:\n    approves: [config-directory]\n")
+            .delivery()
+            .approves());
+    DeliverySettings all =
+        parser
+            .parse(
+                "front_desk:\n  delivery:\n    approves: [manual-review, artifact-declarations,"
+                    + " automation, contract, config-directory]\n")
+            .delivery();
+    assertEquals(DeliverySettings.APPROVABLE, all.approves());
+    assertEquals(
+        Set.of("config-directory", "manual-review"),
+        DeliverySettings.approvesOf("config-directory manual-review"));
   }
 
   /** The approves column round-trips, sorted and space-separated. */

@@ -19,6 +19,12 @@ import java.util.Set;
  *
  * <p>Also the requirement an <b>unreadable</b> fold becomes ({@link ApprovalSubject#changes()}),
  * failing closed into a person.
+ *
+ * <p><b>This source names a person and knows no desk</b>, and that is not a rule that the desk may
+ * never satisfy it: since qits-1560 a project listing {@code config-directory} in {@code
+ * front_desk.delivery.approves} has {@code ApprovalPolicy.admitDesk} add its delivery desk to this
+ * requirement — but only to one carrying {@link #REASON}, so the unreadable reading above, and a
+ * fold not read yet, which reuse {@link #ID}, stay a person's.
  */
 @ApplicationScoped
 public class ConfigDirectorySource implements ApprovalRequirementSource {

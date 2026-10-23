@@ -46,10 +46,10 @@ import org.junit.jupiter.api.Test;
  * holds {@code desk} and {@code agent} of its project; a requirement the project's {@code
  * front_desk.delivery.approves} lists admits {@code desk}; and the approve door then holds the desk
  * to the owner's rule — its own project, every gate before approval passed, and for {@code
- * manual-review} only work-item branches whose items are VERIFIED or DONE; for an {@code
- * automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}) a member
- * repository, never the wrapper, whose work items are IMPLEMENTING or later. A desk approval's note
- * names the rule; the desk never declines.
+ * manual-review} only work-item branches whose items are VERIFYING (qits-1560), VERIFIED or DONE;
+ * for an {@code automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}),
+ * and a {@code config-directory} one (qits-1560), a member repository, never the wrapper, whose work
+ * items are IMPLEMENTING or later. A desk approval's note names the rule; the desk never declines.
  *
  * <p>The suite of {@link ReleaseRequestApprovalRolesTest}, booted the same way ({@link
  * PersonGateIdpTenant}), so the desk's bearer is a real token validated against the mock idp.
@@ -285,7 +285,10 @@ public class ReleaseRequestDeskApprovalTest {
         .body("message", containsString("FAILED"));
   }
 
-  /** The branch's ticket is only IMPLEMENTED: not VERIFIED or DONE, so not the desk's to ship. */
+  /**
+   * The branch's ticket is only IMPLEMENTED: not VERIFYING, VERIFIED or DONE, so not the desk's to
+   * ship.
+   */
   @Test
   void aSourceWhoseItemIsImplementedIsRefused() {
     approves("manual-review");
@@ -300,7 +303,76 @@ public class ReleaseRequestDeskApprovalTest {
         .then()
         .statusCode(403)
         .body("message", containsString("rule manual-review-verified"))
-        .body("message", containsString("is IMPLEMENTED, not VERIFIED or DONE"));
+        .body("message", containsString("is IMPLEMENTED, not VERIFYING, VERIFIED or DONE"));
+  }
+
+  /**
+   * qits-1560: a verify probe ships from an item under verification — the wrapper request of a
+   * VERIFYING ticket is the desk's under the same rule, and its id is unchanged in the note.
+   */
+  @Test
+  void theDeskApprovesAWrapperRequestWhoseItemIsVerifying() {
+    approves("manual-review");
+    status(ticket, "VERIFYING");
+    String id = create(wrapperRepoId, ticketBranch);
+    String fold = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"the ticket's verify probe\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+    person("ada")
+        .get(base(wrapperRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body(
+            "approvals[0].note",
+            equalTo("delivery desk, rule manual-review-verified: the ticket's verify probe"));
+  }
+
+  /**
+   * qits-1560, the owner's example (qits-qits-rr-182): a VERIFYING ticket's wrapper probe changes
+   * {@code .config/qits/}; with {@code config-directory} listed, both holds admit the desk, and one
+   * approval under {@code manual-review-verified} — the wrapper's rule, which wins — satisfies both.
+   */
+  @Test
+  void theDeskApprovesAWrapperProbeThatChangesTheConfigDirectory() {
+    approves("manual-review", "config-directory");
+    status(ticket, "VERIFYING");
+    foldChanges.changes(
+        wrapperRepoId,
+        List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/project.yml", null)));
+    String id = create(wrapperRepoId, ticketBranch);
+    String fold = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, fold);
+
+    JsonPath held = request(wrapperRepoId, id);
+    assertEquals(
+        List.of("manual-review", "config-directory"),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("desk", "person"), held.getList("approvalRequirements[1].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"the interval probe the ticket plans\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalRequirements[1].satisfied", equalTo(true))
+        .body("request.approvalState", equalTo("APPROVED"));
+    person("ada")
+        .get(base(wrapperRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body(
+            "approvals[0].note",
+            equalTo(
+                "delivery desk, rule manual-review-verified: the interval probe the ticket plans"));
   }
 
   /** A branch naming no work item (nor maintenance/*) is not the desk's either. */
@@ -432,11 +504,12 @@ public class ReleaseRequestDeskApprovalTest {
         .statusCode(403);
   }
 
-  /** {@code config-directory} never admits the desk, whatever the project lists. */
+  /** Not listed, {@code config-directory} admits a person alone, whatever else the project lists. */
   @Test
-  void configDirectoryIsRefusedEvenWithEverythingListed() {
+  void configDirectoryTheProjectDoesNotListIsRefused() {
     approves("artifact-declarations", "manual-review", "automation", "contract");
-    String id = create(configRepoId, "work");
+    status(ticket, "IMPLEMENTING");
+    String id = create(configRepoId, ticketBranch + "-config");
     String fold = mergedShaOf(configRepoId, id);
     verdict(configRepoId, fold);
 
@@ -450,6 +523,74 @@ public class ReleaseRequestDeskApprovalTest {
         .statusCode(403)
         .body("message", containsString("config-directory"))
         .body("message", containsString("admits person"));
+  }
+
+  /**
+   * qits-1560: listed, a member request of work in flight held by {@code config-directory} is the
+   * desk's under {@code member-ci-green} once its CI is green.
+   */
+  @Test
+  void theDeskApprovesAMemberRequestHeldByConfigDirectoryWhenListedAndGreen() {
+    approves("config-directory");
+    status(ticket, "IMPLEMENTING");
+    String id = create(configRepoId, ticketBranch + "-config");
+    String fold = mergedShaOf(configRepoId, id);
+    verdict(configRepoId, fold);
+
+    JsonPath held = request(configRepoId, id);
+    assertEquals(List.of("config-directory"), held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("desk", "person"), held.getList("approvalRequirements[0].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"the ticket asks for this setting\"}")
+        .post(base(configRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalState", equalTo("APPROVED"));
+    person("ada")
+        .get(base(configRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body(
+            "approvals[0].note",
+            equalTo("delivery desk, rule member-ci-green: the ticket asks for this setting"));
+  }
+
+  /** Listed, a config change still waits for green CI. */
+  @Test
+  void aMemberConfigChangeWithRedCiIsRefused() {
+    approves("config-directory");
+    status(ticket, "IMPLEMENTING");
+    String red = create(configRepoId, ticketBranch + "-red");
+    String redFold = mergedShaOf(configRepoId, red);
+    verdict(configRepoId, redFold, "BuildFailed");
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + redFold + "\"}")
+        .post(base(configRepoId) + "/" + red + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule member-ci-green"))
+        .body("message", containsString("FAILED"));
+  }
+
+  /** Listed, a config change of work that has not started is not the desk's. */
+  @Test
+  void aMemberConfigChangeBeforeImplementingIsRefused() {
+    approves("config-directory");
+    status(ticket, "REFINED");
+    String early = create(configRepoId, ticketBranch + "-early");
+    String earlyFold = mergedShaOf(configRepoId, early);
+    verdict(configRepoId, earlyFold);
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + earlyFold + "\"}")
+        .post(base(configRepoId) + "/" + early + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule member-ci-green"))
+        .body("message", containsString("is REFINED, not IMPLEMENTING"));
   }
 
   // ---- member-ci-green (qits-1517) ------------------------------------------------------------
