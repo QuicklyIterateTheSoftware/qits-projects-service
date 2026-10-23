@@ -1,0 +1,208 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "qualifiedId": "contract-suite-app-rr-1",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-suite-app",
+    "backingBranch": "release/contract-suite-app-rr-1",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "bump/contract-service",
+        "ref": "refs/heads/bump/contract-service",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "docs/approval",
+        "ref": "refs/heads/docs/approval",
+        "implicit": false,
+        "priority": "LOW",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+    "state": "PENDING",
+    "summary": "Release the export across the suite",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Waiting for upstream releases: contract-service-rr-1",
+    "approvalRequired": true,
+    "approvalState": "WAITING",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "approvalRequirements": [
+      {
+        "id": "manual-review",
+        "reason": "configured by manual-review",
+        "admits": [
+          "person"
+        ],
+        "excludesAuthors": false,
+        "detail": null,
+        "satisfied": false,
+        "satisfiedBy": null
+      }
+    ],
+    "gates": [
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "APPROVAL",
+        "state": "PENDING",
+        "detail": "configured by manual-review"
+      }
+    ],
+    "automations": [
+      {
+        "kind": "estate-pins",
+        "label": "Estate pins",
+        "state": "FRESH",
+        "foldSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "runId": "bump-00000000-0000-4000-8000-000000000005",
+        "branch": "maintenance/estate-pins",
+        "detail": null,
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "failure": null
+      },
+      {
+        "kind": "screenshot-baselines",
+        "label": "Screenshot baselines",
+        "state": "FRESH",
+        "foldSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "runId": "bump-00000000-0000-4000-8000-000000000006",
+        "branch": "maintenance/screenshot-baselines",
+        "detail": null,
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "failure": null
+      }
+    ],
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "supersededByQualifiedId": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": {
+      "phases": [
+        {
+          "phase": "QA",
+          "state": "WAITING_FOR_PRE_RUN",
+          "runId": null,
+          "startedAt": null,
+          "finishedAt": null,
+          "detail": "QA starts once every automation is fresh or waived at this fold"
+        }
+      ],
+      "gates": [
+        {
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "CI",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "APPROVAL",
+          "state": "PENDING",
+          "detail": "configured by manual-review"
+        }
+      ]
+    },
+    "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [
+          {
+            "name": "Estate pins",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000005"
+          },
+          {
+            "name": "Screenshot baselines",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000006"
+          }
+        ],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "upstream-in-flight",
+        "label": "Upstream releases",
+        "position": "pre-run-qa",
+        "state": "PENDING",
+        "detail": "Waiting for upstream releases: contract-service-rr-1",
+        "checks": [
+          {
+            "name": "contract-service-rr-1",
+            "state": "PENDING",
+            "detail": "QA run 00000000-0000-4000-8000-000000000007 is RUNNING at cb97768559",
+            "runId": "00000000-0000-4000-8000-000000000007"
+          }
+        ],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Waiting for a CI verdict for bd6360a2c6",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "approval",
+        "label": "Approval",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "configured by manual-review (person)",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ],
+    "preRun": {
+      "state": "PENDING"
+    }
+  }
+}

@@ -855,6 +855,59 @@ public class ReleaseRequestController {
             actor));
   }
 
+  /**
+   * @param upstreamRequestId the upstream request this request need no longer wait for: its uuid or
+   *     its qualified id ({@code <repo>-rr-<n>}), looked up in this request's project
+   * @param note what to put on the record, or absent for nothing
+   */
+  public static record OverrideReleaseRequestUpstream(
+      @NotBlank String upstreamRequestId, String note) {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  /**
+   * <b>Override gate 3 for one upstream request</b> (epic qits-897, qits-914): this request may
+   * start QA although that upstream request is still building. A person only: {@link
+   * #waiveAutomations}' roles — approve's person roles, without the {@code qits:agent} that approve
+   * admits for its eligibility rules — and then {@link PersonCheck}, whose answer is the name
+   * recorded. An agent or a machine that could lift the gate would make it no gate.
+   */
+  @POST
+  @Path("/{requestId}/upstream-overrides")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @Operation(
+      operationId = "overrideReleaseRequestUpstream",
+      summary = "Let this request start QA although one upstream request is still building",
+      description =
+          "Gate 3 (upstream-in-flight) holds a PENDING request before QA while a release request in"
+              + " a repository upstream of it is building: a QA run going at its fold, READY, or"
+              + " publishing. This override lifts gate 3 for the one upstream request named by"
+              + " upstreamRequestId (a uuid or a qualified id, in this request's project) and lifts"
+              + " nothing else: another active upstream still holds, and every other gate is"
+              + " untouched. The override is about the pair, not a fold: a re-fold of either"
+              + " request keeps it, and so does the upstream going inactive and building again;"
+              + " overriding the same pair again rewrites it. The gate is re-asked immediately and"
+              + " the request comes back as it then stands, the upstream's check PASSED and naming"
+              + " who overrode. 404 for a request or upstream request that does not exist; 409"
+              + " unless the request is PENDING with a fold and no QA verdict at it; 409 'The"
+              + " override is moot' unless the upstream request is building now and upstream of"
+              + " this one. Only a person may: qits:admin, verified by this service from a browser"
+              + " session or a person's qits CLI token. Asserted identity headers, service clients,"
+              + " agents and qits:system answer 403.")
+  public OverrideReleaseRequestUpstream.Response overrideUpstream(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      OverrideReleaseRequestUpstream body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
+    String actor = persons.requireAdmin();
+    return new OverrideReleaseRequestUpstream.Response(
+        releaseRequests.overrideUpstream(
+            requestId,
+            body == null ? null : body.upstreamRequestId(),
+            body == null ? null : body.note(),
+            actor));
+  }
+
   // ---- what an agent may reach ---------------------------------------------------------------
 
   /**

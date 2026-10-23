@@ -3,9 +3,11 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
 import eu.wohlben.qits.projects.entity.ReleasePipelineRun;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestUpstreamOverride;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.RepositoryName;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestUpstreamOverrideRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -49,6 +51,9 @@ import org.jboss.logging.Logger;
  * it is upstream of, so it is listed only where its closure is already on record. An active one whose
  * closure could not be read is listed as not known, which the gate answers UNKNOWN and never holds.
  *
+ * <p><b>A person's override</b> (qits-914) of a pair is attached to the upstream it names, read in
+ * one query for every request asked about; the gate then lets that upstream through.
+ *
  * <p><b>No mutual hold.</b> The closure is a DAG (qits-ci's {@code CiRunOrdering} relies on it); if
  * R is also upstream of U the pair is skipped with a WARN, once per pair per process.
  *
@@ -81,6 +86,9 @@ public class UpstreamRequests {
   @Inject UpstreamClosures closures;
 
   @Inject ApprovalPolicy approvalPolicy;
+
+  /** A person's overrides of a pair (qits-914), read for the whole page at once. */
+  @Inject ReleaseRequestUpstreamOverrideRepository overrides;
 
   /** The pairs already warned about, so a cycle is one line and not one per sweep. */
   private final Set<String> warnedCycles = ConcurrentHashMap.newKeySet();
@@ -160,10 +168,14 @@ public class UpstreamRequests {
     Map<String, Set<String>> aliases = aliasesIn(projectIds);
     Map<String, Activity> activity = new HashMap<>();
     candidates.forEach(c -> activity.put(c.id, activityOf(c, runs, tags)));
+    Map<String, Map<String, ReleaseRequestUpstreamOverride>> overridden =
+        overrides.forEach(rows.stream().map(row -> row.id).toList());
 
     Map<String, List<GateSubject.Upstream>> out = new LinkedHashMap<>();
     for (ReleaseRequest row : rows) {
       Set<String> ownNames = namesOf(row.repoId, row.repoName, aliases);
+      Map<String, ReleaseRequestUpstreamOverride> ownOverrides =
+          overridden.getOrDefault(row.id, Map.of());
       List<GateSubject.Upstream> upstream = new ArrayList<>();
       for (ReleaseRequest candidate : candidates) {
         if (!java.util.Objects.equals(candidate.projectId, row.projectId)
@@ -175,7 +187,7 @@ public class UpstreamRequests {
             closures.closureOf(candidate.repoId, candidate.repoName, mayAsk && doing.active());
         if (closure.isEmpty()) {
           if (doing.active()) {
-            upstream.add(upstream(candidate, doing, false));
+            upstream.add(upstream(candidate, doing, false, ownOverrides.get(candidate.id)));
           }
           continue;
         }
@@ -185,7 +197,7 @@ public class UpstreamRequests {
         if (doing.active() && cyclic(row, candidate, aliases, mayAsk)) {
           continue;
         }
-        upstream.add(upstream(candidate, doing, true));
+        upstream.add(upstream(candidate, doing, true, ownOverrides.get(candidate.id)));
       }
       out.put(row.id, List.copyOf(upstream));
     }
@@ -292,7 +304,10 @@ public class UpstreamRequests {
   }
 
   private static GateSubject.Upstream upstream(
-      ReleaseRequest candidate, Activity doing, boolean known) {
+      ReleaseRequest candidate,
+      Activity doing,
+      boolean known,
+      ReleaseRequestUpstreamOverride override) {
     return new GateSubject.Upstream(
         candidate.id,
         qualified(candidate),
@@ -301,8 +316,10 @@ public class UpstreamRequests {
         doing.qaRunId(),
         doing.active(),
         known,
-        // qits-914 attaches a person's override of the pair here.
-        null);
+        override == null
+            ? null
+            : new GateSubject.UpstreamOverride(
+                override.decidedBy, override.decidedAt, override.note));
   }
 
   private static String qualified(ReleaseRequest row) {

@@ -84,7 +84,7 @@ public record GateSubject(
    *     at its fold, READY, or RELEASED with its publish PENDING
    * @param known whether its downstream closure was read and names this request's repository; false
    *     is "could not read what is downstream of it", which is listed only where it is active
-   * @param override a person's override of this pair (qits-914), or null — always null until then
+   * @param override a person's override of this pair (qits-914), or null where nobody made one
    */
   public record Upstream(
       String requestId,

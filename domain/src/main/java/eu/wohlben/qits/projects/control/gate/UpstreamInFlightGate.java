@@ -18,6 +18,10 @@ import java.util.stream.Collectors;
  * the start of QA and nothing after it. The wrapper is exempt (decision 8): its pins move through
  * {@code estate-pins} and a person.
  *
+ * <p><b>Overrides</b> (qits-914): a person may let this request start QA past one named upstream
+ * request ({@code ReleaseRequests.overrideUpstream}). An overridden active upstream holds nothing;
+ * its check is PASSED and its detail names who overrode.
+ *
  * <p><b>Answers</b> PENDING while some active upstream request is not overridden; PASSED when none is
  * active or every active one is overridden; UNKNOWN when an active request's closure could not be
  * read and nothing active is known — and <b>UNKNOWN does not hold</b>: the gate postpones and never
@@ -111,7 +115,7 @@ public class UpstreamInFlightGate implements ReleaseGate {
             new GateCheck(
                 name,
                 ReleaseGates.State.PASSED.name(),
-                one.doing() + "; overridden by " + one.override().decidedBy(),
+                "Overridden by " + one.override().decidedBy() + "; " + one.doing(),
                 one.qaRunId()));
         continue;
       }

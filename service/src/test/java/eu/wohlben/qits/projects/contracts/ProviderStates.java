@@ -86,6 +86,12 @@ public class ProviderStates {
       "a release request with an automation that does not apply";
   public static final String A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA =
       "a release request with an automation checked by QA";
+  /**
+   * Gate 3 (epic qits-897): contract-suite-app's request is held before QA while contract-service's
+   * request, upstream of it, has a QA run going — what a person's upstream override lifts (qits-914).
+   */
+  public static final String A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE =
+      "a release request held by an upstream release";
   public static final String A_WITHDRAWN_RELEASE_REQUEST = "a withdrawn release request";
   public static final String A_CONFLICTED_RELEASE_REQUEST = "a conflicted release request";
   public static final String A_REFOLDED_RELEASE_REQUEST = "a refolded release request";
@@ -369,6 +375,18 @@ public class ProviderStates {
           eu.wohlben.qits.projects.releasehost.RecordingBackingBranchMerger>
       merger;
 
+  /** Gate 3's closures (epic qits-897): what is downstream of each repository. */
+  @Inject
+  jakarta.enterprise.inject.Instance<
+          eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents>
+      downstreamComponents;
+
+  /** Gate 3's cache of those closures, primed so a display read knows what is upstream. */
+  @Inject eu.wohlben.qits.projects.control.UpstreamClosures upstreamClosures;
+
+  /** Whether a state scripted {@link #downstreamComponents}; reset by {@link #cleanUp()}. */
+  private boolean downstreamTouched;
+
   /** Opens release requests the way the door does, for the state that adds a source to one. */
   @Inject eu.wohlben.qits.projects.control.ReleaseRequests releaseRequests;
 
@@ -434,6 +452,8 @@ public class ProviderStates {
     states.put(
         A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA,
         () -> releaseRequestInDetail(A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA));
+    states.put(
+        A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE, this::aReleaseRequestHeldByAnUpstreamRelease);
     states.put(
         A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE, this::aProjectWithReleaseRequestsInEveryState);
     states.put(
@@ -565,6 +585,10 @@ public class ProviderStates {
       mergerTouched = false;
       merger.get().reset();
     }
+    if (downstreamTouched) {
+      downstreamTouched = false;
+      downstreamComponents.get().reset();
+    }
     if (!requestRepos.isEmpty()) {
       List<String> repos = List.copyOf(requestRepos);
       requestRepos.clear();
@@ -595,6 +619,8 @@ public class ProviderStates {
                 eu.wohlben.qits.projects.entity.ReleaseRequestApproval.delete(
                     "requestId in ?1", ids);
                 eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver.delete(
+                    "requestId in ?1", ids);
+                eu.wohlben.qits.projects.entity.ReleaseRequestUpstreamOverride.delete(
                     "requestId in ?1", ids);
                 eu.wohlben.qits.projects.entity.ReleasePipelineRun.delete(
                     "releaseRequestId in ?1", ids);
@@ -2565,6 +2591,70 @@ public class ProviderStates {
       bearers.grantPerson(PERSON_CLI_BEARER, "dev");
       params.put("authorization", PERSON_CLI_BEARER);
     }
+    return new Setup(Collections.unmodifiableMap(params), List.of(f.token()));
+  }
+
+  /**
+   * <b>Gate 3 holding a request</b> (epic qits-897): the release fixture, with contract-service
+   * upstream of contract-suite-app (the suite pins the service). contract-service's request has a
+   * QA run RUNNING at its fold, so it is building; contract-suite-app's request is PENDING at its
+   * fold with no QA verdict, held before QA with the upstream named. Its params are the held
+   * request's ({@code requestId}, {@code mergedSha}, ...) plus {@code upstreamRequestId}, the
+   * building request's uuid — what a person's override names (qits-914) — and the {@code
+   * authorization} a person's qits CLI token is presented as.
+   */
+  private Setup aReleaseRequestHeldByAnUpstreamRelease() {
+    ReleaseFixture f = releaseFixture(A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE);
+    Project project = f.project();
+    String estate = f.estateId();
+    String service = f.serviceId();
+    String estateFold = f.estateFold();
+    String serviceFold = f.service().fold();
+    String upstream =
+        releaseRow(
+            project, service, "contract-service", "Release the CSV export and the rounding fix",
+            State.PENDING, 8, serviceFold,
+            row -> row.detail = "Waiting for a CI verdict for " + shortSha(serviceFold));
+    serviceSources(upstream);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var run = new eu.wohlben.qits.projects.entity.ReleasePipelineRun();
+              run.runId = UUID.randomUUID().toString();
+              run.releaseRequestId = upstream;
+              run.repoId = service;
+              run.phase = eu.wohlben.qits.projects.control.ReleasePipelineRuns.PHASE_RELEASE_REQUEST;
+              run.status = "RUNNING";
+              run.commitSha = serviceFold;
+              run.startedAt = SEEDED_AT.plusSeconds(60L * 9);
+              run.updatedAt = run.startedAt;
+              run.persist();
+            });
+    String upstreamQualified =
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequest.<ReleaseRequest>findById(upstream).qualifiedId);
+    String id =
+        releaseRow(
+            project, estate, "contract-suite-app", "Release the export across the suite",
+            State.PENDING, 10, estateFold,
+            row -> row.detail = "Waiting for upstream releases: " + upstreamQualified);
+    estateSources(id);
+    automationsFresh(id, estateFold);
+    // What is downstream of each: the suite of the service, nothing of the suite. The fake answers
+    // a deciding read; the cache is primed for the display reads, which never ask.
+    downstreamComponents.get().answerFor(service, java.util.Optional.of(List.of("contract-suite-app")));
+    downstreamComponents.get().answerFor(estate, java.util.Optional.of(List.of()));
+    downstreamTouched = true;
+    upstreamClosures.record(service, List.of("contract-suite-app"));
+    upstreamClosures.record(estate, List.of());
+    bearers.grantPerson(PERSON_CLI_BEARER, "dev");
+    Map<String, String> params = new TreeMap<>();
+    params.put("projectId", project.id);
+    params.put("repositoryId", estate);
+    params.put("requestId", id);
+    params.put("mergedSha", estateFold);
+    params.put("upstreamRequestId", upstream);
+    params.put("authorization", PERSON_CLI_BEARER);
     return new Setup(Collections.unmodifiableMap(params), List.of(f.token()));
   }
 

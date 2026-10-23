@@ -1818,6 +1818,16 @@ components:
       - SYNC_TARGET_UPDATED
       - UNDECLARED
       - SKIPPED
+    OverrideReleaseRequestUpstream:
+      type: object
+      required:
+      - upstreamRequestId
+      properties:
+        upstreamRequestId:
+          type: string
+          pattern: \S
+        note:
+          type: string
     PatchDeskRunnerRequest:
       type: object
       properties:
@@ -2360,15 +2370,15 @@ components:
     Response17:
       type: object
       properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response18:
+      type: object
+      properties:
         requests:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestDto"
-    Response18:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
     Response19:
       type: object
       properties:
@@ -2400,31 +2410,36 @@ components:
     Response22:
       type: object
       properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response23:
+      type: object
+      properties:
         approvals:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestApprovalDto"
-    Response23:
+    Response24:
       type: object
       properties:
         eligibility:
           $ref: "#/components/schemas/ApprovalEligibilityDto"
-    Response24:
+    Response25:
       type: object
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
-    Response25:
+    Response26:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response26:
+    Response27:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response27:
+    Response28:
       type: object
       properties:
         repository:
@@ -2433,11 +2448,6 @@ components:
           type: string
         changed:
           type: boolean
-    Response28:
-      type: object
-      properties:
-        technicalProcessId:
-          type: string
     Response29:
       type: object
       properties:
@@ -2453,20 +2463,20 @@ components:
     Response30:
       type: object
       properties:
+        technicalProcessId:
+          type: string
+    Response31:
+      type: object
+      properties:
         repositories:
           type: array
           items:
             $ref: "#/components/schemas/RepositoryCoordinatesDto"
-    Response31:
+    Response32:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response32:
-      type: object
-      properties:
-        success:
-          type: boolean
     Response33:
       type: object
       properties:
@@ -2475,25 +2485,30 @@ components:
     Response34:
       type: object
       properties:
+        success:
+          type: boolean
+    Response35:
+      type: object
+      properties:
         builds:
           type: array
           items:
             $ref: "#/components/schemas/CommitBuildStatusDto"
-    Response35:
+    Response36:
       type: object
       properties:
         branches:
           type: array
           items:
             $ref: "#/components/schemas/BranchDto"
-    Response36:
+    Response37:
       type: object
       properties:
         repositoryId:
           type: string
         scheduled:
           type: boolean
-    Response37:
+    Response38:
       type: object
       properties:
         technicalProcessId:
@@ -5183,7 +5198,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response30"
+                $ref: "#/components/schemas/Response31"
         "401":
           description: Not Authorized
         "403":
@@ -5225,7 +5240,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response27"
+                $ref: "#/components/schemas/Response28"
         "400":
           description: "An invalid name, a name another repository in this project\
             \ already answers to, or the project's wrapper repository (whose name\
@@ -5256,7 +5271,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response31"
+                $ref: "#/components/schemas/Response32"
         "401":
           description: Not Authorized
         "403":
@@ -5290,7 +5305,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response33"
+                $ref: "#/components/schemas/Response34"
         "401":
           description: Not Authorized
         "403":
@@ -5315,7 +5330,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response37"
+                $ref: "#/components/schemas/Response38"
         "401":
           description: Not Authorized
         "403":
@@ -5346,7 +5361,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response36"
+                $ref: "#/components/schemas/Response37"
         "404":
           description: No such repository
         "401":
@@ -5379,7 +5394,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response32"
+                $ref: "#/components/schemas/Response33"
         "401":
           description: Not Authorized
         "403":
@@ -5407,7 +5422,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response35"
+                $ref: "#/components/schemas/Response36"
         "401":
           description: Not Authorized
         "403":
@@ -5521,7 +5536,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response34"
+                $ref: "#/components/schemas/Response35"
         "401":
           description: Not Authorized
         "403":
@@ -5636,7 +5651,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response26"
+                $ref: "#/components/schemas/Response27"
         "401":
           description: Not Authorized
         "403":
@@ -5664,7 +5679,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response29"
+                $ref: "#/components/schemas/Response30"
         "401":
           description: Not Authorized
         "403":
@@ -5690,7 +5705,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response28"
+                $ref: "#/components/schemas/Response29"
         "401":
           description: Not Authorized
         "403":
@@ -5727,7 +5742,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response17"
+                $ref: "#/components/schemas/Response18"
         "401":
           description: Not Authorized
         "403":
@@ -5786,7 +5801,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response20"
+                $ref: "#/components/schemas/Response21"
         "401":
           description: Not Authorized
         "403":
@@ -5822,7 +5837,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response18"
+                $ref: "#/components/schemas/Response19"
         "401":
           description: Not Authorized
         "403":
@@ -5865,7 +5880,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response23"
+                $ref: "#/components/schemas/Response24"
         "401":
           description: Not Authorized
         "403":
@@ -5908,7 +5923,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response22"
+                $ref: "#/components/schemas/Response23"
         "401":
           description: Not Authorized
         "403":
@@ -5965,7 +5980,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response21"
+                $ref: "#/components/schemas/Response22"
         "401":
           description: Not Authorized
         "403":
@@ -6404,7 +6419,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response19"
+                $ref: "#/components/schemas/Response20"
         "401":
           description: Not Authorized
         "403":
@@ -6503,7 +6518,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response24"
+                $ref: "#/components/schemas/Response25"
         "401":
           description: Not Authorized
         "403":
@@ -6568,6 +6583,62 @@ paths:
         - qits:admin-agent
         - qits:system
         - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/upstream-overrides:
+    post:
+      summary: Let this request start QA although one upstream request is still building
+      description: "Gate 3 (upstream-in-flight) holds a PENDING request before QA\
+        \ while a release request in a repository upstream of it is building: a QA\
+        \ run going at its fold, READY, or publishing. This override lifts gate 3\
+        \ for the one upstream request named by upstreamRequestId (a uuid or a qualified\
+        \ id, in this request's project) and lifts nothing else: another active upstream\
+        \ still holds, and every other gate is untouched. The override is about the\
+        \ pair, not a fold: a re-fold of either request keeps it, and so does the\
+        \ upstream going inactive and building again; overriding the same pair again\
+        \ rewrites it. The gate is re-asked immediately and the request comes back\
+        \ as it then stands, the upstream's check PASSED and naming who overrode.\
+        \ 404 for a request or upstream request that does not exist; 409 unless the\
+        \ request is PENDING with a fold and no QA verdict at it; 409 'The override\
+        \ is moot' unless the upstream request is building now and upstream of this\
+        \ one. Only a person may: qits:admin, verified by this service from a browser\
+        \ session or a person's qits CLI token. Asserted identity headers, service\
+        \ clients, agents and qits:system answer 403."
+      operationId: overrideReleaseRequestUpstream
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverrideReleaseRequestUpstream"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response17"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/withdraw:
     post:
       summary: Withdraw an open release request
@@ -6630,7 +6701,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response25"
+                $ref: "#/components/schemas/Response26"
         "401":
           description: Not Authorized
         "403":

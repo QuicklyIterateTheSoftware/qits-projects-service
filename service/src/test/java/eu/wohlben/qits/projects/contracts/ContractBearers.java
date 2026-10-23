@@ -50,6 +50,16 @@ public class ContractBearers implements SecurityIdentityAugmentor {
   }
 
   /**
+   * {@link #grant}, with claims beyond sub and aud — a service client's {@code clients/<id>} group,
+   * an agent's {@code context_kind} and {@code project} — for a suite that drives a machine's bearer
+   * at a person's door (qits-914's {@code UpstreamOverrideDoorTest}).
+   */
+  public void grant(
+      String authorization, String subject, Map<String, Object> claims, String... roles) {
+    grants.put(authorization, new Grant(subject, Set.of(roles), Map.copyOf(claims)));
+  }
+
+  /**
    * A request with {@code Authorization: <authorization>} is a person's {@code qits} CLI token for
    * {@code subject} holding {@code qits:admin}: {@code credential_type=cli} and the admin group,
    * the marks {@code PersonCheck} accepts as its second proof of a person (the approve and decline

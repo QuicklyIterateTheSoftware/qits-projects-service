@@ -429,6 +429,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA);
   }
 
+  @State(ProviderStates.A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE)
+  Map<String, String> aReleaseRequestHeldByAnUpstreamRelease() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE);
+  }
+
   @State(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST)
   Map<String, String> aWithdrawnReleaseRequest() {
     return states.params(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST);

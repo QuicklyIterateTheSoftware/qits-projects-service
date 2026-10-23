@@ -231,6 +231,8 @@ class AgentReadAccessTest {
       Set.of(
           // Letting a fold through without its automations is a sign-off (qits-978).
           "ReleaseRequestController.waiveAutomations",
+          // Lifting gate 3 past a building upstream is a person's call (epic qits-897, qits-914).
+          "ReleaseRequestController.overrideUpstream",
           "WorkCommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
           "WorkMembersController.approve",

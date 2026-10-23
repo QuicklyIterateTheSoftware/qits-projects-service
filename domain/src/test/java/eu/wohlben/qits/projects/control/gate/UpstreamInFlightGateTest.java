@@ -143,6 +143,7 @@ class UpstreamInFlightGateTest {
     assertEquals(ReleaseGates.State.PASSED, answer.state());
     assertEquals("Overridden: fe-rr-12 (wohlben)", answer.detail());
     assertEquals("PASSED", answer.checks().get(0).state());
+    assertEquals("Overridden by wohlben; Ready to release x", answer.checks().get(0).detail());
   }
 
   @Test

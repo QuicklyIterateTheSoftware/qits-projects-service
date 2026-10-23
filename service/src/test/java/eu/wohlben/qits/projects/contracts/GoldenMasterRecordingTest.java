@@ -482,7 +482,8 @@ class GoldenMasterRecordingTest {
    * recorded where it answers: decline, withdraw and the source priority on the request awaiting
    * approval; approve where the build still runs (a green one would start a release inside the
    * call); a pipeline rerun per phase; the automation rerun and the waiver where an automation
-   * failed. Plus the project-wide list and its withdraw.
+   * failed; the upstream override where gate 3 holds (qits-914). Plus the project-wide list and its
+   * withdraw.
    */
   private static List<Interaction> withReleaseRequests(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
@@ -632,6 +633,23 @@ class GoldenMasterRecordingTest {
             "{\"foldSha\":\"{mergedSha}\","
                 + "\"reason\":\"qits-maintenance cannot read the suite; the pin was checked by"
                 + " hand.\"}"));
+    // Gate 3 (epic qits-897): a request held before QA by an upstream release, and a person
+    // lifting it for that one upstream from a terminal (qits-914). The CLI sends their qits CLI
+    // token; the door verifies it as a person's (PersonCheck).
+    String upstreamHeld = ProviderStates.A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE;
+    all.add(read(upstreamHeld, "getReleaseRequest", request));
+    all.add(
+        new Interaction(
+            upstreamHeld,
+            "overrideReleaseRequestUpstream",
+            "POST",
+            request + "/upstream-overrides",
+            200,
+            null,
+            null,
+            "{\"upstreamRequestId\":\"{upstreamRequestId}\","
+                + "\"note\":\"The service change is docs only; the suite need not wait.\"}",
+            BEARER));
     // One commit of "What this release folds in", opened. The fold is a merge, whose changes
     // against no named parent are empty, so a commit it brought in is opened instead: shas are
     // stable because the states seed through SeededGit. contract-service's "Add the CSV export"

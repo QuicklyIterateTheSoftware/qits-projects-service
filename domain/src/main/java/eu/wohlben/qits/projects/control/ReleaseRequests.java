@@ -41,6 +41,7 @@ import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver;
+import eu.wohlben.qits.projects.entity.ReleaseRequestUpstreamOverride;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -50,6 +51,7 @@ import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestAutomationWaiverRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestUpstreamOverrideRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
@@ -373,6 +375,9 @@ public class ReleaseRequests {
   @Inject AutomationLedger automationLedger;
 
   @Inject ReleaseRequestAutomationWaiverRepository waivers;
+
+  /** A person's overrides of gate 3, one per (request, upstream request) (qits-914). */
+  @Inject ReleaseRequestUpstreamOverrideRepository upstreamOverrides;
 
   /** The re-run door's way out; the trigger and the read go through {@link #automationRefresh}. */
   @Inject Instance<ReleaseRequestAutomations> automationPort;
@@ -1645,6 +1650,101 @@ public class ReleaseRequests {
     // A request the automations REJECTED at this fold is reopened by the waiver (qits-1199); a red
     // build or a decline is not, and the evaluation below then leaves it where it is.
     reopenAutomationRejection(id, "its automations were waived at this fold");
+    evaluate(id, null);
+    return get(id);
+  }
+
+  /**
+   * <b>Let this request start QA past one upstream request</b> (epic qits-897, qits-914) — a
+   * person's override of gate 3 for exactly one pair. Gate 3 holds a fresh fold before QA while a
+   * request upstream of it is building; this says "do not wait for <em>that</em> one". It lifts
+   * nothing else: another active upstream still holds, and every other gate is untouched.
+   *
+   * <p><b>About the pair, not a fold</b>: a re-fold of either request keeps the override, and so
+   * does the upstream going inactive and building again. Writing it twice is the same row — the
+   * newest person, time and note win.
+   *
+   * <p>Refusals, in the order they are met: 404 for a request, or an upstream request, that does not
+   * exist (the upstream is looked up in this request's project, by uuid or qualified id); 409 unless
+   * this request is PENDING with a fold and no QA verdict at it (gate 3's own applicability); 409
+   * "The override is moot" unless the upstream request is active now <em>and</em> upstream of this
+   * one — an override of a request that holds nothing would be a row nobody reads.
+   *
+   * <p>The gate is asked again after the write, so a fold nothing else holds is announced {@code
+   * preRun=DONE} on the click, and the answer is the request as it then stands.
+   *
+   * @param upstreamReference the upstream request's uuid or qualified id
+   * @param note what the person wants on the record, or null/blank for nothing
+   * @param actor the verified person ({@code PersonCheck}); the point of the row
+   */
+  public ReleaseRequestDto overrideUpstream(
+      String id, String upstreamReference, String note, String actor) {
+    if (upstreamReference == null || upstreamReference.isBlank()) {
+      throw new BadRequestException(
+          "upstreamRequestId is required: an override names the one upstream request it lifts.");
+    }
+    String said = note == null || note.isBlank() ? null : note.trim();
+    String person = actor == null || actor.isBlank() ? "an operator" : actor.trim();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row =
+                  requests
+                      .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
+                      .orElseThrow(
+                          () -> new NotFoundException("Release request not found: " + id));
+              ReleaseRequest upstream =
+                  requests
+                      .findByReference(null, upstreamReference.trim())
+                      .filter(
+                          candidate ->
+                              row.projectId != null && row.projectId.equals(candidate.projectId))
+                      .orElseThrow(
+                          () ->
+                              new NotFoundException(
+                                  "Release request not found in this request's project: "
+                                      + upstreamReference.trim()));
+              String upstreamName =
+                  upstream.qualifiedId == null ? upstream.id : upstream.qualifiedId;
+              if (row.state != ReleaseRequest.State.PENDING
+                  || row.mergedSha == null
+                  || CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+                      .isPresent()) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + row.qualifiedId
+                        + " is not waiting to start QA (it must be PENDING, with a fold and no QA"
+                        + " verdict at it), so there is no upstream gate to override.");
+              }
+              boolean building =
+                  upstreamRequests.activeFor(row, true).stream()
+                      .anyMatch(
+                          one -> one.active() && one.known() && upstream.id.equals(one.requestId()));
+              if (!building) {
+                throw new DomainException(
+                    409, "The override is moot: " + upstreamName + " is not building");
+              }
+              ReleaseRequestUpstreamOverride override =
+                  upstreamOverrides.forPair(row.id, upstream.id).orElse(null);
+              if (override == null) {
+                override = new ReleaseRequestUpstreamOverride();
+                override.requestId = row.id;
+                override.upstreamRequestId = upstream.id;
+                override.decidedBy = person;
+                override.decidedAt = Instant.now();
+                override.note = said;
+                override.persist();
+              } else {
+                override.decidedBy = person;
+                override.decidedAt = Instant.now();
+                override.note = said;
+              }
+              row.updatedAt = override.decidedAt;
+              LOG.infof(
+                  "Release request %s: gate 3 overridden for upstream request %s by %s%s",
+                  row.qualifiedId, upstreamName, person, said == null ? "" : ": " + said);
+            });
     evaluate(id, null);
     return get(id);
   }

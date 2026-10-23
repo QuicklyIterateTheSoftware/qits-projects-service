@@ -3169,6 +3169,78 @@
       ]
     },
     {
+      "name": "a release request held by an upstream release",
+      "slug": "a-release-request-held-by-an-upstream-release",
+      "params": {
+        "authorization": "Bearer qits_tok_contract-person-cli",
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "upstreamRequestId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-held-by-an-upstream-release/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.qualityGates[*].checks[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].checks[*].detail"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "overrideReleaseRequestUpstream",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/upstream-overrides",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "upstreamRequestId": "{upstreamRequestId}",
+            "note": "The service change is docs only; the suite need not wait."
+          },
+          "status": 200,
+          "file": "a-release-request-held-by-an-upstream-release/overrideReleaseRequestUpstream.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.qualityGates[*].checks[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].checks[*].detail"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a release request open to another branch",
       "slug": "a-release-request-open-to-another-branch",
       "params": {
