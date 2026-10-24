@@ -1438,6 +1438,19 @@ started four release builds for one change. Now:
 - **Moves:** a source moving during the pre-run re-folds and restarts it (PENDING at the new sha);
   one moving during QA cancels QA (`cancel`) and restarts the pre-run rather than going straight to
   QA.
+- **Except an automation's own branch, whose move under a fold in flight is OWED** (qits-1570).
+  qits-maintenance commits onto `maintenance/automations/<kind>/<request>` once per member release,
+  and in a release wave each commit re-folded the request, cancelled its QA and lapsed its approval
+  (qits-qits-rr-190 went green five times and never released). `onBranchMoved` for a branch under
+  `AutomationRefresh.AUTOMATION_BRANCHES`, while the fold is in flight (`foldInFlight`: PENDING,
+  `qa_announced_sha = merged_sha`, the pre-run passed there, and no own verdict yet or a green one),
+  only stamps `release_request.refold_owed_at`/`refold_owed_reason` (V53); several moves coalesce.
+  It is paid (`payOwedRefold`, a remerge "an owed re-fold: …") by the evaluation that ends the
+  flight — a red verdict, a decline, gate 3's interrupt — and by the sweep as the backstop; every
+  fold that is made (anything but UNREACHABLE) clears it, so any other move, a join or any other
+  re-fold cause pays it for free and still cancels at once. READY drops it: the release ships the
+  gated fold. The pre-run's note is not touched meanwhile (a FRESH note is never re-read once QA is
+  announced), and a note that stops reading passed ends the flight, so the sweep re-folds.
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
@@ -1484,7 +1497,10 @@ request in its pre-run, or waiting only on approval, builds nothing and holds no
   its trigger dedupes by event id and not by sha. Two evaluations racing serialise on the lock: the
   second one reads the stamp cleared and is a plain hold, so there is one cancel and later one DONE.
   An override of the upstream, the wrapper exemption and UNKNOWN apply to the interrupt as they do
-  to the hold.
+  to the hold. **At most once per fold** (qits-1570): the interrupt stamps
+  `release_request.qa_interrupted_sha` (V53), and an upstream building again while the re-asked QA
+  runs at that same fold interrupts nothing — no cancel, the stamp left standing, and the request
+  goes on to wait for its own verdict (the read never drew a hold on an announced fold anyway).
 - **UNKNOWN never holds** (a closure that could not be read); the estate wrapper is exempt; a
   cycle in the closure holds neither side and logs one WARN per pair.
 - **Re-evaluation**: the 30 s sweep is the floor. `control/DownstreamReevaluation` evaluates the

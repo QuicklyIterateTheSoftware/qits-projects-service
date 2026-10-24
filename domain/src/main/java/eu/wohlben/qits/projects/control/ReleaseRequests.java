@@ -218,6 +218,17 @@ import org.jboss.logging.Logger;
  * during the pre-run re-folds and restarts it; one moving during QA cancels QA ({@link #cancel}) and
  * restarts the pre-run rather than going straight back to QA.
  *
+ * <p><b>Except an automation's own branch, whose move during QA is OWED rather than made</b>
+ * (qits-1570). qits-maintenance commits onto {@code maintenance/automations/<kind>/<request>} once
+ * per member release, so during a release wave every one of those commits re-folded the request,
+ * cancelled its QA and lapsed its approval, and the request never reached READY (qits-qits-rr-190
+ * went green five times). While the current fold is in flight ({@link #foldInFlight}: QA announced
+ * at it with no verdict yet, or green and waiting on its approval) such a move only stamps {@link
+ * ReleaseRequest#refoldOwedAt}; the owed re-fold is made once the fold is no longer in flight — a red
+ * verdict, a decline, QA un-announced, the sweep as the backstop ({@link #payOwedRefold}) — and never
+ * for a request that went READY, whose release ships the fold that was gated. Every other move, and
+ * every other re-fold cause, re-folds at once exactly as before and pays what was owed with it.
+ *
  * <h2>The approval gate</h2>
  *
  * <p><b>Some releases need a person to say yes, and that is a gate of its own rather than a clause
@@ -2727,6 +2738,12 @@ public class ReleaseRequests {
    *
    * <p><b>Per request, never per branch.</b> A push to {@code main} participates in every open
    * request of the repository and each gets its own fold onto its own backing branch.
+   *
+   * <p><b>An automation's own branch moving under a fold in flight is deferred</b> (qits-1570): the
+   * request keeps the fold its QA is building, or its approval names, and a re-fold is owed instead
+   * ({@link #deferAutomationRefold}). Any other branch — a ticket's, an epic's, {@code main} —
+   * re-folds at once whatever the request is doing, and that fold pays what was owed, since it reads
+   * the automation branch's head too.
    */
   public void onBranchMoved(String repoId, String branch, String sha) {
     List<String> affected =
@@ -2737,8 +2754,143 @@ public class ReleaseRequests {
                         .map(row -> row.id)
                         .toList());
     for (String id : affected) {
-      remerge(id, "a push moved " + branch + " to " + shortSha(sha));
+      String why = "a push moved " + branch + " to " + shortSha(sha);
+      if (isAutomationBranch(branch) && deferAutomationRefold(id, why)) {
+        continue;
+      }
+      remerge(id, why);
     }
+  }
+
+  /**
+   * The automations' own branches — qits-maintenance's {@code AutomationService.BRANCH_PREFIX},
+   * spelled here as {@link AutomationRefresh} already spells it rather than depended on: a commit
+   * there is an automation regenerating something the request releases, never a person's work.
+   */
+  static boolean isAutomationBranch(String branch) {
+    String bare =
+        branch.startsWith("refs/heads/") ? branch.substring("refs/heads/".length()) : branch;
+    return bare.startsWith(AutomationRefresh.AUTOMATION_BRANCHES);
+  }
+
+  /**
+   * <b>Owe the re-fold an automation's commit asks for, rather than make it, while the current fold
+   * is in flight</b> (qits-1570) — and answer whether it was deferred. Under the row lock {@link
+   * #evaluate} takes, so the in-flight question and the stamp are one decision against the gate's own
+   * writes.
+   *
+   * <p>Why the fold is left alone: a re-fold replacing the sha cancels the QA building it, restarts
+   * the pre-run and lapses an approval (a decision names a {@code mergedSha}). qits-maintenance
+   * commits onto a request's automation branch once per member release, so in a release wave every
+   * green fold was re-folded before anybody could approve it — qits-qits-rr-190 went green five
+   * times, qits-projects-service-rr-342 had 8 of 12 gate runs cancelled. What the commit carries is
+   * not lost: the branch is a source, so the owed re-fold — or any other fold first — reads its head.
+   *
+   * <p><b>Several moves during one run coalesce</b>: the first one's instant stays and the newest
+   * one's sentence replaces the reason, so one re-fold pays them all. A request that is not in flight
+   * is not deferred and the caller re-folds as it always did.
+   */
+  private boolean deferAutomationRefold(String id, String why) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () -> {
+                ReleaseRequest row =
+                    requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
+                if (row == null || !foldInFlight(row)) {
+                  return false;
+                }
+                boolean first = row.refoldOwedAt == null;
+                if (first) {
+                  row.refoldOwedAt = Instant.now();
+                }
+                row.refoldOwedReason = why;
+                LOG.infof(
+                    "Release request %s keeps its fold %s while %s: %s; the re-fold is owed%s",
+                    row.qualifiedId,
+                    shortSha(row.mergedSha),
+                    CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+                            .isPresent()
+                        ? "it is green and waits"
+                        : "its QA runs",
+                    why,
+                    first ? "" : " (coalesced with an earlier move)");
+                return true;
+              });
+    } catch (RuntimeException e) {
+      // Could not tell: re-fold, as before qits-1570. A wrong deferral would ship a fold missing a
+      // commit until something else re-folded it; a wrong re-fold costs one QA run.
+      LOG.warnf(e, "Could not decide whether release request %s may defer its re-fold", id);
+      return false;
+    }
+  }
+
+  /**
+   * Whether this request's current fold is IN FLIGHT (qits-1570) — the state an automation's
+   * re-fold would throw away: PENDING, folded, its pre-run done at {@code mergedSha} and QA asked for
+   * there ({@code qa_announced_sha}), and either no verdict of its own yet (QA is building it) or a
+   * green one (the fold passed QA and waits on what is left — its approval, a second run of its own,
+   * an earlier release finalizing). A red verdict is not in flight: the request rejects on it and the
+   * owed re-fold re-arms it. Read inside the caller's transaction, by the same helpers {@link
+   * #evaluate} decides with ({@link #automationsPassed}, {@link CiVerdicts#newestOwn}), so the two
+   * cannot disagree about which fold is being gated.
+   */
+  private boolean foldInFlight(ReleaseRequest row) {
+    if (row.state != ReleaseRequest.State.PENDING
+        || row.mergedSha == null
+        || !row.mergedSha.equals(row.qaAnnouncedSha)) {
+      return false;
+    }
+    if (automationsApply(row.repoId) && !automationsPassed(row)) {
+      // The pre-run reads not done at the fold any more (a restart forgot the note, a re-read found
+      // it moving): nothing about this fold is settled enough to keep, so the move re-folds.
+      return false;
+    }
+    return CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
+        .map(CiVerdicts::success)
+        .orElse(true);
+  }
+
+  /**
+   * <b>Pay an owed re-fold once the fold it was deferred for is no longer in flight</b> (qits-1570)
+   * — answering whether a re-fold was made. Called at the tail of {@link #evaluate} for a request
+   * that owed one when the evaluation began (so a red verdict, a decline and gate 3's interrupt pay
+   * it on the spot) and by {@link #sweep} as the backstop for everything else.
+   *
+   * <p>A request that went READY, or left the unreleased states, owes nothing: its release ships the
+   * fold that was gated, and the next request's automations re-plan whatever the branch carried. The
+   * marker is not cleared here but by the fold's write half ({@link #apply}), so a fold that could
+   * not be made leaves it owed for the next sweep.
+   */
+  private boolean payOwedRefold(String id) {
+    String owed;
+    try {
+      owed =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () -> {
+                    ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                    if (row == null
+                        || row.refoldOwedAt == null
+                        || row.state == ReleaseRequest.State.READY
+                        || !ReleaseRequestRepository.UNRELEASED.contains(row.state)
+                        || foldInFlight(row)) {
+                      return null;
+                    }
+                    return row.refoldOwedReason == null
+                        ? "an automation branch moved"
+                        : row.refoldOwedReason;
+                  });
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not read whether release request %s owes a re-fold", id);
+      return false;
+    }
+    if (owed == null) {
+      return false;
+    }
+    LOG.infof("Release request %s pays its owed re-fold: %s", id, owed);
+    remerge(id, "an owed re-fold: " + owed);
+    return true;
   }
 
   /**
@@ -3245,6 +3397,11 @@ public class ReleaseRequests {
    * (qits-1199) is the second question: its automations are re-read at the fold, and a note no
    * longer FAILED, or a waiver, reopens it ({@link #reopenAutomationRejection}).
    *
+   * <p><b>It is the backstop under an owed re-fold</b> (qits-1570): a request whose automation branch
+   * moved while its fold was in flight, and whose fold is in flight no more, is re-folded here if
+   * nothing else has done it yet — once, since the fold that lands clears the marker. A READY request
+   * owes nothing.
+   *
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
    * this file already paid for once (measured 2026-09-01). Something has to change first, and the
@@ -3262,6 +3419,14 @@ public class ReleaseRequests {
           && !FoldFailure.rejected(row)
           && row.mergedSha == null) {
         remerge(row.id, "the first fold had not been made yet");
+        continue;
+      }
+      // THE BACKSTOP UNDER AN OWED RE-FOLD (qits-1570). An automation branch that moved while the
+      // fold was in flight is paid by the evaluation that ends the flight — a red verdict, a
+      // decline, gate 3's interrupt — and this is what pays it when the flight ended any other way
+      // (a restart forgot the pre-run's note, a fold that could not be made, a verdict path that
+      // never ran). The fold that pays it evaluates the request itself.
+      if (row.refoldOwedAt != null && payOwedRefold(row.id)) {
         continue;
       }
       switch (row.state) {
@@ -3669,6 +3834,19 @@ public class ReleaseRequests {
               }
               Instant now = Instant.now();
               row.updatedAt = now;
+              if (row.refoldOwedAt != null
+                  && outcome.result() != BackingBranchMerger.Result.UNREACHABLE) {
+                // AN OWED RE-FOLD IS PAID BY EVERY FOLD THAT WAS MADE (qits-1570), whatever caused
+                // it: the git host read every source's head, the moved automation branch's
+                // included, so whatever this fold answered — a new sha, the same one, a conflict, a
+                // missing source — is the answer the owed one would have had. Only a fold that could
+                // not be made at all leaves it owed, for the sweep to pay.
+                LOG.infof(
+                    "Release request %s: the re-fold it owed (%s) is made by this one (%s)",
+                    id, row.refoldOwedReason, why);
+                row.refoldOwedAt = null;
+                row.refoldOwedReason = null;
+              }
               if (outcome.folded() && FoldFailure.rejected(row)) {
                 // THE FOLD REJECTED IT AND NOW FOLDS (qits-1221): the missing source exists again —
                 // a push re-created it — or left the request. Either way the rejection's cause is
@@ -4067,6 +4245,10 @@ public class ReleaseRequests {
     // verdict yet, and an upstream has started building since. Carried out so that its QA runs are
     // cancelled after the commit that cleared the stamp; null on nearly every pass.
     AtomicReference<String> interrupted = new AtomicReference<>();
+    // Whether the request owed a re-fold when this evaluation began (qits-1570): an evaluation is
+    // what ends a fold's flight — a red verdict, a decline, gate 3's interrupt — so it is also what
+    // pays the re-fold an automation's commit was kept waiting for, after its commit.
+    AtomicReference<Boolean> owedRefold = new AtomicReference<>(false);
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4086,6 +4268,7 @@ public class ReleaseRequests {
                     // Nothing has been folded yet: there is no content to have an opinion about.
                     return false;
                   }
+                  owedRefold.set(row.refoldOwedAt != null);
                   if (verdictSha != null && !verdictSha.equals(row.mergedSha)) {
                     LOG.debugf(
                         "Release request %s ignores a verdict for %s; it is gating %s now",
@@ -4177,10 +4360,25 @@ public class ReleaseRequests {
                   // evaluation racing this one waits on the lock, then reads the stamp cleared and
                   // is an ordinary hold: one cancel. A fold with a verdict (green and waiting on
                   // approval, READY) is past the gate and upstreamHold never holds it.
+                  // AT MOST ONCE PER FOLD (qits-1570): the interrupt stamps the fold it cancelled QA
+                  // at, and a later upstream build at the same fold — the QA re-asked for once the
+                  // first hold cleared is the one running — interrupts nothing. Every upstream build
+                  // used to cancel it again, unbounded. Such a fold is not held at all — it goes on
+                  // to the CI gate and waits for the verdict of the run in flight, which is also how
+                  // the request's read already draws it (gateView reads a hold only on a fold not
+                  // announced) — and nothing is cleared and nothing is cancelled.
                   String upstreamHeld = upstreamHold(row);
-                  if (upstreamHeld != null) {
+                  if (upstreamHeld != null
+                      && row.mergedSha.equals(row.qaAnnouncedSha)
+                      && row.mergedSha.equals(row.qaInterruptedSha)) {
+                    LOG.debugf(
+                        "Release request %s: QA for %s was interrupted once already; it keeps"
+                            + " running although an upstream is building (%s)",
+                        row.id, shortSha(row.mergedSha), upstreamHeld);
+                  } else if (upstreamHeld != null) {
                     if (row.mergedSha.equals(row.qaAnnouncedSha)) {
                       row.qaAnnouncedSha = null;
+                      row.qaInterruptedSha = row.mergedSha;
                       interrupted.set(row.repoId);
                       LOG.infof(
                           "Release request %s: QA for %s is interrupted, an upstream started"
@@ -4395,6 +4593,17 @@ public class ReleaseRequests {
                   }
                   states.move(row, ReleaseRequest.State.READY);
                   row.detail = null;
+                  if (row.refoldOwedAt != null) {
+                    // THE OWED RE-FOLD IS FORGIVEN, NOT PAID (qits-1570): the release ships the fold
+                    // that was gated and approved, and whatever the automation branch moved to
+                    // after it is re-planned by the next request's automations against the new
+                    // main. Re-folding now would throw away exactly what this request waited for.
+                    LOG.infof(
+                        "Release request %s goes READY at %s; the re-fold it owed (%s) is dropped",
+                        row.qualifiedId, shortSha(row.mergedSha), row.refoldOwedReason);
+                    row.refoldOwedAt = null;
+                    row.refoldOwedReason = null;
+                  }
                   // Every gate passed, so whatever run once rejected this fold is history: the
                   // column is cleared wherever the request leaves REJECTED, and this is one of the
                   // three places it does.
@@ -4436,6 +4645,11 @@ public class ReleaseRequests {
     }
     if (ready) {
       enqueueExecution(id);
+    } else if (Boolean.TRUE.equals(owedRefold.get())) {
+      // THE OWED RE-FOLD (qits-1570), paid where this evaluation ended the flight it was deferred
+      // for — rejected on a red verdict or a decline, or QA un-announced by gate 3's interrupt
+      // (whose cancel above has already gone out). Still in flight, it waits; payOwedRefold asks.
+      payOwedRefold(id);
     }
   }
 
