@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
+import eu.wohlben.qits.projects.dto.PlacementDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -134,16 +135,25 @@ public class ReleaseRequestController {
    */
   public static record CreateReleaseRequest(
       @NotBlank String branch, @NotBlank String summary, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580): created, joined or already
+     *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
+     */
+    public record Response(ReleaseRequestDto request, PlacementDto placement) {}
   }
 
   /**
    * <b>Creates, converges on, or joins</b> the repository's one open release request.
    *
-   * <p>Which of the three happened is not a field on the answer and does not need to be: the
-   * response is the whole {@link ReleaseRequestDto}, so a caller that kept the id it was given last
-   * time can see it is the same one, and a caller that has never seen this request can see the
-   * source list carrying branches it never named.
+   * <p>Which of the three happened is the answer's {@code placement} (epic qits-1580): {@code
+   * CREATED}, {@code JOINED} or {@code PRESENT}, whether the request is queued behind a frozen one,
+   * and a sentence saying so, beside the whole {@link ReleaseRequestDto}.
+   *
+   * <p><b>The soft feature freeze</b> (epic qits-1580) decides which request a branch joins: the
+   * repository's active request takes its project's {@code release_requests.feature_freeze} feature
+   * branches, and a further one lands in the request queued behind it, which holds — no fold, no
+   * gate — until the active request has released or been withdrawn. Fixes and maintenance branches
+   * always join the active request. {@code ReleaseRequests.place} is the rule.
    *
    * <p><b>Joining is the case worth reading about.</b> A repository has at most one open request,
    * whatever its archetype (qits-552), so two workspaces releasing one repository on the same night
@@ -196,14 +206,21 @@ public class ReleaseRequestController {
               + " ReleaseRequestChanged with preRun=PENDING while its release-request automations"
               + " (the pre-run) settle, and with preRun=DONE once per fold when they are fresh or"
               + " waived; QA builds on DONE only, and preRun.state on the answer says where the"
-              + " pre-run stands.")
+              + " pre-run stands. The soft feature freeze: once the repository's active request"
+              + " holds the project's release_requests.feature_freeze feature branches (tickets that"
+              + " are not bugs, epics, tasks; default 3) it is frozen, and a further feature branch"
+              + " lands in the one request queued behind it, which folds nothing and runs no gate"
+              + " until the active request has released or been withdrawn. Bugs, maintenance"
+              + " branches and main always join the active request. placement says what happened:"
+              + " outcome CREATED, JOINED or PRESENT, queued, and a one-sentence detail.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
     requireAgentProject(repoId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new CreateReleaseRequest.Response(
-        releaseRequests.request(
-            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.ask(
+            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority());
+    return new CreateReleaseRequest.Response(asked.request(), asked.placement());
   }
 
   /**
@@ -214,7 +231,11 @@ public class ReleaseRequestController {
    */
   public static record AddReleaseRequestSource(
       @NotBlank String branch, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580) — the request named, or the
+     *     one queued behind it where the named request is frozen and the branch is a feature
+     */
+    public record Response(ReleaseRequestDto request, PlacementDto placement) {}
   }
 
   @POST
@@ -227,7 +248,10 @@ public class ReleaseRequestController {
               + " gates are re-armed onto it. Idempotent: a branch already on the request answers"
               + " the request unchanged. A RELEASED or WITHDRAWN request answers 409. Implicit tag"
               + " sources are not addable — they are derived from what the repository has in"
-              + " flight.")
+              + " flight. Where the named request is the repository's active one, frozen at its"
+              + " project's feature freeze, and the branch is a feature it does not hold, the branch"
+              + " is redirected to the request queued behind it (joined, or minted queued), and the"
+              + " answer is that request with placement.queued true; it is not refused.")
   public AddReleaseRequestSource.Response addSource(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -235,9 +259,9 @@ public class ReleaseRequestController {
     requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new AddReleaseRequestSource.Response(
-        releaseRequests.addSource(
-            requestId, body.branch(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.join(requestId, body.branch(), actorFor(body.requester()), body.priority());
+    return new AddReleaseRequestSource.Response(asked.request(), asked.placement());
   }
 
   /**

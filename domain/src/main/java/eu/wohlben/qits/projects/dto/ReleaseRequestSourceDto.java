@@ -33,6 +33,17 @@ package eu.wohlben.qits.projects.dto;
  * question a reader of that request actually has — the request's own {@code requester} is only the
  * person who opened it. Null where nobody is recorded: the implied {@code main} of a machine-made
  * create, every implicit tag source, and any row written before this field existed.
+ *
+ * <p><b>{@code feature} says the branch carries a feature</b> (epic qits-1580): its work item is a
+ * ticket that is not a bug, an epic or a task. Classified once, when the source was added, and what
+ * the request's feature freeze counts. False on {@code main}, on maintenance and release branches, on
+ * every implicit tag source, and on every row added before the freeze existed.
  */
 public record ReleaseRequestSourceDto(
-    String kind, String name, String ref, boolean implicit, String priority, String addedBy) {}
+    String kind,
+    String name,
+    String ref,
+    boolean implicit,
+    String priority,
+    String addedBy,
+    boolean feature) {}

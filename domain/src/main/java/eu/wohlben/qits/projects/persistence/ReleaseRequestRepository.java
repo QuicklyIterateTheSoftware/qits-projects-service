@@ -200,6 +200,32 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
   }
 
   /**
+   * The unreleased request queued behind {@code id} (epic qits-1580), if any — there is at most one
+   * by construction, and the oldest wins should a legacy repository hold more.
+   */
+  public Optional<ReleaseRequest> findQueuedBehind(String id) {
+    return find("queuedBehind = ?1 and state in ?2 order by createdAt", id, UNRELEASED)
+        .firstResultOptional();
+  }
+
+  /**
+   * The unreleased requests queued behind any of {@code ids}, for a page of rows — one query, where
+   * asking per row would be a query per request (epic qits-1580).
+   */
+  public List<ReleaseRequest> listQueuedBehindAny(Collection<String> ids) {
+    if (ids.isEmpty()) {
+      return List.of();
+    }
+    return list(
+        "queuedBehind in ?1 and state in ?2 order by createdAt", ids, UNRELEASED);
+  }
+
+  /** Every unreleased request that is queued behind another (epic qits-1580), oldest first. */
+  public List<ReleaseRequest> listQueued() {
+    return list("queuedBehind is not null and state in ?1 order by createdAt", UNRELEASED);
+  }
+
+  /**
    * The repository's requests that have released and not been finalized, oldest first — what a fresh
    * request of the same repository <b>waits behind</b> before READY, or <b>obsoletes</b> where one
    * went red (qits-1471). See {@code ReleaseRequests.releasedSiblingsOf}.

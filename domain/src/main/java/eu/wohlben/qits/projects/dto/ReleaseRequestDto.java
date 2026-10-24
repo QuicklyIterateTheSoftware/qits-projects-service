@@ -162,6 +162,15 @@ import java.util.List;
  * release-request automations that run before QA is asked for; see {@link ReleasePreRunDto}. Never
  * null. While it is neither {@code PASSED} nor {@code WAIVED} on a PENDING request, the pipeline's QA
  * phase reads {@code WAITING_FOR_PRE_RUN}.
+ *
+ * <p><b>The queue fields are the soft feature freeze</b> (epic qits-1580). {@code queuedBehind} (and
+ * its {@code queuedBehindQualifiedId}) names the active request this one is queued behind: it holds
+ * the feature branches that arrived after that one froze, stays PENDING, folds nothing — {@code
+ * mergedSha} is null — and runs no gate until that request has left the unreleased states. {@code
+ * queuedNext} (and {@code queuedNextQualifiedId}) is the reverse link: the request queued behind
+ * this one, if any. Both are null on every request outside a queue. {@code featureFreeze} counts the
+ * feature sources against the project's threshold and says whether this request is frozen; see
+ * {@link FeatureFreezeDto}. Never null.
  */
 public record ReleaseRequestDto(
     String id,
@@ -197,4 +206,9 @@ public record ReleaseRequestDto(
     Instant updatedAt,
     ReleasePipelineDto pipeline,
     List<ReleaseQualityGateDto> qualityGates,
-    ReleasePreRunDto preRun) {}
+    ReleasePreRunDto preRun,
+    String queuedBehind,
+    String queuedBehindQualifiedId,
+    String queuedNext,
+    String queuedNextQualifiedId,
+    FeatureFreezeDto featureFreeze) {}

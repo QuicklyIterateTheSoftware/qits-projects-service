@@ -911,18 +911,30 @@ public class PhaseAdvance {
       List<String> refused) {
     try {
       ReleaseRequestDto request =
-          releaseRequests.request(
-              repoId,
-              branch,
-              summary,
-              requester,
-              // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
-              // nothing to state — the entity carries no urgency a release could read.
-              null);
+          releaseRequests
+              .ask(
+                  repoId,
+                  branch,
+                  summary,
+                  requester,
+                  // No priority: MEDIUM is what a caller who states nothing gets, and this caller
+                  // has nothing to state — the entity carries no urgency a release could read.
+                  null)
+              .request();
       LOG.infof(
           "%s %s is VERIFIED: release request %s now carries %s",
           entity.archetype, entity.id, request.id(), branch);
-      asked.add("`" + branch + "` (release request " + request.qualifiedId() + ")");
+      // A request queued behind a frozen one (epic qits-1580) is named as such, so the thread does
+      // not read as though the release were under way.
+      asked.add(
+          "`"
+              + branch
+              + "` (release request "
+              + request.qualifiedId()
+              + (request.queuedBehindQualifiedId() == null
+                  ? ""
+                  : ", queued behind " + request.queuedBehindQualifiedId())
+              + ")");
     } catch (RuntimeException e) {
       // The refusal arm's rule: name what did not happen, carry the far side's own reason, and
       // claim nothing that did.
