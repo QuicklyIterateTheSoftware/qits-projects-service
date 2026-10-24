@@ -264,7 +264,10 @@ erDiagram
     long number "not null"
     string project_id
     string qa_announced_sha
+    string qa_interrupted_sha
     string qualified_id "not null"
+    instant refold_owed_at
+    string refold_owed_reason
     string rejecting_gate
     string rejecting_run_id
     string repo_id "not null"
