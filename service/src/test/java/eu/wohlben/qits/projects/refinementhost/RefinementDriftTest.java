@@ -112,12 +112,25 @@ public class RefinementDriftTest {
     throw new AssertionError("the drift pool never went quiet");
   }
 
+  /**
+   * Let the pass the open's own projection scheduled land, so a later {@code forget} starts from a
+   * row with nothing known and nothing in flight. {@code compute} always writes a snapshot (UNKNOWN
+   * on failure), so presence is the landing.
+   */
+  private void awaitOpenPassLanded(long id) {
+    await(
+        "the open's drift pass never landed for refinement " + id,
+        () -> drift.peek(id).isPresent());
+    awaitQuiet();
+  }
+
   @Test
   public void theReadAnswersWithDriftUnknownRatherThanWaitingForIt() {
     long id = refinementFor("Drift Fresh", "Fresh Drift Epic");
 
-    // Whatever the create's own projection may already have computed, this is the state a brand-new
-    // refinement is genuinely in: nothing known, mirror possibly cold.
+    // Await the open's own drift pass first, so forget leaves nothing known and nothing in flight —
+    // the state a brand-new refinement is genuinely in: nothing known, mirror possibly cold.
+    awaitOpenPassLanded(id);
     drift.forget(id);
 
     RefinementService.RefinementView view = service.view(service.get(id));
@@ -133,6 +146,7 @@ public class RefinementDriftTest {
   public void driftStillArrives_justNotOnTheReadPath() {
     long id = refinementFor("Drift Arrives", "Arriving Drift Epic");
 
+    awaitOpenPassLanded(id);
     drift.forget(id);
     service.view(service.get(id)); // schedules the pass; computes nothing here
 
@@ -152,6 +166,7 @@ public class RefinementDriftTest {
   public void repeatedReadsInsideTheWindowDoNoGitWorkAtAll() {
     long id = refinementFor("Drift Cheap", "Cheap Drift Epic");
 
+    awaitOpenPassLanded(id);
     drift.forget(id);
     service.view(service.get(id));
     await("drift never arrived for refinement " + id, () -> drift.peek(id).isPresent());
@@ -169,7 +184,7 @@ public class RefinementDriftTest {
   @Test
   public void arrivingDriftInvalidatesTheRowOverTheExistingGitStatusHint() {
     long id = refinementFor("Drift Hint", "Hinting Drift Epic");
-    awaitQuiet();
+    awaitOpenPassLanded(id);
 
     List<String> topics = new CopyOnWriteArrayList<>();
     var subscription = broadcaster.subscribe(id).subscribe().with(topics::add);
