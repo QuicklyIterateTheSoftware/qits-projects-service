@@ -49,7 +49,9 @@ import org.junit.jupiter.api.Test;
  * manual-review} only work-item branches whose items are VERIFYING (qits-1560), VERIFIED or DONE;
  * for an {@code automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}),
  * and a {@code config-directory} one (qits-1560), a member repository, never the wrapper, whose work
- * items are IMPLEMENTING or later. A desk approval's note names the rule; the desk never declines.
+ * items are IMPLEMENTING or later; for a listed {@code no-changes} (qits-1568) the {@code
+ * manual-review-verified} rule plus a branch naming a work item. A desk approval's note names the
+ * rule; the desk never declines.
  *
  * <p>The suite of {@link ReleaseRequestApprovalRolesTest}, booted the same way ({@link
  * PersonGateIdpTenant}), so the desk's bearer is a real token validated against the mock idp.
@@ -373,6 +375,131 @@ public class ReleaseRequestDeskApprovalTest {
             "approvals[0].note",
             equalTo(
                 "delivery desk, rule manual-review-verified: the interval probe the ticket plans"));
+  }
+
+  // ---- no-changes (qits-1568) -------------------------------------------------------------------
+
+  /**
+   * qits-1568, the owner's example (qits-qits-rr-194): a VERIFIED ticket's work lives elsewhere, so
+   * the {@code manual-review: true} request's fold adds nothing to main. With {@code no-changes}
+   * listed beside {@code manual-review}, both holds admit the desk, and one approval under {@code
+   * manual-review-verified} satisfies both. (A {@code PROJECT}-archetype wrapper's empty fold is
+   * held or withdrawn before approval by the qits-1273 backstop, so the suite stages the same holds
+   * on a member repository configured {@code manual-review: true}.)
+   */
+  @Test
+  void theDeskApprovesAManualReviewRequestThatAddsNothingForAVerifiedItem() {
+    approves("manual-review", "no-changes");
+    status(ticket, "VERIFIED");
+    String id = createEmptyManualReview(ticketBranch);
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    JsonPath held = request(memberRepoId, id);
+    assertEquals(
+        List.of("manual-review", "no-changes"),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("desk", "person"), held.getList("approvalRequirements[1].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"work shipped in its submodules\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalRequirements[1].satisfied", equalTo(true))
+        .body("request.approvalState", equalTo("APPROVED"));
+    person("ada")
+        .get(base(memberRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body(
+            "approvals[0].note",
+            equalTo("delivery desk, rule manual-review-verified: work shipped in its submodules"));
+  }
+
+  /**
+   * qits-1568: an empty release with no work to resolve stays the owner's. A main-only request of a
+   * member repository that adds nothing holds {@code no-changes} alone; listed, it admits the desk,
+   * and the door refuses it under {@code manual-review-verified} — never the looser member rule —
+   * because no branch names a work item.
+   */
+  @Test
+  void aMainOnlyRequestThatAddsNothingIsRefusedNamingTheRule() {
+    approves("no-changes");
+    foldChanges.changes(memberRepoId, List.of());
+    foldChanges.empty(memberRepoId);
+    String id = createMainOnly(memberRepoId);
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    JsonPath held = request(memberRepoId, id);
+    assertEquals(List.of("no-changes"), held.getList("approvalRequirements.id", String.class));
+    assertEquals(
+        List.of("desk", "person"), held.getList("approvalRequirements[0].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule manual-review-verified"))
+        .body("message", containsString("names a work item of this project"));
+  }
+
+  /** qits-1568: a maintenance/* source names no work either, so an empty bump stays the owner's. */
+  @Test
+  void aMaintenanceOnlyRequestThatAddsNothingIsRefused() {
+    approves("no-changes");
+    foldChanges.changes(memberRepoId, List.of());
+    foldChanges.empty(memberRepoId);
+    String id = create(memberRepoId, "maintenance/bump-" + UUID.randomUUID());
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule manual-review-verified"))
+        .body("message", containsString("names a work item of this project"));
+  }
+
+  /**
+   * qits-1568: not listed, {@code no-changes} admits a person alone. The desk's approval satisfies
+   * {@code manual-review}, and the empty fold still waits on a person.
+   */
+  @Test
+  void noChangesTheProjectDoesNotListStaysAPersons() {
+    approves("manual-review");
+    status(ticket, "VERIFIED");
+    String id = createEmptyManualReview(ticketBranch);
+    String fold = mergedShaOf(memberRepoId, id);
+    verdict(memberRepoId, fold);
+
+    JsonPath held = request(memberRepoId, id);
+    assertEquals(
+        List.of("manual-review", "no-changes"),
+        held.getList("approvalRequirements.id", String.class));
+    assertEquals(List.of("person"), held.getList("approvalRequirements[1].admits", String.class));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true))
+        .body("request.approvalRequirements[1].satisfied", equalTo(false));
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(memberRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("no-changes"))
+        .body("message", containsString("admits person"));
   }
 
   /** A branch naming no work item (nor maintenance/*) is not the desk's either. */
@@ -792,6 +919,36 @@ public class ReleaseRequestDeskApprovalTest {
         person("ada")
             .body(
                 "{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"wohlben\"}")
+            .post(base(repoId))
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("request.id");
+    requestIds.add(id);
+    return id;
+  }
+
+  /**
+   * A request of the member repository, configured {@code manual-review: true} at its main as
+   * {@code qits-agent-config} is, whose fold adds nothing to main.
+   */
+  private String createEmptyManualReview(String branch) {
+    gitHost.gatedTreeFor(
+        memberRepoId,
+        "refs/heads/main",
+        Map.of(
+            "README.md", "a member",
+            ".config/qits/release-requests.yml", "manual-review: true\n"));
+    foldChanges.changes(memberRepoId, List.of());
+    foldChanges.empty(memberRepoId);
+    return create(memberRepoId, branch);
+  }
+
+  /** A main-only request: its one source is main, whose tree the seed staged and this keeps. */
+  private String createMainOnly(String repoId) {
+    String id =
+        person("ada")
+            .body("{\"branch\":\"main\",\"summary\":\"a release\",\"requester\":\"wohlben\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)

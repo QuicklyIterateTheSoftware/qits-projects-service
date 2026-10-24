@@ -212,8 +212,9 @@ class ProjectConfigParserTest {
 
   /**
    * Every malformed value throws, naming the file and the key — the reconcile then keeps the stored
-   * settings. {@code no-changes} is a requirement the desk may never satisfy, so naming it is
-   * malformed too ({@code config-directory} is approvable since qits-1560).
+   * settings. {@code recorded} is a requirement the desk may never satisfy, so naming it is
+   * malformed too ({@code config-directory} is approvable since qits-1560, {@code no-changes} since
+   * qits-1568).
    */
   @Test
   void aMalformedDeliveryThrows() {
@@ -230,11 +231,12 @@ class ProjectConfigParserTest {
       {"front_desk:\n  delivery:\n    max_running: 'two'\n", "front_desk.delivery.max_running"},
       {"front_desk:\n  delivery:\n    start_refined: 'false'\n", "front_desk.delivery.start_refined"},
       {"front_desk:\n  delivery:\n    approves: manual-review\n", "front_desk.delivery.approves"},
-      {"front_desk:\n  delivery:\n    approves: [no-changes]\n", "front_desk.delivery.approves"},
+      {"front_desk:\n  delivery:\n    approves: [recorded]\n", "front_desk.delivery.approves"},
       {
-        "front_desk:\n  delivery:\n    approves: [manual-review, no-changes]\n",
+        "front_desk:\n  delivery:\n    approves: [manual-review, recorded]\n",
         "front_desk.delivery.approves"
       },
+      {"front_desk:\n  delivery:\n    approves: [No-Changes]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [Manual-Review]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [1]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    interval: 10m\n", "front_desk.delivery.interval"},
@@ -253,14 +255,19 @@ class ProjectConfigParserTest {
 
   /**
    * qits-1517: {@code automation} and {@code contract} name a family of requirements and are
-   * approvable; qits-1560 added {@code config-directory}; {@code no-changes}, {@code recorded} and
-   * a family member's own id are not.
+   * approvable; qits-1560 added {@code config-directory}, qits-1568 {@code no-changes}; {@code
+   * recorded} and a family member's own id are not.
    */
   @Test
   void automationAndContractAreApprovableAndNothingElseIs() {
     assertEquals(
         Set.of(
-            "automation", "contract", "manual-review", "artifact-declarations", "config-directory"),
+            "automation",
+            "contract",
+            "manual-review",
+            "artifact-declarations",
+            "config-directory",
+            "no-changes"),
         DeliverySettings.APPROVABLE);
     assertEquals(
         Set.of("automation", "contract"),
@@ -270,8 +277,8 @@ class ProjectConfigParserTest {
             .approves());
     for (String refused :
         new String[] {
-          "no-changes", "recorded", "automation:entity-diagram", "contract:qits", "Automation",
-          "Config-Directory"
+          "recorded", "automation:entity-diagram", "contract:qits", "Automation", "Config-Directory",
+          "No-Changes", "no_changes"
         }) {
       ProjectConfigException e =
           assertThrows(
@@ -299,12 +306,34 @@ class ProjectConfigParserTest {
         parser
             .parse(
                 "front_desk:\n  delivery:\n    approves: [manual-review, artifact-declarations,"
-                    + " automation, contract, config-directory]\n")
+                    + " automation, contract, config-directory, no-changes]\n")
             .delivery();
     assertEquals(DeliverySettings.APPROVABLE, all.approves());
     assertEquals(
         Set.of("config-directory", "manual-review"),
         DeliverySettings.approvesOf("config-directory manual-review"));
+  }
+
+  /** qits-1568: {@code no-changes} is accepted, alone and beside manual-review, and round-trips. */
+  @Test
+  void noChangesIsApprovable() {
+    assertEquals(
+        Set.of("no-changes"),
+        parser
+            .parse("front_desk:\n  delivery:\n    approves: [no-changes]\n")
+            .delivery()
+            .approves());
+    DeliverySettings wrapper =
+        parser
+            .parse(
+                "front_desk:\n  delivery:\n    enabled: true\n    approves: [manual-review,"
+                    + " no-changes]\n")
+            .delivery();
+    assertEquals(Set.of("manual-review", "no-changes"), wrapper.approves());
+    assertEquals("manual-review no-changes", wrapper.approvesColumn());
+    assertEquals(
+        Set.of("manual-review", "no-changes"),
+        DeliverySettings.approvesOf("manual-review no-changes"));
   }
 
   /** The approves column round-trips, sorted and space-separated. */

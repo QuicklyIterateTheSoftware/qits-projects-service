@@ -70,11 +70,12 @@ public record ProjectConfig(
    * project.yml}: whether the desk runs it, how many items it keeps running at once, whether it may
    * start a REFINED item itself, which approval requirements it may satisfy, and how often it ticks.
    *
-   * <p>{@code approves} is a subset of {@link #APPROVABLE} — never {@code no-changes} or {@code
-   * recorded}, which the desk may never satisfy. The parser refuses anything else, so a record
-   * holding one was built by hand. Three of its names are requirement ids ({@code manual-review},
-   * {@code artifact-declarations} and, from qits-1560, {@link #CONFIG_DIRECTORY} — the fold changes
-   * {@code .config/qits/}, never the fail-closed readings that reuse its id); the other two name a
+   * <p>{@code approves} is a subset of {@link #APPROVABLE} — never {@code recorded}, which the desk
+   * may never satisfy. The parser refuses anything else, so a record holding one was built by hand.
+   * Four of its names are requirement ids ({@code manual-review}, {@code artifact-declarations},
+   * from qits-1560 {@link #CONFIG_DIRECTORY} — the fold changes {@code .config/qits/}, never the
+   * fail-closed readings that reuse its id — and from qits-1568 {@link #NO_CHANGES}, the fold adds
+   * nothing to main, which the desk clears only for a request naming its work); the other two name a
    * family (qits-1517): {@link #AUTOMATION} admits the desk to the {@code automation:<kind>}
    * requirements, and {@link #CONTRACT} to the {@code contract:<slug>} requirements whose consumer
    * is the request's own project. {@code ApprovalPolicy.admitDesk} is where the names are read.
@@ -130,13 +131,27 @@ public record ProjectConfig(
     public static final String CONFIG_DIRECTORY = "config-directory";
 
     /**
-     * The names {@code approves} may hold: the three requirement ids the delivery desk may satisfy
-     * ({@link #CONFIG_DIRECTORY} from qits-1560), and the two families ({@link #AUTOMATION}, {@link
-     * #CONTRACT}) it may be admitted to. {@code no-changes} and {@code recorded} are never among
-     * them.
+     * {@code approves} naming the {@code no-changes} requirement a fold adding nothing to main
+     * carries (qits-1568): a wrapper request for a VERIFIED item whose work lives only in
+     * submodules, its pins already fresh. The desk clears it only for a request whose branches name
+     * a work item of its project; an empty release with no work stays the owner's.
+     */
+    public static final String NO_CHANGES = "no-changes";
+
+    /**
+     * The names {@code approves} may hold: the four requirement ids the delivery desk may satisfy
+     * ({@link #CONFIG_DIRECTORY} from qits-1560, {@link #NO_CHANGES} from qits-1568), and the two
+     * families ({@link #AUTOMATION}, {@link #CONTRACT}) it may be admitted to. {@code recorded} is
+     * never among them.
      */
     public static final Set<String> APPROVABLE =
-        Set.of("manual-review", "artifact-declarations", CONFIG_DIRECTORY, AUTOMATION, CONTRACT);
+        Set.of(
+            "manual-review",
+            "artifact-declarations",
+            CONFIG_DIRECTORY,
+            NO_CHANGES,
+            AUTOMATION,
+            CONTRACT);
 
     /** No {@code front_desk.delivery}: everything off, every value at its default. */
     public static final DeliverySettings OFF =

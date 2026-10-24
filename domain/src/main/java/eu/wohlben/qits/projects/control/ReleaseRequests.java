@@ -1434,7 +1434,8 @@ public class ReleaseRequests {
                       deskRead == null ? List.of() : deskRead.qualityGates(),
                       sources.listByRequest(row.id),
                       mainOf(row.repoId),
-                      archetypeOf(row.repoId));
+                      archetypeOf(row.repoId),
+                      concerned);
                   recordedNote = DeskApprovalPolicy.note(rule.get(), said);
                 }
               }
