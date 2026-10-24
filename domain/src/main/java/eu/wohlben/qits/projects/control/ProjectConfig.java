@@ -21,12 +21,15 @@ import java.util.TreeSet;
  *         start_refined: false
  *         approves: [manual-review]
  *         interval: PT10M
+ *     release_requests:
+ *       feature_freeze: 3
  * </pre>
  *
  * <p>One component per key — the shape {@link ReleaseRequestSettings} has for the repository-level
  * file beside it. {@code frontDeskLifecycle} is never null: absent means {@link
  * FrontDeskLifecycle#ON_DEMAND}; {@code delivery} is never null either: absent means {@link
- * DeliverySettings#OFF}.
+ * DeliverySettings#OFF}; nor is {@code releaseRequests}: absent means {@link
+ * ReleaseRequestsSettings#DEFAULT}.
  *
  * <p><b>{@link #DEFAULT} is what an absent file means, and it is not a degraded answer.</b> Every
  * project on this platform predates the file and every one of them is deployed once per
@@ -39,7 +42,8 @@ import java.util.TreeSet;
 public record ProjectConfig(
     boolean supportsEnvironments,
     FrontDeskLifecycle frontDeskLifecycle,
-    DeliverySettings delivery) {
+    DeliverySettings delivery,
+    ReleaseRequestsSettings releaseRequests) {
 
   public ProjectConfig {
     if (frontDeskLifecycle == null) {
@@ -48,11 +52,57 @@ public record ProjectConfig(
     if (delivery == null) {
       delivery = DeliverySettings.OFF;
     }
+    if (releaseRequests == null) {
+      releaseRequests = ReleaseRequestsSettings.DEFAULT;
+    }
+  }
+
+  /** The keys that predate {@code release_requests}; the feature freeze is its default. */
+  public ProjectConfig(
+      boolean supportsEnvironments,
+      FrontDeskLifecycle frontDeskLifecycle,
+      DeliverySettings delivery) {
+    this(supportsEnvironments, frontDeskLifecycle, delivery, ReleaseRequestsSettings.DEFAULT);
   }
 
   /** The two keys that predate {@code front_desk.delivery}; the delivery loop is off. */
   public ProjectConfig(boolean supportsEnvironments, FrontDeskLifecycle frontDeskLifecycle) {
     this(supportsEnvironments, frontDeskLifecycle, DeliverySettings.OFF);
+  }
+
+  /**
+   * The project's release requests (epic qits-1580), {@code release_requests} in {@code
+   * project.yml}. Not {@link ReleaseRequestSettings}, which is the repository-level {@code
+   * release-requests.yml}: this is what one project decides for every request of its repositories.
+   *
+   * @param featureFreeze the soft feature freeze — how many feature sources an active request takes
+   *     before a further feature branch queues behind it, {@link #MIN_FEATURE_FREEZE}..{@link
+   *     #MAX_FEATURE_FREEZE}; absent is {@link #DEFAULT_FEATURE_FREEZE}
+   */
+  public record ReleaseRequestsSettings(int featureFreeze) {
+
+    /** The smallest freeze: one feature per request. */
+    public static final int MIN_FEATURE_FREEZE = 1;
+
+    /** The largest freeze. */
+    public static final int MAX_FEATURE_FREEZE = 20;
+
+    /** {@code feature_freeze} when absent, and the column's default (V54). */
+    public static final int DEFAULT_FEATURE_FREEZE = 3;
+
+    /** No {@code release_requests}: every value at its default. */
+    public static final ReleaseRequestsSettings DEFAULT =
+        new ReleaseRequestsSettings(DEFAULT_FEATURE_FREEZE);
+
+    /** The settings {@code project}'s columns hold. */
+    public static ReleaseRequestsSettings of(Project project) {
+      return new ReleaseRequestsSettings(project.releaseFeatureFreeze);
+    }
+
+    /** Write these settings onto {@code project}'s columns. */
+    public void applyTo(Project project) {
+      project.releaseFeatureFreeze = featureFreeze;
+    }
   }
 
   /**

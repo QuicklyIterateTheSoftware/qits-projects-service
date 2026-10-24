@@ -346,6 +346,13 @@ public class ReleaseRequests {
   /** The rest of the owner's rule for a delivery-desk approval (epic qits-1440). */
   @Inject DeskApprovalPolicy deskApprovals;
 
+  /**
+   * Whether a source's branch is a feature, stamped on its row (epic qits-1580). Asked <b>before</b>
+   * the transaction that adds the row: it reads the epics database in transactions of its own, and
+   * the create holds the repository's row lock while it runs.
+   */
+  @Inject FeatureBranches featureBranches;
+
   @Inject ReleaseRequestApprovalRepository approvals;
 
   /** Approval roles written down and read back, with project slugs (epic qits-1038). */
@@ -650,6 +657,9 @@ public class ReleaseRequests {
     // whether a deployment failed is an HTTP read into qits-deployments (qits-1471). A release in
     // flight is not in it and is left RELEASED; evaluate() holds the fresh request behind it.
     Map<String, String> red = redOf(releasedSiblingsOf(repoId, null));
+    // Read HERE for the same reason: the classification reads the epics database (qits-1580).
+    boolean namedFeature = featureBranches.isFeature(named);
+    boolean mainFeature = featureBranches.isFeature(main);
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
@@ -672,7 +682,7 @@ public class ReleaseRequests {
                     if (participating == null) {
                       // A branch nothing has asked about joins the repository's one open request
                       // instead of opening a second.
-                      addSourceRow(open.id, named, requester, orDefault(stated));
+                      addSourceRow(open.id, named, requester, orDefault(stated), namedFeature);
                       why.set("a source was added: " + named);
                     } else {
                       if (stated != null) {
@@ -715,9 +725,10 @@ public class ReleaseRequests {
                       fresh.id,
                       main,
                       null,
-                      mainWasNamed ? orDefault(stated) : ReleasePriority.DEFAULT);
+                      mainWasNamed ? orDefault(stated) : ReleasePriority.DEFAULT,
+                      mainFeature);
                   if (!mainWasNamed) {
-                    addSourceRow(fresh.id, named, requester, orDefault(stated));
+                    addSourceRow(fresh.id, named, requester, orDefault(stated), namedFeature);
                   }
                   ended.addAll(obsolete(repoId, fresh, red));
                   qualified.set(fresh.qualifiedId);
@@ -1100,6 +1111,8 @@ public class ReleaseRequests {
       String requestId, String branch, String actor, String priority) {
     String named = requireBranch(branch);
     ReleasePriority stated = statedPriority(priority);
+    // Before the transaction: the classification reads the epics database (qits-1580).
+    boolean feature = featureBranches.isFeature(named);
     boolean added =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1114,7 +1127,7 @@ public class ReleaseRequests {
                     }
                     return false;
                   }
-                  addSourceRow(row.id, named, actor, orDefault(stated));
+                  addSourceRow(row.id, named, actor, orDefault(stated), feature);
                   row.updatedAt = Instant.now();
                   return true;
                 });
@@ -6431,8 +6444,12 @@ public class ReleaseRequests {
     return List.copyOf(refs);
   }
 
+  /**
+   * @param feature whether {@code branch} is a feature ({@link FeatureBranches}), classified by the
+   *     caller before its transaction opened
+   */
   private void addSourceRow(
-      String requestId, String branch, String actor, ReleasePriority priority) {
+      String requestId, String branch, String actor, ReleasePriority priority, boolean feature) {
     ReleaseRequestSource source = new ReleaseRequestSource();
     source.id = UUID.randomUUID().toString();
     source.requestId = requestId;
@@ -6441,6 +6458,7 @@ public class ReleaseRequests {
     source.addedAt = Instant.now();
     source.addedBy = actor;
     source.priority = priority;
+    source.feature = feature;
     sources.persist(source);
   }
 

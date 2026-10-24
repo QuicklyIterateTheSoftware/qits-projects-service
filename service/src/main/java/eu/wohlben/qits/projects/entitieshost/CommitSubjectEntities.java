@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.entitieshost;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.TicketType;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.LinkedHashSet;
@@ -231,6 +232,9 @@ public class CommitSubjectEntities {
    *     and a TASK's being where that piece stands rather than its epic's phase. A consumer gating on
    *     a status must read the archetype first
    * @param title the label, for the message a consumer writes about it
+   * @param ticketType a ticket's {@code BUG}, {@code IMPROVEMENT} or {@code MAINTENANCE} (epic
+   *     qits-1580, for the feature classification); null on every other archetype and on a ticket
+   *     that never said
    */
   public record NamedEntity(
       String id,
@@ -240,5 +244,6 @@ public class CommitSubjectEntities {
       long number,
       Archetype archetype,
       String status,
-      String title) {}
+      String title,
+      TicketType ticketType) {}
 }

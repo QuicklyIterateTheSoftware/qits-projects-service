@@ -400,6 +400,14 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String supersededBy;
 
   /**
+   * The active request this one is <b>queued behind</b> (epic qits-1580, V54): it holds a feature
+   * branch the soft feature freeze kept out of that request, and waits for it. Null on every request
+   * that is not queued. A plain id with no foreign key, for {@link #supersededBy}'s reason.
+   */
+  @Column(name = "queued_behind")
+  public String queuedBehind;
+
+  /**
    * The ticket filed because this request's gate went red with <b>nobody watching</b> — see {@code
    * UnattendedGateTickets}. Null on every request that has never been rejected unattended, and it is
    * the dedupe key: a further red verdict is a comment on this ticket rather than a second one.

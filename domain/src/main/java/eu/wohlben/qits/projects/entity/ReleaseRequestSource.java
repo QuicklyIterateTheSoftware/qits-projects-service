@@ -79,6 +79,14 @@ public class ReleaseRequestSource extends PanacheEntityBase implements CausedRow
   @Column(name = "added_by")
   public String addedBy;
 
+  /**
+   * Whether the work item this branch names is a <b>feature</b> (epic qits-1580, V54) — what the
+   * soft feature freeze counts. Stamped once, when the source is added ({@code FeatureBranches}); a
+   * fix, and a branch naming no work item, is not one. Rows that predate the column are not.
+   */
+  @Column(nullable = false)
+  public boolean feature;
+
   @Column(name = "causation_id")
   public UUID causationId;
 

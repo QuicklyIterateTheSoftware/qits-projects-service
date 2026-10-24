@@ -426,4 +426,38 @@ public class WrapperProjectConfigReconcileTest {
     assertTrue(storedDeliveryOf(project.id).enabled(), "a typo may not switch the loop off");
     assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
   }
+
+  // -------------------------------------------------------------------------------------------
+  // release_requests.feature_freeze (epic qits-1580)
+  // -------------------------------------------------------------------------------------------
+
+  private int storedFeatureFreezeOf(String projectId) {
+    return io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .call(() -> projectService.get(projectId).releaseFeatureFreeze);
+  }
+
+  /**
+   * A new project's freeze is three; a stated one is stored and announces nothing; a malformed file
+   * keeps it; removing the key restores three.
+   */
+  @Test
+  public void theFeatureFreezeIsStoredAndAMalformedFileKeepsIt() throws Exception {
+    Project project = greenfield("projcfg-freeze");
+    assertEquals(3, storedFeatureFreezeOf(project.id));
+
+    projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 5\n");
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(5, storedFeatureFreezeOf(project.id));
+    assertEquals(List.of(), announcer.changedOf(project.id), "ProjectChanged carries no freeze");
+    assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
+
+    projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 0\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    assertEquals(5, storedFeatureFreezeOf(project.id), "a typo may not move the freeze");
+
+    projectYml.commit(wrapperOf(project), "supports_environments: true\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    assertEquals(3, storedFeatureFreezeOf(project.id));
+  }
 }
