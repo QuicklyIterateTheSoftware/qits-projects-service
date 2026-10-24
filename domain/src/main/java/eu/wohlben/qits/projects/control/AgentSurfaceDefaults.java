@@ -250,7 +250,7 @@ public final class AgentSurfaceDefaults {
    * maintenance automation, which gets no MAINTENANCE ticket of its own. The owner's rules are
    * enforced by the platform (the dispatch and approve doors, {@code .config/qits/project.yml}'s
    * {@code front_desk.delivery}); this text only tells the desk how to work inside them. A command
-   * that changes shape changes it here and in qits-1569 together. Editing it afterwards is the
+   * that changes shape changes it here and in qits-1560 together. Editing it afterwards is the
    * owner's business, through the editor.
    *
    * <p>Line breaks are the ticket's, kept as real newlines: the desk reads it as prose with
