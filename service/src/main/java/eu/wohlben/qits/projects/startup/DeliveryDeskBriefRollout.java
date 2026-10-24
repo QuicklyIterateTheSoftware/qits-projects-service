@@ -10,8 +10,8 @@ import java.util.List;
 import org.jboss.logging.Logger;
 
 /**
- * Rolls the delivery desk's new brief (qits-1569, before it qits-1560 and qits-1517) onto the
- * stored {@code project.delivery} row, where nobody edited an old one.
+ * Rolls the delivery desk's new brief (qits-1568, before it qits-1569, qits-1560 and qits-1517)
+ * onto the stored {@code project.delivery} row, where nobody edited an old one.
  *
  * <p><b>Why a boot step and not the seed.</b> {@link AgentSurfaceSeed} is insert-if-absent, so the
  * row it wrote under qits-1440 keeps {@link AgentSurfaceDefaults#PREVIOUS_DELIVERY_DESK_PROMPT}
@@ -21,7 +21,9 @@ import org.jboss.logging.Logger;
  * <p><b>Every earlier shipped text rolls, not only the last one</b> ({@link #PREVIOUS_BRIEFS}): a
  * row the qits-1517 rollout never reached still holds qits-1440's brief, one it did reach holds
  * qits-1517's ({@link AgentSurfaceDefaults#QITS_1517_DELIVERY_DESK_PROMPT}), and one the qits-1560
- * rollout reached holds qits-1560's ({@link AgentSurfaceDefaults#QITS_1560_DELIVERY_DESK_PROMPT}).
+ * rollout reached holds qits-1560's ({@link AgentSurfaceDefaults#QITS_1560_DELIVERY_DESK_PROMPT}),
+ * and one the qits-1569 rollout reached holds qits-1569's ({@link
+ * AgentSurfaceDefaults#QITS_1569_DELIVERY_DESK_PROMPT}).
  * Each is compared in turn, and the first that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
@@ -44,7 +46,8 @@ public class DeliveryDeskBriefRollout {
       List.of(
           AgentSurfaceDefaults.PREVIOUS_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1517_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1560_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_1560_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_1569_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 
@@ -67,7 +70,7 @@ public class DeliveryDeskBriefRollout {
       if (rewritten) {
         LOG.infof(
             "Rewrote agent surface configuration %s's system prompt from a previous shipped brief"
-                + " to the current one (qits-1569)",
+                + " to the current one (qits-1568)",
             surface);
       } else {
         LOG.infof(

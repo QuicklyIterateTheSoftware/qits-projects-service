@@ -1239,8 +1239,9 @@ delivery desk where the project lists it, qits-1560; also what an unreadable fol
 into, which stays a person's), `artifact-declarations` (the fold's only `.config/qits/`
 change is `release.yml` declaring `artifacts:` entries of type maven/npm/oci/docker/docs or the
 `contracts:` block — `person` or `agent`; `ReleaseDeclarations` is the rule), `no-changes`
-(qits-760, `person`), `automation:<kind>` (qits-1046, below) and `contract:<slug>` (qits-1291,
-below). A content source reads the fold through `ApprovalSubject`, lazily and once; a
+(qits-760, `person`, and the delivery desk where the project lists it, qits-1568),
+`automation:<kind>` (qits-1046, below) and `contract:<slug>` (qits-1291, below). A content
+source reads the fold through `ApprovalSubject`, lazily and once; a
 failed read throws `FoldUnreadable` and becomes a person-only requirement. Settled requests read no
 git: `manual-review` from configuration, else one satisfied `recorded` requirement with the recorded
 approval's roles. The display path stores the content requirements as JSON objects in
@@ -1269,7 +1270,8 @@ approval's roles. The display path stores the content requirements as JSON objec
   No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
   requirement the project's `front_desk.delivery.approves` admits (`ApprovalPolicy.deskAdmissible`),
   intersected with `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`,
-  `config-directory`, `automation`, `contract`). The first two name the requirement of that id;
+  `config-directory`, `no-changes`, `automation`, `contract`). `manual-review`,
+  `artifact-declarations` and (qits-1568) `no-changes` name the requirement of that id;
   since qits-1560 `config-directory` names the requirement of that id **only where its reason is
   `ConfigDirectorySource.REASON`** (`changes .config/qits/`) — the fail-closed readings that reuse
   the id (an unreadable fold, `FoldUnreadable`; a fold not read yet,
@@ -1277,16 +1279,21 @@ approval's roles. The display path stores the content requirements as JSON objec
   `automation` admits it to every `automation:<kind>` requirement that admits more than a person (the
   fail-closed `automation:catalogue` and unreadable-kind readings stay a person's), and `contract` to
   every `contract:<slug>` whose consumer project is the request's own (which `ContractChangeSource`
-  never opens today: a same-project consumer adds nothing). `no-changes` and `recorded` never
-  admit it. When a desk approves a requirement
-  through `desk`, `control/DeskApprovalPolicy` holds it to the owner's rule, each refusal a 403 naming
-  the rule (`manual-review-verified`, `artifact-declarations` or `member-ci-green`, picked in that
-  order): its own project only; every gate the
+  never opens today: a same-project consumer adds nothing). `recorded` never admits it. When a
+  desk approves a requirement through `desk`, `control/DeskApprovalPolicy` holds it to the owner's
+  rule, each refusal a 403 naming
+  the rule (`manual-review-verified` — for `manual-review`, then for a desk-admitted `no-changes` —
+  `artifact-declarations` or `member-ci-green`, picked in that order, so `no-changes` never falls to
+  the looser `member-ci-green`): its own project only; every gate the
   request's read reports before `approval` (order 300) PASSED; for `manual-review` every branch
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is
   VERIFYING, VERIFIED or DONE (VERIFYING since qits-1560, so a verify probe ships; the rule keeps
-  its id); and for an admitted `automation:*`/`contract:*` (`member-ci-green`, qits-1517) or
+  its id); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
+  too — a main-only or maintenance/*-only request that adds nothing has no work to resolve and stays
+  the owner's (qits-maintenance's `BumpDispatcher.openMainOnly` holds `no-changes` transiently until
+  its pre-run commits the branch); and for an admitted `automation:*`/`contract:*`
+  (`member-ci-green`, qits-1517) or
   `config-directory` (qits-1560; on the wrapper `manual-review` is always present and wins) the
   repository is not the wrapper (`PROJECT` archetype) and every such branch's item is IMPLEMENTING,
   IMPLEMENTED, VERIFYING, VERIFIED or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
@@ -2734,15 +2741,18 @@ defaults in `domain`; two controllers and the boot seed in `service`.
 - **`project.delivery` is the delivery desk (qits-1496, epic qits-1440).** The project's front desk
   runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
   order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
-  the one desk's fields with the brief qits-1517 wrote and qits-1560 amended as its system prompt
-  (`DELIVERY_DESK_PROMPT`: one judging rule — approve a change that is what the request's work
-  should change, `.config/qits/` included, ask the owner once per item otherwise — and no file or
-  category named the owner's) and `Run one pass of the delivery loop.` as its initial prompt. The
-  seed writes the row at boot; no migration. **The row is platform-wide and the seed never
-  overwrites it**, so the briefs that shipped before (qits-1440's dossier text as
-  `PREVIOUS_DELIVERY_DESK_PROMPT`, qits-1517's as `QITS_1517_DELIVERY_DESK_PROMPT`, each kept byte
-  for byte) are rolled forward by `startup/DeliveryDeskBriefRollout`, a boot step beside the seed: a
-  stored `project.delivery` prompt **exactly** equal to either previous text is rewritten to the
+  the one desk's fields with the brief qits-1517 wrote and qits-1560, qits-1569 and qits-1568
+  amended as its system prompt (`DELIVERY_DESK_PROMPT`: one judging rule — approve a change that is
+  what the request's work should change, `.config/qits/` included, ask the owner once per item
+  otherwise — and no file or category named the owner's; since qits-1568 step 4's approval of
+  verified work also clears `no-changes`) and `Run one pass of the delivery loop.` as its initial
+  prompt. The seed writes the row at boot; no migration. **The row is platform-wide and the seed
+  never overwrites it**, so the briefs that shipped before (qits-1440's dossier text as
+  `PREVIOUS_DELIVERY_DESK_PROMPT`, qits-1517's as `QITS_1517_DELIVERY_DESK_PROMPT`, qits-1560's
+  as `QITS_1560_DELIVERY_DESK_PROMPT`, qits-1569's as `QITS_1569_DELIVERY_DESK_PROMPT`, each kept
+  byte for byte) are rolled forward by `startup/DeliveryDeskBriefRollout`, a boot step beside the
+  seed: a
+  stored `project.delivery` prompt **exactly** equal to any previous text is rewritten to the
   current one through `AgentSurfaceConfigurationService.replaceSystemPromptIfUnedited` (every other
   field kept, one unattributed revision); any other text is an owner's edit and is left alone, and a
   row already current, or absent, is a no-op. A future brief change repeats the move: the outgoing

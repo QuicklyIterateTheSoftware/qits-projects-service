@@ -9,8 +9,12 @@ import java.util.List;
  * built, so the CI gate is vouched at once by that old run and the request could release before its
  * own QA run exists. Read as {@code git diff main...mergedSha} being empty ({@link
  * ApprovalSubject#addsNothingToMain()}). A person decides whether an empty release is wanted. A
- * {@code maintenance/*} bump is never held by it: its request is opened only for a branch ahead of
- * {@code main}.
+ * {@code maintenance/*} bump is held by it only transiently: qits-maintenance opens a main-only
+ * request ({@code BumpDispatcher.openMainOnly}) whose fold is main's head until the dependency-bump
+ * pre-run commits its branch, and the refold then drops it. A project may admit its delivery desk
+ * to it through {@code front_desk.delivery.approves} (qits-1568) — a wrapper request for a VERIFIED
+ * item whose work lives only in submodules adds nothing — and the desk's rule then still refuses a
+ * request naming no work item.
  */
 @ApplicationScoped
 public class NoChangesSource implements ApprovalRequirementSource {

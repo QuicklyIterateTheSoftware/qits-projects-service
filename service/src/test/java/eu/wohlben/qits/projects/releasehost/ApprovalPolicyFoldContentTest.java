@@ -220,7 +220,8 @@ public class ApprovalPolicyFoldContentTest {
    * {@code manual-review}, {@code artifact-declarations}, {@code automation}, {@code contract} —
    * never admits the desk to {@code no-changes} or {@code config-directory}: both stay a person's.
    * qits-1560: naming {@code config-directory} too admits the desk to a fold that changes {@code
-   * .config/qits/}, and still never to {@code no-changes}.
+   * .config/qits/}, and still not to {@code no-changes}. qits-1568: naming {@code no-changes}
+   * admits it to the empty fold as well.
    */
   @Test
   public void aWidenedApprovesListAdmitsTheDeskToConfigDirectoryOnlyWhenItIsNamed()
@@ -267,6 +268,18 @@ public class ApprovalPolicyFoldContentTest {
         List.of(ApprovalRequirement.person("no-changes", ApprovalPolicy.NO_CHANGES_DETAIL, null)),
         policy.requirementsFor(repo.id, emptyFold),
         "no-changes still admits a person alone");
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                Project.update(
+                    "deliveryApproves = ?1 where id = ?2",
+                    "artifact-declarations automation config-directory contract manual-review"
+                        + " no-changes",
+                    repo.project.id));
+    List<ApprovalRequirement> empty = policy.requirementsFor(repo.id, emptyFold);
+    assertEquals(List.of("no-changes"), ids(empty), empty.toString());
+    assertEquals(List.of(ApprovalRole.PERSON, ApprovalRole.DESK), empty.get(0).admits());
   }
 
   /** A repository with no row is settled history, and no rule holds it. */

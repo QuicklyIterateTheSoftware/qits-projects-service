@@ -75,9 +75,10 @@ import org.jboss.logging.Logger;
  * front_desk.delivery.approves} admits {@code desk} beside its own roles ({@link #admitDesk}). No
  * source knows the desk exists. The list is a subset of {@link
  * ProjectConfig.DeliverySettings#APPROVABLE} — {@code manual-review}, {@code
- * artifact-declarations}, {@code config-directory}, {@code automation} and {@code contract} — and
- * the admission intersects with that set again. {@code manual-review} and {@code
- * artifact-declarations} admit the desk to the requirement of that id; {@code config-directory}
+ * artifact-declarations}, {@code config-directory}, {@code no-changes}, {@code automation} and
+ * {@code contract} — and the admission intersects with that set again. {@code manual-review}, {@code
+ * artifact-declarations} and {@code no-changes} (qits-1568) admit the desk to the requirement of
+ * that id; {@code config-directory}
  * (qits-1560) to the requirement of that id only where its reason is {@link
  * ConfigDirectorySource#REASON} — the fold changes {@value #CONFIG_DIRECTORY} — and never to the
  * fail-closed readings that reuse the id (an unreadable fold, {@link FoldUnreadable}; a fold not
@@ -85,8 +86,8 @@ import org.jboss.logging.Logger;
  * automation} (qits-1517) to every {@code automation:<kind>} requirement that admits more than a
  * person (a fail-closed reading — {@code automation:catalogue}, an unreadable kind — admits a person
  * alone and stays a person's); {@code contract} (qits-1517) to every {@code contract:<slug>}
- * requirement whose consumer project is the request's own. {@code no-changes} and {@code recorded}
- * never admit the desk, whatever a row holds. Admitting is not approving: what the desk may then
+ * requirement whose consumer project is the request's own. {@code recorded} never admits the
+ * desk, whatever a row holds. Admitting is not approving: what the desk may then
  * approve, and when, is the approve door's {@code DeskApprovalPolicy}.
  *
  * <p><b>A repository whose gate configuration cannot be read is not held by the configuration
@@ -294,7 +295,9 @@ public class ApprovalPolicy {
    * (the request's project) to {@code requirement}:
    *
    * <ul>
-   *   <li>{@code manual-review}, {@code artifact-declarations}: the requirement of that very id;
+   *   <li>{@code manual-review}, {@code artifact-declarations}, {@code no-changes} (qits-1568): the
+   *       requirement of that very id — for {@code no-changes} the approve door's {@code
+   *       DeskApprovalPolicy} then holds the desk to a request naming a work item;
    *   <li>{@code config-directory} (qits-1560): the requirement of that very id whose reason is
    *       {@link ConfigDirectorySource#REASON} — a fold changing {@value #CONFIG_DIRECTORY}. The id
    *       is reused for the fail-closed readings ({@link FoldUnreadable}'s "could not be read"
@@ -307,7 +310,7 @@ public class ApprovalPolicy {
    *       the request's own project, i.e. one whose consumer project is the request's own.
    * </ul>
    *
-   * Nothing else: {@code no-changes} and {@code recorded} never.
+   * Nothing else: {@code recorded} never.
    */
   static boolean deskAdmissible(
       ApprovalRequirement requirement, Set<String> approves, String projectId) {
@@ -336,7 +339,8 @@ public class ApprovalPolicy {
   }
 
   /** The requirement ids {@code approves} names one for one. */
-  private static final Set<String> DESK_EXACT = Set.of("manual-review", "artifact-declarations");
+  private static final Set<String> DESK_EXACT =
+      Set.of("manual-review", "artifact-declarations", NoChangesSource.ID);
 
   /** {@code projectId}'s {@code front_desk.delivery.approves}; empty where it cannot be read. */
   private Set<String> deskApproves(String projectId) {

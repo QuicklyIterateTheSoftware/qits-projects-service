@@ -172,7 +172,32 @@ class ApprovalPolicyDeskAdmissionTest {
         requirement.reason());
   }
 
-  /** no-changes and recorded never admit the desk, whatever a list holds. */
+  /**
+   * qits-1568: no-changes admits the desk exactly where approves lists it — alone or beside
+   * manual-review — and never where it does not.
+   */
+  @Test
+  void noChangesIsAdmittedOnlyWhereListed() {
+    ApprovalRequirement noChanges =
+        ApprovalRequirement.person("no-changes", ApprovalPolicy.NO_CHANGES_DETAIL, null);
+    assertTrue(ApprovalPolicy.deskAdmissible(noChanges, Set.of("no-changes"), PROJECT));
+    assertTrue(
+        ApprovalPolicy.deskAdmissible(noChanges, Set.of("manual-review", "no-changes"), PROJECT));
+    for (Set<String> without :
+        List.of(
+            Set.<String>of(),
+            Set.of("manual-review"),
+            Set.of("manual-review", "artifact-declarations", "config-directory"),
+            Set.of("automation", "contract"))) {
+      assertFalse(ApprovalPolicy.deskAdmissible(noChanges, without, PROJECT), without.toString());
+    }
+    assertFalse(
+        ApprovalPolicy.deskAdmissible(
+            ApprovalRequirement.person("manual-review", "x", null), Set.of("no-changes"), PROJECT),
+        "no-changes admits no other requirement");
+  }
+
+  /** recorded never admits the desk, whatever a list holds. */
   @Test
   void theOwnersRequirementsAreNeverAdmitted() {
     Set<String> handBuilt =
@@ -184,7 +209,7 @@ class ApprovalPolicyDeskAdmissionTest {
             "config-directory",
             "no-changes",
             "recorded");
-    for (String id : List.of("no-changes", ApprovalPolicy.RECORDED_ID)) {
+    for (String id : List.of(ApprovalPolicy.RECORDED_ID)) {
       assertFalse(
           ApprovalPolicy.deskAdmissible(ApprovalRequirement.person(id, "x", null), handBuilt, PROJECT),
           id);
