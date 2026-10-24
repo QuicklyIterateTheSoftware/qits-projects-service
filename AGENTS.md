@@ -1811,8 +1811,11 @@ delivery desk names the rule it dispatches under."), the project's `delivery_ena
 "The delivery loop is off for this project (front_desk.delivery.enabled in
 .config/qits/project.yml)."), a campaign (409 — `DispatchDoors` never sends a desk down the campaign
 path), the project at `delivery_max_running` (409 naming the count, the limit and the running
-qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, with an assignee and an ACTIVE
-agent from `WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself), and REFINED
+qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, not explicitly blocked
+(qits-1569: the row's `blocked` flag only — a derived agent-waiting block keeps its slot, because
+that agent is in-flight work), with an assignee and an ACTIVE agent from
+`WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself; an unblocked item takes
+its slot back, so the count may briefly exceed the limit), and REFINED
 while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refined is off."). With
 `start_refined` on, a desk's FLOW press at REFINED is the scheduling, exactly as a person's: REFINED
 → READY_FOR_DEV under the desk mover stamped `withDeclaredApproval`, which `PersonApprovalGate`

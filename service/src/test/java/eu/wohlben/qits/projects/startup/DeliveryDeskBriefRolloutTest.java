@@ -14,10 +14,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * qits-1517, qits-1560: the boot step that rolls the delivery desk's new brief onto the stored
- * {@code project.delivery} row — the one row, since surface configurations are platform-wide — only
- * where the stored brief is still byte for byte one of the previous shipped texts: qits-1440's or
- * qits-1517's.
+ * qits-1517, qits-1560, qits-1569: the boot step that rolls the delivery desk's new brief onto the
+ * stored {@code project.delivery} row — the one row, since surface configurations are platform-wide
+ * — only where the stored brief is still byte for byte one of the previous shipped texts:
+ * qits-1440's, qits-1517's or qits-1560's.
  *
  * <p>Driven through {@link DeliveryDeskBriefRollout#rollOut()} directly, as the seed's neighbours
  * are. The row is staged through the store's own write and put back to the shipped default after
@@ -72,6 +72,38 @@ public class DeliveryDeskBriefRolloutTest {
 
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, surfaces.get(SURFACE).systemPrompt());
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /**
+   * qits-1569: an unedited qits-1560 brief rolls to the current one too — the one that no longer
+   * counts a blocked item as running.
+   */
+  @Test
+  public void anUneditedQits1560BriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1560_DELIVERY_DESK_PROMPT.contains(
+            "epics and tickets not DONE or DROPPED with an active agent"),
+        "the qits-1560 text is the one that counted blocked items");
+    stage(AgentSurfaceDefaults.QITS_1560_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1560 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("A blocked item holds no slot"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1569: an edit of the qits-1560 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1560BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1560_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
   /** A brief the owner edited is left exactly as stored. */
