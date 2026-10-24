@@ -2500,6 +2500,38 @@ belts).
 gone on purpose: no session's token is in the environment, which every process under the
 container's uid can read. `FrontDeskSpecsTest` asserts their absence with the loop on.
 
+### Prompting the desk and reading its last answer (qits-1572)
+
+`api/ProjectFrontDeskController`, `qits:admin` and `qits:admin-agent` only — a plain `qits:agent`
+and the desk's own `qits:desk` are 403, the read included (`AgentReadAccessTest`'s one
+`ADMIN_ONLY_READS` entry says why):
+
+| route | proxies to the daemon |
+| --- | --- |
+| `POST /projects/api/projects/{projectId}/front-desk/prompt` `{text}` (`promptFrontDesk`) | `POST <base>front-desk/prompt` |
+| `GET /projects/api/projects/{projectId}/front-desk/last-answer` (`getFrontDeskLastAnswer`) | `GET <base>front-desk/last-answer` |
+
+`<base>` is `ContainerProxyPath.base(projectId)` (`/projects/container/<projectId>/`), because the
+daemon serves its API under the address it was told is its own. Both go down the reverse tunnel
+through `agenthost/DaemonApiClient` — the hop `AgentCapabilityRelay` makes, lifted out of it so there
+is one tunnel client: `tunnels.originFor`, `Authorization: Bearer <daemon-api-token>`, the authority
+pinned to `localhost:<daemon-api-port>`, and the exchange composed and awaited once (the relay's
+javadoc says why each matters). The daemon's 200/400/404/409/429 bodies pass through **verbatim**.
+This service adds: **400** `{reason}` for blank text, before anything is proxied; **404** for an
+unknown project; **503** `{reason}` for no connected daemon, a failed hop, or an answer outside the
+daemon's contract (a 5xx, an empty body); and **409** `{reason}` for a daemon too old for the routes —
+its router's 404 is `{"message":"No such endpoint"}`, which carries no `reason`, while the daemon's
+own 404 (last-answer, no kept command) always does. 409 rather than 503 because nothing is down: the
+spec roll onto the pinned daemon resolves it, not a retry.
+
+Contracts: the provider state `a project whose front desk is running` stands up
+`agenthost/FakeProjectDaemon` (a test-scope daemon that dials the control socket and serves the
+dial-backs, as `AgentTunnelProxyTest` does inline) behind the real tunnel, and `cleanUp` closes it;
+both doors are recorded there. As a consumer, `ProjectsDaemonContract` names both daemon routes
+under its state `a daemon whose front desk is running`, pending until qits-projects-daemon records
+it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
+`DaemonApiClient#get`/`#post`.
+
 ### The sessions' credentials ride the control socket (qits-1482)
 
 The desk's daemon runs every session on a credential qits hands it, never on its own

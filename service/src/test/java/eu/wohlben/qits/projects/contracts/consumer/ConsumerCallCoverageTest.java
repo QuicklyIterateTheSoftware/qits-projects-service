@@ -82,11 +82,14 @@ class ConsumerCallCoverageTest {
    */
   static final Map<String, Set<String>> STANDS_IN_FOR =
       Map.of(
+          // The daemon's three rows stand in for the one tunnel client they share (qits-1572):
+          // AgentCapabilityRelay and ProjectFrontDeskController both ask through DaemonApiClient.
           "AgentCapabilityRelay.relay (on the daemon's Hello): listAvailableAgents",
-          Set.of(
-              "eu.wohlben.qits.projects.agenthost.AgentCapabilityRelay#onDaemonHello",
-              "eu.wohlben.qits.projects.agenthost.AgentCapabilityRelay#relay",
-              "eu.wohlben.qits.projects.agenthost.AgentCapabilityRelay#readAndIngest"),
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
+          "promptFrontDesk: promptFrontDesk",
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#post"),
+          "getFrontDeskLastAnswer: getFrontDeskLastAnswer",
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
           "setWorkBlocked (RefinementAgentEntities.changed): setAgentEntity",
           Set.of(
               "eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities#changed",

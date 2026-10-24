@@ -1,0 +1,7 @@
+{
+  "commandId": "desk-command-1",
+  "sessionId": "desk-session-1",
+  "state": "RUNNING",
+  "text": "Two tickets are ready for dev.",
+  "at": "2026-01-01T00:00:00Z"
+}

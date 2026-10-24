@@ -240,6 +240,22 @@ public class ProviderStates {
   public static final String AN_UNREGISTERED_RUNNER = "an unregistered runner";
   public static final String A_REGISTERED_RUNNER = "a registered runner";
 
+  // qits-1572: the front desk's prompt and last-answer doors, proxied to a fake daemon standing
+  // behind the real reverse tunnel (agenthost/FakeProjectDaemon), held until cleanUp.
+  public static final String A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING =
+      "a project whose front desk is running";
+
+  /** What the front-desk state's daemon answers a prompt: delivered at once. */
+  static final String FRONT_DESK_PROMPTED =
+      "{\"commandId\":\"desk-command-1\",\"state\":\"RUNNING\",\"delivered\":true,"
+          + "\"queued\":false,\"position\":null}";
+
+  /** What it answers for the last answer: one, with its text. */
+  static final String FRONT_DESK_LAST_ANSWER =
+      "{\"commandId\":\"desk-command-1\",\"sessionId\":\"desk-session-1\","
+          + "\"state\":\"RUNNING\",\"text\":\"Two tickets are ready for dev.\","
+          + "\"at\":\"2026-01-01T00:00:00Z\"}";
+
   /** The front-desk runner the runner states declare, named as qits-ci's states name theirs. */
   static final String RUNNER_NAME = "localhost";
 
@@ -422,6 +438,16 @@ public class ProviderStates {
   /** The qits-idp a runner state stands up, closed again by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.idphost.RoutingIdpServer idp;
 
+  /** The fake daemon the front-desk state stands up; closed by {@link #cleanUp()}. */
+  private eu.wohlben.qits.projects.agenthost.FakeProjectDaemon frontDeskDaemon;
+
+  @Inject io.vertx.core.Vertx vertx;
+
+  @Inject eu.wohlben.qits.projects.agenthost.AgentTunnels tunnels;
+
+  /** This service's own listener, which the fake daemon dials as a real one dials the edge. */
+  @Inject io.quarkus.vertx.http.HttpServer httpServer;
+
   /** Whether a runner state seeded {@link #RUNNER_NAME}, which cleanUp deletes again. */
   private boolean seededRunner;
 
@@ -539,6 +565,7 @@ public class ProviderStates {
         REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS, this::repositoriesWithDecommissionableTags);
     states.put(AN_UNREGISTERED_RUNNER, this::anUnregisteredRunner);
     states.put(A_REGISTERED_RUNNER, this::aRegisteredRunner);
+    states.put(A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING, this::aProjectWhoseFrontDeskIsRunning);
   }
 
   /** Every state name this provider answers for. */
@@ -563,6 +590,10 @@ public class ProviderStates {
    * verification.
    */
   public void cleanUp() {
+    if (frontDeskDaemon != null) {
+      frontDeskDaemon.close();
+      frontDeskDaemon = null;
+    }
     if (refinementRuntime.isResolvable()) {
       refinementRuntime.get().releaseBringUps();
     }
@@ -650,6 +681,39 @@ public class ProviderStates {
   }
 
   // --- the states ------------------------------------------------------------------------------
+
+  /**
+   * A project whose front desk's daemon is connected and keeps a desk command (qits-1572): a fake
+   * daemon ({@code agenthost/FakeProjectDaemon}) dials this service's control socket as the project's
+   * and answers {@code front-desk/prompt} with a delivered prompt and {@code front-desk/last-answer}
+   * with an answer holding text — every request crossing the real tunnel, so what is recorded is
+   * what the doors pass through. The daemon's own contract for the two routes is its repository's;
+   * the bodies here are that contract's shape, fixed so the recording is stable.
+   */
+  private Setup aProjectWhoseFrontDeskIsRunning() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING);
+    frontDeskDaemon =
+        eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.connect(
+            vertx,
+            tunnels,
+            "localhost",
+            httpServer.getPort(),
+            project.id,
+            seen -> {
+              if (seen.uri().endsWith("/front-desk/prompt")) {
+                return new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(
+                    200, FRONT_DESK_PROMPTED);
+              }
+              if (seen.uri().endsWith("/front-desk/last-answer")) {
+                return new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(
+                    200, FRONT_DESK_LAST_ANSWER);
+              }
+              return new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(
+                  404, "{\"message\":\"No such endpoint\"}");
+            });
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
 
   private Setup aProjectExists() {
     String token = token();

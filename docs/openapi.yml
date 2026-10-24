@@ -1532,11 +1532,67 @@ components:
           type: string
         tipSha:
           type: string
+    FrontDeskLastAnswer:
+      type: object
+      properties:
+        commandId:
+          type: string
+          description: The kept desk command
+        sessionId:
+          type: string
+          description: Its agent session
+        state:
+          type: string
+          description: "That command's state, as the daemon reports it"
+        text:
+          type:
+          - string
+          - "null"
+          description: The last answer's text; null before the first
+        at:
+          type:
+          - string
+          - "null"
+          description: When it was given; null before the first
     FrontDeskLifecycle:
       type: string
       enum:
       - ALWAYS_ON
       - ON_DEMAND
+    FrontDeskPromptRequest:
+      type: object
+      required:
+      - text
+      properties:
+        text:
+          type: string
+          description: The prompt; must not be blank
+    FrontDeskPromptResponse:
+      type: object
+      properties:
+        commandId:
+          type: string
+          description: The kept desk command the prompt was given to
+        state:
+          type: string
+          description: "That command's state, as the daemon reports it"
+        delivered:
+          type: boolean
+          description: Whether the prompt was handed to the session at once
+        queued:
+          type: boolean
+          description: Whether it waits behind a running turn instead
+        position:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "Its place in the queue when queued, else null"
+    FrontDeskRefusal:
+      type: object
+      properties:
+        reason:
+          type: string
     HarnessCapabilityReport:
       type: object
       properties:
@@ -4144,6 +4200,118 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:agent
+  /projects/api/projects/{projectId}/front-desk/last-answer:
+    get:
+      summary: The last answer the project's front desk gave
+      operationId: getFrontDeskLastAnswer
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The kept desk command's last answer; text and at are null before
+            the first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskLastAnswer"
+        "404":
+          description: "No such project, or the desk keeps no command"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "409":
+          description: The desk's daemon predates this door
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "503":
+          description: "No daemon is connected for the project, or it could not be\
+            \ reached"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Front Desk Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+  /projects/api/projects/{projectId}/front-desk/prompt:
+    post:
+      summary: "Hand the project's front desk a prompt: delivered at once, or queued"
+      operationId: promptFrontDesk
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FrontDeskPromptRequest"
+        required: true
+      responses:
+        "200":
+          description: Delivered or queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskPromptResponse"
+        "400":
+          description: Blank text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "404":
+          description: No such project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "409":
+          description: "No kept desk command is running, or the desk's daemon predates\
+            \ this door"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "429":
+          description: The desk's prompt queue is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "503":
+          description: "No daemon is connected for the project, or it could not be\
+            \ reached"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontDeskRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Front Desk Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/reconcile:
     post:
       summary: Re-assert a project's domain through the dns registrar

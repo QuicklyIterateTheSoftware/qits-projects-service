@@ -1,0 +1,7 @@
+{
+  "commandId": "desk-command-1",
+  "state": "RUNNING",
+  "delivered": true,
+  "queued": false,
+  "position": null
+}

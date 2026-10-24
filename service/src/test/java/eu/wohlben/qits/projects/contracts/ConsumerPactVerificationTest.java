@@ -654,4 +654,9 @@ class ConsumerPactVerificationTest {
   Map<String, String> aRegisteredRunner() {
     return states.params(ProviderStates.A_REGISTERED_RUNNER);
   }
+
+  @State(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING)
+  Map<String, String> aProjectWhoseFrontDeskIsRunning() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING);
+  }
 }

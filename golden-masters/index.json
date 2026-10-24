@@ -1554,6 +1554,47 @@
       ]
     },
     {
+      "name": "a project whose front desk is running",
+      "slug": "a-project-whose-front-desk-is-running",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getFrontDeskLastAnswer",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/front-desk/last-answer",
+          "status": 200,
+          "file": "a-project-whose-front-desk-is-running/getFrontDeskLastAnswer.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.at"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "promptFrontDesk",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/front-desk/prompt",
+          "body": {
+            "text": "What is ready for dev?"
+          },
+          "status": 200,
+          "file": "a-project-whose-front-desk-is-running/promptFrontDesk.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with 3 repositories",
       "slug": "a-project-with-3-repositories",
       "params": {

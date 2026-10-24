@@ -1191,6 +1191,22 @@ class GoldenMasterRecordingTest {
             null,
             TOOLKIT_REGISTRATION,
             BEARER));
+    // The front desk's two doors (qits-1572), as qits-platform-access-cli calls them: a prompt the
+    // desk's daemon delivers at once, and the last answer it gave, with its text. Both answers are
+    // the fake daemon's, passed through the real tunnel verbatim.
+    String frontDesk = "/projects/api/projects/{projectId}/front-desk";
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING,
+            "promptFrontDesk",
+            "POST",
+            frontDesk + "/prompt",
+            "{\"text\":\"What is ready for dev?\"}"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING,
+            "getFrontDeskLastAnswer",
+            frontDesk + "/last-answer"));
     return List.copyOf(all);
   }
 
