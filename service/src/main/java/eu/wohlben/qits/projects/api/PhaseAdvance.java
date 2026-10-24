@@ -911,16 +911,14 @@ public class PhaseAdvance {
       List<String> refused) {
     try {
       ReleaseRequestDto request =
-          releaseRequests
-              .ask(
-                  repoId,
-                  branch,
-                  summary,
-                  requester,
-                  // No priority: MEDIUM is what a caller who states nothing gets, and this caller
-                  // has nothing to state — the entity carries no urgency a release could read.
-                  null)
-              .request();
+          releaseRequests.request(
+              repoId,
+              branch,
+              summary,
+              requester,
+              // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
+              // nothing to state — the entity carries no urgency a release could read.
+              null);
       LOG.infof(
           "%s %s is VERIFIED: release request %s now carries %s",
           entity.archetype, entity.id, request.id(), branch);
