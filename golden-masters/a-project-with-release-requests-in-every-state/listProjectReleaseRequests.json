@@ -13,7 +13,8 @@
           "ref": "refs/heads/main",
           "implicit": false,
           "priority": "MEDIUM",
-          "addedBy": "contract-seeder"
+          "addedBy": "contract-seeder",
+          "feature": false
         },
         {
           "kind": "BRANCH",
@@ -21,7 +22,8 @@
           "ref": "refs/heads/bump/contract-service",
           "implicit": false,
           "priority": "BLOCKING",
-          "addedBy": "contract-seeder"
+          "addedBy": "contract-seeder",
+          "feature": false
         }
       ],
       "priority": "BLOCKING",
@@ -203,6 +205,15 @@
       ],
       "preRun": {
         "state": "PENDING"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -280,6 +291,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -357,6 +377,15 @@
       ],
       "preRun": {
         "state": "PENDING"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -372,7 +401,8 @@
           "ref": "refs/tags/2026.101.100200",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -465,6 +495,15 @@
       ],
       "preRun": {
         "state": "PENDING"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -480,7 +519,8 @@
           "ref": "refs/tags/2026.101.100200",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -566,6 +606,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -581,7 +630,8 @@
           "ref": "refs/tags/2026.101.100200",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -727,6 +777,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -804,6 +863,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     }
   ]

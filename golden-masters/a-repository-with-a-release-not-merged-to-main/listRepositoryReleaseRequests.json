@@ -13,7 +13,8 @@
           "ref": "refs/tags/2026.101.100400",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -77,6 +78,15 @@
       ],
       "preRun": {
         "state": "PENDING"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -92,7 +102,8 @@
           "ref": "refs/tags/2026.101.100400",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -171,6 +182,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     },
     {
@@ -186,7 +206,8 @@
           "ref": "refs/tags/2026.101.100400",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false
         }
       ],
       "priority": "MEDIUM",
@@ -265,6 +286,15 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false
       }
     }
   ]

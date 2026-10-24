@@ -12,7 +12,8 @@
         "ref": "refs/heads/main",
         "implicit": false,
         "priority": "MEDIUM",
-        "addedBy": null
+        "addedBy": null,
+        "feature": false
       },
       {
         "kind": "BRANCH",
@@ -20,7 +21,8 @@
         "ref": "refs/heads/feature/export",
         "implicit": false,
         "priority": "MEDIUM",
-        "addedBy": "contract-seeder"
+        "addedBy": "contract-seeder",
+        "feature": false
       },
       {
         "kind": "BRANCH",
@@ -28,7 +30,8 @@
         "ref": "refs/heads/fix/rounding",
         "implicit": false,
         "priority": "LOWEST",
-        "addedBy": "dev"
+        "addedBy": "dev",
+        "feature": false
       }
     ],
     "priority": "MEDIUM",
@@ -102,6 +105,20 @@
     ],
     "preRun": {
       "state": "PASSED"
+    },
+    "queuedBehind": null,
+    "queuedBehindQualifiedId": null,
+    "queuedNext": null,
+    "queuedNextQualifiedId": null,
+    "featureFreeze": {
+      "features": 0,
+      "threshold": 3,
+      "frozen": false
     }
+  },
+  "placement": {
+    "outcome": "JOINED",
+    "queued": false,
+    "detail": "fix/rounding joined contract-service-rr-1, the active release request (0 of 3 feature branches)"
   }
 }

@@ -1039,7 +1039,7 @@ public class ReleaseRequests {
   }
 
   /** The detail a queued request carries while it waits (epic qits-1580). */
-  static String queuedDetail(String activeQualifiedId) {
+  public static String queuedDetail(String activeQualifiedId) {
     return "Queued behind " + activeQualifiedId + ": it folds once that request has released";
   }
 
