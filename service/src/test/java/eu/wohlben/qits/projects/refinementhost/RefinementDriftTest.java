@@ -118,7 +118,9 @@ public class RefinementDriftTest {
    * on failure), so presence is the landing.
    */
   private void awaitOpenPassLanded(long id) {
-    await("the open's drift pass never landed for refinement " + id, () -> drift.peek(id).isPresent());
+    await(
+        "the open's drift pass never landed for refinement " + id,
+        () -> drift.peek(id).isPresent());
     awaitQuiet();
   }
 
