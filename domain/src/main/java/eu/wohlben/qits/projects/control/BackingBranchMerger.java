@@ -173,9 +173,12 @@ public interface BackingBranchMerger {
    * What the fold did. The three success words are the git host's own — {@code merged} (a new commit
    * and the ref moved), {@code fast-forward} (the ref was created at or moved onto an existing
    * commit) and {@code unchanged} (every head was already contained; same sha, no new commit) — and
-   * the difference between them is load-bearing here: <b>{@code UNCHANGED} is not a change</b>, so
-   * it re-arms nothing and announces nothing, which is what makes a trigger that fires on an event
-   * with no content behind it (a pending tag leaving the set, a duplicate delivery) free.
+   * the difference between them is load-bearing here: <b>{@code UNCHANGED} is not a change</b> when
+   * its sha is the one the request recorded, so it re-arms nothing and announces nothing, which is
+   * what makes a trigger that fires on an event with no content behind it (a pending tag leaving the
+   * set, a duplicate delivery) free. An {@code UNCHANGED} at a different sha is the tip a lost answer
+   * moved the branch to — an earlier fold landed but its call failed — and is recorded and re-armed
+   * like any move (qits-1565).
    *
    * <p>{@link Result#CONFLICT} is the git host's 409: no ref moved, and {@link Outcome#conflicts}
    * names the paths and the head that introduced each. {@link Result#MISSING_SOURCE} is the git
