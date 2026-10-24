@@ -303,6 +303,30 @@ class WorkSubresourcesApiTest {
     given().when().get(WORK + project.slug() + "-99999/audit").then().statusCode(404);
   }
 
+  /**
+   * A UUID whose last group is all digits also matches the qualified-id grammar (qits-1567), so the
+   * history door must read it as a subtree key rather than rethrow the resolver's 404 — exactly as
+   * it does for a UUID that cannot be mistaken for one.
+   */
+  @Test
+  void theHistoryReadsAUuidWithAnAllDigitLastGroupAsASubtreeKey() {
+    EntityFixtures.Project project = EntityFixtures.project("Work Audit UUID");
+
+    given()
+        .when()
+        .get(WORK + "3b38676e-4b00-4fc1-925a-123456789012/audit")
+        .then()
+        .statusCode(200)
+        .body("entries", hasSize(0));
+    given()
+        .when()
+        .get(WORK + "3b38676e-4b00-4fc1-925a-12345678901a/audit")
+        .then()
+        .statusCode(200)
+        .body("entries", hasSize(0));
+    given().when().get(WORK + project.slug() + "-99999/audit").then().statusCode(404);
+  }
+
   // --- the delete ------------------------------------------------------------------------------
 
   @Test

@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.entitieshost;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.WorkRequests;
@@ -102,6 +103,31 @@ class CommitSubjectEntitiesTest {
     assertEquals(
         Optional.of(new CommitSubjectEntities.QualifiedId("qits", 1L)),
         CommitSubjectEntities.reference("fix(qits-1): the real one\n\nfix(qits-9): not this"));
+  }
+
+  /**
+   * <b>A UUID whose last group is all digits also parses as a qualified id</b> — the ambiguity
+   * {@link #isUuid} exists to let a caller resolve. {@code parse} being present here is the
+   * documentation of that overlap, not a contradiction with {@link #isUuid} answering true for the
+   * same string.
+   */
+  @Test
+  void isUuidIsTrueOnlyForACanonicalUuid() {
+    assertTrue(CommitSubjectEntities.isUuid("3b38676e-4b00-4fc1-925a-123456789012"));
+    assertTrue(CommitSubjectEntities.isUuid(UUID.randomUUID().toString()));
+    assertTrue(
+        CommitSubjectEntities.parse("3b38676e-4b00-4fc1-925a-123456789012").isPresent(),
+        "a UUID with an all-digit last group also matches the qualified-id grammar");
+
+    for (String notAUuid :
+        List.of(
+            "qits-7",
+            "",
+            "3b38676e4b004fc1925a123456789012",
+            "1-2-3-4-5")) {
+      assertFalse(CommitSubjectEntities.isUuid(notAUuid), notAUuid);
+    }
+    assertFalse(CommitSubjectEntities.isUuid(null));
   }
 
   // --- references(): a scope naming several ids -------------------------------------------------

@@ -175,6 +175,31 @@ public class CommitSubjectEntities {
   }
 
   /**
+   * <b>Is {@code s} a canonical UUID, never a qualified id?</b> A UUID whose last group is all
+   * digits also matches {@link #parse}'s grammar ({@code …-4e1f-123456789012} reads as entity
+   * 123456789012 of a project slugged by the rest), so a caller that must tell the two apart — a
+   * door reading a path segment that could be either — asks this FIRST.
+   *
+   * @param s the candidate, surrounding whitespace ignored; {@code null} is false
+   * @return true only for 36 characters that {@link java.util.UUID#fromString} reads back
+   *     identically, case-insensitively
+   */
+  public static boolean isUuid(String s) {
+    if (s == null) {
+      return false;
+    }
+    String stripped = s.strip();
+    if (stripped.length() != 36) {
+      return false;
+    }
+    try {
+      return java.util.UUID.fromString(stripped).toString().equalsIgnoreCase(stripped);
+    } catch (IllegalArgumentException notAUuid) {
+      return false;
+    }
+  }
+
+  /**
    * <b>Grammar and lookup, in one call.</b> The subject is read, the project slug resolved and the
    * {@code (project_id, number)} pair hit directly against {@code uq_entity_project_number}.
    *

@@ -999,19 +999,26 @@ public class WorkEntityDoors {
    * features, tasks and every thread under it), which is what {@code GET /epics/{id}/audit} answers;
    * a feature or a task answers its own rows. The log outlives the rows, so a UUID that names no
    * entity any more is still read as a subtree key, exactly as the epic route reads it; a qualified
-   * id naming nothing is the resolver's 404, since nothing is left to resolve it through.
+   * id naming nothing is the resolver's 404, since nothing is left to resolve it through. A UUID
+   * is read as the subtree key whether or not it also happens to match the qualified-id grammar
+   * (a last group of all digits does both); anything else that parses as a qualified id still
+   * rethrows the 404.
    */
   public List<AuditEntryDto> audit(String named) {
     WorkEntity row;
     try {
       row = ids.resolve(named);
     } catch (NotFoundException unknown) {
-      if (named == null
-          || named.isBlank()
-          || eu.wohlben.qits.projects.entitieshost.CommitSubjectEntities.parse(named).isPresent()) {
+      if (named == null || named.isBlank()) {
         throw unknown;
       }
-      return auditEntries(audits.listForEpic(named.trim()));
+      String trimmed = named.trim();
+      if (!eu.wohlben.qits.projects.entitieshost.CommitSubjectEntities.isUuid(trimmed)
+          && eu.wohlben.qits.projects.entitieshost.CommitSubjectEntities.parse(trimmed)
+              .isPresent()) {
+        throw unknown;
+      }
+      return auditEntries(audits.listForEpic(trimmed));
     }
     if (Archetypes.mayBeRoot(row.archetype)) {
       return auditEntries(audits.listForEpic(row.id));
