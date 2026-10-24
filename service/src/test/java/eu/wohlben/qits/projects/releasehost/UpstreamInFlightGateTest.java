@@ -432,6 +432,58 @@ public class UpstreamInFlightGateTest {
     assertEquals("PASSED", released.getString("preRun.state"));
   }
 
+  /**
+   * The interrupt at most once per fold (qits-1570). The service's fold is interrupted when the
+   * frontend first builds, and announced DONE again when that run fails; the frontend is then pushed
+   * and builds again while the service's re-asked QA is running. That second upstream build used to
+   * cancel the service's QA again — every upstream build did, unbounded per fold. Now the QA run in
+   * flight keeps running: one HELD_BY_PRE_RUN_GATE cancel, no second DONE, the stamp left standing,
+   * and the request waits for its verdict rather than for the upstream.
+   */
+  @Test
+  public void twoUpstreamBuildsDuringOneFoldInterruptItsQaOnce() throws Exception {
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+
+    // The first upstream build interrupts, and its failing announces DONE again at the same sha.
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    awaitHeldCancels(svc, 1);
+    assertNull(qaAnnouncedShaOf(svc));
+    qaRun(fe, feRepo, feFold, "run-fe-1", "FAILED");
+    awaitPreRuns(svc, List.of("DONE", "DONE"));
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+
+    // The frontend is pushed and builds again while the service's second QA run is in flight.
+    releaseRequests.onBranchMoved(feRepo, "work", freshSha());
+    String feSecond = mergedShaOf(feRepo, fe);
+    assertNotEquals(feFold, feSecond);
+    qaRun(fe, feRepo, feSecond, "run-fe-2", "QUEUED");
+    evaluate(svcRepo, svcFold);
+    evaluate(svcRepo, svcFold);
+    // The background re-evaluation the run status change started has had its say too.
+    Thread.sleep(500);
+
+    assertEquals(
+        1,
+        cancellations.calls().stream()
+            .filter(call -> svc.equals(call.releaseRequestId()))
+            .filter(call -> QaRunCancellations.HELD_BY_PRE_RUN_GATE.equals(call.reason()))
+            .count(),
+        cancellations.calls().toString());
+    assertEquals(svcFold, qaAnnouncedShaOf(svc), "QA stays asked for at the fold");
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc), "and is not asked for a third time");
+    JsonPath running = request(svcRepo, svc);
+    assertEquals("PENDING", running.getString("state"));
+    assertEquals(
+        "Waiting for a CI verdict for " + svcFold.substring(0, 10),
+        running.getString("detail"),
+        "waiting for its own run, not for the upstream");
+  }
+
   /** 13. A service fold with a green verdict of its own (still waiting) is never interrupted. */
   @Test
   public void aFoldWithAGreenVerdictIsNotInterrupted() {

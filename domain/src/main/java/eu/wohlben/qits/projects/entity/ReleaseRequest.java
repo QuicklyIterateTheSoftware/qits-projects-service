@@ -259,6 +259,33 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String qaAnnouncedSha;
 
   /**
+   * The fold gate 3's interrupt (qits-909) has already cancelled QA at — at most once per fold
+   * (qits-1570, V53). The interrupt clears {@link #qaAnnouncedSha} and cancels the request's QA runs
+   * when an upstream starts building; with nothing to stop it, every upstream build did that again
+   * at the same fold. A hold arriving while this names {@link #mergedSha} and QA has been asked for
+   * again holds nothing: the run in flight continues. Keyed by sha, so a re-fold needs no reset.
+   */
+  @Column(name = "qa_interrupted_sha")
+  public String qaInterruptedSha;
+
+  /**
+   * <b>A re-fold is owed</b> (qits-1570, V53): an automation's own branch ({@code
+   * maintenance/automations/…}) moved while the current fold was in flight — QA announced at it with
+   * no verdict yet, or green and waiting on approval — and re-folding there would have cancelled that
+   * QA and lapsed that approval, which during a release wave never let a request reach READY. Null
+   * when nothing is owed; several moves during one run coalesce onto the first one's instant. Paid
+   * by {@code ReleaseRequests} once the fold is no longer in flight, and cleared by every fold that
+   * lands (a fold reads every source's head, so it carries the moved branch whatever caused it).
+   * Never paid on a READY or RELEASED request: the release ships the fold that was gated.
+   */
+  @Column(name = "refold_owed_at")
+  public Instant refoldOwedAt;
+
+  /** The newest deferred move's sentence, carried into the owed re-fold's own; see {@link #refoldOwedAt}. */
+  @Column(name = "refold_owed_reason")
+  public String refoldOwedReason;
+
+  /**
    * Why a CONFLICTED request is conflicted: qits-githost's own 409 body, stored as the JSON document
    * it arrived as, so the API and the UI can put the conflicting paths and the head that introduced
    * each in front of a person. Null in every other state — cleared by the fold that succeeds.
