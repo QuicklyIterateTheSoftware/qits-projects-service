@@ -130,8 +130,9 @@ import org.jboss.logging.Logger;
  * Nothing is re-armed and no {@code ReleaseRequestChanged} is dispatched, which is what makes a
  * trigger with no content behind it free. An {@code unchanged} at a <em>different</em> sha is the
  * tip an earlier fold moved the branch to and whose answer was lost — the call failed after the ref
- * had already moved — and it is recorded and re-armed like any move (qits-1565). A fold that cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored
- * for a person to act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
+ * had already moved — and it is recorded and re-armed like any move (qits-1565). A fold that
+ * cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored for a person to
+ * act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
  * <em>including</em> one answering {@code unchanged}, unless that sha already carries a verdict the
  * gate can read. A fold naming a source the git host does not have ({@code 404 no-such-source})
  * REJECTS the request with {@code rejecting_gate = fold} (qits-1221) and is likewise lifted by the
