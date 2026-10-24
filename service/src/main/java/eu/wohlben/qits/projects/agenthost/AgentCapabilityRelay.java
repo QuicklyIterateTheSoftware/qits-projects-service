@@ -4,16 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.AgentCapabilityController;
 import eu.wohlben.qits.projects.api.AgentCapabilityController.CapabilityReportRequest;
 import eu.wohlben.qits.projects.control.AgentCapabilityCatalogueService;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
-import io.vertx.core.net.SocketAddress;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -165,7 +161,12 @@ public class AgentCapabilityRelay {
    */
   static final String AVAILABLE_PATH = "agents/available";
 
-  @Inject AgentTunnels tunnels;
+  /**
+   * The hop itself — tunnel, bearer, pinned authority and the one composed await — shared with the
+   * front desk's doors since qits-1572. Everything this class's javadoc says about the exchange is
+   * implemented there now; what stays here is what an answer <em>means</em> for a capability read.
+   */
+  @Inject DaemonApiClient daemonApi;
 
   @Inject eu.wohlben.qits.projects.deskhost.FrontDeskSpecs factory;
 
@@ -191,19 +192,6 @@ public class AgentCapabilityRelay {
    * {@code UnauthorizedException} out of a background relay, which is the door working correctly.
    */
   @Inject AgentCapabilityCatalogueService catalogue;
-
-  /** The bearer the daemon requires — the same value {@link ContainerProxyRoute} presents. */
-  @ConfigProperty(name = "qits.projects.daemon-api-token", defaultValue = "qits-projects-daemon")
-  String daemonApiToken;
-
-  /**
-   * Not where we connect — the authority we claim. The <b>same key</b> {@link ContainerProxyRoute}
-   * reads for its {@code hostRewrite}, deliberately and not a second one: the daemon was told this
-   * port is its own address, and a relay that presented the tunnel's ephemeral loopback port instead
-   * would be the one caller able to tell the daemon which road a request took.
-   */
-  @ConfigProperty(name = "qits.projects.daemon-api-port", defaultValue = "13338")
-  int daemonApiPort;
 
   /**
    * How long the whole read may take before it is abandoned. Short: this is a local loopback hop into
@@ -285,13 +273,6 @@ public class AgentCapabilityRelay {
       return new Outcome(Kind.NOT_READY, detail);
     }
   }
-
-  /**
-   * One <b>whole</b> answer — status and body together, assembled on the event loop. It exists so
-   * there is exactly one thing for {@link #read} to block on; a status held apart from its body is
-   * two awaits, which is the defect this class's javadoc records.
-   */
-  private record Answer(int status, String body) {}
 
   /**
    * A daemon has said hello for {@code projectId}: go and ask it what its harnesses can do.
@@ -383,15 +364,7 @@ public class AgentCapabilityRelay {
    * attempt where the retry would only slow the assertion down.
    */
   Outcome readAndIngest(String projectId) {
-    AgentTunnels.TunnelOrigin origin = tunnels.originFor(projectId).orElse(null);
-    if (origin == null) {
-      // Retryable, and it is the arm that most needs to be: the tunnel is opened on demand from the
-      // live control socket, so an empty answer here means the daemon has gone away again rather
-      // than that this project has no capabilities to report.
-      LOG.debugf("No tunnel to project %s; no capability report read", projectId);
-      return Outcome.notReady("no tunnel to the project's agent container");
-    }
-    return read(projectId, origin);
+    return read(projectId);
   }
 
   /**
@@ -463,9 +436,6 @@ public class AgentCapabilityRelay {
   /**
    * One GET through the tunnel, classified.
    *
-   * <p>The client is the tunnel's own and must be — {@link AgentTunnels} carries what sharing one
-   * would cost.
-   *
    * <p><b>The status codes are read, and the split is the fix.</b> A <b>404</b> is a daemon that does
    * not serve this route at all, which is absence and terminal — asking a second time gets the same
    * answer for ever. Anything else non-2xx is <b>not ready</b>: the daemon's own API answers 503
@@ -474,48 +444,13 @@ public class AgentCapabilityRelay {
    * hop that failed outright — which is what an unbound loopback API looks like from here, since the
    * daemon's dial-back finds nothing to pipe to — is not ready for the same reason.
    *
-   * <p><b>The whole exchange is composed and awaited ONCE, and that is not style.</b> Awaiting the
-   * response and then asking it for its body is two blocking steps with an event loop running in
-   * between, and in this Vert.x version the response stream is not paused waiting for anyone: every
-   * chunk that arrives before {@code body()} was called is dropped, and a {@code body()} attached
-   * after the last one has already been handled is a promise nobody will ever complete. See this
-   * class's javadoc for what that measured as live. Composing keeps {@code body()} attached inside
-   * the response callback on the event loop and leaves exactly one thing to block on.
-   *
-   * <p><b>{@code setServer} is where we connect; {@code setHost}/{@code setPort} are what we claim to
-   * be calling.</b> The connection goes to the tunnel's ephemeral loopback port, and the authority
-   * stays {@code localhost:<daemon api port>} — the same pinning {@link
-   * ContainerProxyRoute#hostRewrite} does for a browser's request, so the daemon cannot tell which
-   * road a request took and never sees an ephemeral port as its own address.
+   * <p>The hop itself — the full proxied path, the pinned authority, the bearer and the exchange
+   * composed and awaited <b>once</b> (this class's javadoc says why each matters) — is {@link
+   * DaemonApiClient}'s, shared with the front desk's doors (qits-1572).
    */
-  private Outcome read(String projectId, AgentTunnels.TunnelOrigin origin) {
-    String path = ContainerProxyPath.base(projectId) + AVAILABLE_PATH;
+  private Outcome read(String projectId) {
     try {
-      Answer answer =
-          origin
-              .client()
-              .request(
-                  new RequestOptions()
-                      .setMethod(HttpMethod.GET)
-                      .setServer(SocketAddress.inetSocketAddress(origin.port(), "127.0.0.1"))
-                      .setHost("localhost")
-                      .setPort(Integer.valueOf(daemonApiPort))
-                      .setURI(path)
-                      .putHeader("Authorization", "Bearer " + daemonApiToken)
-                      .setTimeout(timeoutMs))
-              .compose(request -> request.send())
-              .compose(
-                  response ->
-                      response
-                          .body()
-                          .map(
-                              buffer ->
-                                  new Answer(
-                                      response.statusCode(),
-                                      buffer == null ? null : buffer.toString())))
-              .toCompletionStage()
-              .toCompletableFuture()
-              .get(timeoutMs, TimeUnit.MILLISECONDS);
+      DaemonApiClient.Answer answer = daemonApi.get(projectId, AVAILABLE_PATH, timeoutMs);
       int status = answer.status();
       if (status == 404) {
         LOG.debugf(
@@ -544,9 +479,17 @@ public class AgentCapabilityRelay {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return Outcome.notReady("interrupted");
-    } catch (Exception e) {
-      LOG.debugf("Could not read %s from project %s: %s", AVAILABLE_PATH, projectId, e.toString());
-      return Outcome.notReady("could not reach the daemon: " + e);
+    } catch (DaemonApiClient.Unreachable e) {
+      if (e.noTunnel()) {
+        // Retryable, and it is the arm that most needs to be: the tunnel is opened on demand from
+        // the live control socket, so an empty answer here means the daemon has gone away again
+        // rather than that this project has no capabilities to report.
+        LOG.debugf("No tunnel to project %s; no capability report read", projectId);
+        return Outcome.notReady(e.getMessage());
+      }
+      LOG.debugf(
+          "Could not read %s from project %s: %s", AVAILABLE_PATH, projectId, e.getMessage());
+      return Outcome.notReady(e.getMessage());
     }
   }
 

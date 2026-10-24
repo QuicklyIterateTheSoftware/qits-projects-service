@@ -133,8 +133,11 @@ import org.jboss.logging.Logger;
  * campaign path is a person's), the project at its {@code max_running} (409 naming the count, the
  * limit and the running items), and a REFINED item while {@code start_refined} is off (the {@link
  * #REFINED_WAITS} 409, saying so). "Running" is an epic or a ticket of the project, not DONE or
- * DROPPED, with an assignee and an ACTIVE agent ({@link WorkspaceAgentDispatch#agentsFor}); the
- * item pressed is never counted against itself.
+ * DROPPED, not explicitly blocked (qits-1569), with an assignee and an ACTIVE agent ({@link
+ * WorkspaceAgentDispatch#agentsFor}); the item pressed is never counted against itself. A blocked
+ * item waits on a person or on another item, and holding a slot for it starved the backlog — five
+ * of them once stopped every dispatch for two hours. Unblocking hands the slot back, so the count
+ * can briefly exceed the limit, which is fine: the desk only waits until it falls again.
  *
  * <p><b>Start-refined.</b> With {@code front_desk.delivery.start_refined} on, a desk's FLOW press at
  * REFINED is the scheduling, exactly as a person's is: REFINED → READY_FOR_DEV under the mover
@@ -769,8 +772,15 @@ public class EntityDispatch {
 
   /**
    * The project's running items besides {@code entity}: epics and tickets that are not DONE or
-   * DROPPED, carry an assignee, and have an ACTIVE agent at qits-workspaces. With no workspaces
-   * context nothing is known to run, and the press goes on to that 503.
+   * DROPPED, are not explicitly blocked, carry an assignee, and have an ACTIVE agent at
+   * qits-workspaces. With no workspaces context nothing is known to run, and the press goes on to
+   * that 503.
+   *
+   * <p><b>Only the explicit flag frees the slot</b> (qits-1569): {@link WorkEntity#blocked}, a
+   * person's or an agent's "this waits on someone", never the derived block of {@code
+   * EntityBlockState}. An agent waiting on its own release request reads as blocked, but it is
+   * real in-flight work and keeps its slot — the same split {@link #state} makes for {@code
+   * dispatchable} (qits-895).
    */
   private List<WorkEntity> runningBesides(WorkEntity entity) {
     List<WorkEntity> candidates = new ArrayList<>();
@@ -779,6 +789,7 @@ public class EntityDispatch {
         if (!row.id.equals(entity.id)
             && !EntityStatus.DONE.name().equals(row.status)
             && !EntityStatus.DROPPED.name().equals(row.status)
+            && !row.blocked
             && row.assignee != null
             && !row.assignee.isBlank()) {
           candidates.add(row);

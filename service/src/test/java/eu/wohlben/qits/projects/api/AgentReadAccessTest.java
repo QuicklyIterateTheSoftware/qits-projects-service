@@ -29,7 +29,8 @@ import org.junit.jupiter.api.TestFactory;
  * <p>So the rule this class asserts has three clauses and each is checked positively:
  *
  * <ul>
- *   <li>every GET and HEAD on every listed controller admits {@code qits:agent};
+ *   <li>every GET and HEAD on every listed controller admits {@code qits:agent}, but for the one
+ *       read named in {@link #ADMIN_ONLY_READS};
  *   <li>a write admits it <b>if and only if</b> it is named in one of the three declared groups
  *       below — the release-request writes, the entity writes and the one catalogue write;
  *   <li>the writes that must stay {@code qits:admin} alone are named in {@link
@@ -82,6 +83,7 @@ class AgentReadAccessTest {
           GcController.class,
           PinsController.class,
           ProjectController.class,
+          ProjectFrontDeskController.class,
           ProjectEventsController.class,
           ProjectRefinementsController.class,
           ProjectReleaseRequestsController.class,
@@ -238,7 +240,19 @@ class AgentReadAccessTest {
           "WorkMembersController.approve",
           // Standing a workspace or a refinement room up is a person's press, on either family.
           "WorkDispatchController.dispatch",
-          "WorkRefinementController.open");
+          "WorkRefinementController.open",
+          // Prompting the front desk is a person's (or an admin agent's) word to it (qits-1572).
+          "ProjectFrontDeskController.prompt");
+
+  /**
+   * <b>The one read an agent may not make: the front desk's last answer</b> (qits-1572). It is the
+   * desk's conversation — what a person or an admin agent prompted it with, answered — rather than
+   * a row of the project, and the desk itself (a {@code qits:agent} + {@code qits:desk} token)
+   * reading its own answers back through the door would be a loop nobody asked for. Its sibling,
+   * {@code ProjectFrontDeskController.prompt}, is a write and stays off the agent's surface by the
+   * ordinary rule.
+   */
+  private static final Set<String> ADMIN_ONLY_READS = Set.of("ProjectFrontDeskController.lastAnswer");
 
   /**
    * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a
@@ -312,7 +326,13 @@ class AgentReadAccessTest {
                         String name = type.getSimpleName() + "." + method.getName();
                         if (isRead(method)) {
                           anyRoute = true;
-                          assertTrue(roles(type, method).contains(AGENT), name + " is a read");
+                          if (ADMIN_ONLY_READS.contains(name)) {
+                            assertFalse(
+                                roles(type, method).contains(AGENT),
+                                name + " is a declared admin-only read");
+                          } else {
+                            assertTrue(roles(type, method).contains(AGENT), name + " is a read");
+                          }
                         } else if (isWrite(method)) {
                           anyRoute = true;
                           if (AGENT_WRITES.contains(name)) {
@@ -357,6 +377,18 @@ class AgentReadAccessTest {
       Method method = declared(name);
       assertTrue(isWrite(method), name + " must be a write route");
       assertTrue(roles(method.getDeclaringClass(), method).contains(AGENT), name + " must admit " + AGENT);
+    }
+  }
+
+  /** Every declared admin-only read must exist and be a read, so the exception guards something. */
+  @Test
+  void everyDeclaredAdminOnlyReadResolves() {
+    for (String name : ADMIN_ONLY_READS) {
+      Method method = declared(name);
+      assertTrue(isRead(method), name + " must be a read route");
+      assertFalse(
+          roles(method.getDeclaringClass(), method).contains(AGENT),
+          name + " must not admit " + AGENT);
     }
   }
 

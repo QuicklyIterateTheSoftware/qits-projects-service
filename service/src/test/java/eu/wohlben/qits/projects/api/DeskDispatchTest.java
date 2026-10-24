@@ -4,15 +4,19 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -61,6 +65,8 @@ public class DeskDispatchTest {
   @Inject RecordingWorkspaceAgentDispatch dispatch;
 
   @Inject ProjectRepository projectRows;
+
+  @Inject WorkEntityRepository entityRows;
 
   @Inject ProjectService projects;
 
@@ -290,6 +296,87 @@ public class DeskDispatchTest {
     dispatch.willFind(activeOn(runningId));
     doors.press(desk(projectId), runningId, "FLOW", RULE);
     assertEquals(1, dispatch.calls().size());
+  }
+
+  /**
+   * An explicitly blocked item holds no slot (qits-1569): it waits on a person or another item, and
+   * counting it starved the backlog. At cap 1 with the only running ticket blocked, the next press
+   * goes through; unblocked, it takes its slot back and the cap refuses again.
+   */
+  @Test
+  public void aBlockedRunningItemDoesNotHoldADeskSlot() {
+    String projectId = createProject("Desk Blocked Slot");
+    delivery(projectId, true, 1, false);
+    String blockedId = createTicket(projectId, "Waiting on the owner");
+    String nextId = createTicket(projectId, "Next in line");
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + blockedId + "/dispatch")
+        .then()
+        .statusCode(200);
+    asAdmin("mallory")
+        .body(Map.of("blocked", true, "reason", "Waiting on the owner's answer"))
+        .when()
+        .post("/projects/api/work/" + blockedId + "/blocked")
+        .then()
+        .statusCode(200);
+    assertTrue(row(blockedId).blocked);
+    dispatch.reset();
+    dispatch.willFind(activeOn(blockedId));
+
+    doors.press(desk(projectId), nextId, "FLOW", RULE);
+    assertEquals(1, dispatch.calls().size());
+
+    // Unblocked, it holds its slot again: the next running item now counts against it.
+    workEntities.setBlocked(Archetype.TICKET, blockedId, false, "mallory");
+    String thirdId = createTicket(projectId, "Third in line");
+    // The test thread's session still holds the row the first press listed, blocked; a request's
+    // press reads afresh, so this one is made to as well.
+    entityRows.getEntityManager().clear();
+    assertEquals(409, refused(desk(projectId), thirdId, "FLOW", RULE).statusCode());
+  }
+
+  /**
+   * The derived block keeps its slot (qits-1569): an agent waiting for a person — on its own
+   * release request, say — reads as blocked (qits-895), but it is in-flight work, so only the
+   * explicit flag frees the slot and the cap still refuses.
+   */
+  @Test
+  public void anItemOnlyWaitingOnItsAgentStillHoldsADeskSlot() {
+    String projectId = createProject("Desk Waiting Slot");
+    delivery(projectId, true, 1, false);
+    String waitingId = createTicket(projectId, "Agent waiting");
+    String nextId = createTicket(projectId, "Next in line");
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + waitingId + "/dispatch")
+        .then()
+        .statusCode(200);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                entityRows
+                    .getEntityManager()
+                    .createNativeQuery(
+                        "update entity set agent_waiting_since = now() - interval '1 hour'"
+                            + " where id = '"
+                            + waitingId
+                            + "'")
+                    .executeUpdate());
+    WorkEntity waiting = row(waitingId);
+    assertTrue(EntityBlockState.of(waiting).blocked(), "the derived block stands");
+    assertFalse(waiting.blocked, "and the explicit flag is not set");
+    dispatch.reset();
+    dispatch.willFind(activeOn(waitingId));
+
+    DispatchRefused refusal = refused(desk(projectId), nextId, "FLOW", RULE);
+    assertEquals(409, refusal.statusCode());
+    assertTrue(
+        refusal.getMessage().contains("1 are running: " + qualifiedIdOf(projectId, waiting) + "."),
+        refusal.getMessage());
+    assertTrue(dispatch.calls().isEmpty());
   }
 
   /** REFINED with start_refined off keeps the REFINED_WAITS 409 and says start_refined is off. */
