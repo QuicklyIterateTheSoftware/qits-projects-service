@@ -23,7 +23,8 @@ import org.jboss.logging.Logger;
  * qits-1517's ({@link AgentSurfaceDefaults#QITS_1517_DELIVERY_DESK_PROMPT}), one the qits-1560
  * rollout reached holds qits-1560's ({@link AgentSurfaceDefaults#QITS_1560_DELIVERY_DESK_PROMPT}),
  * and one the qits-1569 rollout reached holds qits-1569's ({@link
- * AgentSurfaceDefaults#QITS_1569_DELIVERY_DESK_PROMPT}). Each is compared in turn, and the first that matches is rewritten straight to the current text.
+ * AgentSurfaceDefaults#QITS_1569_DELIVERY_DESK_PROMPT}). Each is compared in turn, and the first
+ * that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
  * shipped text was never edited, and is rewritten to {@link
