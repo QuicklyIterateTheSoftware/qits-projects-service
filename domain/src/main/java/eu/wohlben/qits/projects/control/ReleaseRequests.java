@@ -125,11 +125,14 @@ import org.jboss.logging.Logger;
  *       so the fold usually answers {@code unchanged} and nothing is announced.
  * </ol>
  *
- * <p><b>{@code unchanged} is not a change.</b> The git host answers it when every head is already
- * contained in the target: same sha, no new commit. Nothing is re-armed and no {@code
- * ReleaseRequestChanged} is dispatched, which is what makes a trigger with no content behind it
- * free. A fold that cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored
- * for a person to act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
+ * <p><b>{@code unchanged} is not a change — when the sha it answers is the one recorded.</b> The
+ * git host answers it when every head is already contained in the target: same sha, no new commit.
+ * Nothing is re-armed and no {@code ReleaseRequestChanged} is dispatched, which is what makes a
+ * trigger with no content behind it free. An {@code unchanged} at a <em>different</em> sha is the
+ * tip an earlier fold moved the branch to and whose answer was lost — the call failed after the ref
+ * had already moved — and it is recorded and re-armed like any move (qits-1565). A fold that
+ * cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored for a person to
+ * act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
  * <em>including</em> one answering {@code unchanged}, unless that sha already carries a verdict the
  * gate can read. A fold naming a source the git host does not have ({@code 404 no-such-source})
  * REJECTS the request with {@code rejecting_gate = fold} (qits-1221) and is likewise lifted by the
@@ -3924,6 +3927,22 @@ public class ReleaseRequests {
                 }
                 case UNCHANGED -> {
                   boolean wasConflicted = row.state == ReleaseRequest.State.CONFLICTED;
+                  if (!wasConflicted && !outcome.sha().equals(row.mergedSha)) {
+                    // AN UNCHANGED FOLD AT A NEW SHA IS A LOST ANSWER (qits-1565). The git host
+                    // answers unchanged when the TARGET's tip already is the fold, and that tip is
+                    // whatever the last fold it made left there — including one whose answer never
+                    // came back (the call failed UNREACHABLE after the ref had already moved). The
+                    // sha recorded here is then stale, and dropping this one kept it stale for ever:
+                    // nothing re-armed, and the automations were asked about a fold the branch had
+                    // left, so every run they started was superseded before it began. It is a move
+                    // like any other, so it is recorded and re-armed like one.
+                    LOG.infof(
+                        "Release request %s: the fold answers unchanged at %s but %s is recorded;"
+                            + " an earlier fold's answer was evidently lost, so the branch's tip is"
+                            + " recorded now (%s)",
+                        id, shortSha(outcome.sha()), shortSha(row.mergedSha), why);
+                    return moveOnto(row, outcome.sha(), why, now);
+                  }
                   row.conflictDetail = null;
                   if (!wasConflicted) {
                     return null;
@@ -3965,28 +3984,38 @@ public class ReleaseRequests {
                       effectivePriorityOf(row.id).name());
                 }
                 default -> {
-                  String superseded = row.mergedSha;
-                  boolean moved = !outcome.sha().equals(superseded);
-                  row.mergedSha = outcome.sha();
-                  row.conflictDetail = null;
-                  if (!moved) {
+                  if (outcome.sha().equals(row.mergedSha)) {
+                    row.conflictDetail = null;
                     return null;
                   }
-                  rearm(row, why);
-                  return new Folded(
-                      row.id,
-                      row.qualifiedId,
-                      row.projectId,
-                      row.repoId,
-                      row.repoName,
-                      row.backingBranch(),
-                      row.mergedSha,
-                      superseded,
-                      now,
-                      effectivePriorityOf(row.id).name());
+                  return moveOnto(row, outcome.sha(), why, now);
                 }
               }
             });
+  }
+
+  /**
+   * {@link #apply}'s move: the request's fold is now {@code sha}, a different one from what it
+   * recorded, so the gates are re-armed onto it and the {@link Folded} carries the sha it
+   * superseded. The default arm's path, and the UNCHANGED arm's when the tip it answers is not the
+   * one recorded (qits-1565).
+   */
+  private Folded moveOnto(ReleaseRequest row, String sha, String why, Instant now) {
+    String superseded = row.mergedSha;
+    row.mergedSha = sha;
+    row.conflictDetail = null;
+    rearm(row, why);
+    return new Folded(
+        row.id,
+        row.qualifiedId,
+        row.projectId,
+        row.repoId,
+        row.repoName,
+        row.backingBranch(),
+        row.mergedSha,
+        superseded,
+        now,
+        effectivePriorityOf(row.id).name());
   }
 
   /**
