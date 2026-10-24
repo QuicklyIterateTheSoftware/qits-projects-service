@@ -1510,6 +1510,17 @@ components:
           $ref: "#/components/schemas/Outcome"
         warning:
           type: string
+    FeatureFreezeDto:
+      type: object
+      properties:
+        features:
+          type: integer
+          format: int32
+        threshold:
+          type: integer
+          format: int32
+        frozen:
+          type: boolean
     FoldParentDto:
       type: object
       properties:
@@ -1897,6 +1908,15 @@ components:
           type: integer
           format: int32
           description: At least 1; absent leaves it
+    PlacementDto:
+      type: object
+      properties:
+        outcome:
+          type: string
+        queued:
+          type: boolean
+        detail:
+          type: string
     ProcessResponse:
       type: object
       description: A refinement room and the technical process narrating its container's
@@ -2300,6 +2320,16 @@ components:
             $ref: "#/components/schemas/ReleaseQualityGateDto"
         preRun:
           $ref: "#/components/schemas/ReleasePreRunDto"
+        queuedBehind:
+          type: string
+        queuedBehindQualifiedId:
+          type: string
+        queuedNext:
+          type: string
+        queuedNextQualifiedId:
+          type: string
+        featureFreeze:
+          $ref: "#/components/schemas/FeatureFreezeDto"
     ReleaseRequestSourceDto:
       type: object
       properties:
@@ -2315,6 +2345,8 @@ components:
           type: string
         addedBy:
           type: string
+        feature:
+          type: boolean
     RenameRepositoryRequest:
       type: object
       required:
@@ -2463,6 +2495,8 @@ components:
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
+        placement:
+          $ref: "#/components/schemas/PlacementDto"
     Response22:
       type: object
       properties:
@@ -2485,6 +2519,8 @@ components:
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
+        placement:
+          $ref: "#/components/schemas/PlacementDto"
     Response26:
       type: object
       properties:
@@ -5949,7 +5985,14 @@ paths:
         \ on the bus as ReleaseRequestChanged with preRun=PENDING while its release-request\
         \ automations (the pre-run) settle, and with preRun=DONE once per fold when\
         \ they are fresh or waived; QA builds on DONE only, and preRun.state on the\
-        \ answer says where the pre-run stands."
+        \ answer says where the pre-run stands. The soft feature freeze: once the\
+        \ repository's active request holds the project's release_requests.feature_freeze\
+        \ feature branches (epics, tasks and tickets that are no bug; default 3) it\
+        \ is frozen, and a further feature branch lands in the one request queued\
+        \ behind it, which folds nothing and runs no gate until the active request\
+        \ has released or been withdrawn. Bugs, maintenance branches and main always\
+        \ join the active request. placement says what happened: outcome CREATED,\
+        \ JOINED or PRESENT, queued, and a one-sentence detail."
       operationId: createReleaseRequest
       parameters:
       - name: repoId
@@ -6661,7 +6704,11 @@ paths:
         \ produces a new commit, the gates are re-armed onto it. Idempotent: a branch\
         \ already on the request answers the request unchanged. A RELEASED or WITHDRAWN\
         \ request answers 409. Implicit tag sources are not addable — they are derived\
-        \ from what the repository has in flight."
+        \ from what the repository has in flight. Where the named request is the repository's\
+        \ active one, frozen at its project's feature freeze, and the branch is a\
+        \ feature it does not hold, the branch is redirected to the request queued\
+        \ behind it (joined, or minted queued), and the answer is that request with\
+        \ placement.queued true; it is not refused."
       operationId: addReleaseRequestSource
       parameters:
       - name: repoId
