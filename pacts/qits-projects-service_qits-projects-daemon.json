@@ -225,6 +225,239 @@
         "status": 200
       },
       "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
+            "operationId": "getFrontDeskLastAnswer"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getFrontDeskLastAnswer"
+          }
+        }
+      },
+      "description": "getFrontDeskLastAnswer: getFrontDeskLastAnswer",
+      "key": "994582d9",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose front desk is running",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/front-desk/last-answer",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ]
+        },
+        "method": "GET",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/front-desk/last-answer"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "commandId": "00000000-0000-4000-8000-00000000fd01",
+            "sessionId": "00000000-0000-4000-8000-00000000fd02",
+            "state": "IDLE"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.commandId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sessionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
+            "operationId": "promptFrontDesk"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "promptFrontDesk"
+          }
+        }
+      },
+      "description": "promptFrontDesk: promptFrontDesk",
+      "key": "73fe1795",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose front desk is running",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "text": "What is ready for dev?"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/front-desk/prompt",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/front-desk/prompt"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "commandId": "00000000-0000-4000-8000-00000000fd01",
+            "delivered": true,
+            "queued": false,
+            "state": "IDLE"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.commandId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.delivered": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.queued": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
     }
   ],
   "metadata": {
