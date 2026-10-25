@@ -31,6 +31,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * The release requests: the asynchronous ask that replaces calling the release door blind. A
@@ -139,7 +140,25 @@ public class ReleaseRequestController {
      * @param placement where the branch landed and why (epic qits-1580): created, joined or already
      *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
      */
-    public record Response(ReleaseRequestDto request, PlacementDto placement) {}
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580, the soft feature freeze). Once the"
+                        + " repository's active request holds as many counted sources as the"
+                        + " threshold in force, it is frozen. Counted are branches naming a work"
+                        + " item (epics, tasks, tickets of any type); main, maintenance/* and"
+                        + " release/* never count. The threshold is the repository's own"
+                        + " feature_freeze in .config/qits/release-requests.yml, else the project's"
+                        + " release_requests.feature_freeze, else 3, and 0 turns it off. While it is"
+                        + " frozen, every branch new to the repository's requests (a feature, a bug"
+                        + " fix or a maintenance bump) lands in the one request queued behind it,"
+                        + " minted if absent, which folds nothing and runs no gate until the active"
+                        + " request has released or been withdrawn. A branch already a source of an"
+                        + " unreleased request answers PRESENT where it is. outcome is CREATED,"
+                        + " JOINED or PRESENT, queued says the answering request is queued, and"
+                        + " detail is one sentence saying where the branch went.")
+            PlacementDto placement) {}
   }
 
   /**
@@ -210,18 +229,7 @@ public class ReleaseRequestController {
               + " ReleaseRequestChanged with preRun=PENDING while its release-request automations"
               + " (the pre-run) settle, and with preRun=DONE once per fold when they are fresh or"
               + " waived; QA builds on DONE only, and preRun.state on the answer says where the"
-              + " pre-run stands. The soft feature freeze: once the repository's active request"
-              + " holds as many counted sources as the threshold in force it is frozen — counted"
-              + " are branches naming a work item (epics, tasks, tickets of any type); main,"
-              + " maintenance/* and release/* never count; the threshold is the repository's own"
-              + " feature_freeze in .config/qits/release-requests.yml, else the project's"
-              + " release_requests.feature_freeze, else 3, and 0 turns it off. While it is frozen,"
-              + " every branch new to the repository's requests — a feature, a bug fix or a"
-              + " maintenance bump — lands in the one request queued behind it, minted if absent,"
-              + " which folds nothing and runs no gate until the active request has released or"
-              + " been withdrawn. A branch already a source of an unreleased request answers"
-              + " PRESENT where it is. placement says what happened: outcome CREATED, JOINED or"
-              + " PRESENT, queued, and a one-sentence detail.")
+              + " pre-run stands.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
     requireAgentProject(repoId);
@@ -244,7 +252,18 @@ public class ReleaseRequestController {
      * @param placement where the branch landed and why (epic qits-1580) — always the request named:
      *     a join that names a frozen request is admitted past the freeze, and says so
      */
-    public record Response(ReleaseRequestDto request, PlacementDto placement) {}
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580). An explicit join overrides the soft"
+                        + " feature freeze: a request frozen at its threshold admits any branch"
+                        + " named onto it here (a feature, a bug fix or a maintenance branch), and"
+                        + " the new source carries explicitJoin true, with a detail saying it joined"
+                        + " a frozen request explicitly. From RELEASED on no join is accepted: the"
+                        + " 409 says the request is released and names the repository's next"
+                        + " unreleased request by qualified id, if there is one.")
+            PlacementDto placement) {}
   }
 
   @POST
@@ -257,12 +276,7 @@ public class ReleaseRequestController {
               + " gates are re-armed onto it. Idempotent: a branch already on the request answers"
               + " the request unchanged. A RELEASED or WITHDRAWN request answers 409. Implicit tag"
               + " sources are not addable — they are derived from what the repository has in"
-              + " flight. An explicit join overrides the soft feature freeze: a request frozen at its"
-              + " threshold admits any branch named onto it here — a feature, a bug fix or a"
-              + " maintenance branch — and the new source carries explicitJoin true, with a"
-              + " placement.detail saying it joined a frozen request explicitly. From RELEASED on no"
-              + " join is accepted: the 409 says the request is released and names the repository's"
-              + " next unreleased request by qualified id, if there is one.")
+              + " flight.")
   public AddReleaseRequestSource.Response addSource(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
