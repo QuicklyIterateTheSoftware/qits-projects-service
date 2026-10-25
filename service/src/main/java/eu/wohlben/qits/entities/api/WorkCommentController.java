@@ -38,8 +38,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * reading and commenting admit {@code qits:agent} and {@code qits:system} (an agent's comment bound
  * to its own project), the edit admits the agent bound the same way and only the comment's author
  * (qits-1448), and the delete is {@code
- * qits:admin} alone — an agent that could delete what it disagrees with could erase the record of
- * its own mistake.
+ * qits:admin}'s (and {@code qits:admin-agent}'s) alone — an agent that could delete what it
+ * disagrees with could erase the record of its own mistake. The project's delivery desk ({@code
+ * qits:desk}) deletes as the coordinator does since qits-1596, on its own project's threads only.
  */
 @Path("/work/{qualifiedId}/comments")
 @Produces(MediaType.APPLICATION_JSON)
@@ -188,10 +189,14 @@ public class WorkCommentController {
 
   @DELETE
   @Path("/{commentId}")
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "deleteWorkComment",
       summary = "Delete a comment",
-      description = "Removes a comment from a work entity's thread; audited. Admin only.")
+      description =
+          "Removes a comment from a work entity's thread; audited. qits:admin, qits:admin-agent,"
+              + " or the project's delivery desk (qits:desk) on an entity of its own project; never"
+              + " a plain agent.")
   @APIResponse(
       responseCode = "200",
       description = "The comment is gone",
@@ -199,6 +204,9 @@ public class WorkCommentController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = WorkCommentDeleted.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "A plain agent, or the delivery desk on another project's entity")
   @APIResponse(
       responseCode = "404",
       description = "No entity with this id, or no comment with this id on its thread")

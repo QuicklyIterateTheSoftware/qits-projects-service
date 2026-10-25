@@ -519,7 +519,10 @@ public class ReleaseRequestDeskApprovalTest {
         .body("message", containsString("branch work names no work item"));
   }
 
-  /** Another project's desk: refused, naming the rule, however the request's project is set. */
+  /**
+   * Another project's desk: refused before any rule is read (qits-1596, {@code
+   * ReleaseRequests.requireOwnProjectOfDesk}), on decline too, and eligible for nothing.
+   */
   @Test
   void anotherProjectsDeskIsRefused() {
     approves("manual-review");
@@ -533,8 +536,18 @@ public class ReleaseRequestDeskApprovalTest {
         .post(base(wrapperRepoId) + "/" + id + "/approve")
         .then()
         .statusCode(403)
-        .body("message", containsString("rule manual-review-verified"))
         .body("message", containsString("only its own project's requests"));
+    desk(otherProjectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/decline")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("only its own project's requests"));
+    desk(otherProjectId)
+        .get(base(wrapperRepoId) + "/" + id + "/approval-eligibility")
+        .then()
+        .statusCode(200)
+        .body("eligibility.eligibleRequirementIds", equalTo(List.of()));
   }
 
   /** The desk does not decline; it asks the owner. */

@@ -16,6 +16,8 @@ import eu.wohlben.qits.projects.dto.SyncStatusDto;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectsDto;
 import eu.wohlben.qits.projects.mapper.RepositoryMapper;
+import eu.wohlben.qits.projects.security.AgentAccess;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -57,6 +59,25 @@ public class RepositoryController {
   @Inject BuildStatusLedger buildStatusLedger;
 
   @Inject RepositoryMapper repositoryMapper;
+
+  @Inject SecurityIdentity identity;
+
+  /**
+   * The project's delivery desk ({@code qits:desk}, qits-1596) holds the coordinator's repository
+   * writes that move no git ref — the rename and the main-branch setting, both rows of this service
+   * — bound to its token's {@code project}: the repository is read first, so an unknown id is still
+   * a 404, then another project's is a 403. Every other caller passes untouched. Everything here
+   * that writes or deletes a ref stays off the desk, which never commits or pushes: the branch
+   * delete, the repository delete (its git-host bare and its wrapper entry), pull, push, sync and
+   * the backup push.
+   */
+  private void requireDeskProject(String repoId) {
+    if (AgentAccess.isDesk(identity)) {
+      var repository = repositoryService.get(repoId); // 404 for an unknown repository
+      AgentAccess.requireDeskProject(
+          identity, repository.project == null ? null : repository.project.id);
+    }
+  }
 
   /** SEAM: the technical-process framework is an optional port here (see the interface). */
   @Inject Instance<TechnicalProcessRegistry> technicalProcesses;
@@ -407,6 +428,7 @@ public class RepositoryController {
    */
   @jakarta.ws.rs.PATCH
   @Path("/{repoId}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       summary = "Rename a repository",
       description =
@@ -424,9 +446,13 @@ public class RepositoryController {
       description =
           "An invalid name, a name another repository in this project already answers to, or the"
               + " project's wrapper repository (whose name is derived from the immutable slug)")
+  @APIResponse(
+      responseCode = "403",
+      description = "The delivery desk naming another project's repository")
   @APIResponse(responseCode = "404", description = "No such repository")
   public RenameRepositoryRequest.Response rename(
       @PathParam("repoId") String repoId, @Valid RenameRepositoryRequest request) {
+    requireDeskProject(repoId);
     var renamed = repositoryService.rename(repoId, request.name());
     // Re-read rather than mapping what the rename handed back: that write owns its own transaction,
     // so the row it saw is detached by now and the mapper follows a relation off it.
@@ -442,8 +468,10 @@ public class RepositoryController {
 
   @PUT
   @Path("/{repoId}/main-branch")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   public SetMainBranchRequest.Response setMainBranch(
       @PathParam("repoId") String repoId, @Valid SetMainBranchRequest request) {
+    requireDeskProject(repoId);
     var repo = repositoryService.setMainBranch(repoId, request.branch());
     return new SetMainBranchRequest.Response(repositoryMapper.toDto(repo));
   }

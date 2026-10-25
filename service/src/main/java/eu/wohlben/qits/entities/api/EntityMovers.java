@@ -30,7 +30,7 @@ import jakarta.inject.Inject;
 public class EntityMovers {
 
   /** The role of a project's delivery desk token ({@code desk-delivery}, epic qits-1440). */
-  public static final String DESK_ROLE = "qits:desk";
+  public static final String DESK_ROLE = AgentAccess.DESK_ROLE;
 
   @Inject PersonCheck persons;
 

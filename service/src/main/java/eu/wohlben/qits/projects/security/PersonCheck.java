@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.security;
 
+import eu.wohlben.qits.projects.control.approval.Approver;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.arc.Arc;
 import io.quarkus.runtime.LaunchMode;
@@ -99,6 +100,48 @@ public class PersonCheck {
                     "Only a person may make this decision, verified here: a browser session or a"
                         + " person's qits CLI, holding qits:admin. Asserted identity headers,"
                         + " service clients, agents, CI and workstation tokens do not count."));
+  }
+
+  /**
+   * <b>A person, or the project's delivery desk</b> (qits-1596): the doors whose decision was a
+   * person's alone and that the desk now makes in its own project as the coordinator would — the
+   * automations waiver, the upstream override, a campaign criterion's approval. Answers the actor
+   * recorded: the verified person's name ({@link #verifiedAdmin()}), else the desk's token subject,
+   * under the same proof {@link ApproverCheck#desk} reads for an approval ({@code desk-delivery},
+   * {@code qits:agent} and {@code qits:desk} in its own groups, no foreign {@code clients/…} group, a
+   * {@code project} claim). Never from headers: a forwarded {@code qits:desk} proves nothing here.
+   *
+   * @param projectId the project the decision belongs to; a desk of another project is a 403
+   * @throws DomainException 403 when the caller is neither, or is another project's desk
+   */
+  public String requireAdminOrDesk(String projectId) {
+    Optional<String> person = verifiedAdmin();
+    if (person.isPresent()) {
+      return person.get();
+    }
+    Optional<Approver> desk =
+        identity != null && identity.getPrincipal() instanceof JsonWebToken token
+            ? ApproverCheck.desk(token)
+            : Optional.empty();
+    if (desk.isEmpty()) {
+      throw new DomainException(
+          403,
+          "Only a person or the project's delivery desk may make this decision, verified here: a"
+              + " browser session or a person's qits CLI holding qits:admin, or the desk's own"
+              + " delivery token. Asserted identity headers, service clients, agents, CI and"
+              + " workstation tokens do not count.");
+    }
+    String deskProject = desk.get().deskProject();
+    if (projectId == null || !projectId.equals(deskProject)) {
+      throw new DomainException(
+          403,
+          "The delivery desk of project "
+              + deskProject
+              + " decides only in its own project, and this belongs to project "
+              + projectId
+              + ".");
+    }
+    return desk.get().name();
   }
 
   /** The verified person's name, or empty when the caller is not one. */

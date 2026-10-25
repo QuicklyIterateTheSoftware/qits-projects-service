@@ -110,12 +110,14 @@ public class CampaignDoors {
 
   /**
    * A person's yes on an APPROVAL criterion — a person this service verified itself ({@link
-   * PersonCheck}, 403 otherwise), whose name is what is recorded.
+   * PersonCheck}, 403 otherwise), whose name is what is recorded — or, since qits-1596, the
+   * campaign's own project's delivery desk, recorded under its token subject ({@link
+   * PersonCheck#requireAdminOrDesk}). The campaign is read first, so an unknown one is a 404.
    */
   public CampaignMemberDto approve(
       String campaignId, String membershipId, String criterionId, String note) {
-    String approver = persons.requireAdmin();
     String projectId = workEntities.get(Archetype.CAMPAIGN, campaignId).projectId;
+    String approver = persons.requireAdminOrDesk(projectId);
     CampaignService.Approved approved =
         campaigns.approve(campaignId, membershipId, criterionId, note, approver);
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);

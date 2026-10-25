@@ -102,7 +102,8 @@ public class EntityIdResolver {
                     entity.number,
                     entity.archetype,
                     entity.status,
-                    entity.title));
+                    entity.title,
+                    entity.ticketType));
   }
 
   /** The row behind a qualified id, or empty: one read per database, each in its own transaction. */

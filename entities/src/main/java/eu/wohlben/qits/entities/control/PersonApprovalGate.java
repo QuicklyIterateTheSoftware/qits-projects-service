@@ -22,7 +22,9 @@ import java.util.Optional;
  * <p><b>One machine passes: a delivery desk carrying a {@link Mover#declaredApproval}</b> (epic
  * qits-1440) — the project's own {@code front_desk.delivery.start_refined} in its {@code
  * .config/qits/project.yml}, which a person committed and a release request approved. Only the
- * dispatch path stamps one, and only on a desk whose project declares it.
+ * dispatch path stamps one, and only on a desk whose project declares it. qits-1596, which gave the
+ * desk the owner's coordinator's rights, kept {@code start_refined} as the owner's switch: without
+ * it the desk schedules nothing.
  */
 @ApplicationScoped
 public class PersonApprovalGate implements TransitionGate {
@@ -41,7 +43,7 @@ public class PersonApprovalGate implements TransitionGate {
 
   @Override
   public Optional<String> refusal(WorkEntity row, Mover mover) {
-    if (mover.isPerson() || (mover.isDesk() && mover.declaredApproval() != null)) {
+    if (mover.isPerson() || isDeclaredOwnDesk(row, mover)) {
       return Optional.empty();
     }
     return Optional.of(
@@ -49,5 +51,17 @@ public class PersonApprovalGate implements TransitionGate {
             + mover.described()
             + " is a machine credential — a person schedules it from the board, the Schedule tab"
             + " or their own qits CLI");
+  }
+
+  /**
+   * A desk stamped with its project's start-refined declaration, on its own project's row — the
+   * dispatch path stamps only such a desk, and the project check keeps it that way.
+   */
+  private static boolean isDeclaredOwnDesk(WorkEntity row, Mover mover) {
+    return mover.isDesk()
+        && mover.declaredApproval() != null
+        && row != null
+        && mover.deskProject() != null
+        && mover.deskProject().equals(row.projectId);
   }
 }

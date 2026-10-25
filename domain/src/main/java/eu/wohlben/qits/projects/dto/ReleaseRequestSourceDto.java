@@ -33,6 +33,24 @@ package eu.wohlben.qits.projects.dto;
  * question a reader of that request actually has — the request's own {@code requester} is only the
  * person who opened it. Null where nobody is recorded: the implied {@code main} of a machine-made
  * create, every implicit tag source, and any row written before this field existed.
+ *
+ * <p><b>{@code feature} says the branch counts toward the soft feature freeze</b> (epic qits-1580):
+ * it names a work item — an epic, a task, or a ticket of any type, bugs and maintenance tickets
+ * included. Classified once, when the source was added; the name predates the ruling that every work
+ * item counts. False on {@code main}, on {@code maintenance/*} and {@code release/*} branches, on
+ * every implicit tag source, and on every row added before the freeze existed.
+ *
+ * <p><b>{@code explicitJoin} says the branch joined past the freeze</b>: it was added by naming
+ * this request through the sources door while the request was frozen, which admits any branch. False
+ * on every other row — every create-door ask, and a sources-door join below the freeze. Not {@code
+ * implicit}, which is a tag source nobody named.
  */
 public record ReleaseRequestSourceDto(
-    String kind, String name, String ref, boolean implicit, String priority, String addedBy) {}
+    String kind,
+    String name,
+    String ref,
+    boolean implicit,
+    String priority,
+    String addedBy,
+    boolean feature,
+    boolean explicitJoin) {}

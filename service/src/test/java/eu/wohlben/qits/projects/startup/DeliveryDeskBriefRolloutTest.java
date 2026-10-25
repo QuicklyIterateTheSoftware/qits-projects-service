@@ -14,11 +14,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * qits-1517, qits-1560, qits-1569, qits-1571, qits-1568, qits-1601: the boot step that rolls the
- * delivery desk's new brief onto the stored {@code project.delivery} row — the one row, since
- * surface configurations are platform-wide — only where the stored brief is still byte for byte one
- * of the previous shipped texts: qits-1440's, qits-1517's, qits-1560's, qits-1569's, qits-1571's or
- * qits-1568's.
+ * qits-1517, qits-1560, qits-1569, qits-1571, qits-1568, qits-1596, qits-1601: the boot step that
+ * rolls the delivery desk's new brief onto the stored {@code project.delivery} row — the one row,
+ * since surface configurations are platform-wide — only where the stored brief is still byte for
+ * byte one of the previous shipped texts: qits-1440's, qits-1517's, qits-1560's, qits-1569's,
+ * qits-1571's, qits-1568's or qits-1596's.
  *
  * <p>Driven through {@link DeliveryDeskBriefRollout#rollOut()} directly, as the seed's neighbours
  * are. The row is staged through the store's own write and put back to the shipped default after
@@ -176,14 +176,16 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
-   * qits-1601: an unedited qits-1568 brief rolls to the current one too — the one that excepts a
-   * BUSY agent from the stalled-agents step's thirty-minutes-quiet clause.
+   * qits-1596: an unedited qits-1568 brief — the one that still held the desk to a narrow role —
+   * rolls to the current one, which gives it the coordinator's rights (scheduling and its
+   * approvals still under the owner's rules).
    */
   @Test
   public void anUneditedQits1568BriefIsMigrated() {
-    assertFalse(
-        AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT.contains("BUSY"),
-        "the qits-1568 text is the one that did not except a BUSY agent");
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT.contains(
+            "You hold qits:desk for this project only."),
+        "the qits-1568 text is the one with the narrow role");
     stage(AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT);
     int revisionsBefore = surfaces.history(SURFACE).size();
 
@@ -191,14 +193,47 @@ public class DeliveryDeskBriefRolloutTest {
 
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("You hold the owner's coordinator's rights"), after);
+    assertFalse(after.contains("You hold qits:desk for this project only."), after);
     assertTrue(after.contains("unless its activity is BUSY"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
-  /** qits-1601: an edit of the qits-1568 brief is the owner's too. */
+  /** qits-1596: an edit of the qits-1568 brief is the owner's too. */
   @Test
   public void anOwnerEditedQits1568BriefIsLeftAlone() {
     String edited = AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
+   * qits-1601: an unedited qits-1596 brief rolls to the current one too — the one that excepts a
+   * BUSY agent from the stalled-agents step's thirty-minutes-quiet clause.
+   */
+  @Test
+  public void anUneditedQits1596BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1596_DELIVERY_DESK_PROMPT.contains("BUSY"),
+        "the qits-1596 text is the one that did not except a BUSY agent");
+    stage(AgentSurfaceDefaults.QITS_1596_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1596 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("unless its activity is BUSY"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1601: an edit of the qits-1596 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1596BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1596_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
     stage(edited);
 
     assertFalse(rollout.rollOut(), "an edit is the owner's");

@@ -1,0 +1,123 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000004",
+    "qualifiedId": "contract-service-rr-1",
+    "repoId": "00000000-0000-4000-8000-000000000003",
+    "repoName": "contract-service",
+    "backingBranch": "release/contract-service-rr-1",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "ticket/contract-11",
+        "ref": "refs/heads/ticket/contract-11",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "ticket/contract-12",
+        "ref": "refs/heads/ticket/contract-12",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "epic/contract-13",
+        "ref": "refs/heads/epic/contract-13",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": null,
+    "state": "PENDING",
+    "summary": "Release the CSV export",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": null,
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "approvalRequirements": [],
+    "gates": [
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": null,
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "supersededByQualifiedId": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null,
+    "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PENDING",
+        "detail": "Waiting for the automations to answer",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Nothing is folded yet",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ],
+    "preRun": {
+      "state": "PENDING"
+    },
+    "queuedBehind": null,
+    "queuedBehindQualifiedId": null,
+    "queuedNext": "00000000-0000-4000-8000-000000000002",
+    "queuedNextQualifiedId": "contract-service-rr-2",
+    "featureFreeze": {
+      "features": 3,
+      "threshold": 3,
+      "frozen": true,
+      "source": "PLATFORM"
+    }
+  }
+}

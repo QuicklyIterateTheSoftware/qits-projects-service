@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -349,5 +350,55 @@ class ProjectConfigParserTest {
         new DeliverySettings(
                 true, 2, false, Set.of("manual-review", "artifact-declarations"), null)
             .approvesColumn());
+  }
+
+  // ---- release_requests.feature_freeze (epic qits-1580) ----------------------------------------
+
+  /** An absent map, an empty one and an absent key declare nothing: the platform's 3 applies. */
+  @Test
+  void anAbsentFeatureFreezeIsUndeclared() {
+    assertEquals(ProjectConfig.ReleaseRequestsSettings.DEFAULT, parser.parse(null).releaseRequests());
+    assertNull(parser.parse("supports_environments: true\n").releaseRequests().featureFreeze());
+    assertNull(parser.parse("release_requests:\n").releaseRequests().featureFreeze());
+    assertNull(parser.parse("release_requests:\n  other: 1\n").releaseRequests().featureFreeze());
+  }
+
+  /** A stated freeze is read beside the other keys; both bounds are inclusive, and 0 is a value. */
+  @Test
+  void aStatedFeatureFreezeIsRead() {
+    ProjectConfig config =
+        parser.parse(
+            "front_desk:\n  lifecycle: ALWAYS_ON\nrelease_requests:\n  feature_freeze: 2\n");
+    assertEquals(2, config.releaseRequests().featureFreeze());
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
+    assertEquals(
+        0, parser.parse("release_requests:\n  feature_freeze: 0\n").releaseRequests().featureFreeze());
+    assertEquals(
+        20,
+        parser.parse("release_requests:\n  feature_freeze: 20\n").releaseRequests().featureFreeze());
+  }
+
+  /** A freeze out of range or not an integer, and a release_requests that is no mapping, throw. */
+  @Test
+  void aMalformedFeatureFreezeThrows() {
+    for (String bad :
+        new String[] {
+          "release_requests:\n  feature_freeze: -1\n",
+          "release_requests:\n  feature_freeze: 21\n",
+          "release_requests:\n  feature_freeze: x\n",
+          "release_requests:\n  feature_freeze: \"3\"\n",
+          "release_requests:\n  feature_freeze: 2.5\n",
+        }) {
+      ProjectConfigException e =
+          assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
+      assertTrue(e.getMessage().contains("an integer from 0 to 20"), e.getMessage());
+      assertTrue(e.getMessage().contains("0 turns the freeze off"), e.getMessage());
+      assertTrue(e.getMessage().contains("release_requests.feature_freeze"), e.getMessage());
+    }
+    for (String bad : new String[] {"release_requests: 3\n", "release_requests: [3]\n"}) {
+      ProjectConfigException e =
+          assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
+      assertTrue(e.getMessage().contains("Expected a mapping at 'release_requests'"), e.getMessage());
+    }
   }
 }
