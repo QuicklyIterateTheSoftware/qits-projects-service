@@ -35,8 +35,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * DeliverySettings#OFF}, an absent key inside it is that key's default, and a value of the wrong
  * type, out of its range or (for {@code approves}) outside {@link DeliverySettings#APPROVABLE}
  * throws. {@code release_requests} (epic qits-1580) reads the same way: absent is {@link
- * ReleaseRequestsSettings#DEFAULT}, and a {@code feature_freeze} that is not an integer from 1 to
- * 20 throws. Absence of the file, absence of the key and an explicit {@code true} are one
+ * ReleaseRequestsSettings#DEFAULT} (nothing declared, the platform's fallback applies), and a
+ * {@code feature_freeze} that is not an integer from 0 (the freeze off) to 20 throws. Absence of the file, absence of the key and an explicit {@code true} are one
  * answer — {@link ProjectConfig#DEFAULT}, the project supports environments — and only an explicit
  * {@code false} changes anything. Degrading a malformed declaration to either value would let a typo
  * re-route a project's deployments silently, which is the one outcome this seam exists to prevent;
@@ -90,7 +90,10 @@ public class ProjectConfigParser {
   /** The nested map that declares the project's release requests (epic qits-1580). */
   public static final String RELEASE_REQUESTS = "release_requests";
 
-  /** Under {@link #RELEASE_REQUESTS}: the soft feature freeze, an integer 1..20, default 3. */
+  /**
+   * Under {@link #RELEASE_REQUESTS}: the soft feature freeze, an integer 0..20 where 0 turns it off;
+   * absent is undeclared, and the platform's 3 applies unless the repository declares its own.
+   */
   public static final String FEATURE_FREEZE = "feature_freeze";
 
   /** A structural problem in {@link #CONFIG_PATH}. It names the file; see the class javadoc. */
@@ -241,9 +244,9 @@ public class ProjectConfigParser {
     return new ReleaseRequestsSettings(featureFreezeOf(settings.get(FEATURE_FREEZE)));
   }
 
-  private static int featureFreezeOf(Object value) {
+  private static Integer featureFreezeOf(Object value) {
     if (value == null) {
-      return ReleaseRequestsSettings.DEFAULT_FEATURE_FREEZE;
+      return null;
     }
     if (!(value instanceof Integer count)
         || count < ReleaseRequestsSettings.MIN_FEATURE_FREEZE
@@ -253,7 +256,7 @@ public class ProjectConfigParser {
               + ReleaseRequestsSettings.MIN_FEATURE_FREEZE
               + " to "
               + ReleaseRequestsSettings.MAX_FEATURE_FREEZE
-              + " at '"
+              + " (0 turns the freeze off) at '"
               + RELEASE_REQUESTS
               + "."
               + FEATURE_FREEZE

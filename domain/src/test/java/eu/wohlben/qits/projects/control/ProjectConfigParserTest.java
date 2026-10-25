@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -353,17 +354,16 @@ class ProjectConfigParserTest {
 
   // ---- release_requests.feature_freeze (epic qits-1580) ----------------------------------------
 
-  /** An absent map, an empty one and an absent key are the default freeze of three. */
+  /** An absent map, an empty one and an absent key declare nothing: the platform's 3 applies. */
   @Test
-  void anAbsentFeatureFreezeIsThree() {
+  void anAbsentFeatureFreezeIsUndeclared() {
     assertEquals(ProjectConfig.ReleaseRequestsSettings.DEFAULT, parser.parse(null).releaseRequests());
-    assertEquals(3, parser.parse("supports_environments: true\n").releaseRequests().featureFreeze());
-    assertEquals(3, parser.parse("release_requests:\n").releaseRequests().featureFreeze());
-    assertEquals(
-        3, parser.parse("release_requests:\n  other: 1\n").releaseRequests().featureFreeze());
+    assertNull(parser.parse("supports_environments: true\n").releaseRequests().featureFreeze());
+    assertNull(parser.parse("release_requests:\n").releaseRequests().featureFreeze());
+    assertNull(parser.parse("release_requests:\n  other: 1\n").releaseRequests().featureFreeze());
   }
 
-  /** A stated freeze is read beside the other keys, and both bounds are inclusive. */
+  /** A stated freeze is read beside the other keys; both bounds are inclusive, and 0 is a value. */
   @Test
   void aStatedFeatureFreezeIsRead() {
     ProjectConfig config =
@@ -372,7 +372,7 @@ class ProjectConfigParserTest {
     assertEquals(2, config.releaseRequests().featureFreeze());
     assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
     assertEquals(
-        1, parser.parse("release_requests:\n  feature_freeze: 1\n").releaseRequests().featureFreeze());
+        0, parser.parse("release_requests:\n  feature_freeze: 0\n").releaseRequests().featureFreeze());
     assertEquals(
         20,
         parser.parse("release_requests:\n  feature_freeze: 20\n").releaseRequests().featureFreeze());
@@ -383,7 +383,7 @@ class ProjectConfigParserTest {
   void aMalformedFeatureFreezeThrows() {
     for (String bad :
         new String[] {
-          "release_requests:\n  feature_freeze: 0\n",
+          "release_requests:\n  feature_freeze: -1\n",
           "release_requests:\n  feature_freeze: 21\n",
           "release_requests:\n  feature_freeze: x\n",
           "release_requests:\n  feature_freeze: \"3\"\n",
@@ -391,7 +391,8 @@ class ProjectConfigParserTest {
         }) {
       ProjectConfigException e =
           assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
-      assertTrue(e.getMessage().contains("an integer from 1 to 20"), e.getMessage());
+      assertTrue(e.getMessage().contains("an integer from 0 to 20"), e.getMessage());
+      assertTrue(e.getMessage().contains("0 turns the freeze off"), e.getMessage());
       assertTrue(e.getMessage().contains("release_requests.feature_freeze"), e.getMessage());
     }
     for (String bad : new String[] {"release_requests: 3\n", "release_requests: [3]\n"}) {

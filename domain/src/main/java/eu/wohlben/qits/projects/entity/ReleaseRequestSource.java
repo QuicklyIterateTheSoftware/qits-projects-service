@@ -80,12 +80,22 @@ public class ReleaseRequestSource extends PanacheEntityBase implements CausedRow
   public String addedBy;
 
   /**
-   * Whether the work item this branch names is a <b>feature</b> (epic qits-1580, V54) — what the
-   * soft feature freeze counts. Stamped once, when the source is added ({@code FeatureBranches}); a
-   * fix, and a branch naming no work item, is not one. Rows that predate the column are not.
+   * Whether this source <b>counts toward the soft feature freeze</b> (epic qits-1580, V54): its
+   * branch names a work item — an epic, a task, or a ticket of any type, bug and maintenance tickets
+   * included. A branch naming none ({@code main}, {@code maintenance/*}, {@code release/*}) never
+   * counts. Stamped once, when the source is added ({@code FeatureBranches}); the name predates the
+   * ruling that every work item counts. Rows that predate the column do not count.
    */
   @Column(nullable = false)
   public boolean feature;
+
+  /**
+   * Whether this source <b>joined past the freeze</b> (epic qits-1580, V55): it was put on the
+   * request by name through the sources door while the request was frozen, which admits it anyway.
+   * False on every other row, a join through that door below the freeze included.
+   */
+  @Column(name = "explicit_join", nullable = false)
+  public boolean explicitJoin;
 
   @Column(name = "causation_id")
   public UUID causationId;

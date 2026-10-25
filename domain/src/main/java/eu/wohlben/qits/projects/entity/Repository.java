@@ -77,6 +77,18 @@ public class Repository extends PanacheEntityBase implements CausedRow {
   public String configWarning;
 
   /**
+   * {@code feature_freeze} in this repository's own {@code .config/qits/release-requests.yml} at its
+   * default branch (epic qits-1580, V55): the soft feature freeze for this repository's release
+   * requests, 0..20 with 0 the freeze turned off, overriding its project's {@link
+   * Project#releaseFeatureFreeze}. Null where the file or the key is absent. Written by {@code
+   * ReleaseGates}, which reads that file anyway for {@code manual-review}, whenever it reads the
+   * repository's configuration from {@code main} — and by a create or a join that resolved it fresh —
+   * so a request read never asks the git host for it.
+   */
+  @Column(name = "release_feature_freeze")
+  public Integer releaseFeatureFreeze;
+
+  /**
    * When this repository was last backed up to its forge twin — attempted, not necessarily
    * succeeded. Null means never attempted, which is a different thing from failing and reads that
    * way everywhere.

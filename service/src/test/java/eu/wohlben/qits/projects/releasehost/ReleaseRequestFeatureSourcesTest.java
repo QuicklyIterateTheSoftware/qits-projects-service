@@ -22,11 +22,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>A source is stamped a feature when it is added</b> (epic qits-1580, task qits-1584): the work
- * item its branch names, read out of the real entities module, decides — an IMPROVEMENT ticket is a
- * feature, a BUG ticket is not, and neither is {@code main} or an automation's {@code
- * maintenance/…} branch. Every way a source is added is covered: the create (with its implied
- * {@code main}), a create converging on the open request, and the add-source verb.
+ * <b>A source is stamped as counting toward the freeze when it is added</b> (epic qits-1580, task
+ * qits-1584): whether its branch names a work item, read out of the real entities module, decides —
+ * an IMPROVEMENT, a BUG and a MAINTENANCE ticket all count, and {@code main}, a {@code
+ * maintenance/*} bump and an automation's {@code maintenance/automations/…} branch never do. Every
+ * way a source is added is covered: the create (with its implied {@code main}), a create converging
+ * on the open request, and the add-source verb.
  *
  * <p>The gate is held open ({@link FakeActiveBuilds} answering "a run is still active"), as in
  * {@link ReleaseRequestSourcesTest}, so nothing settles the fixture mid-test.
@@ -99,17 +100,29 @@ public class ReleaseRequestFeatureSourcesTest {
   }
 
   @Test
-  void anImprovementIsAFeatureAndABugMainAndAMaintenanceBranchAreNot() {
+  void everyWorkItemCountsAndMainAndMaintenanceBranchesDoNot() {
     String improvement = ticketBranch("IMPROVEMENT");
     String bug = ticketBranch("BUG");
+    String maintenanceTicket = ticketBranch("MAINTENANCE");
+    String bump = "maintenance/java-deps/" + UUID.randomUUID();
     String automation = "maintenance/automations/entity-diagram/" + UUID.randomUUID();
 
     String id = releaseRequests.request(repoId, improvement, "a feature", "alice", null).id();
-    // Converges on the open request: the converging arm stamps the row it adds as well.
+    // Converges on the open request: the converging arm stamps the row it adds as well. Below the
+    // platform's threshold of 3 nothing is frozen yet, so the third ask still converges.
     assertEquals(id, releaseRequests.request(repoId, bug, "a fix", "bob", null).id());
+    assertEquals(id, releaseRequests.request(repoId, bump, "bump: 2 dependencies", null, null).id());
     releaseRequests.addSource(id, automation, "maintenance", null);
+    releaseRequests.addSource(id, maintenanceTicket, "carol", null);
 
     assertEquals(
-        Map.of("main", false, improvement, true, bug, false, automation, false), featuresOf(id));
+        Map.of(
+            "main", false,
+            improvement, true,
+            bug, true,
+            bump, false,
+            automation, false,
+            maintenanceTicket, true),
+        featuresOf(id));
   }
 }

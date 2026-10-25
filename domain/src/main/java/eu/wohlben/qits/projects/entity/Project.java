@@ -173,13 +173,15 @@ public class Project extends PanacheEntityBase implements CausedRow {
   public String deliveryInterval = "PT10M";
 
   /**
-   * {@code release_requests.feature_freeze} (epic qits-1580, V54): how many feature sources an
-   * active release request of this project takes before a further feature branch queues behind it,
-   * 1..20. Stored by the same reconcile as the {@code delivery_*} columns, and {@code NOT NULL} with
-   * the value an absent key means.
+   * {@code release_requests.feature_freeze} (epic qits-1580, V54, nullable since V55): how many
+   * counted sources an active release request of this project's repositories takes before every
+   * further ask queues behind it, 0..20 with 0 the freeze turned off. Null where {@code project.yml}
+   * declares none, so the platform's fallback of 3 applies — unless the repository declares its own
+   * ({@link Repository#releaseFeatureFreeze}), which wins. Stored by the same reconcile as the {@code
+   * delivery_*} columns.
    */
-  @Column(name = "release_feature_freeze", nullable = false)
-  public int releaseFeatureFreeze = 3;
+  @Column(name = "release_feature_freeze")
+  public Integer releaseFeatureFreeze;
 
   @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
   public List<Repository> repositories;

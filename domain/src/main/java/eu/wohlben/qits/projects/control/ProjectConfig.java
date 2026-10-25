@@ -73,26 +73,27 @@ public record ProjectConfig(
   /**
    * The project's release requests (epic qits-1580), {@code release_requests} in {@code
    * project.yml}. Not {@link ReleaseRequestSettings}, which is the repository-level {@code
-   * release-requests.yml}: this is what one project decides for every request of its repositories.
+   * release-requests.yml}: this is what one project decides for every request of its repositories,
+   * and a repository's own {@code feature_freeze} there overrides it ({@link FeatureFreezeThreshold}).
    *
-   * @param featureFreeze the soft feature freeze — how many feature sources an active request takes
-   *     before a further feature branch queues behind it, {@link #MIN_FEATURE_FREEZE}..{@link
-   *     #MAX_FEATURE_FREEZE}; absent is {@link #DEFAULT_FEATURE_FREEZE}
+   * @param featureFreeze the soft feature freeze — how many counted sources (branches naming a work
+   *     item) an active request takes before every further ask queues behind it, {@link
+   *     #MIN_FEATURE_FREEZE}..{@link #MAX_FEATURE_FREEZE}, where 0 turns the freeze off; null where
+   *     the project declares none, and the platform's {@link #DEFAULT_FEATURE_FREEZE} applies
    */
-  public record ReleaseRequestsSettings(int featureFreeze) {
+  public record ReleaseRequestsSettings(Integer featureFreeze) {
 
-    /** The smallest freeze: one feature per request. */
-    public static final int MIN_FEATURE_FREEZE = 1;
+    /** The smallest freeze: 0, the freeze turned off. */
+    public static final int MIN_FEATURE_FREEZE = 0;
 
     /** The largest freeze. */
     public static final int MAX_FEATURE_FREEZE = 20;
 
-    /** {@code feature_freeze} when absent, and the column's default (V54). */
+    /** The platform's fallback, where neither the repository nor its project declares a freeze. */
     public static final int DEFAULT_FEATURE_FREEZE = 3;
 
-    /** No {@code release_requests}: every value at its default. */
-    public static final ReleaseRequestsSettings DEFAULT =
-        new ReleaseRequestsSettings(DEFAULT_FEATURE_FREEZE);
+    /** No {@code release_requests}: nothing declared, so the platform's fallback applies. */
+    public static final ReleaseRequestsSettings DEFAULT = new ReleaseRequestsSettings(null);
 
     /** The settings {@code project}'s columns hold. */
     public static ReleaseRequestsSettings of(Project project) {

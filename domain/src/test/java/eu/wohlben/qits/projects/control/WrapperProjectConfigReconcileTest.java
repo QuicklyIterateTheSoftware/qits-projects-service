@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
@@ -431,19 +432,19 @@ public class WrapperProjectConfigReconcileTest {
   // release_requests.feature_freeze (epic qits-1580)
   // -------------------------------------------------------------------------------------------
 
-  private int storedFeatureFreezeOf(String projectId) {
+  private Integer storedFeatureFreezeOf(String projectId) {
     return io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
         .call(() -> projectService.get(projectId).releaseFeatureFreeze);
   }
 
   /**
-   * A new project's freeze is three; a stated one is stored and announces nothing; a malformed file
-   * keeps it; removing the key restores three.
+   * A new project declares no freeze (null: the platform's 3 applies); a stated one is stored and
+   * announces nothing; 0 is stored as a value; a malformed file keeps it; removing the key clears it.
    */
   @Test
   public void theFeatureFreezeIsStoredAndAMalformedFileKeepsIt() throws Exception {
     Project project = greenfield("projcfg-freeze");
-    assertEquals(3, storedFeatureFreezeOf(project.id));
+    assertNull(storedFeatureFreezeOf(project.id));
 
     projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 5\n");
     reconcileService.reconcileProjectConfig(project.id);
@@ -452,12 +453,16 @@ public class WrapperProjectConfigReconcileTest {
     assertEquals(List.of(), announcer.changedOf(project.id), "ProjectChanged carries no freeze");
     assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
 
-    projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 0\n");
+    projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 21\n");
     reconcileService.reconcileProjectConfig(project.id);
     assertEquals(5, storedFeatureFreezeOf(project.id), "a typo may not move the freeze");
 
+    projectYml.commit(wrapperOf(project), "release_requests:\n  feature_freeze: 0\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    assertEquals(0, storedFeatureFreezeOf(project.id), "0 is a value: the freeze is off");
+
     projectYml.commit(wrapperOf(project), "supports_environments: true\n");
     reconcileService.reconcileProjectConfig(project.id);
-    assertEquals(3, storedFeatureFreezeOf(project.id));
+    assertNull(storedFeatureFreezeOf(project.id));
   }
 }
