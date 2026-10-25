@@ -12,7 +12,7 @@ import java.util.Set;
  * windows, the sweep, the retries — is shared and knows no source by name.
  *
  * <p><b>Adding one is one {@code @ApplicationScoped} bean implementing this, plus its tests.</b>
- * {@link DeskTriggerListener} and {@code DeskTriggerSweep} find every bean through {@code @Any
+ * {@link DeskTriggerListener} and {@link DeskTriggerSweep} find every bean through {@code @Any
  * Instance<DeskTriggerSource>}: the listener subscribes to the union of their {@link #signatures()},
  * the sweep renders each window's lines through the source that admitted them. A signature no other
  * source reads also moves the consumer pact ({@code EventstreamPactTest}), because the catch-up
