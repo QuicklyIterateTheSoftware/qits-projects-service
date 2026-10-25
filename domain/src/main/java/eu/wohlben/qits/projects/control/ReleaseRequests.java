@@ -641,9 +641,11 @@ public class ReleaseRequests {
   /**
    * {@link #request}, answering where the branch landed beside the request it landed in (epic
    * qits-1580) — the create door's answer. Every rule of {@link #request} holds; what it adds is the
-   * <b>soft feature freeze</b>, decided by {@link #place} under the repository's row lock: a feature
-   * branch asked for while the repository's active request is frozen lands in the request queued
-   * behind it, and every other ask lands where it always did.
+   * <b>soft feature freeze</b>, decided by {@link #place} under the repository's row lock: once the
+   * repository's active request is frozen, <em>every</em> branch new to the repository's unreleased
+   * requests — a work item's, a bug fix, a maintenance bump — lands in the request queued behind it,
+   * minted if absent. A branch already a participant answers where it is ({@code PRESENT}), which is
+   * why {@code main}, a source of every request, never queues.
    */
   public Asked ask(
       String repoId, String branch, String summary, String requester, String priority) {
@@ -671,9 +673,11 @@ public class ReleaseRequests {
     // whether a deployment failed is an HTTP read into qits-deployments (qits-1471). A release in
     // flight is not in it and is left RELEASED; evaluate() holds the fresh request behind it.
     Map<String, String> red = redOf(releasedSiblingsOf(repoId, null));
-    // Read HERE for the same reason: the classification reads the epics database (qits-1580).
+    // Read HERE for the same reason: the classification reads the epics database (qits-1580), and
+    // the repository's own freeze is read from its main through the gate configuration's read.
     boolean namedFeature = featureBranches.isFeature(named);
     boolean mainFeature = featureBranches.isFeature(main);
+    ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
@@ -692,15 +696,16 @@ public class ReleaseRequests {
                   // joins it. See the javadoc. It is also the lock the feature freeze's queue is
                   // decided under (epic qits-1580), so two feature asks cannot mint two queues.
                   Repository locked = repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
-                  int threshold = featureFreezeOf(locked);
+                  FeatureFreezeThreshold threshold = thresholdOf(locked, declared);
                   activated.addAll(activateStale(repoId));
-                  Placement placement = place(repoId, named, namedFeature, threshold);
+                  Placement placement = place(repoId, named, threshold);
                   ReleaseRequest target = placement.target();
                   if (target != null) {
                     if (placement.outcome() == Outcome.JOINED) {
                       // A branch nothing has asked about joins the repository's one open request
                       // instead of opening a second — or, past the freeze, the one queued behind it.
-                      addSourceRow(target.id, named, requester, orDefault(stated), namedFeature);
+                      addSourceRow(
+                          target.id, named, requester, orDefault(stated), namedFeature, false);
                       why.set("a source was added: " + named);
                     } else {
                       ReleaseRequestSource participating =
@@ -722,7 +727,7 @@ public class ReleaseRequests {
                     }
                     target.updatedAt = Instant.now();
                     qualified.set(target.qualifiedId);
-                    answered.set(placementOf(placement, named, namedFeature, target, threshold, false));
+                    answered.set(placementOf(placement, named, namedFeature, target, threshold));
                     return target.id;
                   }
                   ReleaseRequest fresh =
@@ -744,7 +749,7 @@ public class ReleaseRequests {
                     ended.addAll(obsolete(repoId, fresh, red));
                   }
                   qualified.set(fresh.qualifiedId);
-                  answered.set(placementOf(placement, named, namedFeature, fresh, threshold, false));
+                  answered.set(placementOf(placement, named, namedFeature, fresh, threshold));
                   return fresh.id;
                 });
     endSuperseded(repoId, ended, id, qualified.get());
@@ -797,17 +802,19 @@ public class ReleaseRequests {
    *
    * <ol>
    *   <li>An unreleased request already naming the branch answers: {@link Outcome#PRESENT}. A re-ask
-   *       must answer the request it answered last time, queued or not.
+   *       must answer the request it answered last time, queued or not — and {@code main}, a source
+   *       of every request, always lands here.
    *   <li>No active request — an unreleased one with {@code queued_behind} null; the oldest is
    *       <em>the</em> active one, as a legacy repository may hold several — mints a fresh active
    *       one: {@link Outcome#CREATED}.
-   *   <li>The active request is not frozen, or the branch is not a feature: it joins the active
-   *       request, {@link Outcome#JOINED}. Fixes, maintenance branches and {@code main} always land
-   *       here.
-   *   <li>Frozen — the active request's feature count is at least {@code threshold} — and a feature:
-   *       the branch joins the request queued behind the active one ({@link Outcome#JOINED},
-   *       queued), or one is minted queued behind it ({@link Outcome#CREATED}, queued). A queued
-   *       request has no feature limit, and there is at most one per active request.
+   *   <li>The active request is not frozen ({@link FeatureFreezeThreshold#freezes}; never at a
+   *       threshold of 0): the branch joins it, {@link Outcome#JOINED}.
+   *   <li>Frozen — the active request holds at least {@code threshold} counted sources: <b>any</b>
+   *       branch, counted or not (a bug fix, a {@code maintenance/*} bump), joins the request queued
+   *       behind the active one ({@link Outcome#JOINED}, queued), or one is minted queued behind it
+   *       ({@link Outcome#CREATED}, queued). A queued request has no limit of its own, and there is
+   *       at most one per active request. Only {@link #join}, naming the frozen request by id, puts
+   *       a branch past the freeze.
    * </ol>
    *
    * <p>"Open" is still {@link ReleaseRequestRepository#UNRELEASED}, never {@link
@@ -815,7 +822,7 @@ public class ReleaseRequests {
    * content is already tagged. Such an ask mints a fresh request, which waits before READY until the
    * released one finalizes, and supersedes it ({@link #obsolete}) only if it went red (qits-1471).
    */
-  private Placement place(String repoId, String named, boolean feature, int threshold) {
+  private Placement place(String repoId, String named, FeatureFreezeThreshold threshold) {
     List<ReleaseRequest> open = requests.listUnreleasedByRepo(repoId);
     ReleaseRequest active =
         open.stream().filter(row -> row.queuedBehind == null).findFirst().orElse(null);
@@ -840,7 +847,7 @@ public class ReleaseRequests {
     if (active == null) {
       return new Placement(null, Outcome.CREATED, null, 0, false);
     }
-    if (activeFeatures < threshold || !feature) {
+    if (!threshold.freezes(activeFeatures)) {
       return new Placement(active, Outcome.JOINED, active, activeFeatures, false);
     }
     ReleaseRequest queued =
@@ -1031,9 +1038,10 @@ public class ReleaseRequests {
         main,
         null,
         mainWasNamed ? orDefault(stated) : ReleasePriority.DEFAULT,
-        mainFeature);
+        mainFeature,
+        false);
     if (!mainWasNamed) {
-      addSourceRow(fresh.id, named, requester, orDefault(stated), namedFeature);
+      addSourceRow(fresh.id, named, requester, orDefault(stated), namedFeature, false);
     }
     return fresh;
   }
@@ -1044,8 +1052,8 @@ public class ReleaseRequests {
   }
 
   /**
-   * How many of {@code requestId}'s named sources are feature branches — what its freeze counts.
-   * Inside the caller's transaction.
+   * How many of {@code requestId}'s named sources count toward the freeze — branches naming a work
+   * item, stamped {@code feature} when added. Inside the caller's transaction.
    */
   private int featureCountOf(String requestId) {
     return featureCount(sources.listByRequest(requestId));
@@ -1058,39 +1066,42 @@ public class ReleaseRequests {
             .count();
   }
 
-  /** The feature freeze of {@code repository}'s project: {@code release_requests.feature_freeze}. */
-  private static int featureFreezeOf(Repository repository) {
-    if (repository == null || repository.project == null) {
-      return ProjectConfig.ReleaseRequestsSettings.DEFAULT_FEATURE_FREEZE;
+  /**
+   * The threshold in force for {@code locked}, the repository row this transaction holds the lock on
+   * (epic qits-1580): its own {@code feature_freeze} over its project's over the platform's ({@link
+   * FeatureFreezeThreshold}). Where {@code declared} — read from its main before the transaction —
+   * is known and differs from what the row has stored, the row is brought in line here, so the
+   * request reads that follow show the threshold this decision used.
+   */
+  private static FeatureFreezeThreshold thresholdOf(
+      Repository locked, ReleaseGates.DeclaredFeatureFreeze declared) {
+    if (locked != null
+        && declared != null
+        && declared.known()
+        && !java.util.Objects.equals(locked.releaseFeatureFreeze, declared.value())) {
+      locked.releaseFeatureFreeze = declared.value();
     }
-    return repository.project.releaseFeatureFreeze;
+    return FeatureFreezeThreshold.of(locked);
+  }
+
+  /** The words a placement sentence uses for a threshold: "3 of 3 counted branches". */
+  private static String counted(int count, FeatureFreezeThreshold threshold) {
+    return count + " of " + threshold.threshold() + " counted branches";
   }
 
   /**
-   * The sentence and the words a door answers about {@code placement} (epic qits-1580).
+   * The sentence and the words the create door answers about {@code placement} (epic qits-1580).
    *
+   * @param counted whether {@code named} counts toward the freeze ({@link FeatureBranches})
    * @param target the request the branch is in now, minted or not
-   * @param redirected whether the caller named another request — the frozen active one — and the
-   *     branch was put in the queue behind it instead ({@link #addSource})
    */
   private PlacementDto placementOf(
       Placement placement,
       String named,
-      boolean feature,
+      boolean counted,
       ReleaseRequest target,
-      int threshold,
-      boolean redirected) {
+      FeatureFreezeThreshold threshold) {
     ReleaseRequest active = placement.active();
-    String frozen =
-        active == null
-            ? null
-            : active.qualifiedId
-                + " is frozen at "
-                + placement.activeFeatures()
-                + " of "
-                + threshold
-                + " feature branches";
-    String verb = placement.outcome() == Outcome.CREATED ? " opened " : " joined ";
     String detail =
         switch (placement.outcome()) {
           case PRESENT ->
@@ -1103,39 +1114,29 @@ public class ReleaseRequests {
                   + "; nothing was added";
           case CREATED, JOINED -> {
             if (placement.queued() && active != null) {
-              yield (redirected || placement.activeFeatures() >= threshold
-                      ? frozen + "; "
-                      : "")
+              yield active.qualifiedId
+                  + " is frozen at "
+                  + counted(placement.activeFeatures(), threshold)
+                  + "; "
                   + named
-                  + verb
+                  + (placement.outcome() == Outcome.CREATED ? " opened " : " joined ")
                   + target.qualifiedId
-                  + ", queued behind "
-                  + (redirected || placement.activeFeatures() >= threshold ? "it" : active.qualifiedId)
-                  + (redirected ? ", instead of joining " + active.qualifiedId : "");
+                  + ", queued behind it";
             }
             if (placement.outcome() == Outcome.CREATED) {
-              yield named + " opened " + target.qualifiedId + ", the repository's active release request";
-            }
-            if (placement.activeFeatures() >= threshold && !feature) {
               yield named
-                  + " joined "
+                  + " opened "
                   + target.qualifiedId
-                  + ", which is frozen at "
-                  + placement.activeFeatures()
-                  + " of "
-                  + threshold
-                  + " feature branches; "
-                  + named
-                  + " is not a feature, so the freeze does not hold it";
+                  + ", the repository's active release request";
             }
             yield named
                 + " joined "
                 + target.qualifiedId
                 + ", the active release request ("
-                + (placement.activeFeatures() + (feature ? 1 : 0))
-                + " of "
-                + threshold
-                + " feature branches)";
+                + (threshold.enabled()
+                    ? counted(placement.activeFeatures() + (counted ? 1 : 0), threshold)
+                    : "the feature freeze is off")
+                + ")";
           }
         };
     return new PlacementDto(placement.outcome().name(), placement.queued(), detail);
@@ -1468,8 +1469,10 @@ public class ReleaseRequests {
 
   /**
    * Put another branch on an open request. Idempotent — a branch already named is not added twice
-   * and the request is answered unchanged — and a settled request refuses with a 409, because
-   * widening what has already been released or withdrawn would rewrite a record.
+   * and the request is answered unchanged — and a request past changing refuses with a 409, because
+   * widening what has already been released or withdrawn would rewrite a record. A RELEASED request
+   * (and anything after it) refuses naming the next request of its repository ({@link
+   * #requireJoinable}): from the SCM release on, a request's content is the tag.
    *
    * <p>Only <b>named</b> sources are caller-managed. The implicit tag sources are derived from what
    * the repository has in flight and an API that let a caller drop one would let somebody release a
@@ -1487,47 +1490,50 @@ public class ReleaseRequests {
 
   /**
    * {@link #addSource}, answering where the branch landed beside the request it landed in (epic
-   * qits-1580) — the sources door's answer. The branch joins the named request as asked, with one
-   * exception: where that request is the repository's active one, it is <b>frozen</b> (its feature
-   * count has reached the project's threshold) and the branch is a feature it does not hold yet, the
-   * branch is <b>redirected</b> to the request queued behind it — joined, or minted queued with the
-   * branch's name as its summary — and the answer is that request, its placement saying so. Not a
-   * 409: an agent told "if a request is open, join it" would be left with nothing to do. A queued
-   * request, an active one below the threshold and a branch that is no feature join as asked.
+   * qits-1580) — the sources door's answer. <b>An explicit join overrides the soft feature
+   * freeze</b>: the branch joins the request it names, always — a work item's branch, a bug fix, a
+   * {@code maintenance/*} bump or an automation's {@code maintenance/automations/<kind>/<request>}
+   * alike — and is never redirected, frozen request or not. Naming the request by id is the caller
+   * saying it belongs in that release, which is the one judgement the freeze leaves to a caller.
+   *
+   * <p>A source that joins a request <b>frozen at the moment of the join</b> is stamped {@code
+   * explicit_join} (V55), so a reader can tell what came past the freeze from what the request
+   * held when it froze; a join below the freeze, or onto a queued request (never frozen), is not
+   * stamped. The placement's sentence says which.
    */
   public Asked join(String requestId, String branch, String actor, String priority) {
     String named = requireBranch(branch);
     ReleasePriority stated = statedPriority(priority);
-    // Before the transaction: the classification reads the epics database (qits-1580).
+    // Before the transaction: the classification reads the epics database (qits-1580), and the
+    // repository's own freeze is read from its main through the gate configuration's read.
     boolean feature = featureBranches.isFeature(named);
-    record Where(String repoId, String main) {}
-    Where where =
+    String repoId =
         QuarkusTransaction.requiringNew()
             .call(
                 () ->
                     requests
                         .findByIdOptional(requestId)
-                        .map(row -> new Where(row.repoId, mainOf(row.repoId)))
+                        .map(row -> row.repoId)
                         .orElseThrow(
                             () -> new NotFoundException("Release request not found: " + requestId)));
-    // Only a redirect that mints a queue adds main, and main is never a feature; asked anyway, so the
-    // row says what the classification says rather than what this line assumes.
-    boolean mainFeature = featureBranches.isFeature(where.main());
-    record Joined(String targetId, boolean added, PlacementDto placement) {}
+    ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
+    record Joined(boolean added, PlacementDto placement) {}
     List<Activation> activated = new ArrayList<>();
     Joined joined =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   // The repository's row lock first, the order every placement takes (epic
-                  // qits-1580): a redirect may mint the queue, and two of them must meet here.
+                  // qits-1580): whether the request is frozen is decided against the same count a
+                  // concurrent create reads.
                   Repository locked =
-                      repositories.findById(where.repoId(), LockModeType.PESSIMISTIC_WRITE);
-                  int threshold = featureFreezeOf(locked);
-                  activated.addAll(activateStale(where.repoId()));
-                  ReleaseRequest row = requireOpenForChange(requestId);
-                  ReleaseRequest active = row.queuedBehind == null ? row : activeOf(row);
-                  int activeFeatures = active == null ? 0 : featureCountOf(active.id);
+                      repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
+                  FeatureFreezeThreshold threshold = thresholdOf(locked, declared);
+                  activated.addAll(activateStale(repoId));
+                  ReleaseRequest row = requireJoinable(requestId);
+                  int counted = featureCountOf(row.id);
+                  // A queued request is never frozen: it has no limit of its own.
+                  boolean frozen = row.queuedBehind == null && threshold.freezes(counted);
                   ReleaseRequestSource existing =
                       sources.find(row.id, ReleaseRequestSource.Kind.BRANCH, named).orElse(null);
                   if (existing != null) {
@@ -1535,66 +1541,116 @@ public class ReleaseRequests {
                       existing.priority = stated;
                       row.updatedAt = Instant.now();
                     }
-                    Placement present =
-                        new Placement(
-                            row, Outcome.PRESENT, active, activeFeatures, row.queuedBehind != null);
                     return new Joined(
-                        row.id, false, placementOf(present, named, feature, row, threshold, false));
+                        false,
+                        new PlacementDto(
+                            Outcome.PRESENT.name(),
+                            row.queuedBehind != null,
+                            named
+                                + " is already a source of "
+                                + row.qualifiedId
+                                + "; nothing was added"));
                   }
-                  if (row.queuedBehind == null && feature && activeFeatures >= threshold) {
-                    // THE REDIRECT: the named request is the active one and frozen, and this
-                    // feature would be one past its freeze. It goes to the queue behind it.
-                    ReleaseRequest queued = requests.findQueuedBehind(row.id).orElse(null);
-                    if (queued != null) {
-                      addSourceRow(queued.id, named, actor, orDefault(stated), feature);
-                      queued.updatedAt = Instant.now();
-                      Placement placement =
-                          new Placement(queued, Outcome.JOINED, row, activeFeatures, true);
-                      return new Joined(
-                          queued.id,
-                          true,
-                          placementOf(placement, named, feature, queued, threshold, true));
-                    }
-                    ReleaseRequest fresh =
-                        mint(
-                            row.repoId,
-                            row.projectId,
-                            row.repoName,
-                            named,
-                            actor,
-                            where.main(),
-                            named,
-                            stated,
-                            feature,
-                            mainFeature,
-                            row);
-                    Placement placement =
-                        new Placement(null, Outcome.CREATED, row, activeFeatures, true);
-                    return new Joined(
-                        fresh.id, true, placementOf(placement, named, feature, fresh, threshold, true));
-                  }
-                  addSourceRow(row.id, named, actor, orDefault(stated), feature);
+                  addSourceRow(row.id, named, actor, orDefault(stated), feature, frozen);
                   row.updatedAt = Instant.now();
-                  Placement placement =
-                      new Placement(
-                          row, Outcome.JOINED, active, activeFeatures, row.queuedBehind != null);
                   return new Joined(
-                      row.id, true, placementOf(placement, named, feature, row, threshold, false));
+                      true,
+                      new PlacementDto(
+                          Outcome.JOINED.name(),
+                          row.queuedBehind != null,
+                          joinedDetail(row, named, feature, counted, frozen, threshold)));
                 });
     if (joined.added()) {
       // A queued request returns at once: nothing is folded for it until it is active.
-      remerge(joined.targetId(), "a source was added: " + named);
+      remerge(requestId, "a source was added: " + named);
     }
     activated.forEach(activation -> remerge(activation.id(), activation.why()));
-    return new Asked(get(joined.targetId()), joined.placement());
+    return new Asked(get(requestId), joined.placement());
   }
 
-  /** The request {@code queued} waits behind, while it is still unreleased; else null. */
-  private ReleaseRequest activeOf(ReleaseRequest queued) {
-    return requests
-        .findByIdOptional(queued.queuedBehind)
-        .filter(row -> ReleaseRequestRepository.UNRELEASED.contains(row.state))
-        .orElse(null);
+  /** The sentence the sources door answers for a branch it added to {@code row} (epic qits-1580). */
+  private String joinedDetail(
+      ReleaseRequest row,
+      String named,
+      boolean feature,
+      int counted,
+      boolean frozen,
+      FeatureFreezeThreshold threshold) {
+    if (frozen) {
+      return named
+          + " joined "
+          + row.qualifiedId
+          + " explicitly, past its feature freeze: it is frozen at "
+          + counted(counted, threshold)
+          + ", and a join that names a frozen request is admitted";
+    }
+    if (row.queuedBehind != null) {
+      return named
+          + " joined "
+          + row.qualifiedId
+          + ", queued behind "
+          + qualifiedIdOf(row.queuedBehind);
+    }
+    return named
+        + " joined "
+        + row.qualifiedId
+        + " as asked ("
+        + (threshold.enabled()
+            ? counted(counted + (feature ? 1 : 0), threshold)
+            : "the feature freeze is off")
+        + ")";
+  }
+
+  /**
+   * {@link #requireOpenForChange} for a join (epic qits-1580): the row, locked, if a branch may
+   * still join it. <b>From RELEASED on, no join of any kind is accepted</b> — its fold is tagged, so
+   * a further source would edit a release that has happened — and the refusal names where the
+   * branch should go instead: the repository's next request, the active unreleased one (with the
+   * one queued behind it, if any), by qualified id. Inside the caller's transaction.
+   */
+  private ReleaseRequest requireJoinable(String id) {
+    ReleaseRequest row =
+        requests
+            .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
+            .orElseThrow(() -> new NotFoundException("Release request not found: " + id));
+    if (ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
+      return row;
+    }
+    List<ReleaseRequest> open = requests.listUnreleasedByRepo(row.repoId);
+    ReleaseRequest active =
+        open.stream()
+            .filter(candidate -> candidate.queuedBehind == null)
+            .findFirst()
+            .orElse(open.isEmpty() ? null : open.get(0));
+    String next;
+    if (active == null) {
+      next =
+          "no release request of "
+              + repositoryWord(row)
+              + " is open; ask for a release of the branch to open the next one";
+    } else {
+      ReleaseRequest queued =
+          open.stream()
+              .filter(candidate -> active.id.equals(candidate.queuedBehind))
+              .findFirst()
+              .orElse(null);
+      next =
+          "the next release request of "
+              + repositoryWord(row)
+              + " is "
+              + active.qualifiedId
+              + (queued == null ? "" : ", with " + queued.qualifiedId + " queued behind it");
+    }
+    String reason =
+        row.state == ReleaseRequest.State.RELEASED || row.state == ReleaseRequest.State.FINALIZED
+            ? " is released: its fold is tagged, so no branch can join it any more"
+            : " is already " + row.state + ", so no branch can join it";
+    throw new DomainException(409, "Release request " + row.qualifiedId + reason + "; " + next);
+  }
+
+  /** The repository a refusal names: its name where the request carries one, else its id. */
+  private static String repositoryWord(ReleaseRequest row) {
+    return row.repoName != null && !row.repoName.isBlank() ? row.repoName : row.repoId;
   }
 
   /**
@@ -6020,8 +6076,8 @@ public class ReleaseRequests {
    *     request's uuid (epic qits-1580) — one query for the page
    * @param queuedNext the unreleased request queued behind each row that has one, keyed by the row's
    *     uuid — one query for the page
-   * @param featureFreezes each distinct repository's project threshold, {@code
-   *     release_requests.feature_freeze}
+   * @param featureFreezes each distinct repository's threshold in force and the level that set it
+   *     ({@link FeatureFreezeThreshold}), off its stored columns — never the git host
    */
   private record Page(
       List<ReleaseRequest> rows,
@@ -6043,7 +6099,7 @@ public class ReleaseRequests {
       Map<String, GateSubject.Upstreams> upstream,
       Map<String, String> queuedBehind,
       Map<String, ReleaseRequest> queuedNext,
-      Map<String, Integer> featureFreezes) {}
+      Map<String, FeatureFreezeThreshold> featureFreezes) {}
 
   /**
    * Names a list of rows without a query per row: one read of every named source in the page, one
@@ -6216,13 +6272,18 @@ public class ReleaseRequests {
     return next;
   }
 
-  /** Each distinct repository's feature freeze, read off its project (epic qits-1580). */
-  private Map<String, Integer> featureFreezes(Set<String> repoIds) {
-    Map<String, Integer> freezes = new HashMap<>();
+  /**
+   * Each distinct repository's feature freeze (epic qits-1580), read off its stored columns — its
+   * own {@code release_feature_freeze} and its project's — and never off the git host: {@code
+   * ReleaseGates} keeps the repository's column current whenever it reads its main.
+   */
+  private Map<String, FeatureFreezeThreshold> featureFreezes(Set<String> repoIds) {
+    Map<String, FeatureFreezeThreshold> freezes = new HashMap<>();
     repoIds.forEach(
         repoId ->
             freezes.put(
-                repoId, featureFreezeOf(repositories.findByIdOptional(repoId).orElse(null))));
+                repoId,
+                FeatureFreezeThreshold.of(repositories.findByIdOptional(repoId).orElse(null))));
     return freezes;
   }
 
@@ -6329,10 +6390,7 @@ public class ReleaseRequests {
                   row.supersededBy == null ? null : page.successors().get(row.supersededBy),
                   row.queuedBehind == null ? null : page.queuedBehind().get(row.queuedBehind),
                   page.queuedNext().get(row.id),
-                  page.featureFreezes()
-                      .getOrDefault(
-                          row.repoId,
-                          ProjectConfig.ReleaseRequestsSettings.DEFAULT_FEATURE_FREEZE));
+                  page.featureFreezes().getOrDefault(row.repoId, FeatureFreezeThreshold.PLATFORM));
             })
         .toList();
   }
@@ -6909,7 +6967,7 @@ public class ReleaseRequests {
    * @param queuedBehindQualifiedId the qualified id of the request a queued row waits behind, else
    *     null (epic qits-1580)
    * @param queuedNext the unreleased request queued behind this one, else null
-   * @param featureFreeze the threshold of this request's project
+   * @param featureFreeze the threshold in force for this request's repository, and its level
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
@@ -6922,7 +6980,7 @@ public class ReleaseRequests {
       String supersededByQualifiedId,
       String queuedBehindQualifiedId,
       ReleaseRequest queuedNext,
-      int featureFreeze) {
+      FeatureFreezeThreshold featureFreeze) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -6933,7 +6991,8 @@ public class ReleaseRequests {
               false,
               source.priority == null ? null : source.priority.name(),
               source.addedBy,
-              source.feature));
+              source.feature,
+              source.explicitJoin));
     }
     for (ReleasedTagPendingMerge tag : implicit) {
       all.add(
@@ -6947,7 +7006,9 @@ public class ReleaseRequests {
               null,
               // Nor an author: nobody put it on, the repository's own in-flight set did.
               null,
-              // And it is no feature: a release that already happened counts towards no freeze.
+              // And it counts towards no freeze: a release that already happened is no work item.
+              false,
+              // Nor did anybody join it, explicitly or otherwise.
               false));
     }
     return new ReleaseRequestDto(
@@ -6994,17 +7055,19 @@ public class ReleaseRequests {
 
   /**
    * Where {@code row} stands against its freeze (epic qits-1580): frozen is the active request — an
-   * unreleased one queued behind nothing — holding at least the threshold's feature sources, derived
-   * here and never stored. A queued request is never frozen, and neither is a settled one.
+   * unreleased one queued behind nothing — holding at least the threshold's counted sources, derived
+   * here and never stored. A queued request is never frozen, neither is a settled one, and nothing
+   * is at a threshold of 0.
    */
   private static FeatureFreezeDto featureFreezeOf(
-      ReleaseRequest row, List<ReleaseRequestSource> named, int threshold) {
+      ReleaseRequest row, List<ReleaseRequestSource> named, FeatureFreezeThreshold threshold) {
     int features = featureCount(named);
     boolean frozen =
         row.queuedBehind == null
             && ReleaseRequestRepository.UNRELEASED.contains(row.state)
-            && features >= threshold;
-    return new FeatureFreezeDto(features, threshold, frozen);
+            && threshold.freezes(features);
+    return new FeatureFreezeDto(
+        features, threshold.threshold(), frozen, threshold.source().name());
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -7025,11 +7088,17 @@ public class ReleaseRequests {
   }
 
   /**
-   * @param feature whether {@code branch} is a feature ({@link FeatureBranches}), classified by the
-   *     caller before its transaction opened
+   * @param feature whether {@code branch} counts toward the freeze ({@link FeatureBranches}),
+   *     classified by the caller before its transaction opened
+   * @param explicitJoin whether it joined through the sources door while the request was frozen
    */
   private void addSourceRow(
-      String requestId, String branch, String actor, ReleasePriority priority, boolean feature) {
+      String requestId,
+      String branch,
+      String actor,
+      ReleasePriority priority,
+      boolean feature,
+      boolean explicitJoin) {
     ReleaseRequestSource source = new ReleaseRequestSource();
     source.id = UUID.randomUUID().toString();
     source.requestId = requestId;
@@ -7039,6 +7108,7 @@ public class ReleaseRequests {
     source.addedBy = actor;
     source.priority = priority;
     source.feature = feature;
+    source.explicitJoin = explicitJoin;
     sources.persist(source);
   }
 

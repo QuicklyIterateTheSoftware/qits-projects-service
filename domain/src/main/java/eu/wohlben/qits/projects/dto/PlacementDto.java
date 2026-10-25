@@ -9,7 +9,8 @@ package eu.wohlben.qits.projects.dto;
  * already a source and nothing was added); a word rather than a closed set, like every state word on
  * this surface. {@code queued} says the answering request is queued behind the repository's active
  * request, which reached its feature freeze: it folds nothing and runs no gate until that request has
- * left the unreleased states. {@code detail} is one sentence saying where the branch went and why,
- * built here so a caller prints it rather than reconstructs it.
+ * left the unreleased states. {@code detail} is one sentence saying where the branch went and why —
+ * queued behind a frozen request, joined below the freeze, or joined a frozen request explicitly
+ * through the sources door — built here so a caller prints it rather than reconstructs it.
  */
 public record PlacementDto(String outcome, boolean queued, String detail) {}

@@ -165,12 +165,12 @@ import java.util.List;
  *
  * <p><b>The queue fields are the soft feature freeze</b> (epic qits-1580). {@code queuedBehind} (and
  * its {@code queuedBehindQualifiedId}) names the active request this one is queued behind: it holds
- * the feature branches that arrived after that one froze, stays PENDING, folds nothing — {@code
+ * every branch asked for through the create door after that one froze, stays PENDING, folds nothing — {@code
  * mergedSha} is null — and runs no gate until that request has left the unreleased states. {@code
  * queuedNext} (and {@code queuedNextQualifiedId}) is the reverse link: the request queued behind
  * this one, if any. Both are null on every request outside a queue. {@code featureFreeze} counts the
- * feature sources against the project's threshold and says whether this request is frozen; see
- * {@link FeatureFreezeDto}. Never null.
+ * sources that count toward the freeze against the threshold in force, names the level that set it
+ * and says whether this request is frozen; see {@link FeatureFreezeDto}. Never null.
  */
 public record ReleaseRequestDto(
     String id,

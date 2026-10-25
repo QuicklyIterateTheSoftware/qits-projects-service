@@ -1521,6 +1521,8 @@ components:
           format: int32
         frozen:
           type: boolean
+        source:
+          type: string
     FoldParentDto:
       type: object
       properties:
@@ -2346,6 +2348,8 @@ components:
         addedBy:
           type: string
         feature:
+          type: boolean
+        explicitJoin:
           type: boolean
     RenameRepositoryRequest:
       type: object
@@ -5986,13 +5990,18 @@ paths:
         \ automations (the pre-run) settle, and with preRun=DONE once per fold when\
         \ they are fresh or waived; QA builds on DONE only, and preRun.state on the\
         \ answer says where the pre-run stands. The soft feature freeze: once the\
-        \ repository's active request holds the project's release_requests.feature_freeze\
-        \ feature branches (epics, tasks and tickets that are no bug; default 3) it\
-        \ is frozen, and a further feature branch lands in the one request queued\
-        \ behind it, which folds nothing and runs no gate until the active request\
-        \ has released or been withdrawn. Bugs, maintenance branches and main always\
-        \ join the active request. placement says what happened: outcome CREATED,\
-        \ JOINED or PRESENT, queued, and a one-sentence detail."
+        \ repository's active request holds as many counted sources as the threshold\
+        \ in force it is frozen — counted are branches naming a work item (epics,\
+        \ tasks, tickets of any type); main, maintenance/* and release/* never count;\
+        \ the threshold is the repository's own feature_freeze in .config/qits/release-requests.yml,\
+        \ else the project's release_requests.feature_freeze, else 3, and 0 turns\
+        \ it off. While it is frozen, every branch new to the repository's requests\
+        \ — a feature, a bug fix or a maintenance bump — lands in the one request\
+        \ queued behind it, minted if absent, which folds nothing and runs no gate\
+        \ until the active request has released or been withdrawn. A branch already\
+        \ a source of an unreleased request answers PRESENT where it is. placement\
+        \ says what happened: outcome CREATED, JOINED or PRESENT, queued, and a one-sentence\
+        \ detail."
       operationId: createReleaseRequest
       parameters:
       - name: repoId
@@ -6704,11 +6713,13 @@ paths:
         \ produces a new commit, the gates are re-armed onto it. Idempotent: a branch\
         \ already on the request answers the request unchanged. A RELEASED or WITHDRAWN\
         \ request answers 409. Implicit tag sources are not addable — they are derived\
-        \ from what the repository has in flight. Where the named request is the repository's\
-        \ active one, frozen at its project's feature freeze, and the branch is a\
-        \ feature it does not hold, the branch is redirected to the request queued\
-        \ behind it (joined, or minted queued), and the answer is that request with\
-        \ placement.queued true; it is not refused."
+        \ from what the repository has in flight. An explicit join overrides the soft\
+        \ feature freeze: a request frozen at its threshold admits any branch named\
+        \ onto it here — a feature, a bug fix or a maintenance branch — and the new\
+        \ source carries explicitJoin true, with a placement.detail saying it joined\
+        \ a frozen request explicitly. From RELEASED on no join is accepted: the 409\
+        \ says the request is released and names the repository's next unreleased\
+        \ request by qualified id, if there is one."
       operationId: addReleaseRequestSource
       parameters:
       - name: repoId

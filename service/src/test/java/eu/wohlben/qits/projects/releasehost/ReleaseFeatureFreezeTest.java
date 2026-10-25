@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -22,6 +23,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.restassured.http.ContentType;
 import io.restassured.response.ExtractableResponse;
@@ -39,14 +41,18 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>The soft feature freeze</b> (epic qits-1580, task qits-1585): a repository's active release
- * request takes its project's {@code release_requests.feature_freeze} feature branches — three by
- * default — and the next feature asked for lands in the one request queued behind it. A queued
- * request folds nothing, announces nothing and runs no gate; when the active one leaves the
- * unreleased states — RELEASED or WITHDRAWN — it is activated and folds. Fixes, maintenance branches,
- * {@code main} and a re-ask always land where they did.
+ * request is frozen once it holds as many counted sources — branches naming a work item, of any type
+ * — as the threshold in force (the repository's own {@code feature_freeze}, else its project's, else
+ * the platform's 3; 0 turns it off), and from then on every branch asked for through the create
+ * door lands in the one request queued behind it: features, bug fixes and maintenance bumps alike.
+ * Only a join naming the frozen request by id is admitted past the freeze, and says so on its
+ * source row. A queued request folds nothing, announces nothing and runs no gate; when the active
+ * one leaves the unreleased states — RELEASED or WITHDRAWN — it is activated and folds. From RELEASED
+ * on, no join is accepted at all. {@code main} and a re-ask answer PRESENT where they are.
  *
- * <p>Feature branches name real ticket rows of the entities module, as {@link
- * ReleaseRequestFeatureSourcesTest} does: an IMPROVEMENT ticket is a feature, a BUG ticket is not.
+ * <p>Counted branches name real ticket rows of the entities module, as {@link
+ * ReleaseRequestFeatureSourcesTest} does: IMPROVEMENT, BUG and MAINTENANCE tickets all count; a
+ * {@code maintenance/*} branch names no work item and never does.
  * Most tests hold the CI gate open ({@link FakeActiveBuilds} answering "a run is still active"), so
  * nothing settles mid-test; the activation-on-release test drives the real release flow, as {@link
  * ReleaseSupersessionTest} does.
@@ -123,12 +129,18 @@ public class ReleaseFeatureFreezeTest {
     assertFalse(first.placement().queued());
     String active = first.request().id();
     ReleaseRequests.Asked second = ask(feature());
-    ReleaseRequests.Asked third = ask(feature());
+    String thirdBranch = feature();
+    ReleaseRequests.Asked third = ask(thirdBranch);
     assertEquals(active, second.request().id());
     assertEquals(active, third.request().id());
     assertEquals("JOINED", third.placement().outcome());
     assertFalse(third.placement().queued());
-    assertTrue(third.placement().detail().contains("3 of 3"), third.placement().detail());
+    assertEquals(
+        thirdBranch
+            + " joined "
+            + first.request().qualifiedId()
+            + ", the active release request (3 of 3 counted branches)",
+        third.placement().detail());
 
     String fourthBranch = feature();
     ReleaseRequests.Asked fourth = ask(fourthBranch);
@@ -138,7 +150,7 @@ public class ReleaseFeatureFreezeTest {
     assertTrue(fourth.placement().queued());
     assertEquals(
         activeQid
-            + " is frozen at 3 of 3 feature branches; "
+            + " is frozen at 3 of 3 counted branches; "
             + fourthBranch
             + " opened "
             + fourth.request().qualifiedId()
@@ -159,6 +171,7 @@ public class ReleaseFeatureFreezeTest {
     ReleaseRequestDto frozen = releaseRequests.get(active);
     assertEquals(3, frozen.featureFreeze().features());
     assertEquals(3, frozen.featureFreeze().threshold());
+    assertEquals("PLATFORM", frozen.featureFreeze().source(), "neither level declares a freeze");
     assertTrue(frozen.featureFreeze().frozen());
     assertEquals(queued.id(), frozen.queuedNext());
     assertEquals(queued.qualifiedId(), frozen.queuedNextQualifiedId());
@@ -183,29 +196,77 @@ public class ReleaseFeatureFreezeTest {
   }
 
   @Test
-  void aFixAMaintenanceBranchMainAndAReAskJoinTheFrozenRequest() {
+  void aBugFixAndAMaintenanceBumpAskedForAFrozenRequestGoToTheQueue() {
+    String active = freezeActive();
+    String activeQid = releaseRequests.get(active).qualifiedId();
+    String bugBranch = ticket("BUG");
+    String bumpBranch = "maintenance/java-deps/" + UUID.randomUUID();
+
+    ReleaseRequests.Asked bug = ask(bugBranch);
+    ReleaseRequests.Asked bump = ask(bumpBranch);
+
+    assertEquals("CREATED", bug.placement().outcome());
+    assertTrue(bug.placement().queued());
+    String queued = bug.request().id();
+    assertNotEquals(active, queued);
+    assertEquals(active, bug.request().queuedBehind());
+    assertEquals(
+        activeQid
+            + " is frozen at 3 of 3 counted branches; "
+            + bugBranch
+            + " opened "
+            + bug.request().qualifiedId()
+            + ", queued behind it",
+        bug.placement().detail());
+    assertEquals(queued, bump.request().id(), "the bump joins the same queue");
+    assertEquals("JOINED", bump.placement().outcome());
+    assertTrue(bump.placement().queued());
+    assertEquals(
+        activeQid
+            + " is frozen at 3 of 3 counted branches; "
+            + bumpBranch
+            + " joined "
+            + bug.request().qualifiedId()
+            + ", queued behind it",
+        bump.placement().detail());
+    assertFalse(branchesOf(active).names.contains(bugBranch), "nothing joined the frozen request");
+    assertFalse(branchesOf(active).names.contains(bumpBranch));
+    assertEquals(3, releaseRequests.get(active).featureFreeze().features());
+    // The bug counts, the maintenance bump does not.
+    assertEquals(1, releaseRequests.get(queued).featureFreeze().features());
+    assertEquals(1, queuedRequestsOf());
+  }
+
+  @Test
+  void mainAndAReAskAnswerPresentOnTheFrozenRequest() {
     String active = freezeActive();
     String participant = branchesOf(active).feature;
 
-    ReleaseRequests.Asked bug = ask(ticket("BUG"));
-    ReleaseRequests.Asked automation =
-        ask("maintenance/automations/entity-diagram/" + UUID.randomUUID());
     ReleaseRequests.Asked main = ask("main");
     ReleaseRequests.Asked again = ask(participant);
 
-    for (ReleaseRequests.Asked asked : new ReleaseRequests.Asked[] {bug, automation, main, again}) {
+    for (ReleaseRequests.Asked asked : new ReleaseRequests.Asked[] {main, again}) {
       assertEquals(active, asked.request().id(), asked.placement().detail());
+      assertEquals("PRESENT", asked.placement().outcome());
       assertFalse(asked.placement().queued(), asked.placement().detail());
     }
-    assertEquals("JOINED", bug.placement().outcome());
-    assertTrue(
-        bug.placement().detail().contains("is not a feature, so the freeze does not hold it"),
-        bug.placement().detail());
-    assertEquals("JOINED", automation.placement().outcome());
-    assertEquals("PRESENT", main.placement().outcome());
-    assertEquals("PRESENT", again.placement().outcome());
     assertEquals(0, queuedRequestsOf(), "nothing was queued");
-    assertEquals(3, releaseRequests.get(active).featureFreeze().features());
+  }
+
+  @Test
+  void maintenanceBranchesDoNotCountWhileBugTicketsDo() {
+    String active = ask(ticket("BUG")).request().id();
+    ask("maintenance/java-deps/" + UUID.randomUUID());
+    ask("maintenance/gitlinks/" + UUID.randomUUID());
+    ask(ticket("MAINTENANCE"));
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertEquals(2, read.featureFreeze().features(), "the two tickets count, the bumps do not");
+    assertFalse(read.featureFreeze().frozen());
+
+    ReleaseRequests.Asked third = ask(ticket("BUG"));
+    assertEquals(active, third.request().id(), "the third counted branch still joins");
+    assertTrue(releaseRequests.get(active).featureFreeze().frozen(), "and freezes the request");
+    assertTrue(ask("maintenance/java-deps/" + UUID.randomUUID()).placement().queued());
   }
 
   @Test
@@ -317,41 +378,108 @@ public class ReleaseFeatureFreezeTest {
   // -------------------------------------------------------------------------------------------
 
   @Test
-  void addingAFeatureToAFrozenRequestRedirectsItToTheQueueAndSaysSo() {
+  void anExplicitJoinOfAFrozenRequestAdmitsAFeatureABugAndAMaintenanceBranch() {
     String active = freezeActive();
     String activeQid = releaseRequests.get(active).qualifiedId();
+    java.util.List<String> held = branchesOf(active).names;
+    String feature = feature();
+    String bug = ticket("BUG");
+    String bump = "maintenance/java-deps/" + UUID.randomUUID();
+    String automation = "maintenance/automations/entity-diagram/" + activeQid;
+
+    for (String branch : new String[] {feature, bug, bump, automation}) {
+      ExtractableResponse<Response> joined = addSource(active, branch);
+      assertEquals(active, joined.path("request.id"), branch + " joined the request it named");
+      assertEquals("JOINED", joined.path("placement.outcome"));
+      assertEquals(Boolean.FALSE, joined.path("placement.queued"));
+      String detail = joined.path("placement.detail");
+      assertTrue(
+          detail.startsWith(branch + " joined " + activeQid + " explicitly, past its feature freeze"),
+          detail);
+      assertEquals(
+          Boolean.TRUE,
+          joined.path("request.sources.find { it.name == '" + branch + "' }.explicitJoin"),
+          branch);
+    }
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertTrue(read.featureFreeze().frozen(), "still frozen");
+    assertEquals(5, read.featureFreeze().features(), "the feature and the bug count");
+    assertEquals(0, queuedRequestsOf(), "nothing was redirected");
+    assertTrue(
+        read.sources().stream()
+            .filter(source -> held.contains(source.name()))
+            .noneMatch(source -> source.explicitJoin()),
+        "the sources it held when it froze joined past no freeze");
+    assertTrue(
+        merger.foldsOf("refs/heads/" + read.backingBranch()).stream()
+            .anyMatch(fold -> fold.sources().contains("refs/heads/" + automation)),
+        "the automation's branch is folded into the frozen request: "
+            + merger.foldsOf("refs/heads/" + read.backingBranch()));
+  }
+
+  @Test
+  void aJoinBelowTheFreezeIsNoExplicitJoin() {
+    String active = ask(feature()).request().id();
     String branch = feature();
 
-    ExtractableResponse<Response> redirected = addSource(active, branch);
+    ExtractableResponse<Response> joined = addSource(active, branch);
 
-    String queued = redirected.path("request.id");
-    assertNotEquals(active, queued);
-    assertEquals(active, redirected.path("request.queuedBehind"));
-    assertEquals("CREATED", redirected.path("placement.outcome"));
-    assertEquals(Boolean.TRUE, redirected.path("placement.queued"));
-    String detail = redirected.path("placement.detail");
-    assertTrue(detail.startsWith(activeQid + " is frozen at 3 of 3 feature branches; "), detail);
-    assertTrue(detail.endsWith("queued behind it, instead of joining " + activeQid), detail);
-    assertFalse(branchesOf(active).names.contains(branch), "it did not join the frozen request");
+    assertEquals(active, joined.path("request.id"));
+    assertEquals(
+        Boolean.FALSE,
+        joined.path("request.sources.find { it.name == '" + branch + "' }.explicitJoin"));
+    String detail = joined.path("placement.detail");
+    assertTrue(detail.endsWith(" as asked (2 of 3 counted branches)"), detail);
+  }
 
-    ExtractableResponse<Response> again = addSource(active, feature());
-    assertEquals(queued, again.path("request.id"));
-    assertEquals("JOINED", again.path("placement.outcome"));
-    assertEquals(Boolean.TRUE, again.path("placement.queued"));
+  @Test
+  void aReleasedRequestRefusesEveryJoinAndNamesTheNextRequest() {
+    activeBuilds.answer(Optional.of(0));
+    String active = freezeActive();
+    ReleaseRequestDto queued = ask(feature()).request();
+    stageRelease();
+    verdict(mergedShaOf(active));
+    await(() -> releaseRequests.get(active).state(), "RELEASED");
+    String activeQid = releaseRequests.get(active).qualifiedId();
+    java.util.List<String> held = branchesOf(active).names;
 
-    ExtractableResponse<Response> fix = addSource(active, ticket("BUG"));
-    assertEquals(active, fix.path("request.id"), "a fix joins the frozen request as asked");
-    assertEquals(Boolean.FALSE, fix.path("placement.queued"));
+    for (String branch :
+        new String[] {feature(), ticket("BUG"), "maintenance/java-deps/" + UUID.randomUUID()}) {
+      DomainException refused =
+          assertThrows(
+              DomainException.class, () -> releaseRequests.addSource(active, branch, "alice", null));
+      assertEquals(409, refused.statusCode());
+      assertTrue(
+          refused.getMessage().startsWith("Release request " + activeQid + " is released"),
+          refused.getMessage());
+      assertTrue(
+          refused.getMessage().contains("; the next release request of "), refused.getMessage());
+      assertTrue(
+          refused.getMessage().endsWith(" is " + queued.qualifiedId()), refused.getMessage());
+    }
+    assertEquals(held, branchesOf(active).names, "nothing joined the released request");
+  }
+
+  @Test
+  void aWithdrawnRequestWithNothingOpenSaysSoOnARefusedJoin() {
+    String active = ask(feature()).request().id();
+    releaseRequests.withdraw(active, "not this release", "alice");
+    String branch = feature();
+
+    DomainException refused =
+        assertThrows(
+            DomainException.class, () -> releaseRequests.addSource(active, branch, "alice", null));
+
+    assertEquals(409, refused.statusCode());
+    assertTrue(refused.getMessage().contains("is already WITHDRAWN"), refused.getMessage());
+    assertTrue(
+        refused.getMessage().endsWith("ask for a release of the branch to open the next one"),
+        refused.getMessage());
   }
 
   @Test
   void aProjectThresholdOfTwoFreezesAtTwo() {
-    QuarkusTransaction.requiringNew()
-        .run(
-            () -> {
-              Project project = Project.findById(projectId);
-              project.releaseFeatureFreeze = 2;
-            });
+    projectFreeze(2);
     String active = ask(feature()).request().id();
     assertEquals(active, ask(feature()).request().id());
 
@@ -360,13 +488,87 @@ public class ReleaseFeatureFreezeTest {
     assertTrue(third.placement().queued());
     assertEquals(active, third.request().queuedBehind());
     assertTrue(third.placement().detail().contains("frozen at 2 of 2"), third.placement().detail());
-    assertEquals(2, releaseRequests.get(active).featureFreeze().threshold());
-    assertTrue(releaseRequests.get(active).featureFreeze().frozen());
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertEquals(2, read.featureFreeze().threshold());
+    assertEquals("PROJECT", read.featureFreeze().source(), "the project beats the platform");
+    assertTrue(read.featureFreeze().frozen());
+  }
+
+  @Test
+  void aThresholdOfZeroTurnsTheFreezeOff() {
+    projectFreeze(0);
+    String active = ask(feature()).request().id();
+    for (int i = 0; i < 5; i++) {
+      ReleaseRequests.Asked asked = ask(i % 2 == 0 ? feature() : ticket("BUG"));
+      assertEquals(active, asked.request().id(), asked.placement().detail());
+      assertFalse(asked.placement().queued());
+    }
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertEquals(6, read.featureFreeze().features());
+    assertEquals(0, read.featureFreeze().threshold());
+    assertEquals("PROJECT", read.featureFreeze().source());
+    assertFalse(read.featureFreeze().frozen(), "nothing is frozen at 0");
+    assertEquals(0, queuedRequestsOf());
+    String detail = ask(feature()).placement().detail();
+    assertTrue(detail.endsWith("(the feature freeze is off)"), detail);
+  }
+
+  @Test
+  void aRepositoryThresholdBeatsTheProjectsAndIsStoredForReads() {
+    projectFreeze(2);
+    repositoryFreeze("manual-review: false\nfeature_freeze: 4\n");
+
+    String active = ask(feature()).request().id();
+    ask(feature());
+    ask(feature());
+    assertEquals(active, ask(feature()).request().id(), "the fourth still joins at 4");
+    ReleaseRequests.Asked fifth = ask(feature());
+
+    assertTrue(fifth.placement().queued());
+    assertTrue(fifth.placement().detail().contains("frozen at 4 of 4"), fifth.placement().detail());
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertEquals(4, read.featureFreeze().threshold());
+    assertEquals("REPOSITORY", read.featureFreeze().source());
+    assertEquals(
+        4,
+        QuarkusTransaction.requiringNew()
+            .call(() -> Repository.<Repository>findById(repoId).releaseFeatureFreeze),
+        "stored on the repository row, so a read never asks the git host");
+  }
+
+  @Test
+  void aRepositoryThresholdOfZeroTurnsTheFreezeOffOverTheProjects() {
+    projectFreeze(1);
+    repositoryFreeze("feature_freeze: 0\n");
+
+    String active = ask(feature()).request().id();
+    assertEquals(active, ask(feature()).request().id());
+
+    ReleaseRequestDto read = releaseRequests.get(active);
+    assertEquals(0, read.featureFreeze().threshold());
+    assertEquals("REPOSITORY", read.featureFreeze().source());
+    assertFalse(read.featureFreeze().frozen());
   }
 
   // -------------------------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------------------------
+
+  /** The project's {@code release_requests.feature_freeze}, as the wrapper reconcile stores it. */
+  private void projectFreeze(Integer value) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project project = Project.findById(projectId);
+              project.releaseFeatureFreeze = value;
+            });
+  }
+
+  /** The repository's own {@code .config/qits/release-requests.yml} at main, CI gate kept. */
+  private void repositoryFreeze(String settings) {
+    gitHost.gatedTreeFor(
+        repoId, "refs/heads/main", Map.of(".config/qits/release-requests.yml", settings));
+  }
 
   /** Three feature asks: the repository's active request, frozen. Answers its id. */
   private String freezeActive() {
