@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.DaemonApiClient;
+import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import jakarta.annotation.security.RolesAllowed;
@@ -21,7 +21,6 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
-import org.jboss.logging.Logger;
 
 /**
  * <b>Talk to a project's front desk</b> (qits-1572): hand its kept desk command a prompt, and read
@@ -29,7 +28,8 @@ import org.jboss.logging.Logger;
  * ({@link DaemonApiClient}, the hop {@code AgentCapabilityRelay} makes), to the daemon's loopback
  * routes {@code POST front-desk/prompt} and {@code GET front-desk/last-answer} under its proxied base
  * path. The daemon's answer — 200, 400, 404, 409 or 429, each with its body — passes through
- * verbatim; this class adds only what the daemon cannot say:
+ * verbatim; this class adds only what the daemon cannot say (the reading of the daemon's answer is
+ * {@link FrontDeskPrompter}'s, shared with the desk trigger sweep since epic qits-1604):
  *
  * <ul>
  *   <li><b>400</b> for a blank {@code text}, before anything is proxied;
@@ -57,16 +57,17 @@ import org.jboss.logging.Logger;
 @RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class ProjectFrontDeskController {
 
-  private static final Logger LOG = Logger.getLogger(ProjectFrontDeskController.class);
-
   /** The daemon's routes, under its proxied base path (see {@code ContainerProxyPath}). */
-  static final String PROMPT_ROUTE = "front-desk/prompt";
+  static final String PROMPT_ROUTE = FrontDeskPrompter.PROMPT_ROUTE;
 
   static final String LAST_ANSWER_ROUTE = "front-desk/last-answer";
 
   @Inject ProjectService projects;
 
   @Inject DaemonApiClient daemon;
+
+  /** What the daemon's answer means — shared with the desk trigger sweep (epic qits-1604). */
+  @Inject FrontDeskPrompter prompter;
 
   @Inject ObjectMapper json;
 
@@ -152,10 +153,14 @@ public class ProjectFrontDeskController {
       throw new IllegalStateException(e);
     }
     try {
-      return passThrough(
-          projectId, PROMPT_ROUTE, false, daemon.post(projectId, PROMPT_ROUTE, body, timeoutMs));
+      return respond(
+          prompter.classify(
+              projectId,
+              PROMPT_ROUTE,
+              false,
+              daemon.post(projectId, PROMPT_ROUTE, body, timeoutMs)));
     } catch (DaemonApiClient.Unreachable e) {
-      return unreachable(projectId, e);
+      return respond(prompter.unreachable(projectId, e));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return refusal(503, "Interrupted while asking the project's front desk.");
@@ -189,10 +194,14 @@ public class ProjectFrontDeskController {
       return unknown;
     }
     try {
-      return passThrough(
-          projectId, LAST_ANSWER_ROUTE, true, daemon.get(projectId, LAST_ANSWER_ROUTE, timeoutMs));
+      return respond(
+          prompter.classify(
+              projectId,
+              LAST_ANSWER_ROUTE,
+              true,
+              daemon.get(projectId, LAST_ANSWER_ROUTE, timeoutMs)));
     } catch (DaemonApiClient.Unreachable e) {
-      return unreachable(projectId, e);
+      return respond(prompter.unreachable(projectId, e));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return refusal(503, "Interrupted while asking the project's front desk.");
@@ -209,61 +218,15 @@ public class ProjectFrontDeskController {
     }
   }
 
-  /**
-   * The daemon's answer, verbatim where it is one of its contract's, else a 409 or 503 of ours.
-   *
-   * @param notFoundIsContract whether the daemon's route itself answers 404 (last-answer: no kept
-   *     command); such a 404 carries a {@code reason}, a router's does not
-   */
-  private Response passThrough(
-      String projectId, String route, boolean notFoundIsContract, DaemonApiClient.Answer answer) {
-    int status = answer.status();
-    String body = answer.body();
-    boolean hasBody = body != null && !body.isBlank();
-    if (status == 404 && !(notFoundIsContract && hasReason(body))) {
-      LOG.infof(
-          "The front desk daemon of project %s does not serve %s (404: %s); it predates qits-1572",
-          projectId, route, body);
-      return refusal(
-          409,
-          "The project's front desk runs a daemon too old to serve "
-              + route
-              + "; it is rolled onto the current one once it is quiet.");
+  /** A door's reply as a response: the daemon's body verbatim, or a {@link Refusal} of ours. */
+  private static Response respond(FrontDeskPrompter.Reply reply) {
+    if (reply.verbatim() != null) {
+      return Response.status(reply.status())
+          .entity(reply.verbatim())
+          .type(MediaType.APPLICATION_JSON)
+          .build();
     }
-    if ((status == 200 || status == 400 || status == 404 || status == 409 || status == 429)
-        && hasBody) {
-      return Response.status(status).entity(body).type(MediaType.APPLICATION_JSON).build();
-    }
-    LOG.infof(
-        "The front desk daemon of project %s answered %d for %s outside its contract: %s",
-        projectId, Integer.valueOf(status), route, body);
-    return refusal(
-        503,
-        "The project's front desk answered "
-            + status
-            + (hasBody ? "" : " with no body")
-            + "; it is not ready to take this yet.");
-  }
-
-  private boolean hasReason(String body) {
-    if (body == null || body.isBlank()) {
-      return false;
-    }
-    try {
-      JsonNode node = json.readTree(body);
-      return node != null && node.hasNonNull("reason");
-    } catch (Exception e) {
-      return false;
-    }
-  }
-
-  private Response unreachable(String projectId, DaemonApiClient.Unreachable e) {
-    if (e.noTunnel()) {
-      return refusal(
-          503, "No front desk daemon is connected for project " + projectId + ".");
-    }
-    LOG.infof("Could not reach the front desk of project %s: %s", projectId, e.getMessage());
-    return refusal(503, "The project's front desk could not be reached.");
+    return refusal(reply.status(), reply.reason());
   }
 
   private static Response refusal(int status, String reason) {
