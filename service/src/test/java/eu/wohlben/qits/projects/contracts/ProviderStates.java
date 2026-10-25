@@ -262,6 +262,16 @@ public class ProviderStates {
           + "\"state\":\"RUNNING\",\"text\":\"Two tickets are ready for dev.\","
           + "\"at\":\"2026-01-01T00:00:00Z\"}";
 
+  // qits-1612: the desk trigger read door, over one delivered window of two lines (epic qits-1604).
+  public static final String A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE =
+      "a project whose desk received a trigger message";
+
+  /** The trigger state's window, fixed so the recording is the same on every run. */
+  static final UUID DESK_TRIGGER_WINDOW = UUID.fromString("16040000-0000-4000-8000-000000000001");
+
+  /** When the trigger state's window opened; its lines, close and delivery follow it. */
+  private static final Instant DESK_TRIGGER_OPENED = Instant.parse("2026-01-01T00:01:00Z");
+
   /** The front-desk runner the runner states declare, named as qits-ci's states name theirs. */
   static final String RUNNER_NAME = "localhost";
 
@@ -444,6 +454,11 @@ public class ProviderStates {
   /** The qits-idp a runner state stands up, closed again by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.idphost.RoutingIdpServer idp;
 
+  /** The trigger state's two sources, which render its window's message as the sweep does. */
+  @Inject eu.wohlben.qits.projects.desktriggers.WorkVerifiedSource workVerifiedSource;
+
+  @Inject eu.wohlben.qits.projects.desktriggers.ApprovalNeededSource approvalNeededSource;
+
   /** The fake daemon the front-desk state stands up; closed by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.agenthost.FakeProjectDaemon frontDeskDaemon;
 
@@ -575,6 +590,9 @@ public class ProviderStates {
     states.put(AN_UNREGISTERED_RUNNER, this::anUnregisteredRunner);
     states.put(A_REGISTERED_RUNNER, this::aRegisteredRunner);
     states.put(A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING, this::aProjectWhoseFrontDeskIsRunning);
+    states.put(
+        A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
+        this::aProjectWhoseDeskReceivedATriggerMessage);
   }
 
   /** Every state name this provider answers for. */
@@ -722,6 +740,100 @@ public class ProviderStates {
                   404, "{\"message\":\"No such endpoint\"}");
             });
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A project whose delivery desk was sent one desk trigger message and took it (qits-1612, epic
+   * qits-1604): one DELIVERED window holding a {@code work-verified} line (a ticket of the project
+   * moved to VERIFIED) and an {@code approval-needed} line (a release request waiting on the desk),
+   * its message rendered by the shipped sources exactly as the sweep renders it at the close.
+   * Written straight to the two tables rather than driven through the listener and the sweep: the
+   * read is what is recorded, and every id and instant is fixed so it records the same each run.
+   * The window's fixed id is deleted first (its lines go with it), so the state runs twice in one
+   * database.
+   */
+  private Setup aProjectWhoseDeskReceivedATriggerMessage() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              eu.wohlben.qits.projects.entity.DeskTriggerWindow.delete("id", DESK_TRIGGER_WINDOW);
+              var window = new eu.wohlben.qits.projects.entity.DeskTriggerWindow();
+              window.id = DESK_TRIGGER_WINDOW;
+              window.projectId = project.id;
+              window.openedAt = DESK_TRIGGER_OPENED;
+              window.closesAt = DESK_TRIGGER_OPENED.plusSeconds(15 * 60);
+              window.closedAt = window.closesAt.plusSeconds(5);
+              window.state = eu.wohlben.qits.projects.entity.DeskTriggerWindowState.DELIVERED;
+              window.attempts = 1;
+              window.lastAttemptAt = window.closedAt.plusSeconds(1);
+              window.lastStatus = 200;
+              window.acceptedAt = window.lastAttemptAt;
+              window.commandId = "desk-command-1";
+              var verified =
+                  deskTriggerEvent(
+                      "16040000-0000-4000-8000-000000000011",
+                      workVerifiedSource.id(),
+                      project.slug + "-1580",
+                      "16040000-0000-4000-8000-000000000021",
+                      "Desk triggers read door",
+                      "tok-workspace-agent-contract",
+                      "16040000-0000-4000-8000-000000000031",
+                      DESK_TRIGGER_OPENED);
+              var approval =
+                  deskTriggerEvent(
+                      "16040000-0000-4000-8000-000000000012",
+                      approvalNeededSource.id(),
+                      "contract-service-rr-7",
+                      "16040000-0000-4000-8000-000000000022",
+                      "Release qits-1580; waits on manual-review: a person approves",
+                      "fold 5eed5eed",
+                      "16040000-0000-4000-8000-000000000032",
+                      DESK_TRIGGER_OPENED.plusSeconds(60));
+              window.message =
+                  eu.wohlben.qits.projects.desktriggers.DeskTriggerMessage.render(
+                      project.slug,
+                      window,
+                      Map.of(
+                          workVerifiedSource,
+                          List.of(
+                              eu.wohlben.qits.projects.desktriggers.DeskTriggerEventRow.of(
+                                  verified)),
+                          approvalNeededSource,
+                          List.of(
+                              eu.wohlben.qits.projects.desktriggers.DeskTriggerEventRow.of(
+                                  approval))));
+              window.persist();
+              verified.windowId = window.id;
+              approval.windowId = window.id;
+              verified.persist();
+              approval.persist();
+            });
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** One line of the trigger state's window, admitted when it occurred. */
+  private static eu.wohlben.qits.projects.entity.DeskTriggerEvent deskTriggerEvent(
+      String id,
+      String source,
+      String itemRef,
+      String itemId,
+      String label,
+      String cause,
+      String eventId,
+      Instant at) {
+    var event = new eu.wohlben.qits.projects.entity.DeskTriggerEvent();
+    event.id = UUID.fromString(id);
+    event.source = source;
+    event.itemRef = itemRef;
+    event.itemId = itemId;
+    event.label = label;
+    event.cause = cause;
+    event.eventId = UUID.fromString(eventId);
+    event.occurredAt = at;
+    event.admittedAt = at;
+    return event;
   }
 
   private Setup aProjectExists() {

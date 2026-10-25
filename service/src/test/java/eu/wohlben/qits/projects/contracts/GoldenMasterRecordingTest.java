@@ -1219,6 +1219,14 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING,
             "getFrontDeskLastAnswer",
             frontDesk + "/last-answer"));
+    // The desk trigger read door (qits-1612, epic qits-1604), as qits-platform-access-cli's `qits
+    // projects desk triggers` and the landing app's desk page call it: one delivered window, its
+    // message and its two lines.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
+            "listDeskTriggerMessages",
+            "/projects/api/projects/{projectId}/desk-triggers"));
     return List.copyOf(all);
   }
 

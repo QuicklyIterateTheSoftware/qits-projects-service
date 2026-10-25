@@ -7,7 +7,11 @@ import eu.wohlben.qits.projects.bus.DeploymentActiveListener;
 import eu.wohlben.qits.projects.bus.ReleasePipelineRunListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.bus.ScmBackupTriggerListener;
+import eu.wohlben.qits.projects.desktriggers.ApprovalNeededSource;
+import eu.wohlben.qits.projects.desktriggers.DeskTriggerListener;
+import eu.wohlben.qits.projects.desktriggers.WorkVerifiedSource;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -31,7 +35,9 @@ class EventstreamPactTest {
               new DeploymentActiveListener(),
               new ReleasePipelineRunListener(),
               new ReleaseRequestHeadListener(),
-              new ScmBackupTriggerListener())
+              new ScmBackupTriggerListener(),
+              new DeskTriggerListener(
+                  List.of(new WorkVerifiedSource(), new ApprovalNeededSource()), null))
           .publishes(true)
           .guard(Path.of("target/classes"), Path.of("../domain/target/classes"));
 

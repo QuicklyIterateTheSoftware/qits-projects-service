@@ -1165,6 +1165,118 @@ components:
           description: "The one line that installs the runner on a docker host: it\
             \ fetches the generic install script with the registration token and pipes\
             \ it into sudo sh with this runner's values. Returned once"
+    DeskTriggerEvent:
+      type: object
+      description: One item a desk trigger source admitted into a window.
+      properties:
+        source:
+          type: string
+          description: "The source that admitted it: work-verified or approval-needed"
+        itemRef:
+          type: string
+          description: "The item as the desk is shown it, e.g. qits-1580"
+        itemId:
+          type:
+          - string
+          - "null"
+          description: "The item's own id, when the source knows one"
+        label:
+          type:
+          - string
+          - "null"
+          description: What follows the item in brackets
+        cause:
+          type:
+          - string
+          - "null"
+          description: Who or what caused it
+        eventId:
+          $ref: "#/components/schemas/UUID"
+          type: string
+          description: The bus event that carried it
+        occurredAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: When it happened
+    DeskTriggerMessage:
+      type: object
+      description: "One desk trigger window of the project: what it collected, the\
+        \ message it became and how its delivery to the delivery desk went."
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        state:
+          type: string
+          description: "OPEN, OWED, DELIVERED, QUEUED or FAILED"
+        openedAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: When the first trigger opened the window
+        closesAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: When it stops admitting; set at the open and never moved
+        closedAt:
+          type:
+          - string
+          - "null"
+          description: When it was closed and its message rendered; null while OPEN
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        acceptedAt:
+          type:
+          - string
+          - "null"
+          description: When the desk's daemon took the message; null until it did
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        attempts:
+          type: integer
+          format: int32
+          description: How many deliveries were tried
+        lastStatus:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: The HTTP status of the last attempt; null before the first
+        lastDetail:
+          type:
+          - string
+          - "null"
+          description: Why the last attempt was refused or failed; null when it was
+            not
+        commandId:
+          type:
+          - string
+          - "null"
+          description: The desk command the message was given to; null until accepted
+        queuePosition:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "Its place in the desk's prompt queue when QUEUED, else null"
+        message:
+          type:
+          - string
+          - "null"
+          description: The exact text sent to the desk; null while OPEN
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskTriggerEvent"
+          description: "The lines it collected, by admittedAt then itemRef"
+    DeskTriggerMessages:
+      type: object
+      description: "A project's desk trigger messages, newest first by openedAt."
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskTriggerMessage"
     DiscardResponse:
       type: object
       description: "A refinement room's teardown, done."
@@ -4233,6 +4345,45 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+  /projects/api/projects/{projectId}/desk-triggers:
+    get:
+      summary: The messages the project's delivery desk was sent by its desk triggers
+      description: "Newest first by openedAt, every state: OPEN (collecting), OWED\
+        \ (closed, not yet taken — attempts, lastStatus and lastDetail say why), DELIVERED\
+        \ or QUEUED (taken, with acceptedAt and commandId) and FAILED (never to be\
+        \ delivered). Each carries the lines it collected, by admittedAt then itemRef.\
+        \ limit defaults to 20 and may be 1 to 100. An unknown project is a 404."
+      operationId: listDeskTriggerMessages
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskTriggerMessages"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Desk Triggers Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
   /projects/api/projects/{projectId}/events:
     get:
       parameters:

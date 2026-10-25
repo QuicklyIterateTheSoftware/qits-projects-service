@@ -1650,6 +1650,42 @@
       ]
     },
     {
+      "name": "a project whose desk received a trigger message",
+      "slug": "a-project-whose-desk-received-a-trigger-message",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listDeskTriggerMessages",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/desk-triggers",
+          "status": 200,
+          "file": "a-project-whose-desk-received-a-trigger-message/listDeskTriggerMessages.json",
+          "frozen": {
+            "ids": [
+              "$.messages[*].id",
+              "$.messages[*].events[*].itemId",
+              "$.messages[*].events[*].eventId"
+            ],
+            "instants": [
+              "$.messages[*].openedAt",
+              "$.messages[*].closesAt",
+              "$.messages[*].closedAt",
+              "$.messages[*].acceptedAt",
+              "$.messages[*].events[*].occurredAt"
+            ],
+            "strings": [
+              "$.messages[*].message",
+              "$.messages[*].events[*].itemRef"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project whose front desk is running",
       "slug": "a-project-whose-front-desk-is-running",
       "params": {
