@@ -14,7 +14,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -23,7 +24,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": true
+          "feature": true,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -95,7 +97,8 @@
       "featureFreeze": {
         "features": 1,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -112,7 +115,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -121,7 +125,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": true
+          "feature": true,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -130,7 +135,8 @@
           "implicit": false,
           "priority": "HIGH",
           "addedBy": "contract-seeder",
-          "feature": true
+          "feature": true,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -139,7 +145,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": true
+          "feature": true,
+          "explicitJoin": false
         }
       ],
       "priority": "HIGH",
@@ -211,7 +218,8 @@
       "featureFreeze": {
         "features": 3,
         "threshold": 3,
-        "frozen": true
+        "frozen": true,
+        "source": "PLATFORM"
       }
     }
   ]

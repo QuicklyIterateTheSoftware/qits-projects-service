@@ -14,7 +14,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -23,7 +24,8 @@
           "implicit": false,
           "priority": "HIGH",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -32,7 +34,8 @@
           "implicit": false,
           "priority": "LOW",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "HIGH",
@@ -199,7 +202,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     }
   ]

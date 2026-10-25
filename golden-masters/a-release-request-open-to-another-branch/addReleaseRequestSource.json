@@ -13,7 +13,8 @@
         "implicit": false,
         "priority": "MEDIUM",
         "addedBy": null,
-        "feature": false
+        "feature": false,
+        "explicitJoin": false
       },
       {
         "kind": "BRANCH",
@@ -22,7 +23,8 @@
         "implicit": false,
         "priority": "MEDIUM",
         "addedBy": "contract-seeder",
-        "feature": false
+        "feature": false,
+        "explicitJoin": false
       },
       {
         "kind": "BRANCH",
@@ -31,7 +33,8 @@
         "implicit": false,
         "priority": "LOWEST",
         "addedBy": "dev",
-        "feature": false
+        "feature": false,
+        "explicitJoin": false
       }
     ],
     "priority": "MEDIUM",
@@ -113,12 +116,13 @@
     "featureFreeze": {
       "features": 0,
       "threshold": 3,
-      "frozen": false
+      "frozen": false,
+      "source": "PLATFORM"
     }
   },
   "placement": {
     "outcome": "JOINED",
     "queued": false,
-    "detail": "fix/rounding joined contract-service-rr-1, the active release request (0 of 3 feature branches)"
+    "detail": "fix/rounding joined contract-service-rr-1 as asked (0 of 3 counted branches)"
   }
 }

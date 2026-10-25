@@ -228,8 +228,8 @@ public class ProviderStates {
   public static final String A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH =
       "a repository with a tagged release whose request went obsolete mid-publish";
   /**
-   * The soft feature freeze (epic qits-1580): an active request frozen at three feature branches and
-   * the request queued behind it, holding a fourth.
+   * The soft feature freeze (epic qits-1580): an active request frozen at three counted branches
+   * (branches naming a work item) and the request queued behind it, holding a fourth.
    */
   public static final String A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST =
       "a frozen release request with a queued next request";
@@ -2906,10 +2906,12 @@ public class ProviderStates {
 
   /**
    * The soft feature freeze (epic qits-1580): contract-service's active request holds {@code main}
-   * and three feature branches — the project's default threshold, so it is frozen — and the request
-   * queued behind it holds {@code main} and a fourth feature, PENDING, unfolded, saying what it waits
-   * for. Rows written straight to the table at fixed minutes, as the other list states write theirs:
-   * the feature flags are what a source was stamped with when it was added, and the active one is
+   * and three counted branches — the platform's threshold, since neither the project nor the
+   * repository declares one ({@code featureFreeze.source} PLATFORM), so it is frozen — and the
+   * request queued behind it holds {@code main} and a fourth, PENDING, unfolded, saying what it waits
+   * for. No source joined past the freeze, so every {@code explicitJoin} is false. Rows written
+   * straight to the table at fixed minutes, as the other list states write theirs: the {@code
+   * feature} flags are what a source was stamped with when it was added, and the active one is
    * not folded yet either, so no gate read depends on the state machine's timing. {@code requestId}
    * names the frozen request, {@code queuedRequestId} and {@code queuedRequestQualifiedId} the queued
    * one.

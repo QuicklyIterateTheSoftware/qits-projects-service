@@ -14,7 +14,8 @@
           "implicit": true,
           "priority": null,
           "addedBy": null,
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -101,7 +102,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     }
   ]

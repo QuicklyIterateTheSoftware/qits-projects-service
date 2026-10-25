@@ -14,7 +14,8 @@
           "implicit": false,
           "priority": "MEDIUM",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         },
         {
           "kind": "BRANCH",
@@ -23,7 +24,8 @@
           "implicit": false,
           "priority": "BLOCKING",
           "addedBy": "contract-seeder",
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "BLOCKING",
@@ -213,7 +215,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -299,7 +302,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -385,7 +389,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -402,7 +407,8 @@
           "implicit": true,
           "priority": null,
           "addedBy": null,
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -503,7 +509,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -520,7 +527,8 @@
           "implicit": true,
           "priority": null,
           "addedBy": null,
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -614,7 +622,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -631,7 +640,8 @@
           "implicit": true,
           "priority": null,
           "addedBy": null,
-          "feature": false
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -785,7 +795,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -871,7 +882,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     }
   ]

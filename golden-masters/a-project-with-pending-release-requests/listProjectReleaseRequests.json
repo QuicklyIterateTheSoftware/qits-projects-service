@@ -76,7 +76,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -155,7 +156,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -241,7 +243,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -327,7 +330,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -406,7 +410,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -485,7 +490,8 @@
       "featureFreeze": {
         "features": 0,
         "threshold": 3,
-        "frozen": false
+        "frozen": false,
+        "source": "PLATFORM"
       }
     }
   ]
