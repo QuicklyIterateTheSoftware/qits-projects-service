@@ -4,6 +4,8 @@ import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import java.time.Instant;
 import java.util.List;
@@ -71,13 +73,18 @@ final class DeskTriggerFixtures {
     return windows(projectId).stream().flatMap(w -> events(w.id).stream()).toList();
   }
 
-  /** Drops the projects; the windows and their lines cascade, the desks are deleted here. */
+  /**
+   * Drops the projects; the windows and their lines cascade, and the desks, release requests and
+   * repositories a suite seeded are deleted here.
+   */
   static void drop(List<String> projectIds) {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               for (String id : projectIds) {
                 FrontDesk.deleteById(id);
+                ReleaseRequest.delete("projectId", id);
+                Repository.delete("project.id", id);
                 Project.deleteById(id);
               }
             });
