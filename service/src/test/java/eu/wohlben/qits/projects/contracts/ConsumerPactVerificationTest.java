@@ -664,4 +664,9 @@ class ConsumerPactVerificationTest {
   Map<String, String> aProjectWhoseFrontDeskIsRunning() {
     return states.params(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING);
   }
+
+  @State(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE)
+  Map<String, String> aProjectWhoseDeskReceivedATriggerMessage() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);
+  }
 }

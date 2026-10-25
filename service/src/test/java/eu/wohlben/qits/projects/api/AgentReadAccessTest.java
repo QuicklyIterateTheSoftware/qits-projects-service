@@ -84,6 +84,7 @@ class AgentReadAccessTest {
           GcController.class,
           PinsController.class,
           ProjectController.class,
+          ProjectDeskTriggersController.class,
           ProjectFrontDeskController.class,
           ProjectEventsController.class,
           ProjectRefinementsController.class,

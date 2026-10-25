@@ -2663,6 +2663,22 @@ constructed with the list rather than registered as a bean, so it cannot leak in
 `…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`) and `…give-up` (PT4H). The
 prompt hop's bound is the door's `qits.projects.front-desk.relay-timeout-ms`.
 
+**The read door** (qits-1612) is `GET /projects/api/projects/{projectId}/desk-triggers`
+(`api/ProjectDeskTriggersController`, `listDeskTriggerMessages`) over `desktriggers/
+DeskTriggerHistory`, which writes nothing: `{messages: [DeskTriggerMessage]}`, every state, newest
+`opened_at` first (the id breaks a tie), each window with its stored `message`, its delivery
+bookkeeping (`attempts`, `lastStatus`, `lastDetail`, `acceptedAt`, `commandId`, `queuePosition`)
+and its lines (`DeskTriggerEvent`, by `admitted_at` then `item_ref`). Every member is present, a
+missing value `null`. `limit` is 20 when omitted and 1..100, else 400; an unknown project is a 404.
+The roles are `ProjectReleaseRequestsController`'s, `qits:agent` included, because that is what the
+desk's own token holds and the desk's transcript is not readable on it: `acceptedAt` and
+`commandId` are the evidence a message arrived. The three schemas are named, so no anonymous one in
+`docs/openapi.yml` is renumbered. The provider state `a project whose desk received a trigger
+message` writes one DELIVERED window with a `work-verified` and an `approval-needed` line straight
+to the tables, with fixed ids and instants and its message rendered by the shipped sources, and
+records `listDeskTriggerMessages` — what qits-platform-access-cli's `qits projects desk triggers`
+and the landing app's desk page consume.
+
 ### The sessions' credentials ride the control socket (qits-1482)
 
 The desk's daemon runs every session on a credential qits hands it, never on its own
