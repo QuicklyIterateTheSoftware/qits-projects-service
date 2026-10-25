@@ -14,7 +14,8 @@ import org.jboss.logging.Logger;
 
 /**
  * {@link BranchWorkItems} out of the entities module (epic qits-1440): the work item a branch names,
- * for the delivery desk's {@code manual-review-verified} rule.
+ * for the delivery desk's {@code manual-review-verified} rule and for the feature classification of
+ * a release request's sources ({@code FeatureBranches}, epic qits-1580).
  *
  * <p>{@code ticket/<qualified id>}, {@code epic/<qualified id>} and {@code task/<qualified id>} name
  * the ticket, epic or task with that qualified id, and so does an agent's {@code <that
@@ -68,7 +69,13 @@ public class EntityBranchWorkItems implements BranchWorkItems {
               .filter(found -> WorkBranches.isAgentBranch(prefix + found.qualifiedId(), branch));
       if (item.isPresent()) {
         CommitSubjectEntities.NamedEntity found = item.get();
-        return Optional.of(new WorkItem(found.qualifiedId(), found.projectId(), found.status()));
+        return Optional.of(
+            new WorkItem(
+                found.qualifiedId(),
+                found.projectId(),
+                found.status(),
+                found.archetype().name(),
+                found.ticketType() == null ? null : found.ticketType().name()));
       }
     }
     return Optional.empty();

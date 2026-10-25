@@ -1510,6 +1510,19 @@ components:
           $ref: "#/components/schemas/Outcome"
         warning:
           type: string
+    FeatureFreezeDto:
+      type: object
+      properties:
+        features:
+          type: integer
+          format: int32
+        threshold:
+          type: integer
+          format: int32
+        frozen:
+          type: boolean
+        source:
+          type: string
     FoldParentDto:
       type: object
       properties:
@@ -1897,6 +1910,15 @@ components:
           type: integer
           format: int32
           description: At least 1; absent leaves it
+    PlacementDto:
+      type: object
+      properties:
+        outcome:
+          type: string
+        queued:
+          type: boolean
+        detail:
+          type: string
     ProcessResponse:
       type: object
       description: A refinement room and the technical process narrating its container's
@@ -2300,6 +2322,16 @@ components:
             $ref: "#/components/schemas/ReleaseQualityGateDto"
         preRun:
           $ref: "#/components/schemas/ReleasePreRunDto"
+        queuedBehind:
+          type: string
+        queuedBehindQualifiedId:
+          type: string
+        queuedNext:
+          type: string
+        queuedNextQualifiedId:
+          type: string
+        featureFreeze:
+          $ref: "#/components/schemas/FeatureFreezeDto"
     ReleaseRequestSourceDto:
       type: object
       properties:
@@ -2315,6 +2347,10 @@ components:
           type: string
         addedBy:
           type: string
+        feature:
+          type: boolean
+        explicitJoin:
+          type: boolean
     RenameRepositoryRequest:
       type: object
       required:
@@ -2463,6 +2499,23 @@ components:
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
+        placement:
+          $ref: "#/components/schemas/PlacementDto"
+          type: object
+          description: "Where the branch landed (epic qits-1580, the soft feature\
+            \ freeze). Once the repository's active request holds as many counted\
+            \ sources as the threshold in force, it is frozen. Counted are branches\
+            \ naming a work item (epics, tasks, tickets of any type); main, maintenance/*\
+            \ and release/* never count. The threshold is the repository's own feature_freeze\
+            \ in .config/qits/release-requests.yml, else the project's release_requests.feature_freeze,\
+            \ else 3, and 0 turns it off. While it is frozen, every branch new to\
+            \ the repository's requests (a feature, a bug fix or a maintenance bump)\
+            \ lands in the one request queued behind it, minted if absent, which folds\
+            \ nothing and runs no gate until the active request has released or been\
+            \ withdrawn. A branch already a source of an unreleased request answers\
+            \ PRESENT where it is. outcome is CREATED, JOINED or PRESENT, queued says\
+            \ the answering request is queued, and detail is one sentence saying where\
+            \ the branch went."
     Response22:
       type: object
       properties:
@@ -2485,6 +2538,16 @@ components:
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
+        placement:
+          $ref: "#/components/schemas/PlacementDto"
+          type: object
+          description: "Where the branch landed (epic qits-1580). An explicit join\
+            \ overrides the soft feature freeze: a request frozen at its threshold\
+            \ admits any branch named onto it here (a feature, a bug fix or a maintenance\
+            \ branch), and the new source carries explicitJoin true, with a detail\
+            \ saying it joined a frozen request explicitly. From RELEASED on no join\
+            \ is accepted: the 409 says the request is released and names the repository's\
+            \ next unreleased request by qualified id, if there is one."
     Response26:
       type: object
       properties:

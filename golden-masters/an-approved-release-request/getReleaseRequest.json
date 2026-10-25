@@ -12,7 +12,9 @@
         "ref": "refs/heads/main",
         "implicit": false,
         "priority": "MEDIUM",
-        "addedBy": "contract-seeder"
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
       },
       {
         "kind": "BRANCH",
@@ -20,7 +22,9 @@
         "ref": "refs/heads/bump/contract-service",
         "implicit": false,
         "priority": "HIGH",
-        "addedBy": "contract-seeder"
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
       },
       {
         "kind": "BRANCH",
@@ -28,7 +32,9 @@
         "ref": "refs/heads/docs/approval",
         "implicit": false,
         "priority": "LOW",
-        "addedBy": "contract-seeder"
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
       }
     ],
     "priority": "HIGH",
@@ -199,6 +205,16 @@
     ],
     "preRun": {
       "state": "PASSED"
+    },
+    "queuedBehind": null,
+    "queuedBehindQualifiedId": null,
+    "queuedNext": null,
+    "queuedNextQualifiedId": null,
+    "featureFreeze": {
+      "features": 0,
+      "threshold": 3,
+      "frozen": false,
+      "source": "PLATFORM"
     }
   }
 }

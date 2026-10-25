@@ -13,7 +13,9 @@
           "ref": "refs/tags/2026.101.100100",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -112,6 +114,16 @@
       ],
       "preRun": {
         "state": "PENDING"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false,
+        "source": "PLATFORM"
       }
     },
     {
@@ -127,7 +139,9 @@
           "ref": "refs/tags/2026.101.100100",
           "implicit": true,
           "priority": null,
-          "addedBy": null
+          "addedBy": null,
+          "feature": false,
+          "explicitJoin": false
         }
       ],
       "priority": "MEDIUM",
@@ -245,6 +259,16 @@
       ],
       "preRun": {
         "state": "PASSED"
+      },
+      "queuedBehind": null,
+      "queuedBehindQualifiedId": null,
+      "queuedNext": null,
+      "queuedNextQualifiedId": null,
+      "featureFreeze": {
+        "features": 0,
+        "threshold": 3,
+        "frozen": false,
+        "source": "PLATFORM"
       }
     }
   ]

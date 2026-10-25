@@ -1133,6 +1133,18 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH,
             "listRepositoryReleaseRequests",
             requests + "?state=all"));
+    // The soft feature freeze (epic qits-1580): both lists, the frozen request read by id and the
+    // queued one read through its project by qualified id.
+    String frozen = ProviderStates.A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST;
+    all.add(read(frozen, "listRepositoryReleaseRequests", requests));
+    all.add(
+        read(frozen, "listProjectReleaseRequests", "/projects/api/projects/{projectId}/release-requests"));
+    all.add(read(frozen, "getReleaseRequest", requests + "/{requestId}"));
+    all.add(
+        read(
+            frozen,
+            "getProjectReleaseRequest",
+            "/projects/api/projects/{projectId}/release-requests/{queuedRequestQualifiedId}"));
     all.add(
         read(
             ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA,

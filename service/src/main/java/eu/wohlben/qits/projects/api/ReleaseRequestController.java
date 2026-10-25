@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
+import eu.wohlben.qits.projects.dto.PlacementDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * The release requests: the asynchronous ask that replaces calling the release door blind. A
@@ -134,16 +136,47 @@ public class ReleaseRequestController {
    */
   public static record CreateReleaseRequest(
       @NotBlank String branch, @NotBlank String summary, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580): created, joined or already
+     *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
+     */
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580, the soft feature freeze). Once the"
+                        + " repository's active request holds as many counted sources as the"
+                        + " threshold in force, it is frozen. Counted are branches naming a work"
+                        + " item (epics, tasks, tickets of any type); main, maintenance/* and"
+                        + " release/* never count. The threshold is the repository's own"
+                        + " feature_freeze in .config/qits/release-requests.yml, else the project's"
+                        + " release_requests.feature_freeze, else 3, and 0 turns it off. While it is"
+                        + " frozen, every branch new to the repository's requests (a feature, a bug"
+                        + " fix or a maintenance bump) lands in the one request queued behind it,"
+                        + " minted if absent, which folds nothing and runs no gate until the active"
+                        + " request has released or been withdrawn. A branch already a source of an"
+                        + " unreleased request answers PRESENT where it is. outcome is CREATED,"
+                        + " JOINED or PRESENT, queued says the answering request is queued, and"
+                        + " detail is one sentence saying where the branch went.")
+            PlacementDto placement) {}
   }
 
   /**
    * <b>Creates, converges on, or joins</b> the repository's one open release request.
    *
-   * <p>Which of the three happened is not a field on the answer and does not need to be: the
-   * response is the whole {@link ReleaseRequestDto}, so a caller that kept the id it was given last
-   * time can see it is the same one, and a caller that has never seen this request can see the
-   * source list carrying branches it never named.
+   * <p>Which of the three happened is the answer's {@code placement} (epic qits-1580): {@code
+   * CREATED}, {@code JOINED} or {@code PRESENT}, whether the request is queued behind a frozen one,
+   * and a sentence saying so, beside the whole {@link ReleaseRequestDto}.
+   *
+   * <p><b>The soft feature freeze</b> (epic qits-1580) decides which request a branch joins: once
+   * the repository's active request holds as many counted sources (branches naming a work item, of
+   * any type) as the threshold in force — the repository's own {@code feature_freeze} in {@code
+   * .config/qits/release-requests.yml}, else its project's {@code release_requests.feature_freeze},
+   * else 3; 0 turns it off — it is frozen, and <b>every</b> branch new to the repository's requests
+   * lands in the request queued behind it: features, bug fixes and {@code maintenance/*} bumps alike.
+   * The queued request holds — no fold, no gate — until the active one has released or been
+   * withdrawn. A branch already a source answers PRESENT where it is, so {@code main} never queues.
+   * {@code ReleaseRequests.place} is the rule.
    *
    * <p><b>Joining is the case worth reading about.</b> A repository has at most one open request,
    * whatever its archetype (qits-552), so two workspaces releasing one repository on the same night
@@ -203,9 +236,10 @@ public class ReleaseRequestController {
     refuseDesk("open a release request");
     requireAgentProject(repoId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new CreateReleaseRequest.Response(
-        releaseRequests.request(
-            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.ask(
+            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority());
+    return new CreateReleaseRequest.Response(asked.request(), asked.placement());
   }
 
   /**
@@ -216,7 +250,22 @@ public class ReleaseRequestController {
    */
   public static record AddReleaseRequestSource(
       @NotBlank String branch, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580) — always the request named:
+     *     a join that names a frozen request is admitted past the freeze, and says so
+     */
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580). An explicit join overrides the soft"
+                        + " feature freeze: a request frozen at its threshold admits any branch"
+                        + " named onto it here (a feature, a bug fix or a maintenance branch), and"
+                        + " the new source carries explicitJoin true, with a detail saying it joined"
+                        + " a frozen request explicitly. From RELEASED on no join is accepted: the"
+                        + " 409 says the request is released and names the repository's next"
+                        + " unreleased request by qualified id, if there is one.")
+            PlacementDto placement) {}
   }
 
   @POST
@@ -239,9 +288,9 @@ public class ReleaseRequestController {
     requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new AddReleaseRequestSource.Response(
-        releaseRequests.addSource(
-            requestId, body.branch(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.join(requestId, body.branch(), actorFor(body.requester()), body.priority());
+    return new AddReleaseRequestSource.Response(asked.request(), asked.placement());
   }
 
   /**

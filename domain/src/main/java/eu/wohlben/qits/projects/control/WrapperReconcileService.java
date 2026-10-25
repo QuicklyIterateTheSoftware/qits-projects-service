@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
+import eu.wohlben.qits.projects.control.ProjectConfig.ReleaseRequestsSettings;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -240,7 +241,8 @@ public class WrapperReconcileService {
 
   /**
    * Brings the project's stored configuration — {@code Project.supportsEnvironments}, {@code
-   * Project.frontDeskLifecycle} and the {@code Project.delivery*} settings — in line with its wrapper's {@code .config/qits/project.yml}, and
+   * Project.frontDeskLifecycle}, the {@code Project.delivery*} settings and {@code
+   * Project.releaseFeatureFreeze} (epic qits-1580) — in line with its wrapper's {@code .config/qits/project.yml}, and
    * announces the change when there is one. Callable alone: it reads the one file and does none of
    * the {@code .gitmodules} work.
    *
@@ -259,7 +261,8 @@ public class WrapperReconcileService {
    * the transaction that moved it, fire-and-forget like every other announcement here; a moved
    * front desk lifecycle additionally reaches {@link FrontDeskLifecycleChanged}, best effort, and so
    * do moved delivery settings ({@link FrontDeskLifecycleChanged#onDeliveryChanged}) — which alone
-   * announce nothing, since {@code ProjectChanged} carries none of them.
+   * announce nothing, since {@code ProjectChanged} carries none of them. A moved feature freeze is
+   * stored and announces nothing either: it is read where a source is added, never pushed.
    *
    * <p>{@link ActivateRequestContext} because the boot pass and the bus consumers call this on
    * threads with no ambient request context.
@@ -282,13 +285,14 @@ public class WrapperReconcileService {
     } catch (RuntimeException e) {
       LOG.warnf(
           "%s in the wrapper of project %s could not be read or does not parse; keeping"
-              + " supports_environments=%s, front_desk.lifecycle=%s and front_desk.delivery=%s as"
-              + " stored: %s",
+              + " supports_environments=%s, front_desk.lifecycle=%s, front_desk.delivery=%s and"
+              + " release_requests=%s as stored: %s",
           ProjectConfigParser.CONFIG_PATH,
           project.id,
           project.supportsEnvironments,
           project.frontDeskLifecycle,
           DeliverySettings.of(project),
+          ReleaseRequestsSettings.of(project),
           e.getMessage());
       return;
     }
@@ -296,19 +300,23 @@ public class WrapperReconcileService {
     boolean lifecycleMoved = config.frontDeskLifecycle() != project.frontDeskLifecycle;
     DeliverySettings storedDelivery = DeliverySettings.of(project);
     boolean deliveryMoved = !config.delivery().equals(storedDelivery);
-    if (!environmentsMoved && !lifecycleMoved && !deliveryMoved) {
+    ReleaseRequestsSettings storedReleaseRequests = ReleaseRequestsSettings.of(project);
+    boolean releaseRequestsMoved = !config.releaseRequests().equals(storedReleaseRequests);
+    if (!environmentsMoved && !lifecycleMoved && !deliveryMoved && !releaseRequestsMoved) {
       return;
     }
     LOG.infof(
         "Reconcile: project %s declares supports_environments=%s, front_desk.lifecycle=%s,"
-            + " front_desk.delivery=%s; stored as %s, %s, %s — updating.",
+            + " front_desk.delivery=%s, release_requests=%s; stored as %s, %s, %s, %s — updating.",
         project.id,
         config.supportsEnvironments(),
         config.frontDeskLifecycle(),
         config.delivery(),
+        config.releaseRequests(),
         project.supportsEnvironments,
         project.frontDeskLifecycle,
-        storedDelivery);
+        storedDelivery,
+        storedReleaseRequests);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -316,10 +324,12 @@ public class WrapperReconcileService {
               row.supportsEnvironments = config.supportsEnvironments();
               row.frontDeskLifecycle = config.frontDeskLifecycle();
               config.delivery().applyTo(row);
+              config.releaseRequests().applyTo(row);
             });
     project.supportsEnvironments = config.supportsEnvironments();
     project.frontDeskLifecycle = config.frontDeskLifecycle();
     config.delivery().applyTo(project);
+    config.releaseRequests().applyTo(project);
     if (lifecycleMoved) {
       notifyLifecycleChanged(project);
     }
