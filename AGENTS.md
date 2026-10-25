@@ -3218,7 +3218,7 @@ runs every room's harness session in the one desk container — the multiplex �
 entity id, on the room's own token (qits-1482's `sessionCredentials` key). `refinementhost/
 RefinementSessions` is the whole of it.
 
-**The legacy rule: the branch decides** (`Refinement.containerRoom()`). V57 made `refinement.branch`
+**The legacy rule: the branch decides** (`Refinement.containerRoom()`). V58 made `refinement.branch`
 and `parent` nullable; every row opened before it has a `refining/<slug>` branch and stays a
 **container room** — its container, ladder, tunnel, proxy, drift and stale-image sweep work exactly
 as "Refinement containers" below says, until qits-1316 deletes that machinery. Every row opened since
@@ -3297,11 +3297,11 @@ every change, capability gating, credential-first ordering, the report, the door
 the desk demand, a campaign's room, the cap). The suites still pinning the container machinery
 (`RefinementLifecycleTest`, `RefinementDriftTest`, `RefinementPinStalenessTest`,
 `EpicResolutionCleanupTest`) make their rooms through the test-scope `LegacyRefinementRooms`, which
-opens a session room and turns it into a pre-V57 container room.
+opens a session room and turns it into a pre-V58 container room.
 
 ## Refinement containers
 
-**Legacy (epic qits-770): only rooms opened before V57 are container rooms**, and nothing new is one
+**Legacy (epic qits-770): only rooms opened before V58 are container rooms**, and nothing new is one
 — see "Refinement sessions" above. Everything below describes those rows until qits-1316 removes the
 machinery; where it says the open cuts a branch or refuses a campaign, read it as history.
 

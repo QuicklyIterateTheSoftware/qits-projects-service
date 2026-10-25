@@ -19,7 +19,7 @@ import jakarta.inject.Inject;
 /**
  * A legacy container room for the suites that still pin the container machinery (until qits-1316
  * removes it): since epic qits-770 the open makes a session room, so this opens one through the
- * real door and turns it into what an open made before V57 — the {@code refining/<slug>} branch cut
+ * real door and turns it into what an open made before V58 — the {@code refining/<slug>} branch cut
  * on the wrapper and named on the row, the parent its default branch, no session demand. Test scope
  * only.
  */
@@ -83,7 +83,7 @@ public class LegacyRefinementRooms {
                     parent,
                     id));
     sessions.push(room.projectId);
-    // The open's own read, as the pre-V57 open answered it: it schedules the first drift pass.
+    // The open's own read, as the pre-V58 open answered it: it schedules the first drift pass.
     service.view(QuarkusTransaction.requiringNew().call(() -> store.findById(id)));
   }
 }
