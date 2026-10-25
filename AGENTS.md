@@ -2863,19 +2863,20 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
   order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
   the one desk's fields with the brief qits-1517 wrote and qits-1560, qits-1569, qits-1571,
-  qits-1568, qits-1596, qits-1601 and qits-1597 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
+  qits-1568, qits-1596, qits-1601, qits-1597 and qits-1604 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
   one judging rule — approve a change that is what the request's work should change, `.config/qits/`
   included, ask the owner once per item otherwise — and no file or category named the owner's; since
   qits-1571 every command it names is one the shipped `qits` CLI takes, and step 10 reads free slots
   from `qits workspaces list`; since qits-1568 step 4's approval of verified work also clears
   `no-changes`; since qits-1596 it holds the coordinator's rights in its project; since qits-1601
   step 2 excepts a BUSY agent from its thirty-minutes-quiet clause; since qits-1597 nothing wakes it — a person prompts it, it does what was asked, a whole pass when asked for one,
-  and ends the turn) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
+  and ends the turn; since qits-1604 a desk trigger message, starting "You are the delivery desk",
+  prompts it too and it acts on each item the message names) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
   of a session launched on the surface and nothing sent on a schedule. The seed writes the row at
   boot; no migration.
   **The row is platform-wide and the seed never overwrites it**, so the briefs that shipped before
   (qits-1440's dossier text as `PREVIOUS_DELIVERY_DESK_PROMPT`, qits-1517's, qits-1560's,
-  qits-1569's, qits-1571's, qits-1568's, qits-1596's and qits-1601's as
+  qits-1569's, qits-1571's, qits-1568's, qits-1596's, qits-1601's and qits-1597's as
   `QITS_<n>_DELIVERY_DESK_PROMPT`, each kept byte for byte) are rolled forward by
   `startup/DeliveryDeskBriefRollout`, a boot step beside the seed: a stored `project.delivery`
   prompt **exactly** equal to any previous text is rewritten to the
