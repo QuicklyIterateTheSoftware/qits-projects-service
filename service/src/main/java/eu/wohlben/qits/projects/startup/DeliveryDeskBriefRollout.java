@@ -10,9 +10,9 @@ import java.util.List;
 import org.jboss.logging.Logger;
 
 /**
- * Rolls the delivery desk's new brief (qits-1597, before it qits-1596, qits-1568, qits-1571,
- * qits-1569, qits-1560 and qits-1517) onto the stored {@code project.delivery} row, where nobody
- * edited an old one.
+ * Rolls the delivery desk's new brief (qits-1597, before it qits-1601, qits-1596, qits-1568,
+ * qits-1571, qits-1569, qits-1560 and qits-1517) onto the stored {@code project.delivery} row,
+ * where nobody edited an old one.
  *
  * <p><b>Why a boot step and not the seed.</b> {@link AgentSurfaceSeed} is insert-if-absent, so the
  * row it wrote under qits-1440 keeps {@link AgentSurfaceDefaults#PREVIOUS_DELIVERY_DESK_PROMPT}
@@ -27,9 +27,10 @@ import org.jboss.logging.Logger;
  * AgentSurfaceDefaults#QITS_1569_DELIVERY_DESK_PROMPT}), one the qits-1571 rollout reached holds
  * qits-1571's ({@link AgentSurfaceDefaults#QITS_1571_DELIVERY_DESK_PROMPT}), one the qits-1568
  * rollout reached holds qits-1568's ({@link AgentSurfaceDefaults#QITS_1568_DELIVERY_DESK_PROMPT}),
- * and one the qits-1596 rollout reached holds qits-1596's ({@link
- * AgentSurfaceDefaults#QITS_1596_DELIVERY_DESK_PROMPT}). Each is compared in turn, and the first
- * that matches is rewritten straight to the current text.
+ * one the qits-1596 rollout reached holds qits-1596's ({@link
+ * AgentSurfaceDefaults#QITS_1596_DELIVERY_DESK_PROMPT}), and one the qits-1601 rollout reached
+ * holds qits-1601's ({@link AgentSurfaceDefaults#QITS_1601_DELIVERY_DESK_PROMPT}). Each is compared
+ * in turn, and the first that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
  * shipped text was never edited, and is rewritten to {@link
@@ -55,7 +56,8 @@ public class DeliveryDeskBriefRollout {
           AgentSurfaceDefaults.QITS_1569_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1571_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1596_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_1596_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_1601_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 
