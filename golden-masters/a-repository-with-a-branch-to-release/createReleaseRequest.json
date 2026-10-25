@@ -12,7 +12,9 @@
         "ref": "refs/heads/main",
         "implicit": false,
         "priority": "MEDIUM",
-        "addedBy": null
+        "addedBy": null,
+        "feature": false,
+        "explicitJoin": false
       },
       {
         "kind": "BRANCH",
@@ -20,7 +22,9 @@
         "ref": "refs/heads/feature/export",
         "implicit": false,
         "priority": "LOWEST",
-        "addedBy": "dev"
+        "addedBy": "dev",
+        "feature": false,
+        "explicitJoin": false
       }
     ],
     "priority": "MEDIUM",
@@ -94,6 +98,21 @@
     ],
     "preRun": {
       "state": "PASSED"
+    },
+    "queuedBehind": null,
+    "queuedBehindQualifiedId": null,
+    "queuedNext": null,
+    "queuedNextQualifiedId": null,
+    "featureFreeze": {
+      "features": 0,
+      "threshold": 3,
+      "frozen": false,
+      "source": "PLATFORM"
     }
+  },
+  "placement": {
+    "outcome": "CREATED",
+    "queued": false,
+    "detail": "feature/export opened contract-service-rr-1, the repository's active release request"
   }
 }

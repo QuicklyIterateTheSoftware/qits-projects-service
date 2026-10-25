@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.control;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.StoredGateSet;
 import eu.wohlben.qits.projects.gitmirror.GitProcessSpans;
 import eu.wohlben.qits.projects.gitmirror.GitTracing;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -196,6 +198,16 @@ import org.jboss.logging.Logger;
  * {@code main} — {@link StoredGateSet}, one row per repository, written whenever a read comes back
  * known. It is what {@link #forDisplay} shows, so the release-request list asks the git host nothing
  * even on a cold process or right after {@code main} moved; nothing that decides ever reads it.
+ *
+ * <h2>The repository's feature freeze rides the same read</h2>
+ *
+ * <p>{@code feature_freeze} in {@link #SETTINGS} (epic qits-1580) is the repository's own soft
+ * feature freeze, overriding its project's ({@link FeatureFreezeThreshold}). It is not a gate, but
+ * it lives in the one file this class already reads from {@code main}, so it is read here and
+ * nowhere else: every known read remembers it beside the set, for {@link #featureFreeze}, and writes
+ * it onto {@code Repository.releaseFeatureFreeze} with the stored set — so the read of a request
+ * shows the threshold in force without asking the git host, and it is refreshed exactly when the gate
+ * configuration is (a resolve past the window, and every move of {@code main}).
  */
 @ApplicationScoped
 public class ReleaseGates {
@@ -461,6 +473,11 @@ public class ReleaseGates {
    * which, and on a miss the git host's own HTTP spans sit inside it.
    */
   public GateSet resolve(String repoId) {
+    return resolveRead(repoId).set();
+  }
+
+  /** {@link #resolve}, answering the whole read: the set and the repository's feature freeze. */
+  private Read resolveRead(String repoId) {
     GitTracing tracer = tracer();
     try (GitTracing.Span span =
         tracer.start(
@@ -468,13 +485,36 @@ public class ReleaseGates {
       Cached cached = cache.get(repoId);
       if (cached != null && cached.freshAt(System.currentTimeMillis(), freshnessMs)) {
         span.attribute(CACHE_ATTRIBUTE, "hit");
-        return cached.set();
+        return new Read(cached.set(), cached.featureFreeze());
       }
       span.attribute(CACHE_ATTRIBUTE, "miss");
       long generation = generation(repoId);
       long startedAt = System.currentTimeMillis();
-      return remember(repoId, read(repoId), generation, startedAt);
+      Read read = read(repoId);
+      remember(repoId, read, generation, startedAt);
+      return read;
     }
+  }
+
+  /**
+   * What a repository's own {@code .config/qits/release-requests.yml} declares as its {@code
+   * feature_freeze} at {@code main} (epic qits-1580), for a decision that places a branch.
+   *
+   * @param known whether the configuration could be read; where it could not, {@code value} says
+   *     nothing and the caller keeps what {@code Repository.releaseFeatureFreeze} has stored
+   * @param value the declared freeze, or null where the file or the key is absent
+   */
+  public record DeclaredFeatureFreeze(boolean known, Integer value) {}
+
+  /**
+   * {@code repoId}'s declared feature freeze, read the way {@link #resolve} reads the gate set and
+   * from the same read: inside {@link #freshnessMs} it is the remembered answer, and past it one tree
+   * listing and one file read. For the doors that place a branch; a request read uses the stored
+   * column instead and never comes here.
+   */
+  public DeclaredFeatureFreeze featureFreeze(String repoId) {
+    Read read = resolveRead(repoId);
+    return new DeclaredFeatureFreeze(read.set().known(), read.featureFreeze());
   }
 
   /** A stored gate set and when the read behind it began — see {@link StoredGateSet}. */
@@ -584,7 +624,7 @@ public class ReleaseGates {
             remember(only.getKey(), read(only.getKey(), only.getValue()), generation, startedAt));
         return answered;
       }
-      Map<String, CompletableFuture<GateSet>> reading = new LinkedHashMap<>();
+      Map<String, CompletableFuture<Read>> reading = new LinkedHashMap<>();
       Map<String, Long> generationAtStart = new HashMap<>();
       long startedAt = System.currentTimeMillis();
       toRead.forEach(
@@ -594,13 +634,13 @@ public class ReleaseGates {
           });
       reading.forEach(
           (repoId, future) -> {
-            GateSet set;
+            Read set;
             try {
               set = future.join();
             } catch (RuntimeException e) {
               // read() answers every failure as unknown; a throw here is the pool's, not the host's.
               LOG.debugf(e, "Reading the gate configuration of %s did not complete", repoId);
-              set = GateSet.unknown("The gate configuration of this repository could not be read");
+              set = Read.unknown("The gate configuration of this repository could not be read");
             }
             answered.put(repoId, remember(repoId, set, generationAtStart.get(repoId), startedAt));
           });
@@ -642,8 +682,8 @@ public class ReleaseGates {
                 try {
                   long startedAt = System.currentTimeMillis();
                   String branch = main != null ? main : inTransaction(() -> mainOf(repoId));
-                  GateSet set = read(repoId, branch);
-                  if (set.known()) {
+                  Read set = read(repoId, branch);
+                  if (set.set().known()) {
                     // An unknown answer is never held, as in resolve(): what is shown stays shown
                     // and the next page that finds it stale asks again.
                     remember(repoId, set, generation, startedAt);
@@ -692,12 +732,13 @@ public class ReleaseGates {
    * @param startedAt when the read began — the stored set's {@code read_at}, so a set read across a
    *     {@link #forget} counts as older than it
    */
-  private GateSet remember(String repoId, GateSet resolved, long generation, long startedAt) {
+  private GateSet remember(String repoId, Read read, long generation, long startedAt) {
+    GateSet resolved = read.set();
     if (repoId == null) {
       return resolved;
     }
     if (resolved.known()) {
-      Cached fresh = new Cached(resolved, startedAt);
+      Cached fresh = new Cached(resolved, read.featureFreeze(), startedAt);
       boolean[] kept = {false};
       cache.compute(
           repoId,
@@ -709,7 +750,7 @@ public class ReleaseGates {
             return fresh;
           });
       if (kept[0]) {
-        store(repoId, resolved, startedAt);
+        store(repoId, resolved, read.featureFreeze(), startedAt);
       }
     } else {
       cache.remove(repoId);
@@ -722,7 +763,7 @@ public class ReleaseGates {
    * it may be holding a row lock, and must neither wait for nor fail on a display's bookkeeping. Best
    * effort — a lost write is a background refresh on the next page.
    */
-  private void store(String repoId, GateSet set, long readAt) {
+  private void store(String repoId, GateSet set, Integer featureFreeze, long readAt) {
     if (storedSets == null || readers == null) {
       return;
     }
@@ -734,6 +775,12 @@ public class ReleaseGates {
               inTransaction(
                   () -> {
                     storedSets.upsert(repoId, json, Instant.ofEpochMilli(readAt));
+                    // The repository's own feature freeze (epic qits-1580), written only when it
+                    // moved: a request read shows the threshold in force off this column.
+                    Repository row = repositories.findById(repoId);
+                    if (row != null && !Objects.equals(row.releaseFeatureFreeze, featureFreeze)) {
+                      row.releaseFeatureFreeze = featureFreeze;
+                    }
                     return null;
                   });
             } catch (RuntimeException e) {
@@ -765,7 +812,7 @@ public class ReleaseGates {
     return repoId == null ? 0L : generations.getOrDefault(repoId, 0L);
   }
 
-  private record Cached(GateSet set, long readAt) {
+  private record Cached(GateSet set, Integer featureFreeze, long readAt) {
     boolean freshAt(long now, long windowMs) {
       return now - readAt < windowMs;
     }
@@ -837,9 +884,20 @@ public class ReleaseGates {
     }
   }
 
-  private GateSet read(String repoId) {
+  /**
+   * One read of a repository's configuration at {@code main}: its gate set, and {@code
+   * feature_freeze} out of {@link #SETTINGS} (epic qits-1580) — null where the file or the key is
+   * absent, and meaningless where the set is unknown.
+   */
+  private record Read(GateSet set, Integer featureFreeze) {
+    static Read unknown(String detail) {
+      return new Read(GateSet.unknown(detail), null);
+    }
+  }
+
+  private Read read(String repoId) {
     if (!gitHosts.isResolvable()) {
-      return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
+      return Read.unknown("No git host is configured, so this repository's gates cannot be read");
     }
     return read(repoId, mainOf(repoId));
   }
@@ -852,12 +910,12 @@ public class ReleaseGates {
    * concurrent reads, one of its background refreshes — is its own span, with the git host's own
    * HTTP spans nested under it.
    */
-  private GateSet read(String repoId, String main) {
+  private Read read(String repoId, String main) {
     GitTracing tracer = tracer();
     try (GitTracing.Span span =
         tracer.start(READ_SPAN, repoId == null ? Map.of() : Map.of(GitProcessSpans.REPO_ID, repoId))) {
       if (!gitHosts.isResolvable()) {
-        return GateSet.unknown("No git host is configured, so this repository's gates cannot be read");
+        return Read.unknown("No git host is configured, so this repository's gates cannot be read");
       }
       String rev = "refs/heads/" + main;
       ReleaseGitHost host = gitHosts.get();
@@ -867,17 +925,18 @@ public class ReleaseGates {
       } catch (RuntimeException e) {
         // The port says it must not throw; a throw is a port bug and must not be read as an answer.
         LOG.debugf(e, "The git host threw reading the tree of %s at %s", repoId, rev);
-        return GateSet.unknown("The git host could not be asked what " + rev + " configures");
+        return Read.unknown("The git host could not be asked what " + rev + " configures");
       }
       if (!tree.ok()) {
         LOG.debugf(
             "Could not read the tree of %s at %s (%s): %s",
             repoId, rev, tree.retryable() ? "retryable" : "final", tree.detail());
-        return GateSet.unknown(
+        return Read.unknown(
             "The gate configuration at " + rev + " could not be read: " + tree.detail());
       }
       List<String> paths = tree.value();
       EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
+      Integer featureFreeze = null;
       if (paths.contains(RELEASE_CONFIG)) {
         // One file read on every repository that declares a release at all, and the file is exactly
         // the one ReleaseArtifacts already fetches. The tree listing alone cannot answer this gate:
@@ -889,10 +948,10 @@ public class ReleaseGates {
           config = host.file(repoId, rev, RELEASE_CONFIG);
         } catch (RuntimeException e) {
           LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_CONFIG, repoId, rev);
-          return GateSet.unknown("The git host could not be asked what " + RELEASE_CONFIG + " says");
+          return Read.unknown("The git host could not be asked what " + RELEASE_CONFIG + " says");
         }
         if (config == null || !config.ok()) {
-          return GateSet.unknown(
+          return Read.unknown(
               RELEASE_CONFIG
                   + " is declared at "
                   + rev
@@ -927,10 +986,10 @@ public class ReleaseGates {
           settings = host.file(repoId, rev, SETTINGS);
         } catch (RuntimeException e) {
           LOG.debugf(e, "The git host threw reading %s of %s at %s", SETTINGS, repoId, rev);
-          return GateSet.unknown("The git host could not be asked what " + SETTINGS + " says");
+          return Read.unknown("The git host could not be asked what " + SETTINGS + " says");
         }
         if (settings == null || !settings.ok()) {
-          return GateSet.unknown(
+          return Read.unknown(
               SETTINGS
                   + " is declared at "
                   + rev
@@ -938,17 +997,19 @@ public class ReleaseGates {
                   + (settings == null ? "the git host could not be asked" : settings.detail()));
         }
         try {
-          if (settingsParser.parse(settings.value()).manualReview()) {
+          ReleaseRequestSettings declared = settingsParser.parse(settings.value());
+          if (declared.manualReview()) {
             kinds.add(Kind.APPROVAL);
           }
+          featureFreeze = declared.featureFreeze();
         } catch (RuntimeException e) {
           // A settings file that fails open on a typo is a gate that disappears when somebody
           // mistypes it. Unknown holds the request and names the file in the sentence a person reads.
           LOG.warnf("%s at %s of %s does not parse: %s", SETTINGS, rev, repoId, e.getMessage());
-          return GateSet.unknown(SETTINGS + " at " + rev + " does not parse: " + e.getMessage());
+          return Read.unknown(SETTINGS + " at " + rev + " does not parse: " + e.getMessage());
         }
       }
-      return GateSet.of(kinds);
+      return new Read(GateSet.of(kinds), featureFreeze);
     }
   }
 

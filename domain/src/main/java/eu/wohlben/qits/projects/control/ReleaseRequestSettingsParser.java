@@ -17,8 +17,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * gate set is read from the git host's tree listing rather than out of a bare origin, so the caller
  * ({@link ReleaseGates}) does the reading and this class only ever sees bytes.
  *
- * <p><b>It never fails open.</b> Bad YAML, a document that is not a mapping and a {@code
- * manual-review} that is not a boolean all throw {@link ReleaseRequestSettingsException}, naming
+ * <p><b>It never fails open.</b> Bad YAML, a document that is not a mapping, a {@code
+ * manual-review} that is not a boolean and a {@code feature_freeze} that is not an integer from 0 to
+ * 20 all throw {@link ReleaseRequestSettingsException}, naming
  * {@link #SETTINGS_PATH}. Degrading any of them to {@link ReleaseRequestSettings#NONE} would make a
  * typo delete an approval gate, silently, on the repository whose releases most need one. Absence is
  * the only thing that means no gate, and absence is decided by the caller's listing rather than
@@ -33,8 +34,15 @@ public class ReleaseRequestSettingsParser {
   /** The committed settings location. There is no legacy path: the file is new. */
   public static final String SETTINGS_PATH = ".config/qits/release-requests.yml";
 
-  /** The one key today. */
+  /** Whether the repository's releases are held by an approval gate. */
   public static final String MANUAL_REVIEW = "manual-review";
+
+  /**
+   * The repository's soft feature freeze (epic qits-1580): an integer 0..20, 0 the freeze off;
+   * absent leaves its project's. The project key's spelling, {@code release_requests.feature_freeze}
+   * in {@code project.yml}, so one setting reads the same at both levels.
+   */
+  public static final String FEATURE_FREEZE = "feature_freeze";
 
   /** A structural problem in {@link #SETTINGS_PATH}. It names the file; see the class javadoc. */
   public static class ReleaseRequestSettingsException extends RuntimeException {
@@ -79,11 +87,14 @@ public class ReleaseRequestSettingsParser {
     Map<String, Object> map = new LinkedHashMap<>();
     raw.forEach((k, v) -> map.put(String.valueOf(k), v));
 
-    Object manualReview = map.get(MANUAL_REVIEW);
+    return new ReleaseRequestSettings(manualReviewOf(map.get(MANUAL_REVIEW)), featureFreezeOf(map));
+  }
+
+  private static boolean manualReviewOf(Object manualReview) {
     if (manualReview == null) {
       // Absent key: the same answer as `false`, and deliberately not an error. A file that carries
       // only a key this reader does not know yet is exactly this case.
-      return ReleaseRequestSettings.NONE;
+      return false;
     }
     if (!(manualReview instanceof Boolean flag)) {
       throw new ReleaseRequestSettingsException(
@@ -94,6 +105,29 @@ public class ReleaseRequestSettingsParser {
               + ", got: "
               + manualReview.getClass().getSimpleName());
     }
-    return new ReleaseRequestSettings(flag);
+    return flag;
+  }
+
+  private static Integer featureFreezeOf(Map<String, Object> map) {
+    Object value = map.get(FEATURE_FREEZE);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof Integer count)
+        || count < ProjectConfig.ReleaseRequestsSettings.MIN_FEATURE_FREEZE
+        || count > ProjectConfig.ReleaseRequestsSettings.MAX_FEATURE_FREEZE) {
+      throw new ReleaseRequestSettingsException(
+          "Expected an integer from "
+              + ProjectConfig.ReleaseRequestsSettings.MIN_FEATURE_FREEZE
+              + " to "
+              + ProjectConfig.ReleaseRequestsSettings.MAX_FEATURE_FREEZE
+              + " (0 turns the freeze off) at '"
+              + FEATURE_FREEZE
+              + "' in "
+              + SETTINGS_PATH
+              + ", got: "
+              + value);
+    }
+    return count;
   }
 }
