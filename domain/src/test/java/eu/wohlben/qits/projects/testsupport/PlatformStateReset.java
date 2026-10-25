@@ -68,15 +68,17 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    * breaks by killing one side. That is a statement about the moment, not about the schema: the
    * worker is finishing, not stuck. Anything else fails on the first attempt, as it should.
    *
-   * <p>front_desk (qits-767) references project, so it is truncated with it. (agent_credential was
-   * in the list until V38 dropped the table with the direct agent path.)
+   * <p>front_desk (qits-767) references project, so it is truncated with it, and so are the desk
+   * trigger windows and their lines (V57, epic qits-1604). (agent_credential was in the list until
+   * V38 dropped the table with the direct agent path.)
    */
   private static void truncate(AgroalDataSource dataSource) {
     for (int attempt = 1; ; attempt++) {
       try (Connection connection = dataSource.getConnection();
           Statement sql = connection.createStatement()) {
         sql.execute(
-            "truncate table front_desk, repository_name, repository, project");
+            "truncate table desk_trigger_event, desk_trigger_window, front_desk, repository_name,"
+                + " repository, project");
         return;
       } catch (SQLException e) {
         if (attempt == 5 || !DEADLOCK.equals(e.getSQLState())) {
