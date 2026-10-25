@@ -29,6 +29,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class EpicResolutionCleanupTest {
 
+  @Inject LegacyRefinementRooms legacy;
+
   @Inject FakeRefinementRuntime runtime;
   @Inject FakeRefinementCredentials credentials;
   @Inject RefinementService service;
@@ -74,6 +76,8 @@ public class EpicResolutionCleanupTest {
             .statusCode(200)
             .extract()
             .path("refinement.id");
+    // A legacy container room (epic qits-770): an open makes a session room now.
+    legacy.asContainerRoom(id.longValue());
     return id.longValue();
   }
 

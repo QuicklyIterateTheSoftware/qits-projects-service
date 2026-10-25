@@ -61,8 +61,10 @@ public class WorkRefinementController {
       summary = "Open (or find) a work entity's refinement room",
       description =
           "Find-or-create: an entity has at most one room, and a second open answers the first."
-              + " Refused for a feature or a task, an entity not at REPORTED, one an ACTIVE workspace"
-              + " names, and a project with no wrapper. The path names the entity by qualified id"
+              + " The room is a session of the project's front desk, asked for by the open. Refused"
+              + " for a feature or a task, an entity not at REPORTED, one an ACTIVE workspace names,"
+              + " a project with no wrapper, and beyond the project's refinement-sessions cap. The"
+              + " path names the entity (an epic, a ticket or a campaign) by qualified id"
               + " (<projectSlug>-<n>) or UUID.")
   @APIResponse(
       responseCode = "200",
@@ -77,8 +79,11 @@ public class WorkRefinementController {
           "Not Allowed, the credential is bound to another entity, or the delivery desk reaches"
               + " another project's entity")
   @APIResponse(responseCode = "404", description = "No entity with this id")
-  @APIResponse(responseCode = "409", description = "The entity cannot be refined now")
-  @APIResponse(responseCode = "502", description = "The git host would not cut the branch")
+  @APIResponse(
+      responseCode = "409",
+      description =
+          "The entity cannot be refined now, or REFINEMENT_SESSIONS_FULL: the project already runs"
+              + " as many refinement sessions as qits.projects.refinement-sessions-max allows")
   public WorkRefinementAnswer open(@PathParam("qualifiedId") String qualifiedId) {
     WorkEntity entity = ids.resolve(qualifiedId);
     String id = entity.id;

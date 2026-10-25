@@ -73,6 +73,10 @@ import org.jboss.logging.Logger;
  * its next wake: {@link RefinementContainerFactory} puts {@code QITS_WORKSPACE_DAEMON_ENTITY_TITLE},
  * {@code _STATUS} and {@code _BLOCKED} on the spec from the row as it then stands.
  *
+ * <p><b>Only a legacy container room is told here.</b> A session room (epic qits-770) is handed to
+ * {@link RefinementSessions#entityChanged}, which sends its project's desk daemon the sessions list
+ * again with the new facts, and the daemon renames the session in place.
+ *
  * <p>This is qits-1285's stop-gap for a container epic qits-770 is going to delete outright:
  * refinement containers are on the list to go, and this class with them. Nothing here is written to
  * outlive that epic.
@@ -91,6 +95,12 @@ public class RefinementAgentEntities {
   @Inject RefinementService refinements;
 
   @Inject RefinementTunnels tunnels;
+
+  /**
+   * A session room's entity facts reach its session through the desk's sessions list (epic
+   * qits-770), not down a tunnel. Null in a hand-built bean.
+   */
+  @Inject RefinementSessions sessions;
 
   /** The bearer the daemon requires; the value {@link RefinementContainerFactory} injects. */
   @ConfigProperty(
@@ -126,6 +136,16 @@ public class RefinementAgentEntities {
     try {
       Optional<Refinement> refinement = refinements.findByEntity(entityId);
       if (refinement.isEmpty()) {
+        return;
+      }
+      if (!refinement.get().containerRoom()) {
+        // A session room (epic qits-770): the desk's daemon renames the session from the list.
+        if (sessions != null) {
+          sessions.entityChanged(
+              refinement.get(),
+              new eu.wohlben.qits.projectsdaemon.protocol.Sessions.Entity(
+                  null, title, status, blocked, blocked ? blockSource : null));
+        }
         return;
       }
       Long refinementId = refinement.get().id;

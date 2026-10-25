@@ -3123,7 +3123,100 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
   the catalogue stores under and this service chose the pin, so a report keyed on the empty string is
   one that cannot be told apart from another build's. A daemon that names them wins, always.
 
+## Refinement sessions (epic qits-770)
+
+**A refinement room opened now is a session of its project's front desk**, not a container of its
+own. The desk's daemon (capability 3, `qits-projects-daemon-protocol`'s `Sessions`/`SessionReport`)
+runs every room's harness session in the one desk container — the multiplex — keyed by the room's
+entity id, on the room's own token (qits-1482's `sessionCredentials` key). `refinementhost/
+RefinementSessions` is the whole of it.
+
+**The legacy rule: the branch decides** (`Refinement.containerRoom()`). V57 made `refinement.branch`
+and `parent` nullable; every row opened before it has a `refining/<slug>` branch and stays a
+**container room** — its container, ladder, tunnel, proxy, drift and stale-image sweep work exactly
+as "Refinement containers" below says, until qits-1316 deletes that machinery. Every row opened since
+has no branch and is a **session room**. Nothing converts one kind into the other; every door
+answers both by that rule.
+
+- **The desired list** (`RefinementSessions.compose`, pure, `RefinementSessionsComposeTest`) is
+  always the full one: `front-desk` (surface `project.work`, RUNNING) only while the project's
+  `front_desk.lifecycle` is `ALWAYS_ON` — on `ON_DEMAND` it is left out and the desk panel still
+  launches that session with `POST /agents` (the daemon keeps it anyway while the delivery loop is
+  on) — then one entry per session room: key the entity id, surface `epic.chat`, RUNNING while
+  `last_demand_at` is younger than `qits.projects.agent-idle-timeout` (PT4H, the desk's own key),
+  else STOPPED; `resumeSessionId` the last reported `session_id`; the entity's `qualifiedId`,
+  `title`, `status`, effective `blocked` and `blockSource` read live (`entities.fresh`). A container
+  room is never in it.
+- **When it is sent** (`RefinementSessions.push`, never throws, only to a daemon whose `hello` said
+  `AgentDaemonRegistry.SESSIONS_CAPABILITY` = 3): after the credentials on `hello`; on every change —
+  a room opened, ensured, stopped or discarded (`RefinementService`), its entity moved, blocked,
+  unblocked or retitled (`api/AgentEntitySignals` → `RefinementAgentEntities.changed`, which hands a
+  session room to `RefinementSessions.entityChanged` with the announced facts and tells only a
+  container room down its tunnel; a campaign's room is told too); and every
+  `qits.projects.desk-runner.estate-interval` for every capable connected desk (`pushAll`). **The
+  credential goes first**: the open mints the room's token (which sends `sessionCredentials`) before
+  it stamps demand and pushes, and the hello sends credentials before sessions. A room whose token
+  could not be minted is still listed; the daemon reports it FAILED until the reconcile mints it.
+- **The report** (`SessionReport`, `RefinementSessions.onReport`): each named key's `state`,
+  `detail` and `commandId` land on `refinement.session_state`/`session_detail`/`session_command_id`,
+  its `sessionId` on `session_id` when it carries one (kept after a stop, so the next launch
+  resumes); a session room the report leaves out is STOPPED. A row that moved fires its `PROCESS`
+  hint. An `AgentActivity` naming a room's `commandId` re-stamps its demand at most once a minute,
+  while the room is still wanted, so a person working in a room is not stopped at the idle window.
+- **The desk is wanted for a room** (`deskhost/RefinementDemand`, a `FrontDeskDemandSource`): while
+  any of the project's session rooms wants its session, so a refinement starts an `ON_DEMAND` desk.
+  `RefinementService` fires the CDI event `refinementhost/RefinementDemandChanged` on every demand
+  move; `FrontDeskHooks` creates the desk row when it is now wanted and reconciles it; the sweep
+  creates the desk of such a project like an `ALWAYS_ON` one.
+- **The cap**: `qits.projects.refinement-sessions-max` (4) rooms of one project may want their
+  session at once. The open of one more, or the ensure of a stopped one, is a **409**
+  `{"error":"REFINEMENT_SESSIONS_FULL"}` naming the running rooms by qualified id. Re-opening an
+  existing room at the cap answers the room unstamped (its ensure says why).
+
+| route | session room | container room |
+| --- | --- | --- |
+| `POST /work/{q}/refinement` (`startWorkRefinement`) | find-or-create, demand stamped, pushed | answered untouched |
+| `POST /refinements/{id}/ensure` (`ensureRefinementSession`) | demand stamped (cap), pushed; `{refinement}` | the ladder begun; `{refinement}` |
+| `POST /refinements/{id}/stop` (`stopRefinementSession`) | demand cleared → STOPPED, pushed | the container stopped |
+| `POST …/ensure-container` | alias of `ensure`, with an already-settled `technicalProcessId` | as before |
+| `POST …/stop-container` | alias of `stop` | as before |
+| `POST …/recreate-container` | `stop` then `ensure`, settled process | as before |
+| `GET …/active-process` | `null` | as before |
+| `POST …/discard` | row deleted (draft, sketches, designs cascade), pushed without the key (which stops the session), token revoked, credentials re-sent | as before |
+
+The four container verbs stay for the released SPA and go in qits-1316. `EntityResolutions` still
+calls `discard`.
+
+**The open is the same for a campaign as for an epic** — the qits-411 refusal is gone; a campaign
+takes the REPORTED and dispatch refusals an epic does. Its room's scope is the campaign and its
+REPORTED members; **nothing server-side composes a room's prompt** (the SPA's draft does, and the
+session's surface brief), so naming the members is the prompt's job. Designs and prompt images work
+for it; the dossier inline door stays epic-only, so it has none, like a ticket. No branch, no
+container placement and no 502 are on the open any more.
+
+**`RefinementDto`** adds `sessionId`, `commandId`, `deskStatus` (the desk's `FrontDeskState` word:
+QUEUED, PROVISIONING, RUNNING, STOPPED, FAILED, UNAVAILABLE, ABSENT, through the port
+`refinementhost/RefinementDesk`, implemented by `deskhost/FrontDeskRefinementDesk`), `deskDetail`
+(its failure) and `deskBase` (`/projects/container/<projectId>/`), all null on a container room. On a
+session room `runtimeStatus` is the reported state (STARTING | RUNNING | STOPPED | FAILED; before any
+report, STARTING while wanted, else STOPPED) and `runtimeError` its detail. The container-only fields
+— `branch`, `parent`, `clean`, `ahead`, `behind`, `conflictsWithParent`, `daemonConnectedAt`,
+`daemonVersion`, `daemonOutdated`, `pinnedDaemonVersion`, `daemonVersionStale` — stay on the wire in
+this release (the frontend's pact pins them) and are null/false on a session room; qits-1316 drops
+them. `epicId` stays.
+
+Tests: `RefinementSessionsComposeTest` (pure), `RefinementSessionsTest` (the frame on hello and on
+every change, capability gating, credential-first ordering, the report, the doors and their aliases,
+the desk demand, a campaign's room, the cap). The suites still pinning the container machinery
+(`RefinementLifecycleTest`, `RefinementDriftTest`, `RefinementPinStalenessTest`,
+`EpicResolutionCleanupTest`) make their rooms through the test-scope `LegacyRefinementRooms`, which
+opens a session room and turns it into a pre-V57 container room.
+
 ## Refinement containers
+
+**Legacy (epic qits-770): only rooms opened before V57 are container rooms**, and nothing new is one
+— see "Refinement sessions" above. Everything below describes those rows until qits-1316 removes the
+machinery; where it says the open cuts a branch or refuses a campaign, read it as history.
 
 One container per REPORTED epic **or ticket** (the status refinement runs in since qits-392; a ticket
 since qits-395) — the refining route's whole backend, which used to be an ordinary
@@ -3348,7 +3441,8 @@ The refusals, all on the **create** path, in order: 404 unknown id; **409 for a 
 (no phase of its own — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
 the REPORTED phase (`requireReported` for an epic's scope; a ticket's fields do not freeze, but its
 room opens only where its refine phase runs); **409 while a dispatch runs on it** (below); 409 for a
-project with no wrapper; 502 when the git host will not cut the branch. **The wrapper is the project
+project with no wrapper; and since epic qits-770 no 502 (no branch is cut) and a 409
+`REFINEMENT_SESSIONS_FULL` beyond the cap, with a campaign admitted like an epic. **The wrapper is the project
 for a ticket exactly as for an epic** — neither names a repository, both dispatch onto the wrapper —
 so the wrapper resolution needed no archetype arm.
 

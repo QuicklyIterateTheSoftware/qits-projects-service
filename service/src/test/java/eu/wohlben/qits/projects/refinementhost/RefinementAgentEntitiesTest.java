@@ -104,6 +104,8 @@ class RefinementAgentEntitiesTest {
     Refinement refinement = new Refinement();
     refinement.id = id;
     refinement.entityId = "epic-1";
+    // A legacy container room: only those are told down the tunnel (epic qits-770).
+    refinement.branch = "refining/epic-1";
     return Optional.of(refinement);
   }
 

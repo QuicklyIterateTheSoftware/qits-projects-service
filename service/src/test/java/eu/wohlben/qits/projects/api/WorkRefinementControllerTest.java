@@ -117,8 +117,9 @@ public class WorkRefinementControllerTest {
             .body("refinement.entityId", equalTo(ticketId))
             .body("refinement.epicId", equalTo(ticketId))
             .body("refinement.projectId", equalTo(projectId))
-            .body("refinement.branch", equalTo("refining/flaky-login"))
-            .body("refinement.parent", equalTo("main"))
+            // A session room (epic qits-770): no branch is cut and nothing is forked.
+            .body("refinement.branch", nullValue())
+            .body("refinement.parent", nullValue())
             .body("refinement.label", equalTo("refining-flaky-login"))
             .extract()
             .path("refinement.id");
@@ -187,22 +188,29 @@ public class WorkRefinementControllerTest {
         .body("refinements.size()", equalTo(0));
   }
 
-  /** A campaign has no branch and no workspace, so it opens no refinement room (qits-411). */
+  /**
+   * A campaign is refined like an epic since epic qits-770 (the qits-411 refusal is gone): its room
+   * is a session of the desk, and a campaign past REPORTED is refused as an epic would be.
+   */
   @Test
-  public void aCampaignIsRefusedAndTheRefusalNamesIt() {
+  public void aCampaignOpensARoomAndAFrozenOneIsRefused() {
     String projectId = createProject("Refine Campaign");
     String campaignId =
         campaigns.createCampaign(projectId, "Spring cleaning", null, "dana").id;
 
-    open(campaignId)
-        .then()
-        .statusCode(409)
-        .body("message", containsString("Campaign " + campaignId + " does not open a refinement"));
+    open(campaignId).then().statusCode(200).body("refinement.entityId", equalTo(campaignId));
     asAdmin()
         .when()
         .get("/projects/api/projects/" + projectId + "/refinements")
         .then()
-        .body("refinements.size()", equalTo(0));
+        .body("refinements.size()", equalTo(1));
+
+    String frozen = campaigns.createCampaign(projectId, "Summer cleaning", null, "dana").id;
+    transition(frozen, "REFINED");
+    open(frozen)
+        .then()
+        .statusCode(409)
+        .body("message", containsString("only a REPORTED campaign can be refined"));
   }
 
   @Test
@@ -284,7 +292,7 @@ public class WorkRefinementControllerTest {
             .statusCode(200)
             .body("refinement.epicId", equalTo(epicId))
             .body("refinement.entityId", equalTo(epicId))
-            .body("refinement.branch", equalTo("refining/legacy-epic"))
+            .body("refinement.branch", nullValue())
             .extract()
             .path("refinement.id");
 
@@ -324,7 +332,7 @@ public class WorkRefinementControllerTest {
         .body("refinements.id", hasItem(keptRoom.intValue()))
         .body("refinements.id", not(hasItem(droppedRoom.intValue())));
     assertTrue(
-        runtime.calls().contains("delete:" + droppedRoom.longValue()),
-        "the container went with the room: " + runtime.calls());
+        runtime.calls().stream().noneMatch(call -> call.endsWith(":" + droppedRoom.longValue())),
+        "a session room has no container to remove: " + runtime.calls());
   }
 }

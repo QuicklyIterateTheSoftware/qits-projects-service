@@ -24,8 +24,9 @@ import org.jboss.logging.Logger;
  * and once at boot, NORMAL launch mode only:
  *
  * <ol>
- *   <li>every ALWAYS_ON project, and every project whose delivery loop is enabled (epic qits-1440),
- *       without a desk gets one (and its token) — so such a desk exists without anyone calling
+ *   <li>every ALWAYS_ON project, every project whose delivery loop is enabled (epic qits-1440), and
+ *       every project one of whose refinement rooms wants its session (epic qits-770), without a
+ *       desk gets one (and its token) — so such a desk exists without anyone calling
  *       {@code ensure}, and one a DELETE removed is created afresh;
  *   <li>a desk whose token or session token (qits-1482) could not be minted is minted again, and
  *       its delivery token is brought in line with the project's loop;
@@ -51,6 +52,8 @@ public class FrontDeskSweep {
   @Inject FrontDeskEstates estates;
 
   @Inject DeskSessionCredentials sessionCredentials;
+
+  @Inject FrontDeskDemand demand;
 
   void onStart(@Observes StartupEvent event) {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
@@ -81,7 +84,11 @@ public class FrontDeskSweep {
   public int sweep(Instant now) {
     List<Project> all = QuarkusTransaction.requiringNew().call(() -> projects.listAll());
     for (Project project : all) {
-      if ((project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON || project.deliveryEnabled)
+      // Every reason a desk is wanted that needs no row to say so: ALWAYS_ON, the delivery loop, a
+      // refinement room's session (epic qits-770).
+      if ((project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON
+              || project.deliveryEnabled
+              || demand.wants(project, null, now))
           && project.slug != null
           && !project.slug.isBlank()
           && frontDesks.find(project.id).isEmpty()) {

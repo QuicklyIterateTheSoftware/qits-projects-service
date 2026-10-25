@@ -2028,6 +2028,16 @@ components:
           type: boolean
         createdAt:
           $ref: "#/components/schemas/Instant"
+        sessionId:
+          type: string
+        commandId:
+          type: string
+        deskStatus:
+          type: string
+        deskDetail:
+          type: string
+        deskBase:
+          type: string
     RefinementResponse:
       type: object
       properties:
@@ -5021,8 +5031,10 @@ paths:
   /projects/api/refinements/{id}/discard:
     post:
       summary: Discard a refinement room
-      description: "Tears the room down: container, volume, credential, refining branch\
-        \ and row. The work entity stays where it is, and a later open starts a fresh\
+      description: "Tears the room down: a session room's session is stopped, its\
+        \ row (draft, sketches and designs with it) deleted and its token revoked;\
+        \ a legacy container room's container, volume, credential and refining branch\
+        \ go too. The work entity stays where it is, and a later open starts a fresh\
         \ room. The path names the room by its row id."
       operationId: discardRefinement
       parameters:
@@ -5053,14 +5065,57 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk
+  /projects/api/refinements/{id}/ensure:
+    post:
+      summary: Ask for a refinement room's session
+      description: "Stamps the room's demand, so its session is wanted for the idle\
+        \ window, tells the project's front desk (an ON_DEMAND desk is started for\
+        \ it) and sends the desk's daemon its sessions list; answers the room. A legacy\
+        \ container room has its container brought up instead. The path names the\
+        \ room by its row id."
+      operationId: ensureRefinementSession
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: The room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefinementResponse"
+        "403":
+          description: "The credential is bound to another entity, or the delivery\
+            \ desk reaches another project's room"
+        "404":
+          description: No refinement with this id
+        "409":
+          description: "REFINEMENT_SESSIONS_FULL: the project already runs as many\
+            \ refinement sessions as qits.projects.refinement-sessions-max allows;\
+            \ the message names them"
+        "401":
+          description: Not Authorized
+      tags:
+      - Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/ensure-container:
     post:
       summary: Bring a refinement room's container up
-      description: "Provisions a fresh container, wakes a stopped one or touches a\
-        \ running one, off the request thread, and answers the room together with\
-        \ the technical process that narrates the bring-up. A second call while one\
-        \ is under way answers the live process. The path names the room by its row\
-        \ id."
+      description: "On a session room, the alias of ensure (removed once the SPA calls\
+        \ that): the session is asked for and the technical process answered is already\
+        \ settled. On a legacy container room, provisions a fresh container, wakes\
+        \ a stopped one or touches a running one, off the request thread, and answers\
+        \ the room together with the technical process that narrates the bring-up;\
+        \ a second call while one is under way answers the live process. The path\
+        \ names the room by its row id."
       operationId: ensureRefinementContainer
       parameters:
       - name: id
@@ -5082,8 +5137,8 @@ paths:
         "404":
           description: No refinement with this id
         "409":
-          description: The container is already being worked on and no process is
-            live
+          description: "The container is already being worked on and no process is\
+            \ live, or REFINEMENT_SESSIONS_FULL as on ensure"
         "401":
           description: Not Authorized
       tags:
@@ -5393,6 +5448,42 @@ paths:
         "403":
           description: Not Allowed
       summary: Recreate
+      tags:
+      - Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk
+  /projects/api/refinements/{id}/stop:
+    post:
+      summary: Stop a refinement room's session
+      description: "Clears the room's demand, so its session is no longer wanted,\
+        \ and sends the project's desk daemon its sessions list, which stops it; idempotent.\
+        \ The room, its draft and its designs stay. A legacy container room has its\
+        \ container stopped instead. The path names the room by its row id."
+      operationId: stopRefinementSession
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: The room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefinementResponse"
+        "403":
+          description: "The credential is bound to another entity, or the delivery\
+            \ desk reaches another project's room"
+        "404":
+          description: No refinement with this id
+        "401":
+          description: Not Authorized
       tags:
       - Refinement Controller
       security:
@@ -8837,9 +8928,11 @@ paths:
     post:
       summary: Open (or find) a work entity's refinement room
       description: "Find-or-create: an entity has at most one room, and a second open\
-        \ answers the first. Refused for a feature or a task, an entity not at REPORTED,\
-        \ one an ACTIVE workspace names, and a project with no wrapper. The path names\
-        \ the entity by qualified id (<projectSlug>-<n>) or UUID."
+        \ answers the first. The room is a session of the project's front desk, asked\
+        \ for by the open. Refused for a feature or a task, an entity not at REPORTED,\
+        \ one an ACTIVE workspace names, a project with no wrapper, and beyond the\
+        \ project's refinement-sessions cap. The path names the entity (an epic, a\
+        \ ticket or a campaign) by qualified id (<projectSlug>-<n>) or UUID."
       operationId: startWorkRefinement
       parameters:
       - name: qualifiedId
@@ -8860,9 +8953,9 @@ paths:
         "404":
           description: No entity with this id
         "409":
-          description: The entity cannot be refined now
-        "502":
-          description: The git host would not cut the branch
+          description: "The entity cannot be refined now, or REFINEMENT_SESSIONS_FULL:\
+            \ the project already runs as many refinement sessions as qits.projects.refinement-sessions-max\
+            \ allows"
         "401":
           description: Not Authorized
       tags:
@@ -9001,4 +9094,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1021.140659
+  version: 2026.1025.164139

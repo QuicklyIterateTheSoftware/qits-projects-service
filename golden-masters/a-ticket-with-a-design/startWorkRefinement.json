@@ -5,10 +5,10 @@
     "epicId": "00000000-0000-4000-8000-000000000003",
     "projectId": "00000000-0000-4000-8000-000000000002",
     "repositoryId": "00000000-0000-4000-8000-000000000004",
-    "branch": "refining/export-invoices-as-csv",
-    "parent": "main",
+    "branch": null,
+    "parent": null,
     "label": "refining-export-invoices-as-csv",
-    "runtimeStatus": "STOPPED",
+    "runtimeStatus": "STARTING",
     "runtimeError": null,
     "clean": null,
     "ahead": null,
@@ -18,8 +18,13 @@
     "daemonConnectedAt": null,
     "daemonVersion": null,
     "daemonOutdated": null,
-    "pinnedDaemonVersion": "00000002",
+    "pinnedDaemonVersion": null,
     "daemonVersionStale": false,
-    "createdAt": "2026-01-01T00:00:00Z"
+    "createdAt": "2026-01-01T00:00:00Z",
+    "sessionId": null,
+    "commandId": null,
+    "deskStatus": "QUEUED",
+    "deskDetail": null,
+    "deskBase": "/projects/container/00000000-0000-4000-8000-000000000002/"
   }
 }

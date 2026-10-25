@@ -993,8 +993,8 @@ class GoldenMasterRecordingTest {
                 + "\"html\":\"<!doctype html><html><body><button>Export CSV</button></body></html>\","
                 + "\"version\":0}"));
     // The room's own doors (qits-1383): the open finds the state's room — find-or-create on a
-    // REPORTED ticket — then its container is brought up (held at PROVISIONING by the state) and
-    // the room discarded. Every interaction sets the state up afresh, so the discard costs the
+    // REPORTED ticket — then its container door is asked (an alias of ensure on a session room,
+    // epic qits-770) and the room discarded. Every interaction sets the state up afresh, so the discard costs the
     // others nothing.
     all.add(
         new Interaction(
@@ -1011,6 +1011,25 @@ class GoldenMasterRecordingTest {
             "ensureRefinementContainer",
             "POST",
             "/projects/api/refinements/{refinementId}/ensure-container",
+            200,
+            null,
+            null));
+    // The session doors (epic qits-770): the room's session asked for, then stopped.
+    all.add(
+        new Interaction(
+            design,
+            "ensureRefinementSession",
+            "POST",
+            "/projects/api/refinements/{refinementId}/ensure",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            design,
+            "stopRefinementSession",
+            "POST",
+            "/projects/api/refinements/{refinementId}/stop",
             200,
             null,
             null));

@@ -319,6 +319,9 @@ public class RefinementStaleImageSweep {
     }
     Map<String, Long> byName = new HashMap<>();
     for (Refinement refinement : liveRefinements()) {
+      if (!refinement.containerRoom()) {
+        continue; // a session room (epic qits-770) has no container to match
+      }
       String projectSlug = slugsByProjectId.get(refinement.projectId);
       if (projectSlug == null) {
         continue;

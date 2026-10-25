@@ -19,12 +19,15 @@ import eu.wohlben.qits.projectsdaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.projectsdaemon.protocol.Provisioned;
 import eu.wohlben.qits.projectsdaemon.protocol.RunCommand;
 import eu.wohlben.qits.projectsdaemon.protocol.SessionCredentials;
+import eu.wohlben.qits.projectsdaemon.protocol.SessionReport;
+import eu.wohlben.qits.projectsdaemon.protocol.Sessions;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,6 +97,20 @@ public class AgentDaemonRegistry {
    * daemon would drop the frame as an unknown type, so it is never sent one.
    */
   public static final int SESSION_CREDENTIALS_CAPABILITY = 2;
+
+  /**
+   * The refinement rooms' sessions (epic qits-770): their desired list is pushed right after the
+   * credentials on a {@link Hello}, and a {@link SessionReport} is handed to it. Optional like the
+   * other two, and an {@code Instance<>} because it sends through this registry.
+   */
+  @Inject Instance<eu.wohlben.qits.projects.refinementhost.RefinementSessions> refinementSessions;
+
+  /**
+   * The first daemon capability that reads {@link Sessions} and answers {@link SessionReport}
+   * (epic qits-770). Fixed for {@link #SESSION_CREDENTIALS_CAPABILITY}'s reason: an older daemon
+   * drops the frame as an unknown type, so it is never sent one.
+   */
+  public static final int SESSIONS_CAPABILITY = 3;
 
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
@@ -429,6 +446,46 @@ public class AgentDaemonRegistry {
   }
 
   /**
+   * Whether {@code projectId}'s daemon is connected and has said it reads {@link Sessions} —
+   * capability {@value #SESSIONS_CAPABILITY} or later (epic qits-770).
+   */
+  public boolean acceptsSessions(String projectId) {
+    DaemonConnection client = clients.get(projectId);
+    return client != null
+        && client.connection.isOpen()
+        && client.capabilityVersion >= SESSIONS_CAPABILITY;
+  }
+
+  /**
+   * The projects whose daemon is connected and reads {@link Sessions} — what the periodic resend
+   * walks (epic qits-770).
+   */
+  public List<String> projectsAcceptingSessions() {
+    return clients.keySet().stream().filter(this::acceptsSessions).sorted().toList();
+  }
+
+  /**
+   * Hand {@code projectId}'s daemon the full desired list of its sessions (epic qits-770). Sent only
+   * to a daemon {@link #acceptsSessions}; answers whether it was sent. Never throws, and awaited, for
+   * {@link #sendSessionCredentials}' reasons.
+   */
+  public boolean sendSessions(String projectId, Sessions frame) {
+    if (!acceptsSessions(projectId)) {
+      return false;
+    }
+    DaemonConnection client = clients.get(projectId);
+    try {
+      client.connection.sendTextAndAwait(codec.encode(frame));
+      return true;
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not send the sessions to the projects-daemon of project %s: %s",
+          projectId, e.getClass().getSimpleName());
+      return false;
+    }
+  }
+
+  /**
    * Hand {@code projectId}'s daemon the full list of its sessions' credentials (qits-1482). Sent
    * only to a daemon {@link #acceptsSessionCredentials} — never to one below capability {@value
    * #SESSION_CREDENTIALS_CAPABILITY} — and answers whether it was sent. Never throws: a failed send
@@ -527,6 +584,10 @@ public class AgentDaemonRegistry {
       case Describe ignored -> false;
       case OpenStream ignored -> false;
       case SessionCredentials ignored -> false;
+      case Sessions ignored -> false;
+      // A report is the daemon describing state, not somebody using the desk; the activity of a
+      // room's session arrives as AgentActivity like every other session's.
+      case SessionReport ignored -> false;
     };
   }
 
@@ -539,6 +600,12 @@ public class AgentDaemonRegistry {
       lastAgentActivity.put(projectId, Instant.now());
       if (frontDeskDemand != null && frontDeskDemand.isResolvable()) {
         frontDeskDemand.get().evidenced(projectId);
+      }
+      // A refinement room's session in use keeps its room wanted (epic qits-770).
+      if (message instanceof AgentActivity activity
+          && refinementSessions != null
+          && refinementSessions.isResolvable()) {
+        refinementSessions.get().evidenced(projectId, activity.commandId());
       }
     }
     DaemonConnection client = clients.get(projectId);
@@ -570,6 +637,10 @@ public class AgentDaemonRegistry {
         // capability-2 daemon defers every launch until this frame arrives. Below 2 nothing is sent.
         if (sessionCredentials != null && sessionCredentials.isResolvable()) {
           sessionCredentials.get().push(projectId);
+        }
+        // Then the sessions (epic qits-770), after the credentials they run on. Below 3 nothing.
+        if (refinementSessions != null && refinementSessions.isResolvable()) {
+          refinementSessions.get().push(projectId);
         }
       }
       case Heartbeat ignored -> {
@@ -606,6 +677,12 @@ public class AgentDaemonRegistry {
       case Describe ignored -> {}
       case OpenStream ignored -> {}
       case SessionCredentials ignored -> {}
+      case Sessions ignored -> {}
+      case SessionReport report -> {
+        if (refinementSessions != null && refinementSessions.isResolvable()) {
+          refinementSessions.get().onReport(projectId, report);
+        }
+      }
     }
   }
 

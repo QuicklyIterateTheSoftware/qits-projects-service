@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
 import java.time.Instant;
 
@@ -38,6 +39,19 @@ import java.time.Instant;
  * id whatever the archetype: ids are one space, so an epic-matching reader never matches a ticket's
  * room by accident. <b>{@code epicId} is removed in a later release</b>, once the SPA reads {@code
  * entityId}; nothing new may read it.
+ *
+ * <p><b>A session room (epic qits-770)</b> — every room opened since then — runs as a session of its
+ * project's front desk rather than in a container of its own. Its {@code runtimeStatus} is the
+ * session's reported state ({@code STARTING | RUNNING | STOPPED | FAILED}) and {@code runtimeError}
+ * the daemon's detail; {@code sessionId} and {@code commandId} are the harness session and the
+ * daemon command running it (the command only while RUNNING); {@code deskStatus} and {@code
+ * deskDetail} are the front desk's own state word ({@code QUEUED}, {@code PROVISIONING}, {@code
+ * RUNNING}, {@code STOPPED}, {@code FAILED}, {@code UNAVAILABLE}, {@code ABSENT}) and failure; and
+ * {@code deskBase} is the desk daemon's proxy base, {@code /projects/container/<projectId>/}. A
+ * legacy container room carries those five as null. The container-only fields — {@code branch},
+ * {@code parent}, {@code clean}, {@code ahead}, {@code behind}, {@code conflictsWithParent} and the
+ * {@code daemon*}/{@code pinnedDaemonVersion} family — stay in this release (the deployed SPA's
+ * pact pins them) and are null or false for a session room; qits-1316 drops them.
  */
 public record RefinementDto(
     Long id,
@@ -61,7 +75,12 @@ public record RefinementDto(
     Boolean daemonOutdated,
     String pinnedDaemonVersion,
     boolean daemonVersionStale,
-    Instant createdAt) {
+    Instant createdAt,
+    String sessionId,
+    String commandId,
+    String deskStatus,
+    String deskDetail,
+    String deskBase) {
 
   public static RefinementDto of(RefinementService.RefinementView view) {
     return new RefinementDto(
@@ -85,6 +104,11 @@ public record RefinementDto(
         view.daemonOutdated(),
         view.pinnedDaemonVersion(),
         view.daemonVersionStale(),
-        view.refinement().createdAt);
+        view.refinement().createdAt,
+        view.sessionId(),
+        view.commandId(),
+        view.deskStatus(),
+        view.deskDetail(),
+        view.session() ? ContainerProxyPath.base(view.refinement().projectId) : null);
   }
 }
