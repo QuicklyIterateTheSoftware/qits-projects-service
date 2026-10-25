@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * One entity's refinement room — the row behind the projects SPA's refining route. Since epic
- * qits-770 (V57) a new room is a <b>session</b> in its project's front desk, keyed by the entity id;
+ * qits-770 (V58) a new room is a <b>session</b> in its project's front desk, keyed by the entity id;
  * a room opened before that is a legacy <b>container</b> room on a {@code refining/*} branch, kept
  * working until qits-1316 removes the container machinery ({@link #containerRoom()} tells them
  * apart). The entity is an epic or a ticket, the two archetypes with a lifecycle (qits-395; until
@@ -72,7 +72,7 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
    * root entity's slug is unique per project across archetypes ({@code uq_entity_slug_scope_slug}),
    * so an epic and a ticket can never cut the same branch.
    *
-   * <p><b>Null on a session room</b> (V57, epic qits-770): a room opened since then is a session in
+   * <p><b>Null on a session room</b> (V58, epic qits-770): a room opened since then is a session in
    * its project's front desk and cuts no branch. The branch is the rule that tells the two apart —
    * see {@link #containerRoom()}.
    */
@@ -117,7 +117,7 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   public String tokenSubject;
 
   /**
-   * When somebody last asked for this session room's session (V57): the open, the ensure door, the
+   * When somebody last asked for this session room's session (V58): the open, the ensure door, the
    * session's own activity. The session is desired RUNNING while this is younger than {@code
    * qits.projects.agent-idle-timeout}; the stop door clears it. Unused on a container room.
    */
@@ -149,7 +149,7 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   /**
    * Whether this is a legacy container room (a {@code refining/<slug>} branch and its own
    * container, until qits-1316 removes them) rather than a session in the project's front desk
-   * (epic qits-770). The branch decides: every row opened before V57 has one, none opened since
+   * (epic qits-770). The branch decides: every row opened before V58 has one, none opened since
    * does.
    */
   public boolean containerRoom() {
