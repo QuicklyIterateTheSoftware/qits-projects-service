@@ -68,17 +68,17 @@ class PersonApprovalGateTest extends EntitiesTestSupport {
   }
 
   /**
-   * The delivery desk (epic qits-1440) schedules its own project's items since qits-1596, as the
-   * coordinator's person would, with or without the dispatch path's start-refined stamp; a desk of
-   * another project, or one whose token named none, is refused like any machine and moves nothing.
+   * The delivery desk (epic qits-1440) is a machine: refused like any other, unless the dispatch
+   * path stamped it with its project's start-refined declaration, which the gate accepts — and
+   * only on its own project's row. qits-1596 kept {@code start_refined} as the owner's switch.
    */
   @Test
-  void aDeskSchedulesItsOwnProjectsItemsOnly() {
+  void aDeskSchedulesOnlyUnderADeclaredApproval() {
     String id = refined(Archetype.TICKET);
-    Mover foreign = Mover.desk("tok-desk-2", "proj-2");
+    Mover desk = Mover.desk("tok-desk", "proj-1");
     assertThrows(
         ConflictException.class,
-        () -> workEntities.transition(Archetype.TICKET, id, "READY_FOR_DEV", foreign));
+        () -> workEntities.transition(Archetype.TICKET, id, "READY_FOR_DEV", desk));
     assertThrows(
         ConflictException.class,
         () ->
@@ -86,29 +86,13 @@ class PersonApprovalGateTest extends EntitiesTestSupport {
                 Archetype.TICKET,
                 id,
                 "READY_FOR_DEV",
-                foreign.withDeclaredApproval("start-refined")));
-    assertThrows(
-        ConflictException.class,
-        () ->
-            workEntities.transition(
-                Archetype.TICKET, id, "READY_FOR_DEV", Mover.desk("tok-desk-x", null)));
+                Mover.desk("tok-desk-2", "proj-2").withDeclaredApproval("start-refined")));
     assertEquals("REFINED", status(Archetype.TICKET, id));
     assertThrows(IllegalStateException.class, () -> Mover.machine("x").withDeclaredApproval("r"));
 
-    workEntities.transition(Archetype.TICKET, id, "READY_FOR_DEV", Mover.desk("tok-desk", "proj-1"));
-    assertEquals("READY_FOR_DEV", status(Archetype.TICKET, id));
-    List<AuditEntry> history =
-        QuarkusTransaction.requiringNew()
-            .call(() -> auditService.listForEntity(AuditEntityType.TICKET, id));
-    assertEquals("tok-desk", history.get(0).changedBy);
-
-    String declared = refined(Archetype.TICKET);
     workEntities.transition(
-        Archetype.TICKET,
-        declared,
-        "READY_FOR_DEV",
-        Mover.desk("tok-desk", "proj-1").withDeclaredApproval("start-refined"));
-    assertEquals("READY_FOR_DEV", status(Archetype.TICKET, declared));
+        Archetype.TICKET, id, "READY_FOR_DEV", desk.withDeclaredApproval("start-refined"));
+    assertEquals("READY_FOR_DEV", status(Archetype.TICKET, id));
   }
 
   @Test

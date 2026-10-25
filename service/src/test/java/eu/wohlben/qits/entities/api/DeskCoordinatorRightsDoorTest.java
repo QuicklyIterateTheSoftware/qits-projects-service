@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 import eu.wohlben.qits.projects.api.ProjectController;
@@ -20,9 +21,10 @@ import org.junit.jupiter.api.Test;
 /**
  * <b>The delivery desk holds the owner's coordinator's writes in its own project</b> (qits-1596):
  * its {@code desk-delivery} token ({@code qits:agent} and {@code qits:desk}, a {@code project}
- * claim) schedules, deletes and edits as {@code qits:admin-agent} does — recorded under its token
- * subject — and answers 403 on another project's rows. It never reaches the doors that would change
- * its own rights: its brief and the front desk.
+ * claim) deletes and edits as {@code qits:admin-agent} does and answers 403 on another project's
+ * rows. It never reaches the doors that would change its own rights: its brief and the front desk.
+ * Scheduling stays the owner's: without the dispatch path's {@code start_refined} stamp the desk is
+ * refused it like any machine.
  *
  * <p>The tenant is on ({@link PersonGateIdpTenant}), as in {@link ScheduleNeedsAPersonDoorTest}: a
  * bearer is validated against a mock idp exactly as deployed, so the desk is the token qits-idp
@@ -119,25 +121,27 @@ class DeskCoordinatorRightsDoorTest {
   // --- scheduling -----------------------------------------------------------------------------
 
   /**
-   * REFINED → READY_FOR_DEV is the desk's in its own project, as the coordinator's person would make
-   * it — no {@code start_refined} declaration needed — and recorded under its token subject.
+   * REFINED → READY_FOR_DEV stays the owner's: qits-1596 kept {@code start_refined} as the owner's
+   * switch, so the desk's own {@code work status} press — which carries no start-refined stamp, only
+   * the dispatch path sets one — is refused by {@code PERSON_APPROVAL} as any machine's is, its own
+   * project's ticket and epic included, and the item stays REFINED.
    */
   @Test
-  void theDeskSchedulesItsOwnProjectsItemsAsItself() {
-    String projectId = project("Desk schedules");
+  void theDeskDoesNotScheduleWithoutTheStartRefinedStamp() {
+    String projectId = project("Desk schedules not itself");
     String ticket = ticket(projectId);
     String epic = epic(projectId);
     status(person(), ticket, "REFINED").statusCode(200);
     status(person(), epic, "REFINED").statusCode(200);
 
     status(desk(projectId), ticket, "READY_FOR_DEV")
-        .statusCode(200)
-        .body("status", equalTo("READY_FOR_DEV"))
-        .body("changedBy", equalTo(deskSubject(projectId)));
+        .statusCode(409)
+        .body("message", containsString("needs a person"));
     status(desk(projectId), epic, "READY_FOR_DEV")
-        .statusCode(200)
-        .body("status", equalTo("READY_FOR_DEV"))
-        .body("changedBy", equalTo(deskSubject(projectId)));
+        .statusCode(409)
+        .body("message", containsString("needs a person"));
+    org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(ticket));
+    org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(epic));
   }
 
   /** Another project's desk moves nothing here: the binding is a 403, before any gate. */

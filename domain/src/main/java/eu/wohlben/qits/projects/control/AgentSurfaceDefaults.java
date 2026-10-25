@@ -260,13 +260,13 @@ public final class AgentSurfaceDefaults {
    * approval — a wrapper fold that adds nothing because its work is in released submodules — and
    * leave a request naming no work item to the owner. qits-1596 gave the desk the owner's
    * coordinator's rights in its project, but for a commit or a push and a change to its own rights:
-   * the opening says so, step 6 clears a block the desk can clear itself (an approval, a scheduling,
-   * an upstream override) instead of leaving it for the owner, step 9 asks the owner only about an
-   * unexpected or unclear change, step 10 schedules a REFINED item itself when {@code start_refined}
-   * is off, and the closing rule adds never pushing, never joining a request and never changing its
-   * own rights to never opening one. The owner's rules are enforced by the
-   * platform (the dispatch and
-   * approve doors, {@code .config/qits/project.yml}'s {@code front_desk.delivery}); this text only
+   * the opening says so, step 6 clears a block the desk can clear itself (an approval its rules hand
+   * it, an upstream override) instead of leaving it for the owner, step 9 asks the owner only about
+   * an unexpected or unclear change, and the closing rule adds never pushing, never joining a
+   * request and never changing its own rights to never opening one. It left the owner's two
+   * switches alone: a REFINED item is still dispatched only under {@code start_refined}, else left
+   * for the owner, and the desk approves only what {@code front_desk.delivery.approves} hands it.
+   * The owner's rules are enforced by the platform (the dispatch and approve doors, {@code .config/qits/project.yml}'s {@code front_desk.delivery}); this text only
    * tells the desk how to work inside them. A command that changes shape changes it here and in
    * qits-1560 together. Editing it afterwards is the owner's business, through the editor.
    *
@@ -277,12 +277,12 @@ public final class AgentSurfaceDefaults {
       """
       You are the delivery desk of this project. You keep its work moving while nobody is at a
       workstation: you do not take a look, you keep abreast. You hold the owner's coordinator's rights
-      in this project, and in this project only: you create, move, schedule, block, drop and delete
-      its work items, dispatch and refine them, approve its release requests and lift an upstream
-      gate. Two things you never do: commit or push to any repository, so you never open or join a
-      release request; and change your own rights, so you never edit your brief, your desk or its
-      settings. The platform enforces the owner's rules; this brief tells you how to work inside
-      them. Read them first, every pass:
+      in this project, and in this project only: you create, move, block, drop and delete its work
+      items, dispatch and refine them, approve the release requests its rules hand you and lift an
+      upstream gate. Two things you never do: commit or push to any repository, so you never open
+      or join a release request; and change your own rights, so you never edit your brief, your
+      desk or its settings. The platform enforces the owner's rules; this brief tells you how to
+      work inside them. Read them first, every pass:
         qits projects delivery --project <this project>
 
       You are woken by a turn "Run one pass of the delivery loop". Do one whole pass, then end your
@@ -360,8 +360,8 @@ public final class AgentSurfaceDefaults {
              --request <id> --reason 'works around <behaviour>; filed as <ticket id>'
       6. Clear blocks. Read each blocked item's reason. If another branch causes it, prompt that
          branch's agent with the fix it owes. If it waits on something you may do yourself (an
-         approval, a scheduling, a request held by an upstream request it does not need), do it when
-         it follows from the work (Judging a change, above), then unblock the item:
+         approval its rules hand you, a request held by an upstream request it does not need), do it
+         when it follows from the work (Judging a change, above), then unblock the item:
            qits work unblock --entity <id> --reason '<what you did>'
          An upstream request still building is lifted with:
            qits release-request override --project <this project> --repository <repository>
@@ -399,11 +399,8 @@ public final class AgentSurfaceDefaults {
            applies first: it may be fixed, superseded or obsolete. If so, drop it with the right outcome
            and a comment saying why."
          - Then: qits work dispatch --entity <id> --mode FLOW --rule backlog-newest-first.
-         - A REFINED item: with start_refined on, dispatch it with --rule start-refined. Otherwise
-           schedule it yourself when its refinement is complete and clear, saying why on its thread:
-             echo '{"target":"READY_FOR_DEV"}' | qits work status --entity <id>
-           then dispatch it with --rule backlog-newest-first. When it is not clear, ask the owner
-           (step 9).
+         - A REFINED item: dispatch it with --rule start-refined only if start_refined is on. Otherwise
+           leave it for the owner.
          - An unrefined item that needs the owner's design: ask the owner (step 9) instead of dispatching.
       11. Keep the backlog honest. When you meet an item that is plainly obsolete, check it against main
          and drop it with the right outcome and a comment saying why. If you are unsure, do not drop it.
@@ -434,7 +431,7 @@ public final class AgentSurfaceDefaults {
   /**
    * The delivery desk's brief as it shipped from qits-1568 until qits-1596 — the text of {@link
    * #DELIVERY_DESK_PROMPT} that still held the desk to a narrow role ({@code qits:desk} for its
-   * project only, REFINED items left for the owner, an approval it may not give), byte for byte.
+   * project only, a block it could clear left for the owner), byte for byte.
    * <b>Kept only for the boot migration</b> ({@code startup/DeliveryDeskBriefRollout} in the
    * service), beside {@link #PREVIOUS_DELIVERY_DESK_PROMPT}, {@link
    * #QITS_1517_DELIVERY_DESK_PROMPT}, {@link #QITS_1560_DELIVERY_DESK_PROMPT}, {@link

@@ -460,8 +460,9 @@ public class WorkController {
               + " a campaign, a feature or a task of its own project, a platform service"
               + " (qits:system) one of any project, and an epic is qits:admin's, or an agent's of"
               + " its own project, which may not supersede it. The project's delivery desk"
-              + " (qits:desk) moves what qits:admin-agent moves, superseding and scheduling"
-              + " included, in its own project only. A feature or a"
+              + " (qits:desk) moves what qits:admin-agent moves, superseding included, in its own"
+              + " project only; its scheduling (REFINED to READY_FOR_DEV) is a person's, or the"
+              + " dispatch press's under start_refined. A feature or a"
               + " task moves only once its epic is past REPORTED, and its scheduling (to"
               + " READY_FOR_DEV, or back) is the epic's. Answers the entity in the merged shape, with"
               + " statusBefore.")
@@ -492,8 +493,7 @@ public class WorkController {
               + " an epic, a feature or a task"
               + " whose epic is still REPORTED, or a quality gate refusing a forward move —"
               + " ACCEPTANCE_CRITERIA, or PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller"
-              + " this service did not verify as a person and that is not the item's own project's"
-              + " delivery desk")
+              + " this service did not verify as a person")
   public TransitionedEntity setStatus(
       @PathParam("qualifiedId") String qualifiedId, WorkStatusMove request) {
     WorkEntity row = ids.resolve(qualifiedId);

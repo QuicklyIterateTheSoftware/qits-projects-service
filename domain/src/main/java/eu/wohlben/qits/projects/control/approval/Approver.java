@@ -49,13 +49,11 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
   }
 
   /**
-   * The delivery desk of {@code projectId} (epic qits-1440): {@code agent} and {@code desk} of that
-   * project, and never {@code person}. {@code agent} since qits-1596, which gave the desk the
-   * owner's coordinator's rights: it satisfies (and declines) what an agent of its project may, and
-   * as {@code desk} the requirements the project handed it in {@code front_desk.delivery.approves},
-   * held to the owner's rule ({@code DeskApprovalPolicy}). It decides only its own project's
-   * requests ({@code ReleaseRequests}), so its {@code agent} never reaches another project's
-   * {@code agent@<slug>} requirement. Named by its token's {@code sub}, also known as {@code
+   * The delivery desk of {@code projectId} (epic qits-1440): {@code desk} of that project and
+   * nothing else — not {@code agent}, so the desk satisfies only the requirements the project
+   * handed it in {@code front_desk.delivery.approves}, and never {@code person}. qits-1596, which
+   * gave the desk the owner's coordinator's rights, deliberately kept this: {@code approves} is the
+   * owner's control over what the desk may approve. Named by its token's {@code sub}, also known as {@code
    * principal} where the two differ.
    */
   public static Approver desk(String subject, String principal, String projectId) {
@@ -65,7 +63,7 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
     }
     return new Approver(
         subject,
-        List.of(ApprovalRole.agentOf(projectId), ApprovalRole.deskOf(projectId)),
+        List.of(ApprovalRole.deskOf(projectId)),
         aliases);
   }
 

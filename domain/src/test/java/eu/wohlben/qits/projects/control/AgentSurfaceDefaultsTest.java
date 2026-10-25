@@ -102,12 +102,12 @@ public class AgentSurfaceDefaultsTest {
       """
       You are the delivery desk of this project. You keep its work moving while nobody is at a
       workstation: you do not take a look, you keep abreast. You hold the owner's coordinator's rights
-      in this project, and in this project only: you create, move, schedule, block, drop and delete
-      its work items, dispatch and refine them, approve its release requests and lift an upstream
-      gate. Two things you never do: commit or push to any repository, so you never open or join a
-      release request; and change your own rights, so you never edit your brief, your desk or its
-      settings. The platform enforces the owner's rules; this brief tells you how to work inside
-      them. Read them first, every pass:
+      in this project, and in this project only: you create, move, block, drop and delete its work
+      items, dispatch and refine them, approve the release requests its rules hand you and lift an
+      upstream gate. Two things you never do: commit or push to any repository, so you never open
+      or join a release request; and change your own rights, so you never edit your brief, your
+      desk or its settings. The platform enforces the owner's rules; this brief tells you how to
+      work inside them. Read them first, every pass:
         qits projects delivery --project <this project>
 
       You are woken by a turn "Run one pass of the delivery loop". Do one whole pass, then end your
@@ -185,8 +185,8 @@ public class AgentSurfaceDefaultsTest {
              --request <id> --reason 'works around <behaviour>; filed as <ticket id>'
       6. Clear blocks. Read each blocked item's reason. If another branch causes it, prompt that
          branch's agent with the fix it owes. If it waits on something you may do yourself (an
-         approval, a scheduling, a request held by an upstream request it does not need), do it when
-         it follows from the work (Judging a change, above), then unblock the item:
+         approval its rules hand you, a request held by an upstream request it does not need), do it
+         when it follows from the work (Judging a change, above), then unblock the item:
            qits work unblock --entity <id> --reason '<what you did>'
          An upstream request still building is lifted with:
            qits release-request override --project <this project> --repository <repository>
@@ -224,11 +224,8 @@ public class AgentSurfaceDefaultsTest {
            applies first: it may be fixed, superseded or obsolete. If so, drop it with the right outcome
            and a comment saying why."
          - Then: qits work dispatch --entity <id> --mode FLOW --rule backlog-newest-first.
-         - A REFINED item: with start_refined on, dispatch it with --rule start-refined. Otherwise
-           schedule it yourself when its refinement is complete and clear, saying why on its thread:
-             echo '{"target":"READY_FOR_DEV"}' | qits work status --entity <id>
-           then dispatch it with --rule backlog-newest-first. When it is not clear, ask the owner
-           (step 9).
+         - A REFINED item: dispatch it with --rule start-refined only if start_refined is on. Otherwise
+           leave it for the owner.
          - An unrefined item that needs the owner's design: ask the owner (step 9) instead of dispatching.
       11. Keep the backlog honest. When you meet an item that is plainly obsolete, check it against main
          and drop it with the right outcome and a comment saying why. If you are unsure, do not drop it.
@@ -1224,10 +1221,11 @@ public class AgentSurfaceDefaultsTest {
   }
 
   /**
-   * qits-1596: the desk holds the owner's coordinator's rights in its project — it schedules a
-   * REFINED item and clears a block itself rather than leaving either for the owner, asks the owner
-   * only about an unexpected or unclear change — and still never pushes, never opens or joins a
-   * release request and never changes its own rights.
+   * qits-1596: the desk holds the owner's coordinator's rights in its project — it clears a block
+   * itself rather than leaving it for the owner, asks the owner only about an unexpected or unclear
+   * change — and still never pushes, never opens or joins a release request and never changes its
+   * own rights. Scheduling stays the owner's: a REFINED item waits for start_refined or the owner,
+   * and the desk approves only what its rules hand it.
    */
   @Test
   public void theBriefHoldsTheCoordinatorsRightsButNeverPushes() {
@@ -1236,7 +1234,9 @@ public class AgentSurfaceDefaultsTest {
         List.of(
             "You hold qits:desk for this project only.",
             "an approval you may not give",
-            "leave it for the owner",
+            "schedule it yourself",
+            "a scheduling",
+            "approve its release requests",
             "Ask only what needs the owner")) {
       assertFalse(brief.contains(gone), "the brief still says: " + gone);
     }
@@ -1244,12 +1244,14 @@ public class AgentSurfaceDefaultsTest {
         List.of(
             "You hold the owner's coordinator's rights",
             "in this project, and in this project only",
-            "commit or push to any repository, so you never open or join a",
-            "change your own rights, so you never edit your brief, your desk or its",
+            "commit or push to any repository, so you never open\nor join a",
+            "change your own rights, so you never edit your brief, your\ndesk or its settings",
             "qits work unblock --entity <id>",
             "qits release-request override --project <this project>",
-            "schedule it yourself when its refinement is complete and clear",
-            "echo '{\"target\":\"READY_FOR_DEV\"}' | qits work status --entity <id>",
+            "approve the release requests its rules hand you",
+            "approval its rules hand you, a request held by an upstream request",
+            "dispatch it with --rule start-refined only if start_refined is on",
+            "leave it for the owner.",
             "Ask the owner only about a change that is unexpected or unclear",
             "Never: commit or push to any repository, open or join a release request, change your own",
             "decline a request")) {

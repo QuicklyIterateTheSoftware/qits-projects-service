@@ -20,11 +20,10 @@ package eu.wohlben.qits.entities.control;
  *
  * <p><b>A desk Mover is the project's delivery desk</b> (epic qits-1440): a machine — never a person
  * — holding {@code qits:desk} and bound to the project its token's {@code project} claim names
- * ({@link #deskProject}, null when the token carried none). It differs from {@link #machine} in
- * that {@link PersonApprovalGate} accepts it in a person's place for its own project's items
- * (qits-1596), and that the dispatch path may stamp it with a {@link #declaredApproval}: the {@code
- * start_refined} rule a project declared in its {@code .config/qits/project.yml}, which the dispatch
- * press reads as the scheduling. Only that path sets one.
+ * ({@link #deskProject}, null when the token carried none). Its one difference from {@link
+ * #machine} is that the dispatch path may stamp it with a {@link #declaredApproval}: the
+ * {@code start_refined} rule a project declared in its {@code .config/qits/project.yml}, which
+ * {@link PersonApprovalGate} accepts in a person's place. Only that path sets one.
  *
  * @param name what the audit records as {@code changedBy} — for a person, the name the proof
  *     carries, never a header or a body field; for a machine, the caller's principal (null for an

@@ -1267,6 +1267,30 @@ public class ReleaseRequests {
   }
 
   /**
+   * The delivery desk decides only its own project's requests (qits-1596). It holds only {@code
+   * desk} of its project, which never qualifies elsewhere, so this is a guard rather than a rule:
+   * another project's desk is a 403 before anything else is read, either verb, with a sentence that
+   * says why rather than a requirement it cannot meet.
+   */
+  private static void requireOwnProjectOfDesk(ReleaseRequest row, Approver approver) {
+    if (approver == null || !approver.isDesk()) {
+      return;
+    }
+    String deskProject = approver.deskProject();
+    if (deskProject == null || !deskProject.equals(row.projectId)) {
+      throw new DomainException(
+          403,
+          "The delivery desk of project "
+              + deskProject
+              + " decides only its own project's requests, and release request "
+              + row.qualifiedId
+              + " belongs to project "
+              + row.projectId
+              + ".");
+    }
+  }
+
+  /**
    * The one path both doors take, because they differ in <b>exactly one value</b> — the word written
    * into the row — and in nothing else. Every refusal below protects both verbs equally: there is no
    * sense in which declining is the safer half that could be let through a check approving is held
@@ -1329,30 +1353,6 @@ public class ReleaseRequests {
    * cannot jump it. The row is not wasted: it is the current decision at that fold, so the moment
    * the build lands green the request rejects with the person's sentence.
    */
-  /**
-   * The delivery desk decides only its own project's requests (qits-1596). It holds {@code agent}
-   * of its project beside {@code desk}, as the coordinator does, and unlike a workspace agent it is
-   * not a reviewer of other projects: its {@code agent} must never reach another project's {@code
-   * agent@<slug>} requirement. A 403 before anything else is read, either verb.
-   */
-  private static void requireOwnProjectOfDesk(ReleaseRequest row, Approver approver) {
-    if (approver == null || !approver.isDesk()) {
-      return;
-    }
-    String deskProject = approver.deskProject();
-    if (deskProject == null || !deskProject.equals(row.projectId)) {
-      throw new DomainException(
-          403,
-          "The delivery desk of project "
-              + deskProject
-              + " decides only its own project's requests, and release request "
-              + row.qualifiedId
-              + " belongs to project "
-              + row.projectId
-              + ".");
-    }
-  }
-
   private ReleaseRequestDto decide(
       String id,
       String mergedSha,

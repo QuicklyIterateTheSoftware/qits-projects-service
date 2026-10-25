@@ -744,8 +744,11 @@ bound to its project, except a commit or a push and a change to its own rights:
 - **Person doors**: `PersonCheck.requireAdminOrDesk(projectId)` answers a verified person's name,
   else the desk's token subject under `ApproverCheck.desk`'s proof, else 403 — the automations
   waiver, the upstream override and a campaign criterion's approval record the desk as actor.
-  `PERSON_APPROVAL` passes a desk `Mover` for its own project's items (REFINED → READY_FOR_DEV)
-  with or without the dispatch path's `start_refined` stamp.
+- **Kept as the owner's**: scheduling (REFINED → READY_FOR_DEV) and which approvals the desk
+  gives. `PERSON_APPROVAL` passes a desk `Mover` only under the dispatch path's `start_refined`
+  stamp, for its own project's row, and the desk's approver holds `desk` alone, never `agent`, so
+  it approves only what `front_desk.delivery.approves` hands it. Both settings are the owner's in
+  `.config/qits/project.yml`; qits-1596 deliberately did not widen them.
 - **Refused**: release-request create and join (`refuseDesk`, in the body — the routes admit
   `qits:agent`); the doors over its own rights (`AgentSurfaceConfigurationController`,
   `AgentContainerController`, `ProjectFrontDeskController`, `DeskRunnerController`'s writes, the
@@ -1289,10 +1292,11 @@ approval's roles. The display path stores the content requirements as JSON objec
 - **The delivery desk** (epic qits-1440, qits-1498): role `desk` / `desk@<slug>`
   (`ApprovalRole.Kind.DESK`, project-scoped like `agent`). `ApproverCheck` gives a validated idp JWT
   with `qits:agent` **and** `qits:desk`, `context_kind` `desk-delivery`, no `clients/…` group but its
-  own and a `project` claim `desk` **and** `agent` of that project (`agent` since qits-1596, the
-  coordinator's role; never `person`), named by its `sub`. It decides only its own project's
-  requests: another project's desk is a 403 on approve and decline before anything is read, and its
-  approval-eligibility lists nothing (`ReleaseRequests.requireOwnProjectOfDesk`).
+  own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`;
+  qits-1596 kept it so — `approves` is the owner's control), named by its `sub`. It decides only
+  its own project's requests: another project's desk is a 403 on approve and decline before
+  anything is read, and its approval-eligibility lists nothing
+  (`ReleaseRequests.requireOwnProjectOfDesk`).
   No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
   requirement the project's `front_desk.delivery.approves` admits (`ApprovalPolicy.deskAdmissible`),
   intersected with `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`,
@@ -1323,10 +1327,8 @@ approval's roles. The display path stores the content requirements as JSON objec
   `config-directory` (qits-1560; on the wrapper `manual-review` is always present and wins) the
   repository is not the wrapper (`PROJECT` archetype) and every such branch's item is IMPLEMENTING,
   IMPLEMENTED, VERIFYING, VERIFIED or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
-  403 "The delivery desk does not decline; it asks the owner on the item's thread." where `desk` is
-  its only qualifying role. As `agent` (qits-1596) it approves and declines what the coordinator
-  may — an unlisted `artifact-declarations` or `automation:*` hold — with no owner's rule applied;
-  a requirement that also admits `desk` still picks the desk's rule first.
+  403 "The delivery desk does not decline; it asks the owner on the item's thread." Holding no
+  `agent` role, the desk cannot approve or decline an unlisted `artifact-declarations` as an agent.
 - **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,
   detail, satisfied, satisfiedBy}`), the old approval fields derived from it; `GET …/approvals` rows
   carry `roles`.

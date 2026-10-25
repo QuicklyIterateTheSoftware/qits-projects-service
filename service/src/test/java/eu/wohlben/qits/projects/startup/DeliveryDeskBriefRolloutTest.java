@@ -176,7 +176,8 @@ public class DeliveryDeskBriefRolloutTest {
 
   /**
    * qits-1596: an unedited qits-1568 brief — the one that still held the desk to a narrow role —
-   * rolls to the current one, which gives it the coordinator's rights.
+   * rolls to the current one, which gives it the coordinator's rights (scheduling and its
+   * approvals still under the owner's rules).
    */
   @Test
   public void anUneditedQits1568BriefIsMigrated() {
@@ -192,7 +193,7 @@ public class DeliveryDeskBriefRolloutTest {
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(after.contains("You hold the owner's coordinator's rights"), after);
-    assertFalse(after.contains("leave it for the owner"), after);
+    assertFalse(after.contains("You hold qits:desk for this project only."), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
