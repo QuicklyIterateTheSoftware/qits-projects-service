@@ -450,11 +450,14 @@ public class WorkEntityDoors {
     // stay human-only. A bound agent is admitted too (qits-1174): it makes the claim the retired
     // transition_epic MCP tool made, with that tool's limits — its own project only (the binding
     // below), never SUPERSEDED, and recorded as a machine (EntityMovers never makes it a person).
-    // A platform service (qits:system) is still refused an epic.
+    // A platform service (qits:system) is still refused an epic. The project's delivery desk
+    // (qits:desk, qits-1596) moves an epic as the coordinator does, SUPERSEDED included, bound to
+    // its own project by the requireProject below.
     boolean epicByAgent =
         archetype == Archetype.EPIC
             && !identity.hasRole(AgentAccess.ADMIN_ROLE)
-            && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE);
+            && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+            && !AgentAccess.isDesk(identity);
     if (epicByAgent && !EntitiesAgentAccess.bound(identity)) {
       throw new ForbiddenException(
           "Moving an epic's status is qits:admin's, or an agent's in its own project.");
@@ -701,6 +704,8 @@ public class WorkEntityDoors {
 
   /** Deletes a comment; {@code entity} is the comment's own, resolved before the delete. */
   public void deleteComment(SecurityIdentity identity, WorkEntity entity, EntityComment comment) {
+    // The delivery desk (qits-1596) deletes as the coordinator does, in its own project only.
+    EntitiesAgentAccess.requireProject(identity, entity.projectId);
     comments.deleteComment(comment.id, EntitiesPrincipal.changedBy(identity));
     publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
   }
@@ -909,10 +914,12 @@ public class WorkEntityDoors {
               + " {\"target\":\"DROPPED\"}.");
     }
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
-    // stay human-only.
+    // stay human-only. So is the project's delivery desk (qits-1596), bound to its own project by
+    // the requireProject below.
     if ((archetype == Archetype.EPIC || archetype == Archetype.TICKET)
         && !identity.hasRole(AgentAccess.ADMIN_ROLE)
-        && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
+        && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+        && !AgentAccess.isDesk(identity)) {
       throw new ForbiddenException(
           "Deleting "
               + (archetype == Archetype.EPIC ? "an epic" : "a ticket")

@@ -80,7 +80,7 @@ class ApprovalModelTest {
     assertEquals(Set.of("tok-desk"), desk.names());
     assertTrue(desk.isDesk());
     assertEquals("p-a", desk.deskProject());
-    assertEquals(List.of(ApprovalRole.DESK), desk.heldRelativeTo("p-a"));
+    assertEquals(List.of(ApprovalRole.AGENT, ApprovalRole.DESK), desk.heldRelativeTo("p-a"));
     assertFalse(Approver.agent("a", "p-a").isDesk());
   }
 

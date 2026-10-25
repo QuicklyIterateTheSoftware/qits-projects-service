@@ -51,7 +51,9 @@ import org.junit.jupiter.api.Test;
  * and a {@code config-directory} one (qits-1560), a member repository, never the wrapper, whose work
  * items are IMPLEMENTING or later; for a listed {@code no-changes} (qits-1568) the {@code
  * manual-review-verified} rule plus a branch naming a work item. A desk approval's note names the
- * rule; the desk never declines.
+ * rule; the desk never declines as the desk. Since qits-1596 its {@code agent} role is the
+ * coordinator's: it approves and declines what an agent of its project may, and nothing in another
+ * project.
  *
  * <p>The suite of {@link ReleaseRequestApprovalRolesTest}, booted the same way ({@link
  * PersonGateIdpTenant}), so the desk's bearer is a real token validated against the mock idp.
@@ -213,7 +215,7 @@ public class ReleaseRequestDeskApprovalTest {
         .then()
         .statusCode(200)
         .body("eligibility.viewer", equalTo("desk-of-" + projectId))
-        .body("eligibility.heldRoles", equalTo(List.of("desk")))
+        .body("eligibility.heldRoles", equalTo(List.of("agent", "desk")))
         .body("eligibility.eligibleRequirementIds", equalTo(List.of("manual-review")));
 
     desk(projectId)
@@ -229,7 +231,7 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(wrapperRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule manual-review-verified: read the fold: one README line"));
@@ -330,7 +332,7 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(wrapperRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule manual-review-verified: the ticket's verify probe"));
@@ -414,7 +416,7 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(memberRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule manual-review-verified: work shipped in its submodules"));
@@ -519,7 +521,10 @@ public class ReleaseRequestDeskApprovalTest {
         .body("message", containsString("branch work names no work item"));
   }
 
-  /** Another project's desk: refused, naming the rule, however the request's project is set. */
+  /**
+   * Another project's desk: refused before any rule is read (qits-1596 — it holds {@code agent} of
+   * its own project now, which must never reach another project's request), and on decline too.
+   */
   @Test
   void anotherProjectsDeskIsRefused() {
     approves("manual-review");
@@ -533,8 +538,18 @@ public class ReleaseRequestDeskApprovalTest {
         .post(base(wrapperRepoId) + "/" + id + "/approve")
         .then()
         .statusCode(403)
-        .body("message", containsString("rule manual-review-verified"))
         .body("message", containsString("only its own project's requests"));
+    desk(otherProjectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/decline")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("only its own project's requests"));
+    desk(otherProjectId)
+        .get(base(wrapperRepoId) + "/" + id + "/approval-eligibility")
+        .then()
+        .statusCode(200)
+        .body("eligibility.eligibleRequirementIds", equalTo(List.of()));
   }
 
   /** The desk does not decline; it asks the owner. */
@@ -605,30 +620,39 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(declarationRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body("approvals[0].note", equalTo("delivery desk, rule artifact-declarations: -"));
   }
 
   /**
-   * Not listed, {@code artifact-declarations} is not the desk's, although it admits the request's
-   * agents: the desk holds {@code desk} alone, so it neither approves nor declines it as an agent.
+   * Not listed, {@code artifact-declarations} is still the desk's as the coordinator's (qits-1596):
+   * it admits the request's agents, and the desk holds {@code agent} of its project beside {@code
+   * desk}, so it declines and approves it as an agent — no owner's rule, no rule in the note — as a
+   * coordinator would.
    */
   @Test
-  void artifactDeclarationsTheProjectDoesNotListRefusesTheDesk() {
+  void artifactDeclarationsTheProjectDoesNotListIsTheDesksAsAnAgent() {
     String id = create(declarationRepoId, "work");
     String fold = mergedShaOf(declarationRepoId, id);
     verdict(declarationRepoId, fold);
 
     desk(projectId)
-        .body("{\"mergedSha\":\"" + fold + "\"}")
-        .post(base(declarationRepoId) + "/" + id + "/approve")
-        .then()
-        .statusCode(403);
-    desk(projectId)
-        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"wrong artifact\"}")
         .post(base(declarationRepoId) + "/" + id + "/decline")
         .then()
-        .statusCode(403);
+        .statusCode(200);
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"read it again: fine\"}")
+        .post(base(declarationRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true));
+    person("ada")
+        .get(base(declarationRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
+        .body("approvals[0].note", equalTo("read it again: fine"));
   }
 
   /** Not listed, {@code config-directory} admits a person alone, whatever else the project lists. */
@@ -680,7 +704,7 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(configRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule member-ci-green: the ticket asks for this setting"));
@@ -755,15 +779,18 @@ public class ReleaseRequestDeskApprovalTest {
         .get(base(memberRepoId) + "/" + id + "/approvals")
         .then()
         .statusCode(200)
-        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body("approvals[0].roles", equalTo(List.of("agent", "desk")))
         .body(
             "approvals[0].note",
             equalTo("delivery desk, rule member-ci-green: diagram matches the entity"));
   }
 
-  /** Not listed: {@code automation:*} is the request's agent's or a person's, never the desk's. */
+  /**
+   * Not listed: {@code automation:*} is the request's agent's or a person's — and so the desk's as an
+   * agent of its project since qits-1596, as the coordinator's, with no owner's rule applied.
+   */
   @Test
-  void anAutomationHoldTheProjectDoesNotListIsNotTheDesks() {
+  void anAutomationHoldTheProjectDoesNotListIsTheDesksAsAnAgent() {
     automationKinds.answer(KINDS);
     approves("manual-review", "artifact-declarations");
     status(ticket, "IMPLEMENTING");
@@ -778,7 +805,8 @@ public class ReleaseRequestDeskApprovalTest {
         .body("{\"mergedSha\":\"" + fold + "\"}")
         .post(base(memberRepoId) + "/" + id + "/approve")
         .then()
-        .statusCode(403);
+        .statusCode(200)
+        .body("request.approvalRequirements[0].satisfied", equalTo(true));
   }
 
   /** A red build: the desk does not approve a member request over it. */

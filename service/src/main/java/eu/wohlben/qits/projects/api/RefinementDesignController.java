@@ -42,12 +42,13 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  *
  * <p><b>An agent writes designs here</b> (qits-1174), as it did through the retired {@code
  * put_design} MCP tool: {@code POST} and {@code PUT} admit {@code qits:agent}, bound to the project
- * of the refinement's entity ({@link EntitiesAgentAccess}). The delete stays a person's: no tool
- * ever deleted a design.
+ * of the refinement's entity ({@link EntitiesAgentAccess}). The delete stays off the agent's
+ * surface: no tool ever deleted a design. The project's delivery desk ({@code qits:desk}) deletes as
+ * the coordinator does since qits-1596, bound the same way.
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
 public class RefinementDesignController {
 
   /** What a write with no forwarded identity records as its author. */
@@ -164,7 +165,7 @@ public class RefinementDesignController {
   @Path("/{designId}")
   @Operation(operationId = "deleteRefinementDesign", summary = "Delete a design")
   public void delete(@PathParam("id") long id, @PathParam("designId") String designId) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     designs.delete(id, designId);
   }
 

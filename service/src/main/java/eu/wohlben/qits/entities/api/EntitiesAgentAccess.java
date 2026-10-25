@@ -52,15 +52,19 @@ public final class EntitiesAgentAccess {
   private EntitiesAgentAccess() {}
 
   /**
-   * Refuses a bound agent whose token's {@code project} claim does not cover {@code projectId}.
+   * Refuses a bound agent — or the project's delivery desk ({@link AgentAccess#isDesk}, qits-1596),
+   * which reaches the coordinator's entity writes here, the deletes and an epic's supersede
+   * included — whose token's {@code project} claim does not cover {@code projectId}.
    * Called as the first statement of a granted write, with the project resolved from the row the
    * write names — so an id naming nothing answers 404 from that resolution, exactly as it does for
    * an admin, and never a 403 that would report on rows the caller cannot see.
    */
   public static void requireProject(SecurityIdentity identity, String projectId) {
-    if (AgentAccess.isBoundAgent(identity, WIDER)
-        && !AgentAccess.coversProject(identity, projectId)) {
-      throw new ForbiddenException("An agent may write only the entities of its own project.");
+    if (bound(identity) && !AgentAccess.coversProject(identity, projectId)) {
+      throw new ForbiddenException(
+          AgentAccess.isDesk(identity)
+              ? "The delivery desk may write only the entities of its own project."
+              : "An agent may write only the entities of its own project.");
     }
   }
 
@@ -98,11 +102,11 @@ public final class EntitiesAgentAccess {
   }
 
   /**
-   * True when this caller is an agent bound by the rule above. Exposed so a route whose binding
+   * True when this caller is an agent (or the delivery desk) bound by the rule above. Exposed so a route whose binding
    * costs a query — the batched transition, which has to resolve every id in the request — can skip
    * that work for the callers the binding never applies to, without re-spelling the wider roles.
    */
   static boolean bound(SecurityIdentity identity) {
-    return AgentAccess.isBoundAgent(identity, WIDER);
+    return AgentAccess.isBoundAgent(identity, WIDER) || AgentAccess.isDesk(identity);
   }
 }

@@ -62,6 +62,8 @@ public class UpstreamOverrideDoorTest {
       "Bearer upstream-override-service-client-admin";
   private static final String AGENT_BEARER = "Bearer upstream-override-agent";
   private static final String ADMIN_AGENT_BEARER = "Bearer upstream-override-admin-agent";
+  private static final String DESK_BEARER = "Bearer upstream-override-desk";
+  private static final String OTHER_DESK_BEARER = "Bearer upstream-override-other-desk";
 
   @Inject FakeActiveBuilds activeBuilds;
 
@@ -165,6 +167,25 @@ public class UpstreamOverrideDoorTest {
             "groups",
             List.of("qits:admin-agent")),
         "qits:admin-agent");
+    grantDesk(DESK_BEARER, projectId);
+    grantDesk(OTHER_DESK_BEARER, "another-project-" + unique);
+  }
+
+  /** A project's delivery desk token as this service commissions it (qits-1596). */
+  private void grantDesk(String bearer, String project) {
+    String subject = "desk-of-" + project;
+    bearers.grant(
+        bearer,
+        subject,
+        Map.of(
+            "context_kind",
+            "desk-delivery",
+            "project",
+            project,
+            "groups",
+            List.of("qits:agent", "qits:desk", "clients/" + subject)),
+        "qits:agent",
+        "qits:desk");
   }
 
   @AfterEach
@@ -278,6 +299,70 @@ public class UpstreamOverrideDoorTest {
     assertEquals("PENDING", gate(request(svcRepo, svc), "state"));
   }
 
+  /**
+   * qits-1596: the project's delivery desk overrides as a person does, recorded under its token
+   * subject; another project's desk is a 403 and writes nothing.
+   */
+  @Test
+  public void theProjectsDeliveryDeskOverridesAsItself() {
+    String fe = create(feRepo);
+    qaRun(fe, feRepo, mergedShaOf(feRepo, fe), "run-fe-1", "QUEUED");
+    String svc = create(svcRepo);
+    String body = "{\"upstreamRequestId\":\"" + fe + "\",\"note\":\"docs only\"}";
+
+    asBearer(OTHER_DESK_BEARER)
+        .body(body)
+        .post(base(svcRepo) + "/" + svc + "/upstream-overrides")
+        .then()
+        .statusCode(403);
+    assertNull(override(svc, fe), "another project's desk recorded nothing");
+
+    JsonPath answer =
+        asBearer(DESK_BEARER)
+            .body(body)
+            .post(base(svcRepo) + "/" + svc + "/upstream-overrides")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath()
+            .setRootPath("request");
+    assertEquals("PASSED", gate(answer, "state"));
+    String desk = "desk-of-" + projectId;
+    assertTrue(answer.getString(gatePath("checks[0].detail")).startsWith("Overridden by " + desk));
+    assertEquals(desk, override(svc, fe).decidedBy);
+  }
+
+  /**
+   * qits-1596: the desk never opens a release request and never joins a branch to one — the one
+   * commit-and-push door the coordinator holds and the desk does not.
+   */
+  @Test
+  public void theDeliveryDeskNeverOpensOrJoinsARequest() {
+    asBearer(DESK_BEARER)
+        .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
+        .post(base(svcRepo))
+        .then()
+        .statusCode(403);
+    String svc = create(svcRepo);
+    asBearer(DESK_BEARER)
+        .body("{\"branch\":\"work\"}")
+        .post(base(svcRepo) + "/" + svc + "/sources")
+        .then()
+        .statusCode(403);
+    // Withdraw is the coordinator's and stays the desk's, in its own project.
+    asBearer(OTHER_DESK_BEARER)
+        .body("{\"reason\":\"not ours\"}")
+        .post(base(svcRepo) + "/" + svc + "/withdraw")
+        .then()
+        .statusCode(403);
+    asBearer(DESK_BEARER)
+        .body("{\"reason\":\"moot\"}")
+        .post(base(svcRepo) + "/" + svc + "/withdraw")
+        .then()
+        .statusCode(200);
+    assertEquals("WITHDRAWN", request(svcRepo, svc).getString("state"));
+  }
+
   /** An upstream that is not building holds nothing: overriding it is a 409 saying so. */
   @Test
   public void anUpstreamThatIsNotBuildingIsMoot() {
@@ -363,6 +448,15 @@ public class UpstreamOverrideDoorTest {
   private RequestSpecification person(String name) {
     return headersOnly(name, "qits:admin")
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(name));
+  }
+
+  /** A bearer {@link ContractBearers} turns into its granted machine identity. */
+  private static RequestSpecification asBearer(String bearer) {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "a-machine")
+        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", bearer);
   }
 
   /** An asserted caller, headers only, nothing this service could verify. */

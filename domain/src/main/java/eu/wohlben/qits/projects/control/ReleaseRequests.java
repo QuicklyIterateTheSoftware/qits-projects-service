@@ -1329,6 +1329,30 @@ public class ReleaseRequests {
    * cannot jump it. The row is not wasted: it is the current decision at that fold, so the moment
    * the build lands green the request rejects with the person's sentence.
    */
+  /**
+   * The delivery desk decides only its own project's requests (qits-1596). It holds {@code agent}
+   * of its project beside {@code desk}, as the coordinator does, and unlike a workspace agent it is
+   * not a reviewer of other projects: its {@code agent} must never reach another project's {@code
+   * agent@<slug>} requirement. A 403 before anything else is read, either verb.
+   */
+  private static void requireOwnProjectOfDesk(ReleaseRequest row, Approver approver) {
+    if (approver == null || !approver.isDesk()) {
+      return;
+    }
+    String deskProject = approver.deskProject();
+    if (deskProject == null || !deskProject.equals(row.projectId)) {
+      throw new DomainException(
+          403,
+          "The delivery desk of project "
+              + deskProject
+              + " decides only its own project's requests, and release request "
+              + row.qualifiedId
+              + " belongs to project "
+              + row.projectId
+              + ".");
+    }
+  }
+
   private ReleaseRequestDto decide(
       String id,
       String mergedSha,
@@ -1357,6 +1381,7 @@ public class ReleaseRequests {
                       .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                       .orElseThrow(
                           () -> new NotFoundException("Release request not found: " + id));
+              requireOwnProjectOfDesk(row, approver);
               requireDecidable(row, decision);
               List<ApprovalRequirement> requirements = approvalPolicy.requirementsFor(row);
               if (requirements.isEmpty()) {
@@ -1690,7 +1715,8 @@ public class ReleaseRequests {
    *
    * @param upstreamReference the upstream request's uuid or qualified id
    * @param note what the person wants on the record, or null/blank for nothing
-   * @param actor the verified person ({@code PersonCheck}); the point of the row
+   * @param actor the verified person, or the delivery desk's token subject ({@code
+   *     PersonCheck.requireAdminOrDesk}, qits-1596); the point of the row
    */
   public ReleaseRequestDto overrideUpstream(
       String id, String upstreamReference, String note, String actor) {
@@ -1929,8 +1955,11 @@ public class ReleaseRequests {
     }
     Set<String> authors =
         Set.copyOf(ApprovalNotices.authorsOf(page.named().getOrDefault(row.id, List.of())));
+    // Another project's delivery desk decides nothing here (qits-1596), whatever it holds.
+    boolean foreignDesk =
+        viewer != null && viewer.isDesk() && !row.projectId.equals(viewer.deskProject());
     List<String> eligible =
-        held.isEmpty()
+        held.isEmpty() || foreignDesk
             ? List.of()
             : requirements.stream()
                 .filter(requirement -> ApprovalStanding.qualifies(requirement, held, names, authors))

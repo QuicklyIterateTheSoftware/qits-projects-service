@@ -19,10 +19,13 @@ import java.util.Optional;
  * schedule's cascade is judged once, on the entity that moves. Unscheduling (READY_FOR_DEV →
  * REFINED) is a BACK move and is never judged.
  *
- * <p><b>One machine passes: a delivery desk carrying a {@link Mover#declaredApproval}</b> (epic
- * qits-1440) — the project's own {@code front_desk.delivery.start_refined} in its {@code
- * .config/qits/project.yml}, which a person committed and a release request approved. Only the
- * dispatch path stamps one, and only on a desk whose project declares it.
+ * <p><b>One machine passes: the project's own delivery desk</b> — a {@link Mover#isDesk desk}
+ * mover bound to the row's project ({@link Mover#deskProject}), which since qits-1596 holds the
+ * owner's coordinator's rights and schedules its own project's items as the coordinator's person
+ * would. A desk of another project, or one whose token named no project, is refused like any
+ * machine. Before qits-1596 the desk passed only carrying a {@link Mover#declaredApproval} (epic
+ * qits-1440) — the project's {@code front_desk.delivery.start_refined}, which the dispatch path
+ * still stamps — and such a mover still passes, by the same project rule.
  */
 @ApplicationScoped
 public class PersonApprovalGate implements TransitionGate {
@@ -41,13 +44,21 @@ public class PersonApprovalGate implements TransitionGate {
 
   @Override
   public Optional<String> refusal(WorkEntity row, Mover mover) {
-    if (mover.isPerson() || (mover.isDesk() && mover.declaredApproval() != null)) {
+    if (mover.isPerson() || isOwnDesk(row, mover)) {
       return Optional.empty();
     }
     return Optional.of(
         "scheduling (REFINED → READY_FOR_DEV) needs a person; "
             + mover.described()
             + " is a machine credential — a person schedules it from the board, the Schedule tab"
-            + " or their own qits CLI");
+            + " or their own qits CLI, or the project's own delivery desk does");
+  }
+
+  /** The row's own project's delivery desk (qits-1596). */
+  private static boolean isOwnDesk(WorkEntity row, Mover mover) {
+    return mover.isDesk()
+        && mover.deskProject() != null
+        && row != null
+        && mover.deskProject().equals(row.projectId);
   }
 }

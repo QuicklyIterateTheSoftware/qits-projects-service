@@ -196,9 +196,11 @@ public class ReleaseRequestController {
               + " ReleaseRequestChanged with preRun=PENDING while its release-request automations"
               + " (the pre-run) settle, and with preRun=DONE once per fold when they are fresh or"
               + " waived; QA builds on DONE only, and preRun.state on the answer says where the"
-              + " pre-run stands.")
+              + " pre-run stands. The project's delivery desk (qits:desk) answers 403: it never"
+              + " opens or joins a release request.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
+    refuseDesk("open a release request");
     requireAgentProject(repoId);
     requireAgentBranch(body == null ? null : body.branch());
     return new CreateReleaseRequest.Response(
@@ -227,11 +229,13 @@ public class ReleaseRequestController {
               + " gates are re-armed onto it. Idempotent: a branch already on the request answers"
               + " the request unchanged. A RELEASED or WITHDRAWN request answers 409. Implicit tag"
               + " sources are not addable — they are derived from what the repository has in"
-              + " flight.")
+              + " flight. The project's delivery desk (qits:desk) answers 403: it never joins a"
+              + " branch to a request.")
   public AddReleaseRequestSource.Response addSource(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       AddReleaseRequestSource body) {
+    refuseDesk("add a branch to a release request");
     requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
@@ -822,11 +826,13 @@ public class ReleaseRequestController {
    * is a sign-off, and a gate a machine could waive is not this gate.
    *
    * <p>{@code qits:admin-agent} is admitted too (qits-628 follow-up); remove it here if this door
-   * must stay human-only.
+   * must stay human-only. So is the project's delivery desk (qits-1596), proved from its own
+   * delivery token and bound to its project ({@link PersonCheck#requireAdminOrDesk}); the desk's
+   * token subject is the actor recorded.
    */
   @POST
   @Path("/{requestId}/automations/waivers")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "waiveReleaseRequestAutomations",
       summary = "Waive the automations gate for this request's current fold",
@@ -836,16 +842,18 @@ public class ReleaseRequestController {
               + " re-fold leaves the waiver behind and the gate holds again. The gate is re-asked"
               + " immediately and the request comes back as it then stands. 409 also for a request"
               + " that is READY or has concluded, one with no fold yet, and a repository the"
-              + " automations gate does not hold; 400 for a blank foldSha or reason. A person only:"
+              + " automations gate does not hold; 400 for a blank foldSha or reason. A person —"
               + " qits:admin, verified by this service from a browser session or a person's qits"
-              + " CLI token — asserted identity headers alone answer 403. qits:admin-agent admitted"
-              + " too (qits-628 follow-up); remove it here if this door must stay human-only.")
+              + " CLI token — or the project's delivery desk (qits:desk, its own delivery token, in"
+              + " its own project; recorded under its token subject). 403 for asserted identity"
+              + " headers alone, agents, service clients, and another project's desk."
+              + " qits:admin-agent admitted too (qits-628 follow-up).")
   public WaiveReleaseRequestAutomations.Response waiveAutomations(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       WaiveReleaseRequestAutomations body) {
     requestId = releaseRequests.resolveId(repoId, requestId);
-    String actor = persons.requireAdmin();
+    String actor = personOrDesk(repoId, requestId);
     return new WaiveReleaseRequestAutomations.Response(
         releaseRequests.waiveAutomations(
             repoId,
@@ -867,14 +875,16 @@ public class ReleaseRequestController {
 
   /**
    * <b>Override gate 3 for one upstream request</b> (epic qits-897, qits-914): this request may
-   * start QA although that upstream request is still building. A person only: {@link
-   * #waiveAutomations}' roles — approve's person roles, without the {@code qits:agent} that approve
-   * admits for its eligibility rules — and then {@link PersonCheck}, whose answer is the name
-   * recorded. An agent or a machine that could lift the gate would make it no gate.
+   * start QA although that upstream request is still building. A person or the project's delivery
+   * desk: {@link #waiveAutomations}' roles — approve's person roles and {@code qits:desk}, without
+   * the {@code qits:agent} that approve admits for its eligibility rules — and then {@link
+   * PersonCheck#requireAdminOrDesk}, whose answer is the name recorded (the desk's token subject,
+   * qits-1596). An agent or a machine that could lift the gate would make it no gate; the desk is
+   * the owner's own loop, bound to its project.
    */
   @POST
   @Path("/{requestId}/upstream-overrides")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "overrideReleaseRequestUpstream",
       summary = "Let this request start QA although one upstream request is still building",
@@ -891,15 +901,17 @@ public class ReleaseRequestController {
               + " who overrode. 404 for a request or upstream request that does not exist; 409"
               + " unless the request is PENDING with a fold and no QA verdict at it; 409 'The"
               + " override is moot' unless the upstream request is building now and upstream of"
-              + " this one. Only a person may: qits:admin, verified by this service from a browser"
-              + " session or a person's qits CLI token. Asserted identity headers, service clients,"
-              + " agents and qits:system answer 403.")
+              + " this one. Only a person — qits:admin, verified by this service from a browser"
+              + " session or a person's qits CLI token — or the project's delivery desk (qits:desk,"
+              + " its own delivery token, in its own project; recorded under its token subject)."
+              + " Asserted identity headers, service clients, agents, qits:system and another"
+              + " project's desk answer 403.")
   public OverrideReleaseRequestUpstream.Response overrideUpstream(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       OverrideReleaseRequestUpstream body) {
     requestId = releaseRequests.resolveId(repoId, requestId);
-    String actor = persons.requireAdmin();
+    String actor = personOrDesk(repoId, requestId);
     return new OverrideReleaseRequestUpstream.Response(
         releaseRequests.overrideUpstream(
             requestId,
@@ -919,6 +931,42 @@ public class ReleaseRequestController {
   private static final String[] WIDER = {
     AgentAccess.ADMIN_ROLE, AgentAccess.ADMIN_AGENT_ROLE, AgentAccess.SYSTEM_ROLE
   };
+
+  /**
+   * The delivery desk never opens a release request and never joins one (qits-1596): it holds the
+   * coordinator's rights except a commit or a push, and putting a branch on a request is how a
+   * change reaches main. Refused by the role, before anything is read, so the refusal does not
+   * depend on its empty {@code git_refs}.
+   */
+  private void refuseDesk(String what) {
+    if (AgentAccess.isDesk(identity)) {
+      throw new DomainException(
+          403, "The delivery desk does not " + what + "; the work's own agent does.");
+    }
+  }
+
+  /**
+   * A verified person's name, or the delivery desk's token subject when the desk decides in its
+   * own project (qits-1596). The project is the repository's; a desk is also held to the request
+   * being that repository's, as a bound agent is.
+   */
+  private String personOrDesk(String repoId, String requestId) {
+    Repository repository = repositories.get(repoId); // 404 if absent
+    String projectId = repository.project == null ? null : repository.project.id;
+    String actor = persons.requireAdminOrDesk(projectId);
+    if (AgentAccess.isDesk(identity)
+        && persons.verifiedAdmin().isEmpty()
+        && !repoId.equals(releaseRequests.get(requestId).repoId())) {
+      throw new DomainException(
+          403,
+          "Release request "
+              + releaseRequests.get(requestId).qualifiedId()
+              + " is not a request of repository "
+              + repoId
+              + ".");
+    }
+    return actor;
+  }
 
   /** A bound agent reaches only the repositories of its own project. */
   private void requireAgentProject(String repoId) {

@@ -20,7 +20,8 @@ import jakarta.inject.Inject;
  * {@link #DESK_ROLE} and neither {@code qits:admin} nor {@code qits:admin-agent} is {@link
  * Mover#desk}, bound to its token's {@code project} claim (null when it carried none, which the
  * dispatch door then refuses as another project's). A wider role wins, as {@code
- * AgentAccess.isBoundAgent} reads it.
+ * AgentAccess.isBoundAgent} reads it. Since qits-1596 {@code PERSON_APPROVAL} lets that mover
+ * schedule its own project's items (REFINED → READY_FOR_DEV) as the coordinator's person would.
  *
  * <p>The lifecycle doors build one per move ({@code WorkEntityDoors.move}, behind {@code POST
  * /work/{qualifiedId}/status} for every archetype, a campaign's included); the MCP tools and the platform's in-process callers never do — they are machines
@@ -30,7 +31,7 @@ import jakarta.inject.Inject;
 public class EntityMovers {
 
   /** The role of a project's delivery desk token ({@code desk-delivery}, epic qits-1440). */
-  public static final String DESK_ROLE = "qits:desk";
+  public static final String DESK_ROLE = AgentAccess.DESK_ROLE;
 
   @Inject PersonCheck persons;
 

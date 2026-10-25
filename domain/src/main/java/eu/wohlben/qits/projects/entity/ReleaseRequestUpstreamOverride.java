@@ -43,7 +43,10 @@ public class ReleaseRequestUpstreamOverride extends PanacheEntityBase implements
   @Column(name = "upstream_request_id", nullable = false)
   public String upstreamRequestId;
 
-  /** Who overrode — the verified person ({@code PersonCheck}), the point of the whole row. */
+  /**
+   * Who overrode — the verified person, or the project's delivery desk under its token subject
+   * ({@code PersonCheck.requireAdminOrDesk}, qits-1596); the point of the whole row.
+   */
   @Column(name = "decided_by", nullable = false)
   public String decidedBy;
 

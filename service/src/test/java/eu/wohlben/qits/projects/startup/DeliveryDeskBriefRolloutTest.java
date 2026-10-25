@@ -174,6 +174,39 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
+  /**
+   * qits-1596: an unedited qits-1568 brief — the one that still held the desk to a narrow role —
+   * rolls to the current one, which gives it the coordinator's rights.
+   */
+  @Test
+  public void anUneditedQits1568BriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT.contains(
+            "You hold qits:desk for this project only."),
+        "the qits-1568 text is the one with the narrow role");
+    stage(AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1568 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("You hold the owner's coordinator's rights"), after);
+    assertFalse(after.contains("leave it for the owner"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1596: an edit of the qits-1568 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1568BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1568_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
   /** A brief the owner edited is left exactly as stored. */
   @Test
   public void anOwnerEditedBriefIsLeftAlone() {

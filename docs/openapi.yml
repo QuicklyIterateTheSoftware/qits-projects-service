@@ -3978,6 +3978,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
     get:
       operationId: getProject
       parameters:
@@ -4336,18 +4337,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Response3"
+        "403":
+          description: The delivery desk naming another project
         "404":
           description: No such project
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Project Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/projects/{projectId}/refinements:
     get:
       parameters:
@@ -4656,18 +4658,19 @@ paths:
                 $ref: "#/components/schemas/Response2"
         "400":
           description: The project has no wrapper repository
+        "403":
+          description: The delivery desk naming another project
         "404":
           description: No such project
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Project Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/projects/{project}/work:
     get:
       summary: List a project's work of every archetype
@@ -4953,6 +4956,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/discard:
     post:
       summary: Discard a refinement room
@@ -4974,18 +4978,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiscardResponse"
+        "403":
+          description: "The credential is bound to another entity, or the delivery\
+            \ desk reaches another project's room"
         "404":
           description: No refinement with this id
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Refinement Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/ensure-container:
     post:
       summary: Bring a refinement room's container up
@@ -5009,6 +5015,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProcessResponse"
+        "403":
+          description: "The credential is bound to another entity, or the delivery\
+            \ desk reaches another project's room"
         "404":
           description: No refinement with this id
         "409":
@@ -5016,14 +5025,13 @@ paths:
             live
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Refinement Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/events:
     get:
       parameters:
@@ -5115,6 +5123,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/prompt-attachments/{attachmentId}:
     put:
       parameters:
@@ -5155,6 +5164,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
     delete:
       parameters:
       - name: attachmentId
@@ -5182,6 +5192,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/prompt-attachments/{attachmentId}/content:
     get:
       parameters:
@@ -5249,6 +5260,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
     get:
       parameters:
       - name: id
@@ -5298,6 +5310,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/recreate-container:
     post:
       parameters:
@@ -5325,6 +5338,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/refinements/{id}/stop-container:
     post:
       parameters:
@@ -5352,6 +5366,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/repositories:
     get:
       summary: Every repository with its public coordinates
@@ -5413,18 +5428,19 @@ paths:
           description: "An invalid name, a name another repository in this project\
             \ already answers to, or the project's wrapper repository (whose name\
             \ is derived from the immutable slug)"
+        "403":
+          description: The delivery desk naming another project's repository
         "404":
           description: No such repository
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Repository Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
     get:
       operationId: getRepository
       parameters:
@@ -5833,6 +5849,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/repositories/{repoId}/pull:
     post:
       parameters:
@@ -5949,7 +5966,8 @@ paths:
         \ on the bus as ReleaseRequestChanged with preRun=PENDING while its release-request\
         \ automations (the pre-run) settle, and with preRun=DONE once per fold when\
         \ they are fresh or waived; QA builds on DONE only, and preRun.state on the\
-        \ answer says where the pre-run stands."
+        \ answer says where the pre-run stands. The project's delivery desk (qits:desk)\
+        \ answers 403: it never opens or joins a release request."
       operationId: createReleaseRequest
       parameters:
       - name: repoId
@@ -6213,10 +6231,12 @@ paths:
         \ gate holds again. The gate is re-asked immediately and the request comes\
         \ back as it then stands. 409 also for a request that is READY or has concluded,\
         \ one with no fold yet, and a repository the automations gate does not hold;\
-        \ 400 for a blank foldSha or reason. A person only: qits:admin, verified by\
-        \ this service from a browser session or a person's qits CLI token — asserted\
-        \ identity headers alone answer 403. qits:admin-agent admitted too (qits-628\
-        \ follow-up); remove it here if this door must stay human-only."
+        \ 400 for a blank foldSha or reason. A person — qits:admin, verified by this\
+        \ service from a browser session or a person's qits CLI token — or the project's\
+        \ delivery desk (qits:desk, its own delivery token, in its own project; recorded\
+        \ under its token subject). 403 for asserted identity headers alone, agents,\
+        \ service clients, and another project's desk. qits:admin-agent admitted too\
+        \ (qits-628 follow-up)."
       operationId: waiveReleaseRequestAutomations
       parameters:
       - name: repoId
@@ -6254,6 +6274,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/repositories/{repoId}/release-requests/{requestId}/automations/{kind}/runs:
     post:
       summary: Run one release-request automation again on this request's current
@@ -6661,7 +6682,8 @@ paths:
         \ produces a new commit, the gates are re-armed onto it. Idempotent: a branch\
         \ already on the request answers the request unchanged. A RELEASED or WITHDRAWN\
         \ request answers 409. Implicit tag sources are not addable — they are derived\
-        \ from what the repository has in flight."
+        \ from what the repository has in flight. The project's delivery desk (qits:desk)\
+        \ answers 403: it never joins a branch to a request."
       operationId: addReleaseRequestSource
       parameters:
       - name: repoId
@@ -6767,9 +6789,11 @@ paths:
         \ 404 for a request or upstream request that does not exist; 409 unless the\
         \ request is PENDING with a fold and no QA verdict at it; 409 'The override\
         \ is moot' unless the upstream request is building now and upstream of this\
-        \ one. Only a person may: qits:admin, verified by this service from a browser\
-        \ session or a person's qits CLI token. Asserted identity headers, service\
-        \ clients, agents and qits:system answer 403."
+        \ one. Only a person — qits:admin, verified by this service from a browser\
+        \ session or a person's qits CLI token — or the project's delivery desk (qits:desk,\
+        \ its own delivery token, in its own project; recorded under its token subject).\
+        \ Asserted identity headers, service clients, agents, qits:system and another\
+        \ project's desk answer 403."
       operationId: overrideReleaseRequestUpstream
       parameters:
       - name: repoId
@@ -6807,6 +6831,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/repositories/{repoId}/release-requests/{requestId}/withdraw:
     post:
       summary: Withdraw an open release request
@@ -7618,10 +7643,11 @@ paths:
     delete:
       summary: Delete a work entity and its subtree
       description: "Removes the entity, its descendants and their threads, each audited;\
-        \ the audit log outlives them. An epic's or a ticket's delete is qits:admin\
-        \ alone; a feature's or a task's admits an agent bound to its project and\
-        \ obeys its epic's freeze. A campaign is not deleted but dropped. The path\
-        \ names the entity by qualified id (<projectSlug>-<n>) or UUID."
+        \ the audit log outlives them. An epic's or a ticket's delete is qits:admin's,\
+        \ or the delivery desk's (qits:desk) in its own project; a feature's or a\
+        \ task's admits an agent bound to its project and obeys its epic's freeze.\
+        \ A campaign is not deleted but dropped. The path names the entity by qualified\
+        \ id (<projectSlug>-<n>) or UUID."
       operationId: deleteWork
       parameters:
       - name: qualifiedId
@@ -7637,8 +7663,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkDeleted"
         "403":
-          description: "An agent deleting an epic or a ticket, or outside its own\
-            \ project"
+          description: "An agent deleting an epic or a ticket, or an agent or the\
+            \ delivery desk deleting outside its own project"
         "404":
           description: No entity with this id
         "409":
@@ -7653,6 +7679,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:agent
+        - qits:desk
   /projects/api/work/{qualifiedId}/agent-waiting:
     post:
       summary: Report whether the agent session on a work entity is waiting for a
@@ -7980,7 +8007,9 @@ paths:
         - qits:agent
     delete:
       summary: Delete a comment
-      description: Removes a comment from a work entity's thread; audited. Admin only.
+      description: "Removes a comment from a work entity's thread; audited. qits:admin,\
+        \ qits:admin-agent, or the project's delivery desk (qits:desk) on an entity\
+        \ of its own project; never a plain agent."
       operationId: deleteWorkComment
       parameters:
       - name: commentId
@@ -8000,19 +8029,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkCommentDeleted"
+        "403":
+          description: "A plain agent, or the delivery desk on another project's entity"
         "404":
           description: "No entity with this id, or no comment with this id on its\
             \ thread"
         "401":
           description: Not Authorized
-        "403":
-          description: Not Allowed
       tags:
       - Work Comment Controller
       security:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/work/{qualifiedId}/dispatch:
     get:
       summary: What a dispatch press would start now
@@ -8612,8 +8642,10 @@ paths:
     post:
       summary: A person's yes on a member's APPROVAL criterion
       description: "qits:admin, and then a person this service verified itself; the\
-        \ name recorded is the proof's. Refused when the criterion is not APPROVAL,\
-        \ is already satisfied, or the campaign is DONE or DROPPED."
+        \ name recorded is the proof's. The campaign's own project's delivery desk\
+        \ (qits:desk, its own delivery token) may approve too, recorded under its\
+        \ token subject. Refused when the criterion is not APPROVAL, is already satisfied,\
+        \ or the campaign is DONE or DROPPED."
       operationId: approveWorkMemberCriterion
       parameters:
       - name: criterionId
@@ -8645,7 +8677,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkMemberAnswer"
         "403":
-          description: Not a verified person
+          description: Neither a verified person nor this campaign's project's delivery
+            desk
         "404":
           description: "No campaign, membership or criterion"
         "409":
@@ -8660,6 +8693,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
   /projects/api/work/{qualifiedId}/members/{membershipId}/position:
     put:
       summary: Move a membership within its campaign
@@ -8760,7 +8794,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkRefinementAnswer"
         "403":
-          description: "Not Allowed, or the credential is bound to another entity"
+          description: "Not Allowed, the credential is bound to another entity, or\
+            \ the delivery desk reaches another project's entity"
         "404":
           description: No entity with this id
         "409":
@@ -8775,6 +8810,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:admin-agent
+        - qits:desk
     get:
       summary: Find a work entity's refinement room
       description: "The entity's room, or null when it has none; never creates one.\
@@ -8814,9 +8850,11 @@ paths:
         \ roles: an agent may move a ticket, a campaign, a feature or a task of its\
         \ own project, a platform service (qits:system) one of any project, and an\
         \ epic is qits:admin's, or an agent's of its own project, which may not supersede\
-        \ it. A feature or a task moves only once its epic is past REPORTED, and its\
-        \ scheduling (to READY_FOR_DEV, or back) is the epic's. Answers the entity\
-        \ in the merged shape, with statusBefore."
+        \ it. The project's delivery desk (qits:desk) moves what qits:admin-agent\
+        \ moves, superseding and scheduling included, in its own project only. A feature\
+        \ or a task moves only once its epic is past REPORTED, and its scheduling\
+        \ (to READY_FOR_DEV, or back) is the epic's. Answers the entity in the merged\
+        \ shape, with statusBefore."
       operationId: setWorkStatus
       parameters:
       - name: qualifiedId
@@ -8844,8 +8882,8 @@ paths:
             \ one; or a supersededBy naming no item, an item of another project, or\
             \ the item itself. Each names the rule"
         "403":
-          description: "A platform service moving an epic, or an agent moving an entity\
-            \ outside its own project; nothing is written"
+          description: "A platform service moving an epic, or an agent or the delivery\
+            \ desk moving an entity outside its own project; nothing is written"
         "404":
           description: No entity with this id
         "409":
@@ -8853,7 +8891,8 @@ paths:
             \ an agent superseding an epic, a feature or a task whose epic is still\
             \ REPORTED, or a quality gate refusing a forward move — ACCEPTANCE_CRITERIA,\
             \ or PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller this service\
-            \ did not verify as a person"
+            \ did not verify as a person and that is not the item's own project's\
+            \ delivery desk"
         "401":
           description: Not Authorized
       tags:
@@ -8864,6 +8903,7 @@ paths:
         - qits:admin-agent
         - qits:agent
         - qits:system
+        - qits:desk
   /projects/api/work/{qualifiedId}/workspaces:
     get:
       summary: The workspaces naming a work entity

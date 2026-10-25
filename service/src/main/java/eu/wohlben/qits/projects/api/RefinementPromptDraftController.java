@@ -20,10 +20,13 @@ import java.time.Instant;
 /**
  * The refinement's prompt draft — the same three verbs and the same 404-means-none contract the
  * workspaces draft controller taught the SPA, on this service's row.
+ *
+ * <p>The writes admit the project's delivery desk ({@code qits:desk}, qits-1596), bound to the
+ * room's project ({@link RefinementAccess#reachWrite}).
  */
 @Path("/refinements/{id}/prompt-draft")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
 public class RefinementPromptDraftController {
 
   @Inject RefinementService refinements;
@@ -57,14 +60,14 @@ public class RefinementPromptDraftController {
 
   @PUT
   public DraftResponse save(@PathParam("id") long id, SaveRequest request) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     return new DraftResponse(dto(drafts.save(id, request.content(), request.serializedPrompt())));
   }
 
   /** 204 always — deleting an absent draft is the asked-for state. */
   @DELETE
   public void delete(@PathParam("id") long id) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     drafts.delete(id);
   }
 
