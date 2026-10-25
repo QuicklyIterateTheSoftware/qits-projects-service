@@ -25,10 +25,13 @@ import java.util.List;
  * URLs, the same surface shape the workspaces controller taught the SPA. The content URL
  * ({@code /projects/api/refinements/{id}/prompt-attachments/{attachmentId}/content}) is embedded
  * into epic markdown, so attachment ids are never renumbered and a replace keeps its row.
+ *
+ * <p>The writes admit the project's delivery desk ({@code qits:desk}, qits-1596), bound to the
+ * room's project ({@link RefinementAccess#reachWrite}).
  */
 @Path("/refinements/{id}/prompt-attachments")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
 public class RefinementPromptAttachmentController {
 
   @Inject RefinementService refinements;
@@ -79,7 +82,7 @@ public class RefinementPromptAttachmentController {
   /** 201 with the row sans bytes — the caller just sent them. */
   @POST
   public Response add(@PathParam("id") long id, NewAttachment request) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     RefinementPromptAttachment row =
         attachments.add(id, request.label(), request.source(), request.dataBase64());
     return Response.status(Response.Status.CREATED).entity(dto(row, false)).build();
@@ -91,7 +94,7 @@ public class RefinementPromptAttachmentController {
       @PathParam("id") long id,
       @PathParam("attachmentId") String attachmentId,
       NewAttachment request) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     return dto(
         attachments.replace(id, attachmentId, request.label(), request.source(), request.dataBase64()),
         false);
@@ -111,7 +114,7 @@ public class RefinementPromptAttachmentController {
   @DELETE
   @Path("/{attachmentId}")
   public void delete(@PathParam("id") long id, @PathParam("attachmentId") String attachmentId) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     attachments.delete(id, attachmentId);
   }
 

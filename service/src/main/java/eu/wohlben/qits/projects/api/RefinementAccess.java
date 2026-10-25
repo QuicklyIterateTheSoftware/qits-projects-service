@@ -22,4 +22,15 @@ final class RefinementAccess {
     EntitiesAgentAccess.requireEntity(identity, refinement.entityId);
     return refinement;
   }
+
+  /**
+   * {@link #reach}, for a write: also refuses a bound agent or the project's delivery desk
+   * (qits-1596) whose token's {@code project} is not the room's ({@link
+   * EntitiesAgentAccess#requireProject}). A person and the coordinator pass untouched.
+   */
+  static Refinement reachWrite(RefinementService refinements, SecurityIdentity identity, long id) {
+    Refinement refinement = reach(refinements, identity, id);
+    EntitiesAgentAccess.requireProject(identity, refinement.projectId);
+    return refinement;
+  }
 }

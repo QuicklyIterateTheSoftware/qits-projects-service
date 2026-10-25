@@ -51,7 +51,9 @@ public record Approver(String name, List<ApprovalRole> held, Set<String> aliases
   /**
    * The delivery desk of {@code projectId} (epic qits-1440): {@code desk} of that project and
    * nothing else — not {@code agent}, so the desk satisfies only the requirements the project
-   * handed it in {@code front_desk.delivery.approves}, and never {@code person}. Named by its token's {@code sub}, also known as {@code
+   * handed it in {@code front_desk.delivery.approves}, and never {@code person}. qits-1596, which
+   * gave the desk the owner's coordinator's rights, deliberately kept this: {@code approves} is the
+   * owner's control over what the desk may approve. Named by its token's {@code sub}, also known as {@code
    * principal} where the two differ.
    */
   public static Approver desk(String subject, String principal, String projectId) {

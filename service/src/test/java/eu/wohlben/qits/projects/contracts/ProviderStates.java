@@ -227,6 +227,12 @@ public class ProviderStates {
       "a repository with a release not merged to main";
   public static final String A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH =
       "a repository with a tagged release whose request went obsolete mid-publish";
+  /**
+   * The soft feature freeze (epic qits-1580): an active request frozen at three counted branches
+   * (branches naming a work item) and the request queued behind it, holding a fourth.
+   */
+  public static final String A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST =
+      "a frozen release request with a queued next request";
   public static final String THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA =
       "the archetype registry's update schema";
   public static final String THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA =
@@ -558,6 +564,9 @@ public class ProviderStates {
     states.put(
         A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH,
         this::aTaggedReleaseObsoletedMidPublish);
+    states.put(
+        A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST,
+        this::aFrozenReleaseRequestWithAQueuedNextRequest);
     states.put(THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA, ProviderStates::theArchetypeRegistry);
     states.put(THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_DISPATCHED_AGENT, this::aTicketWithADispatchedAgent);
@@ -2895,6 +2904,63 @@ public class ProviderStates {
     return id;
   }
 
+  /**
+   * The soft feature freeze (epic qits-1580): contract-service's active request holds {@code main}
+   * and three counted branches — the platform's threshold, since neither the project nor the
+   * repository declares one ({@code featureFreeze.source} PLATFORM), so it is frozen — and the
+   * request queued behind it holds {@code main} and a fourth, PENDING, unfolded, saying what it waits
+   * for. No source joined past the freeze, so every {@code explicitJoin} is false. Rows written
+   * straight to the table at fixed minutes, as the other list states write theirs: the {@code
+   * feature} flags are what a source was stamped with when it was added, and the active one is
+   * not folded yet either, so no gate read depends on the state machine's timing. {@code requestId}
+   * names the frozen request, {@code queuedRequestId} and {@code queuedRequestQualifiedId} the queued
+   * one.
+   */
+  private Setup aFrozenReleaseRequestWithAQueuedNextRequest() {
+    String token = token();
+    Project project = project(token, A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST);
+    String repoId =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    seededRepos.add(repoId);
+    String active =
+        releaseRow(
+            project, repoId, "contract-service", "Release the CSV export", State.PENDING, 1, null,
+            row -> {});
+    source(active, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 2, false);
+    source(active, "ticket/contract-11", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 3, true);
+    source(active, "ticket/contract-12", eu.wohlben.qits.projects.entity.ReleasePriority.HIGH, 4, true);
+    source(active, "epic/contract-13", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 5, true);
+    String activeQualifiedId =
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequest.<ReleaseRequest>findById(active).qualifiedId);
+    String queued =
+        releaseRow(
+            project, repoId, "contract-service", "Release the PDF export", State.PENDING, 6, null,
+            row -> {
+              row.queuedBehind = active;
+              row.detail =
+                  eu.wohlben.qits.projects.control.ReleaseRequests.queuedDetail(activeQualifiedId);
+            });
+    source(queued, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 7, false);
+    source(queued, "ticket/contract-14", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 8, true);
+    String queuedQualifiedId =
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequest.<ReleaseRequest>findById(queued).qualifiedId);
+    return new Setup(
+        params(
+            "projectId",
+            project.id,
+            "repositoryId",
+            repoId,
+            "requestId",
+            active,
+            "queuedRequestId",
+            queued,
+            "queuedRequestQualifiedId",
+            queuedQualifiedId),
+        List.of(token));
+  }
+
   /** The suite request's branches: main, the bump (urgent) and the README change (not). */
   private void estateSources(String requestId) {
     source(requestId, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 9);
@@ -2912,6 +2978,16 @@ public class ProviderStates {
 
   private void source(
       String requestId, String branch, eu.wohlben.qits.projects.entity.ReleasePriority priority, int minute) {
+    source(requestId, branch, priority, minute, false);
+  }
+
+  /** A named source stamped {@code feature} (epic qits-1580), as a classification would have. */
+  private void source(
+      String requestId,
+      String branch,
+      eu.wohlben.qits.projects.entity.ReleasePriority priority,
+      int minute,
+      boolean feature) {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -2923,6 +2999,7 @@ public class ProviderStates {
               source.priority = priority;
               source.addedAt = SEEDED_AT.plusSeconds(60L * minute);
               source.addedBy = SEEDER;
+              source.feature = feature;
               source.persist();
             });
   }

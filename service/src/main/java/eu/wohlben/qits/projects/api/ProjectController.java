@@ -14,10 +14,12 @@ import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.mapper.ProjectMapper;
 import eu.wohlben.qits.projects.mapper.RepositoryMapper;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
+import eu.wohlben.qits.projects.security.AgentAccess;
 import eu.wohlben.qits.projects.validation.DnsFqdn;
 import eu.wohlben.qits.projects.validation.DnsRecordValue;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import eu.wohlben.qits.projects.validation.ProjectSlug;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -64,6 +66,24 @@ public class ProjectController {
   @Inject ProjectMapper projectMapper;
 
   @Inject RepositoryMapper repositoryMapper;
+
+  @Inject SecurityIdentity identity;
+
+  /**
+   * The project's delivery desk ({@code qits:desk}, qits-1596) holds the coordinator's project
+   * writes here — the name and description, the dns reconcile, the repository reconcile and the two
+   * additive creates (as {@code qits:agent}) — bound to its token's {@code project}: the project is
+   * read first, so an unknown id is still a 404, then another project's is a 403. Every other caller
+   * passes untouched. Creating a project, deleting one and the backup push stay off the desk: a new
+   * project is outside the one it is bound to, deleting its own takes the desk and its rights with
+   * it, and a backup is a push.
+   */
+  private void requireDeskProject(String projectId) {
+    if (AgentAccess.isDesk(identity)) {
+      projectService.get(projectId); // 404 for an unknown project, before the binding
+      AgentAccess.requireDeskProject(identity, projectId);
+    }
+  }
 
   // --- Project CRUD ---
 
@@ -184,8 +204,10 @@ public class ProjectController {
 
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   public UpdateProjectRequest.Response update(
       @PathParam("id") String id, @Valid UpdateProjectRequest request) {
+    requireDeskProject(id);
     var project = projectService.update(id, request.name(), request.description());
     return new UpdateProjectRequest.Response(projectMapper.toDto(project));
   }
@@ -223,6 +245,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/reconcile")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       summary = "Re-assert a project's domain through the dns registrar",
       description =
@@ -237,8 +260,10 @@ public class ProjectController {
       responseCode = "200",
       description =
           "The reconcile ran. A failed re-assertion is still a 200 — the outcome is the result.")
+  @APIResponse(responseCode = "403", description = "The delivery desk naming another project")
   @APIResponse(responseCode = "404", description = "No such project")
   public ReconcileProjectRequest.Response reconcile(@PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     var reconciliation = projectReconcileService.reconcile(projectId);
     return new ReconcileProjectRequest.Response(
         reconciliation.domain().outcome(), reconciliation.domain().detail());
@@ -472,6 +497,7 @@ public class ProjectController {
               + " commit the git host refused")
   public CreateProjectRepositoryRequest.Response createRepository(
       @PathParam("projectId") String projectId, @Valid CreateProjectRepositoryRequest request) {
+    requireDeskProject(projectId);
     var created =
         projectService.createRepository(
             projectId,
@@ -531,6 +557,7 @@ public class ProjectController {
   @APIResponse(responseCode = "404", description = "No such project")
   public jakarta.ws.rs.core.Response ensureAgentConfigRepository(
       @PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     var ensured = projectService.ensureAgentConfigRepository(projectId);
     return jakarta.ws.rs.core.Response.status(
             ensured.created()
@@ -651,6 +678,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/repositories/reconcile")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       summary = "Bring a project's repositories in line with its wrapper's .gitmodules",
       description =
@@ -667,9 +695,11 @@ public class ProjectController {
       description =
           "The reconcile ran. A per-entry failure is still a 200 — the outcomes are the result.")
   @APIResponse(responseCode = "400", description = "The project has no wrapper repository")
+  @APIResponse(responseCode = "403", description = "The delivery desk naming another project")
   @APIResponse(responseCode = "404", description = "No such project")
   public ReconcileProjectRepositoriesRequest.Response reconcileRepositories(
       @PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     var reconciliation = wrapperReconcileService.reconcile(projectId);
     return new ReconcileProjectRepositoriesRequest.Response(
         reconciliation.projectId(),

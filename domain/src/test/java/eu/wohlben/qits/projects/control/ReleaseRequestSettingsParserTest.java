@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,5 +64,42 @@ class ReleaseRequestSettingsParserTest {
             ReleaseRequestSettingsException.class, () -> parser.parse("manual-review: maybe\n"));
     assertTrue(e.getMessage().contains(ReleaseRequestSettingsParser.MANUAL_REVIEW));
     assertTrue(e.getMessage().contains(ReleaseRequestSettingsParser.SETTINGS_PATH));
+  }
+
+  // ---- feature_freeze (epic qits-1580) ---------------------------------------------------------
+
+  @Test
+  void anAbsentFeatureFreezeIsNullSoTheProjectDecides() {
+    assertNull(parser.parse(null).featureFreeze());
+    assertNull(parser.parse("manual-review: true\n").featureFreeze());
+    assertEquals(new ReleaseRequestSettings(true, null), parser.parse("manual-review: true\n"));
+  }
+
+  @Test
+  void aStatedFeatureFreezeIsReadBesideManualReviewAndZeroIsAValue() {
+    ReleaseRequestSettings both = parser.parse("manual-review: true\nfeature_freeze: 5\n");
+    assertTrue(both.manualReview());
+    assertEquals(5, both.featureFreeze());
+    assertEquals(0, parser.parse("feature_freeze: 0\n").featureFreeze());
+    assertEquals(20, parser.parse("feature_freeze: 20\n").featureFreeze());
+    assertFalse(parser.parse("feature_freeze: 2\n").manualReview());
+  }
+
+  @Test
+  void aMalformedFeatureFreezeThrowsNamingTheKeyTheRangeAndTheFile() {
+    for (String bad :
+        new String[] {
+          "feature_freeze: -1\n",
+          "feature_freeze: 21\n",
+          "feature_freeze: x\n",
+          "feature_freeze: \"3\"\n",
+          "feature_freeze: 2.5\n",
+        }) {
+      ReleaseRequestSettingsException e =
+          assertThrows(ReleaseRequestSettingsException.class, () -> parser.parse(bad), bad);
+      assertTrue(e.getMessage().contains("an integer from 0 to 20"), e.getMessage());
+      assertTrue(e.getMessage().contains(ReleaseRequestSettingsParser.FEATURE_FREEZE), e.getMessage());
+      assertTrue(e.getMessage().contains(ReleaseRequestSettingsParser.SETTINGS_PATH), e.getMessage());
+    }
   }
 }

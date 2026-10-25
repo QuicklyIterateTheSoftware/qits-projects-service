@@ -58,6 +58,7 @@ class AgentReadAccessTest {
   private static final String AGENT = "qits:agent";
   private static final String ADMIN = "qits:admin";
   private static final String ADMIN_AGENT = "qits:admin-agent";
+  private static final String DESK = "qits:desk";
 
   private static final List<Class<?>> CLASSES =
       List.of(
@@ -269,6 +270,95 @@ class AgentReadAccessTest {
           "WorkController.setStatus",
           "WorkCommentController.list",
           "WorkCommentController.add");
+
+  /**
+   * <b>The coordinator's writes the delivery desk may not make</b> (qits-1596). The desk ({@code
+   * qits:agent} + {@code qits:desk}) holds every write {@code qits:admin-agent} holds — named by
+   * {@code qits:desk} on the door, or reached through the {@code qits:agent} it also carries, bound
+   * to its project either way — except these, which must name neither role:
+   *
+   * <ul>
+   *   <li><b>its own rights</b>: its brief (the surface editor), its container and the tokens it
+   *       carries, the front desk it runs in, the runners that place it, and the external MCP
+   *       servers and harness capabilities its surface is built from;
+   *   <li><b>a commit, a push or any other written ref</b>: the branch and repository deletes, pull,
+   *       push, sync and both backup pushes, the tag collection, and a new project (whose wrapper is
+   *       a first commit) — besides which a new project and a deleted one are outside the one
+   *       project it is bound to.
+   * </ul>
+   *
+   * <p>The release-request create and join admit {@code qits:agent} for an agent's own branch and
+   * refuse the desk in their bodies ({@code UpstreamOverrideDoorTest} pins that).
+   */
+  private static final Set<String> DESK_REFUSED_WRITES =
+      Set.of(
+          "AgentSurfaceConfigurationController.update",
+          "AgentContainerController.ensure",
+          "AgentContainerController.stop",
+          "AgentContainerController.delete",
+          "ProjectFrontDeskController.prompt",
+          "DeskRunnerController.create",
+          "DeskRunnerController.patch",
+          "DeskRunnerController.rotateRegistrationToken",
+          "DeskRunnerController.delete",
+          "DeskRunnerController.greenlight",
+          "DeskRunnerController.loginCheck",
+          "AgentMcpCatalogController.save",
+          "AgentMcpCatalogController.delete",
+          "AgentCapabilityController.report",
+          "GcController.collectTags",
+          "ProjectController.create",
+          "ProjectController.delete",
+          "ProjectController.backupSyncProject",
+          "RepositoryController.deleteBranch",
+          "RepositoryController.delete",
+          "RepositoryController.pull",
+          "RepositoryController.push",
+          "RepositoryController.sync",
+          "RepositoryController.backupSync");
+
+  /**
+   * qits-1596: every write the coordinator ({@code qits:admin-agent}) makes, the delivery desk
+   * reaches too — by {@code qits:desk} on the door or through its {@code qits:agent} — unless it is
+   * one of {@link #DESK_REFUSED_WRITES}. A new coordinator write that forgets the desk turns this
+   * red, and so does one that lands in neither list.
+   */
+  @TestFactory
+  Stream<DynamicTest> theDeskReachesEveryCoordinatorWriteButTheRefusedOnes() {
+    return CLASSES.stream()
+        .map(
+            type ->
+                DynamicTest.dynamicTest(
+                    type.getSimpleName(),
+                    () -> {
+                      for (Method method : type.getDeclaredMethods()) {
+                        if (!isWrite(method)) {
+                          continue;
+                        }
+                        String name = type.getSimpleName() + "." + method.getName();
+                        List<String> roles = roles(type, method);
+                        if (!roles.contains(ADMIN_AGENT) || DESK_REFUSED_WRITES.contains(name)) {
+                          continue;
+                        }
+                        assertTrue(
+                            roles.contains(DESK) || roles.contains(AGENT),
+                            name + " is a coordinator write the delivery desk must reach, or a"
+                                + " declared refusal");
+                      }
+                    }));
+  }
+
+  /** The desk's refusals resolve to writes and admit neither of the desk's two roles. */
+  @Test
+  void theDeskNeverReachesItsOwnRightsOrAPush() {
+    for (String name : DESK_REFUSED_WRITES) {
+      Method method = declared(name);
+      assertTrue(isWrite(method), name + " must be a write route");
+      List<String> roles = roles(method.getDeclaringClass(), method);
+      assertFalse(roles.contains(DESK), name + " must not admit " + DESK);
+      assertFalse(roles.contains(AGENT), name + " must not admit " + AGENT + ", which the desk holds");
+    }
+  }
 
   /**
    * <b>qits:admin-agent is admitted wherever qits:admin is</b> (qits-628 follow-up, owner's rule:

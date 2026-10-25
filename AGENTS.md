@@ -729,6 +729,33 @@ write** (user ruling, 2026-09-12):
   every caller while `qits.auth.machine.required` is off, and an agent role that came from a
   forwarded header carries no token, so it is refused every write.
 
+**The delivery desk holds the coordinator's writes** (qits-1596). A `desk-delivery` token
+(`qits:agent` + `qits:desk`, a `project` claim) reaches every write `qits:admin-agent` reaches,
+bound to its project, except a commit or a push and a change to its own rights:
+
+- **Admitted**, by `qits:desk` on the door or through its `qits:agent`: the entity writes, an
+  epic's SUPERSEDED and an epic's or a ticket's delete (`WorkEntityDoors`), a comment's delete, the
+  dispatch press, the refinement open and the room's writes (`RefinementAccess.reachWrite`), a
+  project's name/description and both reconciles, a repository's rename and main branch, the
+  release-request withdraw/priority/reruns (as a bound agent), and the person doors below. The
+  binding is `AgentAccess.isDesk`/`requireDeskProject` and `EntitiesAgentAccess.requireProject`
+  (which binds a desk as it binds an agent); `qits:desk` is never one of `isBoundAgent`'s wider
+  roles. The resource is read first, so an unknown id is still a 404.
+- **Person doors**: `PersonCheck.requireAdminOrDesk(projectId)` answers a verified person's name,
+  else the desk's token subject under `ApproverCheck.desk`'s proof, else 403 — the automations
+  waiver, the upstream override and a campaign criterion's approval record the desk as actor.
+- **Kept as the owner's**: scheduling (REFINED → READY_FOR_DEV) and which approvals the desk
+  gives. `PERSON_APPROVAL` passes a desk `Mover` only under the dispatch path's `start_refined`
+  stamp, for its own project's row, and the desk's approver holds `desk` alone, never `agent`, so
+  it approves only what `front_desk.delivery.approves` hands it. Both settings are the owner's in
+  `.config/qits/project.yml`; qits-1596 deliberately did not widen them.
+- **Refused**: release-request create and join (`refuseDesk`, in the body — the routes admit
+  `qits:agent`); the doors over its own rights (`AgentSurfaceConfigurationController`,
+  `AgentContainerController`, `ProjectFrontDeskController`, `DeskRunnerController`'s writes, the
+  MCP catalogue and the capability report); everything that writes or deletes a ref (branch and
+  repository delete, pull, push, sync, both backup pushes, tag GC, the remote-login push, a new
+  project) and a project's delete. `AgentReadAccessTest.DESK_REFUSED_WRITES` pins the list.
+
 **Four routes take both roles**, because a sibling service and a browser read each of them:
 `GET /projects` (the bootstrap turning the project's name into its id, and the projects overview),
 `GET /projects/{projectId}/repositories` (qits-workspaces creating an aggregate branch, and the
@@ -1265,8 +1292,11 @@ approval's roles. The display path stores the content requirements as JSON objec
 - **The delivery desk** (epic qits-1440, qits-1498): role `desk` / `desk@<slug>`
   (`ApprovalRole.Kind.DESK`, project-scoped like `agent`). `ApproverCheck` gives a validated idp JWT
   with `qits:agent` **and** `qits:desk`, `context_kind` `desk-delivery`, no `clients/…` group but its
-  own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`),
-  named by its `sub`.
+  own and a `project` claim `desk` of that project and nothing else (not `agent`, never `person`;
+  qits-1596 kept it so — `approves` is the owner's control), named by its `sub`. It decides only
+  its own project's requests: another project's desk is a 403 on approve and decline before
+  anything is read, and its approval-eligibility lists nothing
+  (`ReleaseRequests.requireOwnProjectOfDesk`).
   No source admits it: `ApprovalPolicy.admitDesk`, once after the sources answer, adds `desk` to a
   requirement the project's `front_desk.delivery.approves` admits (`ApprovalPolicy.deskAdmissible`),
   intersected with `DeliverySettings.APPROVABLE` (`manual-review`, `artifact-declarations`,

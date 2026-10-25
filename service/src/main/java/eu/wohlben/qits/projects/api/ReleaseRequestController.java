@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
+import eu.wohlben.qits.projects.dto.PlacementDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * The release requests: the asynchronous ask that replaces calling the release door blind. A
@@ -134,16 +136,47 @@ public class ReleaseRequestController {
    */
   public static record CreateReleaseRequest(
       @NotBlank String branch, @NotBlank String summary, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580): created, joined or already
+     *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
+     */
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580, the soft feature freeze). Once the"
+                        + " repository's active request holds as many counted sources as the"
+                        + " threshold in force, it is frozen. Counted are branches naming a work"
+                        + " item (epics, tasks, tickets of any type); main, maintenance/* and"
+                        + " release/* never count. The threshold is the repository's own"
+                        + " feature_freeze in .config/qits/release-requests.yml, else the project's"
+                        + " release_requests.feature_freeze, else 3, and 0 turns it off. While it is"
+                        + " frozen, every branch new to the repository's requests (a feature, a bug"
+                        + " fix or a maintenance bump) lands in the one request queued behind it,"
+                        + " minted if absent, which folds nothing and runs no gate until the active"
+                        + " request has released or been withdrawn. A branch already a source of an"
+                        + " unreleased request answers PRESENT where it is. outcome is CREATED,"
+                        + " JOINED or PRESENT, queued says the answering request is queued, and"
+                        + " detail is one sentence saying where the branch went.")
+            PlacementDto placement) {}
   }
 
   /**
    * <b>Creates, converges on, or joins</b> the repository's one open release request.
    *
-   * <p>Which of the three happened is not a field on the answer and does not need to be: the
-   * response is the whole {@link ReleaseRequestDto}, so a caller that kept the id it was given last
-   * time can see it is the same one, and a caller that has never seen this request can see the
-   * source list carrying branches it never named.
+   * <p>Which of the three happened is the answer's {@code placement} (epic qits-1580): {@code
+   * CREATED}, {@code JOINED} or {@code PRESENT}, whether the request is queued behind a frozen one,
+   * and a sentence saying so, beside the whole {@link ReleaseRequestDto}.
+   *
+   * <p><b>The soft feature freeze</b> (epic qits-1580) decides which request a branch joins: once
+   * the repository's active request holds as many counted sources (branches naming a work item, of
+   * any type) as the threshold in force — the repository's own {@code feature_freeze} in {@code
+   * .config/qits/release-requests.yml}, else its project's {@code release_requests.feature_freeze},
+   * else 3; 0 turns it off — it is frozen, and <b>every</b> branch new to the repository's requests
+   * lands in the request queued behind it: features, bug fixes and {@code maintenance/*} bumps alike.
+   * The queued request holds — no fold, no gate — until the active one has released or been
+   * withdrawn. A branch already a source answers PRESENT where it is, so {@code main} never queues.
+   * {@code ReleaseRequests.place} is the rule.
    *
    * <p><b>Joining is the case worth reading about.</b> A repository has at most one open request,
    * whatever its archetype (qits-552), so two workspaces releasing one repository on the same night
@@ -196,14 +229,17 @@ public class ReleaseRequestController {
               + " ReleaseRequestChanged with preRun=PENDING while its release-request automations"
               + " (the pre-run) settle, and with preRun=DONE once per fold when they are fresh or"
               + " waived; QA builds on DONE only, and preRun.state on the answer says where the"
-              + " pre-run stands.")
+              + " pre-run stands. The project's delivery desk (qits:desk) answers 403: it never"
+              + " opens or joins a release request.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
+    refuseDesk("open a release request");
     requireAgentProject(repoId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new CreateReleaseRequest.Response(
-        releaseRequests.request(
-            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.ask(
+            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority());
+    return new CreateReleaseRequest.Response(asked.request(), asked.placement());
   }
 
   /**
@@ -214,7 +250,22 @@ public class ReleaseRequestController {
    */
   public static record AddReleaseRequestSource(
       @NotBlank String branch, String requester, String priority) {
-    public record Response(ReleaseRequestDto request) {}
+    /**
+     * @param placement where the branch landed and why (epic qits-1580) — always the request named:
+     *     a join that names a frozen request is admitted past the freeze, and says so
+     */
+    public record Response(
+        ReleaseRequestDto request,
+        @Schema(
+                description =
+                    "Where the branch landed (epic qits-1580). An explicit join overrides the soft"
+                        + " feature freeze: a request frozen at its threshold admits any branch"
+                        + " named onto it here (a feature, a bug fix or a maintenance branch), and"
+                        + " the new source carries explicitJoin true, with a detail saying it joined"
+                        + " a frozen request explicitly. From RELEASED on no join is accepted: the"
+                        + " 409 says the request is released and names the repository's next"
+                        + " unreleased request by qualified id, if there is one.")
+            PlacementDto placement) {}
   }
 
   @POST
@@ -227,17 +278,19 @@ public class ReleaseRequestController {
               + " gates are re-armed onto it. Idempotent: a branch already on the request answers"
               + " the request unchanged. A RELEASED or WITHDRAWN request answers 409. Implicit tag"
               + " sources are not addable — they are derived from what the repository has in"
-              + " flight.")
+              + " flight. The project's delivery desk (qits:desk) answers 403: it never joins a"
+              + " branch to a request.")
   public AddReleaseRequestSource.Response addSource(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       AddReleaseRequestSource body) {
+    refuseDesk("add a branch to a release request");
     requestId = releaseRequests.resolveId(repoId, requestId);
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
-    return new AddReleaseRequestSource.Response(
-        releaseRequests.addSource(
-            requestId, body.branch(), actorFor(body.requester()), body.priority()));
+    ReleaseRequests.Asked asked =
+        releaseRequests.join(requestId, body.branch(), actorFor(body.requester()), body.priority());
+    return new AddReleaseRequestSource.Response(asked.request(), asked.placement());
   }
 
   /**
@@ -822,11 +875,13 @@ public class ReleaseRequestController {
    * is a sign-off, and a gate a machine could waive is not this gate.
    *
    * <p>{@code qits:admin-agent} is admitted too (qits-628 follow-up); remove it here if this door
-   * must stay human-only.
+   * must stay human-only. So is the project's delivery desk (qits-1596), proved from its own
+   * delivery token and bound to its project ({@link PersonCheck#requireAdminOrDesk}); the desk's
+   * token subject is the actor recorded.
    */
   @POST
   @Path("/{requestId}/automations/waivers")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "waiveReleaseRequestAutomations",
       summary = "Waive the automations gate for this request's current fold",
@@ -836,16 +891,18 @@ public class ReleaseRequestController {
               + " re-fold leaves the waiver behind and the gate holds again. The gate is re-asked"
               + " immediately and the request comes back as it then stands. 409 also for a request"
               + " that is READY or has concluded, one with no fold yet, and a repository the"
-              + " automations gate does not hold; 400 for a blank foldSha or reason. A person only:"
+              + " automations gate does not hold; 400 for a blank foldSha or reason. A person —"
               + " qits:admin, verified by this service from a browser session or a person's qits"
-              + " CLI token — asserted identity headers alone answer 403. qits:admin-agent admitted"
-              + " too (qits-628 follow-up); remove it here if this door must stay human-only.")
+              + " CLI token — or the project's delivery desk (qits:desk, its own delivery token, in"
+              + " its own project; recorded under its token subject). 403 for asserted identity"
+              + " headers alone, agents, service clients, and another project's desk."
+              + " qits:admin-agent admitted too (qits-628 follow-up).")
   public WaiveReleaseRequestAutomations.Response waiveAutomations(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       WaiveReleaseRequestAutomations body) {
     requestId = releaseRequests.resolveId(repoId, requestId);
-    String actor = persons.requireAdmin();
+    String actor = personOrDesk(repoId, requestId);
     return new WaiveReleaseRequestAutomations.Response(
         releaseRequests.waiveAutomations(
             repoId,
@@ -867,14 +924,16 @@ public class ReleaseRequestController {
 
   /**
    * <b>Override gate 3 for one upstream request</b> (epic qits-897, qits-914): this request may
-   * start QA although that upstream request is still building. A person only: {@link
-   * #waiveAutomations}' roles — approve's person roles, without the {@code qits:agent} that approve
-   * admits for its eligibility rules — and then {@link PersonCheck}, whose answer is the name
-   * recorded. An agent or a machine that could lift the gate would make it no gate.
+   * start QA although that upstream request is still building. A person or the project's delivery
+   * desk: {@link #waiveAutomations}' roles — approve's person roles and {@code qits:desk}, without
+   * the {@code qits:agent} that approve admits for its eligibility rules — and then {@link
+   * PersonCheck#requireAdminOrDesk}, whose answer is the name recorded (the desk's token subject,
+   * qits-1596). An agent or a machine that could lift the gate would make it no gate; the desk is
+   * the owner's own loop, bound to its project.
    */
   @POST
   @Path("/{requestId}/upstream-overrides")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "overrideReleaseRequestUpstream",
       summary = "Let this request start QA although one upstream request is still building",
@@ -891,15 +950,17 @@ public class ReleaseRequestController {
               + " who overrode. 404 for a request or upstream request that does not exist; 409"
               + " unless the request is PENDING with a fold and no QA verdict at it; 409 'The"
               + " override is moot' unless the upstream request is building now and upstream of"
-              + " this one. Only a person may: qits:admin, verified by this service from a browser"
-              + " session or a person's qits CLI token. Asserted identity headers, service clients,"
-              + " agents and qits:system answer 403.")
+              + " this one. Only a person — qits:admin, verified by this service from a browser"
+              + " session or a person's qits CLI token — or the project's delivery desk (qits:desk,"
+              + " its own delivery token, in its own project; recorded under its token subject)."
+              + " Asserted identity headers, service clients, agents, qits:system and another"
+              + " project's desk answer 403.")
   public OverrideReleaseRequestUpstream.Response overrideUpstream(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       OverrideReleaseRequestUpstream body) {
     requestId = releaseRequests.resolveId(repoId, requestId);
-    String actor = persons.requireAdmin();
+    String actor = personOrDesk(repoId, requestId);
     return new OverrideReleaseRequestUpstream.Response(
         releaseRequests.overrideUpstream(
             requestId,
@@ -919,6 +980,42 @@ public class ReleaseRequestController {
   private static final String[] WIDER = {
     AgentAccess.ADMIN_ROLE, AgentAccess.ADMIN_AGENT_ROLE, AgentAccess.SYSTEM_ROLE
   };
+
+  /**
+   * The delivery desk never opens a release request and never joins one (qits-1596): it holds the
+   * coordinator's rights except a commit or a push, and putting a branch on a request is how a
+   * change reaches main. Refused by the role, before anything is read, so the refusal does not
+   * depend on its empty {@code git_refs}.
+   */
+  private void refuseDesk(String what) {
+    if (AgentAccess.isDesk(identity)) {
+      throw new DomainException(
+          403, "The delivery desk does not " + what + "; the work's own agent does.");
+    }
+  }
+
+  /**
+   * A verified person's name, or the delivery desk's token subject when the desk decides in its
+   * own project (qits-1596). The project is the repository's; a desk is also held to the request
+   * being that repository's, as a bound agent is.
+   */
+  private String personOrDesk(String repoId, String requestId) {
+    Repository repository = repositories.get(repoId); // 404 if absent
+    String projectId = repository.project == null ? null : repository.project.id;
+    String actor = persons.requireAdminOrDesk(projectId);
+    if (AgentAccess.isDesk(identity)
+        && persons.verifiedAdmin().isEmpty()
+        && !repoId.equals(releaseRequests.get(requestId).repoId())) {
+      throw new DomainException(
+          403,
+          "Release request "
+              + releaseRequests.get(requestId).qualifiedId()
+              + " is not a request of repository "
+              + repoId
+              + ".");
+    }
+    return actor;
+  }
 
   /** A bound agent reaches only the repositories of its own project. */
   private void requireAgentProject(String repoId) {

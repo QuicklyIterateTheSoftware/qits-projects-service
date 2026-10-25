@@ -1330,6 +1330,102 @@
       ]
     },
     {
+      "name": "a frozen release request with a queued next request",
+      "slug": "a-frozen-release-request-with-a-queued-next-request",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "queuedRequestId": "00000000-0000-4000-8000-000000000002",
+        "queuedRequestQualifiedId": "contract-service-rr-2",
+        "repositoryId": "00000000-0000-4000-8000-000000000003",
+        "requestId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getProjectReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/release-requests/{queuedRequestQualifiedId}",
+          "status": 200,
+          "file": "a-frozen-release-request-with-a-queued-next-request/getProjectReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.queuedBehind"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-frozen-release-request-with-a-queued-next-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.queuedNext"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/release-requests",
+          "status": 200,
+          "file": "a-frozen-release-request-with-a-queued-next-request/listProjectReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].queuedBehind",
+              "$.requests[*].queuedNext"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "status": 200,
+          "file": "a-frozen-release-request-with-a-queued-next-request/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].queuedBehind",
+              "$.requests[*].queuedNext"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a maintenance ticket in detail",
       "slug": "a-maintenance-ticket-in-detail",
       "params": {

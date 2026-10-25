@@ -43,7 +43,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * except approve — a person's sign-off, {@code qits:admin} and then a verified person.
  * {@code qits:admin-agent} is admitted too, everywhere {@code qits:admin} is, approve included
  * (qits-628 follow-up); remove it from approve if that door must stay human-only — the verified
- * person check beneath it still refuses a commissioned bearer today.
+ * person check beneath it still refuses a commissioned bearer today. The one commissioned bearer it
+ * admits is the campaign's own project's delivery desk ({@code qits:desk}, qits-1596), proved from
+ * its delivery token by {@code PersonCheck.requireAdminOrDesk}.
  *
  * <p>The move and the remove answer the membership as they left it, {@code {"members": […]}}, the
  * list the read answers; the add, the condition and the approve answer the one member.
@@ -258,13 +260,16 @@ public class WorkMembersController {
 
   @POST
   @Path("/{membershipId}/criteria/{criterionId}/approve")
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
   @Operation(
       operationId = "approveWorkMemberCriterion",
       summary = "A person's yes on a member's APPROVAL criterion",
       description =
           "qits:admin, and then a person this service verified itself; the name recorded is the"
-              + " proof's. Refused when the criterion is not APPROVAL, is already satisfied, or the"
-              + " campaign is DONE or DROPPED.")
+              + " proof's. The campaign's own project's delivery desk (qits:desk, its own delivery"
+              + " token) may approve too, recorded under its token subject. Refused when the"
+              + " criterion is not APPROVAL, is already satisfied, or the campaign is DONE or"
+              + " DROPPED.")
   @APIResponse(
       responseCode = "200",
       description = "The member with the criterion satisfied",
@@ -272,7 +277,9 @@ public class WorkMembersController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = WorkMemberAnswer.class)))
-  @APIResponse(responseCode = "403", description = "Not a verified person")
+  @APIResponse(
+      responseCode = "403",
+      description = "Neither a verified person nor this campaign's project's delivery desk")
   @APIResponse(responseCode = "404", description = "No campaign, membership or criterion")
   @APIResponse(responseCode = "409", description = "Not an APPROVAL, already satisfied, or closed")
   public WorkMemberAnswer approve(

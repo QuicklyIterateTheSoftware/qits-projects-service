@@ -620,6 +620,11 @@ class ConsumerPactVerificationTest {
         ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH);
   }
 
+  @State(ProviderStates.A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST)
+  Map<String, String> aFrozenReleaseRequestWithAQueuedNextRequest() {
+    return states.params(ProviderStates.A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST);
+  }
+
   @State(ProviderStates.A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN)
   Map<String, String> aRepositoryWithAReleaseNotMergedToMain() {
     return states.params(ProviderStates.A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN);

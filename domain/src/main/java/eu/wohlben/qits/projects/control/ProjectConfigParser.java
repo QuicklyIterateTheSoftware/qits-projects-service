@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
+import eu.wohlben.qits.projects.control.ProjectConfig.ReleaseRequestsSettings;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.LinkedHashMap;
@@ -31,7 +32,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * same holds for {@code front_desk.delivery} (epic qits-1440): absent is {@link
  * DeliverySettings#OFF}, an absent key inside it is that key's default, and a value of the wrong
  * type, out of its range or (for {@code approves}) outside {@link DeliverySettings#APPROVABLE}
- * throws. Absence of the file, absence of the key and an explicit {@code true} are one
+ * throws. {@code release_requests} (epic qits-1580) reads the same way: absent is {@link
+ * ReleaseRequestsSettings#DEFAULT} (nothing declared, the platform's fallback applies), and a
+ * {@code feature_freeze} that is not an integer from 0 (the freeze off) to 20 throws. Absence of the file, absence of the key and an explicit {@code true} are one
  * answer — {@link ProjectConfig#DEFAULT}, the project supports environments — and only an explicit
  * {@code false} changes anything. Degrading a malformed declaration to either value would let a typo
  * re-route a project's deployments silently, which is the one outcome this seam exists to prevent;
@@ -81,6 +84,15 @@ public class ProjectConfigParser {
    */
   public static final String DELIVERY_APPROVES = "approves";
 
+  /** The nested map that declares the project's release requests (epic qits-1580). */
+  public static final String RELEASE_REQUESTS = "release_requests";
+
+  /**
+   * Under {@link #RELEASE_REQUESTS}: the soft feature freeze, an integer 0..20 where 0 turns it off;
+   * absent is undeclared, and the platform's 3 applies unless the repository declares its own.
+   */
+  public static final String FEATURE_FREEZE = "feature_freeze";
+
   /** A structural problem in {@link #CONFIG_PATH}. It names the file; see the class javadoc. */
   public static class ProjectConfigException extends RuntimeException {
     public ProjectConfigException(String message) {
@@ -124,7 +136,10 @@ public class ProjectConfigParser {
     raw.forEach((k, v) -> map.put(String.valueOf(k), v));
 
     return new ProjectConfig(
-        supportsEnvironmentsOf(map), frontDeskLifecycleOf(map), deliveryOf(map));
+        supportsEnvironmentsOf(map),
+        frontDeskLifecycleOf(map),
+        deliveryOf(map),
+        releaseRequestsOf(map));
   }
 
   private static boolean supportsEnvironmentsOf(Map<String, Object> map) {
@@ -206,6 +221,47 @@ public class ProjectConfigParser {
         maxRunningOf(loop.get(DELIVERY_MAX_RUNNING)),
         booleanAt(loop, DELIVERY_START_REFINED, false),
         approvesOf(loop.get(DELIVERY_APPROVES)));
+  }
+
+  private static ReleaseRequestsSettings releaseRequestsOf(Map<String, Object> map) {
+    Object releaseRequests = map.get(RELEASE_REQUESTS);
+    if (releaseRequests == null) {
+      return ReleaseRequestsSettings.DEFAULT;
+    }
+    if (!(releaseRequests instanceof Map<?, ?> settings)) {
+      throw new ProjectConfigException(
+          "Expected a mapping at '"
+              + RELEASE_REQUESTS
+              + "' in "
+              + CONFIG_PATH
+              + ", got: "
+              + releaseRequests.getClass().getSimpleName());
+    }
+    return new ReleaseRequestsSettings(featureFreezeOf(settings.get(FEATURE_FREEZE)));
+  }
+
+  private static Integer featureFreezeOf(Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof Integer count)
+        || count < ReleaseRequestsSettings.MIN_FEATURE_FREEZE
+        || count > ReleaseRequestsSettings.MAX_FEATURE_FREEZE) {
+      throw new ProjectConfigException(
+          "Expected an integer from "
+              + ReleaseRequestsSettings.MIN_FEATURE_FREEZE
+              + " to "
+              + ReleaseRequestsSettings.MAX_FEATURE_FREEZE
+              + " (0 turns the freeze off) at '"
+              + RELEASE_REQUESTS
+              + "."
+              + FEATURE_FREEZE
+              + "' in "
+              + CONFIG_PATH
+              + ", got: "
+              + value);
+    }
+    return count;
   }
 
   private static boolean booleanAt(Map<?, ?> loop, String key, boolean absent) {

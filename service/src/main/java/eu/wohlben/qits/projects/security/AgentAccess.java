@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.security;
 
 import eu.wohlben.qits.auth.MachineIdentity;
 import eu.wohlben.qits.auth.QitsClaims;
+import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.json.JsonString;
 import java.util.ArrayList;
@@ -43,6 +44,16 @@ public final class AgentAccess {
    */
   public static final String ADMIN_AGENT_ROLE = "qits:admin-agent";
 
+  /**
+   * A project's delivery desk (epic qits-1440): its {@code desk-delivery} token carries this beside
+   * {@link #AGENT_ROLE}. Since qits-1596 it opens the coordinator's ({@link #ADMIN_AGENT_ROLE})
+   * writes, bound to the token's {@code project} ({@link #isDesk}), except the commits and pushes
+   * and the doors that would change the desk's own rights. It is <b>never</b> one of the wider roles
+   * {@link #isBoundAgent} is handed: the desk holds {@code qits:agent} too, and on a door that
+   * admits an agent it is bound like one.
+   */
+  public static final String DESK_ROLE = "qits:desk";
+
   /** The claim that lists the Git refs a token may push (plan contract C1). */
   public static final String GIT_REFS_CLAIM = "git_refs";
 
@@ -65,6 +76,34 @@ public final class AgentAccess {
       }
     }
     return true;
+  }
+
+  /**
+   * True when the caller comes in as a project's delivery desk (qits-1596): it holds {@link
+   * #DESK_ROLE} and none of {@code qits:admin}, {@code qits:admin-agent} or {@code qits:system}. Such
+   * a caller is bound to its token's {@code project} claim wherever a desk is admitted; a caller
+   * holding a wider role is judged by that role, as {@link #isBoundAgent} judges an agent.
+   */
+  public static boolean isDesk(SecurityIdentity identity) {
+    return identity != null
+        && !identity.isAnonymous()
+        && identity.hasRole(DESK_ROLE)
+        && !identity.hasRole(ADMIN_ROLE)
+        && !identity.hasRole(ADMIN_AGENT_ROLE)
+        && !identity.hasRole(SYSTEM_ROLE);
+  }
+
+  /**
+   * Refuses, with a 403, a {@linkplain #isDesk delivery desk} whose token's {@code project} claim
+   * does not cover {@code projectId}; every other caller passes untouched (qits-1596). Called with
+   * the project resolved from the row the write names, so an id naming nothing still answers 404
+   * first.
+   */
+  public static void requireDeskProject(SecurityIdentity identity, String projectId) {
+    if (isDesk(identity) && !coversProject(identity, projectId)) {
+      throw new DomainException(
+          403, "The delivery desk may act only in its own project, and this belongs to another.");
+    }
   }
 
   /** True when the token's {@code project} claim covers this project. */

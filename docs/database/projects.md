@@ -20,6 +20,7 @@ erDiagram
     string dns_value
     enum front_desk_lifecycle "not null"
     string name "not null"
+    int release_feature_freeze
     string slug
     boolean supports_environments "not null"
   }
@@ -36,6 +37,7 @@ erDiagram
     string main_branch
     long names_revision "not null"
     string project_id FK "not null"
+    int release_feature_freeze
     string url
   }
   %% agent_harness_capability: eu.wohlben.qits.projects.entity.AgentHarnessCapability (domain)
@@ -265,6 +267,7 @@ erDiagram
     string qa_announced_sha
     string qa_interrupted_sha
     string qualified_id "not null"
+    string queued_behind
     instant refold_owed_at
     string refold_owed_reason
     string rejecting_gate
@@ -319,6 +322,8 @@ erDiagram
     instant added_at "not null"
     string added_by
     uuid causation_id
+    boolean explicit_join "not null"
+    boolean feature "not null"
     enum kind "not null"
     string name "not null, length 512"
     enum priority "not null"

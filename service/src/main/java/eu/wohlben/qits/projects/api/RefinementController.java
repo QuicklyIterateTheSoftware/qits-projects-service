@@ -30,10 +30,13 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <p>The ensure and recreate verbs answer a technical-process id to watch; the work itself runs
  * off the request thread, behind an image pull if it must.
+ *
+ * <p>The lifecycle verbs admit the project's delivery desk ({@code qits:desk}, qits-1596) beside the
+ * person and the coordinator, bound to the room's project ({@link RefinementAccess#reachWrite}).
  */
 @Path("/refinements")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
 public class RefinementController {
 
   @Inject RefinementService refinements;
@@ -77,12 +80,17 @@ public class RefinementController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = ProcessResponse.class)))
+  @APIResponse(
+      responseCode = "403",
+      description =
+          "The credential is bound to another entity, or the delivery desk reaches another"
+              + " project's room")
   @APIResponse(responseCode = "404", description = "No refinement with this id")
   @APIResponse(
       responseCode = "409",
       description = "The container is already being worked on and no process is live")
   public ProcessResponse ensure(@PathParam("id") long id) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     String processId = refinements.ensureContainer(id);
     return new ProcessResponse(
         RefinementDto.of(refinements.view(refinements.get(id))), processId);
@@ -91,7 +99,7 @@ public class RefinementController {
   @POST
   @Path("/{id}/recreate-container")
   public ProcessResponse recreate(@PathParam("id") long id) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     String processId = refinements.recreateContainer(id);
     return new ProcessResponse(
         RefinementDto.of(refinements.view(refinements.get(id))), processId);
@@ -100,7 +108,7 @@ public class RefinementController {
   @POST
   @Path("/{id}/stop-container")
   public RefinementResponse stop(@PathParam("id") long id) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     return new RefinementResponse(RefinementDto.of(refinements.view(refinements.stopContainer(id))));
   }
 
@@ -138,9 +146,14 @@ public class RefinementController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = DiscardResponse.class)))
+  @APIResponse(
+      responseCode = "403",
+      description =
+          "The credential is bound to another entity, or the delivery desk reaches another"
+              + " project's room")
   @APIResponse(responseCode = "404", description = "No refinement with this id")
   public DiscardResponse discard(@PathParam("id") long id) {
-    RefinementAccess.reach(refinements, identity, id);
+    RefinementAccess.reachWrite(refinements, identity, id);
     refinements.discard(id);
     return new DiscardResponse(true);
   }
