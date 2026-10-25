@@ -209,16 +209,21 @@ erDiagram
   %% refinement: eu.wohlben.qits.projects.entity.Refinement (domain)
   refinement {
     long id PK "not null, generated"
-    string branch "not null"
+    string branch
     uuid causation_id
     text commissioned_client_id
     text commissioned_client_secret
     instant created_at "not null"
     string entity_id UK "not null"
     string label "not null"
-    string parent "not null"
+    instant last_demand_at
+    string parent
     string project_id "not null"
     string repository_id "not null"
+    text session_command_id
+    text session_detail
+    text session_id
+    text session_state
     text token_id
     text token_subject
     text token_value
