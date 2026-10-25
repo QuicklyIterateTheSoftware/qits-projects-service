@@ -14,6 +14,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.error.CodedRefusalException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.gitmirror.GitMirrorException;
@@ -34,11 +35,25 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The refinement lifecycle: find-or-create keyed by entity (an epic or a ticket), the ensure
- * ladder, stop, recreate, discard, and the row projection the status strip reads. The projects-side
+ * The refinement lifecycle: find-or-create keyed by entity (an epic, a ticket or a campaign), the
+ * session's demand (ensure, stop), discard, and the row projection the status strip reads.
+ *
+ * <h2>Two kinds of room (epic qits-770)</h2>
+ *
+ * <p><b>A room opened now is a session room</b>: one more session of the project's front desk, keyed
+ * by the entity id, wanted while its {@code last_demand_at} is inside {@code
+ * qits.projects.agent-idle-timeout} — see {@link RefinementSessions}. It cuts no branch, places no
+ * container and commissions no client. <b>A room opened before that is a legacy container room</b>
+ * ({@link Refinement#containerRoom()}: it has a {@code refining/<slug>} branch) and keeps the
+ * container ladder below until qits-1316 removes it; every door below answers both kinds, by that
+ * rule.
+ *
+ * <p>What follows describes the legacy container rooms. The projects-side
  * replacement for what the refining route used to take from qits-workspaces' {@code
  * WorkspaceService}, narrowed to what that route actually consumes.
  *
@@ -94,6 +109,28 @@ public class RefinementService {
   /** The room's own token (qits-1482): minted at the open, revoked by the discard. */
   @Inject RefinementTokens tokens;
 
+  /** A session room's desired list and its report (epic qits-770). */
+  @Inject RefinementSessions sessions;
+
+  /**
+   * Told whenever a session room's demand moves (epic qits-770), so the front desk is created and
+   * its desired state recomputed. Null in a hand-built service; a fire that fails is a WARN.
+   */
+  @Inject Event<RefinementDemandChanged> demandChanged;
+
+  /** The project's front desk, which a session room's answer reports beside its own state. */
+  @Inject Instance<RefinementDesk> desks;
+
+  /**
+   * How many session rooms of one project may want their session at once (epic qits-770): the open
+   * of one more, or the ensure of a stopped one, is a 409 naming the running ones.
+   */
+  @ConfigProperty(name = "qits.projects.refinement-sessions-max", defaultValue = "4")
+  int sessionsMax;
+
+  /** The 409 code of an open or ensure beyond {@link #sessionsMax}. */
+  public static final String REFINEMENT_SESSIONS_FULL = "REFINEMENT_SESSIONS_FULL";
+
   /**
    * Told whenever a room's token or row comes or goes (qits-1482), so the front desk re-sends its
    * daemon the session credentials. Null in a hand-built service; a fire that fails is a WARN.
@@ -142,69 +179,65 @@ public class RefinementService {
   // ---- find or create ----------------------------------------------------------------------
 
   /**
-   * The refinement of {@code entityId} — an epic or a ticket — created if it has none. Creation needs
-   * the entity itself — its archetype and status gate the open, and its slug names {@code
-   * refining/<slug>} on the project's wrapper — so an unknown id 404s here and nothing is half-made.
+   * The refinement of {@code entityId} — an epic, a ticket or a campaign — created if it has none,
+   * and its session asked for. Creation needs the entity itself — its archetype and status gate the
+   * open — so an unknown id 404s here and nothing is half-made.
    *
-   * <p><b>The refusals, in order, and all of them on the create path only</b> (qits-395):
+   * <p><b>The refusals, in order, and all of them on the create path only</b> (qits-395, qits-770):
    *
    * <ol>
    *   <li><b>A piece of a plan</b> — a feature or a task is a <b>409</b>. It holds a status since
    *       qits-763, but no phase runs on it, and its scope is its epic's: the room to open is the
-   *       epic's.
+   *       epic's. A campaign is refined like an epic (epic qits-770): its room's scope is the
+   *       campaign and its REPORTED members.
    *   <li><b>Not REPORTED</b> — a <b>409</b> naming the status. Refinement is the REPORTED phase and
-   *       scope is editable only there ({@code EntityLifecycle.requireReported}), for both
-   *       archetypes; a room on a frozen scope would be a room whose every write is refused.
-   *   <li><b>A dispatch is running on it</b> — a <b>409</b>. An ACTIVE qits-workspaces workspace
-   *       naming this entity means an agent is (or may be) working it, on {@code ticket/<slug>} or
-   *       {@code epic/<slug>}, and at REPORTED that agent is <em>refining</em> it — writing the very
-   *       description, tree and dossier a person in the room would be writing. Two authors on one
-   *       draft with neither aware of the other is the collision this refuses. Read through {@link
-   *       WorkspaceAgentDispatch#workspacesReferencing}, whose contract is <b>never throw, answer
-   *       empty on failure</b> — so the check <b>fails open</b>: with qits-workspaces unreachable, or
-   *       no workspaces context assembled at all, it sees nobody and the room opens. That is the
-   *       port's degraded answer everywhere (every button live), and refusing every open whenever a
-   *       sibling restarts would be worse than the rare collision it would catch.
+   *       scope is editable only there ({@code EntityLifecycle.requireReported}), for every
+   *       archetype; a room on a frozen scope would be a room whose every write is refused.
+   *   <li><b>A dispatch is running on it</b> — a <b>409</b>. An ACTIVE qits-workspaces agent naming
+   *       this entity means an agent is (or may be) working it, and at REPORTED that agent is
+   *       <em>refining</em> it — writing the very description, tree and dossier a person in the room
+   *       would be writing. Read through {@link WorkspaceAgentDispatch#agentsFor}, whose contract is
+   *       <b>never throw, answer empty on failure</b> — so the check <b>fails open</b>.
+   *   <li><b>No wrapper</b> — a <b>409</b>: the desk the session runs in clones the wrapper.
+   *   <li><b>Beyond the cap</b> — a <b>409</b> {@value #REFINEMENT_SESSIONS_FULL} while {@code
+   *       qits.projects.refinement-sessions-max} of the project's rooms already want their session,
+   *       naming them.
    * </ol>
    *
    * <p><b>An existing room is always answered, whatever the entity's state now.</b> One room per
-   * entity (the unique key on {@code entity_id}); a second open returns the first. Refusing to show
-   * a room that already exists — because the status moved on, or an agent was dispatched after it
-   * opened — would strand it: the room is the only place its prompt, sketches and designs are
-   * reached from, and discard is how it ends.
+   * entity (the unique key on {@code entity_id}); a second open returns the first, and asks for its
+   * session again — unless the project is at the cap, when the room is answered as it stands and
+   * its ensure door says why. A legacy container room is answered untouched.
    *
-   * <p>Nothing about the entity is copied onto the row beyond that slug. The row names its entity in
-   * {@code entityId}, which is its unique key, and every reader that wants the entity's prose reads it
-   * live from there; a rendered snapshot taken here would describe the draft as it stood before the
-   * refinement that is about to edit it.
+   * <p>The room's token is minted before its demand is stamped and pushed, so the credentials frame
+   * carrying it goes out before the sessions entry that runs on it.
    */
   public Refinement findOrCreate(String entityId) {
     Optional<Refinement> existing =
         QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
     if (existing.isPresent()) {
       // A room opened while qits-idp was away holds no token yet; the open is a cheap retry.
-      return mintTokenIfMissing(existing.get());
+      Refinement room = mintTokenIfMissing(existing.get());
+      if (room.containerRoom()) {
+        return room;
+      }
+      Instant now = Instant.now();
+      if (sessions.wantsRunning(room, now) || runningBeside(room, now).size() < sessionsMax) {
+        return stampDemand(room, now);
+      }
+      return room;
     }
     WorkEntity entity = entities.get(entityId); // 404, of any archetype
     String noun = nounOf(entity);
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      // Before the generic refusal, whose words ("runs no phase … refine the epic it belongs
-      // to") are false of a campaign: it has a lifecycle and belongs to nothing. A refinement room
-      // is a workspace on a refining/ branch, and a campaign has neither (qits-411).
-      throw new DomainException(
-          409,
-          "Campaign "
-              + entityId
-              + " does not open a refinement — a campaign has no branch and no workspace; edit"
-              + " its title and description directly, and refine the work it gathers.");
-    }
-    if (entity.archetype != Archetype.EPIC && entity.archetype != Archetype.TICKET) {
+    if (entity.archetype != Archetype.EPIC
+        && entity.archetype != Archetype.TICKET
+        && entity.archetype != Archetype.CAMPAIGN) {
       throw new DomainException(
           409,
           "A "
               + noun
-              + " runs no phase of its own, so it is not refined on its own — only an epic or a ticket"
-              + " opens a refinement. Refine the epic it belongs to.");
+              + " runs no phase of its own, so it is not refined on its own — only an epic, a"
+              + " ticket or a campaign opens a refinement. Refine the epic it belongs to.");
     }
     // The merged row stores the status word, so REPORTED is compared by name against the column.
     if (!EntityStatus.REPORTED.name().equals(entity.status)) {
@@ -225,17 +258,16 @@ public class RefinementService {
     refuseWhileDispatched(entity, noun);
     Project project = projects.get(entity.projectId);
     Repository wrapper = wrapperOf(project);
-    String branch = "refining/" + entity.slug;
-    cutOrAdoptBranch(wrapper, branch);
+    Instant now = Instant.now();
+    refuseBeyondCap(project, null, now);
 
     Refinement refinement = new Refinement();
     refinement.entityId = entity.id;
     refinement.projectId = project.id;
     refinement.repositoryId = wrapper.id;
-    refinement.branch = branch;
-    refinement.parent = wrapper.mainBranch == null ? "main" : wrapper.mainBranch;
     refinement.label = label(entity.slug);
-    refinement.createdAt = Instant.now();
+    refinement.createdAt = now;
+    refinement.lastDemandAt = now;
     try {
       QuarkusTransaction.requiringNew().run(() -> store.persist(refinement));
     } catch (RuntimeException maybeRace) {
@@ -248,14 +280,137 @@ public class RefinementService {
       throw maybeRace;
     }
     LOG.infof(
-        "Created refinement %s for %s %s on %s (%s)",
-        refinement.id, noun, entityId, ProjectService.wrapperName(project), branch);
+        "Opened refinement %s for %s %s as a session of project %s's front desk",
+        refinement.id, noun, entityId, project.id);
     Refinement opened = mintTokenIfMissing(refinement);
     if (opened.tokenId == null) {
       // A mint announces itself; a room created without one is a row the list should still hear of.
       announceCredentialsChanged(refinement.projectId);
     }
+    demandMoved(opened.projectId);
     return opened;
+  }
+
+  // ---- a session room's demand (epic qits-770) ----------------------------------------------
+
+  /**
+   * {@code POST /refinements/{id}/ensure}: a session room's session asked for — demand stamped, the
+   * desk told, the list pushed — and the row answered; a 409 {@value #REFINEMENT_SESSIONS_FULL} when
+   * it is not already wanted and the project is at the cap. A legacy container room is brought up by
+   * its ladder instead, as {@link #ensureContainer} does.
+   */
+  public Refinement ensure(long id) {
+    Refinement room = get(id);
+    if (room.containerRoom()) {
+      begin(room, false);
+      return room;
+    }
+    Instant now = Instant.now();
+    Refinement current = mintTokenIfMissing(room);
+    if (!sessions.wantsRunning(current, now)) {
+      refuseBeyondCap(projects.get(current.projectId), current, now);
+    }
+    return stampDemand(current, now);
+  }
+
+  /**
+   * {@code POST /refinements/{id}/stop}: a session room's demand cleared, so its session is desired
+   * STOPPED and the daemon stops it; idempotent. A legacy container room's container is stopped, as
+   * {@link #stopContainer} does.
+   */
+  public Refinement stop(long id) {
+    Refinement room = get(id);
+    if (room.containerRoom()) {
+      return stopContainer(id);
+    }
+    QuarkusTransaction.requiringNew()
+        .run(() -> store.update("lastDemandAt = null where id = ?1", id));
+    room.lastDemandAt = null;
+    demandMoved(room.projectId);
+    changes.fire(id, RefinementChangeHint.Topic.PROCESS);
+    return get(id);
+  }
+
+  /** Stamp a session room's demand now, tell the desk and push; answers the row as it now stands. */
+  private Refinement stampDemand(Refinement room, Instant now) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> store.update("lastDemandAt = ?1 where id = ?2", now, room.id));
+    room.lastDemandAt = now;
+    demandMoved(room.projectId);
+    changes.fire(room.id, RefinementChangeHint.Topic.PROCESS);
+    return QuarkusTransaction.requiringNew()
+        .call(() -> store.findByIdOptional(room.id))
+        .orElse(room);
+  }
+
+  /** The project's other session rooms wanting their session at {@code now}. */
+  private List<Refinement> runningBeside(Refinement room, Instant now) {
+    String projectId = room.projectId;
+    return sessions.running(projectId, now).stream()
+        .filter(other -> !other.id.equals(room.id))
+        .toList();
+  }
+
+  /**
+   * The cap: a 409 {@value #REFINEMENT_SESSIONS_FULL} naming the running rooms by qualified id when
+   * {@code qits.projects.refinement-sessions-max} of {@code project}'s session rooms other than
+   * {@code self} (null for a room about to be created) already want their session.
+   */
+  private void refuseBeyondCap(Project project, Refinement self, Instant now) {
+    List<Refinement> running =
+        sessions.running(project.id, now).stream()
+            .filter(other -> self == null || !other.id.equals(self.id))
+            .toList();
+    if (running.size() < sessionsMax) {
+      return;
+    }
+    String names =
+        running.stream()
+            .map(room -> qualifiedIdOrId(room.entityId, project))
+            .collect(Collectors.joining(", "));
+    throw new CodedRefusalException(
+        409,
+        REFINEMENT_SESSIONS_FULL,
+        "Project "
+            + (project.slug == null ? project.id : project.slug)
+            + " already has "
+            + running.size()
+            + " refinement rooms running ("
+            + names
+            + "), the most qits.projects.refinement-sessions-max allows. Stop one of them, then"
+            + " open this one.");
+  }
+
+  /** The entity's qualified id, or its uuid when that cannot be rendered. */
+  private String qualifiedIdOrId(String entityId, Project project) {
+    try {
+      String qualified = RefinementSessions.qualifiedIdOf(entities.fresh(entityId), project);
+      return qualified == null ? entityId : qualified;
+    } catch (RuntimeException e) {
+      return entityId;
+    }
+  }
+
+  /**
+   * A session room's demand moved: the desk is told (it may now be wanted, or no longer), then the
+   * sessions list is pushed. Never throws.
+   */
+  private void demandMoved(String projectId) {
+    if (projectId == null) {
+      return;
+    }
+    if (demandChanged != null) {
+      try {
+        demandChanged.fire(new RefinementDemandChanged(projectId));
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            "Could not announce a refinement demand change for project %s: %s",
+            projectId, e.getMessage());
+      }
+    }
+    if (sessions != null) {
+      sessions.push(projectId);
+    }
   }
 
   // ---- the room's own token (qits-1482) -----------------------------------------------------
@@ -438,6 +593,9 @@ public class RefinementService {
   }
 
   private RefinementView lightView(Refinement refinement) {
+    if (!refinement.containerRoom()) {
+      return sessionView(refinement);
+    }
     long id = refinement.id;
     Semaphore lock = locks.get(id);
     boolean provisioning = lock != null && lock.availablePermits() == 0;
@@ -478,10 +636,28 @@ public class RefinementService {
 
   // ---- lifecycle ---------------------------------------------------------------------------
 
-  /** Bring the container up (asynchronously) and answer the narration to watch. */
+  /**
+   * Bring the container up (asynchronously) and answer the narration to watch. On a session room
+   * (the alias the released SPA still calls, until qits-1316) the session is asked for as {@link
+   * #ensure} does and the narration is one already settled: there is no bring-up to watch here, the
+   * desk runs it.
+   */
   public String ensureContainer(long id) {
     Refinement refinement = get(id);
+    if (!refinement.containerRoom()) {
+      ensure(id);
+      return settledNarration("The room's session runs in the project's front desk.");
+    }
     return begin(refinement, false);
+  }
+
+  /** A narration begun and settled at once, for a door whose answer must name one. */
+  private String settledNarration(String line) {
+    TechnicalProcess process = processes.begin("ensure");
+    process.openSegment("session");
+    process.completeNoOp("session", line);
+    process.finishProvision(true);
+    return process.id();
   }
 
   /**
@@ -490,6 +666,12 @@ public class RefinementService {
    */
   public String recreateContainer(long id) {
     Refinement refinement = get(id);
+    if (!refinement.containerRoom()) {
+      // A session room has no container to replace: a stop and an ensure is the honest reading.
+      stop(id);
+      ensure(id);
+      return settledNarration("The room's session was stopped and asked for again.");
+    }
     if (!registry.clean(id).map(Boolean::booleanValue).orElse(false)) {
       throw new DomainException(
           400,
@@ -500,9 +682,15 @@ public class RefinementService {
     return begin(refinement, true);
   }
 
-  /** Stop the container, leaving it and its checkout in place. Idempotent. */
+  /**
+   * Stop the container, leaving it and its checkout in place. Idempotent. On a session room, {@link
+   * #stop}.
+   */
   public Refinement stopContainer(long id) {
     Refinement refinement = get(id);
+    if (!refinement.containerRoom()) {
+      return stop(id);
+    }
     runtime.stop(id);
     tunnels.closeTunnel(id);
     registry.forget(id);
@@ -536,6 +724,10 @@ public class RefinementService {
    */
   public void discard(long id) {
     Refinement refinement = get(id);
+    if (!refinement.containerRoom()) {
+      discardSession(refinement);
+      return;
+    }
     tunnels.closeTunnel(id);
     registry.forget(id);
     activeProcesses.remove(id);
@@ -549,6 +741,21 @@ public class RefinementService {
     lastErrors.remove(id);
     drift.forget(id);
     LOG.infof("Discarded refinement %s (entity %s)", id, refinement.entityId);
+  }
+
+  /**
+   * The end of a session room (epic qits-770): the row deleted (its draft, attachments and designs
+   * cascade), the daemon sent the list without its key — which stops the session — then the room's
+   * token revoked and the credentials sent without it, and the desk's demand recomputed.
+   */
+  private void discardSession(Refinement room) {
+    long id = room.id;
+    QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
+    demandMoved(room.projectId);
+    revokeToken(room);
+    announceCredentialsChanged(room.projectId);
+    lastErrors.remove(id);
+    LOG.infof("Discarded refinement %s (entity %s)", id, room.entityId);
   }
 
   /** The id of the ensure narration currently live for this row, or null. */
@@ -674,6 +881,9 @@ public class RefinementService {
 
   /** The row as the status strip reads it. */
   public RefinementView view(Refinement refinement) {
+    if (!refinement.containerRoom()) {
+      return sessionView(refinement);
+    }
     long id = refinement.id;
     Semaphore lock = locks.get(id);
     boolean provisioning = lock != null && lock.availablePermits() == 0;
@@ -724,6 +934,47 @@ public class RefinementService {
   }
 
   /**
+   * A session room as the strip reads it (epic qits-770): {@code runtimeStatus} is the key's last
+   * reported state — {@code STARTING}, {@code RUNNING}, {@code STOPPED} or {@code FAILED} — and
+   * {@code runtimeError} the report's detail. Before any report the desired state stands in: a wanted
+   * session is {@code STARTING}, an unwanted one {@code STOPPED}. A report saying RUNNING about a room
+   * no longer wanted reads as it is reported until the next report. The container-only halves are
+   * null or false; the desk's state rides beside.
+   */
+  RefinementView sessionView(Refinement room) {
+    boolean wanted = sessions.wantsRunning(room, Instant.now());
+    String status =
+        room.sessionState != null
+            ? room.sessionState
+            : wanted
+                ? eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol.ReportedState.STARTING
+                : eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol.ReportedState.STOPPED;
+    RefinementDesk.DeskStatus desk =
+        desks == null || desks.isUnsatisfied()
+            ? null
+            : desks.get().of(room.projectId).orElse(null);
+    return new RefinementView(
+        room,
+        status,
+        room.sessionDetail,
+        null,
+        null,
+        null,
+        false,
+        null,
+        null,
+        null,
+        null,
+        null,
+        false,
+        true,
+        room.sessionId,
+        room.sessionCommandId,
+        desk == null ? null : desk.status(),
+        desk == null ? null : desk.detail());
+  }
+
+  /**
    * Whether the connected daemon is running something other than the image this service pins —
    * {@code agenthost/AgentContainerState.against} applied on the refinement axis, and deliberately
    * the same three rules.
@@ -768,7 +1019,49 @@ public class RefinementService {
       String daemonVersion,
       Boolean daemonOutdated,
       String pinnedDaemonVersion,
-      boolean daemonVersionStale) {}
+      boolean daemonVersionStale,
+      boolean session,
+      String sessionId,
+      String commandId,
+      String deskStatus,
+      String deskDetail) {
+
+    /** A legacy container room's view: none of the session halves. */
+    public RefinementView(
+        Refinement refinement,
+        String runtimeStatus,
+        String runtimeError,
+        Boolean clean,
+        Integer ahead,
+        Integer behind,
+        boolean conflictsWithParent,
+        String agentActivity,
+        Instant daemonConnectedAt,
+        String daemonVersion,
+        Boolean daemonOutdated,
+        String pinnedDaemonVersion,
+        boolean daemonVersionStale) {
+      this(
+          refinement,
+          runtimeStatus,
+          runtimeError,
+          clean,
+          ahead,
+          behind,
+          conflictsWithParent,
+          agentActivity,
+          daemonConnectedAt,
+          daemonVersion,
+          daemonOutdated,
+          pinnedDaemonVersion,
+          daemonVersionStale,
+          false,
+          null,
+          null,
+          null,
+          null);
+    }
+  }
 
   // ---- the pieces --------------------------------------------------------------------------
 
@@ -886,7 +1179,7 @@ public class RefinementService {
    * day the branch prefix changes, with everything still compiling and every test still green.
    */
   static String slugOf(Refinement refinement) {
-    return refinement.branch.startsWith("refining/")
+    return refinement.branch != null && refinement.branch.startsWith("refining/")
         ? refinement.branch.substring("refining/".length())
         : refinement.label;
   }

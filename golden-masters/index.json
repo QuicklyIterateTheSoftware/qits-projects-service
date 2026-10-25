@@ -4969,7 +4969,32 @@
               "$.refinement.createdAt"
             ],
             "strings": [
-              "$.refinement.pinnedDaemonVersion"
+              "$.refinement.deskBase"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "ensureRefinementSession",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/ensure",
+          "status": 200,
+          "file": "a-ticket-with-a-design/ensureRefinementSession.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.deskBase"
             ],
             "numbers": [
               "$.refinement.id"
@@ -5012,7 +5037,7 @@
               "$.refinement.createdAt"
             ],
             "strings": [
-              "$.refinement.pinnedDaemonVersion"
+              "$.refinement.deskBase"
             ],
             "numbers": [
               "$.refinement.id"
@@ -5055,7 +5080,32 @@
               "$.refinement.createdAt"
             ],
             "strings": [
-              "$.refinement.pinnedDaemonVersion"
+              "$.refinement.deskBase"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "stopRefinementSession",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/stop",
+          "status": 200,
+          "file": "a-ticket-with-a-design/stopRefinementSession.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.deskBase"
             ],
             "numbers": [
               "$.refinement.id"

@@ -38,6 +38,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class RefinementPinStalenessTest {
 
+  @Inject LegacyRefinementRooms legacy;
+
   @Inject RefinementService service;
   @Inject RefinementDaemonRegistry registry;
   @Inject RefinementContainerFactory factory;
@@ -77,6 +79,8 @@ public class RefinementPinStalenessTest {
             .statusCode(200)
             .extract()
             .path("refinement.id");
+    // A legacy container room (epic qits-770): an open makes a session room now.
+    legacy.asContainerRoom(id.longValue());
     return id.longValue();
   }
 

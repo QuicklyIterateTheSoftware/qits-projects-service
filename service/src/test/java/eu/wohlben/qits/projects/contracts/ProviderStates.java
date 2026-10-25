@@ -1641,10 +1641,10 @@ public class ProviderStates {
    * sequence param — and the design the {@code designId} param, at version 0.
    *
    * <p>The room's own doors are recorded here too (qits-1383): the open finds this room, the ensure
-   * brings its container up and the discard tears it down — each interaction sets the state up
-   * afresh, so the discard takes nothing from the others. The room has no container yet, and the
-   * suite runtime's bring-ups are held until {@link #cleanUp()}, so the ensure answers {@code
-   * PROVISIONING} on every run rather than whatever the executor reached first.
+   * asks for its session (a session room since epic qits-770; {@code ensure-container} is its alias)
+   * and the discard tears it down — each interaction sets the state up afresh, so the discard takes
+   * nothing from the others. The suite runtime's bring-ups are still held until {@link #cleanUp()},
+   * for a legacy container room, though a session room starts none.
    */
   private Setup aTicketWithADesign() {
     resetDispatchPorts();

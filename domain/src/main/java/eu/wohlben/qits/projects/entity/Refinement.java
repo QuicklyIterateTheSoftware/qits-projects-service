@@ -14,9 +14,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One entity's refinement container, as this service hosts it — the row behind the projects SPA's
- * refining route, which used to be an ordinary qits-workspaces workspace on a {@code refining/*}
- * branch. The entity is an epic or a ticket, the two archetypes with a lifecycle (qits-395; until
+ * One entity's refinement room — the row behind the projects SPA's refining route. Since epic
+ * qits-770 (V57) a new room is a <b>session</b> in its project's front desk, keyed by the entity id;
+ * a room opened before that is a legacy <b>container</b> room on a {@code refining/*} branch, kept
+ * working until qits-1316 removes the container machinery ({@link #containerRoom()} tells them
+ * apart). The entity is an epic or a ticket, the two archetypes with a lifecycle (qits-395; until
  * then only an epic could be refined).
  *
  * <p><b>Keyed by entity, addressed by row id.</b> An entity has at most one refinement (the unique
@@ -66,15 +68,22 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   public String repositoryId;
 
   /**
-   * The refinement's branch on the wrapper: {@code refining/<slug>}, the entity's slug. A root
-   * entity's slug is unique per project across archetypes ({@code uq_entity_slug_scope_slug}), so an
-   * epic and a ticket can never cut the same branch.
+   * A legacy container room's branch on the wrapper: {@code refining/<slug>}, the entity's slug. A
+   * root entity's slug is unique per project across archetypes ({@code uq_entity_slug_scope_slug}),
+   * so an epic and a ticket can never cut the same branch.
+   *
+   * <p><b>Null on a session room</b> (V57, epic qits-770): a room opened since then is a session in
+   * its project's front desk and cuts no branch. The branch is the rule that tells the two apart —
+   * see {@link #containerRoom()}.
    */
-  @Column(name = "branch", nullable = false)
+  @Column(name = "branch")
   public String branch;
 
-  /** The branch the refinement forked from — the wrapper's default branch at create time. */
-  @Column(name = "parent", nullable = false)
+  /**
+   * The branch a legacy container room forked from — the wrapper's default branch at create time.
+   * Null on a session room.
+   */
+  @Column(name = "parent")
   public String parent;
 
   /**
@@ -107,8 +116,45 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   @Column(name = "token_subject", columnDefinition = "text")
   public String tokenSubject;
 
+  /**
+   * When somebody last asked for this session room's session (V57): the open, the ensure door, the
+   * session's own activity. The session is desired RUNNING while this is younger than {@code
+   * qits.projects.agent-idle-timeout}; the stop door clears it. Unused on a container room.
+   */
+  @Column(name = "last_demand_at")
+  public Instant lastDemandAt;
+
+  /**
+   * The harness session id the desk's daemon last reported for this room's key — kept after the
+   * session stops, so the next launch resumes it.
+   */
+  @Column(name = "session_id", columnDefinition = "text")
+  public String sessionId;
+
+  /** The key's last reported state ({@code STARTING|RUNNING|STOPPED|FAILED}), or null. */
+  @Column(name = "session_state", columnDefinition = "text")
+  public String sessionState;
+
+  /** The report's sentence for a person, or null. Prose, never parsed. */
+  @Column(name = "session_detail", columnDefinition = "text")
+  public String sessionDetail;
+
+  /** The daemon command running the session while it is RUNNING, else null. */
+  @Column(name = "session_command_id", columnDefinition = "text")
+  public String sessionCommandId;
+
   @Column(name = "created_at", nullable = false)
   public Instant createdAt;
+
+  /**
+   * Whether this is a legacy container room (a {@code refining/<slug>} branch and its own
+   * container, until qits-1316 removes them) rather than a session in the project's front desk
+   * (epic qits-770). The branch decides: every row opened before V57 has one, none opened since
+   * does.
+   */
+  public boolean containerRoom() {
+    return branch != null;
+  }
 
   @Column(name = "causation_id")
   public UUID causationId;

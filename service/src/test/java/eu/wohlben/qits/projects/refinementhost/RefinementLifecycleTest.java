@@ -69,12 +69,11 @@ public class RefinementLifecycleTest {
             .path("id"));
   }
 
+  @Inject LegacyRefinementRooms legacy;
+
+  /** A legacy container room (epic qits-770: an open makes a session room now). */
   private io.restassured.response.Response open(String epicId) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(java.util.Map.of())
-        .when()
-        .post("/projects/api/work/" + epicId + "/refinement");
+    return legacy.open(epicId);
   }
 
   private void awaitStatus(long id, String expected) {

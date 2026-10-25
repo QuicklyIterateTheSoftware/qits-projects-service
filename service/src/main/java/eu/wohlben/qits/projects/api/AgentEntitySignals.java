@@ -93,7 +93,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
 
   /**
    * Tell every agent working {@code entity} its title, status and blocked flag as they stand on it.
-   * A no-op for anything but a ticket or an epic. <b>Never throws.</b> The flag is the EFFECTIVE
+   * A no-op for anything but a ticket or an epic — and a campaign, whose refinement room alone is told. <b>Never throws.</b> The flag is the EFFECTIVE
    * block (qits-895, {@code EntityBlockState}) — the explicit one, or the session itself standing
    * idle past the debounce — so the name pales while either holds; {@link AgentWaiting} calls this
    * when a derived block starts or ends. <b>The block's source rides beside the flag</b> —
@@ -172,10 +172,15 @@ public class AgentEntitySignals implements RetitleAnnouncer {
       boolean blocked,
       String blockSource,
       String blockedBy) {
-    if (archetype != Archetype.TICKET && archetype != Archetype.EPIC) {
+    if (archetype != Archetype.TICKET
+        && archetype != Archetype.EPIC
+        && archetype != Archetype.CAMPAIGN) {
       return;
     }
-    tellTheWorkspace(id, archetype, title, status, blocked, blockSource, blockedBy);
+    if (archetype != Archetype.CAMPAIGN) {
+      tellTheWorkspace(id, archetype, title, status, blocked, blockSource, blockedBy);
+    }
+    // A campaign has a refinement room too since epic qits-770, but no dispatched agent of its own.
     try {
       refinementEntities.changed(id, title, status, blocked, blockSource);
     } catch (RuntimeException e) {

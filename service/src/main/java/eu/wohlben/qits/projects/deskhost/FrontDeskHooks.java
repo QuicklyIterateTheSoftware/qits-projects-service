@@ -4,7 +4,9 @@ import eu.wohlben.qits.projects.control.FrontDeskLifecycleChanged;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectFrontDeskRemoval;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
+import eu.wohlben.qits.projects.refinementhost.RefinementDemandChanged;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import org.jboss.logging.Logger;
@@ -28,6 +30,9 @@ import org.jboss.logging.Logger;
  *       restarts nothing.
  *   <li>{@link ProjectFrontDeskRemoval} — a project being deleted takes its desk with it: {@code
  *       remove} to the runner, the token revoked, the row dropped.
+ *   <li>{@link RefinementDemandChanged} (epic qits-770) — a refinement room's session became wanted
+ *       or unwanted: the desk is created when it is now wanted ({@link RefinementDemand}), and its
+ *       desired state is recomputed and pushed, so a refinement starts an {@code ON_DEMAND} desk.
  * </ul>
  */
 @ApplicationScoped
@@ -40,6 +45,10 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
   @Inject FrontDeskSpecRoll specRoll;
 
   @Inject DeskSessionCredentials sessionCredentials;
+
+  @Inject FrontDeskDemand demand;
+
+  @Inject eu.wohlben.qits.projects.persistence.ProjectRepository projects;
 
   @Override
   public void onChanged(String projectId, FrontDeskLifecycle lifecycle) {
@@ -80,6 +89,29 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
       LOG.warnf(
           "Could not roll the front desk of project %s onto its new settings — the spec roll"
               + " retries: %s",
+          projectId, e.getMessage());
+    }
+  }
+
+  /** A refinement room's demand moved (epic qits-770). Never throws: the sweep catches a miss. */
+  void onRefinementDemandChanged(@Observes RefinementDemandChanged changed) {
+    String projectId = changed.projectId();
+    Instant now = Instant.now();
+    try {
+      eu.wohlben.qits.projects.entity.Project project =
+          io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+              .call(() -> projects.findById(projectId));
+      if (project != null
+          && project.slug != null
+          && !project.slug.isBlank()
+          && demand.wants(project, null, now)) {
+        desks.ensureRow(projectId);
+      }
+      desks.reconcileAndPush(projectId, now);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not bring the front desk of project %s in line with its refinement rooms — the"
+              + " sweep retries: %s",
           projectId, e.getMessage());
     }
   }
