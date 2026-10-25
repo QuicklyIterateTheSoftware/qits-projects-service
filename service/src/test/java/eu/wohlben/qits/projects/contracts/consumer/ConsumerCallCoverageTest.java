@@ -83,7 +83,9 @@ class ConsumerCallCoverageTest {
   static final Map<String, Set<String>> STANDS_IN_FOR =
       Map.of(
           // The daemon's three rows stand in for the one tunnel client they share (qits-1572):
-          // AgentCapabilityRelay and ProjectFrontDeskController both ask through DaemonApiClient.
+          // AgentCapabilityRelay and ProjectFrontDeskController both ask through DaemonApiClient,
+          // and so does the desk trigger sweep's prompt (FrontDeskPrompter.prompt, epic qits-1604),
+          // the same POST the promptFrontDesk row makes.
           "AgentCapabilityRelay.relay (on the daemon's Hello): listAvailableAgents",
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
           "promptFrontDesk: promptFrontDesk",

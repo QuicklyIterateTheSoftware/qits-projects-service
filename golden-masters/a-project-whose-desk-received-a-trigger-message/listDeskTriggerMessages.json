@@ -1,0 +1,38 @@
+{
+  "messages": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "state": "DELIVERED",
+      "openedAt": "2026-01-01T00:00:00Z",
+      "closesAt": "2026-01-01T00:00:00Z",
+      "closedAt": "2026-01-01T00:00:00Z",
+      "acceptedAt": "2026-01-01T00:00:00Z",
+      "attempts": 1,
+      "lastStatus": 200,
+      "lastDetail": null,
+      "commandId": "desk-command-1",
+      "queuePosition": null,
+      "message": "You are the delivery desk of project contract-00000001. Read /tmp/qits-delivery-brief.md and follow it, then act on what happened below. (desk trigger 00000000-0000-4000-8000-000000000002, 2026-01-01T00:00:00Z to 2026-01-01T00:00:00Z)\n\nMoved to VERIFIED:\n- contract-00000001-1580 (Desk triggers read door)\n\nNeeds your approval:\n- contract-service-rr-7 (Release qits-1580; waits on manual-review: a person approves), fold 5eed5eed",
+      "events": [
+        {
+          "source": "work-verified",
+          "itemRef": "contract-00000001-1580",
+          "itemId": "00000000-0000-4000-8000-000000000003",
+          "label": "Desk triggers read door",
+          "cause": "tok-workspace-agent-contract",
+          "eventId": "00000000-0000-4000-8000-000000000004",
+          "occurredAt": "2026-01-01T00:00:00Z"
+        },
+        {
+          "source": "approval-needed",
+          "itemRef": "contract-service-rr-7",
+          "itemId": "00000000-0000-4000-8000-000000000005",
+          "label": "Release qits-1580; waits on manual-review: a person approves",
+          "cause": "fold 5eed5eed",
+          "eventId": "00000000-0000-4000-8000-000000000006",
+          "occurredAt": "2026-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

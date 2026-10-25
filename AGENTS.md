@@ -2583,7 +2583,9 @@ unknown project; **503** `{reason}` for no connected daemon, a failed hop, or an
 daemon's contract (a 5xx, an empty body); and **409** `{reason}` for a daemon too old for the routes —
 its router's 404 is `{"message":"No such endpoint"}`, which carries no `reason`, while the daemon's
 own 404 (last-answer, no kept command) always does. 409 rather than 503 because nothing is down: the
-spec roll onto the pinned daemon resolves it, not a retry.
+spec roll onto the pinned daemon resolves it, not a retry. That reading is
+`agenthost/FrontDeskPrompter`'s since qits-1604 (`classify`, `unreachable`), shared with the desk
+trigger sweep below, which asks it for a typed outcome (`prompt`) instead of a response.
 
 Contracts: the provider state `a project whose front desk is running` stands up
 `agenthost/FakeProjectDaemon` (a test-scope daemon that dials the control socket and serves the
@@ -2592,6 +2594,90 @@ both doors are recorded there. As a consumer, `ProjectsDaemonContract` names bot
 under its state `a daemon whose front desk is running`, pending until qits-projects-daemon records
 it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
 `DaemonApiClient#get`/`#post`.
+
+### Desk triggers (qits-1604)
+
+**The delivery desk is prompted by what happens, not only by a person.** `service/…/desktriggers/`
+is the whole of it:
+
+    qits-events --EntityTransitioned / ApprovalRequirementChanged--> DeskTriggerListener
+       (durable, consumerId projects-desk-triggers, replayFromEpoch false)
+       each DeskTriggerSource naming the signature: qualify(frame) -> DeskTrigger*
+       drop: project delivery_enabled false, or cause = one of the desk's subjects
+       DeskTriggerWindows.admit: join the project's OPEN window, or open one closing a window later
+    DeskTriggerSweep (every sweep-interval, NORMAL mode only)
+       OPEN past closes_at -> render DeskTriggerMessage, store message + closed_at, OWED
+       oldest OWED per project -> FrontDeskPrompter.prompt (POST <base>front-desk/prompt)
+          -> DELIVERED | QUEUED | still OWED (attempts, last_status, last_detail) | FAILED
+
+- **Storage** (V57): `desk_trigger_window` (one OPEN row per project, a partial unique index;
+  `closes_at` set by the trigger that opened it and never moved, so a busy project is prompted on a
+  clock) and `desk_trigger_event` (one line, unique on `(window_id, source, item_ref, label)`, so a
+  redelivered frame or the same item twice is one line). Both `@Uncaused`. Admit reads the OPEN row
+  `for update` and inserts with `on conflict … do nothing` on both tables — a lost race re-reads the
+  winner's window and never raises a unique violation into the caller's transaction.
+- **The listener lives here and not in `bus/`**, deliberately: it is the feature's own seam, and it
+  knows no source by name. Like every durable consumer here it does its `projects` work in a
+  `QuarkusTransaction.requiringNew()` of its own — the claim transaction already holds the
+  `eventstream` connection (`CampaignCriteriaListener`'s javadoc). A source that cannot read a
+  payload is a WARN and contributes nothing; a database failure throws and the frame stays owed.
+- **What is dropped**: a project with `delivery_enabled` false (only admission is gated — an
+  already open window is still closed and delivered), and a trigger whose `cause` equals a non-null
+  `front_desk.delivery_token_subject`, `session_token_subject` or `token_subject` of its project —
+  the desk is not told what it did. A delivery token re-minted since leaves its old subject
+  unmatched; accepted, toggling is rare.
+- **The message** (`DeskTriggerMessage`): one preamble line naming the desk's brief
+  (`/tmp/qits-delivery-brief.md`, `DeskTriggerMessage.BRIEF_PATH`, a copy of qits-projects-daemon's
+  `DeliveryKeeper.BRIEF_PATH`), the window id and its bounds, then each source's section in
+  `order()`, a blank line between, nothing after. It is stored at the close, so every retry sends
+  the same text. The opening words `You are the delivery desk` are what the desk's brief keys on.
+- **Delivery** reuses the person's prompt door's reading (`FrontDeskPrompter`), outside any
+  transaction, one window per project per pass so owed windows arrive in order: 200 `delivered` →
+  DELIVERED, 200 `queued` → QUEUED (with `queue_position`), both stamping `accepted_at` and
+  `command_id`; 409 (no kept command, or a daemon too old), 429, 503 and no tunnel stay OWED with
+  `attempts`, `last_status` and `last_detail`; 400 is FAILED (our bug, never retried); a window
+  still OWED `give-up` after its close is FAILED before it is tried again.
+
+**The source contract** is `DeskTriggerSource`: `id()` (stored in `desk_trigger_event.source` —
+storage, never rename it), `order()` (section order), `signatures()` (bus event simple names),
+`qualify(EventFrame)` (0..n `DeskTrigger(projectId, itemRef, itemId, cause, label, eventId,
+occurredAt)`, run inside the listener's `projects` transaction so it may read rows) and
+`render(projectSlug, events)` (its own section: a heading line, one line per event). Two ship:
+
+| source | id, order | qualifies | line |
+| --- | --- | --- | --- |
+| `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
+| `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
+
+**Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
+The listener (`@Any Instance<DeskTriggerSource>`) subscribes to the union of the sources'
+signatures and the sweep renders each line through the source that admitted it, so neither
+changes. Two things outside the bean do: a signature no source read before moves the consumer pact
+(`EventstreamPactTest` constructs the listener over the shipped sources; rewrite it with
+`-Dgolden.update=true`), and a signature nothing registers needs `EventWireReflection`. A source
+with no actor sets `cause` to something no subject can equal (`fold <sha8>`).
+`DeskTriggerSourceExtensionTest` shows a third source admitted through an unchanged listener —
+constructed with the list rather than registered as a bean, so it cannot leak into other suites.
+
+**Config** (`application.properties`): `qits.projects.desk-triggers.window` (PT15M),
+`…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`) and `…give-up` (PT4H). The
+prompt hop's bound is the door's `qits.projects.front-desk.relay-timeout-ms`.
+
+**The read door** (qits-1612) is `GET /projects/api/projects/{projectId}/desk-triggers`
+(`api/ProjectDeskTriggersController`, `listDeskTriggerMessages`) over `desktriggers/
+DeskTriggerHistory`, which writes nothing: `{messages: [DeskTriggerMessage]}`, every state, newest
+`opened_at` first (the id breaks a tie), each window with its stored `message`, its delivery
+bookkeeping (`attempts`, `lastStatus`, `lastDetail`, `acceptedAt`, `commandId`, `queuePosition`)
+and its lines (`DeskTriggerEvent`, by `admitted_at` then `item_ref`). Every member is present, a
+missing value `null`. `limit` is 20 when omitted and 1..100, else 400; an unknown project is a 404.
+The roles are `ProjectReleaseRequestsController`'s, `qits:agent` included, because that is what the
+desk's own token holds and the desk's transcript is not readable on it: `acceptedAt` and
+`commandId` are the evidence a message arrived. The three schemas are named, so no anonymous one in
+`docs/openapi.yml` is renumbered. The provider state `a project whose desk received a trigger
+message` writes one DELIVERED window with a `work-verified` and an `approval-needed` line straight
+to the tables, with fixed ids and instants and its message rendered by the shipped sources, and
+records `listDeskTriggerMessages` — what qits-platform-access-cli's `qits projects desk triggers`
+and the landing app's desk page consume.
 
 ### The sessions' credentials ride the control socket (qits-1482)
 
@@ -2793,19 +2879,20 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
   order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
   the one desk's fields with the brief qits-1517 wrote and qits-1560, qits-1569, qits-1571,
-  qits-1568, qits-1596, qits-1601 and qits-1597 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
+  qits-1568, qits-1596, qits-1601, qits-1597 and qits-1604 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
   one judging rule — approve a change that is what the request's work should change, `.config/qits/`
   included, ask the owner once per item otherwise — and no file or category named the owner's; since
   qits-1571 every command it names is one the shipped `qits` CLI takes, and step 10 reads free slots
   from `qits workspaces list`; since qits-1568 step 4's approval of verified work also clears
   `no-changes`; since qits-1596 it holds the coordinator's rights in its project; since qits-1601
   step 2 excepts a BUSY agent from its thirty-minutes-quiet clause; since qits-1597 nothing wakes it — a person prompts it, it does what was asked, a whole pass when asked for one,
-  and ends the turn) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
+  and ends the turn; since qits-1604 a desk trigger message, starting "You are the delivery desk",
+  prompts it too and it acts on each item the message names) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
   of a session launched on the surface and nothing sent on a schedule. The seed writes the row at
   boot; no migration.
   **The row is platform-wide and the seed never overwrites it**, so the briefs that shipped before
   (qits-1440's dossier text as `PREVIOUS_DELIVERY_DESK_PROMPT`, qits-1517's, qits-1560's,
-  qits-1569's, qits-1571's, qits-1568's, qits-1596's and qits-1601's as
+  qits-1569's, qits-1571's, qits-1568's, qits-1596's, qits-1601's and qits-1597's as
   `QITS_<n>_DELIVERY_DESK_PROMPT`, each kept byte for byte) are rolled forward by
   `startup/DeliveryDeskBriefRollout`, a boot step beside the seed: a stored `project.delivery`
   prompt **exactly** equal to any previous text is rewritten to the
