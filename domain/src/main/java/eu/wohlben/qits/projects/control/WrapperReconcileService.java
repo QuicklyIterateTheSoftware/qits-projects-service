@@ -324,7 +324,8 @@ public class WrapperReconcileService {
       notifyLifecycleChanged(project);
     }
     if (deliveryMoved) {
-      // Every delivery move reaches the desk, not only the toggle: the interval is in its spec.
+      // Every delivery move reaches the hook, not only the toggle; only `enabled` is in the desk's
+      // spec, so a move of the others rolls nothing (the roll finds the composed spec applied).
       notifyDeliveryChanged(project);
     }
     if (environmentsMoved || lifecycleMoved) {

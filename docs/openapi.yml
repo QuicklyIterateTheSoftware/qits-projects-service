@@ -1920,8 +1920,6 @@ components:
           type: array
           items:
             type: string
-        interval:
-          type: string
     ProjectDnsRecordDto:
       type: object
       properties:

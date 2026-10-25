@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectConfigParser.ProjectConfigException;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
-import java.time.Duration;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -167,7 +166,6 @@ class ProjectConfigParserTest {
     assertEquals(2, DeliverySettings.OFF.maxRunning());
     assertFalse(DeliverySettings.OFF.startRefined());
     assertEquals(Set.of(), DeliverySettings.OFF.approves());
-    assertEquals(Duration.ofMinutes(10), DeliverySettings.OFF.interval());
   }
 
   /** An absent key inside the mapping is that key's default, and an unknown key is ignored. */
@@ -175,8 +173,33 @@ class ProjectConfigParserTest {
   void anEnabledLoopTakesTheDefaultsItDoesNotState() {
     DeliverySettings delivery =
         parser.parse("front_desk:\n  delivery:\n    enabled: true\n    later-key: 1\n").delivery();
+    assertEquals(new DeliverySettings(true, 2, false, Set.of()), delivery);
+  }
+
+  /**
+   * qits-1597 retired {@code interval}, the delivery desk's tick: a project.yml that still carries
+   * one parses without error and the key changes nothing, whatever it holds — a value the old
+   * parser accepted, one it refused, or the wrong type entirely.
+   */
+  @Test
+  void aLeftoverIntervalIsIgnored() {
+    for (String interval : new String[] {"PT10M", "PT1H", "PT1M", "10m", "600", "[PT5M]"}) {
+      DeliverySettings delivery =
+          parser
+              .parse(
+                  "front_desk:\n"
+                      + "  delivery:\n"
+                      + "    enabled: true\n"
+                      + "    max_running: 3\n"
+                      + "    interval: "
+                      + interval
+                      + "\n")
+              .delivery();
+      assertEquals(new DeliverySettings(true, 3, false, Set.of()), delivery, interval);
+    }
     assertEquals(
-        new DeliverySettings(true, 2, false, Set.of(), Duration.ofMinutes(10)), delivery);
+        DeliverySettings.OFF,
+        parser.parse("front_desk:\n  delivery:\n    interval: PT10M\n").delivery());
   }
 
   @Test
@@ -189,12 +212,10 @@ class ProjectConfigParserTest {
                 + "    enabled: true\n"
                 + "    max_running: 20\n"
                 + "    start_refined: true\n"
-                + "    approves: [manual-review, artifact-declarations]\n"
-                + "    interval: PT1H\n");
+                + "    approves: [manual-review, artifact-declarations]\n");
     assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
     assertEquals(
-        new DeliverySettings(
-            true, 20, true, Set.of("artifact-declarations", "manual-review"), Duration.ofHours(1)),
+        new DeliverySettings(true, 20, true, Set.of("artifact-declarations", "manual-review")),
         config.delivery());
     assertEquals("artifact-declarations manual-review", config.delivery().approvesColumn());
   }
@@ -202,11 +223,8 @@ class ProjectConfigParserTest {
   @Test
   void theBoundsAreInclusive() {
     DeliverySettings low =
-        parser
-            .parse("front_desk:\n  delivery:\n    max_running: 1\n    interval: PT2M\n")
-            .delivery();
+        parser.parse("front_desk:\n  delivery:\n    max_running: 1\n").delivery();
     assertEquals(1, low.maxRunning());
-    assertEquals(Duration.ofMinutes(2), low.interval());
     assertEquals(Set.of(), parser.parse("front_desk:\n  delivery:\n    approves: []\n").delivery().approves());
   }
 
@@ -239,11 +257,6 @@ class ProjectConfigParserTest {
       {"front_desk:\n  delivery:\n    approves: [No-Changes]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [Manual-Review]\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [1]\n", "front_desk.delivery.approves"},
-      {"front_desk:\n  delivery:\n    interval: 10m\n", "front_desk.delivery.interval"},
-      {"front_desk:\n  delivery:\n    interval: 600\n", "front_desk.delivery.interval"},
-      {"front_desk:\n  delivery:\n    interval: PT1M\n", "front_desk.delivery.interval"},
-      {"front_desk:\n  delivery:\n    interval: PT1H1S\n", "front_desk.delivery.interval"},
-      {"front_desk:\n  delivery:\n    interval: P1D\n", "front_desk.delivery.interval"},
     };
     for (String[] c : bad) {
       ProjectConfigException e =
@@ -346,8 +359,7 @@ class ProjectConfigParserTest {
         DeliverySettings.approvesOf("artifact-declarations manual-review"));
     assertEquals(
         "artifact-declarations manual-review",
-        new DeliverySettings(
-                true, 2, false, Set.of("manual-review", "artifact-declarations"), null)
+        new DeliverySettings(true, 2, false, Set.of("manual-review", "artifact-declarations"))
             .approvesColumn());
   }
 }

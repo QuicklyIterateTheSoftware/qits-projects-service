@@ -145,7 +145,7 @@ public class Project extends PanacheEntityBase implements CausedRow {
 
   /**
    * Whether the project's front desk runs the delivery loop (epic qits-1440), as the wrapper's
-   * {@code .config/qits/project.yml} declares it under {@code front_desk.delivery.enabled}. The five
+   * {@code .config/qits/project.yml} declares it under {@code front_desk.delivery.enabled}. The four
    * {@code delivery_*} columns are stored by the same reconcile as {@link #frontDeskLifecycle}, and
    * each is {@code NOT NULL} with the value an absent key means (V48): an absent {@code delivery}
    * is the loop off.
@@ -167,10 +167,6 @@ public class Project extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "delivery_approves", nullable = false)
   public String deliveryApproves = "";
-
-  /** {@code front_desk.delivery.interval}: how often the loop ticks, an ISO-8601 duration. */
-  @Column(name = "delivery_interval", nullable = false)
-  public String deliveryInterval = "PT10M";
 
   @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
   public List<Repository> repositories;

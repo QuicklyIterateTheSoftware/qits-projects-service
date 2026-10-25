@@ -12,7 +12,6 @@ erDiagram
     uuid causation_id
     string delivery_approves "not null"
     boolean delivery_enabled "not null"
-    string delivery_interval "not null"
     int delivery_max_running "not null"
     boolean delivery_start_refined "not null"
     string description

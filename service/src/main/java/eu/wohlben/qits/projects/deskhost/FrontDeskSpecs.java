@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
-import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
@@ -49,8 +48,9 @@ import org.jboss.logging.Logger;
  *
  * <p><b>One token.</b> The desk authenticates with its own {@code qits_tok_} ({@code QITS_TOKEN},
  * idp kind {@code agent-container}, {@code qits:agent}) — the daemon's, and nothing a session runs
- * on. {@code QITS_PROJECTS_DAEMON_DELIVERY} and {@code QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL} are
- * always stated. The tokens the desk's sessions run on — the delivery token ({@code desk-delivery},
+ * on. {@code QITS_PROJECTS_DAEMON_DELIVERY} is always stated; it carries no interval, because the
+ * delivery desk has no tick and runs only when a person prompts it (qits-1597). The tokens the
+ * desk's sessions run on — the delivery token ({@code desk-delivery},
  * {@code qits:agent} and {@code qits:desk}) while the loop is on, the session token and every
  * refinement room's — are in <b>no</b> spec (qits-1482): {@link DeskSessionCredentials} hands them to
  * the daemon over the control socket ({@code sessionCredentials}), because anything in the
@@ -304,7 +304,6 @@ public class FrontDeskSpecs {
     }
     env.put("QITS_PROJECTS_DAEMON_LIFECYCLE", lifecycle.name());
     env.put("QITS_PROJECTS_DAEMON_DELIVERY", project.deliveryEnabled ? "on" : "off");
-    env.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", DeliverySettings.of(project).interval().toString());
     env.put("QITS_TOKEN", nullToEmpty(row.tokenValue));
     env.put("QITS_TOKEN_SUBJECT", nullToEmpty(row.tokenSubject));
     env.put("QITS_DOMAIN", d);

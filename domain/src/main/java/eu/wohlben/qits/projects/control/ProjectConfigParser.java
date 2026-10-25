@@ -3,8 +3,6 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import jakarta.enterprise.context.ApplicationScoped;
-import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,7 +38,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * absence is decided by the caller's listing rather than here.
  *
  * <p><b>An unknown key is ignored</b>, so a reader that predates a key added later still answers,
- * and a file written for a newer platform does not brick an older one.
+ * and a file written for a newer platform does not brick an older one. So is a key removed later:
+ * {@code front_desk.delivery.interval}, the delivery desk's tick until qits-1597 retired it, is
+ * read past without a word in a file that still carries it.
  */
 @ApplicationScoped
 public class ProjectConfigParser {
@@ -80,9 +80,6 @@ public class ProjectConfigParser {
    * recorded}.
    */
   public static final String DELIVERY_APPROVES = "approves";
-
-  /** Under {@link #DELIVERY}: an ISO-8601 duration from PT2M to PT1H, default PT10M. */
-  public static final String DELIVERY_INTERVAL = "interval";
 
   /** A structural problem in {@link #CONFIG_PATH}. It names the file; see the class javadoc. */
   public static class ProjectConfigException extends RuntimeException {
@@ -208,8 +205,7 @@ public class ProjectConfigParser {
         booleanAt(loop, DELIVERY_ENABLED, false),
         maxRunningOf(loop.get(DELIVERY_MAX_RUNNING)),
         booleanAt(loop, DELIVERY_START_REFINED, false),
-        approvesOf(loop.get(DELIVERY_APPROVES)),
-        intervalOf(loop.get(DELIVERY_INTERVAL)));
+        approvesOf(loop.get(DELIVERY_APPROVES)));
   }
 
   private static boolean booleanAt(Map<?, ?> loop, String key, boolean absent) {
@@ -261,31 +257,6 @@ public class ProjectConfigParser {
 
   private static List<String> sortedApprovable() {
     return DeliverySettings.APPROVABLE.stream().sorted().toList();
-  }
-
-  private static Duration intervalOf(Object value) {
-    if (value == null) {
-      return DeliverySettings.DEFAULT_INTERVAL;
-    }
-    String expected =
-        "an ISO-8601 duration from "
-            + DeliverySettings.MIN_INTERVAL
-            + " to "
-            + DeliverySettings.MAX_INTERVAL;
-    if (!(value instanceof String text)) {
-      throw invalid(DELIVERY_INTERVAL, expected, value);
-    }
-    Duration interval;
-    try {
-      interval = Duration.parse(text);
-    } catch (DateTimeParseException e) {
-      throw invalid(DELIVERY_INTERVAL, expected, value);
-    }
-    if (interval.compareTo(DeliverySettings.MIN_INTERVAL) < 0
-        || interval.compareTo(DeliverySettings.MAX_INTERVAL) > 0) {
-      throw invalid(DELIVERY_INTERVAL, expected, value);
-    }
-    return interval;
   }
 
   private static ProjectConfigException invalid(String key, String expected, Object got) {

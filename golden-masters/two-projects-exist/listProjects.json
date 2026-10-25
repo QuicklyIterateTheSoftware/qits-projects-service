@@ -16,8 +16,7 @@
           "enabled": false,
           "maxRunning": 2,
           "startRefined": false,
-          "approves": [],
-          "interval": "PT10M"
+          "approves": []
         }
       }
     },
@@ -37,8 +36,7 @@
           "enabled": false,
           "maxRunning": 2,
           "startRefined": false,
-          "approves": [],
-          "interval": "PT10M"
+          "approves": []
         }
       }
     }

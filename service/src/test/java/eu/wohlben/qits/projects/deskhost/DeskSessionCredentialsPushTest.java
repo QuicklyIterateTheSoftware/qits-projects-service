@@ -27,7 +27,6 @@ import io.quarkus.websockets.next.WebSocketConnection;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.lang.reflect.Proxy;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -172,8 +171,7 @@ class DeskSessionCredentialsPushTest {
   }
 
   private static ProjectConfig.DeliverySettings delivery(boolean enabled) {
-    return new ProjectConfig.DeliverySettings(
-        enabled, 2, false, Set.of(), Duration.ofMinutes(10));
+    return new ProjectConfig.DeliverySettings(enabled, 2, false, Set.of());
   }
 
   private List<SessionCredentials> frames() {

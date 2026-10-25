@@ -374,7 +374,8 @@ public class WrapperProjectConfigReconcileTest {
   /**
    * The reconcile applies every delivery value, hands the port the settings once per change, and
    * announces nothing for it — {@code ProjectChanged} carries no delivery fact. Disabling is a
-   * change too.
+   * change too. The file still carries {@code interval}, the tick qits-1597 retired: it is read past
+   * like any unknown key, and the reconcile stores the rest as if it were absent.
    */
   @Test
   public void theDeliverySettingsAreStoredAndHandedToThePortOnlyOnAChange() throws Exception {
@@ -388,14 +389,12 @@ public class WrapperProjectConfigReconcileTest {
     reconcileService.reconcileProjectConfig(project.id);
 
     ProjectConfig.DeliverySettings expected =
-        new ProjectConfig.DeliverySettings(
-            true, 3, true, java.util.Set.of("manual-review"), java.time.Duration.ofMinutes(5));
+        new ProjectConfig.DeliverySettings(true, 3, true, java.util.Set.of("manual-review"));
     assertEquals(expected, storedDeliveryOf(project.id));
     Project row =
         io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
             .call(() -> projectService.get(project.id));
     assertEquals("manual-review", row.deliveryApproves);
-    assertEquals("PT5M", row.deliveryInterval);
     assertEquals(
         List.of(new RecordingFrontDeskLifecycleChanged.DeliveryCall(project.id, expected)),
         lifecycleListener.deliveryCallsOf(project.id));

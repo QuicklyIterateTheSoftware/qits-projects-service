@@ -15,15 +15,14 @@ public interface ProjectMapper {
   @Mapping(target = "delivery", expression = "java(deliveryOf(entity))")
   ProjectDto toDto(Project entity);
 
-  /** The five {@code delivery_*} columns as one object (epic qits-1440); approves sorted. */
+  /** The four {@code delivery_*} columns as one object (epic qits-1440); approves sorted. */
   default ProjectDeliveryDto deliveryOf(Project entity) {
     DeliverySettings delivery = DeliverySettings.of(entity);
     return new ProjectDeliveryDto(
         delivery.enabled(),
         delivery.maxRunning(),
         delivery.startRefined(),
-        delivery.approves().stream().sorted().toList(),
-        delivery.interval().toString());
+        delivery.approves().stream().sorted().toList());
   }
 
   /**

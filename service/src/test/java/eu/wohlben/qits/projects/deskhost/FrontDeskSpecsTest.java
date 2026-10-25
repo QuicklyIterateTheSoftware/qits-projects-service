@@ -105,7 +105,6 @@ class FrontDeskSpecsTest {
     expected.put("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION", DOCUMENT);
     expected.put("QITS_PROJECTS_DAEMON_LIFECYCLE", "ALWAYS_ON");
     expected.put("QITS_PROJECTS_DAEMON_DELIVERY", "off");
-    expected.put("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL", "PT10M");
     expected.put("QITS_TOKEN", "qits_tok_secret");
     expected.put("QITS_TOKEN_SUBJECT", "tok-abc");
     expected.put("QITS_DOMAIN", "example.test");
@@ -144,10 +143,10 @@ class FrontDeskSpecsTest {
   }
 
   /**
-   * The delivery loop (epic qits-1440): on or off, the desk is told so with its interval — and since
-   * qits-1482 it holds the delivery token in no environment either way: that token travels only in
-   * the {@code sessionCredentials} frame, under the {@code front-desk} key. The hash still moves
-   * with the loop.
+   * The delivery loop (epic qits-1440): on or off, the desk is told so — with no interval since
+   * qits-1597, which removed the desk's tick — and since qits-1482 it holds the delivery token in no
+   * environment either way: that token travels only in the {@code sessionCredentials} frame, under
+   * the {@code front-desk} key. The hash still moves with the loop.
    */
   @Test
   void theDeliveryTokenIsInNoSpecWhileTheLoopIsOnOrOff() {
@@ -159,18 +158,17 @@ class FrontDeskSpecsTest {
     Map<String, String> offEnv =
         FrontDeskSpecs.compose(settings("example.test"), off, row, identity(), DOCUMENT).spec().env();
     assertEquals("off", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
-    assertEquals("PT10M", offEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertFalse(offEnv.containsKey("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
     assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN"));
     assertFalse(offEnv.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
 
     Project on = project(FrontDeskLifecycle.ON_DEMAND);
     on.deliveryEnabled = true;
-    on.deliveryInterval = "PT5M";
     FrontDeskSpecs.Composed composed =
         FrontDeskSpecs.compose(settings("example.test"), on, row, identity(), DOCUMENT);
     Map<String, String> onEnv = composed.spec().env();
     assertEquals("on", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY"));
-    assertEquals("PT5M", onEnv.get("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"));
+    assertFalse(onEnv.containsKey("QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL"), "no tick, no interval");
     assertFalse(onEnv.containsKey("QITS_DELIVERY_TOKEN"), "the token rides the control socket");
     assertFalse(onEnv.containsKey("QITS_DELIVERY_TOKEN_SUBJECT"));
     onEnv.forEach(

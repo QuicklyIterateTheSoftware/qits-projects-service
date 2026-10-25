@@ -2511,7 +2511,6 @@ belts).
 | `QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH` / `_AGENT_CONFIGURATION` | `qits.projects.agent-configuration-path` and the resolved document (both or neither) |
 | `QITS_PROJECTS_DAEMON_LIFECYCLE` | `ALWAYS_ON` or `ON_DEMAND` |
 | `QITS_PROJECTS_DAEMON_DELIVERY` | `on` or `off`: the project's `front_desk.delivery.enabled` |
-| `QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` | `front_desk.delivery.interval`, ISO-8601 (`PT10M`) |
 | `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
@@ -2525,6 +2524,12 @@ belts).
 `QITS_DELIVERY_TOKEN` / `QITS_DELIVERY_TOKEN_SUBJECT` were in this table until qits-1482 and are
 gone on purpose: no session's token is in the environment, which every process under the
 container's uid can read. `FrontDeskSpecsTest` asserts their absence with the loop on.
+`QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL` (`front_desk.delivery.interval`, the daemon's tick) left
+it with qits-1597 (owner ruling 2026-10-24): the delivery desk has no timer and runs only when a
+person prompts it, so there is no interval to state. The setting went with it — `Project`'s
+`delivery_interval` column (V56), `DeliverySettings.interval` and the wire's
+`ProjectDeliveryDto.interval` — and an `interval:` a project.yml still carries is ignored like any
+unknown key.
 
 ### Prompting the desk and reading its last answer (qits-1572)
 

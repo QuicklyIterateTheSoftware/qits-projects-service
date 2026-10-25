@@ -2,8 +2,6 @@ package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
-import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
@@ -20,7 +18,6 @@ import java.util.TreeSet;
  *         max_running: 2
  *         start_refined: false
  *         approves: [manual-review]
- *         interval: PT10M
  * </pre>
  *
  * <p>One component per key — the shape {@link ReleaseRequestSettings} has for the repository-level
@@ -68,7 +65,7 @@ public record ProjectConfig(
   /**
    * The front desk's delivery loop (epic qits-1440), {@code front_desk.delivery} in {@code
    * project.yml}: whether the desk runs it, how many items it keeps running at once, whether it may
-   * start a REFINED item itself, which approval requirements it may satisfy, and how often it ticks.
+   * start a REFINED item itself, and which approval requirements it may satisfy.
    *
    * <p>{@code approves} is a subset of {@link #APPROVABLE} — never {@code recorded}, which the desk
    * may never satisfy. The parser refuses anything else, so a record holding one was built by hand.
@@ -85,15 +82,12 @@ public record ProjectConfig(
    *     #MIN_RUNNING}..{@link #MAX_RUNNING}; absent is {@link #DEFAULT_MAX_RUNNING}
    * @param startRefined whether the desk may move a REFINED item to READY_FOR_DEV itself
    * @param approves the approval requirements the desk may satisfy, never null
-   * @param interval how often the loop ticks, {@link #MIN_INTERVAL}..{@link #MAX_INTERVAL}; absent
-   *     is {@link #DEFAULT_INTERVAL}
    */
   public record DeliverySettings(
       boolean enabled,
       int maxRunning,
       boolean startRefined,
-      Set<String> approves,
-      Duration interval) {
+      Set<String> approves) {
 
     /** The fewest running items a loop may be capped at. */
     public static final int MIN_RUNNING = 1;
@@ -103,15 +97,6 @@ public record ProjectConfig(
 
     /** {@code max_running} when absent. */
     public static final int DEFAULT_MAX_RUNNING = 2;
-
-    /** The shortest tick. */
-    public static final Duration MIN_INTERVAL = Duration.ofMinutes(2);
-
-    /** The longest tick. */
-    public static final Duration MAX_INTERVAL = Duration.ofHours(1);
-
-    /** {@code interval} when absent. */
-    public static final Duration DEFAULT_INTERVAL = Duration.ofMinutes(10);
 
     /** {@code approves} naming every {@code automation:<kind>} requirement (qits-1517). */
     public static final String AUTOMATION = "automation";
@@ -155,35 +140,19 @@ public record ProjectConfig(
 
     /** No {@code front_desk.delivery}: everything off, every value at its default. */
     public static final DeliverySettings OFF =
-        new DeliverySettings(false, DEFAULT_MAX_RUNNING, false, Set.of(), DEFAULT_INTERVAL);
+        new DeliverySettings(false, DEFAULT_MAX_RUNNING, false, Set.of());
 
     public DeliverySettings {
       approves = approves == null ? Set.of() : Set.copyOf(approves);
-      if (interval == null) {
-        interval = DEFAULT_INTERVAL;
-      }
     }
 
-    /**
-     * The settings {@code project}'s {@code delivery_*} columns hold. A stored interval that does
-     * not parse — no writer here stores one — reads as {@link #DEFAULT_INTERVAL}.
-     */
+    /** The settings {@code project}'s {@code delivery_*} columns hold. */
     public static DeliverySettings of(Project project) {
-      Duration interval;
-      try {
-        interval =
-            project.deliveryInterval == null
-                ? DEFAULT_INTERVAL
-                : Duration.parse(project.deliveryInterval);
-      } catch (DateTimeParseException e) {
-        interval = DEFAULT_INTERVAL;
-      }
       return new DeliverySettings(
           project.deliveryEnabled,
           project.deliveryMaxRunning,
           project.deliveryStartRefined,
-          approvesOf(project.deliveryApproves),
-          interval);
+          approvesOf(project.deliveryApproves));
     }
 
     /** Write these settings onto {@code project}'s {@code delivery_*} columns. */
@@ -192,7 +161,6 @@ public record ProjectConfig(
       project.deliveryMaxRunning = maxRunning;
       project.deliveryStartRefined = startRefined;
       project.deliveryApproves = approvesColumn();
-      project.deliveryInterval = interval.toString();
     }
 
     /** {@link #approves} as the {@code delivery_approves} column holds it: sorted, space-separated. */

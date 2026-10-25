@@ -1,0 +1,13 @@
+-- THE DELIVERY DESK HAS NO TICK ANY MORE (qits-1597).
+--
+-- V48 added `delivery_interval` with the rest of `front_desk.delivery`: the ISO-8601 duration the
+-- desk daemon's timer woke the delivery desk on, handed to it as
+-- QITS_PROJECTS_DAEMON_DELIVERY_INTERVAL. The owner removed the timer (2026-10-24) and put nothing
+-- in its place: the delivery desk runs only when a person prompts it. Nothing reads the column now
+-- -- the parser ignores an `interval:` a project.yml still carries, as it ignores any key it does
+-- not know -- so it goes, rather than staying behind as a setting that looks as if it did a thing.
+--
+-- V56 rather than V54 because epic qits-1580 takes V54 and V55 in this history in parallel.
+-- Nothing to preserve: every value was a schedule nobody runs. V48 is untouched, as an applied
+-- migration always is.
+alter table Project drop column delivery_interval;

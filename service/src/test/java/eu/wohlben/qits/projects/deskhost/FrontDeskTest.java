@@ -177,8 +177,7 @@ class FrontDeskTest {
   }
 
   private static ProjectConfig.DeliverySettings delivery(boolean enabled) {
-    return new ProjectConfig.DeliverySettings(
-        enabled, 2, false, java.util.Set.of(), Duration.ofMinutes(10));
+    return new ProjectConfig.DeliverySettings(enabled, 2, false, java.util.Set.of());
   }
 
   private FrontDesk row(String projectId) {
