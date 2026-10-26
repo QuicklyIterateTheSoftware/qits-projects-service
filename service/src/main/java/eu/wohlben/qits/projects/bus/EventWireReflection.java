@@ -6,6 +6,7 @@ import eu.wohlben.qits.githost.events.SCMDeleteBranch;
 import eu.wohlben.qits.githost.events.SCMDeleteTag;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
+import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 /**
@@ -82,6 +83,10 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * a listener that BINDS registers its record; one that only walks the payload with {@code readTree}
  * still registers the type it consumes.</b>
  *
+ * <p>{@link WaitClosedSource.DeskWaitClosedPayload} (qits-1618) is the third bound consumption,
+ * qits-workspaces' {@code DeskWaitClosed} as the desk trigger source reads it: an absent line is a
+ * native binary that never wakes a desk from its {@code qits wait}.
+ *
  * <p>{@link EntityTransitioned} is the sixth published one, and it is the first entry here that
  * needs <b>two</b> lines: its payload carries a list of {@link EntityTransitioned.Entity}, and a
  * nested record is as invisible to the builder as its enclosing one. A registration that named only
@@ -122,6 +127,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
+      WaitClosedSource.DeskWaitClosedPayload.class,
       EventEnvelope.class,
       EventFrame.class
     },

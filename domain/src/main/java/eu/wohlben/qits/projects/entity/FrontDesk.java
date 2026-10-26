@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -36,15 +37,21 @@ import org.hibernate.type.SqlTypes;
  *       hash and recreates it when an estate carries another. {@link #rollRequestedAt} marks a
  *       settings change waiting to roll between turns (qits-1514).
  *   <li><b>The report</b> — {@code reported_*} is the runner's last inventory of the desk; {@link
- *       #failureDetail} why it is not usable, when it is not.
+ *       #failureDetail} why it is not usable, when it is not; {@link #sessionId} the desk's own
+ *       session as its daemon last reported it.
  * </ul>
  *
  * <p>{@link Uncaused}: machine state derived from the project and from demand, written by sweeps
  * and socket frames off any request scope, so a stamp would record null for ever.
+ *
+ * <p>{@link DynamicUpdate}: the row has many writers (the roll, the runner's report, the daemon's
+ * session report), each changing its own columns. A writer flushes only what it changed, so one
+ * that loaded the row before {@link #sessionId} moved never writes the old id back (qits-1619).
  */
 @Entity
 @Table(name = "front_desk")
 @Uncaused
+@DynamicUpdate
 public class FrontDesk extends PanacheEntityBase {
 
   @Id
@@ -123,6 +130,15 @@ public class FrontDesk extends PanacheEntityBase {
    */
   @Column(name = "roll_requested_at")
   public Instant rollRequestedAt;
+
+  /**
+   * The harness session id the desk's daemon last reported for the front desk's own session key
+   * ({@code front-desk}, qits-1619, V60), or null when it never reported one. Kept after the session
+   * stops — a report without one never clears it — so the {@code sessions} frame can hand it back as
+   * that entry's {@code resumeSessionId} and a recreated desk resumes its previous session.
+   */
+  @Column(name = "session_id")
+  public String sessionId;
 
   @Column(name = "reported_state")
   public String reportedState;

@@ -64,13 +64,12 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   ever returns; `wiring` is deliberately not it, because a repository create is waited on and can
   fail the caller's request.
 - `service/…/containershost/` — the orchestrator client: the producer that gives the jar its bean
-  and its bearer, the refinement runtime (`ContainersRefinementRuntime`, behind
-  `refinementhost/RefinementRuntime`) and the native-image registration. It is an *adapter* like
-  `wiring` and `bus` are — what lives here is only what a deployable owes a plain jar. See "The
-  container orchestrator". (The project agent's runtime, `ContainersAgentRuntime`, went with the
-  direct agent path in qits-767; front desks run on runners.)
+  and its bearer, and the native-image registration. It is an *adapter* like `wiring` and `bus`
+  are — what lives here is only what a deployable owes a plain jar. See "The container
+  orchestrator". (Both container runtimes are gone: `ContainersAgentRuntime` with the direct agent
+  path in qits-767, `ContainersRefinementRuntime` with the refinement containers in qits-1316.)
 - `service/…/idphost/` — qits-idp's commission and token APIs, the same adapter shape one directory
-  over: `IdpRefinementCredentials` behind `refinementhost/RefinementCredentials`, `IdpTokens` and
+  over: `IdpTokens`, `IdpRefinementTokens` behind `refinementhost/RefinementTokens`, and
   `IdpRunnerCommissioner` for the front-desk runners and their desks (`IdpFrontDeskTokens` behind
   `deskhost/FrontDeskTokens`), and the shared spellings (`IdpCommissionWire`) and failure
   (`IdpCommissionException`) they all use.
@@ -156,12 +155,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     (`EntityBlocks.apply`), **every** transition (`bus/EntityTransitionAnnouncer`, the single
     `TransitionAnnouncer` implementation — so the bulk `POST /work/transition` is covered, and a move signals exactly once), and a retitle (the
     `entities` port `RetitleAnnouncer`, told by `WorkEntityService.update` only when the title
-    changed). It also asks the entity's refinement through `refinementhost/RefinementAgentEntities`
-    (`POST <proxy base> agent-worktrees/{entityId}/entity` down the tunnel, the entity id doubling as
-    the agent id; a 404 there just means no agent has been started in that room yet, logged at DEBUG
-    and never retried, qits-1285). The dispatch seeds the same three values (`entityTitle`, `entityStatus`, `entityBlocked`), and
-    a refinement container is given them as `QITS_WORKSPACE_DAEMON_ENTITY_TITLE` / `_STATUS` /
-    `_BLOCKED` at every bring-up.
+    changed). It also tells the entity's refinement room through
+    `refinementhost/RefinementSessions.entityChanged`, which sends the room's desk daemon its
+    sessions list with the new facts (epic qits-770). The dispatch seeds the same three values
+    (`entityTitle`, `entityStatus`, `entityBlocked`).
 
   - `control/WorkspaceAgentLookup` → `HttpWorkspaceAgentLookup` (qits-1448): the GET that says
     which work item an agent works on — `GET /workspaces/api/agents/{agentId}`, read as a `Map` for
@@ -720,10 +717,10 @@ write** (user ruling, 2026-09-12):
   declared. `POST /projects/{projectId}/agent-config-repository` (qits-1382) takes the same three
   roles on the same argument: it creates the project's one `qits-agent-config` or reads it back
   (`api/AgentConfigRepositoryDoorTest`).
-- **The two control sockets take it, bound to the agent's own container** (a socket is a control
+- **The control socket takes it, bound to the agent's own container** (a socket is a control
   channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
-  `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
-  `AgentControlSocketAccess` and `RefinementControlSocketAccess` answer 403 at the upgrade.
+  `AgentControlSocketAccess` answers 403 at the upgrade. (The refinement containers' socket went
+  with them, qits-1316.)
 - **A caller that also holds `qits:system` or `qits:admin` is judged as before.** The checks read
   the token's claims directly (`security/AgentAccess`), not `MachineAuth`: `MachineAuth` passes
   every caller while `qits.auth.machine.required` is off, and an agent role that came from a
@@ -1023,17 +1020,12 @@ The idp commissions of this service's own containers state refs too (contract C2
 
 - **A front desk's token states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
   clones, and qits-coding-agents runs no git.
-- **A refinement container states `"gitRefs": ["refs/heads/refining/<slug>"]`**: its own branch
-  and nothing else. Its qits-workspace-daemon auto-pushes each commit there (`OriginSync`,
-  `auto-push-enabled` defaults to true). `RefinementCommissions.gitRefsOf` reads the ref off the
-  row's `branch`: the branch `RefinementService.findOrCreate` cut, and the value the container gets
-  as `QITS_WORKSPACE_DAEMON_BRANCH`.
+- **A refinement room's token states `"gitRefs": []`** too (qits-1482). The refinement
+  containers' commissions, which stated `refs/heads/refining/<slug>`, are retired (qits-1316).
 - **A refused list fails closed, never open.** An idp without the member ignores it and answers 201.
   So a 400 to a commission that states `gitRefs` comes from an idp that read the list and refused it
   (for example, more than 500 entries). A commission without `gitRefs` could push anything, so it is
   never sent. This replaces contract C5's "commission without it" fallback for this service.
-  - The refinement commission is sent again with `gitRefs: []` and logs an ERROR naming the
-    refinement and the idp's reason. The container starts, but its auto-push fails.
   - A desk token's list is already `[]`, so the same request is not sent twice: the mint fails and
     the desk reads `FAILED` `TOKEN_UNAVAILABLE` until the sweep mints it.
 
@@ -2600,19 +2592,21 @@ it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
 **The delivery desk is prompted by what happens, not only by a person.** `service/…/desktriggers/`
 is the whole of it:
 
-    qits-events --EntityTransitioned / ApprovalRequirementChanged--> DeskTriggerListener
+    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed--> DeskTriggerListener
        (durable, consumerId projects-desk-triggers, replayFromEpoch false)
        each DeskTriggerSource naming the signature: qualify(frame) -> DeskTrigger*
        drop: project delivery_enabled false, or cause = one of the desk's subjects
+         (neither for a source whose requestedByDesk() is true: qits-1618's wait)
        DeskTriggerWindows.admit: join the project's OPEN window, or open one closing a window later
+         (requestedByDesk: also bring closes_at forward to now, so the next sweep delivers it)
     DeskTriggerSweep (every sweep-interval, NORMAL mode only)
        OPEN past closes_at -> render DeskTriggerMessage, store message + closed_at, OWED
        oldest OWED per project -> FrontDeskPrompter.prompt (POST <base>front-desk/prompt)
           -> DELIVERED | QUEUED | still OWED (attempts, last_status, last_detail) | FAILED
 
 - **Storage** (V57): `desk_trigger_window` (one OPEN row per project, a partial unique index;
-  `closes_at` set by the trigger that opened it and never moved, so a busy project is prompted on a
-  clock) and `desk_trigger_event` (one line, unique on `(window_id, source, item_ref, label)`, so a
+  `closes_at` set by the trigger that opened it and never extended, so a busy project is prompted
+  on a clock; only a trigger the desk asked for brings it forward, qits-1618) and `desk_trigger_event` (one line, unique on `(window_id, source, item_ref, label)`, so a
   redelivered frame or the same item twice is one line). Both `@Uncaused`. Admit reads the OPEN row
   `for update` and inserts with `on conflict … do nothing` on both tables — a lost race re-reads the
   winner's window and never raises a unique violation into the caller's transaction.
@@ -2625,12 +2619,17 @@ is the whole of it:
   already open window is still closed and delivered), and a trigger whose `cause` equals a non-null
   `front_desk.delivery_token_subject`, `session_token_subject` or `token_subject` of its project —
   the desk is not told what it did. A delivery token re-minted since leaves its old subject
-  unmatched; accepted, toggling is rare.
+  unmatched; accepted, toggling is rare. **Neither drop applies to a source whose
+  `requestedByDesk()` is true** (qits-1618): the desk asked to be woken, so it is woken with delivery
+  off too — the prompt goes to the project's one kept front desk session either way, delivery only
+  decides that session's rights.
 - **The message** (`DeskTriggerMessage`): one preamble line naming the desk's brief
   (`/tmp/qits-delivery-brief.md`, `DeskTriggerMessage.BRIEF_PATH`, a copy of qits-projects-daemon's
   `DeliveryKeeper.BRIEF_PATH`), the window id and its bounds, then each source's section in
   `order()`, a blank line between, nothing after. It is stored at the close, so every retry sends
   the same text. The opening words `You are the delivery desk` are what the desk's brief keys on.
+  A window whose every line came from a `requestedByDesk()` source opens instead with `A wait you
+  declared has closed.` and the same bounds: the desk asked, and need not read the delivery brief.
 - **Delivery** reuses the person's prompt door's reading (`FrontDeskPrompter`), outside any
   transaction, one window per project per pass so owed windows arrive in order: 200 `delivered` →
   DELIVERED, 200 `queued` → QUEUED (with `queue_position`), both stamping `accepted_at` and
@@ -2641,12 +2640,15 @@ is the whole of it:
 **The source contract** is `DeskTriggerSource`: `id()` (stored in `desk_trigger_event.source` —
 storage, never rename it), `order()` (section order), `signatures()` (bus event simple names),
 `qualify(EventFrame)` (0..n `DeskTrigger(projectId, itemRef, itemId, cause, label, eventId,
-occurredAt)`, run inside the listener's `projects` transaction so it may read rows) and
-`render(projectSlug, events)` (its own section: a heading line, one line per event). Two ship:
+occurredAt)`, run inside the listener's `projects` transaction so it may read rows),
+`render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
+`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Three
+ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
 | `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
+| `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
@@ -2820,8 +2822,8 @@ client pair (`QITS_COMMISSIONED_*`, `*_AUTH_TOKEN_URL`) is gone with it.
 `QITS_PLATFORM_MCP_URL` names the qits CLI served over MCP — application
 `qits-platform-access-mcp-service`, at `http://<env>-qits-platform-access-mcp-service:8080/mcp`,
 composed from `QITS_ENVIRONMENT` (the source `qits.projects.own-host`'s default reads) unless
-`qits.projects.platform-mcp-url` overrides it. Both container factories inject it — the project
-agent's here and `RefinementContainerFactory`'s — from the one key. This service serves no MCP
+`qits.projects.platform-mcp-url` overrides it. The front desk's spec injects it from that one key
+(a refinement room is a session in the same desk). This service serves no MCP
 server of its own any more, and sets no `QITS_REPOSITORY_MCP_URL` or `QITS_OBSERVABILITY_MCP_URL`.
 The server has one tool per leaf command, named by the command path joined with `_`
 (`work_details`, `work_update`, `work_status`, `work_block`, `work_create`, `work_list`,
@@ -3212,46 +3214,43 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
 
 ## Refinement sessions (epic qits-770)
 
-**A refinement room opened now is a session of its project's front desk**, not a container of its
-own. The desk's daemon (capability 3, `qits-projects-daemon-protocol`'s `Sessions`/`SessionReport`)
-runs every room's harness session in the one desk container — the multiplex — keyed by the room's
-entity id, on the room's own token (qits-1482's `sessionCredentials` key). `refinementhost/
-RefinementSessions` is the whole of it.
-
-**The legacy rule: the branch decides** (`Refinement.containerRoom()`). V58 made `refinement.branch`
-and `parent` nullable; every row opened before it has a `refining/<slug>` branch and stays a
-**container room** — its container, ladder, tunnel, proxy, drift and stale-image sweep work exactly
-as "Refinement containers" below says, until qits-1316 deletes that machinery. Every row opened since
-has no branch and is a **session room**. Nothing converts one kind into the other; every door
-answers both by that rule.
+**Every refinement room is a session of its project's front desk**, not a container of its own. The
+desk's daemon (capability 3, `qits-projects-daemon-protocol`'s `Sessions`/`SessionReport`) runs every
+room's harness session in the one desk container — the multiplex — keyed by the room's entity id, on
+the room's own token (qits-1482's `sessionCredentials` key). `refinementhost/RefinementSessions` is
+the whole of it. The per-room containers are retired (qits-1316, see "Refinement containers"); a row
+opened before V58 is a session room like every other.
 
 - **The desired list** (`RefinementSessions.compose`, pure, `RefinementSessionsComposeTest`) is
-  always the full one: `front-desk` (surface `project.work`, RUNNING) only while the project's
-  `front_desk.lifecycle` is `ALWAYS_ON` — on `ON_DEMAND` it is left out and the desk panel still
-  launches that session with `POST /agents` (the daemon keeps it anyway while the delivery loop is
-  on) — then one entry per session room: key the entity id, surface `epic.chat`, RUNNING while
-  `last_demand_at` is younger than `qits.projects.agent-idle-timeout` (PT4H, the desk's own key),
-  else STOPPED; `resumeSessionId` the last reported `session_id`; the entity's `qualifiedId`,
-  `title`, `status`, effective `blocked` and `blockSource` read live (`entities.fresh`). A container
-  room is never in it.
+  always the full one: `front-desk` (surface `project.work`) RUNNING while the project's
+  `front_desk.lifecycle` is `ALWAYS_ON`; on `ON_DEMAND` it is STOPPED when the desk has a stored
+  session id and left out when it has none — the desk panel still launches that session with `POST
+  /agents`, and the daemon keeps the desk anyway while the delivery loop is on (`deliveryOn() ||
+  running`), so a delivering desk resumes and a non-delivering one is not kept. Either way its
+  `resumeSessionId` is `front_desk.session_id` (V60, qits-1619), so a recreated desk resumes its
+  own session — then one entry per room: key the entity id, surface `epic.chat`, RUNNING
+  while `last_demand_at` is younger than `qits.projects.agent-idle-timeout` (PT4H, the desk's own
+  key), else STOPPED; `resumeSessionId` the last reported `session_id`; the entity's `qualifiedId`,
+  `title`, `status`, effective `blocked` and `blockSource` read live (`entities.fresh`).
 - **When it is sent** (`RefinementSessions.push`, never throws, only to a daemon whose `hello` said
   `AgentDaemonRegistry.SESSIONS_CAPABILITY` = 3): after the credentials on `hello`; on every change —
   a room opened, ensured, stopped or discarded (`RefinementService`), its entity moved, blocked,
-  unblocked or retitled (`api/AgentEntitySignals` → `RefinementAgentEntities.changed`, which hands a
-  session room to `RefinementSessions.entityChanged` with the announced facts and tells only a
-  container room down its tunnel; a campaign's room is told too); and every
-  `qits.projects.desk-runner.estate-interval` for every capable connected desk (`pushAll`). **The
-  credential goes first**: the open mints the room's token (which sends `sessionCredentials`) before
-  it stamps demand and pushes, and the hello sends credentials before sessions. A room whose token
-  could not be minted is still listed; the daemon reports it FAILED until the reconcile mints it.
+  unblocked or retitled (`api/AgentEntitySignals` → `RefinementSessions.entityChanged`, with the
+  announced facts; a campaign's room is told too); and every `qits.projects.desk-runner.estate-interval`
+  for every capable connected desk (`pushAll`). **The credential goes first**: the open mints the
+  room's token (which sends `sessionCredentials`) before it stamps demand and pushes, and the hello
+  sends credentials before sessions. A room whose token could not be minted is still listed; the
+  daemon reports it FAILED until the reconcile mints it.
 - **The report** (`SessionReport`, `RefinementSessions.onReport`): each named key's `state`,
   `detail` and `commandId` land on `refinement.session_state`/`session_detail`/`session_command_id`,
   its `sessionId` on `session_id` when it carries one (kept after a stop, so the next launch
-  resumes); a session room the report leaves out is STOPPED. A row that moved fires its `PROCESS`
-  hint. An `AgentActivity` naming a room's `commandId` re-stamps its demand at most once a minute,
-  while the room is still wanted, so a person working in a room is not stopped at the idle window.
+  resumes); a room the report leaves out is STOPPED. The `front-desk` key's non-blank `sessionId`
+  lands on `front_desk.session_id` the same way (written when it differs, never cleared; nothing for
+  a project with no desk row). A row that moved fires its `PROCESS` hint. An `AgentActivity` naming a
+  room's `commandId` re-stamps its demand at most once a minute, while the room is still wanted, so
+  a person working in a room is not stopped at the idle window.
 - **The desk is wanted for a room** (`deskhost/RefinementDemand`, a `FrontDeskDemandSource`): while
-  any of the project's session rooms wants its session, so a refinement starts an `ON_DEMAND` desk.
+  any of the project's rooms wants its session, so a refinement starts an `ON_DEMAND` desk.
   `RefinementService` fires the CDI event `refinementhost/RefinementDemandChanged` on every demand
   move; `FrontDeskHooks` creates the desk row when it is now wanted and reconciles it; the sweep
   creates the desk of such a project like an `ALWAYS_ON` one.
@@ -3260,252 +3259,88 @@ answers both by that rule.
   `{"error":"REFINEMENT_SESSIONS_FULL"}` naming the running rooms by qualified id. Re-opening an
   existing room at the cap answers the room unstamped (its ensure says why).
 
-| route | session room | container room |
-| --- | --- | --- |
-| `POST /work/{q}/refinement` (`startWorkRefinement`) | find-or-create, demand stamped, pushed | answered untouched |
-| `POST /refinements/{id}/ensure` (`ensureRefinementSession`) | demand stamped (cap), pushed; `{refinement}` | the ladder begun; `{refinement}` |
-| `POST /refinements/{id}/stop` (`stopRefinementSession`) | demand cleared → STOPPED, pushed | the container stopped |
-| `POST …/ensure-container` | alias of `ensure`, with an already-settled `technicalProcessId` | as before |
-| `POST …/stop-container` | alias of `stop` | as before |
-| `POST …/recreate-container` | `stop` then `ensure`, settled process | as before |
-| `GET …/active-process` | `null` | as before |
-| `POST …/discard` | row deleted (draft, sketches, designs cascade), pushed without the key (which stops the session), token revoked, credentials re-sent | as before |
+| route | behaviour |
+| --- | --- |
+| `POST /work/{q}/refinement` (`startWorkRefinement`) | find-or-create, demand stamped, pushed |
+| `POST /refinements/{id}/ensure` (`ensureRefinementSession`) | demand stamped (cap), pushed; `{refinement}` |
+| `POST /refinements/{id}/stop` (`stopRefinementSession`) | demand cleared → STOPPED, pushed |
+| `POST …/ensure-container` (`ensureRefinementContainer`) | alias of `ensure`, with an already-settled `technicalProcessId` |
+| `POST …/discard` | row deleted (draft, sketches, designs cascade), pushed without the key (which stops the session), token revoked, credentials re-sent |
 
-The four container verbs stay for the released SPA and go in qits-1316. `EntityResolutions` still
-calls `discard`.
+**`ensure-container` stays only because qits-platform-access-cli's pact calls it** (`qits work
+refinement open`, pinning `technicalProcessId`); it goes when that consumer releases a pact without
+it. `stop-container`, `recreate-container` and `active-process` are gone and answer 404
+(`RefinementContainersRetiredTest`). `EntityResolutions` still calls `discard`.
 
 **The open is the same for a campaign as for an epic** — the qits-411 refusal is gone; a campaign
 takes the REPORTED and dispatch refusals an epic does. Its room's scope is the campaign and its
 REPORTED members; **nothing server-side composes a room's prompt** (the SPA's draft does, and the
 session's surface brief), so naming the members is the prompt's job. Designs and prompt images work
 for it; the dossier inline door stays epic-only, so it has none, like a ticket. No branch, no
-container placement and no 502 are on the open any more.
+container placement and no 502 are on the open.
 
-**`RefinementDto`** adds `sessionId`, `commandId`, `deskStatus` (the desk's `FrontDeskState` word:
-QUEUED, PROVISIONING, RUNNING, STOPPED, FAILED, UNAVAILABLE, ABSENT, through the port
+**`RefinementDto`** carries `sessionId`, `commandId`, `deskStatus` (the desk's `FrontDeskState`
+word: QUEUED, PROVISIONING, RUNNING, STOPPED, FAILED, UNAVAILABLE, ABSENT, through the port
 `refinementhost/RefinementDesk`, implemented by `deskhost/FrontDeskRefinementDesk`), `deskDetail`
-(its failure) and `deskBase` (`/projects/container/<projectId>/`), all null on a container room. On a
-session room `runtimeStatus` is the reported state (STARTING | RUNNING | STOPPED | FAILED; before any
-report, STARTING while wanted, else STOPPED) and `runtimeError` its detail. The container-only fields
-— `branch`, `parent`, `clean`, `ahead`, `behind`, `conflictsWithParent`, `daemonConnectedAt`,
-`daemonVersion`, `daemonOutdated`, `pinnedDaemonVersion`, `daemonVersionStale` — stay on the wire in
-this release (the frontend's pact pins them) and are null/false on a session room; qits-1316 drops
-them. `epicId` stays.
+(its failure) and `deskBase` (`/projects/container/<projectId>/`). `runtimeStatus` is the reported
+state (STARTING | RUNNING | STOPPED | FAILED; before any report, STARTING while wanted, else STOPPED)
+and `runtimeError` its detail; `agentActivity` is always null. The container fields — `branch`,
+`parent`, `clean`, `ahead`, `behind`, `conflictsWithParent`, `daemonConnectedAt`, `daemonVersion`,
+`daemonOutdated`, `pinnedDaemonVersion`, `daemonVersionStale` — are gone (qits-1316; no pinned
+consumer pact asserts them). `epicId` stays.
 
-Tests: `RefinementSessionsComposeTest` (pure), `RefinementSessionsTest` (the frame on hello and on
-every change, capability gating, credential-first ordering, the report, the doors and their aliases,
-the desk demand, a campaign's room, the cap). The suites still pinning the container machinery
-(`RefinementLifecycleTest`, `RefinementDriftTest`, `RefinementPinStalenessTest`,
-`EpicResolutionCleanupTest`) make their rooms through the test-scope `LegacyRefinementRooms`, which
-opens a session room and turns it into a pre-V58 container room.
+**Each room holds its own token (qits-1482, V50).** `RefinementTokens`
+(`idphost/IdpRefinementTokens`, the suite's `FakeRefinementTokens`) mints a `qits_tok_` of idp kind
+`refinement` (→ `qits:agent` only), contextId the row id, claims `{project, entity}`, `gitRefs []`,
+onto `refinement.token_*`. Minted by `RefinementService.findOrCreate` (create, and a later open of a
+row holding none) and **never fails the open**: a failed mint is a WARN and
+`RefinementTokenReconcile` (boot + `refinement-credentials.reconcile-interval`, NORMAL only) mints
+for every row holding none and revokes every live `refinement` token no row names (5 min mint
+grace). Revoked by `discard` before the row goes, so `EntityResolutions` revokes it too.
+`RefinementService.credentialOf` answers `{key: entityId, token, subject}`; the room's credential is
+in its project's desk's `sessionCredentials` frame under the entity id (see "The sessions'
+credentials ride the control socket"). **The `entity` claim binds**:
+`EntitiesAgentAccess.requireEntity` (via `api/RefinementAccess.reach`) answers 403 on every
+`/refinements/{id}/…` door and on `POST|GET /work/{qualifiedId}/refinement` when the bearer carries
+an `entity` claim naming another entity; `GET /projects/{projectId}/refinements` filters to the
+claimed entity's row rather than refusing. A bearer with no `entity` claim is judged as before
+(`RefinementEntityBindingTest`).
 
-## Refinement containers
-
-**Legacy (epic qits-770): only rooms opened before V58 are container rooms**, and nothing new is one
-— see "Refinement sessions" above. Everything below describes those rows until qits-1316 removes the
-machinery; where it says the open cuts a branch or refuses a campaign, read it as history.
-
-One container per REPORTED epic **or ticket** (the status refinement runs in since qits-392; a ticket
-since qits-395) — the refining route's whole backend, which used to be an ordinary
-qits-workspaces workspace on a `refining/*` branch (epic refinement-improvements, part 2). The host
-side is `service/…/refinementhost/`; the container runs the WORKSPACE image and daemon, unchanged —
-`qits-workspace-daemon` dials home to whatever `QITS_WORKSPACE_DAEMON_URL` names, and this service
-is that home now. That daemon's wire contract is a **dependency**,
-`eu.wohlben.qits:qits-workspace-daemon-protocol`, published by qits-workspace-daemon itself. It was
-a vendored `workspace-daemon-protocol/` module here — a byte-identical source copy beside
-`projects-daemon-protocol/` — until that repository published it; the swap was a pom change with no
-source edits, because the java package had been kept identical for exactly that day. Two daemons and
-two vocabularies still, and **neither is a module here any more**: `projects-daemon-protocol/` went
-the same way days later (see "Project agent harness"), so both protocol changes now arrive as a
-**version bump gated by this repository's own release request** rather than as three edits in two
-repositories. That jar's version is also the `qits/workspace` image pin — see the image-pin bullet
-below.
-
-The shape deliberately mirrors the project-agent harness one section up — control socket, registry,
-reverse tunnel, verbatim proxy with the hand-rolled websocket upgrade — on refinement's own paths,
-all three append-only once a container exists (`RefinementPaths`):
-
-    control socket   ws://<host>:<port>/projects/refinement-daemon/<rowId>
-    dial-back        /projects/refinement-daemon/stream/<nonce>
-    proxy prefix     /projects/refinement-container/<rowId>/
-
-Where it differs from the agent harness, each difference is the domain line:
-
-- **Keyed by entity, addressed by row id.** `refinement` (V4) holds one row per entity (unique) —
-  an epic or a ticket; the column was `epic_id` until domain **V29** renamed it `entity_id` (ids are
-  one space across archetypes, so no value moved, and `refinement_epic_id_key` became
-  `refinement_entity_id_key`). No archetype is copied onto the row: the open reads the entity live,
-  and a copy would go stale the day a transition re-archetypes a row. The row holds
-  the branch (`refining/<slug>` — the entity's slug, and a root entity's slug is unique per project
-  across archetypes, so an epic and a ticket never cut the same branch), the parent (the wrapper's default branch — a refinement always
-  forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
-  credential — ON THE ROW, because `Recreate.ifChanged` hashes the whole spec and a resume must
-  reproduce the pair byte for byte.
-  <br>**Nothing about the epic is copied onto the row, and a `preamble` column that did it went in
-  V22.** It held `EpicOutline.render(epic, "Refine")` — title, description and the whole feature/task
-  tree — written once at create, never recomputed, and so a copy of the very draft the refinement
-  exists to edit. Its one reader was the SPA's prompt-rewrite helper, which passes it to the daemon as
-  that model call's context; `entity_id` (then `epic_id`) is `text not null unique` and *is* the
-  row's key, so the refining page derives one line from the entity it has already resolved, at the
-  moment it asks. The
-  `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
-  where the word comes from — renaming it here while the wire kept the old one would be two names for
-  one thing.
-- **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false` and no workspace actions — the tab set
-  this backs has no Actions tab, and its web view frames the deployed environment, not a dev server.
-- **There is a removal verb.** Discard tears down container → volume → credential → branch → row,
-  in that order; a front desk's removal is its DELETE door, on its runner. `RefinementCommissions`
-  decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
-  clients no row claims (its own CONTEXT_KIND, invisible to the desk token reconcile and vice versa).
-- **Each room holds its own token (qits-1482, V50)** — the successor of the commissioned client
-  above, which qits-770 retires; the two live side by side until then. `RefinementTokens`
-  (`idphost/IdpRefinementTokens`, the suite's `FakeRefinementTokens`) mints a `qits_tok_` of idp
-  kind `refinement` (→ `qits:agent` only), contextId the row id, claims `{project, entity}`,
-  `gitRefs []`, onto `refinement.token_*`. Minted by `RefinementService.findOrCreate` (create, and
-  a later open of a row holding none) and **never fails the open**: a failed mint is a WARN and
-  `RefinementTokenReconcile` (boot + `refinement-credentials.reconcile-interval`, NORMAL only)
-  mints for every row holding none and revokes every live `refinement` token no row names (5 min
-  mint grace). Revoked by `discard` before the row goes, so `EntityResolutions` revokes it too.
-  `RefinementService.credentialOf` answers `{key: entityId, token, subject}`; the room's
-  credential is in its project's desk's `sessionCredentials` frame under the entity id (see "The
-  sessions' credentials ride the control socket"). **The `entity` claim binds**: `EntitiesAgentAccess.requireEntity`
-  (via `api/RefinementAccess.reach`) answers 403 on every `/refinements/{id}/…` door and on
-  `POST|GET /work/{qualifiedId}/refinement` when the bearer carries an `entity` claim naming another
-  entity; `GET /projects/{projectId}/refinements` filters to the claimed entity's row rather than
-  refusing. A bearer with no `entity` claim is judged as before (`RefinementEntityBindingTest`).
-- **Resolving the entity is what calls that verb, and it is a rule of the service rather than a
-  browser dance.** `refinementhost/EntityResolutions` (`EpicResolutions` until qits-395) is the only
-  thing a door may use to move an epic's or a ticket's status: it previews the move
-  (`WorkEntityService.planTransition`, which throws every refusal the transition would), discards the refinement when the target **resolves** the entity —
-  `IMPLEMENTED`, `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED`
-  freeze — and only then transitions. The lifecycle door uses it: `POST
-  /work/{qualifiedId}/status` (`WorkEntityDoors.move`, every archetype; it took over from the
-  per-archetype `POST /epics/{id}/transition` and `POST /tickets/{id}/transition` qits-976 deleted;
-  `work_status` calls it). `POST /work/transition` and its one-entry `PUT
-  /work/{qualifiedId}` (`work_transition`) write statuses through `EntityTransitions` and do
-  **not** come through it — a gap for an epic before qits-395 and for a ticket now, stated rather than
-  fixed here; so is deleting an entity, which leaves its room for a discard.
-  The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
-  teardown leaves a still-refining epic with a UI to retry from. Until 2026-09-08 the cleanup was
-  `refining-page.ts` discarding before transitioning, and only for `ABANDONED`: the epics board, the
-  REST API and any machine caller all leaked a container, a volume, a commissioned credential and a
-  `refining/<slug>` branch, and `findOrCreate` refuses a non-`REPORTED` epic so the stranded row
-  could not even be adopted back. Do not call `WorkEntityService.transition` from a door again.
-- **The ensure ladder runs off the request thread** (`RefinementService`): the browser gets a
-  technical-process id to watch instead of a request that hangs behind an image pull. One
-  `Semaphore` permit per row — a semaphore and not a lock, because the permit is taken on the
-  request thread and released on the worker. The daemon's provision output (`CommandChunk`s tagged
-  `provision`) streams into the narration via `RefinementDaemonRegistry`, and its terminal
-  `Provisioned`/`ProvisionFailed` settles it.
-- **`processhost/` is the technical-process port's live implementation** — the piece the domain
-  port's javadoc always said an assembling application supplies. Standing it up for refinement also
-  lights the repository-scoped narration (pull/push/sync leases) that ran unnarrated before, and
-  `api/TechnicalProcessEventsController` is the SSE controller the port was waiting for. Everything
-  in it is this process's memory; an evicted id answers the 404 the frontend reads as "expired".
-- **The image pin IS the protocol dependency's version, and no longer arrives as configuration.**
-  `WorkspaceImage.VERSION`, out of `eu.wohlben.qits:qits-workspace-daemon-protocol` — the same jar
-  this service decodes the daemon's frames with — is the `qits/workspace` tag a refinement container
-  starts from, and `RefinementContainerFactory.imageVersion()` reads it. One artifact carries both
-  because what this service must **speak** and what it must **start** are one release.
-  <br>**What that replaced, because the failure is the reason for it.** The version used to arrive as
-  `QITS_PROJECTS_REFINEMENT_IMAGE_VERSION`: qits-workspace-daemon's release published the image,
-  qits-configuration's `ImagePins` wrote the entry, the deployer injected it, and SmallRye let the
-  env win over the committed property. So a version rewritten by whoever released the image reached
-  the next refinement container with **nothing having tested the pair** — a protocol change arriving
-  as an environment variable is a change no gate here ever saw — and the clone-alone default behind
-  it aged in silence until it named a tag the registry's retention had deleted. A dependency cannot
-  age that way: it has to **resolve** for this reactor to build, and the pom line moves through this
-  repository's own release request. (Earlier still,
-  `.config/qits/ci-event-upstream-workspace-daemon.yml` carried the follow by rewriting the property
-  and releasing this whole service to move one number; retired 2026-09-03.)
-  <br>**The override survives under a name nothing automates, and the rename is the mechanism.**
-  `qits.projects.refinement-image-version-override` is `Optional` with no shipped default, so absent
-  is the ordinary state and setting it pins an image nothing has tested against this service. It is
-  a *different* key from the retired one on purpose: **nothing on this platform deletes a
-  configuration entry** — qits-configuration's own service says "an orphan is reported and never
-  cleaned up", and this service's credential could not do it anyway — so the row already written
-  under the old name stays in every deployment for ever, and renaming what this service reads is
-  what makes that residue inert. `refinementhost/RetiredRefinementImageVersionKey` WARNs at boot
-  while it is still there, and never refuses to start. The declaration is gone from
-  `.config/qits/configuration.yml`; the agent image's pin
-  (`QITS_PROJECTS_AGENT_IMAGE_VERSION`, `qits/project-agent`) is a different image on a different
-  train and is **unchanged**, still configuration-driven and still declared there.
-- **Git is reached at the internal githost alias** (`qits.projects.container-git-url`, default
-  `http://githost.dev.internal:8080`, carrying no path so the factory appends `/git` itself; a front
-  desk reaches git at the edge instead): the image's credential helper
-  answers oauth2 Basic and only that alias's oauth2 transport rewrites it to the Bearer the git host
-  accepts, exactly as a workspace's does. Neither the edge nor qits-githost's *service* alias
-  answers that credential — the two names this key replaced,
-  `qits.projects.refinement-git-url` and `qits.projects.agent-git-base`, are read by nobody now and
-  `agenthost/RetiredContainerGitKeys` WARNs at boot while a deployment still carries either entry.
-  **The three registry keys are gone** (`refinement-maven-repository-url` / `-npm-registry-url` /
-  `-npm-proxy-url`, and the project agent's twin env names `QITS_MAVEN_REPOSITORY_URL` /
-  `npm_config_registry` / `QITS_WORKSPACE_NPM_REGISTRY_URL`) — qits-731: a container no longer takes
-  internal registry URLs from configuration at all. Both factories inject `QITS_DOMAIN` instead, read
-  from `qits.domain` (the same key `PublicCloneUrls` reads, unset shipped and injected only when set);
-  the image derives every registry host from it — `registry.qits.<domain>` and `mirror.qits.<domain>`
-  — and never from a value this service hands it.
-
-The REST surface is under `/projects/api`: `POST /work/{qualifiedId}/refinement` (find-or-create keyed by
-entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
-below), `GET /work/{qualifiedId}/refinement` (find only), `GET/verbs /refinements/{id}`,
-`GET /projects/{projectId}/refinements` (the LIGHT projection — live halves, no git drift, because
-the list redraws on every activity hint), the prompt draft and attachments (content URLs are
-embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
-and the technical-process stream. The suite's seams are `FakeRefinementRuntime` and
-`FakeRefinementCredentials`, winning over the `@DefaultBean` adapters
-— and read through METHODS, never public fields, because a client proxy does not proxy field access.
-
-**No read on that surface performs a git operation, and the single-row read is where that had to be
-fixed.** `RefinementService.view()` opened with `mirror.refresh()` until 2026-09-08 — a `git fetch`
-warm, a **full clone cold**, and cold is exactly what cutting `refining/<slug>` leaves the mirror,
-so the first read of a brand-new refinement was the slowest read this service had and the refining
-page rendered nothing until it answered. Measured live that day: the listing 12 ms, an established
-row 18 ms, a **freshly created row 139 ms** — with a warm mirror, and unbounded without one.
-`RefinementDrift` holds the three numbers (`ahead`, `behind`, `conflictsWithParent`) as a cached
-fact instead: `of()` answers what was last computed and schedules a background pass when that is
-missing or older than `qits.projects.refinement.drift-staleness-ms` (30s), and it reads the cache
-*before* it decides to schedule, so what a caller gets never depends on a worker's timing. Three
-rules ride with it — a cold mirror degrades to `null`, "not known yet", and never to a slow
-response; a pass that could not ask keeps the previous answer and re-stamps it, so an unreachable
-host is retried once a window rather than once a read; and a drift that **changed** fires the
-existing per-row `GIT_STATUS` hint, which the daemon already publishes for clean/dirty and the SPA
-already maps to "re-read this row", so a late arrival needs no new channel and no poll. The frontend
-half of the same defect is qits-spa-projects 2026.908.183933, which stopped withholding the page's
-first paint on this read.
+**Resolving the entity discards its room, and that is a rule of the service.**
+`refinementhost/EntityResolutions` is the only thing a door may use to move an epic's or a ticket's
+status: it previews the move (`WorkEntityService.planTransition`, which throws every refusal the
+transition would), discards the room when the target **resolves** the entity — `IMPLEMENTED`,
+`VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED` freeze — and only
+then transitions. `POST /work/{qualifiedId}/status` (`WorkEntityDoors.move`) uses it; `POST
+/work/transition` and its one-entry `PUT /work/{qualifiedId}` do not (a gap, stated rather than
+fixed), and neither does deleting an entity. Do not call `WorkEntityService.transition` from a door
+(`EpicResolutionCleanupTest`).
 
 **Designs are frozen HTML kept with the refinement** (`refinement_design`, V5) — one self-contained
 document per page, styles inline, cascading from the row like the draft and attachments do.
 `RefinementDesigns` holds the writes and `/refinements/{id}/designs` serves them; a list leaves the
-document out and only the single read carries it.
+document out and only the single read carries it. There is deliberately **no content route**:
+agent-authored HTML served same-origin would be an XSS door into the platform's own session, so the
+bytes only ever travel as a JSON field and the SPA renders them in a sandboxed iframe with scripts
+off. **A design has no lifecycle** (V20): a REST `POST` creates and a `PUT` rewrites in place; the
+central server's tools are `work_design_list`, `work_design_get` and `work_design_put`; `POST` and
+`PUT /refinements/{rid}/designs` admit a `qits:agent` bound to the project. A write carrying a version
+somebody has already moved past is a **409 carrying the current row**, never a merge
+(`error/StaleWriteException`).
 
-There is deliberately **no content route**. Agent-authored HTML served same-origin would be an XSS
-door into the platform's own session, so the bytes only ever travel as a JSON field and the SPA
-renders them in a sandboxed iframe with scripts off. Do not add a `text/html` route here.
+**`processhost/` is the technical-process port's live implementation**; the repository-scoped
+narration (pull/push/sync leases) runs on it, `api/TechnicalProcessEventsController` streams it, and
+`ensure-container`'s settled process is one of its rows. Everything in it is this process's memory;
+an evicted id answers the 404 the frontend reads as "expired".
 
-**A design is a document, not a proposal, and there is no lifecycle at all** (V20, 2026-09-10).
-`status`, `based_on_design_id` and `note` are dropped columns; a `version` column stands where the
-review flow did. A REST `POST` creates and a `PUT` rewrites in place; the central server's tools are
-`work_design_list`, `work_design_get` and `work_design_put` (create-or-update). `POST` and `PUT
-/refinements/{rid}/designs` admit a `qits:agent` bound to the project. What
-replaced the person's decision is the **version check**: a write carrying a version somebody has
-already moved past is a **409 carrying the current row**, document included, and never a merge —
-`error/StaleWriteException` is the type and `ProjectsExceptionMapper` is what puts `current` in the
-body. The gate on the draft is the epic's own `REPORTED → REFINED` transition, which freezes the
-whole plan at once — a person's press on the board, or the claim a dispatched refine phase makes with
-`work_status` (qits-394).
-
-Three things ride with the removal. **The column drop lost no document**: a row that stood at
-PROPOSED simply became a design in the list. **`propose_design` was renamed rather than kept as an
-alias**, which is better than a tool whose name states a lifecycle that is gone. And `work_design_put`
-is a write tool a read-only surface does not get, on a *stronger* reading than before: a write is
-live in the tab the moment it lands, so an unattended run holding it could overwrite a document
-somebody is working from.
+Tests: `RefinementSessionsComposeTest` (pure), `RefinementSessionsTest` (the frame on hello and on
+every change, capability gating, credential-first ordering, the report, the doors, the desk demand,
+a campaign's room, the cap), `RefinementTokenTest`, `EpicResolutionCleanupTest`.
 
 ### The refine action, for any archetype (qits-395)
 
-**Opening a refinement room is one action for an epic or a ticket**, beside the dispatch door and
-deliberately not part of it (`projects/api/WorkRefinementController` → `RefinementService
+**Opening a refinement room is one action for an epic, a ticket or a campaign**, beside the dispatch
+door and deliberately not part of it (`projects/api/WorkRefinementController` → `RefinementService
 .findOrCreate`; it was `EntityRefinementController` at `/entities/{id}/refinement` until qits-976):
 
     POST /projects/api/work/{qualifiedId}/refinement   (qits:admin)
@@ -3513,62 +3348,81 @@ deliberately not part of it (`projects/api/WorkRefinementController` → `Refine
     GET  /projects/api/work/{qualifiedId}/refinement   (qits:admin, qits:agent)
       → {"refinement": RefinementDto | null}             find only; 404 only for an id naming no entity
 
-It shares an address with `/work/{qualifiedId}/dispatch` and nothing else. A dispatch is a qits-workspaces
-agent on `ticket/<qualified id>` or `epic/<qualified id>`; a refinement is a `domain` row and a `refinementhost/`
-container (workload `refinement`, its own registry, commissions, proxy and control socket) on
-`refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
-path. `RefinementDto` gains `entityId`; **`epicId` stays, holding the same value** for every
-archetype. `POST /refinements {"epicId"}` and `RefinementController.OpenRequest` were removed in
-qits-399 once the SPA called the entity door (the bare `/refinements` answers **404** now — no
-resource method sits on the class root — `RetiredEntityDoorsTest`), but **`epicId` was kept**: the
-SPA at 072512f still reads `row.entityId ?? row.epicId` for a row from an older service, and a field
-nobody new may read costs nothing to carry. Nothing new may read it.
+It shares an address with `/work/{qualifiedId}/dispatch` and nothing else. A dispatch is a
+qits-workspaces agent on `ticket/<qualified id>` or `epic/<qualified id>`; a refinement is a `domain`
+row and a session of the project's front desk. `RefinementDto` carries `entityId`; **`epicId` stays,
+holding the same value** for every archetype, for an older SPA's `row.entityId ?? row.epicId`.
+Nothing new may read it. `POST /refinements {"epicId"}` went in qits-399 (the bare `/refinements`
+answers **404**, `RetiredEntityDoorsTest`).
 
 The refusals, all on the **create** path, in order: 404 unknown id; **409 for a feature or a task**
-(no phase of its own — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
-the REPORTED phase (`requireReported` for an epic's scope; a ticket's fields do not freeze, but its
-room opens only where its refine phase runs); **409 while a dispatch runs on it** (below); 409 for a
-project with no wrapper; and since epic qits-770 no 502 (no branch is cut) and a 409
-`REFINEMENT_SESSIONS_FULL` beyond the cap, with a campaign admitted like an epic. **The wrapper is the project
-for a ticket exactly as for an epic** — neither names a repository, both dispatch onto the wrapper —
-so the wrapper resolution needed no archetype arm.
+(no phase of its own — refine its epic); **409 unless REPORTED**, since refinement is the REPORTED
+phase; **409 while a dispatch runs on it** (below); 409 for a project with no wrapper; and a 409
+`REFINEMENT_SESSIONS_FULL` beyond the cap.
 
 Concurrency, decided:
 
-- **One room per entity.** A second open — from either door — answers the first (unique
-  `entity_id`; a racing insert loses to the constraint and adopts the winner). **An existing room is
-  answered whatever the entity's state now**: refusing to show a room because its status moved on, or
-  because an agent was dispatched after it opened, would strand the only place its prompt, sketches
-  and designs are reached from. Discard, or a resolving transition, is how a room ends.
+- **One room per entity.** A second open answers the first (unique `entity_id`; a racing insert
+  loses to the constraint and adopts the winner). **An existing room is answered whatever the
+  entity's state now**: refusing to show a room because its status moved on would strand the only
+  place its prompt, sketches and designs are reached from. Discard, or a resolving transition, is how
+  a room ends.
 - **No new room while a dispatch runs on the entity: 409.** At REPORTED a dispatched agent *is*
-  refining — writing the same description, tree and dossier a person in the room would write — and two
-  authors on one draft unaware of each other overwrite each other. "Running" is an **ACTIVE** agent
-  of the entity, read through `WorkspaceAgentDispatch.agentsFor` and matched back to
-  the entity's id (OBSOLETE and REMOVED ones collide with nothing). That read **never throws and
-  answers empty on failure**, so the check **fails open**: with qits-workspaces unreachable, or no
-  workspaces context assembled, it sees nobody and the room opens. That is the port's degraded answer
-  everywhere, and refusing every open whenever a sibling restarts would cost more than the rare
-  collision it would catch. The reverse — dispatching onto an entity whose room is open — is **not**
-  refused by the dispatch door today.
+  refining, and two authors on one draft overwrite each other. "Running" is an **ACTIVE** agent of the
+  entity, read through `WorkspaceAgentDispatch.agentsFor`. That read **never throws and answers empty
+  on failure**, so the check **fails open**. The reverse — dispatching onto an entity whose room is
+  open — is **not** refused by the dispatch door today.
 
-What a ticket's room is told: **nothing on this side composes the refining prompt** — the SPA's prompt
-draft does, and a ticket's room must be told to refine the ticket (its description and dossier) there.
-The server half is the REST door: `/refinements/{rid}/designs` is keyed by the room, so a ticket's
-room and an epic's use the same tools. `work_dossier_inline` and the REST inline
-door stay **epic-only** — dossier assets are epic-owned by epics V8's decision — so a ticket's room has
-sketches and designs but no inline door. **No surface key moved**: a ticket's room reuses `epic.chat`
-/ `epic.agent`, whose rename is the separate four-repository sequence `AgentSurfaceDefaults` describes.
-The container's `qits.epic` label keeps its key (value: the entity id) because renaming it would change
-the spec hash and replace every standing refinement container at its next wake.
+`work_dossier_inline` and the REST inline door stay **epic-only** — dossier assets are epic-owned by
+epics V8's decision — so a ticket's or a campaign's room has sketches and designs but no inline door.
+**No surface key moved**: every room's session runs as `epic.chat`, whose rename is the separate
+four-repository sequence `AgentSurfaceDefaults` describes.
+
+## Refinement containers
+
+**Retired (qits-1316, epic qits-770).** A refinement room used to run in a container of its own —
+the workspace image and `qits-workspace-daemon` on a `refining/<slug>` branch of the wrapper, with a
+commissioned idp client per room, its own control socket, tunnel and proxy
+(`/projects/refinement-daemon/…`, `/projects/refinement-container/…`), git drift and a stale-image
+sweep. All of it is gone: `RefinementContainerFactory`, `RefinementRuntime`,
+`ContainersRefinementRuntime`, `RefinementCommissions`, `RefinementCredentials`,
+`IdpRefinementCredentials`, `RefinementCommissionReconcile`, `RefinementDaemonRegistry`,
+`RefinementControlSocket(Access)`, `RefinementTunnels`, `RefinementStreamRoute`,
+`RefinementProxyRoute`, `RefinementPaths`, `RefinementStaleImageSweep`, `RefinementDrift`,
+`RefinementAgentEntities`, `RefinementMessageCodec`, `RetiredRefinementImageVersionKey`,
+`RefinementDaemonPinIT`, the `refinement-*` container config keys and
+`qits.projects.containers.ensure-patience`. V59 dropped `refinement.branch`, `parent`,
+`commissioned_client_id` and `commissioned_client_secret`. Every row was kept and is a session room
+("Refinement sessions"). `RefinementContainersRetiredTest` keeps it so: the classes absent, the three
+removed doors 404, the columns and the config keys absent.
+
+**What the containers left outside the database is cleared at boot** by
+`refinementhost/LegacyRefinementContainers` (NORMAL mode, a virtual thread, idempotent; a failure is
+a WARN the next boot retries; it logs what it removed, `LegacyRefinementContainersTest`):
+
+- every row's place `owner/refinement/<rowId>` at qits-containers is deleted, then its volume
+  `qits_refinement_<rowId>` (404 is done; a refused place keeps its volume for the next boot);
+- every idp **client** of kind `refinement` this service owns is deleted — through
+  `IdpRunnerCommissioner.liveClients`/`deleteClient`, i.e. `GET`/`DELETE <idp>/api/clients…` and
+  nothing else. **The rooms' live tokens carry the same kind word and are never touched**: they are
+  `qits_tok_`s on the separate `<idp>/api/tokens` listing, which this class has no client for;
+- every `refining/*` branch on every project's wrapper is deleted by an ordinary push through the git
+  host.
+
+**One remnant answers on a consumer's word**: `GET /projects/api/pins` still has a `refinement` row
+(`qits.projects.refinement-image-repo` at `WorkspaceImage.VERSION`, which is why
+`qits-workspace-daemon-protocol` stays a dependency), because qits-orchestrator-service's pact pins
+that answer at exactly two rows. It goes when that pact stops counting them.
 
 ## The container orchestrator
 
-**This service holds no docker socket and spawns no process.** The one container kind it still
-starts itself is a refinement container — provision, bring back, stop, stamp, list, make a volume —
-each one HTTP call to **qits-containers** through `containershost/ContainersRefinementRuntime`
-(seam `refinementhost/RefinementRuntime`). A project's agent container is a front desk on a runner
-now and qits-containers is not asked about it, except by the legacy one-shot that removes the
-direct path's `project-agent` places. If a docker argv ever appears in this repository, that is the
+**This service holds no docker socket, spawns no process and starts no container through
+qits-containers any more.** A project's agent container is a front desk on a runner and a refinement
+room is a session in it. Exactly two classes still call `ContainersClient`, both boot one-shots that
+clear what the retired paths left: `deskhost/LegacyAgentPlaces` (the `project-agent` places, deleted
+with their volumes, and a surviving volume read back to be named) and
+`refinementhost/LegacyRefinementContainers` (the `refinement` places, then their volumes). If a
+docker argv, or a third caller of the client, ever appears in this repository, that is the
 regression.
 
 - **A place is `owner/workload/ref`.** `qits.projects.containers.owner` **must equal the machine
@@ -3577,16 +3431,10 @@ regression.
 - **The client never throws, and its four answers are the whole vocabulary.** A refusal and an
   unreachable service mean opposite things, so a 404 is "there is nothing there" and everything else
   that is not a 2xx is "we could not ask". Do not add a fifth outcome by catching something.
-- **A bring-up holds through 401, 403 and nothing answering, and through nothing else**
-  (`qits.projects.containers.ensure-patience`), qits-ci-service's classifier: across an idp cutover
-  those three are statements about the moment rather than about the request. `SPEC_CONFLICT`,
-  `IMAGE_MISSING` and a 400 on a value are one attempt each.
-- **Waking a stopped container is a start in place, and a replacement only if the spec really
-  changed** (`Recreate.ifChanged`). Do not put a per-call value into a spec: a request that differs
-  every time can never be started in place.
 
 **Nothing here reaches an orchestrator under test.** The test config points `qits.containers.url`
-at `http://127.0.0.1:1`, so a call that escaped a fake fails fast.
+at `http://127.0.0.1:1`, so a call that escaped a fake fails fast; both one-shots are tested against
+`containershost/StubContainersServer`.
 
 **`containershost/ContainersWireReflection` is the native-image registration**, the second member of
 `bus/EventWireReflection`'s family — the client jar builds its own `ObjectMapper`, so the wire
@@ -3833,9 +3681,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   audit entry's `snapshot` is JSON held as text — is frozen in place and the string listed under
   `frozen.strings`. `startWorkRefinement` is recorded as its 409 in `a refined ticket` and as
   its 200 in `a ticket with a design`, where `ensureRefinementContainer` and `discardRefinement`
-  are recorded on the same room (qits-1383; the room's id is the sequence param). That state holds
-  `FakeRefinementRuntime`'s bring-ups until `cleanUp`, so the ensure answers `PROVISIONING` on every
-  run instead of racing the executor that runs the ladder.
+  are recorded on the same room (qits-1383; the room's id is the sequence param).
   <br>**The release-request family is recorded too** (qits-112, the landing app's release pages):
   every read of the detail page in each `RELEASE_REQUEST_DETAILS` state, each door it offers, and
   the project-wide list. Those states seed two real repositories through `contracts/SeededGit`,
@@ -4140,7 +3986,7 @@ Anything that puts this route behind a poll faster than the window is polling th
 
     ./mvnw -pl service -am -DskipITs=false -Dquarkus.quinoa=false verify \
       -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
-      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,RefinementDaemonPinIT,ProjectAgentDaemonPinIT
+      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,ProjectAgentDaemonPinIT
 
 `-Dit.test` takes commas; `-Dtest=SKIPNONE` keeps the unit suite out of an IT-only run (run it
 separately before committing — the story classes share `domain`'s fixtures). `skipITs` stays `true`
@@ -4155,22 +4001,22 @@ and a class named here before it exists fails the verify rather than being skipp
 is still not derived, so a class that is not named in that file is written and never run** — which is
 why a new story class has to be added to it in the same commit.
 
-**The last TWO entries are not stories, and neither must ever come off the list.**
-`refinementhost/RefinementDaemonPinIT` and `agenthost/ProjectAgentDaemonPinIT` are the gates that
-prove this repository's two image pins — `qits/workspace`, which a refinement container runs, and
-`qits/project-agent`, which a project's agent container runs. Each downloads its daemon at exactly
-the version its pinned protocol dependency names (`WorkspaceImage.VERSION`,
-`ProjectAgentImage.VERSION` — the same string as the image tag), runs it as a process against a
-stand-in host, round-trips a command over the real control-socket protocol, asserts the version and
-the capability floor, and tears it down. A daemon bump that breaks the wire therefore fails this
-repository's own release request instead of the next live refinement or the next live agent
-container. Both derive the artifacts origin by cutting `qits.maven.repository.url` (falling back to
-`QITS_MAVEN_REPOSITORY_URL` — failsafe forks a JVM that does not inherit `-D`, so the environment
-variable is what reaches a CI step) at `/artifacts/`, which that step already exports and passes;
-with no origin configured at all they skip, and that skip is defensive rather than a supported mode.
-Unlike every other class on the line they boot **no** Quarkus application — plain JUnit 5, no
-`@TestProfile` — deliberately, because nothing in either assertion needs the app and a second
-profile is a second whole qits-projects at ~125 MB of retained metaspace inside a 4g step container.
+**The last entry is not a story, and it must never come off the list.**
+`agenthost/ProjectAgentDaemonPinIT` is the gate that proves this repository's image pin —
+`qits/project-agent`, which a project's agent container runs. It downloads the daemon at exactly the
+version its pinned protocol dependency names (`ProjectAgentImage.VERSION` — the same string as the
+image tag), runs it as a process against a stand-in host, round-trips a command over the real
+control-socket protocol, asserts the version and the capability floor, and tears it down. A daemon
+bump that breaks the wire therefore fails this repository's own release request instead of the next
+live agent container. It derives the artifacts origin by cutting `qits.maven.repository.url`
+(falling back to `QITS_MAVEN_REPOSITORY_URL` — failsafe forks a JVM that does not inherit `-D`, so
+the environment variable is what reaches a CI step) at `/artifacts/`, which that step already exports
+and passes; with no origin configured at all it skips, and that skip is defensive rather than a
+supported mode. Unlike every other class on the line it boots **no** Quarkus application — plain
+JUnit 5, no `@TestProfile` — deliberately, because nothing in its assertion needs the app and a
+second profile is a second whole qits-projects at ~125 MB of retained metaspace inside a 4g step
+container. Its refinement twin, `RefinementDaemonPinIT`, went with the refinement containers
+(qits-1316).
 
 **A name reaches this list one release before its class gates anything.** The recipe is read from
 `main`, so the release that adds an entry runs the list `main` already had;

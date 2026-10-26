@@ -11,7 +11,6 @@ import eu.wohlben.qits.entities.control.DossierAssetService;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.error.NotFoundException;
-import eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime;
 import eu.wohlben.qits.projects.refinementhost.RefinementDesigns;
 import eu.wohlben.qits.projects.refinementhost.RefinementPromptDrafts;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
@@ -49,11 +48,9 @@ public class RefinementEntityBindingTest {
   @Inject RefinementPromptDrafts drafts;
   @Inject DossierAssetService assets;
   @Inject EntityIdResolver ids;
-  @Inject FakeRefinementRuntime runtime;
 
   @BeforeEach
   void reset() {
-    runtime.reset();
   }
 
   /** Two rooms in one project, and the project. */
@@ -184,7 +181,7 @@ public class RefinementEntityBindingTest {
 
     assertEquals(rooms.roomA(), roomDoor(a).get(rooms.roomA()).refinement().id());
     refused(() -> roomDoor(a).get(rooms.roomB()));
-    refused(() -> roomDoor(a).activeProcess(rooms.roomB()));
+    refused(() -> roomDoor(a).stopSession(rooms.roomB()));
     refused(() -> roomDoor(a).discard(rooms.roomB()));
     assertNotNull(refinements.findByEntity(rooms.entityB()).orElse(null), "nothing was discarded");
   }

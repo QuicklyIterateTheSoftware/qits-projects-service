@@ -11,8 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.WorkRequests;
-import eu.wohlben.qits.projects.refinementhost.FakeRefinementCredentials;
-import eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -36,17 +34,13 @@ public class WorkRefinementControllerTest {
 
   @Inject RecordingWorkspaceAgentDispatch workspaces;
 
-  @Inject FakeRefinementRuntime runtime;
 
   @Inject eu.wohlben.qits.entities.control.WorkEntityService campaigns;
 
-  @Inject FakeRefinementCredentials credentials;
 
   @BeforeEach
   void reset() {
     workspaces.reset();
-    runtime.reset();
-    credentials.reset();
   }
 
   /** The dispatch fake answers its scripted references to every caller; leave none behind. */
@@ -331,8 +325,5 @@ public class WorkRefinementControllerTest {
         .statusCode(200)
         .body("refinements.id", hasItem(keptRoom.intValue()))
         .body("refinements.id", not(hasItem(droppedRoom.intValue())));
-    assertTrue(
-        runtime.calls().stream().noneMatch(call -> call.endsWith(":" + droppedRoom.longValue())),
-        "a session room has no container to remove: " + runtime.calls());
   }
 }

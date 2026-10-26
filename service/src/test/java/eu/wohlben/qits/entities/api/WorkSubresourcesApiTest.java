@@ -9,8 +9,6 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
-import eu.wohlben.qits.projects.refinementhost.FakeRefinementCredentials;
-import eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -43,15 +41,11 @@ class WorkSubresourcesApiTest {
 
   @Inject RecordingWorkspaceAgentDispatch workspaces;
 
-  @Inject FakeRefinementRuntime runtime;
 
-  @Inject FakeRefinementCredentials credentials;
 
   @BeforeEach
   void resetThePorts() {
     workspaces.reset();
-    runtime.reset();
-    credentials.reset();
   }
 
   @AfterEach

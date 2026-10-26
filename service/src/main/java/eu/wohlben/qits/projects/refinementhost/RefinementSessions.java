@@ -5,9 +5,11 @@ import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Refinement;
+import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
@@ -37,18 +39,20 @@ import org.jboss.logging.Logger;
  * Sessions} list this service sends the desk's daemon, and the {@link SessionReport} it answers
  * with, written back onto the rows.
  *
- * <h2>The list ({@link #compose(Project, List, Function, Instant, Duration)}, pure)</h2>
+ * <h2>The list ({@link #compose(Project, String, List, Function, Instant, Duration)}, pure)</h2>
  *
  * <ul>
- *   <li>{@value SessionCredentials#FRONT_DESK_KEY}, surface {@code project.work}, {@code RUNNING} —
- *       only while the project's {@code front_desk.lifecycle} is {@code ALWAYS_ON}. On {@code
- *       ON_DEMAND} it is left out: the desk panel launches that session itself ({@code POST
- *       /agents}), and the daemon keeps it anyway while the delivery loop is on.
- *   <li>one entry per <b>session room</b> of the project ({@link Refinement#containerRoom()} false):
- *       key the entity id, surface {@code epic.chat}, {@code RUNNING} while {@code last_demand_at}
+ *   <li>{@value SessionCredentials#FRONT_DESK_KEY}, surface {@code project.work}, {@code
+ *       resumeSessionId} the desk's own last reported session id ({@code front_desk.session_id},
+ *       qits-1619) so a recreated desk resumes it. {@code RUNNING} while the project's {@code
+ *       front_desk.lifecycle} is {@code ALWAYS_ON}. On {@code ON_DEMAND} it is {@code STOPPED} when
+ *       an id is known and left out when none is: the desk panel launches that session itself
+ *       ({@code POST /agents}), and the daemon keeps the desk anyway while the delivery loop is on —
+ *       so a delivering desk now resumes, and a STOPPED entry keeps nothing else running.
+ *   <li>one entry per refinement room of the project: key the entity id, surface {@code epic.chat}, {@code RUNNING} while {@code last_demand_at}
  *       is younger than {@code qits.projects.agent-idle-timeout}, else {@code STOPPED};
  *       {@code resumeSessionId} the last session id the daemon reported; the entity's facts read
- *       live. A legacy container room is never in it — its agent runs in its own container.
+ *       live.
  * </ul>
  *
  * <h2>When it is sent ({@link #push})</h2>
@@ -65,7 +69,9 @@ import org.jboss.logging.Logger;
  *
  * <p>Always the full list: a named key's state, detail and command land on its row, and its session
  * id when it carries one (kept after the session stops, so the next launch resumes it); a session
- * room the report does not name is {@code STOPPED}.
+ * room the report does not name is {@code STOPPED}. The {@value SessionCredentials#FRONT_DESK_KEY}
+ * entry's session id lands on the project's {@code front_desk} row the same way — written when it
+ * differs, never cleared — and nothing when the project has no desk row.
  *
  * <p>Every method here <b>never throws</b> except the reads: each caller has done its own work, and
  * a missed push is caught by the next change or the periodic resend.
@@ -88,6 +94,8 @@ public class RefinementSessions {
 
   @Inject ProjectRepository projects;
 
+  @Inject FrontDeskRepository desks;
+
   @Inject EntityDispatchService entities;
 
   @Inject AgentDaemonRegistry daemons;
@@ -108,7 +116,7 @@ public class RefinementSessions {
    * {@code idle}. A zero or negative window means once asked for, wanted until stopped. Pure.
    */
   public static boolean wantsRunning(Refinement row, Instant now, Duration idle) {
-    if (row == null || row.containerRoom() || row.lastDemandAt == null) {
+    if (row == null || row.lastDemandAt == null) {
       return false;
     }
     if (idle == null || idle.isZero() || idle.isNegative()) {
@@ -135,28 +143,39 @@ public class RefinementSessions {
   // ---- the list ----------------------------------------------------------------------------------
 
   /**
-   * The full desired list for a project. Pure: the entity facts come from {@code facts}, keyed by
-   * entity id (null for an entity it cannot describe).
+   * The full desired list for a project. Pure: {@code deskSessionId} is the front desk's own last
+   * reported session id (null for none, or no desk row), and the entity facts come from {@code
+   * facts}, keyed by entity id (null for an entity it cannot describe).
    */
   public static Sessions compose(
       Project project,
+      String deskSessionId,
       List<Refinement> rooms,
       Function<String, Sessions.Entity> facts,
       Instant now,
       Duration idle) {
     List<Sessions.Session> sessions = new ArrayList<>();
+    String resume = deskSessionId == null || deskSessionId.isBlank() ? null : deskSessionId;
     if (project != null && project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON) {
       sessions.add(
           new Sessions.Session(
               SessionCredentials.FRONT_DESK_KEY,
               FRONT_DESK_SURFACE,
               DaemonProtocol.DesiredState.RUNNING,
-              null,
+              resume,
+              null));
+    } else if (project != null && resume != null) {
+      sessions.add(
+          new Sessions.Session(
+              SessionCredentials.FRONT_DESK_KEY,
+              FRONT_DESK_SURFACE,
+              DaemonProtocol.DesiredState.STOPPED,
+              resume,
               null));
     }
     if (rooms != null) {
       for (Refinement room : rooms) {
-        if (room == null || room.containerRoom() || room.entityId == null) {
+        if (room == null || room.entityId == null) {
           continue;
         }
         sessions.add(
@@ -199,7 +218,10 @@ public class RefinementSessions {
     return QualifiedEntityIds.render(project.slug, entity.number);
   }
 
-  /** {@link #compose(Project, List, Function, Instant, Duration)} over what the stores hold now. */
+  /**
+   * {@link #compose(Project, String, List, Function, Instant, Duration)} over what the stores hold
+   * now.
+   */
   public Sessions compose(String projectId) {
     return compose(projectId, Map.of());
   }
@@ -210,10 +232,18 @@ public class RefinementSessions {
    */
   Sessions compose(String projectId, Map<String, Sessions.Entity> known) {
     Project project = QuarkusTransaction.requiringNew().call(() -> projects.findById(projectId));
+    String deskSessionId =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  FrontDesk desk = desks.findById(projectId);
+                  return desk == null ? null : desk.sessionId;
+                });
     List<Refinement> rooms =
         QuarkusTransaction.requiringNew().call(() -> store.listByProject(projectId));
     return compose(
         project,
+        deskSessionId,
         rooms,
         entityId -> factsFor(entityId, known.get(entityId), project),
         Instant.now(),
@@ -293,17 +323,41 @@ public class RefinementSessions {
   }
 
   /**
-   * The entity of a session room moved, was blocked or unblocked, or retitled: its daemon is sent
-   * the list again with {@code facts} for it. Answers whether {@code entityId} has a session room
-   * at all — false sends nothing, and a legacy container room is told down its own tunnel instead.
-   * <b>Never throws.</b>
+   * The entity of a refinement room moved, was blocked or unblocked, or retitled: its daemon is sent
+   * the list again with {@code facts} for it. Answers whether there was a room to tell. <b>Never
+   * throws.</b>
    */
   public boolean entityChanged(Refinement room, Sessions.Entity facts) {
-    if (room == null || room.containerRoom()) {
+    if (room == null) {
       return false;
     }
     push(room.projectId, facts == null ? Map.of() : Map.of(room.entityId, facts));
     return true;
+  }
+
+  /**
+   * {@link #entityChanged(Refinement, Sessions.Entity)} for the room of {@code entityId}, if it has
+   * one — what {@code api/AgentEntitySignals} calls on a move, a block or a retitle, with the facts
+   * the announcement carries ({@code blockSource} only while blocked). <b>Never throws.</b>
+   */
+  public boolean entityChanged(
+      String entityId, String title, String status, boolean blocked, String blockSource) {
+    if (entityId == null) {
+      return false;
+    }
+    try {
+      Optional<Refinement> room =
+          QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
+      return room.isPresent()
+          && entityChanged(
+              room.get(),
+              new Sessions.Entity(null, title, status, blocked, blocked ? blockSource : null));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not tell the refinement session of entity %s its entity changed: %s",
+          entityId, e.getMessage());
+      return false;
+    }
   }
 
   /** The safety net: every capable desk daemon is sent its list again. Answers how many were. */
@@ -335,7 +389,8 @@ public class RefinementSessions {
 
   /**
    * Write {@code report} onto {@code projectId}'s session rooms: a named key's state, detail and
-   * command, its session id when it carries one; an unnamed room is {@code STOPPED}. Fires the
+   * command, its session id when it carries one; an unnamed room is {@code STOPPED}. The front
+   * desk's session id, when the report carries one, lands on the project's desk row. Fires the
    * room's {@code PROCESS} hint when anything on it moved. <b>Never throws.</b>
    */
   public void onReport(String projectId, SessionReport report) {
@@ -357,11 +412,9 @@ public class RefinementSessions {
 
   /** The write half of {@link #onReport}, inside its transaction; answers the rows that moved. */
   List<Long> apply(String projectId, SessionReport report) {
+    applyDesk(projectId, report);
     List<Long> moved = new ArrayList<>();
     for (Refinement room : store.listByProject(projectId)) {
-      if (room.containerRoom()) {
-        continue;
-      }
       Optional<SessionReport.Session> entry = report.find(room.entityId);
       String state = entry.map(SessionReport.Session::state).orElse(DaemonProtocol.ReportedState.STOPPED);
       String detail = entry.map(SessionReport.Session::detail).orElse(null);
@@ -385,6 +438,28 @@ public class RefinementSessions {
       moved.add(room.id);
     }
     return moved;
+  }
+
+  /**
+   * The front desk's half of {@link #apply}: a non-blank session id reported for {@value
+   * SessionCredentials#FRONT_DESK_KEY} is stored on the project's desk row when it differs. Absent
+   * or blank never clears it (the next launch resumes it), and a project with no desk row writes
+   * nothing.
+   */
+  private void applyDesk(String projectId, SessionReport report) {
+    String session =
+        report
+            .find(SessionCredentials.FRONT_DESK_KEY)
+            .map(SessionReport.Session::sessionId)
+            .filter(id -> !id.isBlank())
+            .orElse(null);
+    if (session == null) {
+      return;
+    }
+    desks.update(
+        "sessionId = ?1 where projectId = ?2 and (sessionId is null or sessionId <> ?1)",
+        session,
+        projectId);
   }
 
   // ---- evidence of use ---------------------------------------------------------------------------
@@ -423,7 +498,7 @@ public class RefinementSessions {
                         () ->
                             store.update(
                                 "lastDemandAt = ?1 where projectId = ?2 and sessionCommandId = ?3"
-                                    + " and branch is null and lastDemandAt > ?4",
+                                    + " and lastDemandAt > ?4",
                                 now,
                                 projectId,
                                 commandId,

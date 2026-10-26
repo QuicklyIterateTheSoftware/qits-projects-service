@@ -632,8 +632,8 @@ public class CampaignExecutor {
   // --- the sweep -------------------------------------------------------------------------------
 
   /**
-   * The belt under the observers. Gated to {@link LaunchMode#NORMAL}, as {@code
-   * RefinementStaleImageSweep} is: a suite or a dev session must not dispatch agents in the
+   * The belt under the observers. Gated to {@link LaunchMode#NORMAL}, as every sweep here is: a
+   * suite or a dev session must not dispatch agents in the
    * background; the suite drives {@link #sweep(String)} directly.
    */
   @Scheduled(

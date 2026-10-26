@@ -360,8 +360,8 @@ public class PhaseAdvance {
   static final int LISTING_THREADS = 8;
 
   /**
-   * The listings' pool: plain daemon platform threads, {@code refinementhost/RefinementDrift}'s
-   * shape — nothing a native image needs telling about. They carry no request context, which is why
+   * The listings' pool: plain daemon platform threads (the retired {@code RefinementDrift}'s shape)
+   * — nothing a native image needs telling about. They carry no request context, which is why
    * the shipped {@link BranchListing} activates its own.
    */
   private final ExecutorService listingPool =

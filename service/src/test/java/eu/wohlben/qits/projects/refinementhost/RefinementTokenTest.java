@@ -36,7 +36,6 @@ import org.junit.jupiter.api.Test;
 public class RefinementTokenTest {
 
   @Inject FakeRefinementTokens tokens;
-  @Inject FakeRefinementRuntime runtime;
   @Inject RefinementService service;
   @Inject RefinementTokenReconcile reconcile;
   @Inject RefinementRepository rows;
@@ -44,7 +43,6 @@ public class RefinementTokenTest {
   @BeforeEach
   void reset() {
     tokens.reset();
-    runtime.reset();
   }
 
   // ---- fixtures ------------------------------------------------------------------------------
