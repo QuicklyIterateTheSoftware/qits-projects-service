@@ -18,9 +18,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link RefinementSessions#compose(Project, List, java.util.function.Function, Instant, Duration)}
- * (epic qits-770): pure — the front desk's entry by lifecycle, a session room's state by its idle
- * window, its resume id and entity facts, and a legacy container room left out.
+ * {@link RefinementSessions#compose(Project, String, List, java.util.function.Function, Instant,
+ * Duration)} (epic qits-770): pure — the front desk's entry by lifecycle and its resume id
+ * (qits-1619), a session room's state by its idle window, its resume id and entity facts, and a
+ * legacy container room left out.
  */
 class RefinementSessionsComposeTest {
 
@@ -49,21 +50,36 @@ class RefinementSessionsComposeTest {
   void anAlwaysOnDeskLeadsWithItsOwnRunningSession() {
     Sessions frame =
         RefinementSessions.compose(
-            project(FrontDeskLifecycle.ALWAYS_ON), List.of(), id -> null, NOW, IDLE);
+            project(FrontDeskLifecycle.ALWAYS_ON), "desk-sess-3", List.of(), id -> null, NOW, IDLE);
 
     assertEquals(1, frame.sessions().size());
     Sessions.Session desk = frame.sessions().get(0);
     assertEquals(SessionCredentials.FRONT_DESK_KEY, desk.key());
     assertEquals(RefinementSessions.FRONT_DESK_SURFACE, desk.surface());
     assertEquals(DaemonProtocol.DesiredState.RUNNING, desk.state());
+    assertEquals("desk-sess-3", desk.resumeSessionId());
     assertNull(desk.entity());
   }
 
   @Test
-  void anOnDemandDeskIsLeftOutForThePanelToLaunch() {
+  void anAlwaysOnDeskWithNoKnownSessionStartsAFreshOne() {
+    for (String none : new String[] {null, " "}) {
+      Sessions.Session desk =
+          RefinementSessions.compose(
+                  project(FrontDeskLifecycle.ALWAYS_ON), none, List.of(), id -> null, NOW, IDLE)
+              .find(SessionCredentials.FRONT_DESK_KEY)
+              .orElseThrow();
+      assertEquals(DaemonProtocol.DesiredState.RUNNING, desk.state());
+      assertNull(desk.resumeSessionId());
+    }
+  }
+
+  @Test
+  void anOnDemandDeskWithNoKnownSessionIsLeftOutForThePanelToLaunch() {
     Sessions frame =
         RefinementSessions.compose(
             project(FrontDeskLifecycle.ON_DEMAND),
+            null,
             List.of(room(1, "e1", NOW)),
             id -> null,
             NOW,
@@ -71,6 +87,27 @@ class RefinementSessionsComposeTest {
 
     assertTrue(frame.find(SessionCredentials.FRONT_DESK_KEY).isEmpty());
     assertEquals(List.of("e1"), frame.sessions().stream().map(Sessions.Session::key).toList());
+  }
+
+  @Test
+  void anOnDemandDeskWithAKnownSessionIsSentStoppedWithItsResumeId() {
+    Sessions frame =
+        RefinementSessions.compose(
+            project(FrontDeskLifecycle.ON_DEMAND),
+            "desk-sess-3",
+            List.of(room(1, "e1", NOW)),
+            id -> null,
+            NOW,
+            IDLE);
+
+    assertEquals(
+        List.of(SessionCredentials.FRONT_DESK_KEY, "e1"),
+        frame.sessions().stream().map(Sessions.Session::key).toList());
+    Sessions.Session desk = frame.find(SessionCredentials.FRONT_DESK_KEY).orElseThrow();
+    assertEquals(RefinementSessions.FRONT_DESK_SURFACE, desk.surface());
+    assertEquals(DaemonProtocol.DesiredState.STOPPED, desk.state());
+    assertEquals("desk-sess-3", desk.resumeSessionId());
+    assertNull(desk.entity());
   }
 
   @Test
@@ -82,6 +119,7 @@ class RefinementSessionsComposeTest {
     Sessions frame =
         RefinementSessions.compose(
             project(FrontDeskLifecycle.ON_DEMAND),
+            null,
             List.of(fresh, stale, stopped),
             id -> null,
             NOW,
@@ -106,6 +144,7 @@ class RefinementSessionsComposeTest {
     Sessions.Session session =
         RefinementSessions.compose(
                 project(FrontDeskLifecycle.ON_DEMAND),
+                null,
                 List.of(room),
                 Map.of("e1", facts)::get,
                 NOW,
@@ -125,7 +164,7 @@ class RefinementSessionsComposeTest {
 
     Sessions frame =
         RefinementSessions.compose(
-            project(FrontDeskLifecycle.ON_DEMAND), List.of(legacy), id -> null, NOW, IDLE);
+            project(FrontDeskLifecycle.ON_DEMAND), null, List.of(legacy), id -> null, NOW, IDLE);
 
     assertTrue(frame.sessions().isEmpty());
     assertFalse(RefinementSessions.wantsRunning(legacy, NOW, IDLE));
