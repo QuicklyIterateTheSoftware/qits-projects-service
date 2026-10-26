@@ -313,6 +313,39 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
+  /**
+   * qits-1618: an unedited qits-1604 brief — the one that only said never to loop or sleep inside a
+   * turn — rolls to the current one, which tells the desk to wait with qits wait and end its turn.
+   */
+  @Test
+  public void anUneditedQits1604BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT.contains("qits wait"),
+        "the qits-1604 text is the one without qits wait");
+    stage(AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1604 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("A desk trigger prompts you too"), after);
+    assertTrue(after.contains("qits wait release-request <id>"), after);
+    assertFalse(after.contains("Never loop or\nsleep inside a turn."), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1618: an edit of the qits-1604 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1604BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
   /** A brief the owner edited is left exactly as stored. */
   @Test
   public void anOwnerEditedBriefIsLeftAlone() {

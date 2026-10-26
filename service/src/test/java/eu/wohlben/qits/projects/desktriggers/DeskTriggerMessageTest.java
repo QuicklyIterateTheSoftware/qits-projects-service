@@ -89,4 +89,41 @@ class DeskTriggerMessageTest {
         PREAMBLE + "\n\nMoved to VERIFIED:\n- qits-7",
         DeskTriggerMessage.render("qits", window(), events));
   }
+
+  private static final String TURN_A =
+      "Your wait \"approve rr-264\" matched: ReleaseRequestStateChanged at 2026-10-25T10:01:00Z"
+          + " (event e1).\nstate: FINALIZED";
+
+  private static final String TURN_B = "Your wait \"qits-7 verified\" timed out.";
+
+  /** qits-1618: a window of waits only opens with the wait preamble and quotes each turn. */
+  @Test
+  void aWindowOfWaitsOnlyHasTheWaitPreambleAndEveryTurnVerbatim() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events = new LinkedHashMap<>();
+    events.put(new WorkVerifiedSource(), List.of());
+    events.put(
+        new WaitClosedSource(),
+        List.of(row("wait", "w-1", TURN_A, "x"), row("wait", "w-2", TURN_B, "y")));
+
+    assertEquals(
+        "A wait you declared has closed. (desk trigger 6f1c4a52-0000-4000-8000-000000000001,"
+            + " 2026-10-25T10:00:00Z to 2026-10-25T10:15:00Z)"
+            + "\n\nWaits you declared:\n"
+            + TURN_A
+            + "\n\n"
+            + TURN_B,
+        DeskTriggerMessage.render("qits", window(), events));
+  }
+
+  /** qits-1618: a window mixing waits and news keeps the delivery preamble; waits come first. */
+  @Test
+  void aWindowMixingWaitsAndNewsKeepsTheDeliveryPreamble() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events = new LinkedHashMap<>();
+    events.put(new WorkVerifiedSource(), List.of(row("work-verified", "qits-7", "T", "dana")));
+    events.put(new WaitClosedSource(), List.of(row("wait", "w-1", TURN_B, "x")));
+
+    assertEquals(
+        PREAMBLE + "\n\nWaits you declared:\n" + TURN_B + "\n\nMoved to VERIFIED:\n- qits-7 (T)",
+        DeskTriggerMessage.render("qits", window(), events));
+  }
 }

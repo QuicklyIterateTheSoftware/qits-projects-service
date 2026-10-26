@@ -2600,19 +2600,21 @@ it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
 **The delivery desk is prompted by what happens, not only by a person.** `service/…/desktriggers/`
 is the whole of it:
 
-    qits-events --EntityTransitioned / ApprovalRequirementChanged--> DeskTriggerListener
+    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed--> DeskTriggerListener
        (durable, consumerId projects-desk-triggers, replayFromEpoch false)
        each DeskTriggerSource naming the signature: qualify(frame) -> DeskTrigger*
        drop: project delivery_enabled false, or cause = one of the desk's subjects
+         (neither for a source whose requestedByDesk() is true: qits-1618's wait)
        DeskTriggerWindows.admit: join the project's OPEN window, or open one closing a window later
+         (requestedByDesk: also bring closes_at forward to now, so the next sweep delivers it)
     DeskTriggerSweep (every sweep-interval, NORMAL mode only)
        OPEN past closes_at -> render DeskTriggerMessage, store message + closed_at, OWED
        oldest OWED per project -> FrontDeskPrompter.prompt (POST <base>front-desk/prompt)
           -> DELIVERED | QUEUED | still OWED (attempts, last_status, last_detail) | FAILED
 
 - **Storage** (V57): `desk_trigger_window` (one OPEN row per project, a partial unique index;
-  `closes_at` set by the trigger that opened it and never moved, so a busy project is prompted on a
-  clock) and `desk_trigger_event` (one line, unique on `(window_id, source, item_ref, label)`, so a
+  `closes_at` set by the trigger that opened it and never extended, so a busy project is prompted
+  on a clock; only a trigger the desk asked for brings it forward, qits-1618) and `desk_trigger_event` (one line, unique on `(window_id, source, item_ref, label)`, so a
   redelivered frame or the same item twice is one line). Both `@Uncaused`. Admit reads the OPEN row
   `for update` and inserts with `on conflict … do nothing` on both tables — a lost race re-reads the
   winner's window and never raises a unique violation into the caller's transaction.
@@ -2625,12 +2627,17 @@ is the whole of it:
   already open window is still closed and delivered), and a trigger whose `cause` equals a non-null
   `front_desk.delivery_token_subject`, `session_token_subject` or `token_subject` of its project —
   the desk is not told what it did. A delivery token re-minted since leaves its old subject
-  unmatched; accepted, toggling is rare.
+  unmatched; accepted, toggling is rare. **Neither drop applies to a source whose
+  `requestedByDesk()` is true** (qits-1618): the desk asked to be woken, so it is woken with delivery
+  off too — the prompt goes to the project's one kept front desk session either way, delivery only
+  decides that session's rights.
 - **The message** (`DeskTriggerMessage`): one preamble line naming the desk's brief
   (`/tmp/qits-delivery-brief.md`, `DeskTriggerMessage.BRIEF_PATH`, a copy of qits-projects-daemon's
   `DeliveryKeeper.BRIEF_PATH`), the window id and its bounds, then each source's section in
   `order()`, a blank line between, nothing after. It is stored at the close, so every retry sends
   the same text. The opening words `You are the delivery desk` are what the desk's brief keys on.
+  A window whose every line came from a `requestedByDesk()` source opens instead with `A wait you
+  declared has closed.` and the same bounds: the desk asked, and need not read the delivery brief.
 - **Delivery** reuses the person's prompt door's reading (`FrontDeskPrompter`), outside any
   transaction, one window per project per pass so owed windows arrive in order: 200 `delivered` →
   DELIVERED, 200 `queued` → QUEUED (with `queue_position`), both stamping `accepted_at` and
@@ -2641,12 +2648,15 @@ is the whole of it:
 **The source contract** is `DeskTriggerSource`: `id()` (stored in `desk_trigger_event.source` —
 storage, never rename it), `order()` (section order), `signatures()` (bus event simple names),
 `qualify(EventFrame)` (0..n `DeskTrigger(projectId, itemRef, itemId, cause, label, eventId,
-occurredAt)`, run inside the listener's `projects` transaction so it may read rows) and
-`render(projectSlug, events)` (its own section: a heading line, one line per event). Two ship:
+occurredAt)`, run inside the listener's `projects` transaction so it may read rows),
+`render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
+`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Three
+ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
 | `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
+| `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**

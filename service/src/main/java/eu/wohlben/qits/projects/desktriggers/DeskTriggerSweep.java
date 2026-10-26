@@ -54,7 +54,13 @@ import org.jboss.logging.Logger;
  * </ol>
  *
  * <p>Delivery is not gated on {@code delivery_enabled}: admission is. A window that opened while the
- * loop was on is owed to a desk that existed and is delivered if the desk will take it.
+ * loop was on is owed to a desk that existed and is delivered if the desk will take it. A trigger
+ * the desk asked for itself ({@link DeskTriggerSource#requestedByDesk()}, qits-1618's {@code qits
+ * wait}) is admitted with delivery off too, and reaches the desk the same way: {@link
+ * FrontDeskPrompter} types into the project's one kept front desk session, which delivery does not
+ * create or remove — it only decides the rights that session holds. A project with no desk running
+ * answers 409 or 503, and the window stays owed and is retried each pass until the desk takes it or
+ * {@code give-up} passes, as any other window.
  *
  * <p>The message is stored at the close, so every retry sends the same text. Nothing here throws out
  * of a pass for one window's sake: a window that fails to close or record is logged and the rest go

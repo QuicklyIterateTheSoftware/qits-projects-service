@@ -25,8 +25,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *       read again: whoever lost the race joins the winner's window. No unique violation is ever
  *       raised, which matters because a raised one would abort the caller's transaction.
  *   <li><b>{@code closes_at} is set once</b>, to the opening admit's {@code now} plus {@code
- *       qits.projects.desk-triggers.window}, and nothing here ever moves it. A project that keeps
- *       producing triggers is prompted every window, never starved by its own activity.
+ *       qits.projects.desk-triggers.window}, and is <b>never extended</b>. A project that keeps
+ *       producing triggers is prompted every window, never starved by its own activity. The one
+ *       move is forward: an admit that is {@code prompt} — a trigger the desk asked for itself
+ *       ({@link DeskTriggerSource#requestedByDesk()}, qits-1618) — sets it to its own {@code now}
+ *       when that is earlier, so the next sweep closes the window and the desk is woken within a
+ *       sweep interval instead of a window.
  *   <li><b>A repeat is one line.</b> The event insert is {@code on conflict do nothing} against
  *       {@code (window_id, source, item_ref, label)}, so a redelivered frame admits nothing new.
  * </ul>
@@ -49,6 +53,18 @@ public class DeskTriggerWindows {
    */
   @Transactional
   public UUID admit(String projectId, String source, DeskTrigger trigger, Instant now) {
+    return admit(projectId, source, trigger, now, false);
+  }
+
+  /**
+   * {@link #admit(String, String, DeskTrigger, Instant)}, and when {@code prompt} the window's
+   * {@code closes_at} is brought forward to {@code now} (never back), so the next sweep closes it.
+   *
+   * @return the window it is in now (whether or not the line was new)
+   */
+  @Transactional
+  public UUID admit(
+      String projectId, String source, DeskTrigger trigger, Instant now, boolean prompt) {
     // Postgres keeps microseconds; a nanosecond instant would read back as a different one.
     Instant at = now.truncatedTo(ChronoUnit.MICROS);
     EntityManager em = DeskTriggerWindow.getEntityManager();
@@ -86,6 +102,13 @@ public class DeskTriggerWindows {
         .setParameter("occurred", trigger.occurredAt() == null ? at : trigger.occurredAt())
         .setParameter("admitted", at)
         .executeUpdate();
+    if (prompt) {
+      em.createNativeQuery(
+              "update desk_trigger_window set closes_at = :at where id = :id and closes_at > :at")
+          .setParameter("at", at)
+          .setParameter("id", windowId)
+          .executeUpdate();
+    }
     return windowId;
   }
 
