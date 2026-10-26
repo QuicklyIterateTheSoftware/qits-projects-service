@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.contracts.GoldenFiles;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
-import eu.wohlben.qits.projects.idphost.IdpRefinementCredentials;
 import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
 import eu.wohlben.qits.projects.idphost.IdpSessionIntrospection;
 import eu.wohlben.qits.projects.idphost.IdpTokens;
+import eu.wohlben.qits.projects.refinementhost.LegacyRefinementContainers;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -62,8 +62,6 @@ final class IdpContract {
 
   private static final String FRONT_DESK_PROJECT = "00000000-0000-4000-8000-0000000000a1";
   private static final String RUNNER = "00000000-0000-4000-8000-0000000000b1";
-  private static final long REFINEMENT = 41L;
-  private static final String REFINEMENT_PROJECT = "00000000-0000-4000-8000-0000000000c1";
 
   private IdpContract() {}
 
@@ -100,18 +98,6 @@ final class IdpContract {
         "clientSecret", Optional.of(pair[1]),
         "requestTimeout", Duration.ofSeconds(5),
         "patience", Duration.ZERO);
-  }
-
-  private static IdpRefinementCredentials refinements(String base, Map<String, String> p) {
-    String[] pair = pair(p);
-    return Fields.with(
-        new IdpRefinementCredentials(RowClients.clients()),
-        "objectMapper", new ObjectMapper(),
-        "tokensEnabled", true,
-        "authServerUrl", base + "/idp",
-        "clientId", pair[0],
-        "clientSecret", Optional.of(pair[1]),
-        "requestTimeout", Duration.ofSeconds(5));
   }
 
   private static ConsumerRow row(
@@ -303,23 +289,6 @@ final class IdpContract {
               },
               "POST /idp/api/clients for a desk-runner answering 201 with clientId and secret"),
           row(
-              "commissionClient",
-              "a service client with the system role",
-              "POST",
-              "/idp/api/clients",
-              "{\"contextKind\":\"refinement\",\"contextId\":\"" + REFINEMENT + "\","
-                  + "\"claims\":{\"project\":\"" + REFINEMENT_PROJECT + "\"},\"gitRefs\":[]}",
-              List.of("$.clientId", "$.secret"),
-              201,
-              Trigger.operation("startWorkRefinement"),
-              (base, p) ->
-                  assertFalse(
-                      refinements(base, p)
-                          .commission(REFINEMENT, REFINEMENT_PROJECT, List.of())
-                          .clientId()
-                          .isBlank()),
-              "POST /idp/api/clients for a refinement answering 201 with clientId and secret"),
-          row(
               "listClients",
               "a commissioned client",
               "GET",
@@ -352,8 +321,12 @@ final class IdpContract {
               null,
               List.of("$[*].clientId", "$[*].contextKind", "$[*].contextId"),
               200,
-              Trigger.schedule("RefinementCommissionReconcile.reconcile"),
-              (base, p) -> refinements(base, p).listRefinementCommissions(),
+              Trigger.schedule("LegacyRefinementContainers.run"),
+              (base, p) ->
+                  assertTrue(
+                      commissioner(base, p)
+                          .liveClients(LegacyRefinementContainers.CLIENT_KIND)
+                          .isPresent()),
               "GET /idp/api/clients answering 200 with a root array of clientId, contextKind and"
                   + " contextId"),
           row(
@@ -386,8 +359,8 @@ final class IdpContract {
               null,
               List.of(),
               204,
-              Trigger.schedule("RefinementCommissionReconcile.reconcile"),
-              (base, p) -> refinements(base, p).decommission(p.get("clientId")),
+              Trigger.schedule("LegacyRefinementContainers.run"),
+              (base, p) -> assertTrue(commissioner(base, p).deleteClient(p.get("clientId"))),
               "DELETE /idp/api/clients/{clientId} answering 204"),
           row(
               "introspectSession",

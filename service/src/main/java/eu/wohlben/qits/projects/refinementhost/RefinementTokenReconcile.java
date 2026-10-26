@@ -33,9 +33,9 @@ import org.jboss.logging.Logger;
  *       room that predates V50.
  * </ul>
  *
- * <p>Its own kind keeps it invisible to the desk tokens' reconcile and to {@link
- * RefinementCommissionReconcile} (which reaps <em>clients</em> of the same kind word, a different
- * listing), and they to it.
+ * <p>Its own kind keeps it invisible to the desk tokens' reconcile, and that to it. It reads the
+ * <em>token</em> listing only: the retired containers' commissioned <em>clients</em> carried the
+ * same kind word on a different listing, and {@link LegacyRefinementContainers} deletes those.
  */
 @ApplicationScoped
 public class RefinementTokenReconcile {

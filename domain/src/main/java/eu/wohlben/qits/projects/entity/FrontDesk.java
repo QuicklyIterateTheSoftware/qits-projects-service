@@ -133,7 +133,7 @@ public class FrontDesk extends PanacheEntityBase {
 
   /**
    * The harness session id the desk's daemon last reported for the front desk's own session key
-   * ({@code front-desk}, qits-1619, V59), or null when it never reported one. Kept after the session
+   * ({@code front-desk}, qits-1619, V60), or null when it never reported one. Kept after the session
    * stops — a report without one never clears it — so the {@code sessions} frame can hand it back as
    * that entry's {@code resumeSessionId} and a recreated desk resumes its previous session.
    */

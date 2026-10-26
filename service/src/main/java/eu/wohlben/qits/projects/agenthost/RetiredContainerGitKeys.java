@@ -67,8 +67,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>Why it is its own bean, and why every property on it is Optional</h2>
  *
- * <p>Both are one rule, and its siblings {@link RetiredImageVersionKeys} and {@code
- * refinementhost.RetiredRefinementImageVersionKey} carry the same one: observing {@link
+ * <p>Both are one rule, and its sibling {@link RetiredImageVersionKeys} carries the same one: observing {@link
  * StartupEvent} <b>forces the observing bean to be created at boot</b>. Hanging this observer on
  * {@code deskhost/FrontDeskSpecs} — the obvious place, since that is a class the key used to decide
  * for — would make every {@code @QuarkusTest} in this module satisfy that factory's required config

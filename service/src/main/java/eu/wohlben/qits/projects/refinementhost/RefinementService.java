@@ -5,8 +5,6 @@ import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.TechnicalProcess;
@@ -17,13 +15,9 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.CodedRefusalException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
-import eu.wohlben.qits.projects.gitmirror.GitMirrorException;
-import eu.wohlben.qits.projects.gitmirror.PushOutcome;
-import eu.wohlben.qits.projects.gitmirror.RepoMirror;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
 import io.quarkus.narayana.jta.QuarkusTransaction;
-import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.inject.Instance;
@@ -31,10 +25,6 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.stream.Collectors;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -43,45 +33,11 @@ import org.jboss.logging.Logger;
  * The refinement lifecycle: find-or-create keyed by entity (an epic, a ticket or a campaign), the
  * session's demand (ensure, stop), discard, and the row projection the status strip reads.
  *
- * <h2>Two kinds of room (epic qits-770)</h2>
- *
- * <p><b>A room opened now is a session room</b>: one more session of the project's front desk, keyed
- * by the entity id, wanted while its {@code last_demand_at} is inside {@code
+ * <p><b>Every room is a session room</b> (epic qits-770): one more session of the project's front
+ * desk, keyed by the entity id, wanted while its {@code last_demand_at} is inside {@code
  * qits.projects.agent-idle-timeout} — see {@link RefinementSessions}. It cuts no branch, places no
- * container and commissions no client. <b>A room opened before that is a legacy container room</b>
- * ({@link Refinement#containerRoom()}: it has a {@code refining/<slug>} branch) and keeps the
- * container ladder below until qits-1316 removes it; every door below answers both kinds, by that
- * rule.
- *
- * <p>What follows describes the legacy container rooms. The projects-side
- * replacement for what the refining route used to take from qits-workspaces' {@code
- * WorkspaceService}, narrowed to what that route actually consumes.
- *
- * <h2>The ladder</h2>
- *
- * <ol>
- *   <li><b>Running</b> — no-op plus an idle-clock stamp; the process narration says so and settles.
- *   <li><b>Present but stopped</b> — wake: one {@code ensure} under {@code Recreate.ifChanged}, a
- *       start in place unless an image bump landed while it slept.
- *   <li><b>Absent</b> — provision: commission a credential, ensure a fresh container; the daemon
- *       self-clones the wrapper and its terminal {@code Provisioned}/{@code ProvisionFailed} is
- *       what settles the narration, routed by {@link RefinementDaemonRegistry}.
- * </ol>
- *
- * <p>The container work runs <b>off the request thread</b>: an ensure can sit behind an image pull,
- * and the browser gets the technical-process id to watch instead of a request that hangs. One lock
- * per row serializes the ladder; a second click while it is held answers the live process.
- *
- * <h2>The branch</h2>
- *
- * <p>{@code refining/<slug>}, cut on the project's wrapper at its default branch — a refinement
- * always forks the wrapper's main, which is why the parent/child workspace tree and the integrate
- * door do not exist here. The wrapper is the project, and that holds for a ticket exactly as for an
- * epic: neither names a repository, and both dispatch onto the wrapper too. The slug is the entity's,
- * and a root entity's slug is unique per project across archetypes, so an epic and a ticket never
- * cut the same branch. Adopt-existing is the create's ordinary path, not an error dance: a branch
- * already on the origin (a previous refinement of this entity, discarded row and all) is adopted as
- * it stands.
+ * container and commissions no client. The per-room containers that came before are retired
+ * (qits-1316); {@link LegacyRefinementContainers} cleared what they left outside the database.
  */
 @ApplicationScoped
 public class RefinementService {
@@ -99,12 +55,7 @@ public class RefinementService {
   @Inject Instance<WorkspaceAgentDispatch> workspaces;
   @Inject ProjectService projects;
   @Inject RepositoryService repositories;
-  @Inject GitMirrorRegistry mirrors;
   @Inject RefinementRepository store;
-  @Inject RefinementRuntime runtime;
-  @Inject RefinementDaemonRegistry registry;
-  @Inject RefinementTunnels tunnels;
-  @Inject RefinementCommissions commissions;
 
   /** The room's own token (qits-1482): minted at the open, revoked by the discard. */
   @Inject RefinementTokens tokens;
@@ -138,43 +89,6 @@ public class RefinementService {
   @Inject Event<RefinementCredentialsChanged> credentialsChanged;
   @Inject TechnicalProcessRegistry processes;
   @Inject RefinementChangePublisher changes;
-  @Inject RefinementDrift drift;
-
-  /**
-   * Read for one thing only: {@link RefinementContainerFactory#imageVersion()}, the image pin the
-   * projection reports beside the connected daemon's own version. The factory is asked rather than
-   * the key being read a second time here, for the reason that method's javadoc gives — {@code GET
-   * /projects/api/pins}, every container start and this projection have to give one answer.
-   */
-  @Inject RefinementContainerFactory factory;
-
-  /**
-   * One permit per refinement, so the ladder is serialized without serializing the service. A
-   * {@link Semaphore} and deliberately not a lock: the permit is taken on the request thread and
-   * released on the executor thread that finishes the work, and a lock's owner check would refuse
-   * exactly that hand-over.
-   */
-  private final ConcurrentHashMap<Long, Semaphore> locks = new ConcurrentHashMap<>();
-
-  /** The last ensure's failure, shown as {@code runtimeError} until the next attempt. */
-  private final ConcurrentHashMap<Long, String> lastErrors = new ConcurrentHashMap<>();
-
-  /** The live ensure/recreate narration per row, answered by the active-process read. */
-  private final ConcurrentHashMap<Long, TechnicalProcess> activeProcesses =
-      new ConcurrentHashMap<>();
-
-  private final ExecutorService executor =
-      Executors.newCachedThreadPool(
-          runnable -> {
-            Thread thread = new Thread(runnable, "refinement-ensure");
-            thread.setDaemon(true);
-            return thread;
-          });
-
-  @PreDestroy
-  void shutdown() {
-    executor.shutdownNow();
-  }
 
   // ---- find or create ----------------------------------------------------------------------
 
@@ -207,7 +121,7 @@ public class RefinementService {
    * <p><b>An existing room is always answered, whatever the entity's state now.</b> One room per
    * entity (the unique key on {@code entity_id}); a second open returns the first, and asks for its
    * session again — unless the project is at the cap, when the room is answered as it stands and
-   * its ensure door says why. A legacy container room is answered untouched.
+   * its ensure door says why.
    *
    * <p>The room's token is minted before its demand is stamped and pushed, so the credentials frame
    * carrying it goes out before the sessions entry that runs on it.
@@ -218,9 +132,6 @@ public class RefinementService {
     if (existing.isPresent()) {
       // A room opened while qits-idp was away holds no token yet; the open is a cheap retry.
       Refinement room = mintTokenIfMissing(existing.get());
-      if (room.containerRoom()) {
-        return room;
-      }
       Instant now = Instant.now();
       if (sessions.wantsRunning(room, now) || runningBeside(room, now).size() < sessionsMax) {
         return stampDemand(room, now);
@@ -296,15 +207,10 @@ public class RefinementService {
   /**
    * {@code POST /refinements/{id}/ensure}: a session room's session asked for — demand stamped, the
    * desk told, the list pushed — and the row answered; a 409 {@value #REFINEMENT_SESSIONS_FULL} when
-   * it is not already wanted and the project is at the cap. A legacy container room is brought up by
-   * its ladder instead, as {@link #ensureContainer} does.
+   * it is not already wanted and the project is at the cap.
    */
   public Refinement ensure(long id) {
     Refinement room = get(id);
-    if (room.containerRoom()) {
-      begin(room, false);
-      return room;
-    }
     Instant now = Instant.now();
     Refinement current = mintTokenIfMissing(room);
     if (!sessions.wantsRunning(current, now)) {
@@ -315,14 +221,10 @@ public class RefinementService {
 
   /**
    * {@code POST /refinements/{id}/stop}: a session room's demand cleared, so its session is desired
-   * STOPPED and the daemon stops it; idempotent. A legacy container room's container is stopped, as
-   * {@link #stopContainer} does.
+   * STOPPED and the daemon stops it; idempotent.
    */
   public Refinement stop(long id) {
     Refinement room = get(id);
-    if (room.containerRoom()) {
-      return stopContainer(id);
-    }
     QuarkusTransaction.requiringNew()
         .run(() -> store.update("lastDemandAt = null where id = ?1", id));
     room.lastDemandAt = null;
@@ -578,370 +480,56 @@ public class RefinementService {
     return QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
   }
 
-  /**
-   * A project's refinements with their live halves and <b>no git drift</b> — the list redraws on
-   * every activity hint, and the strip that renders drift is on the single row's page, not here.
-   *
-   * <p>The light projection costs nothing now that {@link #view} costs nothing either: the
-   * difference is no longer a fetch per row, it is that a listing does not ask {@link
-   * RefinementDrift} for a row and therefore never schedules a pass for one nobody has opened.
-   */
+  /** A project's refinements as the status strip reads them. */
   public List<RefinementView> listByProject(String projectId) {
     return QuarkusTransaction.requiringNew().call(() -> store.listByProject(projectId)).stream()
-        .map(this::lightView)
+        .map(this::view)
         .toList();
-  }
-
-  private RefinementView lightView(Refinement refinement) {
-    if (!refinement.containerRoom()) {
-      return sessionView(refinement);
-    }
-    long id = refinement.id;
-    Semaphore lock = locks.get(id);
-    boolean provisioning = lock != null && lock.availablePermits() == 0;
-    String runtimeStatus;
-    String runtimeError = lastErrors.get(id);
-    RefinementRuntime.ContainerInfo container = null;
-    try {
-      container = runtime.inspect(id).orElse(null);
-    } catch (RuntimeException e) {
-      runtimeError = e.getMessage();
-    }
-    if (provisioning) {
-      runtimeStatus = "PROVISIONING";
-    } else if (registry.provisionFailure(id).isPresent() || runtimeError != null) {
-      runtimeStatus = "FAILED";
-      runtimeError = registry.provisionFailure(id).orElse(runtimeError);
-    } else if (container == null) {
-      runtimeStatus = "STOPPED";
-    } else {
-      runtimeStatus = container.running() ? "RUNNING" : "STOPPED";
-    }
-    RefinementDaemonRegistry.DaemonInfo daemon = registry.lookup(id).orElse(null);
-    return new RefinementView(
-        refinement,
-        runtimeStatus,
-        runtimeError,
-        "RUNNING".equals(runtimeStatus) ? registry.clean(id).orElse(null) : null,
-        null,
-        null,
-        false,
-        registry.agentActivity(id).orElse(null),
-        daemon == null ? null : daemon.connectedAt(),
-        daemon == null ? null : daemon.daemonVersion(),
-        registry.daemonOutdated(id),
-        factory.imageVersion(),
-        staleAgainstPin(daemon, factory.imageVersion()));
   }
 
   // ---- lifecycle ---------------------------------------------------------------------------
 
   /**
-   * Bring the container up (asynchronously) and answer the narration to watch. On a session room
-   * (the alias the released SPA still calls, until qits-1316) the session is asked for as {@link
-   * #ensure} does and the narration is one already settled: there is no bring-up to watch here, the
-   * desk runs it.
+   * {@code POST /refinements/{id}/ensure-container}: {@link #ensure} under the door's old name, kept
+   * while a consumer's pact still calls it (qits-platform-access-cli's {@code qits work refinement
+   * open}). The session is asked for and the narration answered is one already settled: there is no
+   * bring-up to watch here, the desk runs it.
    */
   public String ensureContainer(long id) {
-    Refinement refinement = get(id);
-    if (!refinement.containerRoom()) {
-      ensure(id);
-      return settledNarration("The room's session runs in the project's front desk.");
-    }
-    return begin(refinement, false);
-  }
-
-  /** A narration begun and settled at once, for a door whose answer must name one. */
-  private String settledNarration(String line) {
+    ensure(id);
     TechnicalProcess process = processes.begin("ensure");
     process.openSegment("session");
-    process.completeNoOp("session", line);
+    process.completeNoOp("session", "The room's session runs in the project's front desk.");
     process.finishProvision(true);
     return process.id();
   }
 
   /**
-   * Replace the container: remove it (never its volume), then provision fresh — gated on a tree
-   * the daemon has vouched is clean, because the writable layer dies with the container.
-   */
-  public String recreateContainer(long id) {
-    Refinement refinement = get(id);
-    if (!refinement.containerRoom()) {
-      // A session room has no container to replace: a stop and an ensure is the honest reading.
-      stop(id);
-      ensure(id);
-      return settledNarration("The room's session was stopped and asked for again.");
-    }
-    if (!registry.clean(id).map(Boolean::booleanValue).orElse(false)) {
-      throw new DomainException(
-          400,
-          "The working tree is not provably clean, so the container will not be replaced."
-              + " Commit or discard the changes first — or if the container is not running,"
-              + " simply start it.");
-    }
-    return begin(refinement, true);
-  }
-
-  /**
-   * Stop the container, leaving it and its checkout in place. Idempotent. On a session room, {@link
-   * #stop}.
-   */
-  public Refinement stopContainer(long id) {
-    Refinement refinement = get(id);
-    if (!refinement.containerRoom()) {
-      return stop(id);
-    }
-    runtime.stop(id);
-    tunnels.closeTunnel(id);
-    registry.forget(id);
-    activeProcesses.remove(id);
-    changes.fire(id, RefinementChangeHint.Topic.PROCESS);
-    return refinement;
-  }
-
-  /**
-   * Best-effort graceful stop ahead of {@link RefinementRuntime#delete}, at every call site that
-   * tears a refinement container down. {@code runtime.stop} is itself documented never-throw, but a
-   * failure here must never block the removal that follows, so any {@link RuntimeException} is
-   * logged and swallowed. The point: the refinement container runs the same workspace daemon a
-   * workspace container does, and a coding agent inside it (started with {@code claude
-   * --remote-control}) only archives its claude.ai session on SIGTERM — a bare delete (docker rm
-   * -f) SIGKILLs it instead and leaves the session dangling.
-   */
-  private void stopBeforeDelete(long id) {
-    try {
-      runtime.stop(id);
-    } catch (RuntimeException e) {
-      LOG.debugf(e, "Graceful stop before removal failed for refinement %s; removing anyway", id);
-    }
-  }
-
-  /**
-   * The end of a refinement: container, volume, credential (the commissioned client and the room's
-   * own token, qits-1482), branch, row — in that order, so a failure leaves nothing orphaned ahead
-   * of it. The entity's DROPPED transition is its own call on
-   * its archetype's surface; this tears down only what this service hosts.
+   * The end of a refinement room: the row deleted (its draft, attachments and designs cascade), the
+   * daemon sent the list without its key — which stops the session — then the room's token revoked
+   * and the credentials sent without it, and the desk's demand recomputed. The entity's own
+   * transition is its own call on its archetype's surface; this tears down only what this service
+   * hosts.
    */
   public void discard(long id) {
-    Refinement refinement = get(id);
-    if (!refinement.containerRoom()) {
-      discardSession(refinement);
-      return;
-    }
-    tunnels.closeTunnel(id);
-    registry.forget(id);
-    activeProcesses.remove(id);
-    stopBeforeDelete(id);
-    runtime.delete(id);
-    commissions.handBack(refinement);
-    revokeToken(refinement);
-    deleteBranchQuietly(refinement);
-    QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
-    announceCredentialsChanged(refinement.projectId);
-    lastErrors.remove(id);
-    drift.forget(id);
-    LOG.infof("Discarded refinement %s (entity %s)", id, refinement.entityId);
-  }
-
-  /**
-   * The end of a session room (epic qits-770): the row deleted (its draft, attachments and designs
-   * cascade), the daemon sent the list without its key — which stops the session — then the room's
-   * token revoked and the credentials sent without it, and the desk's demand recomputed.
-   */
-  private void discardSession(Refinement room) {
-    long id = room.id;
+    Refinement room = get(id);
     QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
     demandMoved(room.projectId);
     revokeToken(room);
     announceCredentialsChanged(room.projectId);
-    lastErrors.remove(id);
     LOG.infof("Discarded refinement %s (entity %s)", id, room.entityId);
-  }
-
-  /** The id of the ensure narration currently live for this row, or null. */
-  public String activeProcessId(long id) {
-    TechnicalProcess process = activeProcesses.get(id);
-    if (process == null) {
-      return null;
-    }
-    if (process.isTerminal()) {
-      activeProcesses.remove(id);
-      return null;
-    }
-    return process.id();
-  }
-
-  private String begin(Refinement refinement, boolean replace) {
-    long id = refinement.id;
-    Semaphore lock = locks.computeIfAbsent(id, key -> new Semaphore(1));
-    if (!lock.tryAcquire()) {
-      // Somebody is already doing exactly this; watch their narration rather than queue a second
-      // bring-up behind an image pull.
-      String live = activeProcessId(id);
-      if (live != null) {
-        return live;
-      }
-      throw new DomainException(409, "The refinement container is already being worked on.");
-    }
-    try {
-      TechnicalProcess process = processes.begin("ensure");
-      activeProcesses.put(id, process);
-      lastErrors.remove(id);
-      registry.attachProvisionProcess(id, process);
-      changes.fire(id, RefinementChangeHint.Topic.PROCESS);
-      executor.submit(() -> run(refinement, replace, process, lock));
-      return process.id();
-    } catch (RuntimeException e) {
-      lock.release();
-      throw e;
-    }
-  }
-
-  /** The ladder, off the request thread. The lock is held for the container verbs only. */
-  private void run(Refinement refinement, boolean replace, TechnicalProcess process, Semaphore lock) {
-    long id = refinement.id;
-    try {
-      // Off the request thread there is no ambient session, so the reads open their own.
-      Project project =
-          QuarkusTransaction.requiringNew().call(() -> projects.get(refinement.projectId));
-      Repository wrapper =
-          QuarkusTransaction.requiringNew().call(() -> repositories.get(refinement.repositoryId));
-      String wrapperName = ProjectService.wrapperName(project);
-      String slug = slugOf(refinement);
-      WorkEntity entity = entityOf(refinement);
-      // Read at every bring-up, so a block, a retitle or a transition that happened while the
-      // container slept is right at its wake (qits-614, qits-617).
-      RefinementRuntime.RefinedEntity named =
-          entity == null
-              ? RefinementRuntime.RefinedEntity.UNKNOWN
-              : new RefinementRuntime.RefinedEntity(
-                  qualifiedIdOf(entity, project), entity.title, entity.status, entity.blocked);
-      process.openSegment("container");
-      if (!branchStillExists(refinement)) {
-        // The branch is gone from under the refinement — somebody resolved it out-of-band. The
-        // container and its checkout are torn down rather than resurrecting a deleted branch; the
-        // next open recreates the refinement from the entity.
-        process.appendLine(
-            "container",
-            "The branch " + refinement.branch + " no longer exists on " + ProjectService.wrapperName(project) + ".");
-        stopBeforeDelete(id);
-        runtime.delete(id);
-        commissions.handBack(refinement);
-        revokeToken(
-            QuarkusTransaction.requiringNew()
-                .call(() -> store.findByIdOptional(id))
-                .orElse(refinement));
-        QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
-        announceCredentialsChanged(refinement.projectId);
-        process.appendLine("container", "The refinement was torn down.");
-        process.settleSegment("container", false);
-        process.failProvision(
-            "The refining branch is gone; open the refinement again to start afresh.");
-        return;
-      }
-      RefinementRuntime.ContainerInfo existing = runtime.inspect(id).orElse(null);
-      if (replace && existing != null) {
-        process.appendLine("container", "Removing the container (the checkout volume survives).");
-        // A stopped container has nothing to SIGTERM; only stop it first when it is known running.
-        if (existing.running()) {
-          stopBeforeDelete(id);
-        }
-        runtime.delete(id);
-        existing = null;
-      }
-      if (existing == null) {
-        process.appendLine("container", "Provisioning a fresh refinement container.");
-        runtime.provision(refinement, project.slug, slug, wrapperName, named);
-        process.settleSegment("container", true);
-        // Not settled here: the daemon's Provisioned/ProvisionFailed settles the narration, via
-        // the registry. The idle reaper is the backstop for a daemon that never dials home.
-      } else if (!existing.running()) {
-        process.appendLine("container", "Waking the stopped container.");
-        runtime.wake(refinement, project.slug, slug, wrapperName, named);
-        process.settleSegment("container", true);
-      } else {
-        runtime.touch(id);
-        process.completeNoOp("container", "The container is already running.");
-        process.finishProvision(true);
-      }
-    } catch (DomainException refused) {
-      lastErrors.put(id, refused.getMessage());
-      process.failProvision(refused.getMessage());
-    } catch (RuntimeException e) {
-      LOG.errorf(e, "Could not ensure the refinement container %s", id);
-      lastErrors.put(id, e.getMessage());
-      process.failProvision(e.getMessage());
-    } finally {
-      lock.release();
-      changes.fire(id, RefinementChangeHint.Topic.PROCESS);
-    }
   }
 
   // ---- projection --------------------------------------------------------------------------
 
-  /** The row as the status strip reads it. */
-  public RefinementView view(Refinement refinement) {
-    if (!refinement.containerRoom()) {
-      return sessionView(refinement);
-    }
-    long id = refinement.id;
-    Semaphore lock = locks.get(id);
-    boolean provisioning = lock != null && lock.availablePermits() == 0;
-    RefinementRuntime.ContainerInfo container = null;
-    String runtimeError = lastErrors.get(id);
-    try {
-      container = runtime.inspect(id).orElse(null);
-    } catch (RuntimeException e) {
-      runtimeError = e.getMessage();
-    }
-    String runtimeStatus;
-    if (provisioning) {
-      runtimeStatus = "PROVISIONING";
-    } else if (registry.provisionFailure(id).isPresent() || runtimeError != null) {
-      runtimeStatus = "FAILED";
-      runtimeError = registry.provisionFailure(id).orElse(runtimeError);
-    } else if (container == null) {
-      runtimeStatus = "STOPPED";
-    } else {
-      runtimeStatus = container.running() ? "RUNNING" : "STOPPED";
-    }
-
-    Boolean clean =
-        "RUNNING".equals(runtimeStatus) ? registry.clean(id).orElse(null) : null;
-
-    // Read, never computed. This used to be a mirror refresh — a git fetch, or a full clone when
-    // the mirror was cold, which is precisely the state a just-created refinement leaves it in — so
-    // the one read the refining page opens with was the one that could block on the wire. It is a
-    // cache lookup now, answering null ("not known yet") until the background pass has an answer
-    // and firing GIT_STATUS when it gets one. See RefinementDrift.
-    RefinementDrift.Drift gitDrift = driftOf(refinement);
-
-    RefinementDaemonRegistry.DaemonInfo daemon = registry.lookup(id).orElse(null);
-    return new RefinementView(
-        refinement,
-        runtimeStatus,
-        runtimeError,
-        clean,
-        gitDrift.ahead(),
-        gitDrift.behind(),
-        gitDrift.conflictsWithParent(),
-        registry.agentActivity(id).orElse(null),
-        daemon == null ? null : daemon.connectedAt(),
-        daemon == null ? null : daemon.daemonVersion(),
-        registry.daemonOutdated(id),
-        factory.imageVersion(),
-        staleAgainstPin(daemon, factory.imageVersion()));
-  }
-
   /**
-   * A session room as the strip reads it (epic qits-770): {@code runtimeStatus} is the key's last
-   * reported state — {@code STARTING}, {@code RUNNING}, {@code STOPPED} or {@code FAILED} — and
-   * {@code runtimeError} the report's detail. Before any report the desired state stands in: a wanted
+   * The room as the strip reads it (epic qits-770): {@code runtimeStatus} is the key's last reported
+   * state — {@code STARTING}, {@code RUNNING}, {@code STOPPED} or {@code FAILED} — and {@code
+   * runtimeError} the report's detail. Before any report the desired state stands in: a wanted
    * session is {@code STARTING}, an unwanted one {@code STOPPED}. A report saying RUNNING about a room
-   * no longer wanted reads as it is reported until the next report. The container-only halves are
-   * null or false; the desk's state rides beside.
+   * no longer wanted reads as it is reported until the next report. The desk's state rides beside.
    */
-  RefinementView sessionView(Refinement room) {
+  public RefinementView view(Refinement room) {
     boolean wanted = sessions.wantsRunning(room, Instant.now());
     String status =
         room.sessionState != null
@@ -957,111 +545,21 @@ public class RefinementService {
         room,
         status,
         room.sessionDetail,
-        null,
-        null,
-        null,
-        false,
-        null,
-        null,
-        null,
-        null,
-        null,
-        false,
-        true,
         room.sessionId,
         room.sessionCommandId,
         desk == null ? null : desk.status(),
         desk == null ? null : desk.detail());
   }
 
-  /**
-   * Whether the connected daemon is running something other than the image this service pins —
-   * {@code agenthost/AgentContainerState.against} applied on the refinement axis, and deliberately
-   * the same three rules.
-   *
-   * <p><b>It is gated on a daemon being connected, so it is never a guess.</b> With no daemon there
-   * is nothing to compare and the answer is {@code false}: "not stale" is the absence of a claim
-   * here, exactly as it is in the sweep that stops a container on one. A connected daemon that
-   * reported no version, or a blank one, counts as behind — an image built without build-time
-   * filtering cannot vouch that it is the pinned one, and the pin is the thing being asserted.
-   *
-   * <p><b>This is not {@code daemonOutdated} and the two must not be collapsed.</b> That one is
-   * relative to the newest daemon connected to <em>this host</em> — right for "somebody else has a
-   * newer one", and {@code null} whenever this is the only refinement daemon connected, which is
-   * the ordinary case. This one is relative to the pom pin — right for "this is not the image we
-   * deploy" — and it answers on a host with exactly one container.
-   */
-  static boolean staleAgainstPin(RefinementDaemonRegistry.DaemonInfo daemon, String pinnedVersion) {
-    return daemon != null
-        && (daemon.daemonVersion() == null
-            || daemon.daemonVersion().isBlank()
-            || !daemon.daemonVersion().equals(pinnedVersion));
-  }
-
-  /**
-   * Everything the DTO is assembled from — the row plus the live halves.
-   *
-   * <p>{@code pinnedDaemonVersion} is a property of this service and not of the container, so it is
-   * answered whether or not a daemon is connected; {@code daemonVersionStale} is the comparison
-   * against it, and {@link #staleAgainstPin} carries the whole rule and the distinction from {@code
-   * daemonOutdated}.
-   */
+  /** Everything the DTO is assembled from — the row plus the live halves. */
   public record RefinementView(
       Refinement refinement,
       String runtimeStatus,
       String runtimeError,
-      Boolean clean,
-      Integer ahead,
-      Integer behind,
-      boolean conflictsWithParent,
-      String agentActivity,
-      Instant daemonConnectedAt,
-      String daemonVersion,
-      Boolean daemonOutdated,
-      String pinnedDaemonVersion,
-      boolean daemonVersionStale,
-      boolean session,
       String sessionId,
       String commandId,
       String deskStatus,
-      String deskDetail) {
-
-    /** A legacy container room's view: none of the session halves. */
-    public RefinementView(
-        Refinement refinement,
-        String runtimeStatus,
-        String runtimeError,
-        Boolean clean,
-        Integer ahead,
-        Integer behind,
-        boolean conflictsWithParent,
-        String agentActivity,
-        Instant daemonConnectedAt,
-        String daemonVersion,
-        Boolean daemonOutdated,
-        String pinnedDaemonVersion,
-        boolean daemonVersionStale) {
-      this(
-          refinement,
-          runtimeStatus,
-          runtimeError,
-          clean,
-          ahead,
-          behind,
-          conflictsWithParent,
-          agentActivity,
-          daemonConnectedAt,
-          daemonVersion,
-          daemonOutdated,
-          pinnedDaemonVersion,
-          daemonVersionStale,
-          false,
-          null,
-          null,
-          null,
-          null);
-    }
-  }
+      String deskDetail) {}
 
   // ---- the pieces --------------------------------------------------------------------------
 
@@ -1078,110 +576,6 @@ public class RefinementService {
                         + " has no wrapper repository ("
                         + wrapperName
                         + "), so there is nothing to refine against."));
-  }
-
-  /** Cut the branch at the wrapper's default tip, or adopt one already on the origin. */
-  private void cutOrAdoptBranch(Repository wrapper, String branch) {
-    RepoMirror mirror = mirrors.of(wrapper.id);
-    try {
-      if (mirror.remoteBranchSha(branch).isPresent()) {
-        return; // adopt as it stands — a previous refinement's work is work, not a conflict
-      }
-      mirror.refresh();
-      String from = wrapper.mainBranch == null ? "main" : wrapper.mainBranch;
-      PushOutcome outcome = mirror.createBranch(branch, from);
-      if (!outcome.accepted() && mirror.remoteBranchSha(branch).isEmpty()) {
-        throw new DomainException(
-            502, "Could not cut " + branch + ": " + outcome.output());
-      }
-    } catch (GitMirrorException e) {
-      throw new DomainException(
-          502, "Could not reach the git host to cut " + branch + ": " + e.getMessage());
-    }
-  }
-
-  private boolean branchStillExists(Refinement refinement) {
-    try {
-      return mirrors.of(refinement.repositoryId).remoteBranchSha(refinement.branch).isPresent();
-    } catch (RuntimeException e) {
-      // Could not ask is not "gone" — tearing a refinement down wants positive evidence.
-      return true;
-    }
-  }
-
-  private void deleteBranchQuietly(Refinement refinement) {
-    try {
-      mirrors.of(refinement.repositoryId).deleteBranch(refinement.branch);
-    } catch (RuntimeException e) {
-      LOG.warnf(
-          "Could not delete %s while discarding refinement %s: %s",
-          refinement.branch, refinement.id, e.getMessage());
-    }
-  }
-
-  /**
-   * The drift half of a projection, and it cannot fail the read. {@link RefinementDrift#of} does no
-   * git work and does not throw by contract; the catch is there so that a future one could not turn
-   * an advisory number into a 500 on the page's opening request.
-   */
-  private RefinementDrift.Drift driftOf(Refinement refinement) {
-    try {
-      return drift.of(refinement);
-    } catch (RuntimeException e) {
-      LOG.debugf("Could not read the drift of refinement %s: %s", refinement.id, e.getMessage());
-      return RefinementDrift.Drift.UNKNOWN;
-    }
-  }
-
-  /**
-   * The refined entity, read fresh for the labels its container carries — its qualified id, title,
-   * status and block flag (qits-614, qits-617). The refinement names the entity by uuid only, so all
-   * of them live one read away, and one read serves them all.
-   *
-   * <p><b>Degrades to {@code null}, never throws.</b> They are labels on a container somebody is
-   * waiting for: an entity gone between the open and this read, or a read that fails outright,
-   * start the container without any — named by its uuid and unmarked, as before.
-   */
-  private WorkEntity entityOf(Refinement refinement) {
-    try {
-      return entities.fresh(refinement.entityId);
-    } catch (RuntimeException e) {
-      LOG.warnf(
-          "Could not read entity %s for refinement %s; starting its container without its"
-              + " qualified id, title, status or block flag: %s",
-          refinement.entityId, refinement.id, e.toString());
-      return null;
-    }
-  }
-
-  /**
-   * The refined entity's {@code <project-slug>-<number>} — {@code qits-614} — for the container's
-   * {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} (qits-614), rendered by {@link QualifiedEntityIds#render}
-   * and nowhere else; {@code null} when the entity, its number or the project's slug is missing.
-   */
-  private static String qualifiedIdOf(WorkEntity entity, Project project) {
-    if (entity == null
-        || entity.number < 1
-        || project == null
-        || project.slug == null
-        || project.slug.isBlank()) {
-      return null;
-    }
-    return QualifiedEntityIds.render(project.slug, entity.number);
-  }
-
-  /**
-   * The entity slug a refinement's container name is built from, read off the branch it cut.
-   *
-   * <p>Package-private and static rather than private, so {@link RefinementStaleImageSweep} can
-   * resolve a container name back to a row without a second reading of the {@code refining/<slug>}
-   * grammar. Two readings of one convention is exactly how a sweep comes to match nothing on the
-   * day the branch prefix changes, with everything still compiling and every test still green.
-   */
-  static String slugOf(Refinement refinement) {
-    return refinement.branch != null && refinement.branch.startsWith("refining/")
-        ? refinement.branch.substring("refining/".length())
-        : refinement.label;
   }
 
   /** {@code refining-<slug>}, non-alphanumeric runs collapsed, 64 chars — the SPA's own rule. */

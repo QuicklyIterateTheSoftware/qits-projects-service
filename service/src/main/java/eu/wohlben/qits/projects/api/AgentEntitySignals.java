@@ -6,7 +6,7 @@ import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentEntities;
-import eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities;
+import eu.wohlben.qits.projects.refinementhost.RefinementSessions;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -50,8 +50,8 @@ import org.jboss.logging.Logger;
  *
  * <p>An entity's agent stands in one of two places, and nothing here knows which without asking:
  * the <b>agent</b> qits-workspaces runs for the work item, found by its id (qits-1152, {@link
- * WorkspaceAgentEntities}), and the <b>refinement</b> container this
- * service runs for it ({@link RefinementAgentEntities}). Both are asked, the workspace first: it is
+ * WorkspaceAgentEntities}), and the <b>refinement</b> room's session in the project's front desk
+ * ({@link RefinementSessions#entityChanged}, epic qits-770). Both are asked, the workspace first: it is
  * where the implement and verify phases run, and a refinement is the rarer case. Asking a target
  * that has nothing standing costs one cheap answer — an {@code agentId: null}, an empty indexed
  * read — and asking only one would leave the other's session reading a stale entity.
@@ -89,7 +89,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
    */
   @Inject Instance<WorkspaceAgentEntities> workspaceEntities;
 
-  @Inject RefinementAgentEntities refinementEntities;
+  @Inject RefinementSessions refinementSessions;
 
   /**
    * Tell every agent working {@code entity} its title, status and blocked flag as they stand on it.
@@ -182,7 +182,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
     }
     // A campaign has a refinement room too since epic qits-770, but no dispatched agent of its own.
     try {
-      refinementEntities.changed(id, title, status, blocked, blockSource);
+      refinementSessions.entityChanged(id, title, status, blocked, blockSource);
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not tell the refinement of %s %s its entity changed", archetype, id);
     }

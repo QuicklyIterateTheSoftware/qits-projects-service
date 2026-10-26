@@ -156,17 +156,4 @@ class RefinementSessionsComposeTest {
     assertEquals("sess-7", session.resumeSessionId());
     assertEquals(facts, session.entity());
   }
-
-  @Test
-  void aLegacyContainerRoomIsNeverASession() {
-    Refinement legacy = room(1, "e1", NOW);
-    legacy.branch = "refining/export";
-
-    Sessions frame =
-        RefinementSessions.compose(
-            project(FrontDeskLifecycle.ON_DEMAND), null, List.of(legacy), id -> null, NOW, IDLE);
-
-    assertTrue(frame.sessions().isEmpty());
-    assertFalse(RefinementSessions.wantsRunning(legacy, NOW, IDLE));
-  }
 }

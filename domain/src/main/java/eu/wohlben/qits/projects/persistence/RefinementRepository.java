@@ -18,11 +18,6 @@ public class RefinementRepository implements PanacheRepositoryBase<Refinement, L
     return find("entityId", entityId).firstResultOptional();
   }
 
-  /** Every refinement holding a commissioned credential — the reconcile's local inventory. */
-  public List<Refinement> holdingACredential() {
-    return list("commissionedClientId is not null");
-  }
-
   /** Every refinement holding its own token (qits-1482) — the token reconcile's inventory. */
   public List<Refinement> holdingAToken() {
     return list("tokenId is not null");

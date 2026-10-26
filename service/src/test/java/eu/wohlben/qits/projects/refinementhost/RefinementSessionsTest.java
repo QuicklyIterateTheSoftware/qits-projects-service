@@ -459,20 +459,14 @@ class RefinementSessionsTest {
     assertEquals(DaemonProtocol.DesiredState.RUNNING, last().find(epicId).orElseThrow().state());
     assertEquals(FrontDeskDesired.RUNNING, desk().desired);
 
-    // The released SPA's aliases still answer: a settled narration, the session asked for.
-    door(room, "stop-container").then().statusCode(200);
+    // ensure-container stays for the CLI's pact (qits-1316): a settled narration, the session asked
+    // for. Its three siblings are retired (RefinementContainersRetiredTest).
+    door(room, "stop").then().statusCode(200);
     assertNull(row(room).lastDemandAt);
     String process =
         door(room, "ensure-container").then().statusCode(200).extract().path("technicalProcessId");
     assertNotNull(process);
     assertNotNull(row(room).lastDemandAt);
-    door(room, "recreate-container").then().statusCode(200);
-    given()
-        .when()
-        .get("/projects/api/refinements/" + room + "/active-process")
-        .then()
-        .statusCode(200)
-        .body("technicalProcessId", nullValue());
 
     // The idle window closing is noticed: an aged demand is STOPPED, and so is the desk.
     QuarkusTransaction.requiringNew()
