@@ -3226,12 +3226,15 @@ has no branch and is a **session room**. Nothing converts one kind into the othe
 answers both by that rule.
 
 - **The desired list** (`RefinementSessions.compose`, pure, `RefinementSessionsComposeTest`) is
-  always the full one: `front-desk` (surface `project.work`, RUNNING) only while the project's
-  `front_desk.lifecycle` is `ALWAYS_ON` — on `ON_DEMAND` it is left out and the desk panel still
-  launches that session with `POST /agents` (the daemon keeps it anyway while the delivery loop is
-  on) — then one entry per session room: key the entity id, surface `epic.chat`, RUNNING while
-  `last_demand_at` is younger than `qits.projects.agent-idle-timeout` (PT4H, the desk's own key),
-  else STOPPED; `resumeSessionId` the last reported `session_id`; the entity's `qualifiedId`,
+  always the full one: `front-desk` (surface `project.work`) RUNNING while the project's
+  `front_desk.lifecycle` is `ALWAYS_ON`; on `ON_DEMAND` it is STOPPED when the desk has a stored
+  session id and left out when it has none — the desk panel still launches that session with `POST
+  /agents`, and the daemon keeps the desk anyway while the delivery loop is on (`deliveryOn() ||
+  running`), so a delivering desk resumes and a non-delivering one is not kept. Either way its
+  `resumeSessionId` is `front_desk.session_id` (V59, qits-1619), so a recreated desk resumes its
+  own session — then one entry per session room: key the entity id, surface `epic.chat`, RUNNING
+  while `last_demand_at` is younger than `qits.projects.agent-idle-timeout` (PT4H, the desk's own
+  key), else STOPPED; `resumeSessionId` the last reported `session_id`; the entity's `qualifiedId`,
   `title`, `status`, effective `blocked` and `blockSource` read live (`entities.fresh`). A container
   room is never in it.
 - **When it is sent** (`RefinementSessions.push`, never throws, only to a daemon whose `hello` said
@@ -3247,8 +3250,9 @@ answers both by that rule.
 - **The report** (`SessionReport`, `RefinementSessions.onReport`): each named key's `state`,
   `detail` and `commandId` land on `refinement.session_state`/`session_detail`/`session_command_id`,
   its `sessionId` on `session_id` when it carries one (kept after a stop, so the next launch
-  resumes); a session room the report leaves out is STOPPED. A row that moved fires its `PROCESS`
-  hint. An `AgentActivity` naming a room's `commandId` re-stamps its demand at most once a minute,
+  resumes); a session room the report leaves out is STOPPED. The `front-desk` key's non-blank
+  `sessionId` lands on `front_desk.session_id` the same way (written when it differs, never cleared;
+  nothing for a project with no desk row). A row that moved fires its `PROCESS` hint. An `AgentActivity` naming a room's `commandId` re-stamps its demand at most once a minute,
   while the room is still wanted, so a person working in a room is not stopped at the idle window.
 - **The desk is wanted for a room** (`deskhost/RefinementDemand`, a `FrontDeskDemandSource`): while
   any of the project's session rooms wants its session, so a refinement starts an `ON_DEMAND` desk.
