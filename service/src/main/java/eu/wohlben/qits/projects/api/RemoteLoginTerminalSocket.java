@@ -43,6 +43,8 @@ import org.jboss.logging.Logger;
  * not the resource.
  */
 @WebSocket(path = "/projects/api/repositories/{repoId}/remote-login")
+// Never qits:desk-admin (epic qits-1621): the session is a git push, and the delivery desk never
+// pushes. DeskAdminParityTest lists onOpen and onMessage as refused.
 @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class RemoteLoginTerminalSocket {
 

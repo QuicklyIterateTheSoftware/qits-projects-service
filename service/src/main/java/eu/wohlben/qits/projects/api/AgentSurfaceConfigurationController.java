@@ -5,6 +5,8 @@ import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.AgentSurfaceDefaults;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
+import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -49,12 +51,15 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/agent-surfaces")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class AgentSurfaceConfigurationController {
 
   @Inject AgentSurfaceConfigurationService surfaces;
 
   @Inject SecurityIdentity identity;
+
+  /** The delivery desk's coordinator rights (epic qits-1621); never over its own surface. */
+  static final String DESK_ADMIN_ROLE = AgentAccess.DESK_ADMIN_ROLE;
 
   /** One MCP attachment as the editor sets it — the server and its narrowing, and nothing else. */
   public record McpAttachmentRequest(
@@ -106,25 +111,38 @@ public class AgentSurfaceConfigurationController {
 
   /** Every surface, in the vocabulary's own order, with anything stored beyond it after. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   public SurfaceListResponse list() {
     return new SurfaceListResponse(surfaces.listAll(), AgentSurfaceDefaults.BUILT_IN_SERVERS);
   }
 
   /** One surface. Answers its shipped default rather than 404ing when no row exists. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{surface}")
   public AgentSurfaceConfigurationDto get(@PathParam("surface") String surface) {
     return surfaces.get(surface);
   }
 
-  /** Replace one surface's configuration. 400 on an unknown harness, mode or MCP server. */
+  /**
+   * Replace one surface's configuration. 400 on an unknown harness, mode or MCP server.
+   *
+   * <p>A {@code qits:desk-admin} caller — the delivery desk — edits every surface the coordinator
+   * edits but its own: {@link AgentSurfaceDefaults#PROJECT_DELIVERY} is its brief, and the desk
+   * never changes its own rights (epic qits-1621). Refused here rather than on the annotation
+   * because the other surfaces stay open to it; the key is compared trimmed, as the store keys it.
+   */
   @PUT
   @Path("/{surface}")
   @Consumes(MediaType.APPLICATION_JSON)
   public AgentSurfaceConfigurationDto update(
       @PathParam("surface") String surface, SurfaceUpdateRequest request) {
+    if (identity.hasRole(DESK_ADMIN_ROLE)
+        && surface != null
+        && AgentSurfaceDefaults.PROJECT_DELIVERY.equals(surface.trim())) {
+      throw new DomainException(
+          403, "The delivery desk never edits its own brief: project.delivery is a person's.");
+    }
     AgentSurfaceConfigurationDto wanted =
         surfaces.validated(
             surface,
@@ -162,7 +180,7 @@ public class AgentSurfaceConfigurationController {
    * history the first time a field is added.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{surface}/revisions")
   public RevisionListResponse revisions(@PathParam("surface") String surface) {
     return new RevisionListResponse(

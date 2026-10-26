@@ -54,7 +54,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/projects/{projectId}/front-desk")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class ProjectFrontDeskController {
 
   /** The daemon's routes, under its proxied base path (see {@code ContainerProxyPath}). */

@@ -59,7 +59,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/agent-mcp-catalog")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class AgentMcpCatalogController {
 
   @Inject AgentMcpCatalogService catalog;
@@ -108,7 +108,7 @@ public class AgentMcpCatalogController {
 
   /** Every entry, by key, each saying which surfaces attach it. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   public CatalogListResponse list() {
     return new CatalogListResponse(
         catalog.listAll(),
@@ -118,7 +118,7 @@ public class AgentMcpCatalogController {
 
   /** One entry, or a 404 — unlike a surface, an entry that does not exist is not a default. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{key}")
   public AgentMcpCatalogEntryDto get(@PathParam("key") String key) {
     return catalog.get(key);
@@ -128,6 +128,7 @@ public class AgentMcpCatalogController {
   @PUT
   @Path("/{key}")
   @Consumes(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"qits:admin", "qits:admin-agent"})
   public AgentMcpCatalogEntryDto save(
       @PathParam("key") String key, CatalogEntryRequest request) {
     return catalog.save(
@@ -143,6 +144,7 @@ public class AgentMcpCatalogController {
   /** Remove one entry. 400 while a surface still attaches it, naming the surfaces. */
   @DELETE
   @Path("/{key}")
+  @RolesAllowed({"qits:admin", "qits:admin-agent"})
   public Response delete(@PathParam("key") String key) {
     catalog.delete(key);
     return Response.noContent().build();

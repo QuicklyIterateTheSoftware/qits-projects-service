@@ -41,7 +41,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/refinements")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
 public class RefinementController {
 
   @Inject RefinementService refinements;
@@ -61,7 +61,7 @@ public class RefinementController {
   public record DiscardResponse(boolean success) {}
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{id}")
   public RefinementResponse get(@PathParam("id") long id) {
     return new RefinementResponse(
@@ -183,7 +183,7 @@ public class RefinementController {
   }
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{id}/active-process")
   public ActiveProcessResponse activeProcess(@PathParam("id") long id) {
     // 404 an unknown row rather than answering a hopeful null; 403 another entity's room.

@@ -65,6 +65,11 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * above — it carries a {@code context_kind} claim, which {@link #cliPerson} already refuses, and
  * presents no session cookie — so this is the explicit statement the owner's rule asks for rather
  * than a change in who this method lets through today.
+ *
+ * <p>{@code qits:desk-admin} (epic qits-1621) is admitted beside it on the dev-mode arm only, where
+ * {@code qits:admin-agent} is a forwarded role; the delivery desk's real bearer is a commissioned
+ * {@code desk-delivery} token, which {@link #cliPerson} refuses by its {@code context_kind} before
+ * any role is read, so the desk is never a person here.
  */
 @ApplicationScoped
 public class PersonCheck {
@@ -196,7 +201,8 @@ public class PersonCheck {
         && caller != null
         && !caller.isAnonymous()
         && (caller.hasRole(AgentAccess.ADMIN_ROLE)
-            || caller.hasRole(AgentAccess.ADMIN_AGENT_ROLE))) {
+            || caller.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+            || caller.hasRole(AgentAccess.DESK_ADMIN_ROLE))) {
       return Optional.of(caller.getPrincipal().getName());
     }
     return Optional.empty();

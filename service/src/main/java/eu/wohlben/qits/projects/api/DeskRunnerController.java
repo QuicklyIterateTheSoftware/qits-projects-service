@@ -47,14 +47,16 @@ import org.jboss.logging.Logger;
  * login check on demand — and the one door a runner itself knocks on to register.
  *
  * <p><b>Roles, per method and never on the class.</b> The reads take {@code qits:admin}, {@code
- * qits:admin-agent}, {@code qits:system} and {@code qits:agent}. Create, patch, a registration
- * token rotation and delete take {@code {qits:admin, qits:admin-agent, qits:system}}, because the
- * cold bootstrap's own service client creates and rotates a runner with nobody at a keyboard;
- * greenlight and login check are {@code qits:admin} (and {@code qits:admin-agent}) alone. The health
- * check is open to all four: it reads and self-tests, and moves a runner's standing only as its own
- * result does. {@code qits:desk-runner-registration} — what a registration token carries through the
- * edge — opens exactly two routes: the register door, for the runner the token was minted for only,
- * and {@code GET /runners/install.sh}, which carries no secret and names no runner.
+ * qits:admin-agent}, {@code qits:desk-admin}, {@code qits:system} and {@code qits:agent}. Create,
+ * patch, a registration token rotation and delete take {@code {qits:admin, qits:admin-agent,
+ * qits:system}}, because the cold bootstrap's own service client creates and rotates a runner with
+ * nobody at a keyboard — and never {@code qits:desk-admin} (epic qits-1621): the runners that place
+ * the delivery desk are its own rights. Greenlight and login check are {@code qits:admin} (and
+ * {@code qits:admin-agent} and {@code qits:desk-admin}) alone. The health check is open to all: it
+ * reads and self-tests, and moves a runner's standing only as its own result does. {@code
+ * qits:desk-runner-registration} — what a registration token carries through the edge — opens
+ * exactly two routes: the register door, for the runner the token was minted for only, and {@code
+ * GET /runners/install.sh}, which carries no secret and names no runner.
  *
  * <p><b>Every credential here is handed out exactly once and logged never.</b> The registration
  * token is in the install line that answers create (and a rotation) and nowhere else; the runner's
@@ -97,6 +99,13 @@ public class DeskRunnerController {
 
   /** An admin workspace's agent: admitted wherever {@link #ADMIN_ROLE} is. */
   static final String ADMIN_AGENT_ROLE = "qits:admin-agent";
+
+  /**
+   * The delivery desk's coordinator rights (epic qits-1621): admitted wherever {@link
+   * #ADMIN_AGENT_ROLE} is, except the four lifecycle writes — the runners that place the desk are
+   * its own rights, and it never changes those.
+   */
+  static final String DESK_ADMIN_ROLE = "qits:desk-admin";
 
   /** The bootstrap's own service client: the four lifecycle writes take it beside the admin. */
   static final String SYSTEM_ROLE = "qits:system";
@@ -227,7 +236,7 @@ public class DeskRunnerController {
   }
 
   @GET
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, SYSTEM_ROLE, AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE, SYSTEM_ROLE, AGENT_ROLE})
   @Operation(summary = "Every front-desk runner, by name, with its connection, login and desks")
   @APIResponse(responseCode = "200", description = "Every runner, by name")
   public List<DeskRunnerDto> list() {
@@ -242,7 +251,14 @@ public class DeskRunnerController {
   @GET
   @Path("/install.sh")
   @Produces(MediaType.TEXT_PLAIN)
-  @RolesAllowed({REGISTRATION_ROLE, ADMIN_ROLE, ADMIN_AGENT_ROLE, SYSTEM_ROLE, AGENT_ROLE})
+  @RolesAllowed({
+    REGISTRATION_ROLE,
+    ADMIN_ROLE,
+    ADMIN_AGENT_ROLE,
+    DESK_ADMIN_ROLE,
+    SYSTEM_ROLE,
+    AGENT_ROLE
+  })
   @Operation(summary = "The generic front-desk runner install script the install line pipes to sh")
   @APIResponse(responseCode = "200", description = "A POSIX sh script, carrying no secret")
   @APIResponse(
@@ -255,7 +271,7 @@ public class DeskRunnerController {
 
   @GET
   @Path("/{id}")
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, SYSTEM_ROLE, AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE, SYSTEM_ROLE, AGENT_ROLE})
   @Operation(summary = "One front-desk runner")
   @APIResponse(responseCode = "200", description = "The runner")
   @APIResponse(responseCode = "404", description = "No such runner")
@@ -364,7 +380,7 @@ public class DeskRunnerController {
    */
   @POST
   @Path("/{id}/greenlight")
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE})
   @Operation(summary = "Lift a front-desk runner's quarantine")
   @APIResponse(responseCode = "200", description = "The runner as it now is")
   @APIResponse(responseCode = "404", description = "No such runner")
@@ -385,7 +401,7 @@ public class DeskRunnerController {
    */
   @POST
   @Path("/{id}/healthcheck")
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, SYSTEM_ROLE, AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE, SYSTEM_ROLE, AGENT_ROLE})
   @Operation(summary = "Ask a connected front-desk runner for a health check")
   @APIResponse(
       responseCode = "202",
@@ -410,7 +426,7 @@ public class DeskRunnerController {
    */
   @GET
   @Path("/{id}/health")
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, SYSTEM_ROLE, AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE, SYSTEM_ROLE, AGENT_ROLE})
   @Operation(summary = "A front-desk runner's newest health check, every check's data included")
   @APIResponse(
       responseCode = "200",
@@ -426,7 +442,7 @@ public class DeskRunnerController {
   /** Ask a connected runner to probe its node's agent login now; {@code loginState} records it. */
   @POST
   @Path("/{id}/login-check")
-  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE})
+  @RolesAllowed({ADMIN_ROLE, ADMIN_AGENT_ROLE, DESK_ADMIN_ROLE})
   @Operation(summary = "Ask a connected front-desk runner to re-check its node's agent login")
   @APIResponse(responseCode = "202", description = "Sent")
   @APIResponse(responseCode = "404", description = "No such runner")
@@ -569,12 +585,13 @@ public class DeskRunnerController {
    * The machine arm of the four lifecycle writes: a {@code qits:system} caller presenting a machine
    * token must present one addressed to this platform. A {@code qits:admin} caller — a forwarded
    * session carries no token at all — is judged by its role, and so is a {@code qits:admin-agent}
-   * one.
+   * or a {@code qits:desk-admin} one.
    */
   private void requireMachineAudience() {
     if (MachineIdentity.isMachine(identity)
         && !identity.hasRole(ADMIN_ROLE)
-        && !identity.hasRole(ADMIN_AGENT_ROLE)) {
+        && !identity.hasRole(ADMIN_AGENT_ROLE)
+        && !identity.hasRole(DESK_ADMIN_ROLE)) {
       machineAuth.require();
     }
   }

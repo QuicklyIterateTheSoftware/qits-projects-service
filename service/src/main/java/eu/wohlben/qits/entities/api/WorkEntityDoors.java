@@ -452,11 +452,13 @@ public class WorkEntityDoors {
     // below), never SUPERSEDED, and recorded as a machine (EntityMovers never makes it a person).
     // A platform service (qits:system) is still refused an epic. The project's delivery desk
     // (qits:desk, qits-1596) moves an epic as the coordinator does, SUPERSEDED included, bound to
-    // its own project by the requireProject below.
+    // its own project by the requireProject below; so does a qits:desk-admin (epic qits-1621),
+    // which is a desk and bound the same way.
     boolean epicByAgent =
         archetype == Archetype.EPIC
             && !identity.hasRole(AgentAccess.ADMIN_ROLE)
             && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+            && !identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)
             && !AgentAccess.isDesk(identity);
     if (epicByAgent && !EntitiesAgentAccess.bound(identity)) {
       throw new ForbiddenException(
@@ -914,11 +916,12 @@ public class WorkEntityDoors {
               + " {\"target\":\"DROPPED\"}.");
     }
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
-    // stay human-only. So is the project's delivery desk (qits-1596), bound to its own project by
-    // the requireProject below.
+    // stay human-only. So is the project's delivery desk (qits-1596) and its qits:desk-admin (epic
+    // qits-1621), bound to its own project by the requireProject below.
     if ((archetype == Archetype.EPIC || archetype == Archetype.TICKET)
         && !identity.hasRole(AgentAccess.ADMIN_ROLE)
         && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+        && !identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)
         && !AgentAccess.isDesk(identity)) {
       throw new ForbiddenException(
           "Deleting "

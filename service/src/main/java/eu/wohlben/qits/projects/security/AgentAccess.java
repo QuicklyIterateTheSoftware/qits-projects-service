@@ -54,6 +54,16 @@ public final class AgentAccess {
    */
   public static final String DESK_ROLE = "qits:desk";
 
+  /**
+   * The delivery desk's coordinator rights (epic qits-1621): its {@code desk-delivery} token carries
+   * this beside {@link #AGENT_ROLE} and {@link #DESK_ROLE}, and every door that admits {@link
+   * #ADMIN_AGENT_ROLE} admits it too — except the commits and pushes and the doors that would change
+   * the desk's own rights. It is <b>not</b> a wider role: the desk still holds {@link #DESK_ROLE},
+   * so {@link #isDesk} keeps binding it to its token's {@code project} wherever a door binds the
+   * desk, and it is never handed to {@link #isBoundAgent} as one of the roles that unbind an agent.
+   */
+  public static final String DESK_ADMIN_ROLE = "qits:desk-admin";
+
   /** The claim that lists the Git refs a token may push (plan contract C1). */
   public static final String GIT_REFS_CLAIM = "git_refs";
 
