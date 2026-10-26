@@ -70,7 +70,31 @@ public interface ReleaseExecutor {
       String requester,
       List<String> namedSources,
       String defaultBranch,
-      String priority) {}
+      String priority) {
+
+    /**
+     * This ask with {@code named} for its named sources — <b>what a landed release consumed</b>
+     * (qits-1615). The ask is a snapshot taken before the tag, and a source that moved past the
+     * tagged fold while it was being cut is in the snapshot without being in the tag; the
+     * deletion and the workspaces' release signal are made from this narrower ask instead, so a
+     * branch carrying commits nothing released is never deleted.
+     */
+    public Release consuming(List<String> named) {
+      return new Release(
+          requestId,
+          qualifiedId,
+          repoId,
+          projectId,
+          repoName,
+          backingBranch,
+          mergedSha,
+          summary,
+          requester,
+          List.copyOf(named),
+          defaultBranch,
+          priority);
+    }
+  }
 
   /** Release the fold. Never throws; a failure is an {@link Outcome}. */
   Outcome release(Release release);
