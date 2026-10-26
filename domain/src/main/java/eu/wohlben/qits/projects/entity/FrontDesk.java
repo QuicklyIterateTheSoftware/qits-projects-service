@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -42,10 +43,15 @@ import org.hibernate.type.SqlTypes;
  *
  * <p>{@link Uncaused}: machine state derived from the project and from demand, written by sweeps
  * and socket frames off any request scope, so a stamp would record null for ever.
+ *
+ * <p>{@link DynamicUpdate}: the row has many writers (the roll, the runner's report, the daemon's
+ * session report), each changing its own columns. A writer flushes only what it changed, so one
+ * that loaded the row before {@link #sessionId} moved never writes the old id back (qits-1619).
  */
 @Entity
 @Table(name = "front_desk")
 @Uncaused
+@DynamicUpdate
 public class FrontDesk extends PanacheEntityBase {
 
   @Id
