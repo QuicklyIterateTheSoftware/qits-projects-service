@@ -283,6 +283,47 @@ class DeskRunnerControllerTest {
     given().when().get(RUNNERS).then().statusCode(401);
   }
 
+  /**
+   * qits-1621: the delivery desk's {@code qits:desk-admin} greenlights as the coordinator does — the
+   * runner's standing is a platform operation — but the four lifecycle writes are its own rights:
+   * the runners that place the desk.
+   */
+  @Test
+  void theDeskAdminGreenlightsButNeverDeclaresOrDecommissions() {
+    String id = create(as("qits:admin"), "attic", 1).getString("runner.id");
+    String deskAdmin = "qits:agent,qits:desk,qits:desk-admin";
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              DeskRunner runner = rows.findById(UUID.fromString(id));
+              runner.quarantinedAt = java.time.Instant.now();
+              runner.quarantineReason = "a reason";
+            });
+
+    as(deskAdmin)
+        .contentType(ContentType.JSON)
+        .body(Map.of("name", "other", "slots", 1))
+        .when()
+        .post(RUNNERS)
+        .then()
+        .statusCode(403);
+    as(deskAdmin)
+        .contentType(ContentType.JSON)
+        .body(Map.of("slots", 3))
+        .when()
+        .patch(RUNNERS + "/" + id)
+        .then()
+        .statusCode(403);
+    as(deskAdmin).when().post(RUNNERS + "/" + id + "/registration-token").then().statusCode(403);
+    as(deskAdmin).when().delete(RUNNERS + "/" + id).then().statusCode(403);
+    as(deskAdmin)
+        .when()
+        .post(RUNNERS + "/" + id + "/greenlight")
+        .then()
+        .statusCode(200)
+        .body("quarantined", is(false));
+  }
+
   @Test
   void theSystemRoleCannotGreenlightAnAdminCan() {
     String id = create(as("qits:system"), "attic", 1).getString("runner.id");

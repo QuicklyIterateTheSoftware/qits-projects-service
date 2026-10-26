@@ -161,6 +161,30 @@ class PersonCheckTest {
         "and only one holding qits:admin");
   }
 
+  /**
+   * qits-1621: the dev-mode arm admits a forwarded {@code qits:desk-admin} beside {@code
+   * qits:admin-agent}; the delivery desk's real {@code desk-delivery} bearer is still no person,
+   * refused by its {@code context_kind} before any role is read, in every mode.
+   */
+  @Test
+  void aDeskAdminIsAPersonOnlyAsAForwardedDevRole() {
+    assertEquals(
+        Optional.of("someone"),
+        check.verify(AgentTokens.forwarded("qits:desk-admin"), null, LaunchMode.DEVELOPMENT));
+    assertEquals(
+        Optional.empty(),
+        check.verify(AgentTokens.forwarded("qits:desk-admin"), null, LaunchMode.NORMAL));
+
+    SecurityIdentity desk =
+        cli(
+            Map.of("context_kind", "desk-delivery", "project", "p-1"),
+            "qits:agent",
+            "qits:desk",
+            "qits:desk-admin");
+    assertEquals(Optional.empty(), check.verify(desk, null, LaunchMode.DEVELOPMENT));
+    assertEquals(Optional.empty(), check.verify(desk, null, LaunchMode.NORMAL));
+  }
+
   // --- tokens -----------------------------------------------------------------------------------
 
   /** A person's CLI token as qits-idp mints it, plus {@code extra}, holding {@code groups}. */
