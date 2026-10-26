@@ -44,10 +44,13 @@ class HangupImmunityTest {
     assertEquals(1, immunity.refusedCount(), "the hangup reached the handler and was refused");
   }
 
-  /** {@code kill -HUP} against our own pid — the signal the container kept dying on. */
+  /**
+   * {@code kill -HUP} against our own pid — the signal the container kept dying on. Through {@code
+   * sh}'s builtin, because an image need not ship a {@code kill} binary (the CI slot does not).
+   */
   private static void hangUpThisProcess() throws Exception {
     Process kill =
-        new ProcessBuilder("kill", "-HUP", String.valueOf(ProcessHandle.current().pid()))
+        new ProcessBuilder("sh", "-c", "kill -HUP " + ProcessHandle.current().pid())
             .redirectErrorStream(true)
             .start();
     assertTrue(kill.waitFor(10, TimeUnit.SECONDS), "kill did not finish");
