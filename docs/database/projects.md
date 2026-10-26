@@ -197,6 +197,7 @@ erDiagram
     string reported_state
     instant roll_requested_at
     uuid runner_id
+    string session_id
     string session_token_id
     string session_token_subject
     string session_token_value
