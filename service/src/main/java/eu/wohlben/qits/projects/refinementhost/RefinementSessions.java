@@ -44,11 +44,10 @@ import org.jboss.logging.Logger;
  *       only while the project's {@code front_desk.lifecycle} is {@code ALWAYS_ON}. On {@code
  *       ON_DEMAND} it is left out: the desk panel launches that session itself ({@code POST
  *       /agents}), and the daemon keeps it anyway while the delivery loop is on.
- *   <li>one entry per <b>session room</b> of the project ({@link Refinement#containerRoom()} false):
- *       key the entity id, surface {@code epic.chat}, {@code RUNNING} while {@code last_demand_at}
+ *   <li>one entry per refinement room of the project: key the entity id, surface {@code epic.chat}, {@code RUNNING} while {@code last_demand_at}
  *       is younger than {@code qits.projects.agent-idle-timeout}, else {@code STOPPED};
  *       {@code resumeSessionId} the last session id the daemon reported; the entity's facts read
- *       live. A legacy container room is never in it — its agent runs in its own container.
+ *       live.
  * </ul>
  *
  * <h2>When it is sent ({@link #push})</h2>
@@ -108,7 +107,7 @@ public class RefinementSessions {
    * {@code idle}. A zero or negative window means once asked for, wanted until stopped. Pure.
    */
   public static boolean wantsRunning(Refinement row, Instant now, Duration idle) {
-    if (row == null || row.containerRoom() || row.lastDemandAt == null) {
+    if (row == null || row.lastDemandAt == null) {
       return false;
     }
     if (idle == null || idle.isZero() || idle.isNegative()) {
@@ -156,7 +155,7 @@ public class RefinementSessions {
     }
     if (rooms != null) {
       for (Refinement room : rooms) {
-        if (room == null || room.containerRoom() || room.entityId == null) {
+        if (room == null || room.entityId == null) {
           continue;
         }
         sessions.add(
@@ -293,17 +292,41 @@ public class RefinementSessions {
   }
 
   /**
-   * The entity of a session room moved, was blocked or unblocked, or retitled: its daemon is sent
-   * the list again with {@code facts} for it. Answers whether {@code entityId} has a session room
-   * at all — false sends nothing, and a legacy container room is told down its own tunnel instead.
-   * <b>Never throws.</b>
+   * The entity of a refinement room moved, was blocked or unblocked, or retitled: its daemon is sent
+   * the list again with {@code facts} for it. Answers whether there was a room to tell. <b>Never
+   * throws.</b>
    */
   public boolean entityChanged(Refinement room, Sessions.Entity facts) {
-    if (room == null || room.containerRoom()) {
+    if (room == null) {
       return false;
     }
     push(room.projectId, facts == null ? Map.of() : Map.of(room.entityId, facts));
     return true;
+  }
+
+  /**
+   * {@link #entityChanged(Refinement, Sessions.Entity)} for the room of {@code entityId}, if it has
+   * one — what {@code api/AgentEntitySignals} calls on a move, a block or a retitle, with the facts
+   * the announcement carries ({@code blockSource} only while blocked). <b>Never throws.</b>
+   */
+  public boolean entityChanged(
+      String entityId, String title, String status, boolean blocked, String blockSource) {
+    if (entityId == null) {
+      return false;
+    }
+    try {
+      Optional<Refinement> room =
+          QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
+      return room.isPresent()
+          && entityChanged(
+              room.get(),
+              new Sessions.Entity(null, title, status, blocked, blocked ? blockSource : null));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not tell the refinement session of entity %s its entity changed: %s",
+          entityId, e.getMessage());
+      return false;
+    }
   }
 
   /** The safety net: every capable desk daemon is sent its list again. Answers how many were. */
@@ -359,9 +382,6 @@ public class RefinementSessions {
   List<Long> apply(String projectId, SessionReport report) {
     List<Long> moved = new ArrayList<>();
     for (Refinement room : store.listByProject(projectId)) {
-      if (room.containerRoom()) {
-        continue;
-      }
       Optional<SessionReport.Session> entry = report.find(room.entityId);
       String state = entry.map(SessionReport.Session::state).orElse(DaemonProtocol.ReportedState.STOPPED);
       String detail = entry.map(SessionReport.Session::detail).orElse(null);
@@ -423,7 +443,7 @@ public class RefinementSessions {
                         () ->
                             store.update(
                                 "lastDemandAt = ?1 where projectId = ?2 and sessionCommandId = ?3"
-                                    + " and branch is null and lastDemandAt > ?4",
+                                    + " and lastDemandAt > ?4",
                                 now,
                                 projectId,
                                 commandId,

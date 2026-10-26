@@ -15,17 +15,16 @@ EpicPlanningIT
 AccessRefusalIT
 CatalogueReviewIT
 
-# The two pin tests, which are not stories and not in that profile group at all: plain JUnit, no
-# @TestProfile, no Quarkus application, no bearer, so their position here decides nothing. They are
-# the gates that make this repository's two image pins mean something — qits/workspace, which a
-# refinement container starts (WorkspaceImage.VERSION off the pinned qits-workspace-daemon-protocol),
-# and qits/project-agent, which a project's agent container starts (ProjectAgentImage.VERSION off the
-# pinned qits-projects-daemon-protocol). Each downloads the daemon at exactly the pinned version,
-# runs it as a process against a stand-in host and round-trips the real protocol, so a daemon bump
-# that breaks the wire fails THIS fold rather than the next live refinement or agent container. Drop
-# either line and its pin is an untested number again. Both need the artifacts origin, which they
-# derive by cutting qits.maven.repository.url at /artifacts/ — the archetype's verify exports and
-# passes it; with no origin at all they skip, which is the one state a CI step is never in.
+# The pin test, which is not a story and not in that profile group at all: plain JUnit, no
+# @TestProfile, no Quarkus application, no bearer, so its position here decides nothing. It is the
+# gate that makes this repository's image pin mean something — qits/project-agent, which a project's
+# agent container starts (ProjectAgentImage.VERSION off the pinned qits-projects-daemon-protocol). It
+# downloads the daemon at exactly the pinned version, runs it as a process against a stand-in host
+# and round-trips the real protocol, so a daemon bump that breaks the wire fails THIS fold rather
+# than the next live agent container. Drop the line and the pin is an untested number again. It needs
+# the artifacts origin, which it derives by cutting qits.maven.repository.url at /artifacts/ — the
+# archetype's verify exports and passes it; with no origin at all it skips, which is the one state a
+# CI step is never in. Its refinement twin, RefinementDaemonPinIT, went with the refinement
+# containers (qits-1316).
 
-RefinementDaemonPinIT
 ProjectAgentDaemonPinIT

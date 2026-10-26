@@ -67,7 +67,7 @@ class ConsumerCallCoverageTest {
   /**
    * Calls the code makes that are not REST contracts, each with the reason it has no row. Empty
    * today: the WebSockets (the events stream, the daemon control sockets) and the browser proxies
-   * ({@code ContainerProxyRoute}, {@code RefinementProxyRoute}) send no request this derivation
+   * ({@code ContainerProxyRoute}) send no request this derivation
    * reaches, and every call it does reach has a row.
    */
   static final Map<String, String> EXCLUDED =
@@ -92,10 +92,6 @@ class ConsumerCallCoverageTest {
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#post"),
           "getFrontDeskLastAnswer: getFrontDeskLastAnswer",
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
-          "setWorkBlocked (RefinementAgentEntities.changed): setAgentEntity",
-          Set.of(
-              "eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities#changed",
-              "eu.wohlben.qits.projects.refinementhost.RefinementAgentEntities#send"),
           IdpContract.TOKEN_MINT_TRIGGER + ": issueToken",
           Set.of("quarkus-oidc-client:qits"));
 

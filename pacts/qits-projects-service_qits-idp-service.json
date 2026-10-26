@@ -1066,12 +1066,12 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
-            "schedule": "RefinementCommissionReconcile.reconcile"
+            "schedule": "LegacyRefinementContainers.run"
           }
         }
       },
-      "description": "RefinementCommissionReconcile.reconcile: decommissionClient",
-      "key": "cb2a017f",
+      "description": "LegacyRefinementContainers.run: decommissionClient",
+      "key": "ac7dfeb8",
       "pending": false,
       "providerStates": [
         {
@@ -1124,12 +1124,12 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
-            "schedule": "RefinementCommissionReconcile.reconcile"
+            "schedule": "LegacyRefinementContainers.run"
           }
         }
       },
-      "description": "RefinementCommissionReconcile.reconcile: listClients",
-      "key": "f16ac75c",
+      "description": "LegacyRefinementContainers.run: listClients",
+      "key": "54564843",
       "pending": false,
       "providerStates": [
         {
@@ -1466,115 +1466,6 @@
           }
         },
         "status": 200
-      },
-      "type": "Synchronous/HTTP"
-    },
-    {
-      "comments": {
-        "references": {
-          "qits-call": {
-            "app": "qits-idp-service",
-            "operationId": "commissionClient"
-          },
-          "qits-trigger": {
-            "app": "qits-projects-service",
-            "kind": "operation",
-            "operationId": "startWorkRefinement"
-          }
-        }
-      },
-      "description": "startWorkRefinement: commissionClient",
-      "key": "7e5e9604",
-      "pending": false,
-      "providerStates": [
-        {
-          "name": "a service client with the system role",
-          "params": {
-            "authorization": "Basic dGVzdC1icm9hZDp0ZXN0LWJyb2FkLXNlY3JldA==",
-            "callerClientId": "test-broad",
-            "clientSecret": "test-broad-secret"
-          }
-        }
-      ],
-      "request": {
-        "body": {
-          "content": {
-            "claims": {
-              "project": "00000000-0000-4000-8000-0000000000c1"
-            },
-            "contextId": "41",
-            "contextKind": "refinement",
-            "gitRefs": []
-          },
-          "contentType": "application/json",
-          "encoded": false
-        },
-        "generators": {
-          "header": {
-            "Authorization": {
-              "dataType": "RAW",
-              "expression": "${authorization}",
-              "type": "ProviderState"
-            }
-          }
-        },
-        "headers": {
-          "Authorization": [
-            "Basic dGVzdC1icm9hZDp0ZXN0LWJyb2FkLXNlY3JldA=="
-          ],
-          "Content-Type": [
-            "application/json"
-          ]
-        },
-        "method": "POST",
-        "path": "/idp/api/clients"
-      },
-      "response": {
-        "body": {
-          "content": {
-            "clientId": "opaque",
-            "secret": "opaque"
-          },
-          "contentType": "application/json",
-          "encoded": false
-        },
-        "headers": {
-          "Content-Type": [
-            "application/json"
-          ]
-        },
-        "matchingRules": {
-          "body": {
-            "$.clientId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.secret": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          },
-          "header": {
-            "Content-Type": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "application/json.*"
-                }
-              ]
-            }
-          }
-        },
-        "status": 201
       },
       "type": "Synchronous/HTTP"
     }
