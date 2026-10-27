@@ -749,7 +749,7 @@ bound to its project, except a commit or a push and a change to its own rights:
   `.config/qits/project.yml`; qits-1596 deliberately did not widen them.
 - **Refused**: release-request create and join (`refuseDesk`, in the body — the routes admit
   `qits:agent`); the doors over its own rights (`AgentSurfaceConfigurationController`,
-  `AgentContainerController`, `ProjectFrontDeskController`, `DeskRunnerController`'s writes, the
+  `AgentContainerController`, `ProjectFrontDeskController`, the
   MCP catalogue and the capability report); everything that writes or deletes a ref (branch and
   repository delete, pull, push, sync, both backup pushes, tag GC, the remote-login push, a new
   project) and a project's delete. `AgentReadAccessTest.DESK_REFUSED_WRITES` pins the list.
@@ -758,19 +758,20 @@ bound to its project, except a commit or a push and a change to its own rights:
 across the estate.** The `desk-delivery` token carries `qits:agent` + `qits:desk` + `qits:desk-admin`,
 and every door that admits `qits:admin-agent` admits `qits:desk-admin` beside it — as a literal in
 `@RolesAllowed`, `AgentAccess.DESK_ADMIN_ROLE` in the programmatic checks (`WorkEntityDoors`'
-epic move and delete, `DeskRunnerController.requireMachineAudience`, `PersonCheck`'s dev-mode
-arm). Across the platform that is logs and telemetry, waits, workspaces, targets and their sign-ins,
+epic move and delete, `PersonCheck`'s dev-mode arm). Across the platform that is logs and telemetry, waits, workspaces, targets and their sign-ins,
 CI cancels, leases and Docker on targets; here it opens most of the list above too — the desk's
-container, the front desk, a runner's greenlight and login check, the capability report — because
-those are platform operations rather than its own rights.
+container, the front desk, the capability report — because those are platform operations rather
+than its own rights. (qits-1621 also opened the front-desk runners' reads, greenlight, health check
+and login check to it; qits-1551 deleted those doors with the runners, and this service has no
+lease-side door in their place. A desk's DESK lease and its target are operated through
+qits-system's own doors — the targets, their sign-ins and leases named above.)
 
 - **Still bound to its project.** `qits:desk-admin` is not a wider role: the token still holds
   `qits:desk`, so `AgentAccess.isDesk`/`requireDeskProject` and `EntitiesAgentAccess.requireProject`
   bind it exactly as before, it is never one of `isBoundAgent`'s wider roles, and `EntityMovers`
   still records it as a desk `Mover` (with the desk's refusals), not as a machine or a person.
 - **Still refused** (`DeskAdminParityTest.REFUSED`, `AgentReadAccessTest.DESK_ADMIN_REFUSED_WRITES`):
-  the runners' create, patch, registration-token rotation and delete; the MCP catalogue's save and
-  delete; tag GC; a project's create, delete and backup; a repository's branch delete, delete, pull,
+  the MCP catalogue's save and delete; tag GC; a project's create, delete and backup; a repository's branch delete, delete, pull,
   push, sync and backup; the remote-login socket, whose session is a git push. Each route carries
   a method-level `@RolesAllowed({"qits:admin", "qits:admin-agent"})` where it used to inherit the
   class's (the socket keeps it on its class). Release-request create and join stay refused in
