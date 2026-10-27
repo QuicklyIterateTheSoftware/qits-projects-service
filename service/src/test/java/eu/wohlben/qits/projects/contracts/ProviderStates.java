@@ -53,6 +53,9 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
 
+  /** The development guide's parts, which {@link #THE_DEVELOPMENT_GUIDE_SHIPS} resets. */
+  @Inject eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService surfaceConfigurations;
+
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String TWO_PROJECTS_EXIST = "two projects exist";
   public static final String NO_PROJECTS_EXIST = "no projects exist";
@@ -442,8 +445,6 @@ public class ProviderStates {
 
   /** Turns a state's {@code authorization} param into the identity the edge forwards for it. */
   @Inject ContractBearers bearers;
-
-  @Inject eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService surfaceConfigurations;
 
   /** The qits-idp a runner state stands up, closed again by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.idphost.RoutingIdpServer idp;
