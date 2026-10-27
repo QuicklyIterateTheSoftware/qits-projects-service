@@ -381,7 +381,15 @@ public class DeskLeases {
       revokeQuietly(applied.tokenToRevoke());
     }
     if (applied.endLease() && system.isResolvable()) {
-      endQuietly(system.get(), lease.id());
+      // The answer is applied too: an end qits-system answers ENDED lets the lease go at once.
+      try {
+        Lease answer = system.get().end(lease.id()).orElseGet(() -> ended(lease.id()));
+        if (answer.state() == LeaseState.ENDED) {
+          observe(answer);
+        }
+      } catch (RuntimeException e) {
+        LOG.warnf("Could not end lease %s; the reconcile asks again: %s", lease.id(), e.getMessage());
+      }
     }
     if (applied.ended()) {
       // A desk still wanted asks for its next lease now, not on the next pass.
