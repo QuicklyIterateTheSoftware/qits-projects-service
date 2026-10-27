@@ -74,8 +74,10 @@ import org.jboss.logging.Logger;
  * <p><b>A legacy desk</b> (a {@code legacy_placement} entry, V62) asks for its first lease with
  * {@code adopt = qits-projects-desk-runner-desk-<projectId>-<oldRunnerId8>} and pinned to the
  * target on the old runner's docker engine — its engine id, else its host name, else the runner's
- * name. With no such target it waits QUEUED, saying which one, and asks again on every reconcile;
- * the desk's old container keeps running meanwhile, so its token is kept. Every later lease adopts
+ * name, else {@code qits.projects.target-leases.legacy-desk-target}'s explicit target, else the
+ * one target in the listing that reserves DESK slots (qits-1551; see {@link #legacyPin}'s javadoc).
+ * With no such target it waits QUEUED, saying which one, and asks again on every reconcile; the
+ * desk's old container keeps running meanwhile, so its token is kept. Every later lease adopts
  * the same name ({@code adopted_volume}).
  *
  * <p>Each write is its own {@code requiringNew} transaction; every HTTP call and every token
@@ -106,6 +108,21 @@ public class DeskLeases {
 
   @ConfigProperty(name = "qits.projects.target-leases.ending-deadline", defaultValue = "PT60S")
   Duration endingDeadline;
+
+  /**
+   * An explicit legacy-desk pin, by target name or id; empty by default. Read only once the three
+   * reported-fact matches ({@code engineId}, {@code hostname}, {@code runnerName}) have missed, for
+   * a legacy desk whose old runner reported none of them (qits-1551).
+   */
+  @ConfigProperty(name = "qits.projects.target-leases.legacy-desk-target")
+  Optional<String> legacyDeskTarget;
+
+  /** A suite overriding the config without restarting the application; null reads the config. */
+  private volatile String legacyDeskTargetOverride;
+
+  public void legacyDeskTargetOverride(String target) {
+    this.legacyDeskTargetOverride = target;
+  }
 
   /** Work volumes a removal could not purge yet (their lease was still ending): the reconcile's. */
   private final Set<String> pendingPurges = ConcurrentHashMap.newKeySet();
@@ -676,9 +693,23 @@ public class DeskLeases {
   /**
    * The target on the docker engine a retired runner ran the desk on: the target whose engine id is
    * the one the runner recorded, else whose host name is, else whose name is the runner's name.
-   * <b>No match is a wait, never an unpinned lease</b>: a lease granted anywhere else would start
-   * the desk on a fresh volume and strand its work on the old node. The case is logged at WARN with
-   * the desk and the volume.
+   *
+   * <p><b>Two fallbacks, tried in order, once those three have missed</b> (qits-1551, the
+   * {@code platform-host} desk: its old runner's {@code hello} reported neither an engine id nor a
+   * hostname, so the three reported-fact matches can never find its node):
+   *
+   * <ol>
+   *   <li>{@code qits.projects.target-leases.legacy-desk-target} — an explicit target name or id;
+   *       used when it names a target in the listing, else the fallback declines rather than
+   *       refusing;
+   *   <li>the one target in the listing that reserves DESK slots ({@code minimums.desk > 0}) — only
+   *       while exactly one does; two or more reserving targets decline every time, because picking
+   *       either would be a guess this service has no fact to back.
+   * </ol>
+   *
+   * <p><b>No match at all is a wait, never an unpinned lease</b>: a lease granted anywhere else
+   * would start the desk on a fresh volume and strand its work on the old node. The case is logged
+   * at WARN with the desk and the volume.
    */
   private LegacyPin legacyPin(String projectId, SystemLeases leases) {
     LegacyPlacement entry =
@@ -708,7 +739,9 @@ public class DeskLeases {
     Optional<UUID> pinned =
         match(targets, entry.engineId, SystemLeases.Target::engineId)
             .or(() -> match(targets, entry.hostname, SystemLeases.Target::hostname))
-            .or(() -> match(targets, entry.runnerName, SystemLeases.Target::name));
+            .or(() -> match(targets, entry.runnerName, SystemLeases.Target::name))
+            .or(() -> explicitLegacyTarget(projectId, targets))
+            .or(() -> soleDeskReservingTarget(projectId, targets));
     if (pinned.isEmpty()) {
       LOG.warnf(
           "The desk of project %s adopts volume %s, and no target is on runner %s's node yet"
@@ -717,6 +750,52 @@ public class DeskLeases {
       return new LegacyPin(null, waitFor, false, entry.legacyName());
     }
     return new LegacyPin(pinned.get(), null, false, entry.legacyName());
+  }
+
+  /**
+   * {@code qits.projects.target-leases.legacy-desk-target}: the target the configuration names, by
+   * id or by name, when it exists in the listing. Empty when unset, or when it names no target
+   * there — a stale or misspelled value declines rather than failing the lease.
+   */
+  private Optional<UUID> explicitLegacyTarget(String projectId, List<SystemLeases.Target> targets) {
+    String configured =
+        legacyDeskTargetOverride != null ? legacyDeskTargetOverride : legacyDeskTarget.orElse(null);
+    if (configured == null || configured.isBlank()) {
+      return Optional.empty();
+    }
+    String wanted = configured.trim();
+    UUID wantedId = HttpSystemLeases.uuid(wanted);
+    Optional<SystemLeases.Target> found =
+        targets.stream()
+            .filter(t -> wanted.equals(t.name()) || (wantedId != null && wantedId.equals(t.id())))
+            .findFirst();
+    found.ifPresent(
+        t ->
+            LOG.infof(
+                "The desk of project %s has no matching engine id, host name or runner name"
+                    + " target; it pins to the explicitly configured target %s (%s)"
+                    + " (qits.projects.target-leases.legacy-desk-target)",
+                projectId, t.id(), t.name()));
+    return found.map(SystemLeases.Target::id).filter(Objects::nonNull);
+  }
+
+  /**
+   * The one target in the listing that reserves DESK slots ({@code minimums.desk > 0}); empty
+   * while none does, or while two or more do — picking either of two would be a guess this service
+   * has no fact to back.
+   */
+  private Optional<UUID> soleDeskReservingTarget(String projectId, List<SystemLeases.Target> targets) {
+    List<SystemLeases.Target> reserving =
+        targets.stream().filter(t -> t.deskMinimum() > 0).toList();
+    if (reserving.size() != 1) {
+      return Optional.empty();
+    }
+    SystemLeases.Target target = reserving.get(0);
+    LOG.infof(
+        "The desk of project %s has no matching engine id, host name or runner name target and no"
+            + " explicit pin; it pins to %s (%s), the only target reserving DESK slots",
+        projectId, target.id(), target.name());
+    return Optional.ofNullable(target.id());
   }
 
   private static Optional<UUID> match(

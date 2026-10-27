@@ -188,6 +188,9 @@
               "engineId": "ENGINE-LAB",
               "hostname": "lab-host",
               "id": "00000000-0000-4000-8000-000000000001",
+              "minimums": {
+                "desk": 1
+              },
               "name": "lab"
             }
           ],
@@ -238,6 +241,14 @@
                 {
                   "match": "regex",
                   "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].minimums.desk": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
                 }
               ]
             },

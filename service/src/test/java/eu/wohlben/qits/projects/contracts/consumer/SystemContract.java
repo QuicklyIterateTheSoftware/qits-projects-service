@@ -236,7 +236,12 @@ final class SystemContract {
               "/system/api/targets",
               Map.of(),
               null,
-              List.of("$[*].id", "$[*].name", "$[*].hostname", "$[*].engineId"),
+              List.of(
+                  "$[*].id",
+                  "$[*].name",
+                  "$[*].hostname",
+                  "$[*].engineId",
+                  "$[*].minimums.desk"),
               200,
               START,
               (base, p) -> {
@@ -244,6 +249,7 @@ final class SystemContract {
                 assertFalse(targets.isEmpty());
                 assertNotNull(targets.get(0).name());
               },
-              "GET /system/api/targets answering 200 with id, name, hostname and engineId")
+              "GET /system/api/targets answering 200 with id, name, hostname, engineId and the"
+                  + " DESK minimum")
           .withNullable("$[*].hostname", "$[*].engineId"));
 }

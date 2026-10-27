@@ -63,6 +63,7 @@ class DeskLeasesTest {
   @AfterEach
   void tidy() {
     specs.domainOverride(null);
+    leases.legacyDeskTargetOverride(null);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -319,7 +320,7 @@ class DeskLeasesTest {
     tokens.plant(
         new eu.wohlben.qits.projects.deskhost.FrontDeskTokens.Live(
             "old", "agent-container", projectId, Instant.now().minus(Duration.ofHours(2))));
-    system.targets(List.of(new SystemLeases.Target(UUID.randomUUID(), "elsewhere", null, null)));
+    system.targets(List.of(new SystemLeases.Target(UUID.randomUUID(), "elsewhere", null, null, 0)));
 
     sweep.sweep(Instant.now());
 
@@ -332,7 +333,7 @@ class DeskLeasesTest {
     assertEquals(DeskLeases.waitingForTarget("desk-proof"), frontDesks.status(projectId).failureDetail());
 
     UUID target = UUID.randomUUID();
-    system.targets(List.of(new SystemLeases.Target(target, "desk-proof", null, null)));
+    system.targets(List.of(new SystemLeases.Target(target, "desk-proof", null, null, 0)));
     leases.reconcile(Duration.ofMinutes(2), Instant.now());
 
     String name = LegacyPlacement.legacyName(projectId, oldRunner);
@@ -360,8 +361,88 @@ class DeskLeasesTest {
     UUID byEngine = UUID.randomUUID();
     system.targets(
         List.of(
-            new SystemLeases.Target(UUID.randomUUID(), "desk-proof", null, null),
-            new SystemLeases.Target(byEngine, "lab", "ENGINE-1", null)));
+            new SystemLeases.Target(UUID.randomUUID(), "desk-proof", null, null, 0),
+            new SystemLeases.Target(byEngine, "lab", "ENGINE-1", null, 0)));
+
+    sweep.sweep(Instant.now());
+
+    assertEquals(byEngine, system.requestOf(row(projectId).leaseId).pinTargetId());
+  }
+
+  /**
+   * qits-1551: a legacy desk whose old runner's {@code hello} reported neither an engine id nor a
+   * hostname (the retired {@code platform-host} desk runner) pins to the configured target, by
+   * name, when it is in the listing — even while another target reserves DESK slots.
+   */
+  @Test
+  void theExplicitlyConfiguredTargetPinsWhenNothingElseMatches() {
+    String projectId = desk(FrontDeskLifecycle.ALWAYS_ON);
+    heldBy(projectId, UUID.randomUUID(), "platform-host", null);
+    UUID configured = UUID.randomUUID();
+    UUID reserving = UUID.randomUUID();
+    system.targets(
+        List.of(
+            new SystemLeases.Target(reserving, "localhost", null, null, 1),
+            new SystemLeases.Target(configured, "configured-target", null, null, 0)));
+    leases.legacyDeskTargetOverride("configured-target");
+
+    sweep.sweep(Instant.now());
+
+    assertEquals(configured, system.requestOf(row(projectId).leaseId).pinTargetId());
+  }
+
+  /**
+   * With no engine id, hostname or name match and no explicit pin configured, the one target that
+   * reserves DESK slots is the fallback (qits-1551).
+   */
+  @Test
+  void theSoleDeskReservingTargetPinsWhenNothingElseMatches() {
+    String projectId = desk(FrontDeskLifecycle.ALWAYS_ON);
+    heldBy(projectId, UUID.randomUUID(), "platform-host", null);
+    UUID reserving = UUID.randomUUID();
+    system.targets(
+        List.of(
+            new SystemLeases.Target(UUID.randomUUID(), "localhost", null, null, 0),
+            new SystemLeases.Target(reserving, "lab", null, null, 1)));
+
+    sweep.sweep(Instant.now());
+
+    assertEquals(reserving, system.requestOf(row(projectId).leaseId).pinTargetId());
+  }
+
+  /** Two targets reserving DESK slots is a guess this service refuses to make: the desk waits. */
+  @Test
+  void twoDeskReservingTargetsWaitRatherThanGuess() {
+    String projectId = desk(FrontDeskLifecycle.ALWAYS_ON);
+    heldBy(projectId, UUID.randomUUID(), "platform-host", null);
+    system.targets(
+        List.of(
+            new SystemLeases.Target(UUID.randomUUID(), "lab-1", null, null, 1),
+            new SystemLeases.Target(UUID.randomUUID(), "lab-2", null, null, 1)));
+
+    sweep.sweep(Instant.now());
+
+    assertNull(row(projectId).leaseId);
+    assertTrue(system.requests().isEmpty());
+    assertEquals(
+        DeskLeases.waitingForTarget("platform-host"), frontDesks.status(projectId).failureDetail());
+  }
+
+  /**
+   * The reported-fact matches (here, the engine id) still win first, over both the explicit pin and
+   * the sole-desk-reserving-target fallback.
+   */
+  @Test
+  void anEngineMatchStillWinsOverTheExplicitPinAndTheSoleDeskReservingTarget() {
+    String projectId = desk(FrontDeskLifecycle.ALWAYS_ON);
+    heldBy(projectId, UUID.randomUUID(), "platform-host", "ENGINE-X");
+    UUID byEngine = UUID.randomUUID();
+    UUID configured = UUID.randomUUID();
+    system.targets(
+        List.of(
+            new SystemLeases.Target(byEngine, "localhost", "ENGINE-X", null, 1),
+            new SystemLeases.Target(configured, "configured-target", null, null, 0)));
+    leases.legacyDeskTargetOverride("configured-target");
 
     sweep.sweep(Instant.now());
 
