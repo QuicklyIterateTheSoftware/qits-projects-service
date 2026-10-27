@@ -25,8 +25,8 @@ import org.jboss.logging.Logger;
 /**
  * Gives back the front-desk runner credentials no runner row holds any more (qits-767): the runner
  * arms of qits-workspaces-service's {@code CommissionReconciler}, as a reconcile of their own beside
- * {@code agenthost/AgentCredentialReconcile} and {@code refinementhost/RefinementCommissionReconcile}
- * — one per commissioned kind, which is how this service is shaped.
+ * {@code agenthost/AgentCredentialReconcile} and {@code RefinementCommissionReconcile} (both retired
+ * since) — one per commissioned kind, which is how this service is shaped.
  *
  * <p><b>Two arms, judged by the runner table.</b> A {@code desk-runner} client belongs to the
  * runner its {@code contextId} names, and is decommissioned when that row is gone or names a

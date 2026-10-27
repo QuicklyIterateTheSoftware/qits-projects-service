@@ -7,9 +7,8 @@ import java.util.Optional;
 
 /**
  * A refinement room's own {@code qits_tok_} at qits-idp (qits-1482): the successor of the
- * commissioned client ({@link RefinementCredentials}, {@link RefinementCommissions}) that qits-770
- * retires, so the room's session — a desk session keyed by the entity id once qits-770 lands — runs
- * on a principal of its own rather than on the desk's.
+ * containers' commissioned client, retired with them (qits-1316), so the room's session — a desk
+ * session keyed by the entity id — runs on a principal of its own rather than on the desk's.
  *
  * <p>Kind {@value #CONTEXT_KIND} ({@code CommissionRoles} maps it to {@code qits:agent} and nothing
  * else), contextId the row id, claims {@code {project, entity}}, {@code gitRefs []}. The {@code

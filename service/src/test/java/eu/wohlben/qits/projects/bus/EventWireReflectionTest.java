@@ -13,6 +13,7 @@ import eu.wohlben.qits.githost.events.SCMDeleteBranch;
 import eu.wohlben.qits.githost.events.SCMDeleteTag;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
+import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.enterprise.inject.Any;
@@ -93,12 +94,13 @@ public class EventWireReflectionTest {
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
+            WaitClosedSource.DeskWaitClosedPayload.class,
             EventEnvelope.class,
             EventFrame.class),
         Set.of(registration.targets()),
-        "the four SCM records and the three bound consumption payloads in, RepositoryRenamed,"
+        "the four SCM records and the four bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR out, the PUT body, the frame — a nineteenth wire type"
+            + " transition's payload PAIR out, the PUT body, the frame — a twentieth wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -576,7 +578,8 @@ public class EventWireReflectionTest {
           "BuildSuccessful", BuildStatusListener.BuildVerdictPayload.class,
           "BuildFailed", BuildStatusListener.BuildVerdictPayload.class,
           "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class,
-          "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class);
+          "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class,
+          "DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class);
 
   @Test
   public void everyDurableListenersSignatureNamesARegisteredType() {

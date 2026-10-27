@@ -372,6 +372,73 @@ class RefinementSessionsTest {
     assertEquals("sess-1", last().find(a).orElseThrow().resumeSessionId());
   }
 
+  @Test
+  void theDesksOwnSessionIdIsStoredKeptAndHandedBackToResume() {
+    createProject("Sessions Desk Resume");
+    connect(3);
+    assertTrue(
+        last().find(SessionCredentials.FRONT_DESK_KEY).isEmpty(),
+        "an ON_DEMAND desk with no known session is left out");
+
+    daemons.onMessage(
+        projectId,
+        connection,
+        new SessionReport(
+            List.of(
+                new SessionReport.Session(
+                    SessionCredentials.FRONT_DESK_KEY, "RUNNING", "cmd-desk", "desk-sess-1", null))));
+    assertEquals("desk-sess-1", desk().sessionId);
+
+    // The session stops: a report naming the key without an id, then one leaving it out, keep it.
+    daemons.onMessage(
+        projectId,
+        connection,
+        new SessionReport(
+            List.of(
+                new SessionReport.Session(
+                    SessionCredentials.FRONT_DESK_KEY, "STOPPED", null, " ", null))));
+    daemons.onMessage(projectId, connection, new SessionReport(List.of()));
+    assertEquals("desk-sess-1", desk().sessionId);
+
+    // ON_DEMAND: sent STOPPED, carrying the id to resume.
+    sessions.push(projectId);
+    Sessions.Session stopped = last().find(SessionCredentials.FRONT_DESK_KEY).orElseThrow();
+    assertEquals(DaemonProtocol.DesiredState.STOPPED, stopped.state());
+    assertEquals("desk-sess-1", stopped.resumeSessionId());
+
+    // ALWAYS_ON: RUNNING, resuming the newest id reported.
+    daemons.onMessage(
+        projectId,
+        connection,
+        new SessionReport(
+            List.of(
+                new SessionReport.Session(
+                    SessionCredentials.FRONT_DESK_KEY, "RUNNING", "cmd-desk", "desk-sess-2", null))));
+    assertEquals("desk-sess-2", desk().sessionId);
+    lifecycle(FrontDeskLifecycle.ALWAYS_ON);
+    sessions.push(projectId);
+    Sessions.Session running = last().find(SessionCredentials.FRONT_DESK_KEY).orElseThrow();
+    assertEquals(DaemonProtocol.DesiredState.RUNNING, running.state());
+    assertEquals("desk-sess-2", running.resumeSessionId());
+  }
+
+  @Test
+  void aDeskReportForAProjectWithNoDeskRowWritesNothing() {
+    createProject("Sessions No Desk Row");
+    frontDesks.removeDesk(projectId);
+    assertNull(desk());
+
+    sessions.onReport(
+        projectId,
+        new SessionReport(
+            List.of(
+                new SessionReport.Session(
+                    SessionCredentials.FRONT_DESK_KEY, "RUNNING", "cmd-desk", "desk-sess-1", null))));
+
+    assertNull(desk(), "no desk row is made by a report");
+    assertTrue(sessions.compose(projectId).find(SessionCredentials.FRONT_DESK_KEY).isEmpty());
+  }
+
   // --- the doors and the desk --------------------------------------------------------------------
 
   @Test
@@ -392,20 +459,14 @@ class RefinementSessionsTest {
     assertEquals(DaemonProtocol.DesiredState.RUNNING, last().find(epicId).orElseThrow().state());
     assertEquals(FrontDeskDesired.RUNNING, desk().desired);
 
-    // The released SPA's aliases still answer: a settled narration, the session asked for.
-    door(room, "stop-container").then().statusCode(200);
+    // ensure-container stays for the CLI's pact (qits-1316): a settled narration, the session asked
+    // for. Its three siblings are retired (RefinementContainersRetiredTest).
+    door(room, "stop").then().statusCode(200);
     assertNull(row(room).lastDemandAt);
     String process =
         door(room, "ensure-container").then().statusCode(200).extract().path("technicalProcessId");
     assertNotNull(process);
     assertNotNull(row(room).lastDemandAt);
-    door(room, "recreate-container").then().statusCode(200);
-    given()
-        .when()
-        .get("/projects/api/refinements/" + room + "/active-process")
-        .then()
-        .statusCode(200)
-        .body("technicalProcessId", nullValue());
 
     // The idle window closing is noticed: an aged demand is STOPPED, and so is the desk.
     QuarkusTransaction.requiringNew()

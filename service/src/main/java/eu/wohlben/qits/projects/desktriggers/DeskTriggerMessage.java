@@ -29,6 +29,23 @@ import java.util.Map;
  *
  * <p>The opening sentence is what the desk's brief keys on: "a message that starts {@code You are
  * the delivery desk}" is a desk trigger. Changing it is a change to the brief too.
+ *
+ * <p><b>A window holding only what the desk asked for</b> (qits-1618: every line from a source that
+ * {@linkplain DeskTriggerSource#requestedByDesk() answers the desk}, today only {@code qits wait})
+ * opens with a shorter preamble instead:
+ *
+ * <pre>
+ * A wait you declared has closed. (desk trigger &lt;window id&gt;, &lt;opened&gt; to &lt;closes&gt;)
+ *
+ * Waits you declared:
+ * Your wait "approve rr-264" matched: ReleaseRequestStateChanged at … (event …).
+ * …
+ * </pre>
+ *
+ * <p>Such a window is the common case with delivery off, where the desk is not the delivery desk and
+ * must not be sent to the delivery brief; with delivery on it needs no brief either, because the
+ * turn's label says what the desk meant to do. A window that mixes both keeps the delivery preamble:
+ * its other lines are delivery news.
  */
 public final class DeskTriggerMessage {
 
@@ -49,19 +66,31 @@ public final class DeskTriggerMessage {
       String projectSlug,
       DeskTriggerWindow window,
       Map<DeskTriggerSource, List<DeskTriggerEventRow>> eventsBySource) {
-    StringBuilder message =
-        new StringBuilder()
-            .append("You are the delivery desk of project ")
-            .append(projectSlug)
-            .append(". Read ")
-            .append(BRIEF_PATH)
-            .append(" and follow it, then act on what happened below. (desk trigger ")
-            .append(window.id)
-            .append(", ")
-            .append(iso(window.openedAt))
-            .append(" to ")
-            .append(iso(window.closesAt))
-            .append(")");
+    boolean onlyRequested =
+        eventsBySource.entrySet().stream()
+            .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+            .allMatch(entry -> entry.getKey().requestedByDesk());
+    boolean anyLine =
+        eventsBySource.values().stream().anyMatch(events -> events != null && !events.isEmpty());
+    StringBuilder message = new StringBuilder();
+    if (anyLine && onlyRequested) {
+      message.append("A wait you declared has closed.");
+    } else {
+      message
+          .append("You are the delivery desk of project ")
+          .append(projectSlug)
+          .append(". Read ")
+          .append(BRIEF_PATH)
+          .append(" and follow it, then act on what happened below.");
+    }
+    message
+        .append(" (desk trigger ")
+        .append(window.id)
+        .append(", ")
+        .append(iso(window.openedAt))
+        .append(" to ")
+        .append(iso(window.closesAt))
+        .append(")");
     List<DeskTriggerSource> sources = new ArrayList<>(eventsBySource.keySet());
     sources.sort(
         Comparator.comparingInt(DeskTriggerSource::order).thenComparing(DeskTriggerSource::id));

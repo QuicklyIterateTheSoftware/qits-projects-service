@@ -3,8 +3,6 @@ package eu.wohlben.qits.projects.refinementhost;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
@@ -14,32 +12,17 @@ import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
-import jakarta.inject.Inject;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
  * Resolving an epic tears its refinement down, wherever the move is made from. The move goes
  * through the plain REST door here on purpose: that is the door the epics board, the refining page
  * and any machine caller all reach, and the bug this pins was that the cleanup lived in one
- * browser screen instead — an epic marked Implemented from the board kept its container, volume,
- * credential and {@code refining/<slug>} branch for good.
+ * browser screen instead — an epic marked Implemented from the board kept its room for good.
  */
 @QuarkusTest
 public class EpicResolutionCleanupTest {
-
-  @Inject LegacyRefinementRooms legacy;
-
-  @Inject FakeRefinementRuntime runtime;
-  @Inject FakeRefinementCredentials credentials;
-  @Inject RefinementService service;
-
-  @BeforeEach
-  void reset() {
-    runtime.reset();
-    credentials.reset();
-  }
 
   private String createProject(String name) {
     return given()
@@ -76,8 +59,6 @@ public class EpicResolutionCleanupTest {
             .statusCode(200)
             .extract()
             .path("refinement.id");
-    // A legacy container room (epic qits-770): an open makes a session room now.
-    legacy.asContainerRoom(id.longValue());
     return id.longValue();
   }
 
@@ -97,7 +78,6 @@ public class EpicResolutionCleanupTest {
 
     transition(epicId, "DROPPED").then().statusCode(200).body("status", equalTo("DROPPED"));
 
-    assertTrue(runtime.calls().contains("delete:" + id), "the container is torn down");
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
   }
 
@@ -111,14 +91,12 @@ public class EpicResolutionCleanupTest {
     transition(epicId, "REFINED").then().statusCode(200);
     transition(epicId, "READY_FOR_DEV").then().statusCode(200);
     given().when().get("/projects/api/refinements/" + id).then().statusCode(200);
-    assertFalse(runtime.calls().contains("delete:" + id), "the freeze tears nothing down");
 
     transition(epicId, "IMPLEMENTED")
         .then()
         .statusCode(200)
         .body("status", equalTo("IMPLEMENTED"));
 
-    assertTrue(runtime.calls().contains("delete:" + id));
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
   }
 
@@ -138,7 +116,6 @@ public class EpicResolutionCleanupTest {
             .extract()
             .path("supersededBy");
 
-    assertTrue(runtime.calls().contains("delete:" + id));
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
     // The successor is a fresh draft; it gets its own refinement when somebody presses Refine.
     given()
@@ -160,7 +137,6 @@ public class EpicResolutionCleanupTest {
     transition(epicId, "IMPLEMENTED").then().statusCode(409);
     transition(epicId, "NOT_A_STATUS").then().statusCode(409);
 
-    assertFalse(runtime.calls().contains("delete:" + id));
     given().when().get("/projects/api/refinements/" + id).then().statusCode(200);
   }
 

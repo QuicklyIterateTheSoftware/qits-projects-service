@@ -197,6 +197,7 @@ erDiagram
     string reported_state
     instant roll_requested_at
     uuid runner_id
+    string session_id
     string session_token_id
     string session_token_subject
     string session_token_value
@@ -209,15 +210,11 @@ erDiagram
   %% refinement: eu.wohlben.qits.projects.entity.Refinement (domain)
   refinement {
     long id PK "not null, generated"
-    string branch
     uuid causation_id
-    text commissioned_client_id
-    text commissioned_client_secret
     instant created_at "not null"
     string entity_id UK "not null"
     string label "not null"
     instant last_demand_at
-    string parent
     string project_id "not null"
     string repository_id "not null"
     text session_command_id

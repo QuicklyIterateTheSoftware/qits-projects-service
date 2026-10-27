@@ -4,11 +4,6 @@
 openapi: 3.1.0
 components:
   schemas:
-    ActiveProcessResponse:
-      type: object
-      properties:
-        technicalProcessId:
-          type: string
     AddReleaseRequestSource:
       type: object
       required:
@@ -2033,8 +2028,8 @@ components:
           type: string
     ProcessResponse:
       type: object
-      description: A refinement room and the technical process narrating its container's
-        bring-up.
+      description: "A refinement room and a technical process id, already settled:\
+        \ ensure-container's answer, kept for the consumers that still call that door."
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
@@ -2106,38 +2101,14 @@ components:
           type: string
         repositoryId:
           type: string
-        branch:
-          type: string
-        parent:
-          type: string
         label:
           type: string
         runtimeStatus:
           type: string
         runtimeError:
           type: string
-        clean:
-          type: boolean
-        ahead:
-          type: integer
-          format: int32
-        behind:
-          type: integer
-          format: int32
-        conflictsWithParent:
-          type: boolean
         agentActivity:
           type: string
-        daemonConnectedAt:
-          $ref: "#/components/schemas/Instant"
-        daemonVersion:
-          type: string
-        daemonOutdated:
-          type: boolean
-        pinnedDaemonVersion:
-          type: string
-        daemonVersionStale:
-          type: boolean
         createdAt:
           $ref: "#/components/schemas/Instant"
         sessionId:
@@ -5014,35 +4985,6 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
-  /projects/api/refinements/{id}/active-process:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ActiveProcessResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Active Process
-      tags:
-      - Refinement Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
   /projects/api/refinements/{id}/designs:
     get:
       summary: "A refinement's designs, oldest first, without their documents"
@@ -5219,11 +5161,10 @@ paths:
   /projects/api/refinements/{id}/discard:
     post:
       summary: Discard a refinement room
-      description: "Tears the room down: a session room's session is stopped, its\
-        \ row (draft, sketches and designs with it) deleted and its token revoked;\
-        \ a legacy container room's container, volume, credential and refining branch\
-        \ go too. The work entity stays where it is, and a later open starts a fresh\
-        \ room. The path names the room by its row id."
+      description: "Tears the room down: its session is stopped, its row (draft, sketches\
+        \ and designs with it) deleted and its token revoked. The work entity stays\
+        \ where it is, and a later open starts a fresh room. The path names the room\
+        \ by its row id."
       operationId: discardRefinement
       parameters:
       - name: id
@@ -5259,9 +5200,8 @@ paths:
       summary: Ask for a refinement room's session
       description: "Stamps the room's demand, so its session is wanted for the idle\
         \ window, tells the project's front desk (an ON_DEMAND desk is started for\
-        \ it) and sends the desk's daemon its sessions list; answers the room. A legacy\
-        \ container room has its container brought up instead. The path names the\
-        \ room by its row id."
+        \ it) and sends the desk's daemon its sessions list; answers the room. The\
+        \ path names the room by its row id."
       operationId: ensureRefinementSession
       parameters:
       - name: id
@@ -5298,14 +5238,10 @@ paths:
         - qits:desk
   /projects/api/refinements/{id}/ensure-container:
     post:
-      summary: Bring a refinement room's container up
-      description: "On a session room, the alias of ensure (removed once the SPA calls\
-        \ that): the session is asked for and the technical process answered is already\
-        \ settled. On a legacy container room, provisions a fresh container, wakes\
-        \ a stopped one or touches a running one, off the request thread, and answers\
-        \ the room together with the technical process that narrates the bring-up;\
-        \ a second call while one is under way answers the live process. The path\
-        \ names the room by its row id."
+      summary: "Ask for a refinement room's session, under the door's old name"
+      description: "The alias of ensure, kept while a consumer still calls it: the\
+        \ session is asked for and the technical process answered is already settled.\
+        \ The path names the room by its row id."
       operationId: ensureRefinementContainer
       parameters:
       - name: id
@@ -5316,7 +5252,7 @@ paths:
           format: int64
       responses:
         "200":
-          description: The room and the bring-up's technical process id
+          description: The room and a settled technical process id
           content:
             application/json:
               schema:
@@ -5327,8 +5263,7 @@ paths:
         "404":
           description: No refinement with this id
         "409":
-          description: "The container is already being worked on and no process is\
-            \ live, or REFINEMENT_SESSIONS_FULL as on ensure"
+          description: "REFINEMENT_SESSIONS_FULL, as on ensure"
         "401":
           description: Not Authorized
       tags:
@@ -5627,42 +5562,13 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
-  /projects/api/refinements/{id}/recreate-container:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProcessResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Recreate
-      tags:
-      - Refinement Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:desk
   /projects/api/refinements/{id}/stop:
     post:
       summary: Stop a refinement room's session
       description: "Clears the room's demand, so its session is no longer wanted,\
         \ and sends the project's desk daemon its sessions list, which stops it; idempotent.\
-        \ The room, its draft and its designs stay. A legacy container room has its\
-        \ container stopped instead. The path names the room by its row id."
+        \ The room, its draft and its designs stay. The path names the room by its\
+        \ row id."
       operationId: stopRefinementSession
       parameters:
       - name: id
@@ -5685,35 +5591,6 @@ paths:
           description: No refinement with this id
         "401":
           description: Not Authorized
-      tags:
-      - Refinement Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:desk
-  /projects/api/refinements/{id}/stop-container:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RefinementResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Stop
       tags:
       - Refinement Controller
       security:
@@ -9375,4 +9252,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1025.164139
+  version: 2026.1026.355

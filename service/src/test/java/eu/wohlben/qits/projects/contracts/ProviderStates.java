@@ -353,15 +353,6 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementDesigns designs;
 
   /**
-   * The suite's refinement runtime, whose bring-ups the design state holds so the ensure door's
-   * answer reads {@code PROVISIONING} on every run; released by {@link #cleanUp()}. An {@code
-   * Instance} for the reason {@link #dispatches} is one.
-   */
-  @Inject
-  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime>
-      refinementRuntime;
-
-  /**
    * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
    * Instance} because a test profile may take the port away ({@code
    * EntityDispatchWithNoWorkspacesTest}), and this bean is in every test application.
@@ -428,7 +419,6 @@ public class ProviderStates {
   /** What a launch would pull: the pins route reads these two and nothing else. */
   @Inject eu.wohlben.qits.projects.deskhost.FrontDeskSpecs agentContainers;
 
-  @Inject eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory refinementContainers;
 
   /** Whether a state scripted the merger, which cleanUp sets back to fresh merges. */
   private boolean mergerTouched;
@@ -620,9 +610,6 @@ public class ProviderStates {
     if (frontDeskDaemon != null) {
       frontDeskDaemon.close();
       frontDeskDaemon = null;
-    }
-    if (refinementRuntime.isResolvable()) {
-      refinementRuntime.get().releaseBringUps();
     }
     SeededGit.deleteAll();
     bearers.reset();
@@ -1641,16 +1628,11 @@ public class ProviderStates {
    * sequence param — and the design the {@code designId} param, at version 0.
    *
    * <p>The room's own doors are recorded here too (qits-1383): the open finds this room, the ensure
-   * asks for its session (a session room since epic qits-770; {@code ensure-container} is its alias)
-   * and the discard tears it down — each interaction sets the state up afresh, so the discard takes
-   * nothing from the others. The suite runtime's bring-ups are still held until {@link #cleanUp()},
-   * for a legacy container room, though a session room starts none.
+   * asks for its session ({@code ensure-container} is its alias) and the discard tears it down —
+   * each interaction sets the state up afresh, so the discard takes nothing from the others.
    */
   private Setup aTicketWithADesign() {
     resetDispatchPorts();
-    if (refinementRuntime.isResolvable()) {
-      refinementRuntime.get().holdBringUps();
-    }
     String token = token();
     Project project = project(token, A_TICKET_WITH_A_DESIGN);
     String ticket =
@@ -1684,10 +1666,7 @@ public class ProviderStates {
             "qualifiedId", qualified(project, ticket),
             "refinementId", Long.toString(room),
             "ticketId", ticket),
-        // The room answers the pinned refinement image, which moves with every dependency bump.
-        java.util.stream.Stream.of(token, refinementContainers.imageVersion())
-            .filter(value -> value != null && !value.isBlank())
-            .toList(),
+        List.of(token),
         List.of("refinementId"));
   }
 
@@ -3393,7 +3372,8 @@ public class ProviderStates {
   private Setup anAgentLaunchImageInUse() {
     List<String> versions =
         java.util.stream.Stream.of(
-                agentContainers.imageVersion(), refinementContainers.imageVersion())
+                agentContainers.imageVersion(),
+                eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage.VERSION)
             .filter(version -> version != null && !version.isBlank())
             .distinct()
             .toList();

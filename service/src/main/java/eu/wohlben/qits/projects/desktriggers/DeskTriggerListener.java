@@ -43,6 +43,12 @@ import org.jboss.logging.Logger;
  *   <li><b>A project this service does not know</b>, which no window could reference anyway.
  * </ul>
  *
+ * <p>The first two are not applied to a source that {@linkplain DeskTriggerSource#requestedByDesk()
+ * answers the desk's own request} (qits-1618, {@code qits wait}): the desk asked to be woken, so
+ * neither delivery being off nor the desk having caused the event is a reason to keep it asleep.
+ * Such a trigger also closes its window at once ({@link DeskTriggerWindows#admit(String, String,
+ * DeskTrigger, Instant, boolean)}). An unknown project is dropped all the same.
+ *
  * <h2>One {@code projects} transaction of its own per frame</h2>
  *
  * <p>The library runs {@link #onFrame} inside its claim transaction, which already holds a
@@ -133,7 +139,8 @@ public class DeskTriggerListener implements QitsDurableEventListener {
                 }
                 for (DeskTrigger trigger : triggers) {
                   if (admissible(source, trigger)) {
-                    windows.admit(trigger.projectId(), source.id(), trigger, now);
+                    windows.admit(
+                        trigger.projectId(), source.id(), trigger, now, source.requestedByDesk());
                   }
                 }
               }
@@ -149,6 +156,10 @@ public class DeskTriggerListener implements QitsDurableEventListener {
           "%s trigger %s names no known project (%s); dropped",
           source.id(), trigger.itemRef(), trigger.projectId());
       return false;
+    }
+    if (source.requestedByDesk()) {
+      // The desk asked for this itself: the class javadoc's first two drops do not apply.
+      return true;
     }
     if (!project.deliveryEnabled) {
       LOG.debugf(

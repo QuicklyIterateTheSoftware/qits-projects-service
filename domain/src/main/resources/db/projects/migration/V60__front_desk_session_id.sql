@@ -1,0 +1,14 @@
+-- THE FRONT DESK'S OWN SESSION RESUMES ACROSS A RECREATE (qits-1619).
+--
+-- The desk's daemon reports a `sessionId` for every key of its `sessionReport`, the front desk's
+-- (`front-desk`) included, but only a refinement room's was kept (V58's `refinement.session_id`).
+-- So when the desk container is recreated — an image roll, a settings roll — its own session could
+-- not be resumed and started over empty. This keeps the id the daemon last reported for the
+-- `front-desk` key, and the `sessions` frame hands it back as that entry's `resumeSessionId`.
+--
+--   session_id   the harness session id last reported for the desk's own key, kept after the
+--                session stops (a report without one never clears it), as a room's is.
+--
+-- Nullable, with no default and nothing backfilled: no desk has reported one into this column yet,
+-- and null is "nothing to resume", which is what every existing row means.
+alter table front_desk add column session_id text;

@@ -238,8 +238,8 @@
           }
         }
       },
-      "description": "CatchupSweeper.catchUp(projects-desk-triggers): listEvents (2 names)",
-      "key": "c5fff764",
+      "description": "CatchupSweeper.catchUp(projects-desk-triggers): listEvents (3 names)",
+      "key": "3cace4f9",
       "pending": false,
       "providerStates": [
         {
@@ -254,7 +254,7 @@
             "200"
           ],
           "name": [
-            "ApprovalRequirementChanged,EntityTransitioned"
+            "ApprovalRequirementChanged,DeskWaitClosed,EntityTransitioned"
           ],
           "order": [
             "asc"
@@ -733,8 +733,8 @@
           }
         }
       },
-      "description": "CatchupSweeper.initialize(projects-desk-triggers): listEvents (2 names)",
-      "key": "14eec014",
+      "description": "CatchupSweeper.initialize(projects-desk-triggers): listEvents (3 names)",
+      "key": "8b9bada9",
       "pending": false,
       "providerStates": [
         {
@@ -749,7 +749,7 @@
             "1"
           ],
           "name": [
-            "ApprovalRequirementChanged,EntityTransitioned"
+            "ApprovalRequirementChanged,DeskWaitClosed,EntityTransitioned"
           ]
         }
       },

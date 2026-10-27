@@ -42,8 +42,8 @@
 #     platform deletes one; leaving them declared would keep the configuration UI from ever offering
 #     to. So they go, the entries read `orphaned` over there, and that flag means precisely what is
 #     true: no declaration accounts for these keys. It is not silent either —
-#     refinementhost/RetiredRefinementImageVersionKey and agenthost/RetiredImageVersionKeys WARN once
-#     at boot naming the key, its stale value and the version being started instead, so the residue
+#     agenthost/RetiredImageVersionKeys WARNs once (its refinement twin went with the refinement
+#     containers, qits-1316) at boot naming the key, its stale value and the version being started instead, so the residue
 #     is a work item rather than a trap.
 #   * env.QITS_PROJECTS_AGENT_GIT_BASE, REMOVED 2026-09-18 with the key it named. Where a container
 #     reaches git is env.QITS_PROJECTS_CONTAINER_GIT_URL below now — one key for one concept, read by

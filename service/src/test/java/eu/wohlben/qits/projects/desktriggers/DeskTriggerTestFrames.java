@@ -81,4 +81,30 @@ final class DeskTriggerTestFrames {
             state,
             Instant.now()));
   }
+
+  /**
+   * qits-workspaces' {@code DeskWaitClosed} as it arrives: that service's event type is not on this
+   * classpath, so the payload is written as the wire carries it.
+   */
+  static EventFrame waitClosed(
+      String projectId, String waitId, String label, String state, String turn) {
+    com.fasterxml.jackson.databind.node.ObjectNode payload =
+        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+    payload.put("waitId", waitId);
+    payload.put("projectId", projectId);
+    payload.put("label", label);
+    payload.put("state", state);
+    payload.put("eventName", "ReleaseRequestStateChanged");
+    payload.put("matchedEventId", "MATCHED".equals(state) ? UUID.randomUUID().toString() : null);
+    payload.put("turn", turn);
+    payload.put("closedAt", "2026-10-26T09:00:00Z");
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        "DeskWaitClosed",
+        Instant.now(),
+        payload.toString(),
+        null,
+        null,
+        null);
+  }
 }

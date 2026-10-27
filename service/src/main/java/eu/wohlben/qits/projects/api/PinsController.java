@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.deskhost.FrontDeskSpecs;
-import eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory;
+import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
@@ -27,10 +28,16 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * reads its own config rather than asking qits-configuration: a peer's answer would be the version
  * that has not reached this process yet, which is exactly the one a launch would not pull.
  *
- * <p><b>The config is read through the two container factories and nowhere else</b> — {@code
- * deskhost/FrontDeskSpecs} and {@code refinementhost/RefinementContainerFactory}, which are
- * what a start actually reads. The pin answer and the launch must be one value, and a second
+ * <p><b>The agent pin is read through {@code deskhost/FrontDeskSpecs} and nowhere else</b>, which is
+ * what a desk's start actually reads: the pin answer and the launch must be one value, and a second
  * {@code @ConfigProperty} naming the same key is how two of them appear.
+ *
+ * <p><b>The {@code refinement} row outlives the refinement containers (qits-1316), on a consumer's
+ * word.</b> Nothing here launches {@code qits/workspace} any more — a refinement room is a session of
+ * its project's front desk — but qits-orchestrator-service's pact pins this answer at exactly two
+ * rows, so the row stays: {@code qits.projects.refinement-image-repo} at {@link
+ * WorkspaceImage#VERSION}, the image a refinement container last started from, which qits-workspaces
+ * runs anyway. It goes once that consumer's pact stops counting the rows.
  *
  * <p><b>{@code image} is registry-relative.</b> The configured repo is fully qualified because a
  * bare name would resolve against whatever lies in the host daemon's local store, while the GC names
@@ -54,7 +61,9 @@ public class PinsController {
 
   @Inject FrontDeskSpecs agentContainers;
 
-  @Inject RefinementContainerFactory refinementContainers;
+  /** The refinement row's repository; see the class javadoc for why the row is still answered. */
+  @ConfigProperty(name = "qits.projects.refinement-image-repo")
+  String refinementImageRepo;
 
   /**
    * One image a launch would pull.
@@ -79,8 +88,8 @@ public class PinsController {
         pins(
             agentContainers.imageRepo(),
             agentContainers.imageVersion(),
-            refinementContainers.imageRepo(),
-            refinementContainers.imageVersion()));
+            refinementImageRepo,
+            WorkspaceImage.VERSION));
   }
 
   /**

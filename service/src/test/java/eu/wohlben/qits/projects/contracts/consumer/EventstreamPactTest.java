@@ -9,6 +9,7 @@ import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.bus.ScmBackupTriggerListener;
 import eu.wohlben.qits.projects.desktriggers.ApprovalNeededSource;
 import eu.wohlben.qits.projects.desktriggers.DeskTriggerListener;
+import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import eu.wohlben.qits.projects.desktriggers.WorkVerifiedSource;
 import java.nio.file.Path;
 import java.util.List;
@@ -37,7 +38,9 @@ class EventstreamPactTest {
               new ReleaseRequestHeadListener(),
               new ScmBackupTriggerListener(),
               new DeskTriggerListener(
-                  List.of(new WorkVerifiedSource(), new ApprovalNeededSource()), null))
+                  List.of(
+                      new WaitClosedSource(), new WorkVerifiedSource(), new ApprovalNeededSource()),
+                  null))
           .publishes(true)
           .guard(Path.of("target/classes"), Path.of("../domain/target/classes"));
 
