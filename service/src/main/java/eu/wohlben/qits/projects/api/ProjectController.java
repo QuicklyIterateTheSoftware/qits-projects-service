@@ -47,7 +47,7 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 @Path("/projects")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class ProjectController {
 
   @Inject ProjectService projectService;
@@ -139,6 +139,7 @@ public class ProjectController {
   @APIResponse(
       responseCode = "409",
       description = "The supplied slug already names another project — slugs are unique")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   public CreateProjectRequest.Response create(@Valid CreateProjectRequest request) {
     var project =
         projectService.create(
@@ -166,7 +167,7 @@ public class ProjectController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{id}")
   @Operation(operationId = "getProject")
   public GetProjectRequest.Response get(@PathParam("id") String id) {
@@ -187,7 +188,7 @@ public class ProjectController {
    * Spelled in full because a method-level {@code @RolesAllowed} REPLACES the class-level one.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
   @Operation(operationId = "listProjects")
   public ListProjectsRequest.Response list() {
     var projects = projectService.list();
@@ -204,7 +205,7 @@ public class ProjectController {
 
   @PUT
   @Path("/{id}")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   public UpdateProjectRequest.Response update(
       @PathParam("id") String id, @Valid UpdateProjectRequest request) {
     requireDeskProject(id);
@@ -245,7 +246,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/reconcile")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   @Operation(
       summary = "Re-assert a project's domain through the dns registrar",
       description =
@@ -275,6 +276,7 @@ public class ProjectController {
 
   @DELETE
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   public DeleteProjectRequest.Response delete(@PathParam("id") String id) {
     projectService.delete(id);
     return new DeleteProjectRequest.Response(true);
@@ -317,7 +319,7 @@ public class ProjectController {
    */
   @GET
   @Path("/{projectId}/repositories")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
   @Operation(operationId = "listProjectRepositories")
   public ListProjectRepositoriesRequest.Response listRepositories(
       @PathParam("projectId") String projectId) {
@@ -485,7 +487,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/repositories")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(operationId = "createProjectRepository")
   @APIResponse(responseCode = "200", description = "The repository exists and the wrapper names it")
   @APIResponse(
@@ -532,7 +534,7 @@ public class ProjectController {
   @POST
   @Path("/{projectId}/agent-config-repository")
   @Consumes(MediaType.WILDCARD)
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(
       operationId = "ensureAgentConfigRepository",
       summary = "Create the project's qits-agent-config, or answer the one it has",
@@ -652,6 +654,7 @@ public class ProjectController {
       content =
           @Content(schema = @Schema(implementation = BackupSyncProjectRequest.Response.class)))
   @APIResponse(responseCode = "404", description = "No such project")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   public BackupSyncProjectRequest.Response backupSyncProject(
       @PathParam("projectId") String projectId) {
     projectService.get(projectId); // 404 for an unknown project, like every other project route
@@ -678,7 +681,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/repositories/reconcile")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   @Operation(
       summary = "Bring a project's repositories in line with its wrapper's .gitmodules",
       description =

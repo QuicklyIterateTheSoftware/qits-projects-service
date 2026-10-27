@@ -39,6 +39,7 @@ import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.bus.EntityCommentAnnouncer;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
@@ -176,6 +177,9 @@ public class WorkEntityDoors {
 
   /** A comment through the door tells the item's agent (qits-1448), off the request thread. */
   @Inject CommentTurns commentTurns;
+
+  /** Tells the bus a comment was written, so a comment to {@code @desk} can wake the desk (qits-1660). */
+  @Inject EntityCommentAnnouncer commented;
 
   // --- read ------------------------------------------------------------------------------------
 
@@ -452,11 +456,13 @@ public class WorkEntityDoors {
     // below), never SUPERSEDED, and recorded as a machine (EntityMovers never makes it a person).
     // A platform service (qits:system) is still refused an epic. The project's delivery desk
     // (qits:desk, qits-1596) moves an epic as the coordinator does, SUPERSEDED included, bound to
-    // its own project by the requireProject below.
+    // its own project by the requireProject below; so does a qits:desk-admin (epic qits-1621),
+    // which is a desk and bound the same way.
     boolean epicByAgent =
         archetype == Archetype.EPIC
             && !identity.hasRole(AgentAccess.ADMIN_ROLE)
             && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+            && !identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)
             && !AgentAccess.isDesk(identity);
     if (epicByAgent && !EntitiesAgentAccess.bound(identity)) {
       throw new ForbiddenException(
@@ -537,6 +543,11 @@ public class WorkEntityDoors {
     } catch (RuntimeException e) {
       // The comment is written; nothing about telling anybody may turn that into a failure.
       LOG.warnf(e, "Could not tell anybody about comment %s", comment.id);
+    }
+    try {
+      commented.onCommented(entity, written, EntitiesPrincipal.changedBy(identity));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not announce comment %s", comment.id);
     }
     return written;
   }
@@ -914,11 +925,12 @@ public class WorkEntityDoors {
               + " {\"target\":\"DROPPED\"}.");
     }
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
-    // stay human-only. So is the project's delivery desk (qits-1596), bound to its own project by
-    // the requireProject below.
+    // stay human-only. So is the project's delivery desk (qits-1596) and its qits:desk-admin (epic
+    // qits-1621), bound to its own project by the requireProject below.
     if ((archetype == Archetype.EPIC || archetype == Archetype.TICKET)
         && !identity.hasRole(AgentAccess.ADMIN_ROLE)
         && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)
+        && !identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)
         && !AgentAccess.isDesk(identity)) {
       throw new ForbiddenException(
           "Deleting "

@@ -124,6 +124,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ProjectDeleted.class,
       EntityTransitioned.class,
       EntityTransitioned.Entity.class,
+      EntityCommented.class,
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,

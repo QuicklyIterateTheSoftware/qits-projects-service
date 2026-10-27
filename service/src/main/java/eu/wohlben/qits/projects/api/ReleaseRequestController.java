@@ -100,7 +100,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 @Path("/repositories/{repoId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
 public class ReleaseRequestController {
 
   @Inject ReleaseRequests releaseRequests;
@@ -393,7 +393,7 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/approve")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(
       operationId = "approveReleaseRequest",
       summary = "Approve this request's current fold, satisfying what the caller may satisfy",
@@ -440,7 +440,7 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/decline")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(
       operationId = "declineReleaseRequest",
       summary = "Refuse this request's current fold, answerably",
@@ -553,6 +553,7 @@ public class ReleaseRequestController {
   @jakarta.annotation.security.RolesAllowed({
     "qits:admin",
     "qits:admin-agent",
+    "qits:desk-admin",
     "qits:system",
     "qits:agent",
     "qits:ci-run"
@@ -595,6 +596,7 @@ public class ReleaseRequestController {
   @jakarta.annotation.security.RolesAllowed({
     "qits:admin",
     "qits:admin-agent",
+    "qits:desk-admin",
     "qits:system",
     "qits:agent",
     "qits:ci-run"
@@ -774,7 +776,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/pipeline/{phase}/rerun")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
   @Operation(
       operationId = "rerunReleasePipelinePhase",
       summary = "Run one phase of this release again",
@@ -824,7 +826,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/automations/{kind}/runs")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
   @Operation(
       operationId = "rerunReleaseRequestAutomation",
       summary = "Run one release-request automation again on this request's current fold",
@@ -881,7 +883,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/automations/waivers")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   @Operation(
       operationId = "waiveReleaseRequestAutomations",
       summary = "Waive the automations gate for this request's current fold",
@@ -933,7 +935,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/upstream-overrides")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   @Operation(
       operationId = "overrideReleaseRequestUpstream",
       summary = "Let this request start QA although one upstream request is still building",

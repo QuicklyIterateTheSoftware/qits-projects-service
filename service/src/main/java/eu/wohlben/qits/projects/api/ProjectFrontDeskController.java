@@ -5,6 +5,8 @@ import eu.wohlben.qits.projects.agenthost.DaemonApiClient;
 import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.error.NotFoundException;
+import eu.wohlben.qits.projects.security.AgentAccess;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -46,15 +48,18 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *       command.
  * </ul>
  *
- * <p>A person's doors, and an admin agent's: the class admits {@code qits:admin} and {@code
- * qits:admin-agent} only. A plain {@code qits:agent} — and the delivery desk's own {@code qits:desk}
- * token — is refused, the read included: the last answer is the desk's conversation, and the desk
- * prompting itself through this door would be a loop nobody asked for. {@code AgentReadAccessTest}
- * names both routes as admin-only on purpose.
+ * <p>A person's doors, and an admin agent's: the class admits {@code qits:admin}, {@code
+ * qits:admin-agent} and, since epic qits-1621, {@code qits:desk-admin} — bound to its own project
+ * ({@link AgentAccess#isDesk}/{@link AgentAccess#requireDeskProject}, in {@link #unknownProject}:
+ * the project is resolved first, so an unknown id stays a 404 before another project's becomes a
+ * 403). A plain {@code qits:agent} — and the delivery desk's own {@code qits:desk} token without
+ * {@code qits:desk-admin} — is refused, the read included: the last answer is the desk's
+ * conversation, and the desk prompting itself through this door would be a loop nobody asked for.
+ * {@code AgentReadAccessTest} names both routes as admin-only on purpose.
  */
 @Path("/projects/{projectId}/front-desk")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class ProjectFrontDeskController {
 
   /** The daemon's routes, under its proxied base path (see {@code ContainerProxyPath}). */
@@ -65,6 +70,8 @@ public class ProjectFrontDeskController {
   @Inject ProjectService projects;
 
   @Inject DaemonApiClient daemon;
+
+  @Inject SecurityIdentity identity;
 
   /** What the daemon's answer means — shared with the desk trigger sweep (epic qits-1604). */
   @Inject FrontDeskPrompter prompter;
@@ -208,14 +215,22 @@ public class ProjectFrontDeskController {
     }
   }
 
-  /** 404 for a project this service does not know, else null. */
+  /**
+   * 404 for a project this service does not know, else null. Also binds the delivery desk ({@code
+   * qits:desk}, carried by {@code qits:desk-admin} too, epic qits-1621) to its own project: the
+   * project is resolved first, so an unknown id stays a 404, and only then is another project's a
+   * 403. Every other caller passes untouched.
+   */
   private Response unknownProject(String projectId) {
     try {
       projects.get(projectId);
-      return null;
     } catch (NotFoundException e) {
       return refusal(404, "No project " + projectId + ".");
     }
+    if (AgentAccess.isDesk(identity)) {
+      AgentAccess.requireDeskProject(identity, projectId);
+    }
+    return null;
   }
 
   /** A door's reply as a response: the daemon's body verbatim, or a {@link Refusal} of ours. */

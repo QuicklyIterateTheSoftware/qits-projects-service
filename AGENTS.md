@@ -634,6 +634,7 @@ identity here.
 | --- | --- | --- |
 | `qits:admin` | the forwarded `X-Qits-Roles` header alone — the edge asserts it for an authenticated admin session | every REST controller here (class-level), the events stream and the remote-login socket |
 | `qits:admin-agent` | an admin workspace's agent — the coding agent running inside a workspace that holds the host's docker socket; qits-idp issues it beside `qits:agent` | wherever `qits:admin` opens, for now (qits-628 follow-up, owner's rule): every check naming `qits:admin` names this role too, explicitly rather than by an augmentor or a prefix match, so an endpoint that must stay human-only can have it removed one at a time later |
+| `qits:desk-admin` | the project's delivery desk — qits-idp grants it to the `desk-delivery` commission beside `qits:agent` and `qits:desk` (epic qits-1621) | wherever `qits:admin-agent` opens, except the desk's own rights and every written ref (see "The delivery desk" below); `DeskAdminParityTest` pins the parity, read off the annotations |
 | `qits:system` | a machine bearer alone — qits-idp copies a client's `roles` into the token's `groups` claim, and quarkus-oidc reads that claim as roles with no configuration at all | `GET /projects/{projectId}/repositories/by-name/{repoName}` (qits-githost), `POST /projects/{projectId}/repositories/adopt` (the bootstrap) and the agent control socket `/projects/daemon/{projectId}` |
 
 **`qits:agent` is an agent's own token (plan phase 4). An agent keeps every read and gains no
@@ -752,6 +753,31 @@ bound to its project, except a commit or a push and a change to its own rights:
   MCP catalogue and the capability report); everything that writes or deletes a ref (branch and
   repository delete, pull, push, sync, both backup pushes, tag GC, the remote-login push, a new
   project) and a project's delete. `AgentReadAccessTest.DESK_REFUSED_WRITES` pins the list.
+
+**Since epic qits-1621 the desk also holds `qits:desk-admin`: the coordinator's platform rights
+across the estate.** The `desk-delivery` token carries `qits:agent` + `qits:desk` + `qits:desk-admin`,
+and every door that admits `qits:admin-agent` admits `qits:desk-admin` beside it — as a literal in
+`@RolesAllowed`, `AgentAccess.DESK_ADMIN_ROLE` in the programmatic checks (`WorkEntityDoors`'
+epic move and delete, `DeskRunnerController.requireMachineAudience`, `PersonCheck`'s dev-mode
+arm). Across the platform that is logs and telemetry, waits, workspaces, targets and their sign-ins,
+CI cancels, leases and Docker on targets; here it opens most of the list above too — the desk's
+container, the front desk, a runner's greenlight and login check, the capability report — because
+those are platform operations rather than its own rights.
+
+- **Still bound to its project.** `qits:desk-admin` is not a wider role: the token still holds
+  `qits:desk`, so `AgentAccess.isDesk`/`requireDeskProject` and `EntitiesAgentAccess.requireProject`
+  bind it exactly as before, it is never one of `isBoundAgent`'s wider roles, and `EntityMovers`
+  still records it as a desk `Mover` (with the desk's refusals), not as a machine or a person.
+- **Still refused** (`DeskAdminParityTest.REFUSED`, `AgentReadAccessTest.DESK_ADMIN_REFUSED_WRITES`):
+  the runners' create, patch, registration-token rotation and delete; the MCP catalogue's save and
+  delete; tag GC; a project's create, delete and backup; a repository's branch delete, delete, pull,
+  push, sync and backup; the remote-login socket, whose session is a git push. Each route carries
+  a method-level `@RolesAllowed({"qits:admin", "qits:admin-agent"})` where it used to inherit the
+  class's (the socket keeps it on its class). Release-request create and join stay refused in
+  their bodies.
+- **Its brief.** `AgentSurfaceConfigurationController.update` admits the role on the class and
+  answers 403 in the body when a `qits:desk-admin` caller names `project.delivery`; every other
+  surface stays as open to it as to the coordinator (`DeskAdminRightsDoorTest`).
 
 **Four routes take both roles**, because a sibling service and a browser read each of them:
 `GET /projects` (the bootstrap turning the project's name into its id, and the projects overview),
@@ -1311,7 +1337,8 @@ approval's roles. The display path stores the content requirements as JSON objec
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is
   VERIFYING, VERIFIED or DONE (VERIFYING since qits-1560, so a verify probe ships; the rule keeps
-  its id); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
+  its id) — on the wrapper IMPLEMENTING or later (qits-1661: an agent files wrapper requests as
+  steps of its work and waits for them, so waiting for VERIFIED deadlocks); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
   too — a main-only or maintenance/*-only request that adds nothing has no work to resolve and stays
   the owner's (qits-maintenance's `BumpDispatcher.openMainOnly` holds `no-changes` transiently until
   its pre-run commits the branch); and for an admitted `automation:*`/`contract:*`
@@ -2555,8 +2582,9 @@ unknown key.
 
 ### Prompting the desk and reading its last answer (qits-1572)
 
-`api/ProjectFrontDeskController`, `qits:admin` and `qits:admin-agent` only — a plain `qits:agent`
-and the desk's own `qits:desk` are 403, the read included (`AgentReadAccessTest`'s one
+`api/ProjectFrontDeskController`, `qits:admin`, `qits:admin-agent` and (epic qits-1621)
+`qits:desk-admin` only — a plain `qits:agent` and a desk holding only `qits:desk` are 403, the read
+included (`AgentReadAccessTest`'s one
 `ADMIN_ONLY_READS` entry says why):
 
 | route | proxies to the daemon |
@@ -2592,7 +2620,7 @@ it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
 **The delivery desk is prompted by what happens, not only by a person.** `service/…/desktriggers/`
 is the whole of it:
 
-    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed--> DeskTriggerListener
+    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed / EntityCommented--> DeskTriggerListener
        (durable, consumerId projects-desk-triggers, replayFromEpoch false)
        each DeskTriggerSource naming the signature: qualify(frame) -> DeskTrigger*
        drop: project delivery_enabled false, or cause = one of the desk's subjects
@@ -2642,7 +2670,7 @@ storage, never rename it), `order()` (section order), `signatures()` (bus event 
 `qualify(EventFrame)` (0..n `DeskTrigger(projectId, itemRef, itemId, cause, label, eventId,
 occurredAt)`, run inside the listener's `projects` transaction so it may read rows),
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
-`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Three
+`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Four
 ship:
 
 | source | id, order | qualifies | line |
@@ -2650,6 +2678,11 @@ ship:
 | `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
+| `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `changedBy` |
+
+`EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
+(`WorkEntityDoors.addComment`) after the write: the item, its author, `changedBy` and the body's
+`@names` (`mentions`, lower case), never the body. In-service thread writers announce nothing.
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
 The listener (`@Any Instance<DeskTriggerSource>`) subscribes to the union of the sources'
@@ -2881,7 +2914,7 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   runs the delivery loop in a session of its own surface, appended **last** to `SURFACES` because the
   order mirrors `AgentSurface.KNOWN` in qits-coding-agents, where it was appended last too. It ships
   the one desk's fields with the brief qits-1517 wrote and qits-1560, qits-1569, qits-1571,
-  qits-1568, qits-1596, qits-1601, qits-1597 and qits-1604 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
+  qits-1568, qits-1596, qits-1601, qits-1597, qits-1604 and qits-1621 amended as its system prompt (`DELIVERY_DESK_PROMPT`:
   one judging rule — approve a change that is what the request's work should change, `.config/qits/`
   included, ask the owner once per item otherwise — and no file or category named the owner's; since
   qits-1571 every command it names is one the shipped `qits` CLI takes, and step 10 reads free slots
@@ -2889,12 +2922,15 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   `no-changes`; since qits-1596 it holds the coordinator's rights in its project; since qits-1601
   step 2 excepts a BUSY agent from its thirty-minutes-quiet clause; since qits-1597 nothing wakes it — a person prompts it, it does what was asked, a whole pass when asked for one,
   and ends the turn; since qits-1604 a desk trigger message, starting "You are the delivery desk",
-  prompts it too and it acts on each item the message names) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
+  prompts it too and it acts on each item the message names; since qits-1621 it holds the
+  coordinator's platform rights across the estate — logs and telemetry, waits, workspaces, targets
+  and their sign-ins, CI cancels, leases, Docker on targets — with its project writes still bound
+  and both "never" lines kept) and `Run one pass of the delivery loop.` as its initial prompt, the first turn
   of a session launched on the surface and nothing sent on a schedule. The seed writes the row at
   boot; no migration.
   **The row is platform-wide and the seed never overwrites it**, so the briefs that shipped before
   (qits-1440's dossier text as `PREVIOUS_DELIVERY_DESK_PROMPT`, qits-1517's, qits-1560's,
-  qits-1569's, qits-1571's, qits-1568's, qits-1596's, qits-1601's and qits-1597's as
+  qits-1569's, qits-1571's, qits-1568's, qits-1596's, qits-1601's, qits-1597's and qits-1604's as
   `QITS_<n>_DELIVERY_DESK_PROMPT`, each kept byte for byte) are rolled forward by
   `startup/DeliveryDeskBriefRollout`, a boot step beside the seed: a stored `project.delivery`
   prompt **exactly** equal to any previous text is rewritten to the
@@ -3105,7 +3141,7 @@ argument.
   file the library validates at boot, the path passed in by the host, the snapshot taken at creation,
   the recreate-only reach — and only the transport moves. **The cost is stated rather than hidden**:
   a value in env is readable in `docker inspect` and the document carries resolved external-MCP
-  credentials. This container's env already carries `QITS_COMMISSIONED_CLIENT_SECRET` on those terms.
+  credentials. The desk's own env already carries its `QITS_TOKEN` on those terms.
 - **`/tmp` because that file is derived, not durable**, and because it is the one place writable by
   the arbitrary host uid the container runs as: `/workspace` is the project's git checkout (a stray
   file there lands in somebody's `git status`) and `/claude-home` is the platform-wide credential
