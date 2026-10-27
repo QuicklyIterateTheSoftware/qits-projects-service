@@ -7,19 +7,19 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * An {@link IdpRunnerCommissioner} as a deployment with an idp has it, pointed at a stub — for a
- * plain test, and for a {@code @QuarkusTest} to install with {@code QuarkusMock} (qits-767).
+ * An {@link IdpClients} as a deployment with an idp has it, pointed at a stub — for a plain test,
+ * and for a {@code @QuarkusTest} to install with {@code QuarkusMock} (qits-767, qits-1551).
  */
-public final class IdpRunnerCommissionerFixture {
+public final class IdpClientsFixture {
 
   public static final String OWN_CLIENT = "dev-qits-projects";
 
   public static final String OWN_SECRET = "own-secret";
 
-  private IdpRunnerCommissionerFixture() {}
+  private IdpClientsFixture() {}
 
-  /** Wired, with a patience of {@code patience}. */
-  public static IdpRunnerCommissioner pointedAt(String authServerUrl, Duration patience) {
+  /** Wired. */
+  public static IdpClients pointedAt(String authServerUrl) {
     ObjectMapper json = new ObjectMapper();
     QitsHttpClients clients = QitsHttpClients.of(OpenTelemetry.noop(), null);
     IdpTokens tokens = new IdpTokens(clients);
@@ -29,7 +29,7 @@ public final class IdpRunnerCommissionerFixture {
     tokens.clientId = OWN_CLIENT;
     tokens.clientSecret = Optional.of(OWN_SECRET);
     tokens.requestTimeout = Duration.ofSeconds(2);
-    IdpRunnerCommissioner commissioner = new IdpRunnerCommissioner(clients);
+    IdpClients commissioner = new IdpClients(clients);
     commissioner.objectMapper = json;
     commissioner.tokens = tokens;
     commissioner.tokensEnabled = true;
@@ -37,20 +37,14 @@ public final class IdpRunnerCommissionerFixture {
     commissioner.clientId = OWN_CLIENT;
     commissioner.clientSecret = Optional.of(OWN_SECRET);
     commissioner.requestTimeout = Duration.ofSeconds(2);
-    commissioner.patience = patience;
     return commissioner;
-  }
-
-  /** Wired, with no patience: one attempt. */
-  public static IdpRunnerCommissioner pointedAt(String authServerUrl) {
-    return pointedAt(authServerUrl, Duration.ZERO);
   }
 
   /**
    * Shuts down both HttpClients a built commissioner holds — its own, and the {@link IdpTokens} it
    * was given — so a suite that builds many of these does not run out of native threads (qits-1149).
    */
-  public static void close(IdpRunnerCommissioner commissioner) {
+  public static void close(IdpClients commissioner) {
     commissioner.close();
     commissioner.tokens.close();
   }

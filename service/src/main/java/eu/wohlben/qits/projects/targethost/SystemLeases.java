@@ -78,8 +78,9 @@ public interface SystemLeases {
   /**
    * What a desk's start asks for.
    *
-   * @param projectId the desk's project: its {@code ownerRef}, its work key and, when it is a UUID,
-   *     the lease's {@code projectId}
+   * @param projectId the desk's project: its {@code ownerRef} and its work key. The lease's own
+   *     {@code projectId} is not sent: the owner ref already names it, and qits-system's DESK
+   *     tenant states record none
    * @param adopt the retired runner's container and volume, or null
    * @param pinTargetId the one target to consider, or null for any
    */

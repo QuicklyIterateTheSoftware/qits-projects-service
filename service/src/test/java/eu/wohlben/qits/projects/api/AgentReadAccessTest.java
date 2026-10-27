@@ -80,7 +80,6 @@ class AgentReadAccessTest {
           AgentContainerController.class,
           AgentMcpCatalogController.class,
           AgentSurfaceConfigurationController.class,
-          DeskRunnerController.class,
           GcController.class,
           PinsController.class,
           ProjectController.class,
@@ -197,13 +196,6 @@ class AgentReadAccessTest {
           "WorkMembersController.setCondition");
 
   /**
-   * <b>The front-desk runner write an agent reaches</b> (qits-767): asking a runner for a health
-   * check, as qits-workspaces' runner door admits it (qits-850). A check reads and self-tests and
-   * changes nothing a person set; its only effect on the runner's standing is its own result.
-   */
-  private static final Set<String> RUNNER_AGENT_WRITES = Set.of("DeskRunnerController.healthcheck");
-
-  /**
    * <b>The refinement design writes an agent reaches</b> (qits-1174): adding and rewriting a design,
    * what the retired {@code put_design} MCP tool did. Bound to the project of the refinement's entity
    * by {@code EntitiesAgentAccess}. The delete is not here: no tool ever deleted a design.
@@ -215,10 +207,8 @@ class AgentReadAccessTest {
   private static final Set<String> AGENT_WRITES =
       union(
           union(
-              union(
-                  union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
-                  CAMPAIGN_AGENT_WRITES),
-              RUNNER_AGENT_WRITES),
+              union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
+              CAMPAIGN_AGENT_WRITES),
           DESIGN_AGENT_WRITES);
 
   /**
@@ -280,7 +270,7 @@ class AgentReadAccessTest {
    *
    * <ul>
    *   <li><b>its own rights</b>: its brief (the surface editor), its container and the tokens it
-   *       carries, the front desk it runs in, the runners that place it, and the external MCP
+   *       carries, the front desk it runs in, and the external MCP
    *       servers and harness capabilities its surface is built from;
    *   <li><b>a commit, a push or any other written ref</b>: the branch and repository deletes, pull,
    *       push, sync and both backup pushes, the tag collection, and a new project (whose wrapper is
@@ -298,12 +288,6 @@ class AgentReadAccessTest {
           "AgentContainerController.stop",
           "AgentContainerController.delete",
           "ProjectFrontDeskController.prompt",
-          "DeskRunnerController.create",
-          "DeskRunnerController.patch",
-          "DeskRunnerController.rotateRegistrationToken",
-          "DeskRunnerController.delete",
-          "DeskRunnerController.greenlight",
-          "DeskRunnerController.loginCheck",
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
           "AgentCapabilityController.report",

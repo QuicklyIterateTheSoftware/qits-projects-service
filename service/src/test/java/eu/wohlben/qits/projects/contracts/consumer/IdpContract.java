@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.contracts.GoldenFiles;
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
+import eu.wohlben.qits.projects.idphost.IdpClients;
 import eu.wohlben.qits.projects.idphost.IdpSessionIntrospection;
 import eu.wohlben.qits.projects.idphost.IdpTokens;
 import eu.wohlben.qits.projects.refinementhost.LegacyRefinementContainers;
@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.UUID;
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,8 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * provider's state answers. The base is {@code quarkus.oidc-client.qits.auth-server-url}, which
  * ends in {@code /idp}.
  *
- * <p><b>The context ids are this service's, not the provider's</b>: a front desk's project, a
- * runner's id and a refinement's id are whatever this side commissions for, so the bodies carry
+ * <p><b>The context ids are this service's, not the provider's</b>: a front desk's project and
+ * a refinement's id are whatever this side commissions for, so the bodies carry
  * fixed examples rather than state parameters.
  *
  * <p><b>The token mint is quarkus-oidc-client's</b> ({@code quarkus.oidc-client.qits}), which runs
@@ -61,7 +60,6 @@ final class IdpContract {
   private static final Map<String, String> AUTH = Map.of("Authorization", "{authorization}");
 
   private static final String FRONT_DESK_PROJECT = "00000000-0000-4000-8000-0000000000a1";
-  private static final String RUNNER = "00000000-0000-4000-8000-0000000000b1";
 
   private IdpContract() {}
 
@@ -86,18 +84,17 @@ final class IdpContract {
         "requestTimeout", Duration.ofSeconds(5));
   }
 
-  private static IdpRunnerCommissioner commissioner(String base, Map<String, String> p) {
+  private static IdpClients commissioner(String base, Map<String, String> p) {
     String[] pair = pair(p);
     return Fields.with(
-        new IdpRunnerCommissioner(RowClients.clients()),
+        new IdpClients(RowClients.clients()),
         "objectMapper", new ObjectMapper(),
         "tokens", tokens(base, p),
         "tokensEnabled", true,
         "authServerUrl", base + "/idp",
         "clientId", pair[0],
         "clientSecret", Optional.of(pair[1]),
-        "requestTimeout", Duration.ofSeconds(5),
-        "patience", Duration.ZERO);
+        "requestTimeout", Duration.ofSeconds(5));
   }
 
   private static ConsumerRow row(
@@ -197,7 +194,7 @@ final class IdpContract {
                   + "\"claims\":{\"project\":\"" + FRONT_DESK_PROJECT + "\"},\"gitRefs\":[]}",
               List.of("$.tokenId", "$.token", "$.subject"),
               201,
-              Trigger.schedule("FrontDesks.ensure (IdpFrontDeskTokens.mint)"),
+              Trigger.schedule("DeskLeases.start (IdpFrontDeskTokens.mint)"),
               (base, p) -> {
                 IdpTokens.Issued issued =
                     tokens(base, p)
@@ -209,23 +206,6 @@ final class IdpContract {
                 assertFalse(issued.tokenId().isBlank());
               },
               "POST /idp/api/tokens answering 201 with tokenId, token and subject"),
-          row(
-              "commissionToken",
-              "a service client with the system role",
-              "POST",
-              "/idp/api/tokens",
-              "{\"contextKind\":\"desk-runner-registration\",\"contextId\":\"" + RUNNER + "\"}",
-              List.of("$.tokenId", "$.token", "$.subject"),
-              201,
-              Trigger.operation("DeskRunnerController.create"),
-              (base, p) ->
-                  assertFalse(
-                      commissioner(base, p)
-                          .registrationToken(UUID.fromString(RUNNER))
-                          .token()
-                          .isBlank()),
-              "POST /idp/api/tokens for a desk-runner registration answering 201 with tokenId, token"
-                  + " and subject"),
           row(
               "listTokens",
               "a commissioned token",
@@ -246,7 +226,7 @@ final class IdpContract {
               null,
               List.of("$[*].tokenId", "$[*].contextKind", "$[*].contextId", "$[*].createdAt"),
               200,
-              Trigger.schedule("DeskRunnerCommissionReconcile.reapRegistrationTokens"),
+              Trigger.schedule("LegacyRunnerClients.giveBack"),
               (base, p) ->
                   assertFalse(commissioner(base, p).liveTokens().orElseThrow().isEmpty()),
               "GET /idp/api/tokens answering 200 with a root array of tokenId, contextKind,"
@@ -270,24 +250,9 @@ final class IdpContract {
               null,
               List.of(),
               204,
-              Trigger.schedule("DeskRunnerCommissionReconcile.reapRegistrationTokens"),
+              Trigger.schedule("LegacyRunnerClients.giveBack"),
               (base, p) -> assertTrue(commissioner(base, p).deleteToken(p.get("tokenId"))),
               "DELETE /idp/api/tokens/{tokenId} answering 204"),
-          row(
-              "commissionClient",
-              "a service client with the system role",
-              "POST",
-              "/idp/api/clients",
-              "{\"contextKind\":\"desk-runner\",\"contextId\":\"" + RUNNER + "\"}",
-              List.of("$.clientId", "$.secret"),
-              201,
-              Trigger.operation("DeskRunnerController.register"),
-              (base, p) -> {
-                IdpRunnerCommissioner.RunnerClient client =
-                    commissioner(base, p).runnerClient(UUID.fromString(RUNNER));
-                assertFalse(client.clientId().isBlank());
-              },
-              "POST /idp/api/clients for a desk-runner answering 201 with clientId and secret"),
           row(
               "listClients",
               "a commissioned client",
@@ -296,8 +261,8 @@ final class IdpContract {
               null,
               List.of("$[*].clientId", "$[*].contextKind", "$[*].contextId"),
               200,
-              Trigger.schedule("DeskRunnerCommissionReconcile.reapClients"),
-              (base, p) -> assertTrue(commissioner(base, p).liveRunnerClients().isPresent()),
+              Trigger.schedule("LegacyRunnerClients.giveBack"),
+              (base, p) -> assertTrue(commissioner(base, p).liveClients("desk-runner").isPresent()),
               "GET /idp/api/clients answering 200 with a root array of clientId, contextKind and"
                   + " contextId"),
           row(
@@ -337,8 +302,8 @@ final class IdpContract {
               null,
               List.of(),
               204,
-              Trigger.schedule("DeskRunnerCommissionReconcile.reapClients"),
-              (base, p) -> commissioner(base, p).decommissionClient(p.get("clientId")),
+              Trigger.schedule("LegacyRunnerClients.giveBack"),
+              (base, p) -> assertTrue(commissioner(base, p).deleteClient(p.get("clientId"))),
               "DELETE /idp/api/clients/{clientId} answering 204"),
           row(
               "decommissionClient",

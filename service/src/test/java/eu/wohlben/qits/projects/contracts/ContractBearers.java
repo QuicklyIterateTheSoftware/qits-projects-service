@@ -16,8 +16,9 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 
 /**
  * <b>The bearers a provider state hands its consumer</b>, for the doors that judge the caller's
- * token rather than its role: the desk-runner register door reads the registration token's
- * subject. qits-ci-service's {@code ContractBearers}, in this provider's package (qits-1163).
+ * token rather than its role (the person-CLI bearer of the approve and decline doors; the
+ * desk-runner register door that first needed it went with the runners, qits-1551).
+ * qits-ci-service's {@code ContractBearers}, in this provider's package (qits-1163).
  *
  * <p>The {@code %test} suite runs no idp and no edge: every request is the forwarded dev user. A
  * consumer, though, sends {@code Authorization: Bearer <token>}. A state registers the bearer it

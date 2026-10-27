@@ -37,7 +37,8 @@ public class NativeImageContractTest {
             eu.wohlben.qits.projects.maintenancehost.HttpDownstreamPins.class,
             eu.wohlben.qits.projects.maintenancehost.HttpAutomationKinds.class,
             eu.wohlben.qits.projects.idphost.IdpTokens.class,
-            eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner.class)) {
+            eu.wohlben.qits.projects.idphost.IdpClients.class,
+            eu.wohlben.qits.projects.targethost.HttpSystemLeases.class)) {
       for (Field field : type.getDeclaredFields()) {
         boolean isStatic = Modifier.isStatic(field.getModifiers());
         assertTrue(

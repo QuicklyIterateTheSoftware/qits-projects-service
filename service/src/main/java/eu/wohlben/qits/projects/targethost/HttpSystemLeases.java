@@ -73,10 +73,6 @@ public class HttpSystemLeases implements SystemLeases {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("slotType", SLOT_TYPE);
     body.put("ownerRef", request.projectId());
-    UUID project = uuid(request.projectId());
-    if (project != null) {
-      body.put("projectId", project.toString());
-    }
     body.put("workKey", SystemLeases.workKey(request.projectId()));
     body.put("priority", 0);
     body.put("spec", spec(request.spec()));

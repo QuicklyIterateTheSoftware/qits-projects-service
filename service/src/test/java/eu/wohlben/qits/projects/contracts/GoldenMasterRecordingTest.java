@@ -1197,31 +1197,6 @@ class GoldenMasterRecordingTest {
             "{\"dryRun\":false,\"pins\":{\"deployments\":{\"pins\":[]},\"ciDaemon\":{},"
                 + "\"dependencies\":{\"pins\":[]},\"workspaceLaunches\":{\"pins\":[]},"
                 + "\"projectLaunches\":{\"pins\":[]}}}"));
-    // The runner toolkit registering qits-projects-desk-runner-daemon with its registration token
-    // (qits-1163): the client it is answered once, and the refusal of a replay.
-    String register = "/projects/api/runners/{runnerId}/register";
-    all.add(
-        new Interaction(
-            ProviderStates.AN_UNREGISTERED_RUNNER,
-            "registerDeskRunner",
-            "POST",
-            register,
-            200,
-            null,
-            null,
-            TOOLKIT_REGISTRATION,
-            BEARER));
-    all.add(
-        new Interaction(
-            ProviderStates.A_REGISTERED_RUNNER,
-            "registerDeskRunner",
-            "POST",
-            register,
-            409,
-            null,
-            null,
-            TOOLKIT_REGISTRATION,
-            BEARER));
     // The front desk's two doors (qits-1572), as qits-platform-access-cli calls them: a prompt the
     // desk's daemon delivers at once, and the last answer it gave, with its text. Both answers are
     // the fake daemon's, passed through the real tunnel verbatim.
@@ -1248,14 +1223,6 @@ class GoldenMasterRecordingTest {
             "/projects/api/projects/{projectId}/desk-triggers"));
     return List.copyOf(all);
   }
-
-  /**
-   * What the runner toolkit sends to register (qits-runner-javalib's {@code Registration}): every
-   * one of its four capability keys, as qits-runner-toolkit-contracts pins them (qits-1163).
-   */
-  private static final String TOOLKIT_REGISTRATION =
-      "{\"capabilities\":{\"docker\":true,\"arch\":\"amd64\",\"os\":\"linux\","
-          + "\"labels\":{\"site\":\"home\"}}}";
 
   private static Interaction write(
       String state, String operationId, String method, String path, String body) {

@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.containers.client.ContainersClient;
 import eu.wohlben.qits.http.ClosableQitsHttpClients;
 import eu.wohlben.qits.projects.containershost.StubContainersServer;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissionerFixture;
+import eu.wohlben.qits.projects.idphost.IdpClients;
+import eu.wohlben.qits.projects.idphost.IdpClientsFixture;
 import eu.wohlben.qits.projects.idphost.RoutingIdpServer;
 import jakarta.enterprise.inject.Vetoed;
 import java.time.Duration;
@@ -41,12 +41,12 @@ class LegacyRefinementContainersTest {
 
   private final List<ClosableQitsHttpClients> containersClients = new CopyOnWriteArrayList<>();
 
-  private final List<IdpRunnerCommissioner> commissioners = new CopyOnWriteArrayList<>();
+  private final List<IdpClients> commissioners = new CopyOnWriteArrayList<>();
 
   @AfterEach
   void closeClients() {
     containersClients.forEach(ClosableQitsHttpClients::close);
-    commissioners.forEach(IdpRunnerCommissionerFixture::close);
+    commissioners.forEach(IdpClientsFixture::close);
   }
 
   /**
@@ -90,7 +90,7 @@ class LegacyRefinementContainersTest {
             Duration.ofSeconds(5),
             Optional::empty,
             containersHttpClients);
-    IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(idp.url());
+    IdpClients commissioner = IdpClientsFixture.pointedAt(idp.url());
     commissioners.add(commissioner);
     oneShot.idp = commissioner;
     oneShot.owner = OWNER;

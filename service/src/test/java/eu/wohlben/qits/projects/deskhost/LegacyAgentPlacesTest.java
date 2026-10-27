@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.containers.client.ContainersClient;
 import eu.wohlben.qits.http.ClosableQitsHttpClients;
 import eu.wohlben.qits.projects.containershost.StubContainersServer;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissionerFixture;
+import eu.wohlben.qits.projects.idphost.IdpClients;
+import eu.wohlben.qits.projects.idphost.IdpClientsFixture;
 import eu.wohlben.qits.projects.idphost.RoutingIdpServer;
 import java.time.Duration;
 import java.util.List;
@@ -35,12 +35,12 @@ class LegacyAgentPlacesTest {
 
   /** Every commissioner a test built, shut down after it the same way (its own client, and its
    * {@code IdpTokens}' — qits-1149). */
-  private final List<IdpRunnerCommissioner> commissioners = new CopyOnWriteArrayList<>();
+  private final List<IdpClients> commissioners = new CopyOnWriteArrayList<>();
 
   @AfterEach
   void closeClients() {
     containersClients.forEach(ClosableQitsHttpClients::close);
-    commissioners.forEach(IdpRunnerCommissionerFixture::close);
+    commissioners.forEach(IdpClientsFixture::close);
   }
 
   private LegacyAgentPlaces wired(StubContainersServer containers, RoutingIdpServer idp) {
@@ -54,7 +54,7 @@ class LegacyAgentPlacesTest {
             Duration.ofSeconds(5),
             Optional::empty,
             containersHttpClients);
-    IdpRunnerCommissioner commissioner = IdpRunnerCommissionerFixture.pointedAt(idp.url());
+    IdpClients commissioner = IdpClientsFixture.pointedAt(idp.url());
     commissioners.add(commissioner);
     places.idp = commissioner;
     places.owner = OWNER;
