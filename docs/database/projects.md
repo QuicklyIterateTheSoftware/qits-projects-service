@@ -130,31 +130,12 @@ erDiagram
     string retry_of_run_id
     string status "not null"
   }
-  %% desk_runner: eu.wohlben.qits.projects.entity.DeskRunner (domain)
-  desk_runner {
-    uuid id PK "not null"
-    jsonb capabilities
-    uuid causation_id
-    string client_id
-    instant created_at "not null"
-    string description
-    instant last_health_check_at
-    boolean last_health_check_ok
-    instant last_seen_at
-    string login_state
-    string name "not null"
-    string quarantine_reason
-    instant quarantined_at
-    instant registered_at
-    string registration_token_id
-    string registration_token_subject
-    int slots "not null"
-  }
   %% desk_trigger_event: eu.wohlben.qits.projects.entity.DeskTriggerEvent (domain)
   desk_trigger_event {
     uuid id PK "not null"
     instant admitted_at "not null"
     string cause
+    string comment_id
     uuid event_id "not null"
     string item_id
     string item_ref "not null"
@@ -183,6 +164,7 @@ erDiagram
   %% front_desk: eu.wohlben.qits.projects.entity.FrontDesk (domain)
   front_desk {
     string project_id PK "not null"
+    text adopted_volume
     instant created_at "not null"
     string delivery_token_id
     string delivery_token_subject
@@ -190,22 +172,32 @@ erDiagram
     enum desired "not null"
     string failure_detail
     instant last_demand_at
+    text lease_detail
+    uuid lease_id
     instant placed_at
     instant queued_at
     instant reported_at
     string reported_spec_hash
     string reported_state
     instant roll_requested_at
-    uuid runner_id
     string session_id
     string session_token_id
     string session_token_subject
     string session_token_value
     string spec_hash
     jsonb spec_json
+    uuid target_id
     string token_id
     string token_subject
     string token_value
+  }
+  %% legacy_placement: eu.wohlben.qits.projects.entity.LegacyPlacement (domain)
+  legacy_placement {
+    string project_id PK "not null"
+    text engine_id
+    text hostname
+    uuid old_runner_id "not null"
+    text runner_name
   }
   %% refinement: eu.wohlben.qits.projects.entity.Refinement (domain)
   refinement {
