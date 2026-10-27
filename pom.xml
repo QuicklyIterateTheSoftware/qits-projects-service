@@ -141,7 +141,7 @@
              runner is told to upgrade to, so the frames this service speaks and the binary it hands
              out are one release. Moved by qits-maintenance on maintenance/dependencies, gated here;
              never by hand. -->
-        <qits.projects-desk-runner-protocol.version>2026.1025.140754</qits.projects-desk-runner-protocol.version>
+        <qits.projects-desk-runner-protocol.version>2026.1027.91319</qits.projects-desk-runner-protocol.version>
         <!-- qits-runner-javalib (qits-771): the lifecycle frames and their codec
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
@@ -247,7 +247,7 @@
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1026.42912</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1020.65554</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
-        <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1025.4118</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
+        <qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>2026.1027.91319</qits.projects-desk-runner-daemon-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
         <qits.bootstrap-cli-pacts-qits-projects-service.version>2026.1019.194129</qits.bootstrap-cli-pacts-qits-projects-service.version>
         <qits.ci-service-pacts-qits-projects-service.version>2026.1026.93256</qits.ci-service-pacts-qits-projects-service.version>
