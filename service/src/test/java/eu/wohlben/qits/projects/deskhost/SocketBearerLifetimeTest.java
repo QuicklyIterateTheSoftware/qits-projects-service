@@ -49,9 +49,11 @@ class SocketBearerLifetimeTest {
     assertNull(expiry(bearer("tok-1", "qits:agent"), "/projects/daemon/stream/n-1"));
   }
 
+  /** The retired runner socket's path is nobody's any more, the runner role's included. */
   @Test
-  void theRunnerKeepsItsSocket() {
-    assertNull(expiry(bearer("dr-1", DeskRunnerSocket.RUNNER_ROLE), "/projects/runners/socket"));
+  void theRetiredRunnerSocketKeepsNoBodysBearerAlive() {
+    assertNotNull(expiry(bearer("dr-1", "qits:desk-runner"), "/projects/runners/socket"));
+    assertNotNull(expiry(bearer("tok-1", "qits:agent"), "/projects/runners/socket"));
   }
 
   @Test

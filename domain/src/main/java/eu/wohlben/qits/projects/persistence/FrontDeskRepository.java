@@ -1,10 +1,10 @@
 package eu.wohlben.qits.projects.persistence;
 
 import eu.wohlben.qits.projects.entity.FrontDesk;
-import eu.wohlben.qits.projects.entity.FrontDeskDesired;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,35 +12,16 @@ import java.util.UUID;
 @ApplicationScoped
 public class FrontDeskRepository implements PanacheRepositoryBase<FrontDesk, String> {
 
-  /**
-   * A placeable desk — wanted, unplaced and holding its token: what {@link #queued} lists, what
-   * {@link #countQueued} counts as a runner's backlog, and what placement tries to claim.
-   */
-  private static final String QUEUED = "runnerId is null and desired = ?1 and tokenValue is not null";
-
-  /** Every desk placed on {@code runnerId}, by project. */
-  public List<FrontDesk> onRunner(UUID runnerId) {
-    return list("runnerId", Sort.by("projectId"), runnerId);
+  /** Every desk that names a DESK lease (epic qits-1481, V61), by project. */
+  public List<FrontDesk> findWithLease() {
+    return list("leaseId is not null", Sort.by("projectId"));
   }
 
-  /** How many desks on {@code runnerId} are wanted running: the server's own slot count. */
-  public long wantedOn(UUID runnerId) {
-    return count("runnerId = ?1 and desired = ?2", runnerId, FrontDeskDesired.RUNNING);
-  }
-
-  /**
-   * The desks waiting for a runner — wanted, unplaced and holding their token — oldest queued
-   * first: the order placement tries them in.
-   */
-  public List<FrontDesk> queued() {
-    return list(
-        QUEUED,
-        Sort.by("queuedAt", Sort.NullPrecedence.NULLS_LAST).and("createdAt"),
-        FrontDeskDesired.RUNNING);
-  }
-
-  /** How many desks are waiting for a runner: {@link #queued}'s size, the backlog a runner is told. */
-  public long countQueued() {
-    return count(QUEUED, FrontDeskDesired.RUNNING);
+  /** The desk that names {@code leaseId}, locked for the write that follows, or null. */
+  public FrontDesk lockByLeaseId(UUID leaseId) {
+    if (leaseId == null) {
+      return null;
+    }
+    return find("leaseId", leaseId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
   }
 }

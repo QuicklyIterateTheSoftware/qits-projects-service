@@ -12,7 +12,6 @@ import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskSpec;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -34,8 +33,10 @@ import org.jboss.logging.Logger;
 
 /**
  * What a project's front desk container is (qits-767): {@link #compose} turns a project and its
- * {@code front_desk} row into the runner protocol's {@link DeskSpec}, its canonical JSON and the
- * SHA-256 of that JSON — the {@code spec_hash} the runner labels the container with.
+ * {@code front_desk} row into a {@link DeskSpec}, its canonical JSON and the SHA-256 of that JSON —
+ * the {@code spec_hash} a roll compares. Since epic qits-1481 the spec is a DESK lease's {@code
+ * LeaseSpec{image, env, user, limits}} ({@code targethost/DeskLeases}), and qits-system's runner
+ * runs it.
  *
  * <p><b>Pure.</b> {@link #compose(Settings, Project, FrontDesk, Map, String)} reads nothing but its
  * arguments, so a golden test pins the whole spec for a fixed project, token and domain; the bean
@@ -61,8 +62,11 @@ import org.jboss.logging.Logger;
  * ({@link EdgePlaneUnconfigured}, the belt qits-workspaces-service's {@code WorkspaceAddressPlane}
  * carries), and the desk reads FAILED with {@link #EDGE_PLANE_UNCONFIGURED}.
  *
- * <p><b>Mounts, network, init and the restart policy are not in the spec</b>: the runner decides
- * them from its own identity.
+ * <p><b>Mounts, network, init and the restart policy are not in the spec</b>: they are the DESK
+ * slot policy of qits-system's runner, which also owns {@code HOME}, {@code CLAUDE_CONFIG_DIR} and
+ * {@code BUILDKIT_HOST} and refuses a spec naming one ({@link #POLICY_OWNED_ENV}). {@code
+ * CLAUDE_CONFIG_DIR} is therefore not in the env: the policy sets it to the same {@code
+ * /claude-home/.claude} the desk always had.
  *
  * <p>The pieces moved here from {@code AgentContainerFactory} (the direct path qits-1111 deletes):
  * the image pin rule ({@link #imageVersion()}), the git identity env, the agent configuration
@@ -76,7 +80,14 @@ public class FrontDeskSpecs {
   /** The failure detail of a desk whose spec cannot be composed for want of a public domain. */
   public static final String EDGE_PLANE_UNCONFIGURED = "EDGE_PLANE_UNCONFIGURED";
 
-  /** Where the runner mounts the node's agent home in a desk. */
+  /**
+   * The environment keys qits-system's slot policy owns: a lease spec naming one is FAILED by the
+   * target (qits-system-runner's {@code SlotPolicy.OWNED_ENV}).
+   */
+  public static final java.util.Set<String> POLICY_OWNED_ENV =
+      java.util.Set.of("HOME", "CLAUDE_CONFIG_DIR", "BUILDKIT_HOST");
+
+  /** Where the target mounts the node's agent home in a desk. */
   public static final String CLAUDE_MOUNT = "/claude-home";
 
   static final String MAVEN_MOUNT = "/caches/m2";
@@ -168,6 +179,25 @@ public class FrontDeskSpecs {
       int daemonApiPort,
       int daemonHooksPort,
       String agentConfigurationPath) {}
+
+  /**
+   * A desk's container, as a DESK lease's spec carries it: the image, the environment, the user and
+   * the limits. The environment holds the lease's token, so it is never printed.
+   */
+  public record DeskSpec(
+      String image,
+      Map<String, String> env,
+      String user,
+      String memory,
+      String memorySwap,
+      Long pidsLimit,
+      String cpus,
+      Integer oomScoreAdj) {
+    @Override
+    public String toString() {
+      return "DeskSpec[image=" + image + ", user=" + user + ", memory=" + memory + "]";
+    }
+  }
 
   /** A composed spec: the record, its canonical JSON (what {@code spec_json} holds) and the hash. */
   public record Composed(DeskSpec spec, String json, String hash) {}
@@ -313,7 +343,6 @@ public class FrontDeskSpecs {
     if (identity != null) {
       identity.forEach(env::put);
     }
-    env.put("CLAUDE_CONFIG_DIR", CLAUDE_MOUNT + "/.claude");
     env.put("KIMI_CODE_HOME", CLAUDE_MOUNT + "/.kimi-code");
     env.put("MAVEN_OPTS", "-Dmaven.repo.local=" + MAVEN_MOUNT);
     env.put("npm_config_store_dir", PNPM_MOUNT + "/store");

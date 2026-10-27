@@ -8,7 +8,7 @@ import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.gitmirror.RepoMirror;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
+import eu.wohlben.qits.projects.idphost.IdpClients;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
@@ -41,7 +41,7 @@ import org.jboss.logging.Logger;
  *       runs on it. The two live in different stores behind different doors — a client is listed
  *       at {@code GET <idp>/api/clients} and deleted at {@code DELETE <idp>/api/clients/{clientId}},
  *       a token at {@code <idp>/api/tokens} — and this class reaches only the first, through {@link
- *       IdpRunnerCommissioner#liveClients} and {@link IdpRunnerCommissioner#deleteClient}.
+ *       IdpClients#liveClients} and {@link IdpClients#deleteClient}.
  *   <li>Every {@code refining/*} branch on every project's wrapper is deleted, by a push through the
  *       git host like any other.
  * </ol>
@@ -65,7 +65,7 @@ public class LegacyRefinementContainers {
 
   @Inject ContainersClient containers;
 
-  @Inject IdpRunnerCommissioner idp;
+  @Inject IdpClients idp;
 
   @Inject RefinementRepository refinements;
 
@@ -159,7 +159,7 @@ public class LegacyRefinementContainers {
       }
     }
     List<String> clients = new ArrayList<>();
-    for (IdpRunnerCommissioner.LiveClient client :
+    for (IdpClients.LiveClient client :
         idp.liveClients(CLIENT_KIND).orElse(List.of())) {
       if (idp.deleteClient(client.clientId())) {
         LOG.infof(

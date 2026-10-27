@@ -34,9 +34,9 @@ import org.jboss.logging.Logger;
  * qits:system} client may commission a token (qits-idp {@code IdpTokensController.commission}), and
  * this service's is one.
  *
- * <p><b>Written for more than one kind.</b> It mints a front-desk runner's registration token
- * ({@link IdpRunnerCommissioner}) today, and the front desk's own token later, which is why {@link
- * #commission(String, String, Map)} takes claims although the runner states none.
+ * <p><b>Written for more than one kind.</b> It mints the front desk's lease tokens, its session and
+ * delivery tokens and the refinement rooms' tokens, which is why {@link #commission(String, String,
+ * Map)} takes claims.
  *
  * <p><b>The value is answered once.</b> qits-idp stores a hash; the listing never carries a value,
  * and a caller that loses one deletes the token and commissions again.

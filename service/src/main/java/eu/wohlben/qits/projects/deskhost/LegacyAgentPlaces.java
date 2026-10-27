@@ -4,7 +4,7 @@ import eu.wohlben.qits.containers.client.ContainersAnswer;
 import eu.wohlben.qits.containers.client.ContainersClient;
 import eu.wohlben.qits.containers.client.ContainersWire.DeleteOutcome;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeEnvelope;
-import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
+import eu.wohlben.qits.projects.idphost.IdpClients;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.LaunchMode;
@@ -51,7 +51,7 @@ public class LegacyAgentPlaces {
 
   @Inject ContainersClient containers;
 
-  @Inject IdpRunnerCommissioner idp;
+  @Inject IdpClients idp;
 
   @Inject ProjectRepository projects;
 
@@ -112,7 +112,7 @@ public class LegacyAgentPlaces {
       }
     }
     List<String> clients = new ArrayList<>();
-    for (IdpRunnerCommissioner.LiveClient client :
+    for (IdpClients.LiveClient client :
         idp.liveClients(CLIENT_KIND).orElse(List.of())) {
       if (idp.deleteClient(client.clientId())) {
         LOG.infof(

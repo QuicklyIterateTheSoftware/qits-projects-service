@@ -15,29 +15,30 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * A project's front desk (qits-767, V37): its agent container, as this service wants it and as the
- * front-desk runner holding it last reported it.
+ * A project's front desk (qits-767, V37): its agent container, as this service wants it and as
+ * qits-system last reported the DESK lease it runs under (epic qits-1481, V61).
  *
  * <ul>
- *   <li><b>Placement</b> — {@link #runnerId} is null until a runner's {@code reserve} claims the row
- *       (compare-and-swap on {@code runner_id is null}, oldest {@link #queuedAt} first), and only a
- *       {@code DELETE} of the desk, the project's deletion or the runner's deletion ever changes it
- *       again: a desk is sticky to its runner.
+ *   <li><b>The lease</b> — {@link #leaseId} names the DESK lease the desk runs under ({@code
+ *       ownerRef <projectId>}, {@code workKey desk-<projectId>}), null while it has none; {@link
+ *       #targetId} the target it was granted on. A wanted desk with no live lease is given one; an
+ *       unwanted desk's lease is ended, and its work volume kept on the target for the next.
  *   <li><b>Desired state</b> — {@link #desired}, recomputed from the project's {@code
  *       front_desk_lifecycle} and from {@link #lastDemandAt} by the front-desk demand.
- *   <li><b>The token</b> — one {@code qits_tok_} per desk, minted at row creation and carried in the
- *       spec: {@link #tokenId} to revoke it, {@link #tokenValue} so the spec is reproducible,
+ *   <li><b>The token</b> — one {@code qits_tok_} per lease, minted immediately before the lease is
+ *       asked for, carried in its spec and revoked once the lease is over: {@link #tokenId} to revoke it, {@link #tokenValue} so the spec is reproducible,
  *       {@link #tokenSubject} because the control socket and the dial-back bind a {@code tok-}
  *       bearer to it. The {@code delivery_token_*} columns hold a second one, the delivery
  *       loop's, only while the project's loop is enabled (epic qits-1440); the {@code
  *       session_token_*} columns a third, the desk's sessions' own (qits-1482), carried in no
  *       environment.
- *   <li><b>The spec</b> — {@link #specJson} is the spec last <em>sent</em> (the applied one) and
- *       {@link #specHash} its SHA-256 over canonical JSON; the runner labels the container with the
- *       hash and recreates it when an estate carries another. {@link #rollRequestedAt} marks a
+ *   <li><b>The spec</b> — {@link #specJson} is the spec last <em>sent</em> to qits-system for the
+ *       current lease (the applied one) and {@link #specHash} its SHA-256 over canonical JSON; a
+ *       roll replaces the lease's spec and the target recreates the container. {@link #rollRequestedAt} marks a
  *       settings change waiting to roll between turns (qits-1514).
- *   <li><b>The report</b> — {@code reported_*} is the runner's last inventory of the desk; {@link
- *       #failureDetail} why it is not usable, when it is not; {@link #sessionId} the desk's own
+ *   <li><b>The report</b> — {@code reported_*} is qits-system's last word on the lease (its state and
+ *       spec hash), {@link #leaseDetail} why a QUEUED lease waits; {@link #failureDetail} why the
+ *       desk is not usable, when it is not; {@link #sessionId} the desk's own
  *       session as its daemon last reported it.
  * </ul>
  *
@@ -58,8 +59,25 @@ public class FrontDesk extends PanacheEntityBase {
   @Column(name = "project_id")
   public String projectId;
 
-  @Column(name = "runner_id")
-  public UUID runnerId;
+  /** The DESK lease the desk runs under, or null while it has none (V61). */
+  @Column(name = "lease_id")
+  public UUID leaseId;
+
+  /** The target that lease was granted on, or null while it waits or has none. */
+  @Column(name = "target_id")
+  public UUID targetId;
+
+  /**
+   * The retired front-desk runner's container and volume this desk's work was adopted from ({@code
+   * qits-projects-desk-runner-desk-<projectId>-<oldRunnerId8>}), or null. Every lease names it in
+   * {@code adopt}, because the target mounts an adopted volume only when the lease says so.
+   */
+  @Column(name = "adopted_volume", columnDefinition = "text")
+  public String adoptedVolume;
+
+  /** Why a QUEUED lease waits, as qits-system last said it, or null. */
+  @Column(name = "lease_detail", columnDefinition = "text")
+  public String leaseDetail;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
@@ -155,9 +173,9 @@ public class FrontDesk extends PanacheEntityBase {
   @Column(name = "created_at", nullable = false)
   public Instant createdAt;
 
-  /** Whether a runner holds the desk. */
+  /** Whether the desk runs under a lease. */
   public boolean placed() {
-    return runnerId != null;
+    return leaseId != null;
   }
 
   /** Whether the desk should be running. */
