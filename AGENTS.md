@@ -597,8 +597,8 @@ merely its only occupant. Six things about it are rules:
   `…-reconcile-after`, PT5M) asks qits-deployments about every RELEASED request's tag still waiting
   under a DEPLOYMENT gate and records a `ROLLED_BACK` or failed newest deployment. A later
   `DeploymentActive` clears the record and finalizes as before. The record makes
-  `DeploymentRollbackGate` FAILED on every read, the list included, naming the remedy (rerun the
-  DEPLOY phase), and the DTO's `retryable` true for that RELEASED request. Nothing redeploys
+  `DeploymentRollbackGate` FAILED on every read, the list included, naming the remedy (`qits
+  release-request rerun --request <qualifiedId> --phase DEPLOY`), and the DTO's `retryable` true for that RELEASED request. Nothing redeploys
   automatically.
 - **`bus/EventWireReflection` is the native-image registration**, and `EventWireReflectionTest`
   guards its completeness against the registered listener beans. Read that class's javadoc before

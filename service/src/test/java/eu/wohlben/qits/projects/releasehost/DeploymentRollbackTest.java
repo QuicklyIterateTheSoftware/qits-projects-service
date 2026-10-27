@@ -137,7 +137,12 @@ public class DeploymentRollbackTest {
     String detail = listedRow.getString(GATE + ".detail");
     assertTrue(
         detail.startsWith(tag + " was rolled back: task: non-zero exit (1) — redeploy"), detail);
-    assertTrue(detail.contains("DEPLOY phase of " + qualifiedIdOf(request)), detail);
+    assertTrue(
+        detail.endsWith(
+            "redeploy with `qits release-request rerun --request "
+                + qualifiedIdOf(request)
+                + " --phase DEPLOY`"),
+        detail);
     assertTrue(listedRow.getBoolean("retryable"), "a redeploy is what finishes it");
     assertEquals("RELEASED", listedRow.getString("state"), "the tag is cut; it stays open");
     assertEquals(

@@ -97,7 +97,26 @@ class DeploymentRollbackGateTest {
             .detail()
             .startsWith("2026.1009.100000 was rolled back: task: non-zero exit — redeploy"),
         rolledBack.detail());
-    assertTrue(rolledBack.detail().contains("DEPLOY phase"), rolledBack.detail());
+    assertTrue(
+        rolledBack
+            .detail()
+            .endsWith(
+                " — redeploy with `qits release-request rerun --request repo-1-rr-1 --phase"
+                    + " DEPLOY`"),
+        rolledBack.detail());
+
+    GateSubject unknownRequest =
+        new GateSubject(
+            null,
+            DEPLOYS,
+            notRequired(),
+            noAutomations(),
+            List.of(),
+            failed("ROLLED_BACK"),
+            GateSubject.Deployment.NOT_ASKED);
+    assertEquals(
+        "2026.1009.100000 was rolled back — redeploy by re-running its DEPLOY phase",
+        gate.evaluate(unknownRequest).detail());
 
     GateEvaluation failed =
         gate.evaluate(with(DEPLOYS, failed("FAILED: no node"), GateSubject.Deployment.NOT_ASKED));

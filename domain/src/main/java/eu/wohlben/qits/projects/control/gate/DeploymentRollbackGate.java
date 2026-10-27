@@ -21,7 +21,7 @@ import java.util.List;
  * <p><b>A deployment that failed and never went live is FAILED on every read</b> (qits-1690). It is
  * recorded on the released tag's row ({@code deploymentFailedAt}) by a {@code DeploymentFailed} or
  * by the deployment reconcile, so a list read needs no call to say it; the detail names the remedy,
- * a rerun of the DEPLOY phase. A single read whose newest deployment is neither rolled back nor
+ * {@code qits release-request rerun --request <qualifiedId> --phase DEPLOY}. A single read whose newest deployment is neither rolled back nor
  * failed — a redeploy under way — is believed over the record.
  */
 @ApplicationScoped
@@ -154,9 +154,13 @@ public class DeploymentRollbackGate implements ReleaseGate {
             : subject.request().qualifiedId != null
                 ? subject.request().qualifiedId
                 : subject.request().id;
-    detail.append(" — redeploy it by re-running the DEPLOY phase");
     if (request != null) {
-      detail.append(" of ").append(request);
+      detail
+          .append(" — redeploy with `qits release-request rerun --request ")
+          .append(request)
+          .append(" --phase DEPLOY`");
+    } else {
+      detail.append(" — redeploy by re-running its DEPLOY phase");
     }
     return detail.toString();
   }
