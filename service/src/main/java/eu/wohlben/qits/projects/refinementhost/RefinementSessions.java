@@ -60,7 +60,7 @@ import org.jboss.logging.Logger;
  * <p>Only to a daemon whose {@code hello} said capability {@value
  * AgentDaemonRegistry#SESSIONS_CAPABILITY} or later: on that hello (after the credentials), on every
  * change — a room opened, ensured, stopped or discarded, its entity moved, blocked, unblocked or
- * retitled — and every {@code qits.projects.desk-runner.estate-interval} for every connected desk.
+ * retitled — and every {@code qits.projects.desk.sessions-resend-interval} for every connected desk.
  * Resending an unchanged list is a no-op on the daemon. A room's credential reaches the daemon
  * before its entry: the token is minted (and the credentials frame sent) before the open stamps
  * demand and pushes, and the hello sends credentials first.
@@ -372,7 +372,7 @@ public class RefinementSessions {
   }
 
   @Scheduled(
-      every = "{qits.projects.desk-runner.estate-interval}",
+      every = "{qits.projects.desk.sessions-resend-interval}",
       concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
   void onInterval() {
     if (LaunchMode.current() != LaunchMode.NORMAL) {

@@ -29,7 +29,7 @@ import org.jboss.logging.Logger;
  *       hook fired with unchanged settings composes the applied spec, which clears the request and
  *       restarts nothing.
  *   <li>{@link ProjectFrontDeskRemoval} — a project being deleted takes its desk with it: {@code
- *       remove} to the runner, the token revoked, the row dropped.
+ *       lease ended and its work volume purged, the tokens revoked, the row dropped.
  *   <li>{@link RefinementDemandChanged} (epic qits-770) — a refinement room's session became wanted
  *       or unwanted: the desk is created when it is now wanted ({@link RefinementDemand}), and its
  *       desired state is recomputed and pushed, so a refinement starts an {@code ON_DEMAND} desk.
@@ -56,7 +56,7 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
     if (lifecycle == FrontDeskLifecycle.ALWAYS_ON) {
       desks.ensureRow(projectId);
     }
-    desks.reconcileAndPush(projectId, now);
+    desks.reconcileAndApply(projectId, now);
     rollBetweenTurns(projectId, now);
   }
 
@@ -71,7 +71,7 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
     // The front-desk key follows the loop (qits-1482): sent again even when no token moved, since
     // the delivery token only stands under that key while the loop is on.
     sessionCredentials.push(projectId);
-    desks.reconcileAndPush(projectId, now);
+    desks.reconcileAndApply(projectId, now);
     rollBetweenTurns(projectId, now);
   }
 
@@ -107,7 +107,7 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
           && demand.wants(project, null, now)) {
         desks.ensureRow(projectId);
       }
-      desks.reconcileAndPush(projectId, now);
+      desks.reconcileAndApply(projectId, now);
     } catch (RuntimeException e) {
       LOG.warnf(
           "Could not bring the front desk of project %s in line with its refinement rooms — the"

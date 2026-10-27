@@ -7,6 +7,7 @@ import eu.wohlben.qits.githost.events.SCMDeleteTag;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
 import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
+import eu.wohlben.qits.projects.targethost.TargetLeaseChanged;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 /**
@@ -87,6 +88,12 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * qits-workspaces' {@code DeskWaitClosed} as the desk trigger source reads it: an absent line is a
  * native binary that never wakes a desk from its {@code qits wait}.
  *
+ * <p>{@link TargetLeaseChanged} (epic qits-1481, qits-1551) is the fourth bound consumption:
+ * qits-system's lease event, which {@code targethost/TargetLeaseEvents} receives bound to that local
+ * record (a {@code QitsEventListener}, so the bus's own mapper binds it). An absent line is a native
+ * binary whose desks never hear their lease granted, running or ended — the JVM suite green, and
+ * qits-workspaces' cutover proved the point the same way.
+ *
  * <p>{@link EntityTransitioned} is the sixth published one, and it is the first entry here that
  * needs <b>two</b> lines: its payload carries a list of {@link EntityTransitioned.Entity}, and a
  * nested record is as invisible to the builder as its enclosing one. A registration that named only
@@ -128,6 +135,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
       WaitClosedSource.DeskWaitClosedPayload.class,
+      TargetLeaseChanged.class,
       EventEnvelope.class,
       EventFrame.class
     },

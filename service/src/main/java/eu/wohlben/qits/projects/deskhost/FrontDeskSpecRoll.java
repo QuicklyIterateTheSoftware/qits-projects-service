@@ -5,8 +5,8 @@ import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
+import eu.wohlben.qits.projects.targethost.DeskLeases;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskState;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.scheduler.Scheduled;
@@ -14,12 +14,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -29,8 +26,9 @@ import org.jboss.logging.Logger;
  * for one project at once, when a front-desk settings change asks for it ({@link #roll(String,
  * Instant)}, qits-1514).
  *
- * <p>For each placed desk the current spec is composed; when its hash differs from the applied
- * {@code spec_hash} the new spec replaces it — and the runner is sent its estate, on which it
+ * <p>For each desk that runs under a lease the current spec is composed; when its hash differs
+ * from the applied {@code spec_hash} the new spec replaces the lease's ({@code PUT
+ * /system/api/leases/{id}/spec}, {@link DeskLeases#roll}; epic qits-1481), on which the target
  * recreates the container — under one of two rules:
  *
  * <ul>
@@ -42,8 +40,8 @@ import org.jboss.logging.Logger;
  *       otherwise never pick it up. <b>WAITING does not hold this up</b>, unlike the quiet rule
  *       below — see {@link #turnRunning(String)} for why.
  *   <li><b>Everything else</b> — a pin bump, the service's own configuration (image, agent
- *       configuration), a token rotation, a domain change — rolls <b>only when the desk is not
- *       reported RUNNING, or is quiet</b>: no evidence of use for {@code
+ *       configuration), a token rotation, a domain change — rolls <b>only when the desk's lease is
+ *       not RUNNING, or the desk is quiet</b>: no evidence of use for {@code
  *       qits.projects.agent-stale-quiet-window} (PT30M) and the rollup not busy (the rule {@code
  *       AgentStaleImageSweep} carried).
  * </ul>
@@ -67,7 +65,7 @@ public class FrontDeskSpecRoll {
 
   @Inject AgentDaemonRegistry daemons;
 
-  @Inject FrontDeskEstates estates;
+  @Inject DeskLeases leases;
 
   @ConfigProperty(name = "qits.projects.agent-stale-quiet-window", defaultValue = "PT30M")
   Duration quietWindow;
@@ -88,35 +86,26 @@ public class FrontDeskSpecRoll {
 
   /** One pass; answers how many desks took a new spec. */
   public int roll(Instant now) {
-    List<FrontDesk> placed =
-        QuarkusTransaction.requiringNew().call(() -> desks.list("runnerId is not null"));
-    Set<UUID> runners = new LinkedHashSet<>();
+    List<FrontDesk> placed = QuarkusTransaction.requiringNew().call(() -> desks.findWithLease());
     int rolled = 0;
     for (FrontDesk row : placed) {
       if (rollOne(row, now)) {
-        runners.add(row.runnerId);
         rolled++;
       }
     }
-    runners.forEach(estates::push);
     return rolled;
   }
 
   /**
    * The same decision for the desk of {@code projectId} alone, now — a front-desk settings change
-   * (qits-1514). Nothing for a project with no desk or an unplaced one; answers 1 when it rolled,
-   * after the runner has been sent its estate.
+   * (qits-1514). Nothing for a project with no desk or one with no lease; answers 1 when it rolled.
    */
   public int roll(String projectId, Instant now) {
     FrontDesk row = QuarkusTransaction.requiringNew().call(() -> desks.findById(projectId));
     if (row == null || !row.placed()) {
       return 0;
     }
-    if (!rollOne(row, now)) {
-      return 0;
-    }
-    estates.push(row.runnerId);
-    return 1;
+    return rollOne(row, now) ? 1 : 0;
   }
 
   /** Compose {@code row}'s spec and store it when the rules allow; true when it landed. */
@@ -141,7 +130,7 @@ public class FrontDeskSpecRoll {
       }
       return false;
     }
-    if (row.specJson != null && DeskState.RUNNING.name().equals(row.reportedState)) {
+    if (row.specJson != null && "RUNNING".equals(row.reportedState)) {
       boolean requested = row.rollRequestedAt != null;
       if (requested && turnRunning(row.projectId)) {
         LOG.warnf(
@@ -157,7 +146,7 @@ public class FrontDeskSpecRoll {
         return false;
       }
     }
-    if (frontDesks.storeSpec(row.projectId, row.runnerId, composed) == 1) {
+    if (leases.roll(row, composed)) {
       LOG.infof("Rolling the front desk of project %s onto spec %s", row.projectId, composed.hash());
       return true;
     }

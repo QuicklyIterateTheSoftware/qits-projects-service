@@ -71,23 +71,6 @@
             <artifactId>qits-workspace-daemon-protocol</artifactId>
         </dependency>
         <dependency>
-            <!-- The front-desk runner's wire contract (qits-767): DeskRunnerProtocol's identity roots
-                 and DeskRunnerBinary.VERSION, the runner pin. Versions and the *:* exclusions of the
-                 two qits-runner-javalib jars are the root pom's. -->
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-projects-desk-runner-protocol</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-runner-protocol</artifactId>
-        </dependency>
-        <dependency>
-            <!-- For RunnerIdentity and install.InstallScript, and nothing else: the install line and
-                 install.sh are rendered from the toolkit's own template, never a copy of it. -->
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-runner-toolkit</artifactId>
-        </dependency>
-        <dependency>
             <!-- The platform event bus. It arrives HERE and not in `domain` on purpose, twice over:
                  `bus/` is an inbound adapter like `api/` and `wiring/`, and this jar brings a THIRD
                  datasource with its own Flyway lineage — putting it on domain's classpath would make
@@ -330,15 +313,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <!-- The consumer pacts ConsumerPactVerificationTest verifies: each jar carries one
-                 `pacts/<consumer>_qits-projects-service.json`, and the test reads them off the
-                 classpath. The pinned jar IS the source of the pact; nothing is copied into this
-                 tree. -->
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-projects-desk-runner-daemon-pacts-qits-projects-service</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-artifacts-service-pacts-qits-projects-service</artifactId>
             <scope>test</scope>
@@ -514,6 +488,13 @@
             <!-- qits-projects-daemon's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-projects-daemon-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-system's recorded answers (epic qits-1481): contracts/consumer/SystemContract's
+                 consumer pact against the lease doors is built from them. Pinned in the root pom. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-system-golden-masters</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

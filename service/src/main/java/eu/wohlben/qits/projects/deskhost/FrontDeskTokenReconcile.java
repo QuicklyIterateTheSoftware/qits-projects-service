@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.deskhost;
 
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
+import eu.wohlben.qits.projects.persistence.LegacyPlacementRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.runtime.StartupEvent;
@@ -22,7 +23,12 @@ import org.jboss.logging.Logger;
  * qits.projects.agent-credentials.reconcile-interval}, NORMAL launch mode only, it lists this
  * service's tokens of kind {@code agent-container} at qits-idp and revokes every one no {@code
  * front_desk.token_id} names — a DELETE whose revoke could not reach the idp, a lost mint race, a
- * desk dropped with its project. A failed listing reaps nothing, and a token minted within {@link
+ * desk dropped with its project.
+ *
+ * <p><b>A desk token is a lease's</b> (epic qits-1481): one held by a desk with no live lease is
+ * unclaimed too, and is cleared off the desk and revoked — the token a stopped desk kept from
+ * before the cutover, or one whose lease's end was missed. A desk a retired runner still runs
+ * (a {@code legacy_placement} entry) keeps its token until its first lease adopts it. A failed listing reaps nothing, and a token minted within {@link
  * #MINT_GRACE} is left alone: it may be a mint whose row write has not landed yet.
  *
  * <p>Delivery tokens (kind {@code desk-delivery}, epic qits-1440) are reaped the same way against
@@ -43,6 +49,10 @@ public class FrontDeskTokenReconcile {
   @Inject FrontDeskTokens tokens;
 
   @Inject FrontDeskRepository desks;
+
+  @Inject LegacyPlacementRepository legacy;
+
+  @Inject FrontDesks frontDesks;
 
   void onStart(@Observes StartupEvent event) {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
@@ -78,9 +88,17 @@ public class FrontDeskTokenReconcile {
     Set<String> claimed = new HashSet<>();
     Set<String> claimedDelivery = new HashSet<>();
     Set<String> claimedSession = new HashSet<>();
+    java.util.Map<String, String> leaseless = new java.util.HashMap<>();
+    Set<String> legacyDesks = new HashSet<>();
+    QuarkusTransaction.requiringNew()
+        .run(() -> legacy.listAll().forEach(entry -> legacyDesks.add(entry.projectId)));
     for (FrontDesk row : QuarkusTransaction.requiringNew().call(() -> desks.listAll())) {
       if (row.tokenId != null) {
-        claimed.add(row.tokenId);
+        if (row.leaseId != null || legacyDesks.contains(row.projectId)) {
+          claimed.add(row.tokenId);
+        } else {
+          leaseless.put(row.tokenId, row.projectId);
+        }
       }
       if (row.deliveryTokenId != null) {
         claimedDelivery.add(row.deliveryTokenId);
@@ -100,6 +118,23 @@ public class FrontDeskTokenReconcile {
           || (session && claimedSession.contains(token.tokenId()))
           || (token.createdAt() != null && token.createdAt().isAfter(now.minus(MINT_GRACE)))) {
         continue;
+      }
+      if (desk && leaseless.containsKey(token.tokenId())) {
+        String projectId = leaseless.get(token.tokenId());
+        int cleared =
+            QuarkusTransaction.requiringNew()
+                .call(
+                    () ->
+                        desks.update(
+                            "tokenId = null, tokenValue = null, tokenSubject = null"
+                                + " where projectId = ?1 and tokenId = ?2 and leaseId is null",
+                            projectId,
+                            token.tokenId()));
+        if (cleared == 0) {
+          // A lease was asked for with it meanwhile: it is claimed now.
+          continue;
+        }
+        frontDesks.unbindSubject(projectId);
       }
       boolean revoked =
           desk
