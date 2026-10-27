@@ -320,6 +320,7 @@ public class AutoReleaseTest {
     assertEquals(1, gitHost.commits().size(), "one commit, and it is the last one before the tag");
     RecordingReleaseGitHost.Commit commit = gitHost.commits().get(0);
     assertEquals(BackingBranches.ref(id), commit.ref());
+    assertEquals(mergedSha, commit.parent(), "the bump sits on the gated fold (qits-1647)");
     assertEquals("release(" + version + "): the thing works now", commit.message());
     assertEquals(
         java.util.Set.of("pom.xml", "domain/pom.xml"),
@@ -596,8 +597,8 @@ public class AutoReleaseTest {
     assertEquals(gitHost.tags().get(1).name(), version, "the request wears the version that landed");
 
     // THE INVARIANT THE RE-STAMP EXISTS FOR: the tree the tag points at carries the version the tag
-    // says. That is why a collision restarts the WHOLE attempt — reading the tree the previous one
-    // left behind and bumping it again — rather than re-tagging the same commit under a new name,
+    // says. That is why a collision restarts the WHOLE attempt — reading the fold's tree again and
+    // bumping it to the new version — rather than re-tagging the same commit under a new name,
     // which would ship artifacts naming a version nothing built.
     String tagged = gitHost.tags().get(1).sha();
     assertEquals(
@@ -618,6 +619,9 @@ public class AutoReleaseTest {
         gitHost.commits().get(gitHost.commits().size() - 1).sha(),
         tagged,
         "whatever the count, what is tagged is the newest bump commit");
+    assertTrue(
+        gitHost.commits().stream().allMatch(commit -> mergedSha.equals(commit.parent())),
+        "every attempt's bump sits on the gated fold (qits-1647)");
   }
 
   @Test
@@ -658,13 +662,19 @@ public class AutoReleaseTest {
     assertEquals(List.of(), gitHost.deletedBranches(), "a release that did not happen consumed nothing");
     assertEquals(List.of(), releases.announced());
 
-    // The moment passes, and the sweep is what notices. The bump commit is re-made against the tip
-    // the failed attempt left, which is why the retry is a whole attempt rather than a resumed one.
+    // The moment passes, and the sweep is what notices. The retry is a whole attempt: a new bump
+    // on the gated fold replaces the failed attempt's bump on the backing branch (qits-1647).
     gitHost.failTagWith(null);
     releaseRequests.sweep();
     awaitState(id, "RELEASED");
     assertEquals(1, gitHost.createdTags().size());
     assertEquals(1, releases.announced().size());
+    assertTrue(
+        gitHost.commits().stream().allMatch(commit -> mergedSha.equals(commit.parent())),
+        "every bump sits on the gated fold: " + gitHost.commits());
+    assertEquals(
+        gitHost.commits().get(gitHost.commits().size() - 1).sha(),
+        gitHost.tags().get(gitHost.tags().size() - 1).sha());
   }
 
   @Test
@@ -860,7 +870,7 @@ public class AutoReleaseTest {
    */
   @Test
   public void aBranchJoiningWhileTheTagIsCutIsHandedOnToAnOpenRequest() throws InterruptedException {
-    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    RecordingReleaseGitHost.Hold held = gitHost.holdNextTag(repoId);
     String id = releaseARequest(reactor());
     assertTrue(held.awaitEntered(), "the worker reached the executor");
     String tagged = mergedSha;
@@ -894,6 +904,8 @@ public class AutoReleaseTest {
     var released = releasedChangeOf(id);
     assertEquals(List.of("main", "work"), released.branches());
     assertEquals(tagged, released.mergedSha(), "and the announcement names the tagged fold");
+    assertEquals(
+        tagged, gitHost.commits().get(0).parent(), "the tagged bump sits on the gated fold");
   }
 
   /**
@@ -905,7 +917,7 @@ public class AutoReleaseTest {
    */
   @Test
   public void aSourcePushedWhileTheTagIsCutIsNotDeletedButHandedOn() throws InterruptedException {
-    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    RecordingReleaseGitHost.Hold held = gitHost.holdNextTag(repoId);
     String id = releaseARequest(reactor());
     assertTrue(held.awaitEntered(), "the worker reached the executor");
     String tagged = mergedSha;
@@ -933,5 +945,77 @@ public class AutoReleaseTest {
 
     assertEquals(List.of(), workspaces.calls(), "the moved branch was not released");
     assertEquals(List.of("main"), releasedChangeOf(id).branches());
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Every ref write is pinned to the sha it was decided on (qits-1647)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * <b>A join that re-folds the backing branch before the bump commit stops the release</b>
+   * (qits-1647). The bump commit is pinned to the gated fold, and the branch must still be there.
+   * It is not, so nothing is committed or tagged, and the request re-gates on the new fold. Once that
+   * fold passes its gates, it releases with the bump on the new fold.
+   */
+  @Test
+  public void aJoinBeforeTheBumpCommitStopsTheReleaseAndTheRequestRegates()
+      throws InterruptedException {
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = releaseARequest(reactor());
+    assertTrue(held.awaitEntered(), "the worker reached the executor");
+    String gated = mergedSha;
+
+    assertEquals(id, create("late"), "the late branch joins the request");
+    String refold = mergedShaOf(id);
+    assertNotEquals(gated, refold);
+    assertEquals(refold, gitHost.tipOf(repoId, BackingBranches.ref(id)), "the branch moved");
+
+    held.release();
+    // The executor asks for the pinned commit, and the git host refuses it.
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (gitHost.addressed().stream().noneMatch(write -> write.write().equals("commit"))
+        && System.currentTimeMillis() < deadline) {
+      Thread.sleep(20);
+    }
+    Thread.sleep(200); // Let the worker settle what came back.
+
+    assertEquals(List.of(), gitHost.tags(), "nothing is tagged on a fold that was not gated");
+    assertEquals(List.of(), gitHost.commits(), "and no bump commit lands on the new fold");
+    assertEquals(List.of(), gitHost.deletedBranches());
+    assertEquals("PENDING", stateOf(id), "the request re-gates on the new fold");
+    assertEquals(refold, mergedShaOf(id));
+    assertEquals(List.of("late", "main", "work"), sourcesOf(id));
+
+    // The new fold passes its gates, and releases with the bump on that fold.
+    gitHost.tree(refold, reactor());
+    approve(id, refold);
+    greenVerdict(refold);
+    awaitState(id, "RELEASED");
+    assertEquals(1, gitHost.commits().size());
+    assertEquals(refold, gitHost.commits().get(0).parent(), "the bump sits on the re-gated fold");
+    assertEquals(gitHost.commits().get(0).sha(), gitHost.tags().get(0).sha());
+  }
+
+  /**
+   * <b>A push between the containment check and the delete keeps the branch</b> (qits-1647). The
+   * delete is pinned to the head that was checked; the push moved it, so the git host keeps it, and
+   * it is handed on to an open request rather than lost.
+   */
+  @Test
+  public void aPushBetweenTheCheckAndTheDeleteKeepsTheBranchAndHandsItOn() {
+    gitHost.pushBeforeDelete(repoId, "work", UUID.randomUUID().toString().replace("-", ""));
+    String id = releaseARequest(reactor());
+    awaitState(id, "RELEASED");
+    awaitDeletions(1);
+
+    assertEquals(
+        List.of(BackingBranches.of(id)),
+        gitHost.deletedBranches(),
+        "the pushed branch is not deleted");
+    assertEquals(List.of("main"), sourcesOf(id), "and it is no source of the release any more");
+    ReleaseRequest handedOn = awaitOpenRequestNaming("work", id);
+    assertNotEquals(id, handedOn.id);
+    assertEquals(List.of(), workspaces.calls(), "the pushed branch was not released");
+    assertEquals(mergedSha, gitHost.commits().get(0).parent());
   }
 }

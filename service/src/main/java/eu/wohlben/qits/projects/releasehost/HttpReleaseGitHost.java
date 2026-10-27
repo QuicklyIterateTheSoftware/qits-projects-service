@@ -165,6 +165,26 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
         });
   }
 
+  @Override
+  public Answer<BranchTip> tip(String repoId, String branch) {
+    return call(
+        builder -> builder.GET(),
+        "/branches/" + encodePath(branch),
+        repoId,
+        body -> {
+          JsonNode answer = MAPPER.readTree(body);
+          String sha = answer.path("sha").asText(null);
+          if (sha == null || sha.isBlank()) {
+            return Answer.failedRetryable(
+                "qits-githost answered 200 to a branch read with no sha: " + clip(body));
+          }
+          List<String> parents = new ArrayList<>();
+          answer.path("parents").forEach(node -> parents.add(node.asText()));
+          return Answer.of(
+              new BranchTip(sha, List.copyOf(parents), answer.path("message").asText(null)));
+        });
+  }
+
   /**
    * The pinned commit at one path, read off the git plane's <b>name-addressed</b> directory listing
    * — {@code GET /git/{projectId}/{repoName}/tree/{rev}[/<dir>]}, whose entries carry {@code sha}
@@ -267,6 +287,23 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
         });
   }
 
+  @Override
+  public Answer<Containment> containment(String repoId, String commit, String in) {
+    return call(
+        builder -> builder.GET(),
+        "/contains?commit=" + encode(commit) + "&in=" + encode(in),
+        repoId,
+        body -> {
+          JsonNode answer = MAPPER.readTree(body);
+          String resolved = answer.path("commit").asText(null);
+          if (!answer.hasNonNull("contains") || resolved == null || resolved.isBlank()) {
+            return Answer.failedRetryable(
+                "qits-githost answered 200 to a containment read with no answer: " + clip(body));
+          }
+          return Answer.of(new Containment(resolved, answer.path("contains").asBoolean(false)));
+        });
+  }
+
   // -----------------------------------------------------------------------------------------------
   // Writes
   // -----------------------------------------------------------------------------------------------
@@ -277,6 +314,8 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
       String projectId,
       String repoName,
       String ref,
+      String parent,
+      String expectedOld,
       String message,
       Map<String, String> files,
       Map<String, String> gitlinks) {
@@ -289,6 +328,12 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
     }
     body.put("author", AUTHOR);
     putNames(body, projectId, repoName);
+    if (present(parent)) {
+      body.put("parent", parent);
+    }
+    if (present(expectedOld)) {
+      body.put("expectedOld", expectedOld);
+    }
     return call(
         builder -> builder.POST(json(body)),
         "/commits",
@@ -355,17 +400,20 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public void deleteBranch(String repoId, String projectId, String repoName, String name) {
+  public boolean deleteBranch(
+      String repoId, String projectId, String repoName, String name, String expectedSha) {
     String address =
-        address(repoId, "/branches/" + encodePath(name) + namesQuery(projectId, repoName));
+        address(
+            repoId,
+            "/branches/" + encodePath(name) + namesQuery(projectId, repoName, expectedSha));
     if (address == null) {
       LOG.warnf("Cannot delete %s of %s: %s", name, repoId, unconfigured());
-      return;
+      return true;
     }
     Optional<String> token = bearer.token();
     if (token.isEmpty()) {
       LOG.warnf("Cannot delete %s of %s: %s", name, repoId, noBearer());
-      return;
+      return true;
     }
     try {
       HttpResponse<String> response =
@@ -382,12 +430,17 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
             "qits-githost answered %d deleting %s of %s: %s",
             response.statusCode(), name, repoId, clip(response.body()));
       }
+      // A 409 ref-moved on a pinned delete: the branch got a push after it was checked, and stays.
+      return !(expectedSha != null
+          && response.statusCode() == 409
+          && retryable(response.statusCode(), response.body()));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       LOG.warnf("Interrupted deleting %s of %s", name, repoId);
     } catch (Exception e) {
       LOG.warnf("Could not delete %s of %s: %s", name, repoId, e.toString());
     }
+    return true;
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -545,8 +598,11 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   }
 
   /** The same pair as the delete's query string — it has no body — or nothing at all. */
-  private static String namesQuery(String projectId, String repoName) {
+  private static String namesQuery(String projectId, String repoName, String expectedSha) {
     List<String> params = new ArrayList<>();
+    if (present(expectedSha)) {
+      params.add("expectedSha=" + encode(expectedSha));
+    }
     if (present(projectId)) {
       params.add("projectId=" + encode(projectId));
     }

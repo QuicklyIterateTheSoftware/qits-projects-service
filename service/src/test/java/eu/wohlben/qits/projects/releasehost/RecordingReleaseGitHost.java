@@ -38,7 +38,8 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
       String message,
       Map<String, String> files,
       Map<String, String> gitlinks,
-      String sha) {}
+      String sha,
+      String parent) {}
 
   /** One tag as it was asked for, and what the host said. */
   public record Tag(String name, String sha, String message, TagResult result) {}
@@ -149,6 +150,52 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   private final AtomicReference<Hold> hold = new AtomicReference<>();
+
+  /** A hold at the next tag, after the bump commit landed (qits-1647). */
+  private final AtomicReference<Hold> tagHold = new AtomicReference<>();
+
+  /**
+   * Where each branch ref points, as the folds and commits in this fake left it (qits-1647):
+   * {@code repoId@refs/heads/<branch>} → sha. A ref with no entry is not checked.
+   */
+  private final Map<String, String> branchTips = Collections.synchronizedMap(new LinkedHashMap<>());
+
+  /**
+   * A source's head when a test pushed it (qits-1647): {@code repoId@refs/heads/<branch>} → sha.
+   * Without an entry the head resolves to the ref name itself, which the folds' containment edges
+   * are keyed by.
+   */
+  private final Map<String, String> pushed = Collections.synchronizedMap(new LinkedHashMap<>());
+
+  /** A push that lands just before the next delete of that branch (qits-1647). */
+  private final Map<String, String> pushBeforeDelete =
+      Collections.synchronizedMap(new LinkedHashMap<>());
+
+  private static String refOf(String branch) {
+    return branch.startsWith("refs/") ? branch : "refs/heads/" + branch;
+  }
+
+  /** A fold or a commit moved {@code branch} to {@code sha}. */
+  public void branchAt(String repoId, String branch, String sha) {
+    branchTips.put(repoId + "@" + refOf(branch), sha);
+  }
+
+  /** Where this fake says {@code branch} points, or null when nothing moved it. */
+  public String tipOf(String repoId, String branch) {
+    return branchTips.get(repoId + "@" + refOf(branch));
+  }
+
+  /** A push to {@code branch} lands just before the release deletes it. */
+  public void pushBeforeDelete(String repoId, String branch, String sha) {
+    pushBeforeDelete.put(repoId + "@" + refOf(branch), sha);
+  }
+
+  /** Hold the next tag until the test lets it go; the bump commit has landed by then. */
+  public Hold holdNextTag(String repoId) {
+    Hold armed = new Hold(repoId, new CountDownLatch(1), new CountDownLatch(1));
+    tagHold.set(armed);
+    return armed;
+  }
 
   // ---------------------------------------------------------------------------------------------
   // Staging
@@ -401,6 +448,13 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     if (armed != null) {
       armed.release();
     }
+    Hold armedTag = tagHold.getAndSet(null);
+    if (armedTag != null) {
+      armedTag.release();
+    }
+    branchTips.clear();
+    pushed.clear();
+    pushBeforeDelete.clear();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -509,6 +563,8 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
       String projectId,
       String repoName,
       String ref,
+      String explicitParent,
+      String expectedOld,
       String message,
       Map<String, String> files,
       Map<String, String> gitlinks) {
@@ -517,10 +573,16 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     if (failure != null) {
       return failure;
     }
-    // The tip a commit lands on is the newest tree this fake holds, which is what the executor's
-    // own sequencing produces: it reads a tree, bumps it and commits onto the branch that tree is.
-    // A gitlink is not readable content, so it joins the recorded commit and never the tree.
-    String parent = newestSha();
+    // The git host's compare-and-swap (qits-1647): a branch a fold moved is refused.
+    String tip = tipOf(repoId, ref);
+    if (expectedOld != null && tip != null && !tip.equals(expectedOld)) {
+      return Answer.failedRetryable(
+          "qits-githost answered 409: {\"error\":\"ref-moved\",\"detail\":\"" + ref + "\"}");
+    }
+    // Without an explicit parent, the newest tree this fake holds, which is what the executor's
+    // own sequencing produced before qits-1647. A gitlink is not readable content, so it joins the
+    // recorded commit and never the tree.
+    String parent = explicitParent != null ? explicitParent : newestSha();
     Map<String, String> tree = new LinkedHashMap<>(trees.getOrDefault(parent, Map.of()));
     tree.putAll(files);
     String sha = "bumped-" + commitCounter.incrementAndGet();
@@ -531,7 +593,9 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
             message,
             Map.copyOf(files),
             gitlinks == null ? Map.of() : Map.copyOf(gitlinks),
-            sha));
+            sha,
+            parent));
+    branchAt(repoId, ref, sha);
     return Answer.of(sha);
   }
 
@@ -545,6 +609,22 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
    * The pin at a path, or an ok answer carrying null where nothing was staged — the port's own
    * "nothing is pinned here", which is what a declared-but-unpinned entry looks like.
    */
+  @Override
+  public Answer<BranchTip> tip(String repoId, String branch) {
+    String sha = tipOf(repoId, branch);
+    if (sha == null) {
+      return Answer.failed("no-such-branch: " + branch + " of " + repoId);
+    }
+    synchronized (commits) {
+      for (Commit commit : commits) {
+        if (commit.sha().equals(sha)) {
+          return Answer.of(new BranchTip(sha, List.of(commit.parent()), commit.message()));
+        }
+      }
+    }
+    return Answer.of(new BranchTip(sha, List.of(), null));
+  }
+
   @Override
   public Answer<String> gitlinkAt(String projectId, String repoName, String rev, String path) {
     Answer<String> staged = pins.get(rev + "|" + path);
@@ -614,8 +694,26 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
+  public Answer<Containment> containment(String repoId, String commit, String in) {
+    String resolved = pushed.getOrDefault(repoId + "@" + commit, commit);
+    Answer<Boolean> contained = contains(repoId, resolved, in);
+    return contained.ok()
+        ? Answer.of(new Containment(resolved, Boolean.TRUE.equals(contained.value())))
+        : new Answer<>(null, contained.detail(), contained.retryable());
+  }
+
+  @Override
   public TagAnswer tag(
       String repoId, String projectId, String repoName, String name, String sha, String message) {
+    Hold armedTag = tagHold.get();
+    if (armedTag != null && armedTag.repoId().equals(repoId) && tagHold.compareAndSet(armedTag, null)) {
+      armedTag.entered().countDown();
+      try {
+        armedTag.released().await(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     addressed.add(new Addressed("tag", projectId, repoName));
     TagAnswer failure = tagFailure.get();
     if (failure != null) {
@@ -633,13 +731,23 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public void deleteBranch(String repoId, String projectId, String repoName, String name) {
+  public boolean deleteBranch(
+      String repoId, String projectId, String repoName, String name, String expectedSha) {
     addressed.add(new Addressed("delete", projectId, repoName));
+    String key = repoId + "@" + refOf(name);
+    String late = pushBeforeDelete.remove(key);
+    if (late != null) {
+      pushed.put(key, late);
+    }
+    if (expectedSha != null && !pushed.getOrDefault(key, refOf(name)).equals(expectedSha)) {
+      return false; // The git host's 409 ref-moved: the branch got a push after the check.
+    }
     deletedBranches.add(name);
     java.util.function.BiConsumer<String, String> hook = onDelete.get();
     if (hook != null) {
       hook.accept(repoId, name);
     }
+    return true;
   }
 
   private String newestSha() {

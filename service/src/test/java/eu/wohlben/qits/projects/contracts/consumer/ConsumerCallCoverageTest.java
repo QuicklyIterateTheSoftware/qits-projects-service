@@ -73,7 +73,11 @@ class ConsumerCallCoverageTest {
   static final Map<String, String> EXCLUDED =
       Map.of(
           "eu.wohlben.qits.projects.releasehost.HttpReleaseGitHost#head",
-          "ReleaseGitHost.head has no caller in the shipped code");
+          "ReleaseGitHost.head has no caller in the shipped code",
+          "eu.wohlben.qits.projects.releasehost.HttpReleaseGitHost#tip",
+          "qits-githost names no operation for GET …/branches/{name}, so it records no golden"
+              + " master a row could stand on; the read only runs when a release retries over its"
+              + " own earlier bump commit (qits-1647)");
 
   /**
    * Rows whose call stands in for a client the test cannot run itself: row description to the

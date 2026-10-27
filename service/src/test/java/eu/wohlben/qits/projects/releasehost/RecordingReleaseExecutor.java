@@ -136,9 +136,8 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
    * and a passed-through one deletes exactly what the shipped executor would.
    */
   @Override
-  public void deleteConsumedBranches(Release release) {
-    if (delegate.get()) {
-      real.deleteConsumedBranches(release);
-    }
+  public java.util.Set<String> deleteConsumedBranches(
+      Release release, java.util.Map<String, String> heads) {
+    return delegate.get() ? real.deleteConsumedBranches(release, heads) : java.util.Set.of();
   }
 }

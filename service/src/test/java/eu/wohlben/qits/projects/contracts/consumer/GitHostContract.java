@@ -260,6 +260,24 @@ final class GitHostContract {
               },
               "GET .../contains?commit={commit}&in={in} answering 200 with contains"),
           row(
+              "containsCommit",
+              "a repository whose main contains a commit",
+              "GET",
+              "/githost/api/repositories/{repositoryId}/contains",
+              Map.of("commit", "{commit}", "in", "{in}"),
+              null,
+              List.of("$.contains", "$.commit"),
+              200,
+              Trigger.schedule("ReleaseRequests.execute"),
+              (base, p) -> {
+                ReleaseGitHost.Answer<ReleaseGitHost.Containment> answer =
+                    releaseHost(base)
+                        .containment(p.get("repositoryId"), p.get("commit"), p.get("in"));
+                assertTrue(answer.ok(), answer.detail());
+              },
+              "GET .../contains?commit={commit}&in={in} answering 200 with contains and the"
+                  + " resolved commit"),
+          row(
               "commitFiles",
               "a repository with files on main",
               "POST",
@@ -269,7 +287,8 @@ final class GitHostContract {
                   + "\"message\":\"release(2026.101.120000): stamp the version\","
                   + "\"files\":{\"pom.xml\":\"<project>\\n  <version>2026.101.120000</version>\\n</project>\\n\"},"
                   + "\"author\":{\"name\":\"qits-projects\",\"email\":\"qits-projects@qits.internal\"},"
-                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\"}",
+                  + "\"projectId\":\"{projectId}\",\"repoName\":\"{repoName}\","
+                  + "\"parent\":\"{sha}\",\"expectedOld\":\"{sha}\"}",
               List.of("$.sha"),
               200,
               Trigger.schedule("GitHostReleaseExecutor.release"),
@@ -281,6 +300,8 @@ final class GitHostContract {
                             p.get("projectId"),
                             p.get("repoName"),
                             "refs/heads/main",
+                            p.get("sha"),
+                            p.get("sha"),
                             "release(2026.101.120000): stamp the version",
                             Map.of("pom.xml", "<project>\n  <version>2026.101.120000</version>\n</project>\n"),
                             Map.of());

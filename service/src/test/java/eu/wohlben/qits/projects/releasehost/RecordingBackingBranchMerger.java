@@ -152,6 +152,7 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
                     : Outcome.merged(freshSha(), List.copyOf(sources));
     if (outcome.folded() && outcome.sha() != null) {
       sources.forEach(source -> gitHost.folded(repoId, source, outcome.sha()));
+      gitHost.branchAt(repoId, target, outcome.sha());
     }
     return outcome;
   }

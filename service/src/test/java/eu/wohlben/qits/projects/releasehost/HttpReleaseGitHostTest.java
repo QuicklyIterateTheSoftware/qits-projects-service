@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpReleaseGitHost}'s three writes against a local server standing in for qits-githost —
@@ -96,6 +97,8 @@ class HttpReleaseGitHostTest {
             "project-1",
             "the-repo",
             "refs/heads/release/r1",
+            null,
+            null,
             "release(1)",
             Map.of("pom.xml", "<project/>"),
             Map.of());
@@ -104,6 +107,47 @@ class HttpReleaseGitHostTest {
     assertEquals("/githost/api/repositories/repo-1/commits", received.get(0).path());
     assertEquals("project-1", body.get("projectId").asText());
     assertEquals("the-repo", body.get("repoName").asText());
+    assertFalse(body.has("parent"), body.toString());
+    assertFalse(body.has("expectedOld"), body.toString());
+  }
+
+  /** A pinned commit names its parent and the sha the branch must be at (qits-1647). */
+  @Test
+  void aPinnedCommitCarriesItsParentAndExpectedOld() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .commit(
+            "repo-1",
+            "project-1",
+            "the-repo",
+            "refs/heads/release/r1",
+            "fold-sha",
+            "tip-sha",
+            "release(1)",
+            Map.of("pom.xml", "<project/>"),
+            Map.of());
+
+    JsonNode body = MAPPER.readTree(received.get(0).body());
+    assertEquals("fold-sha", body.get("parent").asText());
+    assertEquals("tip-sha", body.get("expectedOld").asText());
+  }
+
+  /** A pinned delete sends expectedSha, and a 409 ref-moved says the branch was kept (qits-1647). */
+  @Test
+  void aPinnedDeleteSendsTheExpectedShaAndReadsAMovedBranchAsKept() throws Exception {
+    String base = startServer();
+    status.set(409);
+    responseBody.set("{\"error\":\"ref-moved\",\"detail\":\"refs/heads/work\"}");
+
+    boolean deleted = against(base).deleteBranch("repo-1", "project-1", "the-repo", "work", "abc");
+
+    assertFalse(deleted, "a moved branch is kept");
+    assertEquals("expectedSha=abc&projectId=project-1&repoName=the-repo", received.get(0).query());
+
+    status.set(204);
+    responseBody.set("");
+    assertTrue(against(base).deleteBranch("repo-1", "project-1", "the-repo", "work", "abc"));
   }
 
   @Test
@@ -138,7 +182,8 @@ class HttpReleaseGitHostTest {
   void aRepositoryWithNoNameSendsNeitherHalf() throws Exception {
     String base = startServer();
 
-    against(base).commit("repo-1", null, null, "refs/heads/release/r1", "m", Map.of(), Map.of());
+    against(base)
+        .commit("repo-1", null, null, "refs/heads/release/r1", null, null, "m", Map.of(), Map.of());
     status.set(204);
     responseBody.set("");
     against(base).deleteBranch("repo-1", null, null, "work");

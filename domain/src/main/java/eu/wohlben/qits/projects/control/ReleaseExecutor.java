@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.control;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The arm that performs a release once its gates have passed.
@@ -101,9 +103,12 @@ public interface ReleaseExecutor {
 
   /**
    * Delete the branches a landed release consumed — its named sources except {@link
-   * Release#defaultBranch}, and its backing branch. Best effort: it answers nothing and never
-   * throws, because the release already happened and a branch that could not be deleted is a log
-   * line, not a failure.
+   * Release#defaultBranch}, and its backing branch. Best effort: it never throws, because the release
+   * already happened and a branch that could not be deleted is a log line, not a failure.
+   *
+   * <p><b>Pinned to the head that was checked</b> (qits-1647). A source named in {@code heads} is
+   * deleted only while it still points at that sha. One that got a push after the check is kept and
+   * returned, so the caller hands it on rather than losing the push.
    *
    * <p><b>Called only once the request is RELEASED, and that ordering is the point.</b> The git host
    * announces every deletion as {@code SCMDeleteBranch}, and the head listener drops a deleted
@@ -114,7 +119,7 @@ public interface ReleaseExecutor {
    * by the same state rule that keeps a push from re-arming a cut tag, so no claim or marker is
    * needed to tell the two apart.
    */
-  void deleteConsumedBranches(Release release);
+  Set<String> deleteConsumedBranches(Release release, Map<String, String> heads);
 
   /**
    * What happened: a version when it released, otherwise why it did not — and whether retrying the

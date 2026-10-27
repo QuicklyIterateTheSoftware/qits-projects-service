@@ -381,10 +381,12 @@
               "email": "qits-projects@qits.internal",
               "name": "qits-projects"
             },
+            "expectedOld": "0000000000000000000000000000000000000001",
             "files": {
               "pom.xml": "<project>\n  <version>2026.101.120000</version>\n</project>\n"
             },
             "message": "release(2026.101.120000): stamp the version",
+            "parent": "0000000000000000000000000000000000000001",
             "projectId": "00000000-0000-4000-8000-000000000001",
             "ref": "refs/heads/main",
             "repoName": "contract-service"
@@ -394,6 +396,16 @@
         },
         "generators": {
           "body": {
+            "$.expectedOld": {
+              "dataType": "STRING",
+              "expression": "${sha}",
+              "type": "ProviderState"
+            },
+            "$.parent": {
+              "dataType": "STRING",
+              "expression": "${sha}",
+              "type": "ProviderState"
+            },
             "$.projectId": {
               "dataType": "STRING",
               "expression": "${projectId}",
@@ -418,6 +430,22 @@
         },
         "matchingRules": {
           "body": {
+            "$.expectedOld": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parent": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.projectId": {
               "combine": "AND",
               "matchers": [
@@ -837,6 +865,115 @@
       },
       "response": {
         "status": 201
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-githost-service",
+            "operationId": "containsCommit"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "ReleaseRequests.execute"
+          }
+        }
+      },
+      "description": "ReleaseRequests.execute: containsCommit",
+      "key": "94a3af40",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository whose main contains a commit",
+          "params": {
+            "commit": "0000000000000000000000000000000000000001",
+            "in": "main",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "repoName": "contract-service",
+            "repositoryId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/githost/api/repositories/${repositoryId}/contains",
+            "type": "ProviderState"
+          },
+          "query": {
+            "commit": {
+              "dataType": "RAW",
+              "expression": "${commit}",
+              "type": "ProviderState"
+            },
+            "in": {
+              "dataType": "RAW",
+              "expression": "${in}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/githost/api/repositories/00000000-0000-4000-8000-000000000002/contains",
+        "query": {
+          "commit": [
+            "0000000000000000000000000000000000000001"
+          ],
+          "in": [
+            "main"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "commit": "0000000000000000000000000000000000000001",
+            "contains": true
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.commit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.contains": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
       },
       "type": "Synchronous/HTTP"
     },
