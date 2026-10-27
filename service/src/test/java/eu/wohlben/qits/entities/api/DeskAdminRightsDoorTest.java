@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.api;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -168,6 +169,122 @@ class DeskAdminRightsDoorTest {
         .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400);
+  }
+
+  /**
+   * A variant of its own brief's key — different case, padded with whitespace — must not slip past
+   * the guard either (qits-1621 follow-up): the comparison is trimmed and case-insensitive, matching
+   * how {@code AgentSurfaceConfigurationService} itself keys surfaces on the trimmed string.
+   */
+  @Test
+  void theDeskAdminNeverEditsItsOwnBriefByADifferentlyCasedKey() {
+    String projectId = project("Desk admin brief case variant");
+    Map<String, Object> body = Map.of("harness", "no-such-harness", "systemPrompt", "Anything.");
+
+    deskAdmin(projectId)
+        .body(body)
+        .when()
+        .put("/projects/api/agent-surfaces/PROJECT.DELIVERY")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("own brief"));
+    deskAdmin(projectId)
+        .body(body)
+        .when()
+        .put("/projects/api/agent-surfaces/Project.Delivery")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("own brief"));
+    deskAdmin(projectId)
+        .body(body)
+        .when()
+        .put("/projects/api/agent-surfaces/{surface}", " project.delivery ")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("own brief"));
+  }
+
+  /**
+   * The agent-container doors and the front desk's prompt/last-answer are bound to the desk-admin's
+   * own project (qits-1621 follow-up): another project's container is a 403, its own is not refused
+   * by the binding.
+   */
+  @Test
+  void theDeskAdminManagesOnlyItsOwnProjectsContainer() {
+    String projectId = project("Desk admin container");
+    String otherId = project("Desk admin container elsewhere");
+
+    deskAdmin(otherId)
+        .when()
+        .post("/projects/api/projects/" + projectId + "/agent-container/ensure")
+        .then()
+        .statusCode(403);
+    deskAdmin(otherId)
+        .when()
+        .post("/projects/api/projects/" + projectId + "/agent-container/stop")
+        .then()
+        .statusCode(403);
+    deskAdmin(otherId)
+        .when()
+        .delete("/projects/api/projects/" + projectId + "/agent-container")
+        .then()
+        .statusCode(403);
+    deskAdmin(otherId)
+        .body(Map.of("text", "hello"))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/front-desk/prompt")
+        .then()
+        .statusCode(403);
+    deskAdmin(otherId)
+        .when()
+        .get("/projects/api/projects/" + projectId + "/front-desk/last-answer")
+        .then()
+        .statusCode(403);
+
+    // The binding never refuses the desk-admin acting on its own project: whatever each door
+    // answers on an ordinary run (success, or an unreachable daemon/runner), it must not be the
+    // binding's 403.
+    assertNotEquals(
+        403,
+        deskAdmin(projectId)
+            .when()
+            .post("/projects/api/projects/" + projectId + "/agent-container/ensure")
+            .then()
+            .extract()
+            .statusCode());
+    assertNotEquals(
+        403,
+        deskAdmin(projectId)
+            .when()
+            .post("/projects/api/projects/" + projectId + "/agent-container/stop")
+            .then()
+            .extract()
+            .statusCode());
+    assertNotEquals(
+        403,
+        deskAdmin(projectId)
+            .body(Map.of("text", "hello"))
+            .when()
+            .post("/projects/api/projects/" + projectId + "/front-desk/prompt")
+            .then()
+            .extract()
+            .statusCode());
+    assertNotEquals(
+        403,
+        deskAdmin(projectId)
+            .when()
+            .get("/projects/api/projects/" + projectId + "/front-desk/last-answer")
+            .then()
+            .extract()
+            .statusCode());
+    assertNotEquals(
+        403,
+        deskAdmin(projectId)
+            .when()
+            .delete("/projects/api/projects/" + projectId + "/agent-container")
+            .then()
+            .extract()
+            .statusCode());
   }
 
   /** Its runners, the MCP catalogue and a project's create or delete stay shut to it. */
