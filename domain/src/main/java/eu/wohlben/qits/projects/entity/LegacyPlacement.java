@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import java.util.UUID;
 
 /**
- * A front desk a retired front-desk runner held when the runner tables were dropped ({@code V61},
+ * A front desk a retired front-desk runner held when the runner tables were dropped ({@code V62},
  * epic qits-1481): which runner, and what was known about its docker engine. The desk's first lease
  * adopts the runner's container and volume ({@code
  * qits-projects-desk-runner-desk-<projectId>-<oldRunnerId8>}) and is pinned to the target on the

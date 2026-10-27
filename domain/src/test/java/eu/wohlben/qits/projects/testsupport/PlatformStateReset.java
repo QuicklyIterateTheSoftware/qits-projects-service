@@ -70,7 +70,7 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    *
    * <p>front_desk (qits-767) references project, so it is truncated with it, and so are the desk
    * trigger windows and their lines (V57, epic qits-1604) and the retired runners' legacy
-   * placements (V61, epic qits-1481). (agent_credential was in the list until
+   * placements (V62, epic qits-1481). (agent_credential was in the list until
    * V38 dropped the table with the direct agent path.)
    */
   private static void truncate(AgroalDataSource dataSource) {
