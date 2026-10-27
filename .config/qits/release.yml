@@ -29,5 +29,6 @@ contracts:
     qits-idp-service: { packages: [maven] }
     qits-maintenance-service: { packages: [maven] }
     qits-projects-daemon: { packages: [maven] }
+    qits-system-service: { packages: [maven] }
     qits-workspaces-service: { packages: [maven] }
 userflows: qits-projects
