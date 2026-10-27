@@ -69,7 +69,8 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    * worker is finishing, not stuck. Anything else fails on the first attempt, as it should.
    *
    * <p>front_desk (qits-767) references project, so it is truncated with it, and so are the desk
-   * trigger windows and their lines (V57, epic qits-1604). (agent_credential was in the list until
+   * trigger windows and their lines (V57, epic qits-1604) and the retired runners' legacy
+   * placements (V61, epic qits-1481). (agent_credential was in the list until
    * V38 dropped the table with the direct agent path.)
    */
   private static void truncate(AgroalDataSource dataSource) {
@@ -77,7 +78,8 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
       try (Connection connection = dataSource.getConnection();
           Statement sql = connection.createStatement()) {
         sql.execute(
-            "truncate table desk_trigger_event, desk_trigger_window, front_desk, repository_name,"
+            "truncate table desk_trigger_event, desk_trigger_window, legacy_placement, front_desk,"
+                + " repository_name,"
                 + " repository, project");
         return;
       } catch (SQLException e) {
