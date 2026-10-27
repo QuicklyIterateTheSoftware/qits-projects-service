@@ -160,7 +160,7 @@ public class FrontDeskSpecs {
   /** A suite composing for a dotted domain without restarting the application; null restores. */
   private volatile String domainOverride;
 
-  void domainOverride(String domain) {
+  public void domainOverride(String domain) {
     this.domainOverride = domain;
   }
 

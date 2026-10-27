@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskSpec;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,7 +78,7 @@ class FrontDeskSpecsTest {
   @Test
   void theSpecIsPinnedWhole() {
     FrontDeskSpecs.Composed composed = compose("Example.TEST.", FrontDeskLifecycle.ALWAYS_ON);
-    DeskSpec spec = composed.spec();
+    FrontDeskSpecs.DeskSpec spec = composed.spec();
 
     assertEquals("registry.qits.example.test/qits/project-agent:2026.1001.1", spec.image());
     assertEquals("1000", spec.user());
@@ -112,7 +111,6 @@ class FrontDeskSpecsTest {
     expected.put("QITS_GIT_AUTH_HOST", "githost.qits.example.test");
     expected.put("QITS_PLATFORM_MCP_URL", "https://mcp.qits.example.test/mcp");
     expected.putAll(identity());
-    expected.put("CLAUDE_CONFIG_DIR", "/claude-home/.claude");
     expected.put("KIMI_CODE_HOME", "/claude-home/.kimi-code");
     expected.put("MAVEN_OPTS", "-Dmaven.repo.local=/caches/m2");
     expected.put("npm_config_store_dir", "/caches/pnpm/store");
@@ -121,14 +119,19 @@ class FrontDeskSpecsTest {
 
     assertEquals(FrontDeskSpecs.canonical(spec), composed.json());
     assertEquals(FrontDeskSpecs.sha256(composed.json()), composed.hash());
-    assertTrue(composed.json().startsWith("{\"cpus\":null,\"env\":{\"CLAUDE_CONFIG_DIR\""));
+    assertTrue(composed.json().startsWith("{\"cpus\":null,\"env\":{\"GIT_"));
+    // The DESK slot policy owns these and FAILS a lease spec naming one (epic qits-1481): the
+    // policy sets CLAUDE_CONFIG_DIR to the same /claude-home/.claude.
+    for (String owned : FrontDeskSpecs.POLICY_OWNED_ENV) {
+      assertFalse(spec.env().containsKey(owned), owned);
+    }
   }
 
   /** The forbidden-value belts, over every name and every value. */
   @Test
   void anEdgeOnlyDeskCarriesNothingInternal() {
     for (FrontDeskLifecycle lifecycle : FrontDeskLifecycle.values()) {
-      DeskSpec spec = compose("example.test", lifecycle).spec();
+      FrontDeskSpecs.DeskSpec spec = compose("example.test", lifecycle).spec();
       assertFalse(spec.image().contains(".localhost"), spec.image());
       spec.env()
           .forEach(
@@ -225,7 +228,7 @@ class FrontDeskSpecsTest {
             base.memory(), base.pidsLimit(), base.cpus(), base.oomScoreAdj(),
             base.daemonApiToken(), base.daemonApiPort(), base.daemonHooksPort(),
             base.agentConfigurationPath());
-    DeskSpec spec =
+    FrontDeskSpecs.DeskSpec spec =
         FrontDeskSpecs.compose(zoned, project(FrontDeskLifecycle.ON_DEMAND), row(), identity(), DOCUMENT)
             .spec();
     assertEquals("Europe/Berlin", spec.env().get("TZ"));
@@ -257,7 +260,7 @@ class FrontDeskSpecsTest {
   @Test
   void theStoredSpecReadsBack() {
     FrontDeskSpecs.Composed composed = compose("example.test", FrontDeskLifecycle.ON_DEMAND);
-    DeskSpec back = FrontDeskSpecs.parse(composed.json());
+    FrontDeskSpecs.DeskSpec back = FrontDeskSpecs.parse(composed.json());
     assertEquals(composed.spec().env(), back.env());
     assertEquals(composed.json(), FrontDeskSpecs.canonical(back));
   }

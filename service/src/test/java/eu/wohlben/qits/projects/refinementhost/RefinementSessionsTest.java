@@ -478,7 +478,7 @@ class RefinementSessionsTest {
                     room));
     sessions.push(projectId);
     assertEquals(DaemonProtocol.DesiredState.STOPPED, last().find(epicId).orElseThrow().state());
-    frontDesks.reconcileAndPush(projectId, Instant.now());
+    frontDesks.reconcileAndApply(projectId, Instant.now());
     assertEquals(FrontDeskDesired.STOPPED, desk().desired);
   }
 
