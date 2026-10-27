@@ -69,9 +69,9 @@ import org.jboss.logging.Logger;
  * <p><b>RUNNING only ever comes from a lease.</b> The desk state reads RUNNING only while its row
  * names a lease qits-system last called RUNNING; a row with no lease reads QUEUED or STOPPED, so a
  * desk whose container is gone can never read RUNNING with nothing to revise it (qits-1592's
- * lesson). V61 clears every runner report for that reason.
+ * lesson). V62 clears every runner report for that reason.
  *
- * <p><b>A legacy desk</b> (a {@code legacy_placement} entry, V61) asks for its first lease with
+ * <p><b>A legacy desk</b> (a {@code legacy_placement} entry, V62) asks for its first lease with
  * {@code adopt = qits-projects-desk-runner-desk-<projectId>-<oldRunnerId8>} and pinned to the
  * target on the old runner's docker engine — its engine id, else its host name, else the runner's
  * name. With no such target it waits QUEUED, saying which one, and asks again on every reconcile;

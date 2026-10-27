@@ -16,7 +16,7 @@ import org.hibernate.type.SqlTypes;
 
 /**
  * A project's front desk (qits-767, V37): its agent container, as this service wants it and as
- * qits-system last reported the DESK lease it runs under (epic qits-1481, V61).
+ * qits-system last reported the DESK lease it runs under (epic qits-1481, V62).
  *
  * <ul>
  *   <li><b>The lease</b> — {@link #leaseId} names the DESK lease the desk runs under ({@code
@@ -59,7 +59,7 @@ public class FrontDesk extends PanacheEntityBase {
   @Column(name = "project_id")
   public String projectId;
 
-  /** The DESK lease the desk runs under, or null while it has none (V61). */
+  /** The DESK lease the desk runs under, or null while it has none (V62). */
   @Column(name = "lease_id")
   public UUID leaseId;
 

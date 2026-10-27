@@ -12,7 +12,7 @@ import java.util.UUID;
 @ApplicationScoped
 public class FrontDeskRepository implements PanacheRepositoryBase<FrontDesk, String> {
 
-  /** Every desk that names a DESK lease (epic qits-1481, V61), by project. */
+  /** Every desk that names a DESK lease (epic qits-1481, V62), by project. */
   public List<FrontDesk> findWithLease() {
     return list("leaseId is not null", Sort.by("projectId"));
   }

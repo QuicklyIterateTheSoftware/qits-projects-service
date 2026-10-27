@@ -18,7 +18,7 @@ import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 /**
- * What V61 does to a database whose desks front-desk runners hold (epic qits-1481, qits-1551):
+ * What V62 does to a database whose desks front-desk runners hold (epic qits-1481, qits-1551):
  * every placed desk is copied into {@code legacy_placement} FIRST — the runner, its engine id and
  * host name where its capabilities said them, and its name — and only then do {@code
  * front_desk.runner_id} and {@code desk_runner} go. A desk gains {@code lease_id}, {@code
@@ -31,8 +31,8 @@ class FrontDeskLeasesMigrationTest {
 
   @Test
   void everyPlacedDeskIsCopiedBeforeTheRunnerTablesGo() throws Exception {
-    String url = EmbeddedPg.url("qp_projects_v61_front_desk_leases");
-    migrateTo(url, "60");
+    String url = EmbeddedPg.url("qp_projects_v62_front_desk_leases");
+    migrateTo(url, "61");
     UUID reporting = UUID.randomUUID();
     UUID silent = UUID.randomUUID();
     try (Connection db = connect(url)) {
@@ -47,7 +47,7 @@ class FrontDeskLeasesMigrationTest {
       desk(db, "p-unplaced", null, null, null);
     }
 
-    migrateTo(url, "61");
+    migrateTo(url, "62");
 
     try (Connection db = connect(url)) {
       try (Statement sql = db.createStatement();

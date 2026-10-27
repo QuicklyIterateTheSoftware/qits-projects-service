@@ -2462,7 +2462,7 @@ assignment, not a comment, not a release.
 
 **A project's agent container is a front desk now, and this service no longer starts it.** A desk
 is a `front_desk` row (V37) that runs under a **DESK lease on an execution target** (epic qits-1481,
-qits-1551, V61): qits-system grants a DESK slot of one of its targets, and that target's
+qits-1551, V62): qits-system grants a DESK slot of one of its targets, and that target's
 `qits-system-runner` runs the container. `service/…/deskhost/` is the desk, `service/…/targethost/`
 its lease. **The front-desk runners are gone** (qits-1551): `DeskRunnerSocket`
 (`/projects/runners/socket`), `DeskRunnerRegistry`, the codec, install script, login command,
@@ -2524,9 +2524,9 @@ agent-container doors keep their paths:
   for directly and only a 404 is ENDED; an unreadable listing moves nothing; a live lease no desk
   names in a fresh read, older than two minutes, is ended. **RUNNING is only ever a lease's word**:
   a desk with no lease reads QUEUED or STOPPED, so a desk whose container is gone never reads
-  RUNNING (qits-1592's lesson; V61 cleared every runner report). `UNAVAILABLE` is no longer
+  RUNNING (qits-1592's lesson; V62 cleared every runner report). `UNAVAILABLE` is no longer
   answered. The answer carries `targetId`; `runnerId` and `runnerName` are gone.
-- **Legacy adoption.** V61 copied every desk a runner held into `legacy_placement` (the runner,
+- **Legacy adoption.** V62 copied every desk a runner held into `legacy_placement` (the runner,
   its recorded `engineId` and `hostname`, its name) before dropping `front_desk.runner_id` and
   `desk_runner`. Such a desk's first lease adopts `qits-projects-desk-runner-desk-<projectId>-
   <oldRunnerId8>` (container and volume) and is pinned to the target whose engine id, else host
