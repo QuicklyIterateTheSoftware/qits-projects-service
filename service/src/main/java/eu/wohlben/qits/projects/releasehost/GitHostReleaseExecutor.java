@@ -39,6 +39,10 @@ import org.jboss.logging.Logger;
  *       sha is what gets tagged, and <b>the version bump is the whole of what it carries</b>. A
  *       repository that renders no version commits nothing and tags the fold itself, which is a
  *       release like any other.
+ *       <p><b>Pinned to the gated fold</b> (qits-1647). The commit's parent is {@code mergedSha},
+ *       never the branch tip, and the branch moves only if it still points where this release left
+ *       it. A join or push that re-folded the branch in the meantime makes the commit fail
+ *       ({@code ref-moved}), so nothing is tagged, and the request goes its re-fold-and-regate way.
  *   <li><b>Tag</b> that commit with the version. A {@code 409 tag-exists} is <b>the platform's
  *       version-uniqueness guarantee</b>, not an error: somebody released that second already, so
  *       the whole attempt starts again with a fresh stamp. Bounded at {@link #ATTEMPTS}, because a
@@ -81,9 +85,10 @@ import org.jboss.logging.Logger;
  * the ask, which the sweep leaves standing until a re-arm changes it.
  *
  * <p><b>Where the retry restarts is the whole of the tag-exists arm.</b> A fresh attempt re-reads
- * the tree at the tip the previous attempt left behind and re-bumps it to the new version, rather
- * than re-tagging the same commit under another name: the manifests inside the commit have to carry
- * the version the tag says, or the released artifacts would name a version nothing built.
+ * the fold's tree and re-bumps it to the new version, rather than re-tagging the same commit under
+ * another name: the manifests inside the commit have to carry the version the tag says, or the
+ * released artifacts would name a version nothing built. The new commit's parent is the fold again,
+ * and the branch must still point at the previous attempt's commit.
  */
 @ApplicationScoped
 @DefaultBean
@@ -117,16 +122,17 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
       return broken;
     }
     String ref = "refs/heads/" + release.backingBranch();
-    // Where the next attempt reads its tree from: the fold to begin with, then whatever the last
-    // attempt's bump commit left on the branch.
-    String tip = release.mergedSha();
+    // Every attempt reads, stamps and commits onto the gated fold (qits-1647). What moves is only
+    // where the branch must point: the fold at first, then the previous attempt's bump commit.
+    String fold = release.mergedSha();
+    String expectedOld = fold;
 
     for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
       String version = VersionStamp.of(Instant.now());
 
       ManifestVersionBump.Result bumped;
       try {
-        bumped = ManifestVersionBump.stamp(new GitHostTree(release.repoId(), tip), version);
+        bumped = ManifestVersionBump.stamp(new GitHostTree(release.repoId(), fold), version);
       } catch (Unreadable e) {
         // A read that failed for a reason of the moment: the port already classified it.
         return e.retryable()
@@ -143,17 +149,26 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
         // releases exactly like every other one, it just has no commit before its tag. A wrapper
         // carrying nothing but pins is that case now, and the tag names the approved fold exactly:
         // empty means empty, and there is no second thing to weigh here.
-        tagged = tip;
+        tagged = fold;
       } else {
+        String message = "release(" + version + "): " + summaryOf(release);
         ReleaseGitHost.Answer<String> commit =
-            gitHost.commit(
-                release.repoId(),
-                release.projectId(),
-                release.repoName(),
-                ref,
-                "release(" + version + "): " + summaryOf(release),
-                bumped.files(),
-                Map.of());
+            commitOntoFold(release, ref, fold, expectedOld, message, bumped.files());
+        if (movedPast(commit)) {
+          // The branch is not where this release left it. If it holds an earlier attempt's bump
+          // on this fold (a tag that failed, a retry), replace that one. Anything else is a
+          // re-fold: nothing is tagged.
+          String earlier = earlierBumpOn(release, fold);
+          if (earlier != null && !earlier.equals(expectedOld)) {
+            commit = commitOntoFold(release, ref, fold, earlier, message, bumped.files());
+          }
+        }
+        if (movedPast(commit)) {
+          return Outcome.refusedRetryable(
+              "the backing branch moved past the gated fold "
+                  + fold
+                  + ", so it is not released; the request re-gates on the new fold");
+        }
         if (!commit.ok()) {
           return refusal("the version bump could not be committed: " + commit.detail(), commit.retryable());
         }
@@ -186,7 +201,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
           LOG.infof(
               "Release request %s: %s is already tagged; re-stamping (attempt %d of %d)",
               release.requestId(), version, attempt, ATTEMPTS);
-          tip = tagged;
+          expectedOld = tagged;
         }
         case FAILED -> {
           return refusal("the release could not be tagged: " + tag.detail(), tag.retryable());
@@ -197,6 +212,48 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
     return Outcome.refusedRetryable(
         "every one of " + ATTEMPTS + " stamped versions was already tagged; something else is"
             + " releasing this repository");
+  }
+
+  private ReleaseGitHost.Answer<String> commitOntoFold(
+      Release release,
+      String ref,
+      String fold,
+      String expectedOld,
+      String message,
+      Map<String, String> files) {
+    return gitHost.commit(
+        release.repoId(),
+        release.projectId(),
+        release.repoName(),
+        ref,
+        fold,
+        expectedOld,
+        message,
+        files,
+        Map.of());
+  }
+
+  /** The git host refused a pinned commit because the branch is elsewhere. */
+  private static boolean movedPast(ReleaseGitHost.Answer<String> commit) {
+    return !commit.ok() && commit.detail() != null && commit.detail().contains("ref-moved");
+  }
+
+  /**
+   * The backing branch's tip, if it is this release's own earlier bump on {@code fold}: one parent,
+   * the fold, and a {@code release(} message. Null for anything else, a read that failed included.
+   */
+  private String earlierBumpOn(Release release, String fold) {
+    ReleaseGitHost.Answer<ReleaseGitHost.BranchTip> tip =
+        gitHost.tip(release.repoId(), release.backingBranch());
+    if (!tip.ok() || tip.value() == null) {
+      return null;
+    }
+    ReleaseGitHost.BranchTip at = tip.value();
+    boolean earlierBump =
+        List.of(fold).equals(at.parents())
+            && at.message() != null
+            && at.message().startsWith("release(");
+    return earlierBump ? at.sha() : null;
   }
 
   private static Outcome refusal(String detail, boolean retryable) {
@@ -321,20 +378,32 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
    * <p>Each delete carries the address pair, because qits-githost announces it as {@code
    * SCMDeleteBranch} — which is what ends a maintenance bump's branch row — and knows the names only
    * if it is told.
+   *
+   * <p>A source with a head in {@code heads} is deleted only while it still points there
+   * (qits-1647); one that moved is kept and returned.
    */
   @Override
-  public void deleteConsumedBranches(Release release) {
+  public Set<String> deleteConsumedBranches(Release release, Map<String, String> heads) {
     Set<String> branches = new LinkedHashSet<>(release.namedSources());
     branches.remove(release.defaultBranch());
     branches.add(release.backingBranch());
+    Set<String> kept = new LinkedHashSet<>();
     for (String branch : branches) {
       try {
-        gitHost.deleteBranch(release.repoId(), release.projectId(), release.repoName(), branch);
+        if (!gitHost.deleteBranch(
+            release.repoId(),
+            release.projectId(),
+            release.repoName(),
+            branch,
+            heads.get(branch))) {
+          kept.add(branch);
+        }
       } catch (RuntimeException e) {
         // The port says it must not throw; one branch that would not go must not keep the rest.
         LOG.warnf(e, "Could not delete %s of %s", branch, release.repoId());
       }
     }
+    return kept;
   }
 
   /**

@@ -77,6 +77,10 @@ public interface ReleaseGitHost {
    * renders no version at all is a release with no commit before its tag.
    *
    * @param ref the full {@code refs/heads/…} name
+   * @param parent the commit the files apply to and the new commit's one parent, or null for the
+   *     branch tip. A release passes its gated fold (qits-1647).
+   * @param expectedOld where {@code ref} must point now, or null for no check. If it points
+   *     elsewhere, nothing is written and the answer fails retryably ({@code ref-moved}).
    * @param files path → the file's whole new content
    * @param gitlinks path → the full commit sha a submodule entry pins, written as a gitlink (mode
    *     160000) tree entry. <b>The release path passes none.</b> A wrapper's pins are written onto
@@ -89,6 +93,8 @@ public interface ReleaseGitHost {
       String projectId,
       String repoName,
       String ref,
+      String parent,
+      String expectedOld,
       String message,
       Map<String, String> files,
       Map<String, String> gitlinks);
@@ -99,6 +105,15 @@ public interface ReleaseGitHost {
    * A branch the host does not know is a failed answer, not a null.
    */
   Answer<String> head(String repoId, String branch);
+
+  /** A branch tip with its parents and message (qits-1647). */
+  record BranchTip(String sha, List<String> parents, String message) {}
+
+  /**
+   * {@link #head}, with the tip commit's parents and message. A release reads it to tell its own
+   * earlier bump commit on the backing branch from a re-fold (qits-1647).
+   */
+  Answer<BranchTip> tip(String repoId, String branch);
 
   /**
    * The commit sha the mode-160000 entry at {@code path} pins, at {@code rev} of the repository
@@ -162,6 +177,16 @@ public interface ReleaseGitHost {
   Answer<Boolean> contains(String repoId, String commit, String in);
 
   /**
+   * {@link #contains}, plus the sha {@code commit} resolved to when it was asked (qits-1647). A
+   * release asks this for {@code refs/heads/<branch>}, and later deletes the branch only if it still
+   * points at that sha.
+   */
+  record Containment(String commit, boolean contained) {}
+
+  /** {@link #contains} with the resolved sha of {@code commit}; the same failure rules. */
+  Answer<Containment> containment(String repoId, String commit, String in);
+
+  /**
    * What tagging said. {@link TagResult#ALREADY_EXISTS} is the one that is not a failure: it is the
    * platform's version-uniqueness guarantee arriving, and the caller's answer to it is to stamp a
    * fresh version and ask again — never to force the ref.
@@ -205,5 +230,18 @@ public interface ReleaseGitHost {
    * — a branch that could not be deleted is a log line, not a failed release. A branch that is
    * already gone is a success, and the git host refuses a repository's default branch on its own.
    */
-  void deleteBranch(String repoId, String projectId, String repoName, String name);
+  default void deleteBranch(String repoId, String projectId, String repoName, String name) {
+    deleteBranch(repoId, projectId, repoName, name, null);
+  }
+
+  /**
+   * {@link #deleteBranch(String, String, String, String)}, but only while the branch still points at
+   * {@code expectedSha} (qits-1647). Never throws.
+   *
+   * @param expectedSha the sha the branch must point at, or null for no check
+   * @return false only when the git host kept the branch because it moved; true otherwise, failures
+   *     included (they are logged, as before)
+   */
+  boolean deleteBranch(
+      String repoId, String projectId, String repoName, String name, String expectedSha);
 }

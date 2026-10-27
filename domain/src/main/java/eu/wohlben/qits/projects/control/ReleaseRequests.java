@@ -5845,8 +5845,8 @@ public class ReleaseRequests {
       // gated — so the request still settles RELEASED, but on the fold it tagged, and every source
       // the tag does not carry leaves it here and is handed on below instead of being deleted,
       // announced as released, or stranded in a request outside every unreleased read.
-      Set<String> moved = movedPastTheTag(ask);
-      ReleasedSources split = settleReleased(id, ask, outcome.version(), moved);
+      Checked checked = movedPastTheTag(ask);
+      ReleasedSources split = settleReleased(id, ask, outcome.version(), checked.moved());
       ReleaseExecutor.Release consumed = ask.consuming(split.released());
       LOG.infof(
           "Release request %s released %s@%s as %s",
@@ -5863,7 +5863,16 @@ public class ReleaseRequests {
       // git host announces each deletion, and onBranchDeleted reads only unreleased requests, so
       // this request's own deletions cannot come back to withdraw or re-fold it (qits-886). See
       // ReleaseExecutor#deleteConsumedBranches.
-      deleteConsumedBranches(consumed);
+      // Each source goes only while it still points at the head checked above (qits-1647). One that
+      // got a push in between is kept, leaves this request, and is handed on with the late ones.
+      Set<String> kept = deleteConsumedBranches(consumed, checked.heads());
+      List<HandedOn> handedOn = new ArrayList<>(split.handedOn());
+      if (!kept.isEmpty()) {
+        handedOn.addAll(detachKept(id, kept));
+        consumed =
+            ask.consuming(
+                split.released().stream().filter(name -> !kept.contains(name)).toList());
+      }
       // The backing branch is gone now, so any run still building it is doomed to a checkout
       // failure that has nothing to do with the code under test — the exact case cancel() exists
       // for, and best effort for the same reason as every other call to it: the release already
@@ -5881,7 +5890,7 @@ public class ReleaseRequests {
       // active, so each lands where any other ask would now: the request just activated, a fresh one
       // waiting for this release to finalize, or — past the freeze — the queue. Through ask() itself,
       // so every convergence and one-unreleased-request rule holds as it does at the create door.
-      handOn(ask, outcome.version(), split.handedOn());
+      handOn(ask, outcome.version(), handedOn);
       // THE PUBLISH PHASE'S FORK, on the release's own thread and the moment it lands: a repository
       // that declares no deployment has nothing to wait for and its tag goes to main now. One that
       // does deploy is left to DeploymentActive. Last, after the row exists and the request is
@@ -5892,10 +5901,67 @@ public class ReleaseRequests {
       resolveWorkspacesOnReleasedBranches(consumed, outcome);
       sayItHealed(ask, outcome.version());
     } else {
-      settle(id, ReleaseRequest.State.FAILED, outcome.detail(), null, outcome.retryable());
-      LOG.warnf(
-          "Release request %s was not released (%s): %s",
-          id, outcome.retryable() ? "will retry" : "final until re-armed", outcome.detail());
+      settleFailed(id, ask, outcome);
+    }
+  }
+
+  /**
+   * A release that did not happen, written only while the row is still on the fold it tried
+   * (qits-1647). A join or push that re-folded the request meanwhile re-armed it PENDING on a new
+   * fold; FAILED there would let the sweep release that fold without its gates, so the row is left
+   * on its re-gate path.
+   */
+  private void settleFailed(String id, ReleaseExecutor.Release ask, ReleaseExecutor.Outcome outcome) {
+    boolean onTheFold =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row =
+                      requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
+                  return row != null
+                      && ask.mergedSha().equals(row.mergedSha)
+                      && (row.state == ReleaseRequest.State.READY
+                          || row.state == ReleaseRequest.State.FAILED);
+                });
+    if (!onTheFold) {
+      LOG.infof(
+          "Release request %s was not released at %s (%s); it moved to a new fold meanwhile and"
+              + " re-gates there",
+          ask.qualifiedId(), shortSha(ask.mergedSha()), outcome.detail());
+      return;
+    }
+    settle(id, ReleaseRequest.State.FAILED, outcome.detail(), null, outcome.retryable());
+    LOG.warnf(
+        "Release request %s was not released (%s): %s",
+        id, outcome.retryable() ? "will retry" : "final until re-armed", outcome.detail());
+  }
+
+  /**
+   * The sources a pinned delete kept (qits-1647): taken off the RELEASED request, to be handed on
+   * like a source that moved before the check.
+   */
+  private List<HandedOn> detachKept(String id, Set<String> kept) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () -> {
+                List<HandedOn> detached = new ArrayList<>();
+                for (ReleaseRequestSource source : sources.listByRequest(id)) {
+                  if (source.kind == ReleaseRequestSource.Kind.BRANCH
+                      && kept.contains(source.name)) {
+                    LOG.infof(
+                        "Release request %s: %s got a push after the release checked it; it is"
+                            + " kept and handed on",
+                        id, source.name);
+                    detached.add(new HandedOn(source.name, source.addedBy, source.priority, false));
+                    sources.delete(source);
+                  }
+                }
+                return detached;
+              });
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not detach the kept sources %s of released request %s", kept, id);
+      return List.of();
     }
   }
 
@@ -5937,10 +6003,11 @@ public class ReleaseRequests {
    * because yes deletes the branch: a branch wrongly handed on costs a request that folds nothing
    * new, a branch wrongly deleted costs the commits nothing released.
    */
-  private Set<String> movedPastTheTag(ReleaseExecutor.Release ask) {
+  private Checked movedPastTheTag(ReleaseExecutor.Release ask) {
     Set<String> moved = new LinkedHashSet<>();
+    Map<String, String> heads = new LinkedHashMap<>();
     if (!gitHosts.isResolvable()) {
-      return moved;
+      return new Checked(moved, heads);
     }
     List<String> standing;
     try {
@@ -5959,17 +6026,19 @@ public class ReleaseRequests {
       // The tag is cut and the settle below must still happen: read as before qits-1615 — every
       // snapshot source released — which is the one answer that cannot strand the request.
       LOG.warnf(e, "Could not read the sources of released request %s", ask.qualifiedId());
-      return moved;
+      return new Checked(moved, heads);
     }
     ReleaseGitHost gitHost = gitHosts.get();
     for (String branch : standing) {
-      ReleaseGitHost.Answer<Boolean> answer;
+      ReleaseGitHost.Answer<ReleaseGitHost.Containment> answer;
       try {
-        answer = gitHost.contains(ask.repoId(), "refs/heads/" + branch, ask.mergedSha());
+        answer = gitHost.containment(ask.repoId(), "refs/heads/" + branch, ask.mergedSha());
       } catch (RuntimeException e) {
         answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
       }
-      if (answer.ok() && Boolean.TRUE.equals(answer.value())) {
+      if (answer.ok() && answer.value() != null && answer.value().contained()) {
+        // The head this answer was about: the delete later goes only while the branch is still here.
+        heads.put(branch, answer.value().commit());
         continue;
       }
       if (answer.ok()) {
@@ -5984,8 +6053,14 @@ public class ReleaseRequests {
       }
       moved.add(branch);
     }
-    return moved;
+    return new Checked(moved, heads);
   }
+
+  /**
+   * What {@link #movedPastTheTag} found: the sources the tag does not carry, and for every other
+   * checked source the head it was checked at (qits-1647).
+   */
+  private record Checked(Set<String> moved, Map<String, String> heads) {}
 
   /**
    * {@link #settle} to RELEASED, <b>on the fold that was tagged</b> (qits-1615), in one locked
@@ -6097,11 +6172,14 @@ public class ReleaseRequests {
    * The executor's second call, belted like its first: the port must not throw, and a throw here is
    * a port bug that must not reach a release which has already been settled.
    */
-  private void deleteConsumedBranches(ReleaseExecutor.Release ask) {
+  private Set<String> deleteConsumedBranches(
+      ReleaseExecutor.Release ask, Map<String, String> heads) {
     try {
-      executors.get().deleteConsumedBranches(ask);
+      Set<String> kept = executors.get().deleteConsumedBranches(ask, heads);
+      return kept == null ? Set.of() : kept;
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not delete the branches consumed by release request %s", ask.requestId());
+      return Set.of();
     }
   }
 
