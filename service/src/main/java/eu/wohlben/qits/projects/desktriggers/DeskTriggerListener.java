@@ -147,8 +147,11 @@ public class DeskTriggerListener implements QitsDurableEventListener {
             });
   }
 
-  /** The drops of the class javadoc; inside the frame's {@code projects} transaction. */
-  private static boolean admissible(DeskTriggerSource source, DeskTrigger trigger) {
+  /**
+   * The drops of the class javadoc; inside the caller's {@code projects} transaction. The sweep
+   * applies them to what a source's {@link DeskTriggerSource#scan} finds, too.
+   */
+  static boolean admissible(DeskTriggerSource source, DeskTrigger trigger) {
     Project project =
         trigger.projectId() == null ? null : Project.findById(trigger.projectId());
     if (project == null) {

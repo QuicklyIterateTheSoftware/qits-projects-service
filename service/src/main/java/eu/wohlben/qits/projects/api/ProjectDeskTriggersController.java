@@ -122,10 +122,10 @@ public class ProjectDeskTriggersController {
       name = "DeskTriggerEvent",
       description = "One item a desk trigger source admitted into a window.")
   public record Event(
-      @Schema(description = "The source that admitted it: wait, work-verified, approval-needed or desk-mentioned")
+      @Schema(description = "The source that admitted it: wait, work-verified, approval-needed, desk-mentioned, request-failed, request-stalled or capacity-opened")
           String source,
       @Schema(description = "The item as the desk is shown it, e.g. qits-1580") String itemRef,
-      @Schema(description = "The item's own id, when the source knows one", nullable = true)
+      @Schema(description = "The item's own id, when the source knows one; for capacity-opened, the agent's id", nullable = true)
           String itemId,
       @Schema(description = "What follows the item in brackets", nullable = true) String label,
       @Schema(description = "Who or what caused it", nullable = true) String cause,

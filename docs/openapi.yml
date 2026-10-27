@@ -1011,8 +1011,8 @@ components:
       properties:
         source:
           type: string
-          description: "The source that admitted it: wait, work-verified, approval-needed\
-            \ or desk-mentioned"
+          description: "The source that admitted it: wait, work-verified, approval-needed,\
+            \ desk-mentioned, request-failed, request-stalled or capacity-opened"
         itemRef:
           type: string
           description: "The item as the desk is shown it, e.g. qits-1580"
@@ -1020,7 +1020,8 @@ components:
           type:
           - string
           - "null"
-          description: "The item's own id, when the source knows one"
+          description: "The item's own id, when the source knows one; for capacity-opened,\
+            \ the agent's id"
         label:
           type:
           - string
@@ -8718,4 +8719,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1027.110734
+  version: 2026.1027.154457

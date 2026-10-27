@@ -22,10 +22,8 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
 
@@ -180,6 +178,8 @@ public class EntityDispatch {
 
   /** Optional, like every port here. Absent is a 503 naming what is missing. */
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
+
+  @Inject RunningItems runningItems;
 
   /**
    * What one press did.
@@ -770,41 +770,9 @@ public class EntityDispatch {
         .call(() -> DeliverySettings.of(projects.get(projectId)));
   }
 
-  /**
-   * The project's running items besides {@code entity}: epics and tickets that are not DONE or
-   * DROPPED, are not explicitly blocked, carry an assignee, and have an ACTIVE agent at
-   * qits-workspaces. With no workspaces context nothing is known to run, and the press goes on to
-   * that 503.
-   *
-   * <p><b>Only the explicit flag frees the slot</b> (qits-1569): {@link WorkEntity#blocked}, a
-   * person's or an agent's "this waits on someone", never the derived block of {@code
-   * EntityBlockState}. An agent waiting on its own release request reads as blocked, but it is
-   * real in-flight work and keeps its slot — the same split {@link #state} makes for {@code
-   * dispatchable} (qits-895).
-   */
+  /** The project's running items besides {@code entity}; see {@link RunningItems}. */
   private List<WorkEntity> runningBesides(WorkEntity entity) {
-    List<WorkEntity> candidates = new ArrayList<>();
-    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
-      for (WorkEntity row : lifecycle.listByProject(archetype, entity.projectId)) {
-        if (!row.id.equals(entity.id)
-            && !EntityStatus.DONE.name().equals(row.status)
-            && !EntityStatus.DROPPED.name().equals(row.status)
-            && !row.blocked
-            && row.assignee != null
-            && !row.assignee.isBlank()) {
-          candidates.add(row);
-        }
-      }
-    }
-    if (candidates.isEmpty() || dispatch.isUnsatisfied()) {
-      return List.of();
-    }
-    Set<String> active =
-        dispatch.get().agentsFor(candidates.stream().map(row -> row.id).toList()).stream()
-            .filter(WorkspaceAgentDispatch.Agent::active)
-            .map(WorkspaceAgentDispatch.Agent::workId)
-            .collect(Collectors.toSet());
-    return candidates.stream().filter(row -> active.contains(row.id)).toList();
+    return runningItems.of(entity.projectId, entity.id);
   }
 
   /** An item as a refusal names it: its qualified id, else its id. */

@@ -123,11 +123,12 @@ public class EventWireReflectionTest {
             DeploymentActiveListener.DeploymentActivePayload.class,
             DeploymentFailedListener.DeploymentFailedPayload.class,
             WaitClosedSource.DeskWaitClosedPayload.class,
+            eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
             eu.wohlben.qits.projects.targethost.TargetLeaseChanged.class,
             EventEnvelope.class,
             EventFrame.class),
         Set.of(registration.targets()),
-        "the four SCM records and the four bound consumption payloads in, RepositoryRenamed,"
+        "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, SCMRelease, the three project lifecycle events and the"
             + " transition's payload PAIR and EntityCommented out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
@@ -618,7 +619,11 @@ public class EventWireReflectionTest {
           "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class,
           "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class,
           "DeploymentFailed", DeploymentFailedListener.DeploymentFailedPayload.class,
-          "DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class);
+          "DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class,
+          "AgentObsolete",
+          eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
+          "AgentRemoved",
+          eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class);
 
   @Test
   public void everyDurableListenersSignatureNamesARegisteredType() {

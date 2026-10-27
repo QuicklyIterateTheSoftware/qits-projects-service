@@ -57,7 +57,13 @@ class DeskTriggerListenerTest {
     assertEquals("projects-desk-triggers", listener.consumerId());
     assertEquals(
         Set.of(
-            "EntityTransitioned", "ApprovalRequirementChanged", "DeskWaitClosed", "EntityCommented"),
+            "EntityTransitioned",
+            "ApprovalRequirementChanged",
+            "DeskWaitClosed",
+            "EntityCommented",
+            "ReleaseRequestStateChanged",
+            "AgentObsolete",
+            "AgentRemoved"),
         listener.signatures());
     assertTrue(!listener.replayFromEpoch(), "a desk is told what happens from now on");
   }

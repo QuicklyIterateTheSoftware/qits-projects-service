@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -70,6 +71,18 @@ public interface DeskTriggerSource {
    */
   default boolean requestedByDesk() {
     return false;
+  }
+
+  /**
+   * The triggers that time passing has made due, found by reading rows rather than an event
+   * (qits-1689: a release request that stalls emits nothing). {@link DeskTriggerSweep} asks every
+   * source at the start of each pass, in a {@code projects} transaction of the source's own, and
+   * admits what it answers under the listener's drops. A source must make its own answer
+   * idempotent across passes and windows: the window store only folds a repeat inside one window.
+   * Empty by default.
+   */
+  default List<DeskTrigger> scan(Instant now) {
+    return List.of();
   }
 
   /**
