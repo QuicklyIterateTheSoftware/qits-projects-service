@@ -9,81 +9,48 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
-import eu.wohlben.qits.projects.control.DeskRunners;
 import eu.wohlben.qits.projects.control.ProjectConfig;
 import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.dto.DeskRunnerDto;
-import eu.wohlben.qits.projects.entity.DeskRunner;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskDesired;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
-import eu.wohlben.qits.projects.persistence.DeskRunnerRepository;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
-import eu.wohlben.qits.projects.security.MockIdpTenant;
+import eu.wohlben.qits.projects.targethost.DeskLeases;
+import eu.wohlben.qits.projects.targethost.FakeSystemLeases;
+import eu.wohlben.qits.projects.targethost.SystemLeases;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol.AgentState;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerBinary;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerProtocol;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskState;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DesiredState;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Estate;
-import eu.wohlben.qits.projectsdeskrunner.protocol.HeldDesk;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Inventory;
-import eu.wohlben.qits.projectsdeskrunner.protocol.LaunchFailed;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Remove;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Removed;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Take;
-import eu.wohlben.qits.runner.protocol.Ack;
-import eu.wohlben.qits.runner.protocol.Nothing;
-import eu.wohlben.qits.runner.protocol.Reserve;
-import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.arc.Arc;
 import io.quarkus.narayana.jta.QuarkusTransaction;
-import io.quarkus.test.common.WithTestResource;
-import io.quarkus.test.common.http.TestHTTPResource;
-import io.quarkus.test.junit.QuarkusMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.specification.RequestSpecification;
-import io.vertx.core.Vertx;
 import jakarta.inject.Inject;
-import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The project front desks (qits-767): demand, placement, the token, the estate, the inventory, the
- * doors. Runners are scripted {@link FakeDeskRunner}s on the real socket, so it runs under the
- * machine gate ({@link MockIdpTenant}) exactly as {@link DeskRunnerSocketTest} does — the same
- * resource set, so the same application — and the doors are called with the forwarded headers a
- * person's session arrives with.
+ * The project front desks (qits-767), run as DESK leases on execution targets (epic qits-1481,
+ * qits-1551): demand, the lease a wanted desk asks for and an unwanted one ends, the per-lease token,
+ * the roll, the removal, the doors. qits-system is {@link FakeSystemLeases}; the lease's own
+ * mapping and the reconcile are {@code targethost/DeskLeasesTest}'s.
  */
 @QuarkusTest
-@WithTestResource(DeskRunnerMockIdpTenant.class)
 class FrontDeskTest {
 
-  private static final String DOMAIN = DeskRunnerAddressesFixture.DOMAIN;
-
-  @TestHTTPResource(DeskRunnerProtocol.SOCKET_PATH)
-  URI endpoint;
-
-  @Inject Vertx vertx;
+  private static final String DOMAIN = "suite.example";
 
   @Inject FrontDesks frontDesks;
 
@@ -97,17 +64,13 @@ class FrontDeskTest {
 
   @Inject FrontDeskHooks hooks;
 
-  @Inject FrontDeskRunnerDesks runnerDesks;
-
   @Inject FrontDeskSpecs specs;
 
   @Inject FakeFrontDeskTokens tokens;
 
-  @Inject DeskRunnerRegistry registry;
+  @Inject FakeSystemLeases system;
 
-  @Inject DeskRunners runners;
-
-  @Inject DeskRunnerRepository runnerRows;
+  @Inject DeskLeases leases;
 
   @Inject FrontDeskRepository desks;
 
@@ -115,36 +78,28 @@ class FrontDeskTest {
 
   @Inject ProjectService projectService;
 
-  private final List<FakeDeskRunner> dialled = new ArrayList<>();
-
-  private final List<UUID> createdRunners = new ArrayList<>();
-
   private final List<String> createdProjects = new ArrayList<>();
 
   @BeforeEach
   void arrange() {
-    QuarkusMock.installMockForType(
-        DeskRunnerAddressesFixture.withDomain(DOMAIN), DeskRunnerAddresses.class);
     specs.domainOverride(DOMAIN);
     tokens.reset();
+    system.reset();
     demand.forgetEvidence();
   }
 
   @AfterEach
   void tidy() {
-    dialled.forEach(FakeDeskRunner::close);
-    dialled.clear();
-    registry.reconnectGrace(null);
     specs.domainOverride(null);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               createdProjects.forEach(desks::deleteById);
               createdProjects.forEach(projectRows::deleteById);
-              createdRunners.forEach(runnerRows::deleteById);
             });
+    createdProjects.forEach(id -> daemons().forget(id));
     createdProjects.clear();
-    createdRunners.clear();
+    system.reset();
   }
 
   // --- fixtures ----------------------------------------------------------------------------------
@@ -184,36 +139,6 @@ class FrontDeskTest {
     return QuarkusTransaction.requiringNew().call(() -> desks.findById(projectId));
   }
 
-  /** A registered runner in service, holding {@code slots}. */
-  private DeskRunner runner(String clientId, int slots) {
-    UUID id = UUID.randomUUID();
-    runners.create(id, "fd-" + id.toString().substring(0, 8), null, slots, "tok-" + id, "s-" + id);
-    createdRunners.add(id);
-    runners.markRegistered(id, clientId, null);
-    return runners.greenlight(id);
-  }
-
-  /**
-   * Dial as {@code clientId}, say hello at the pin, read the ack, the greeting's estate and the
-   * backlog that follows it.
-   */
-  private FakeDeskRunner greeted(String clientId) throws Exception {
-    String bearer =
-        MockIdp.attach()
-            .token()
-            .subject(clientId)
-            .audience("qits-platform")
-            .groups(DeskRunnerSocket.RUNNER_ROLE)
-            .mint();
-    FakeDeskRunner runner = FakeDeskRunner.connect(vertx, endpoint, bearer);
-    dialled.add(runner);
-    runner.send(FakeDeskRunner.hello(DeskRunnerBinary.VERSION, List.of()));
-    runner.expect(Ack.class);
-    runner.await(Estate.class);
-    runner.expectBacklog();
-    return runner;
-  }
-
   private static RequestSpecification person() {
     return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:admin");
   }
@@ -234,11 +159,32 @@ class FrontDeskTest {
     return frontDesks.status(projectId).runtimeStatus();
   }
 
+  private static AgentDaemonRegistry daemons() {
+    return Arc.container().instance(AgentDaemonRegistry.class).get();
+  }
+
+  /** The desk's lease, as qits-system reports it RUNNING on a target. */
+  private UUID running(String projectId) {
+    UUID leaseId = row(projectId).leaseId;
+    assertNotNull(leaseId, "the desk holds a lease");
+    leases.observe(
+        system.move(leaseId, SystemLeases.LeaseState.RUNNING, UUID.randomUUID(), null));
+    assertEquals(AgentRuntimeStatus.RUNNING, status(projectId));
+    return leaseId;
+  }
+
+  private static String env(FrontDesk row, String name) {
+    return FrontDeskSpecs.parse(row.specJson).env().get(name);
+  }
+
   // --- demand ------------------------------------------------------------------------------------
 
-  /** An ALWAYS_ON project gets its desk from the sweep, with no ensure: wanted, tokened, QUEUED. */
+  /**
+   * An ALWAYS_ON project gets its desk from the sweep, with no ensure: wanted, and its DESK lease
+   * asked for with a token minted for it — QUEUED, saying why it waits.
+   */
   @Test
-  void anAlwaysOnDeskExistsWithoutAnEnsure() {
+  void anAlwaysOnDeskIsLeasedWithoutAnEnsure() {
     String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
 
     sweep.sweep(Instant.now());
@@ -246,15 +192,31 @@ class FrontDeskTest {
     FrontDesk row = row(projectId);
     assertNotNull(row);
     assertEquals(FrontDeskDesired.RUNNING, row.desired);
-    assertNotNull(row.tokenId);
+    assertNotNull(row.leaseId);
+    assertEquals("QUEUED", row.reportedState);
     assertTrue(row.tokenSubject.startsWith("tok-"));
     assertNotNull(row.queuedAt);
-    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
+    FrontDeskState state = frontDesks.status(projectId);
+    assertEquals(AgentRuntimeStatus.QUEUED, state.runtimeStatus());
+    assertEquals("no target has a free DESK slot", state.failureDetail(), "the lease's reason");
     assertEquals(1, tokens.mintsFor(projectId));
     assertEquals(1, tokens.sessionMintsFor(projectId));
+
+    SystemLeases.LeaseRequest asked = system.requestOf(row.leaseId);
+    assertEquals(projectId, asked.projectId());
+    assertEquals(row.tokenValue, asked.spec().env().get("QITS_TOKEN"));
+    assertEquals(row.tokenSubject, asked.spec().env().get("QITS_TOKEN_SUBJECT"));
+    assertNull(asked.adopt());
+    assertNull(asked.pinTargetId());
+    for (String owned : FrontDeskSpecs.POLICY_OWNED_ENV) {
+      assertFalse(asked.spec().env().containsKey(owned), owned + " is the slot policy's");
+    }
+
+    sweep.sweep(Instant.now());
+    assertEquals(1, system.requests().size(), "a desk with a lease asks for no second one");
   }
 
-  /** A flip to ALWAYS_ON creates the desk at once, through the project.yml hook. */
+  /** A flip to ALWAYS_ON creates the desk and leases it at once, through the project.yml hook. */
   @Test
   void aLifecycleFlipCreatesTheDesk() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
@@ -263,10 +225,14 @@ class FrontDeskTest {
     hooks.onChanged(projectId, FrontDeskLifecycle.ALWAYS_ON);
 
     assertEquals(FrontDeskDesired.RUNNING, row(projectId).desired);
+    assertNotNull(row(projectId).leaseId);
     assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
   }
 
-  /** ON_DEMAND: ensure wants it; the idle window closing stops it; stop stops it at once. */
+  /**
+   * ON_DEMAND: ensure wants it and asks for its lease; the idle window closing ends the lease and
+   * gives its token back; stop ends it at once. The work volume stays on the target.
+   */
   @Test
   void anOnDemandDeskIsWantedForTheIdleWindowAndUntilStopped() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
@@ -278,15 +244,28 @@ class FrontDeskTest {
         .body("container.runtimeStatus", is("QUEUED"))
         .body("container.lifecycle", is("ON_DEMAND"))
         .body("container.queuedAt", notNullValue())
-        .body("container.runnerId", nullValue());
-    assertEquals(FrontDeskDesired.RUNNING, row(projectId).desired);
+        .body("container.targetId", nullValue());
+    UUID first = row(projectId).leaseId;
+    String firstToken = row(projectId).tokenId;
+    assertNotNull(first);
 
     // Five hours later the PT4H window has closed.
-    assertNull(frontDesks.reconcile(projectId, Instant.now().plus(Duration.ofHours(5))));
-    assertEquals(FrontDeskDesired.STOPPED, row(projectId).desired);
-    assertNull(row(projectId).queuedAt);
+    frontDesks.reconcileAndApply(projectId, Instant.now().plus(Duration.ofHours(5)));
+    FrontDesk stopped = row(projectId);
+    assertEquals(FrontDeskDesired.STOPPED, stopped.desired);
+    assertNull(stopped.leaseId, "the lease ended");
+    assertNull(stopped.tokenId, "and its token went with it");
+    assertFalse(tokens.isLive(firstToken));
+    assertTrue(system.ended().contains(first));
+    assertTrue(system.purged().isEmpty(), "a stop keeps the work volume");
+    assertEquals(AgentRuntimeStatus.STOPPED, status(projectId));
 
     person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID second = row(projectId).leaseId;
+    assertNotNull(second);
+    assertFalse(first.equals(second));
+    assertEquals(2, tokens.mintsFor(projectId), "one token per lease");
+
     person()
         .post(base(projectId) + "/stop")
         .then()
@@ -294,7 +273,7 @@ class FrontDeskTest {
         .body("container.runtimeStatus", is("STOPPED"));
     assertNull(row(projectId).lastDemandAt);
     assertEquals(FrontDeskDesired.STOPPED, row(projectId).desired);
-    assertTrue(tokens.revoked().isEmpty(), "a stop never revokes the token");
+    assertTrue(system.ended().contains(second));
   }
 
   /** The daemon's evidence of use is demand, at most once a minute, and only on a wanted desk. */
@@ -304,7 +283,7 @@ class FrontDeskTest {
     person().post(base(projectId) + "/ensure").then().statusCode(200);
     Instant stamped = row(projectId).lastDemandAt;
 
-    Instant later = Instant.now().plusSeconds(1).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+    Instant later = Instant.now().plusSeconds(1).truncatedTo(ChronoUnit.MICROS);
     demand.evidenced(projectId, later);
     await(() -> later.equals(row(projectId).lastDemandAt), "evidence did not stamp demand");
 
@@ -319,536 +298,138 @@ class FrontDeskTest {
     assertNull(row(projectId).lastDemandAt, "a stopped desk was woken by its daemon's goodbye");
   }
 
-  // --- placement ---------------------------------------------------------------------------------
+  // --- the spec roll: PUT /system/api/leases/{id}/spec -------------------------------------------
 
-  /** Two runners reserve at once for one queued desk: exactly one takes it. */
+  /** A new spec is rolled onto a lease that is not running at once; a running busy desk waits. */
   @Test
-  void theCompareAndSwapPlacesADeskOnce() throws Exception {
-    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
-    sweep.sweep(Instant.now());
-    DeskRunner a = runner("fd-cas-a", 4);
-    DeskRunner b = runner("fd-cas-b", 4);
-    CountDownLatch start = new CountDownLatch(1);
-    CompletableFuture<Take> takeA =
-        CompletableFuture.supplyAsync(() -> awaitThen(start, () -> frontDesks.take(a.id)));
-    CompletableFuture<Take> takeB =
-        CompletableFuture.supplyAsync(() -> awaitThen(start, () -> frontDesks.take(b.id)));
-
-    start.countDown();
-    Take first = takeA.get(10, TimeUnit.SECONDS);
-    Take second = takeB.get(10, TimeUnit.SECONDS);
-
-    assertTrue((first == null) != (second == null), "one take, exactly: " + first + " / " + second);
-    Take won = first != null ? first : second;
-    assertEquals(projectId, won.projectId());
-    assertEquals(DesiredState.RUNNING, won.desired());
-    FrontDesk row = row(projectId);
-    assertEquals(first != null ? a.id : b.id, row.runnerId);
-    assertEquals(won.specHash(), row.specHash);
-    assertNotNull(row.placedAt);
-    assertEquals(AgentRuntimeStatus.PROVISIONING, status(projectId), "inside the boot's grace");
-    registry.reconnectGrace(Duration.ofMillis(1));
-    assertEquals(AgentRuntimeStatus.UNAVAILABLE, status(projectId), "its runner never connected");
-  }
-
-  private static <T> T awaitThen(CountDownLatch latch, java.util.function.Supplier<T> action) {
-    try {
-      latch.await(5, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-    return action.get();
-  }
-
-  /**
-   * Over the socket: a reserve takes the queued desk; the server's slot count then answers the next
-   * reserve nothing; an owned desk desired RUNNING again is started whatever the count — its estate
-   * says so.
-   */
-  @Test
-  void slotsGateOnlyNewPlacement() throws Exception {
-    DeskRunner one = runner("fd-slots", 1);
-    FakeDeskRunner runner = greeted("fd-slots");
-    String first = project(FrontDeskLifecycle.ON_DEMAND);
-    String second = project(FrontDeskLifecycle.ON_DEMAND);
-    person().post(base(first) + "/ensure").then().statusCode(200);
-
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-    assertEquals(first, take.projectId());
-    assertEquals(
-        "registry.qits." + DOMAIN + "/qits/project-agent:" + specs.imageVersion(),
-        take.spec().image());
-    assertEquals("PROVISIONING", person().get(base(first)).then().extract().path("container.runtimeStatus"));
-    person()
-        .get(base(first))
-        .then()
-        .body("container.runnerId", is(one.id.toString()))
-        .body("container.runnerName", is(one.name));
-
-    person().post(base(second) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    runner.expect(Nothing.class);
-    assertEquals(AgentRuntimeStatus.QUEUED, status(second));
-
-    // The owned desk is stopped, freeing the slot by the server's count…
-    person().post(base(first) + "/stop").then().statusCode(200);
-    Estate stopped = runner.expect(Estate.class);
-    assertEquals(DesiredState.STOPPED, stopped.desks().get(0).desired());
-    // …and wanted again while the second takes the slot: it is started all the same.
-    runner.send(new Reserve());
-    assertEquals(second, runner.expect(Take.class).projectId());
-    person().post(base(first) + "/ensure").then().statusCode(200);
-    Estate again = runner.expect(Estate.class);
-    assertEquals(2, again.desks().size());
-    assertTrue(again.desks().stream().allMatch(d -> d.desired() == DesiredState.RUNNING));
-  }
-
-  // --- the backlog (qits-1110) -------------------------------------------------------------------
-
-  /** Dial as {@code clientId} and say hello at the pin, reading nothing. */
-  private FakeDeskRunner hello(String clientId) throws Exception {
-    String bearer =
-        MockIdp.attach()
-            .token()
-            .subject(clientId)
-            .audience("qits-platform")
-            .groups(DeskRunnerSocket.RUNNER_ROLE)
-            .mint();
-    FakeDeskRunner runner = FakeDeskRunner.connect(vertx, endpoint, bearer);
-    dialled.add(runner);
-    runner.send(FakeDeskRunner.hello(DeskRunnerBinary.VERSION, List.of()));
-    return runner;
-  }
-
-  /**
-   * A runner greeted while a desk waits is told the backlog right after its estate — without it the
-   * runner's slot ledger never reserves — and its reserve then takes the desk.
-   */
-  @Test
-  void aGreetingWithADeskQueuedIsToldTheBacklogAndTakesIt() throws Exception {
-    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
-    sweep.sweep(Instant.now());
-    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
-    runner("fd-backlog-greet", 1);
-
-    FakeDeskRunner runner = hello("fd-backlog-greet");
-    runner.expect(Ack.class);
-    runner.expect(Estate.class);
-    assertTrue(runner.expectBacklog().queued() >= 1, "the queued desk is in the backlog");
-    List<String> order = runner.arrivals();
-    assertTrue(
-        order.indexOf("Estate") < order.indexOf("Backlog"),
-        "the backlog follows the estate: " + order);
-
-    runner.send(new Reserve());
-    assertEquals(projectId, runner.expect(Take.class).projectId());
-  }
-
-  /**
-   * A runner answered {@code nothing} is parked; a desk queued after its greeting is announced to it
-   * as a backlog, which is what un-parks it, and its reserve then takes the desk.
-   */
-  @Test
-  void aDeskQueuedAfterTheGreetingUnparksARunnerAnsweredNothing() throws Exception {
-    runner("fd-backlog-park", 1);
-    FakeDeskRunner runner = greeted("fd-backlog-park");
-    runner.send(new Reserve());
-    runner.expect(Nothing.class);
-    runner.drain();
-
+  void aNewSpecRollsOnlyWhenNotRunningOrQuiet() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
-
-    assertTrue(runner.expectBacklog().queued() >= 1, "the queued desk is announced");
-    runner.send(new Reserve());
-    assertEquals(projectId, runner.expect(Take.class).projectId());
-    assertEquals(AgentRuntimeStatus.PROVISIONING, status(projectId));
-  }
-
-  /** A desk whose token is minted after it was wanted joins the queue then, and that is announced. */
-  @Test
-  void aLateTokenIsAnnouncedAsBacklog() throws Exception {
-    runner("fd-backlog-late", 1);
-    FakeDeskRunner runner = greeted("fd-backlog-late");
-    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
-    tokens.failMint(true);
-    sweep.sweep(Instant.now());
-    tokens.failMint(false);
-    assertNull(row(projectId).tokenValue);
-    assertNull(runner.pollBacklog(Duration.ofMillis(300)), "a tokenless desk is not placeable");
-
-    sweep.sweep(Instant.now());
-
-    assertNotNull(row(projectId).tokenValue);
-    assertTrue(runner.expectBacklog().queued() >= 1, "the late-tokened desk is announced");
-    runner.send(new Reserve());
-    assertEquals(projectId, runner.expect(Take.class).projectId());
-  }
-
-  /**
-   * A quarantined runner is told no backlog — not at its greeting, not when a desk is queued — and
-   * its reserve takes nothing; the desk stays QUEUED.
-   */
-  @Test
-  void aQuarantinedRunnerIsToldNoBacklogAndTakesNothing() throws Exception {
-    UUID id = UUID.randomUUID();
-    runners.create(id, "fd-" + id.toString().substring(0, 8), null, 2, "tok-" + id, "s-" + id);
-    createdRunners.add(id);
-    runners.markRegistered(id, "fd-backlog-quarantined", null);
-    FakeDeskRunner runner = hello("fd-backlog-quarantined");
-    assertEquals(0, runner.expect(Ack.class).slots());
-    runner.await(Estate.class);
-
-    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-
-    assertNull(runner.pollBacklog(Duration.ofMillis(500)), "a quarantined runner is told no backlog");
-    runner.send(new Reserve());
-    runner.await(Nothing.class);
-    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
-  }
-
-  // --- estate and inventory ----------------------------------------------------------------------
-
-  /** The inventory lands on the row and the status follows it; launchFailed reads FAILED. */
-  @Test
-  void theInventoryDecidesTheStatus() throws Exception {
-    DeskRunner held = runner("fd-inventory", 2);
-    FakeDeskRunner runner = greeted("fd-inventory");
-    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
-    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "inventory RUNNING not RUNNING");
-    assertEquals(take.specHash(), row(projectId).reportedSpecHash);
-
-    runner.send(new LaunchFailed(projectId, "docker: image not found"));
-    await(() -> status(projectId) == AgentRuntimeStatus.FAILED, "launchFailed not FAILED");
-    assertEquals("docker: image not found", frontDesks.status(projectId).failureDetail());
-
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
-    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "a running desk stays FAILED");
-
-    runner.send(new Inventory(List.of()));
-    await(() -> "ABSENT".equals(row(projectId).reportedState), "unnamed desk not ABSENT");
-    assertEquals(AgentRuntimeStatus.PROVISIONING, status(projectId));
-    assertEquals(held.id, row(projectId).runnerId);
-  }
-
-  /** Past the reconnect grace a gone runner's desks read UNAVAILABLE, and RUNNING when it is back. */
-  @Test
-  void aGoneRunnersDesksReadUnavailableAfterTheGrace() throws Exception {
-    registry.reconnectGrace(Duration.ofSeconds(1));
-    runner("fd-gone", 1);
-    FakeDeskRunner runner = greeted("fd-gone");
-    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
-    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "not RUNNING");
-
-    runner.close();
-    assertEquals(AgentRuntimeStatus.RUNNING, status(projectId), "inside the grace");
-    await(() -> status(projectId) == AgentRuntimeStatus.UNAVAILABLE, "not UNAVAILABLE");
-    person().get(base(projectId)).then().body("container.runtimeStatus", is("UNAVAILABLE"));
-    assertEquals("RUNNING", row(projectId).reportedState, "UNAVAILABLE is never stored");
-
-    // Back after the grace it is quarantined until a health check passes, so it is told no backlog.
-    FakeDeskRunner back = hello("fd-gone");
-    back.expect(Ack.class);
-    back.await(Estate.class);
-    assertEquals(AgentRuntimeStatus.RUNNING, status(projectId));
-  }
-
-  /** A greeting carries the estate of the runner's desks; a held desk on it is adopted. */
-  @Test
-  void aGreetingCarriesTheEstateAndAdoptsHeldDesks() throws Exception {
-    DeskRunner held = runner("fd-greet", 2);
-    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
-    sweep.sweep(Instant.now());
-    assertNotNull(frontDesks.take(held.id));
-
-    String bearer =
-        MockIdp.attach()
-            .token()
-            .subject("fd-greet")
-            .audience("qits-platform")
-            .groups(DeskRunnerSocket.RUNNER_ROLE)
-            .mint();
-    FakeDeskRunner runner = FakeDeskRunner.connect(vertx, endpoint, bearer);
-    dialled.add(runner);
-    runner.send(FakeDeskRunner.hello(DeskRunnerBinary.VERSION, List.of(projectId, "stranger")));
-    assertEquals(List.of(projectId), runner.expect(Ack.class).adopted());
-    Estate estate = runner.expect(Estate.class);
-    assertEquals(1, estate.desks().size());
-    assertEquals(projectId, estate.desks().get(0).projectId());
-    assertEquals(row(projectId).specHash, estate.desks().get(0).specHash());
-    assertEquals("qits_tok_" + row(projectId).tokenId, estate.desks().get(0).spec().env().get("QITS_TOKEN"));
-    assertEquals(
-        "registry.qits." + DOMAIN + "/qits/project-agent:" + specs.imageVersion(),
-        estate.deskImage());
-  }
-
-  // --- the spec roll -----------------------------------------------------------------------------
-
-  /** A new spec is applied to a desk not running at once; a running busy desk waits until quiet. */
-  @Test
-  void aNewSpecRollsOnlyWhenNotRunningOrQuiet() throws Exception {
-    runner("fd-roll", 2);
-    FakeDeskRunner runner = greeted("fd-roll");
-    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
-    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "not RUNNING");
+    UUID leaseId = running(projectId);
+    String applied = row(projectId).specHash;
 
     // The lifecycle is in the spec, so a flip is a new spec. Busy a moment ago: it waits.
     setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
-    assertEquals(0, rollWhileBusy(projectId));
-    assertEquals(take.specHash(), row(projectId).specHash);
+    daemons().touchAgentActivity(projectId, Instant.now());
+    assertFalse(specRoll.quiet(projectId, Instant.now()));
+    assertEquals(0, specRoll.roll(Instant.now()));
+    assertEquals(applied, row(projectId).specHash);
+    assertTrue(system.rolled().isEmpty());
+    daemons().forget(projectId);
 
-    // Reported stopped: it rolls, and the runner is sent the new spec.
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.STOPPED, take.specHash(), null))));
-    await(() -> "STOPPED".equals(row(projectId).reportedState), "not STOPPED");
+    // The lease is not running any more: it rolls, as a PUT of the lease's spec.
+    leases.observe(system.move(leaseId, SystemLeases.LeaseState.GRANTED, UUID.randomUUID(), null));
     assertEquals(1, specRoll.roll(Instant.now()));
-    Estate rolled = runner.await(Estate.class);
-    assertFalse(take.specHash().equals(rolled.desks().get(0).specHash()));
-    assertEquals("ALWAYS_ON", rolled.desks().get(0).spec().env().get("QITS_PROJECTS_DAEMON_LIFECYCLE"));
-    assertEquals(rolled.desks().get(0).specHash(), row(projectId).specHash);
+    assertEquals(List.of(leaseId), system.rolled());
+    FrontDesk row = row(projectId);
+    assertFalse(applied.equals(row.specHash));
+    assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
+    assertEquals(leaseId, row.leaseId, "a roll keeps the lease");
   }
 
-  /** A roll while the desk's agent was evidenced in use just now. */
-  private int rollWhileBusy(String projectId) {
-    eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry daemons =
-        io.quarkus.arc.Arc.container()
-            .instance(eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry.class)
-            .get();
-    daemons.touchAgentActivity(projectId, Instant.now());
-    try {
-      assertFalse(specRoll.quiet(projectId, Instant.now()));
-      return specRoll.roll(Instant.now());
-    } finally {
-      daemons.forget(projectId);
-    }
-  }
-
-  // --- a settings change rolls between turns (qits-1514) -------------------------------------------
-
-  /** A placed desk its runner reports RUNNING on the spec it was taken with. */
-  private record Running(String projectId, FakeDeskRunner runner, Take take) {}
-
-  private Running placedRunning(String clientId, FrontDeskLifecycle lifecycle) throws Exception {
-    runner(clientId, 2);
-    FakeDeskRunner runner = greeted(clientId);
-    String projectId = project(lifecycle);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-    runner.send(
-        new Inventory(
-            List.of(new HeldDesk(projectId, DeskState.RUNNING, take.specHash(), null))));
-    await(() -> status(projectId) == AgentRuntimeStatus.RUNNING, "not RUNNING");
-    return new Running(projectId, runner, take);
-  }
-
-  private static AgentDaemonRegistry daemons() {
-    return Arc.container()
-        .instance(AgentDaemonRegistry.class)
-        .get();
-  }
-
-  /**
-   * The desk's agent was in use a minute ago and its rollup now says {@code state} — the frame a
-   * daemon sends, which also stamps the use clock.
-   */
+  /** The desk's agent was in use a minute ago and its rollup now says {@code state}. */
   private void usedRecentlyAndNow(String projectId, String state) {
     daemons()
         .onMessage(
-            projectId,
-            null,
-            new AgentActivity(
-                "cmd-1", "session-1", state, "Stop", null, null, 0L));
+            projectId, null, new AgentActivity("cmd-1", "session-1", state, "Stop", null, null, 0L));
     daemons().touchAgentActivity(projectId, Instant.now().minus(Duration.ofMinutes(1)));
     assertFalse(specRoll.quiet(projectId, Instant.now()), "inside the quiet window");
   }
 
-  /** The first estate whose desk carries {@code hash}, skipping earlier ones. */
-  private static Estate estateWith(FakeDeskRunner runner, String hash) throws InterruptedException {
-    long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
-    while (System.nanoTime() < deadline) {
-      Estate estate = runner.await(Estate.class);
-      if (!estate.desks().isEmpty() && hash.equals(estate.desks().get(0).specHash())) {
-        return estate;
-      }
-    }
-    return fail("no estate carried spec " + hash);
-  }
-
-  private static String env(FrontDesk row, String name) {
-    return FrontDeskSpecs.parse(row.specJson).env().get(name);
-  }
-
-  /** A delivery flip on a desk used a minute ago but idle now rolls it at once. */
+  /** A delivery flip on a desk used a minute ago but idle now rolls its lease at once. */
   @Test
-  void aDeliveryFlipRollsARecentlyUsedIdleDeskAtOnce() throws Exception {
-    Running desk = placedRunning("fd-settings-idle", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.IDLE);
-      setDelivery(projectId, true);
+  void aDeliveryFlipRollsARecentlyUsedIdleDeskAtOnce() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = running(projectId);
+    String applied = row(projectId).specHash;
+    usedRecentlyAndNow(projectId, AgentState.IDLE);
+    setDelivery(projectId, true);
 
-      hooks.onDeliveryChanged(projectId, delivery(true));
+    hooks.onDeliveryChanged(projectId, delivery(true));
 
-      FrontDesk row = row(projectId);
-      assertFalse(desk.take().specHash().equals(row.specHash), "rolled");
-      assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
-      assertNotNull(row.deliveryTokenId, "the loop's token is minted");
-      assertNull(env(row, "QITS_DELIVERY_TOKEN"), "it rides the control socket, never the env");
-      assertNull(row.rollRequestedAt);
-      estateWith(desk.runner(), row.specHash);
-    } finally {
-      daemons().forget(projectId);
-    }
+    FrontDesk row = row(projectId);
+    assertFalse(applied.equals(row.specHash), "rolled");
+    assertEquals(List.of(leaseId), system.rolled());
+    assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertNotNull(row.deliveryTokenId, "the loop's token is minted");
+    assertNull(env(row, "QITS_DELIVERY_TOKEN"), "it rides the control socket, never the env");
+    assertNull(row.rollRequestedAt);
   }
 
   /** Busy when the flip lands, it waits for the turn — not for the quiet window. */
   @Test
-  void aDeliveryFlipOnABusyDeskRollsWhenTheTurnEnds() throws Exception {
-    Running desk = placedRunning("fd-settings-busy", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.BUSY);
-      setDelivery(projectId, true);
+  void aDeliveryFlipOnABusyDeskRollsWhenTheTurnEnds() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    running(projectId);
+    String applied = row(projectId).specHash;
+    usedRecentlyAndNow(projectId, AgentState.BUSY);
+    setDelivery(projectId, true);
 
-      hooks.onDeliveryChanged(projectId, delivery(true));
+    hooks.onDeliveryChanged(projectId, delivery(true));
 
-      assertEquals(desk.take().specHash(), row(projectId).specHash, "a busy desk is not rolled");
-      assertNotNull(row(projectId).rollRequestedAt, "the request waits");
+    assertEquals(applied, row(projectId).specHash, "a busy desk is not rolled");
+    assertNotNull(row(projectId).rollRequestedAt, "the request waits");
 
-      usedRecentlyAndNow(projectId, AgentState.IDLE);
-      assertEquals(1, specRoll.roll(Instant.now()));
-      FrontDesk row = row(projectId);
-      assertEquals("on", env(row, "QITS_PROJECTS_DAEMON_DELIVERY"));
-      assertNull(row.rollRequestedAt);
-      estateWith(desk.runner(), row.specHash);
-    } finally {
-      daemons().forget(projectId);
-    }
+    usedRecentlyAndNow(projectId, AgentState.IDLE);
+    assertEquals(1, specRoll.roll(Instant.now()));
+    assertEquals("on", env(row(projectId), "QITS_PROJECTS_DAEMON_DELIVERY"));
+    assertNull(row(projectId).rollRequestedAt);
   }
 
-  /**
-   * A lifecycle flip with the rollup WAITING rolls at once, inside the hook: WAITING is not a
-   * running turn (qits-1514), so a requested roll does not wait for it the way the quiet rule
-   * would.
-   */
+  /** A lifecycle flip with the rollup WAITING rolls at once: WAITING is not a running turn. */
   @Test
-  void aLifecycleFlipOnAWaitingDeskRollsAtOnce() throws Exception {
-    Running desk = placedRunning("fd-settings-lifecycle", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.WAITING);
-      setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
+  void aLifecycleFlipOnAWaitingDeskRollsAtOnce() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    running(projectId);
+    String applied = row(projectId).specHash;
+    usedRecentlyAndNow(projectId, AgentState.WAITING);
+    setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
 
-      hooks.onChanged(projectId, FrontDeskLifecycle.ALWAYS_ON);
+    hooks.onChanged(projectId, FrontDeskLifecycle.ALWAYS_ON);
 
-      FrontDesk row = row(projectId);
-      assertFalse(
-          desk.take().specHash().equals(row.specHash), "WAITING is not a running turn; it rolls at once");
-      assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
-      assertNull(row.rollRequestedAt);
-      estateWith(desk.runner(), row.specHash);
-
-      // And idle when it lands, it rolls inside the hook too.
-      setLifecycle(projectId, FrontDeskLifecycle.ON_DEMAND);
-      hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
-      assertEquals("ON_DEMAND", env(row(projectId), "QITS_PROJECTS_DAEMON_LIFECYCLE"));
-      assertNull(row(projectId).rollRequestedAt);
-    } finally {
-      daemons().forget(projectId);
-    }
+    FrontDesk row = row(projectId);
+    assertFalse(applied.equals(row.specHash), "WAITING is not a running turn; it rolls at once");
+    assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
+    assertNull(row.rollRequestedAt);
   }
 
   /** A spec change nobody requested — a pin bump, say — still waits for quiet. */
   @Test
-  void anUnrequestedSpecChangeStillWaitsForQuiet() throws Exception {
-    Running desk = placedRunning("fd-settings-pin", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.IDLE);
-      // The project row moves with no hook: the spec changes the way a pin bump changes it.
-      setDelivery(projectId, true);
+  void anUnrequestedSpecChangeStillWaitsForQuiet() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    running(projectId);
+    String applied = row(projectId).specHash;
+    usedRecentlyAndNow(projectId, AgentState.IDLE);
+    setDelivery(projectId, true);
 
-      assertEquals(0, specRoll.roll(Instant.now()));
-      assertEquals(0, specRoll.roll(projectId, Instant.now()));
-      assertEquals(desk.take().specHash(), row(projectId).specHash);
-      assertNull(row(projectId).rollRequestedAt);
-    } finally {
-      daemons().forget(projectId);
-    }
+    assertEquals(0, specRoll.roll(Instant.now()));
+    assertEquals(0, specRoll.roll(projectId, Instant.now()));
+    assertEquals(applied, row(projectId).specHash);
+    assertTrue(system.rolled().isEmpty());
   }
 
-  /**
-   * An unrequested spec change still waits while the rollup is WAITING — unlike a requested roll,
-   * {@code quiet()} keeps treating WAITING like BUSY (qits-1514), so this never rolls, not even
-   * well past the quiet window with no fresher activity in between.
-   */
+  /** The hook fired with unchanged settings rolls nothing and leaves no request behind. */
   @Test
-  void anUnrequestedSpecChangeWithWaitingNeverRolls() throws Exception {
-    Running desk = placedRunning("fd-settings-pin-waiting", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.WAITING);
-      Instant wellPastQuietWindow = Instant.now().plus(Duration.ofHours(1));
-      assertFalse(
-          specRoll.quiet(projectId, wellPastQuietWindow),
-          "WAITING alone keeps it from being quiet, however long ago it was last used");
+  void anUnchangedSettingsHookClearsTheRequestAndKeepsTheSpec() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    running(projectId);
+    String applied = row(projectId).specHash;
+    usedRecentlyAndNow(projectId, AgentState.BUSY);
 
-      // The project row moves with no hook: the spec changes the way a pin bump changes it.
-      setDelivery(projectId, true);
+    hooks.onDeliveryChanged(projectId, delivery(false));
+    hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
 
-      assertEquals(0, specRoll.roll(wellPastQuietWindow));
-      assertEquals(0, specRoll.roll(projectId, wellPastQuietWindow));
-      assertEquals(desk.take().specHash(), row(projectId).specHash);
-      assertNull(row(projectId).rollRequestedAt);
-    } finally {
-      daemons().forget(projectId);
-    }
+    assertEquals(applied, row(projectId).specHash);
+    assertNull(row(projectId).rollRequestedAt);
+    assertTrue(system.rolled().isEmpty());
   }
 
-  /** The hook fired with unchanged settings restarts nothing and leaves no request behind. */
-  @Test
-  void anUnchangedSettingsHookClearsTheRequestAndKeepsTheSpec() throws Exception {
-    Running desk = placedRunning("fd-settings-same", FrontDeskLifecycle.ON_DEMAND);
-    String projectId = desk.projectId();
-    try {
-      usedRecentlyAndNow(projectId, AgentState.BUSY);
-
-      hooks.onDeliveryChanged(projectId, delivery(false));
-      hooks.onChanged(projectId, FrontDeskLifecycle.ON_DEMAND);
-
-      assertEquals(desk.take().specHash(), row(projectId).specHash);
-      assertNull(row(projectId).rollRequestedAt);
-    } finally {
-      daemons().forget(projectId);
-    }
-  }
-
-  /** The request is stored on the row, and an unplaced desk is never rolled for it. */
+  /** The request is stored on the row, and a desk with no lease is never rolled for it. */
   @Test
   void aRollRequestPersistsOnTheRow() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
@@ -857,7 +438,7 @@ class FrontDeskTest {
 
     assertEquals(1, frontDesks.requestRoll(projectId, at));
     assertEquals(at, row(projectId).rollRequestedAt);
-    assertEquals(0, specRoll.roll(projectId, Instant.now()), "an unplaced desk is not rolled");
+    assertEquals(0, specRoll.roll(projectId, Instant.now()), "a desk with no lease is not rolled");
     assertEquals(at, row(projectId).rollRequestedAt);
 
     assertEquals(1, frontDesks.clearRollRequest(projectId));
@@ -865,73 +446,69 @@ class FrontDeskTest {
     assertEquals(0, frontDesks.requestRoll("no-such-project", at), "no desk, no row touched");
   }
 
-  // --- the token ---------------------------------------------------------------------------------
+  // --- removal -----------------------------------------------------------------------------------
 
-  /** Minted once at creation; kept by stop; revoked by DELETE, which also tells the runner. */
+  /**
+   * DELETE ends the lease, purges the work volume once the lease is ENDED, revokes every token and
+   * drops the row; it is idempotent.
+   */
   @Test
-  void theTokenLivesAsLongAsTheDesk() throws Exception {
-    DeskRunner held = runner("fd-token", 2);
-    FakeDeskRunner runner = greeted("fd-token");
+  void deletingTheDeskEndsItsLeaseAndPurgesItsVolume() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
-    person().post(base(projectId) + "/ensure").then().statusCode(200);
-    assertEquals(1, tokens.mintsFor(projectId));
+    UUID leaseId = running(projectId);
     String tokenId = row(projectId).tokenId;
-    String subject = row(projectId).tokenSubject;
-    assertEquals(subject, frontDesks.tokenSubject(projectId));
-    runner.send(new Reserve());
-    runner.expect(Take.class);
-
-    person().post(base(projectId) + "/stop").then().statusCode(200);
-    runner.expect(Estate.class);
-    assertTrue(tokens.isLive(tokenId), "stop revoked the token");
+    String sessionTokenId = row(projectId).sessionTokenId;
+    assertEquals(row(projectId).tokenSubject, frontDesks.tokenSubject(projectId));
 
     person().delete(base(projectId)).then().statusCode(204);
 
-    assertEquals(projectId, runner.expect(Remove.class).projectId());
-    assertTrue(runner.expect(Estate.class).desks().isEmpty());
     assertNull(row(projectId));
+    assertTrue(system.ended().contains(leaseId));
+    assertEquals(List.of(SystemLeases.workKey(projectId)), system.purged());
     assertFalse(tokens.isLive(tokenId));
+    assertFalse(tokens.isLive(sessionTokenId));
     assertNull(frontDesks.tokenSubject(projectId));
     person().get(base(projectId)).then().body("container.runtimeStatus", is("ABSENT"));
     person().delete(base(projectId)).then().statusCode(204);
-    assertEquals(held.id, runnerRows.findByClientId("fd-token").orElseThrow().id);
   }
 
-  /** A wanted desk a DELETE removed comes back fresh, with a new token, at the next sweep. */
+  /** A wanted desk a DELETE removed comes back fresh, on a new lease and token, at the next sweep. */
   @Test
   void aDeletedAlwaysOnDeskComesBackFresh() {
     String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
     sweep.sweep(Instant.now());
     String first = row(projectId).tokenId;
+    UUID firstLease = row(projectId).leaseId;
 
     person().delete(base(projectId)).then().statusCode(204);
     sweep.sweep(Instant.now());
 
     assertNotNull(row(projectId));
     assertFalse(first.equals(row(projectId).tokenId));
+    assertFalse(firstLease.equals(row(projectId).leaseId));
     assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
   }
 
-  /** Deleting the project takes its desk: the runner is told, the token revoked, the row gone. */
+  /** Deleting the project takes its desk: lease ended, volume purged, token revoked, row gone. */
   @Test
-  void deletingTheProjectRemovesItsDesk() throws Exception {
-    runner("fd-project-gone", 2);
-    FakeDeskRunner runner = greeted("fd-project-gone");
+  void deletingTheProjectRemovesItsDesk() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runner.send(new Reserve());
-    runner.expect(Take.class);
+    UUID leaseId = row(projectId).leaseId;
     String tokenId = row(projectId).tokenId;
 
     projectService.delete(projectId);
 
-    assertEquals(projectId, runner.await(Remove.class).projectId());
     assertNull(row(projectId));
+    assertTrue(system.ended().contains(leaseId));
+    assertTrue(system.purged().contains(SystemLeases.workKey(projectId)));
     assertFalse(tokens.isLive(tokenId));
   }
 
-  /** A mint that fails leaves the desk FAILED and unqueued; the sweep mints it later. */
+  // --- tokens ------------------------------------------------------------------------------------
+
+  /** A mint that fails leaves the desk FAILED and asks for no lease; the sweep mints it later. */
   @Test
   void aFailedMintIsRetriedBySweep() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
@@ -943,19 +520,24 @@ class FrontDeskTest {
         .statusCode(200)
         .body("container.runtimeStatus", is("FAILED"));
     assertTrue(row(projectId).failureDetail.startsWith(FrontDesks.TOKEN_UNAVAILABLE));
-    assertNull(row(projectId).queuedAt);
+    assertNull(row(projectId).leaseId);
+    assertTrue(system.requests().isEmpty(), "no lease without its token");
 
     tokens.failMint(false);
     sweep.sweep(Instant.now());
 
     assertNotNull(row(projectId).tokenId);
+    assertNotNull(row(projectId).leaseId);
     assertNull(row(projectId).failureDetail);
     assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
   }
 
-  /** The reconcile reaps unclaimed desk tokens, spares claimed and young ones, and other kinds. */
+  /**
+   * The reconcile reaps unclaimed desk tokens, spares claimed and young ones and other kinds — and a
+   * desk token on a desk with no lease is no claim: it is cleared off the desk and revoked.
+   */
   @Test
-  void theTokenReconcileReapsOnlyTheUnclaimed() {
+  void theTokenReconcileReapsTheUnclaimedAndTheLeaseless() {
     String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
     sweep.sweep(Instant.now());
     String claimed = row(projectId).tokenId;
@@ -965,16 +547,30 @@ class FrontDeskTest {
         new FrontDeskTokens.Live("young", FrontDeskTokens.CONTEXT_KIND, "gone", Instant.now()));
     tokens.plant(new FrontDeskTokens.Live("runner", "desk-runner-registration", "r", old));
 
+    // A stopped desk still holding a token from before the cutover.
+    String stoppedProject = project(FrontDeskLifecycle.ON_DEMAND);
+    frontDesks.ensureRow(stoppedProject);
+    tokens.plant(new FrontDeskTokens.Live("kept", FrontDeskTokens.CONTEXT_KIND, stoppedProject, old));
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                desks.update(
+                    "tokenId = 'kept', tokenValue = 'qits_tok_kept', tokenSubject = 'tok-kept'"
+                        + " where projectId = ?1",
+                    stoppedProject));
+
     tokens.failList(true);
     assertEquals(0, tokenReconcile.reconcile(Instant.now()));
     assertTrue(tokens.isLive("orphan"), "a failed listing reaped");
     tokens.failList(false);
 
-    assertEquals(1, tokenReconcile.reconcile(Instant.now()));
+    assertEquals(2, tokenReconcile.reconcile(Instant.now()));
     assertFalse(tokens.isLive("orphan"));
-    assertTrue(tokens.isLive(claimed));
+    assertFalse(tokens.isLive("kept"));
+    assertNull(row(stoppedProject).tokenId, "cleared off the lease-less desk");
+    assertTrue(tokens.isLive(claimed), "a leased desk's token is claimed");
     assertTrue(tokens.isLive("young"));
-    assertTrue(tokens.isLive("runner"));
+    assertTrue(tokens.isLive("runner"), "a runner token is LegacyRunnerClients', not this reaper's");
   }
 
   // --- the delivery loop (epic qits-1440) ---------------------------------------------------------
@@ -999,9 +595,9 @@ class FrontDeskTest {
   }
 
   /**
-   * Enabling the loop mints exactly one delivery token, of kind {@code desk-delivery}, beside the
-   * desk's own — however often the hook and the sweep run — and disabling it revokes and clears it
-   * while the desk keeps its own token.
+   * Enabling the loop mints exactly one delivery token beside the lease's own, however often the
+   * hook and the sweep run; disabling it revokes and clears it — and, nothing else wanting the desk,
+   * ends its lease and gives the lease's token back too.
    */
   @Test
   void enablingMintsOneDeliveryTokenAndDisablingRevokesIt() {
@@ -1014,14 +610,11 @@ class FrontDeskTest {
 
     FrontDesk row = row(projectId);
     assertNotNull(row.deliveryTokenId);
-    assertNotNull(row.deliveryTokenValue);
     assertTrue(row.deliveryTokenSubject.startsWith("tok-"));
     assertEquals(1, tokens.deliveryMintsFor(projectId));
-    assertEquals(1, tokens.mintsFor(projectId), "the desk's own token is minted once too");
-    assertEquals(FrontDeskTokens.CONTEXT_KIND_DELIVERY, tokens.kindOf(row.deliveryTokenId));
+    assertEquals(1, tokens.mintsFor(projectId), "one lease, one desk token");
     assertEquals("desk-delivery", tokens.kindOf(row.deliveryTokenId));
     assertEquals(FrontDeskTokens.CONTEXT_KIND, tokens.kindOf(row.tokenId));
-    assertEquals(FrontDeskDesired.RUNNING, row.desired);
     String deliveryToken = row.deliveryTokenId;
     String deskToken = row.tokenId;
 
@@ -1030,12 +623,10 @@ class FrontDeskTest {
 
     FrontDesk after = row(projectId);
     assertNull(after.deliveryTokenId);
-    assertNull(after.deliveryTokenValue);
-    assertNull(after.deliveryTokenSubject);
     assertFalse(tokens.isLive(deliveryToken));
-    assertTrue(tokens.revoked().contains(deliveryToken));
-    assertTrue(tokens.isLive(deskToken), "the desk keeps its own token");
     assertEquals(FrontDeskDesired.STOPPED, after.desired, "nothing else wants the desk");
+    assertNull(after.leaseId);
+    assertFalse(tokens.isLive(deskToken), "the lease's token goes with the lease");
 
     sweep.sweep(Instant.now());
     assertEquals(1, tokens.deliveryMintsFor(projectId), "an off loop is never minted for");
@@ -1051,11 +642,11 @@ class FrontDeskTest {
 
     hooks.onDeliveryChanged(projectId, delivery(true));
     assertNull(row(projectId).deliveryTokenId);
-    assertNull(row(projectId).failureDetail, "the desk itself is not failed");
 
     tokens.failMint(false);
     sweep.sweep(Instant.now());
     assertNotNull(row(projectId).deliveryTokenId);
+    assertNull(row(projectId).failureDetail);
   }
 
   /** The delivery token goes with the desk, and the reconcile reaps an unclaimed one. */
@@ -1067,7 +658,8 @@ class FrontDeskTest {
     String claimed = row(projectId).deliveryTokenId;
     Instant old = Instant.now().minus(Duration.ofHours(2));
     tokens.plant(
-        new FrontDeskTokens.Live("delivery-orphan", FrontDeskTokens.CONTEXT_KIND_DELIVERY, "gone", old));
+        new FrontDeskTokens.Live(
+            "delivery-orphan", FrontDeskTokens.CONTEXT_KIND_DELIVERY, "gone", old));
 
     assertEquals(1, tokenReconcile.reconcile(Instant.now()));
     assertFalse(tokens.isLive("delivery-orphan"));
@@ -1080,14 +672,11 @@ class FrontDeskTest {
   // --- the session token (qits-1482) --------------------------------------------------------------
 
   /**
-   * The desk's session token: minted once beside its desk token, kind {@code desk-session} for the
-   * project, held on the row and offered by {@link FrontDesks#sessionToken}, carried in no spec, and
-   * revoked with the desk.
+   * The desk's session token: minted once, kind {@code desk-session}, held on the row and offered by
+   * {@link FrontDesks#sessionToken}, carried in no lease spec, and revoked with the desk.
    */
   @Test
-  void theDeskHoldsASessionTokenThatGoesWithIt() throws Exception {
-    runner("fd-session", 1);
-    FakeDeskRunner runner = greeted("fd-session");
+  void theDeskHoldsASessionTokenThatGoesWithIt() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
@@ -1097,16 +686,13 @@ class FrontDeskTest {
     assertEquals(1, tokens.sessionMintsFor(projectId));
     assertEquals(FrontDeskTokens.CONTEXT_KIND_SESSION, tokens.kindOf(row.sessionTokenId));
     assertEquals(projectId, tokens.contextOf(row.sessionTokenId));
-    assertTrue(row.sessionTokenSubject.startsWith("tok-"));
     assertFalse(row.sessionTokenSubject.equals(row.tokenSubject), "a principal of its own");
     FrontDeskTokens.Minted session = frontDesks.sessionToken(projectId).orElseThrow();
     assertEquals(row.sessionTokenId, session.tokenId());
-    assertEquals(row.sessionTokenValue, session.token());
-    assertEquals(row.sessionTokenSubject, session.subject());
 
-    runner.send(new Reserve());
-    Take take = runner.expect(Take.class);
-    take.spec()
+    system
+        .requestOf(row.leaseId)
+        .spec()
         .env()
         .forEach(
             (name, value) ->
@@ -1119,10 +705,7 @@ class FrontDeskTest {
     assertTrue(frontDesks.sessionToken(projectId).isEmpty());
   }
 
-  /**
-   * An idp that will not mint a session token (one older than qits-1482's {@code desk-session}
-   * kind) leaves the desk usable — QUEUED, not FAILED — and the sweep mints it once it can.
-   */
+  /** An idp that will not mint a session token leaves the desk usable; the sweep mints it later. */
   @Test
   void aRefusedSessionMintLeavesTheDeskUsable() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
@@ -1135,7 +718,6 @@ class FrontDeskTest {
         .body("container.runtimeStatus", is("QUEUED"));
     assertNull(row(projectId).sessionTokenId);
     assertNull(row(projectId).failureDetail);
-    assertTrue(frontDesks.sessionToken(projectId).isEmpty());
 
     tokens.failSession(false);
     sweep.sweep(Instant.now());
@@ -1160,26 +742,6 @@ class FrontDeskTest {
     assertTrue(tokens.isLive(claimed));
   }
 
-  /** {@code removed} for an unplaced, once-placed row completes it: row dropped, token revoked. */
-  @Test
-  void removedCompletesAnUnplacedRow() {
-    DeskRunner held = runner("fd-removed", 1);
-    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
-    frontDesks.ensureRow(projectId);
-    String tokenId = row(projectId).tokenId;
-    String sessionTokenId = row(projectId).sessionTokenId;
-
-    frontDesks.removed(held.id, projectId);
-    assertNotNull(row(projectId), "a never-placed row is not touched");
-
-    QuarkusTransaction.requiringNew()
-        .run(() -> desks.update("placedAt = ?1 where projectId = ?2", Instant.now(), projectId));
-    frontDesks.removed(held.id, projectId);
-    assertNull(row(projectId));
-    assertFalse(tokens.isLive(tokenId));
-    assertFalse(tokens.isLive(sessionTokenId));
-  }
-
   // --- refusals ----------------------------------------------------------------------------------
 
   /** An ALWAYS_ON desk cannot be stopped: 409 FRONT_DESK_ALWAYS_ON, and nothing moves. */
@@ -1187,6 +749,7 @@ class FrontDeskTest {
   void stoppingAnAlwaysOnDeskIs409() {
     String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
     sweep.sweep(Instant.now());
+    UUID leaseId = row(projectId).leaseId;
 
     person()
         .post(base(projectId) + "/stop")
@@ -1194,23 +757,7 @@ class FrontDeskTest {
         .statusCode(409)
         .body("error", is(FrontDesks.FRONT_DESK_ALWAYS_ON));
     assertEquals(FrontDeskDesired.RUNNING, row(projectId).desired);
-  }
-
-  /** The runner listing names its desks, which is what refuses its delete RUNNER_OWNS_DESKS. */
-  @Test
-  void aRunnerOwningADeskListsIt() {
-    DeskRunner held = runner("fd-owns", 1);
-    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
-    sweep.sweep(Instant.now());
-    assertNotNull(frontDesks.take(held.id));
-
-    List<DeskRunnerDto.DeskRunnerDesk> owned =
-        QuarkusTransaction.requiringNew().call(() -> runnerDesks.desksOn(held.id));
-
-    assertEquals(1, owned.size());
-    assertEquals(projectId, owned.get(0).projectId());
-    assertEquals("fd-" + projectId.substring(0, 8), owned.get(0).slug());
-    assertNotNull(owned.get(0).state());
+    assertEquals(leaseId, row(projectId).leaseId);
   }
 
   /** An unknown project is a 404 on every door. */
@@ -1223,10 +770,9 @@ class FrontDeskTest {
     person().delete(unknown).then().statusCode(404);
   }
 
-  /** With no public domain the desk is FAILED EDGE_PLANE_UNCONFIGURED, and is not placed. */
+  /** With no public domain the desk is FAILED EDGE_PLANE_UNCONFIGURED, and asks for no lease. */
   @Test
   void anUnconfiguredEdgeIsFailed() {
-    DeskRunner held = runner("fd-edge", 1);
     specs.domainOverride("localhost");
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
 
@@ -1236,16 +782,22 @@ class FrontDeskTest {
         .statusCode(200)
         .body("container.runtimeStatus", is("FAILED"))
         .body("container.failureDetail", is(FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED));
-    assertNull(frontDesks.take(held.id));
+    assertTrue(system.requests().isEmpty());
+    assertEquals(0, tokens.mintsFor(projectId), "no token for a desk that cannot be leased");
 
     specs.domainOverride(DOMAIN);
-    assertNotNull(frontDesks.take(held.id));
+    person()
+        .post(base(projectId) + "/ensure")
+        .then()
+        .statusCode(200)
+        .body("container.runtimeStatus", is("QUEUED"));
     assertNull(row(projectId).failureDetail);
+    assertNotNull(row(projectId).leaseId);
   }
 
-  /** The bound subject is what the socket checks read. */
+  /** The bound subject is what the socket checks read: the current lease's token's. */
   @Test
-  void theBoundSubjectIsTheDesksTokenSubject() {
+  void theBoundSubjectIsTheLeasesTokenSubject() {
     String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
     sweep.sweep(Instant.now());
     assertEquals(row(projectId).tokenSubject, frontDesks.tokenSubject(projectId));
