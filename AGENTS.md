@@ -3141,7 +3141,7 @@ argument.
   file the library validates at boot, the path passed in by the host, the snapshot taken at creation,
   the recreate-only reach — and only the transport moves. **The cost is stated rather than hidden**:
   a value in env is readable in `docker inspect` and the document carries resolved external-MCP
-  credentials. This container's env already carries `QITS_COMMISSIONED_CLIENT_SECRET` on those terms.
+  credentials. The desk's own env already carries its `QITS_TOKEN` on those terms.
 - **`/tmp` because that file is derived, not durable**, and because it is the one place writable by
   the arbitrary host uid the container runs as: `/workspace` is the project's git checkout (a stray
   file there lands in somebody's `git status`) and `/claude-home` is the platform-wide credential

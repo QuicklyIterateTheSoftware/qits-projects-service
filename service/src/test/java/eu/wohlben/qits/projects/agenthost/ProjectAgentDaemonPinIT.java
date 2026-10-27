@@ -347,18 +347,18 @@ public class ProjectAgentDaemonPinIT {
     // EVERY AMBIENT QITS_ VARIABLE IS REMOVED FIRST, and this is the difference between a test and a
     // coincidence. `ProcessBuilder` seeds the child from THIS process's environment, and this
     // process runs somewhere that has opinions: a workspace container carries the full
-    // QITS_PROJECTS_DAEMON_*/QITS_WORKSPACE_DAEMON_* set plus a commissioned credential, and a CI
-    // step container carries QITS_COMMISSIONED_CLIENT_ID/_SECRET and nothing else of the set.
+    // QITS_PROJECTS_DAEMON_*/QITS_WORKSPACE_DAEMON_* set plus its own QITS_TOKEN, and a CI step
+    // container carries QITS_TOKEN and nothing else of the set (qits-515).
     //
-    // That difference is not cosmetic, because ControlSocket.authorization() refuses a PARTIAL
-    // commission — VERIFIED against this daemon's own source, and its rule is the same as
+    // That difference used to be load-bearing, because ControlSocket.authorization() refuses a
+    // PARTIAL commission — VERIFIED against this daemon's own source, and its rule is the same as
     // qits-workspace-daemon's: if ANY ONE of qits.commissioned-client-id,
     // qits.commissioned-client-secret, qits.projects-daemon.auth-token-url and
-    // qits.projects-daemon.auth-audience is present then all four are required, and a step container
-    // supplies exactly the first two. The future then fails with "commissioned dial-home
-    // authentication is incomplete", connect() logs at DEBUG and re-arms its backoff, the daemon
-    // never dials, and this test times out having passed locally for weeks — because a workspace
-    // container HAS all four and the assertion was riding on this container's credentials.
+    // qits.projects-daemon.auth-audience is present then all four are required. Back when a step
+    // container supplied exactly the first two, the future failed with "commissioned dial-home
+    // authentication is incomplete", connect() logged at DEBUG and re-armed its backoff, the daemon
+    // never dialled, and this test timed out having passed locally for weeks — because a workspace
+    // container HAD all four and the assertion was riding on this container's credentials.
     //
     // A pin test whose result depends on where it runs proves nothing about the pin, which is the
     // same class of defect as the configuration entry this whole change replaced. So the child gets
