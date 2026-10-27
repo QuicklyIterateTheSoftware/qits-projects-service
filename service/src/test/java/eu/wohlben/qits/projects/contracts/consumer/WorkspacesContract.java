@@ -354,5 +354,26 @@ final class WorkspacesContract {
                           .workOf(p.get("agentId"))
                           .isEmpty()),
               "param agentId; GET /workspaces/api/agents/{agentId} answering 404 for an agent it"
-                  + " does not know"));
+                  + " does not know"),
+          // qits-1672: a token subject is traced to its ACTIVE agent before a failed build is told.
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listAgents",
+              AGENTS_BOUND_TO_WORK_ITEMS,
+              "GET",
+              "/workspaces/api/agents",
+              Map.of("state", "ACTIVE"),
+              null,
+              List.of("$.agents[*].agentId", "$.agents[*].workId"),
+              200,
+              Trigger.schedule("ReleaseRequestFailureNotices.deliverOwed"),
+              (base, p) ->
+                  assertFalse(
+                      workspaces(new HttpWorkspaceAgentLookup(RowClients.clients()), base)
+                          .active()
+                          .orElseThrow()
+                          .isEmpty()),
+              "GET /workspaces/api/agents?state=ACTIVE answering 200 with agents[].agentId and"
+                  + " workId"));
 }

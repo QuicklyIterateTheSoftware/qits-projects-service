@@ -14,6 +14,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -133,6 +135,65 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
     } catch (Exception e) {
       return couldNot(agentId, e.toString());
     }
+  }
+
+  /**
+   * {@code GET /workspaces/api/agents?state=ACTIVE} (qits-1672), read as a {@code Map} for each
+   * entry's {@code agentId} and {@code workId}. Same contract as {@link #workOf}: never throws, one
+   * WARN and empty on every failure.
+   */
+  @Override
+  public Optional<List<ActiveAgent>> active() {
+    Optional<String> base = address();
+    if (base.isEmpty()) {
+      return couldNotList("no address for qits-workspaces is configured");
+    }
+    Optional<String> authorization = bearer.authorization();
+    if (authorization.isEmpty()) {
+      return couldNotList("no machine bearer for qits-workspaces is available");
+    }
+    try {
+      HttpRequest request =
+          HttpRequest.newBuilder(URI.create(base.get() + "/workspaces/api/agents?state=ACTIVE"))
+              .timeout(REQUEST_TIMEOUT)
+              .header("Accept", "application/json")
+              .header("Authorization", authorization.get())
+              .GET()
+              .build();
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() / 100 != 2) {
+        return couldNotList(
+            "qits-workspaces answered " + response.statusCode() + ": " + response.body());
+      }
+      Map<?, ?> answer;
+      try {
+        answer = MAPPER.readValue(response.body(), Map.class);
+      } catch (Exception e) {
+        return couldNotList("qits-workspaces answered something unreadable: " + e);
+      }
+      if (answer == null || !(answer.get("agents") instanceof List<?> entries)) {
+        return couldNotList("qits-workspaces answered no agents: " + response.body());
+      }
+      List<ActiveAgent> agents = new ArrayList<>();
+      for (Object entry : entries) {
+        if (entry instanceof Map<?, ?> agent
+            && agent.get("agentId") instanceof String agentId
+            && agent.get("workId") instanceof String workId) {
+          agents.add(new ActiveAgent(agentId, workId));
+        }
+      }
+      return Optional.of(List.copyOf(agents));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return couldNotList("interrupted");
+    } catch (Exception e) {
+      return couldNotList(e.toString());
+    }
+  }
+
+  private static Optional<List<ActiveAgent>> couldNotList(String reason) {
+    LOG.warnf("Could not list the ACTIVE agents of qits-workspaces: %s", reason);
+    return Optional.empty();
   }
 
   /** The new key, then the release path's — {@link HttpWorkspaceAgentTurns}' order. */

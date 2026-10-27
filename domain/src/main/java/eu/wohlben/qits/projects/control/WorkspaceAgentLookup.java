@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -24,4 +25,13 @@ public interface WorkspaceAgentLookup {
    * @return the work item's row id; never null, and never thrown through
    */
   Optional<String> workOf(String agentId);
+
+  /** An ACTIVE agent and the work item it works on. */
+  record ActiveAgent(String agentId, String workId) {}
+
+  /**
+   * Every ACTIVE agent (qits-1672), so a token subject can be traced back to its agent. Empty when
+   * that cannot be said; an empty list when there are none. Never throws.
+   */
+  Optional<List<ActiveAgent>> active();
 }
