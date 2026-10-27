@@ -60,7 +60,7 @@ public class ProjectDeskTriggersTest {
           "events");
 
   private static final Set<String> EVENT_MEMBERS =
-      Set.of("source", "itemRef", "itemId", "label", "cause", "eventId", "occurredAt");
+      Set.of("source", "itemRef", "itemId", "label", "cause", "commentId", "eventId", "occurredAt");
 
   private RequestSpecification as(String user, String roles) {
     return given()
@@ -182,6 +182,7 @@ public class ProjectDeskTriggersTest {
             .body("messages[0].events[0].itemId", equalTo("item-1580"))
             .body("messages[0].events[0].label", equalTo("A title"))
             .body("messages[0].events[0].cause", equalTo("tok-workspace-agent-1"))
+            .body("messages[0].events[0].commentId", nullValue())
             .body("messages[0].events[0].eventId", equalTo(eventId.toString()))
             .body("messages[0].events[0].occurredAt", equalTo("2026-03-01T10:00:00Z"))
             .extract()

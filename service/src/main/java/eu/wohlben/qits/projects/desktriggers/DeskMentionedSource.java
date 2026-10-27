@@ -14,9 +14,11 @@ import java.util.stream.Collectors;
  * waits for an agent's answer before it acts, and the answer arrives as such a comment.
  *
  * <p>Reads this service's own {@link EntityCommented}. The line names the item the comment is on and
- * who wrote it; the desk reads the thread for the text. Two comments by one author on one item in
- * a window are one line. The cause is {@code changedBy}, so the desk's own comment is dropped by the
- * listener.
+ * who wrote it; the desk reads the thread for the text. Each comment is its own row, so a person can
+ * open every one from the Desk page: the row carries the {@code commentId}, and its cause is {@code
+ * comment <id8>}. The message the desk gets still has one line for two comments by one author on
+ * one item ({@link #render}). The principal is {@code changedBy}, so the listener drops the desk's
+ * own comment.
  */
 @ApplicationScoped
 public class DeskMentionedSource implements DeskTriggerSource {
@@ -59,16 +61,29 @@ public class DeskMentionedSource implements DeskTriggerSource {
             commented.projectId(),
             project.slug + "-" + commented.number(),
             commented.entityId(),
-            commented.changedBy(),
+            cause(commented.commentId()),
             label(commented),
             DeskTriggerFrames.eventIdOf(frame),
-            occurredAt));
+            occurredAt,
+            commented.commentId(),
+            commented.changedBy()));
   }
 
   @Override
   public String render(String projectSlug, List<DeskTriggerEventRow> events) {
     return "Comments to @desk:\n"
-        + events.stream().map(DeskTriggerEventRow::line).collect(Collectors.joining("\n"));
+        + events.stream()
+            .map(DeskTriggerEventRow::line)
+            .distinct()
+            .collect(Collectors.joining("\n"));
+  }
+
+  /** {@code comment <first 8 of the id>}; null when the event names no comment. */
+  static String cause(String commentId) {
+    if (commentId == null || commentId.isBlank()) {
+      return null;
+    }
+    return "comment " + commentId.substring(0, Math.min(8, commentId.length()));
   }
 
   /** {@code <title>; from <who>}: an agent by its work item, anyone else by name. */

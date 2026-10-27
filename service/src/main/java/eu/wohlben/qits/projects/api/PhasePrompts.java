@@ -49,7 +49,7 @@ import java.util.Optional;
  *   <li><b>Nothing copied from a tool description or from the flow brief.</b> What a status means,
  *       which moves are legal, what a block does and how a release request works are stated where
  *       the agent meets them — the {@code qits} MCP server's {@code work_status} and {@code
- *       work_block}, {@code /workspace/docs/development-flow.md} — and a second copy here is one
+ *       work_block}, the development guide ({@code qits help guide}) — and a second copy here is one
  *       free to drift from the first. A template carries only what is specific to its phase: what
  *       to produce, where to write it, and the one or two mistakes that phase is prone to.
  *   <li><b>One ending, for every phase and archetype.</b> Either the forward move — {@code move it
@@ -106,17 +106,14 @@ import java.util.Optional;
  * the {@code agentReadOnly=true} marker: with it, the central server serves only its read tools, and
  * every transition and every block below goes silent.
  *
- * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
+ * <h2>Every dispatched turn opens with a pointer to the development guide</h2>
  *
  * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@link #render} seam — <b>once, for every
  * template of every archetype</b> — and never inside a template, so a template added beside these
- * inherits it. <b>It goes first</b> because the brief is context for everything that follows. <b>The
- * path is absolute</b> because a workspace container clones the project's repository at {@code
- * /workspace} exactly ({@code Provisioner.WORKSPACE_DIR} in qits-workspace-daemon), while the
- * agent's working directory is not guaranteed. <b>The absence clause is not padding</b>: these
- * prompts are platform-wide, and only a project whose repository carries the file has a brief to
- * read — without "if that file is not there", the first thing an agent on every other project does
- * is fail to follow an instruction. Do not drop it.
+ * inherits it. <b>It goes first</b> because the brief is context for everything that follows. It
+ * names {@code qits help guide} (qits-1679), which prints the platform's current guide for the
+ * agent's own credential, rather than the checkout's {@code docs/development-flow.md}, which lags
+ * behind releases. The fallback to that file covers a container whose CLI predates the command.
  */
 final class PhasePrompts {
 
@@ -124,10 +121,10 @@ final class PhasePrompts {
 
   /** The pointer every dispatched agent's first turn opens with; see the class javadoc. */
   static final String FLOW_BRIEF_POINTER =
-      "Read /workspace/docs/development-flow.md first: a short brief on how work moves through this"
-          + " platform — branch per slug, release request per repository, the quality gates, the"
-          + " transitions, and when the workspace is resolved. If that file is not there, this"
-          + " project carries no brief; proceed without it.";
+      "Run `qits help guide` first: the platform's brief on how work moves through it — branch per"
+          + " slug, release request per repository, the quality gates, the transitions, and when the"
+          + " workspace is resolved. If your qits has no `help guide` yet, read"
+          + " /workspace/docs/development-flow.md instead, if it is there.";
 
   /**
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,

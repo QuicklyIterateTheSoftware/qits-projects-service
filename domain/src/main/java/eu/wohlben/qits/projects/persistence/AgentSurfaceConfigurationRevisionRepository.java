@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.persistence;
 
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.entity.AgentSurfaceConfigurationRevision;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -34,7 +35,11 @@ public class AgentSurfaceConfigurationRevisionRepository
    * also the honest answer to "how old is what this container holds".
    */
   public java.util.Optional<java.time.Instant> latestChangeAt() {
-    return find("order by changedAt desc, id desc")
+    // The development guide's rows (qits-1679) are not in the document, so their edits do not
+    // date it: an edit there must not replace an agent container.
+    return find(
+            "surfaceKey not like ?1 order by changedAt desc, id desc",
+            DevelopmentGuideDefaults.KEY_PREFIX + "%")
         .firstResultOptional()
         .map(revision -> revision.changedAt);
   }

@@ -14,9 +14,9 @@ import java.util.UUID;
  * the desk should act on — {@link #itemRef} as the desk is shown it, {@link #label} in brackets
  * after it, {@link #cause} who or what caused it.
  *
- * <p>Insert-only. {@code (window_id, source, item_ref, label)} is unique and the insert is {@code on
- * conflict do nothing}, so the same item reached twice in one window, or one frame delivered twice,
- * is one line.
+ * <p>Insert-only. {@code (window_id, source, item_ref, label, comment_id)} is unique and the insert
+ * is {@code on conflict do nothing}, so the same item reached twice in one window, or one frame
+ * delivered twice, is one line. Two comments are two lines (V63).
  *
  * <p>{@link Uncaused}: {@link DeskTriggerWindow}'s reasoning.
  */
@@ -43,6 +43,10 @@ public class DeskTriggerEvent extends PanacheEntityBase {
   @Column public String label;
 
   @Column public String cause;
+
+  /** The comment a desk-mentioned row came from; null for the other sources (qits-1660, V63). */
+  @Column(name = "comment_id")
+  public String commentId;
 
   /** The bus event that carried it. */
   @Column(name = "event_id", nullable = false)

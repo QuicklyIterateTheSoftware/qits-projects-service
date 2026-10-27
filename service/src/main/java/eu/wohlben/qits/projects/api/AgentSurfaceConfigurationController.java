@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.AgentSurfaceDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.error.DomainException;
@@ -147,6 +148,13 @@ public class AgentSurfaceConfigurationController {
         && AgentSurfaceDefaults.PROJECT_DELIVERY.equalsIgnoreCase(surface.trim())) {
       throw new DomainException(
           403, "The delivery desk never edits its own brief: project.delivery is a person's.");
+    }
+    // The development guide (qits-1679) is part of every brief, the desk's included.
+    if (identity.hasRole(DESK_ADMIN_ROLE)
+        && surface != null
+        && DevelopmentGuideDefaults.isGuideKey(surface.trim().toLowerCase(java.util.Locale.ROOT))) {
+      throw new DomainException(
+          403, "The delivery desk never edits the development guide: it is part of its brief.");
     }
     AgentSurfaceConfigurationDto wanted =
         surfaces.validated(

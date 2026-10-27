@@ -129,6 +129,11 @@ public class ProjectDeskTriggersController {
           String itemId,
       @Schema(description = "What follows the item in brackets", nullable = true) String label,
       @Schema(description = "Who or what caused it", nullable = true) String cause,
+      @Schema(
+              description =
+                  "The comment it came from, for desk-mentioned; null for the other sources",
+              nullable = true)
+          String commentId,
       @Schema(description = "The bus event that carried it") UUID eventId,
       @Schema(description = "When it happened") Instant occurredAt) {
 
@@ -139,6 +144,7 @@ public class ProjectDeskTriggersController {
           event.itemId,
           event.label,
           event.cause,
+          event.commentId,
           event.eventId,
           event.occurredAt);
     }

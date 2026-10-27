@@ -53,9 +53,14 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
 
+  /** The development guide's parts, which {@link #THE_DEVELOPMENT_GUIDE_SHIPS} resets. */
+  @Inject eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService surfaceConfigurations;
+
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String TWO_PROJECTS_EXIST = "two projects exist";
   public static final String NO_PROJECTS_EXIST = "no projects exist";
+  /** The development guide's parts as they ship (qits-1679). */
+  public static final String THE_DEVELOPMENT_GUIDE_SHIPS = "the development guide ships";
   public static final String A_PROJECT_WITH_ONE_REPOSITORY = "a project with one repository";
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
@@ -448,6 +453,7 @@ public class ProviderStates {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
     states.put(TWO_PROJECTS_EXIST, this::twoProjectsExist);
     states.put(NO_PROJECTS_EXIST, this::noProjectsExist);
+    states.put(THE_DEVELOPMENT_GUIDE_SHIPS, this::theDevelopmentGuideShips);
     states.put(A_PROJECT_WITH_ONE_REPOSITORY, this::aProjectWithOneRepository);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
@@ -823,6 +829,15 @@ public class ProviderStates {
    * entries, of which there are none.
    */
   private Setup noProjectsExist() {
+    return new Setup(params(), List.of());
+  }
+
+  /** Every guide part at its shipped text, whatever a test stored before. */
+  private Setup theDevelopmentGuideShips() {
+    for (String key : eu.wohlben.qits.projects.control.DevelopmentGuideDefaults.KEYS) {
+      surfaceConfigurations.save(
+          key, eu.wohlben.qits.projects.control.AgentSurfaceDefaults.shippedDefault(key), null);
+    }
     return new Setup(params(), List.of());
   }
 

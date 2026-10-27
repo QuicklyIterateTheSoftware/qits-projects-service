@@ -20,6 +20,7 @@
           "itemId": "00000000-0000-4000-8000-000000000003",
           "label": "Desk triggers read door",
           "cause": "tok-workspace-agent-contract",
+          "commentId": null,
           "eventId": "00000000-0000-4000-8000-000000000004",
           "occurredAt": "2026-01-01T00:00:00Z"
         },
@@ -29,6 +30,7 @@
           "itemId": "00000000-0000-4000-8000-000000000005",
           "label": "Release qits-1580; waits on manual-review: a person approves",
           "cause": "fold 5eed5eed",
+          "commentId": null,
           "eventId": "00000000-0000-4000-8000-000000000006",
           "occurredAt": "2026-01-01T00:00:00Z"
         }

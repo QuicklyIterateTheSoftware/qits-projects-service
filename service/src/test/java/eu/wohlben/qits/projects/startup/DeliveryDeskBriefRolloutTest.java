@@ -66,6 +66,15 @@ public class DeliveryDeskBriefRolloutTest {
 
   /** qits-1560: an unedited qits-1517 brief rolls to the current one too. */
   @Test
+  public void anUneditedQits1621BriefIsMigrated() {
+    stage(AgentSurfaceDefaults.QITS_1621_DELIVERY_DESK_PROMPT);
+
+    assertTrue(rollout.rollOut(), "the qits-1621 brief is rewritten");
+
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  @Test
   public void anUneditedQits1517BriefIsMigrated() {
     stage(AgentSurfaceDefaults.QITS_1517_DELIVERY_DESK_PROMPT);
     int revisionsBefore = surfaces.history(SURFACE).size();

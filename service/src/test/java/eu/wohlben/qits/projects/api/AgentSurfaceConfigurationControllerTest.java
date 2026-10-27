@@ -298,7 +298,7 @@ public class AgentSurfaceConfigurationControllerTest {
         document.getString(
             "surfaces.find { it.configuration.surface == 'ticket.dispatch' }"
                 + ".configuration.systemPrompt"),
-        is(AgentSurfaceDefaults.COMPOSED_RUN_PROMPT));
+        is(AgentSurfaceDefaults.COMPOSED_RUN_BRIEF));
     assertThat(
         document.getList(
             "surfaces.find { it.configuration.surface == 'project.work' }.configuration.mcpServers.server",

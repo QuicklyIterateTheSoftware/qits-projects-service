@@ -186,6 +186,23 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // The development guide (qits-1679): one variant named, and the listing.
+          new Interaction(
+              ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS,
+              "getDevelopmentGuide",
+              "GET",
+              "/projects/api/guide?for=workstation",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS,
+              "listDevelopmentGuideVariants",
+              "GET",
+              "/projects/api/guide/variants",
+              200,
+              null,
+              null),
           // The picker's empty grid.
           new Interaction(
               ProviderStates.NO_PROJECTS_EXIST,
