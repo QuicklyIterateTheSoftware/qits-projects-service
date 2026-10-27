@@ -1337,7 +1337,8 @@ approval's roles. The display path stores the content requirements as JSON objec
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is
   VERIFYING, VERIFIED or DONE (VERIFYING since qits-1560, so a verify probe ships; the rule keeps
-  its id); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
+  its id) — on the wrapper IMPLEMENTING or later (qits-1661: an agent files wrapper requests as
+  steps of its work and waits for them, so waiting for VERIFIED deadlocks); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
   too — a main-only or maintenance/*-only request that adds nothing has no work to resolve and stays
   the owner's (qits-maintenance's `BumpDispatcher.openMainOnly` holds `no-changes` transiently until
   its pre-run commits the branch); and for an admitted `automation:*`/`contract:*`
@@ -2619,7 +2620,7 @@ it, and `ConsumerCallCoverageTest` reads all three daemon rows as stand-ins for
 **The delivery desk is prompted by what happens, not only by a person.** `service/…/desktriggers/`
 is the whole of it:
 
-    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed--> DeskTriggerListener
+    qits-events --EntityTransitioned / ApprovalRequirementChanged / DeskWaitClosed / EntityCommented--> DeskTriggerListener
        (durable, consumerId projects-desk-triggers, replayFromEpoch false)
        each DeskTriggerSource naming the signature: qualify(frame) -> DeskTrigger*
        drop: project delivery_enabled false, or cause = one of the desk's subjects
@@ -2669,7 +2670,7 @@ storage, never rename it), `order()` (section order), `signatures()` (bus event 
 `qualify(EventFrame)` (0..n `DeskTrigger(projectId, itemRef, itemId, cause, label, eventId,
 occurredAt)`, run inside the listener's `projects` transaction so it may read rows),
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
-`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Three
+`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Four
 ship:
 
 | source | id, order | qualifies | line |
@@ -2677,6 +2678,11 @@ ship:
 | `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
+| `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `changedBy` |
+
+`EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
+(`WorkEntityDoors.addComment`) after the write: the item, its author, `changedBy` and the body's
+`@names` (`mentions`, lower case), never the body. In-service thread writers announce nothing.
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
 The listener (`@Any Instance<DeskTriggerSource>`) subscribes to the union of the sources'

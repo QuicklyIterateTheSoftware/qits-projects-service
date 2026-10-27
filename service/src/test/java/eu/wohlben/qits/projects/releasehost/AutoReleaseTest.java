@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.releasehost;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -70,6 +71,10 @@ public class AutoReleaseTest {
 
   @Inject RecordingQaRunCancellations cancellations;
 
+  @Inject RecordingReleaseRequestStateAnnouncer stateChanges;
+
+  @Inject eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces workspaces;
+
   /** What {@link eu.wohlben.qits.projects.control.VersionStamp} may produce, and only that. */
   private static final Pattern CALVER = Pattern.compile("\\d{4}\\.\\d{3,4}\\.\\d{1,6}");
 
@@ -85,6 +90,8 @@ public class AutoReleaseTest {
     gitHost.reset();
     releases.reset();
     cancellations.reset();
+    stateChanges.reset();
+    workspaces.reset();
     activeBuilds.answer(Optional.of(1));
     repoId = "release-exec-repo-" + UUID.randomUUID();
     projectId = "release-exec-project-" + UUID.randomUUID();
@@ -771,5 +778,160 @@ public class AutoReleaseTest {
                 write ->
                     projectId.equals(write.projectId()) && "qits-thing".equals(write.repoName())),
         "every write named the repository: " + gitHost.addressed());
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // A source that joined or moved while the tag was being cut (qits-1615)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The request a branch is a source of now, other than {@code except} — polled, because the
+   * hand-on is made on the worker after the release has settled.
+   */
+  private ReleaseRequest awaitOpenRequestNaming(String branch, String except) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (System.currentTimeMillis() < deadline) {
+      ReleaseRequest found =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      eu.wohlben.qits.projects.entity.ReleaseRequestSource
+                          .<eu.wohlben.qits.projects.entity.ReleaseRequestSource>list(
+                              "name = ?1 and requestId <> ?2", branch, except)
+                          .stream()
+                          .map(
+                              source ->
+                                  ReleaseRequest.<ReleaseRequest>findById(source.requestId))
+                          .filter(
+                              row ->
+                                  row != null
+                                      && repoId.equals(row.repoId)
+                                      && eu.wohlben.qits.projects.persistence
+                                          .ReleaseRequestRepository.UNRELEASED
+                                          .contains(row.state))
+                          .findFirst()
+                          .orElse(null));
+      if (found != null) {
+        return found;
+      }
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        fail("interrupted");
+      }
+    }
+    fail(branch + " never landed in an open request of " + repoId);
+    return null;
+  }
+
+  private List<String> sourcesOf(String requestId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                eu.wohlben.qits.projects.entity.ReleaseRequestSource
+                    .<eu.wohlben.qits.projects.entity.ReleaseRequestSource>list(
+                        "requestId = ?1 order by name", requestId)
+                    .stream()
+                    .map(source -> source.name)
+                    .toList());
+  }
+
+  /** The RELEASED announcement of one request — exactly one, or the test fails. */
+  private eu.wohlben.qits.projects.control.ReleaseRequestStateAnnouncer.StateChange releasedChangeOf(
+      String requestId) {
+    List<eu.wohlben.qits.projects.control.ReleaseRequestStateAnnouncer.StateChange> released =
+        stateChanges.changesOf(requestId).stream()
+            .filter(change -> "RELEASED".equals(change.state()))
+            .toList();
+    assertEquals(1, released.size(), "one RELEASED announcement: " + stateChanges.movesOf(requestId));
+    return released.get(0);
+  }
+
+  /**
+   * <b>A branch that joins while the tag is being cut is handed on, not stranded</b> (qits-1615).
+   * The executor snapshots the request once and tags that fold outside every lock; a join in that
+   * window folds the request again and re-arms it PENDING on a fold nobody will tag. The tag of the
+   * snapshot is legitimate — its release ships the fold that was gated — so the request still ends
+   * RELEASED, but naming the fold it tagged, and the late branch leaves it for an open request: it
+   * is not deleted, not told to qits-workspaces as released, and not on the RELEASED announcement.
+   * qits-qits-rr-200 is the live case: READY at 69b95ccd, re-armed onto 38477f86 by ticket/qits-1596
+   * joining, then RELEASED tagging 69b95ccd with ticket/qits-1596 stranded on it.
+   */
+  @Test
+  public void aBranchJoiningWhileTheTagIsCutIsHandedOnToAnOpenRequest() throws InterruptedException {
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = releaseARequest(reactor());
+    assertTrue(held.awaitEntered(), "the worker reached the executor");
+    String tagged = mergedSha;
+
+    String joined = create("late");
+    assertEquals(id, joined, "the late branch joins the request whose tag is being cut");
+    assertEquals("PENDING", stateOf(id), "the join re-armed it onto a fold nobody will tag");
+    assertNotEquals(tagged, mergedShaOf(id));
+
+    held.release();
+    awaitState(id, "RELEASED");
+    awaitDeletions(2);
+
+    assertEquals(tagged, mergedShaOf(id), "the request names the fold its tag was cut from");
+    assertEquals(
+        List.of("work", BackingBranches.of(id)),
+        gitHost.deletedBranches(),
+        "the late branch is not consumed by a release that never folded it");
+    assertEquals(List.of("main", "work"), sourcesOf(id), "and it is no source of the release");
+
+    ReleaseRequest handedOn = awaitOpenRequestNaming("late", id);
+    assertNotEquals(id, handedOn.id);
+    assertTrue(sourcesOf(handedOn.id).contains("late"), "it is a source of an open request now");
+
+    assertEquals(
+        List.of("work"),
+        workspaces.calls().stream()
+            .map(eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces.Resolved::branch)
+            .toList(),
+        "only the branch the tag released is announced as released");
+    var released = releasedChangeOf(id);
+    assertEquals(List.of("main", "work"), released.branches());
+    assertEquals(tagged, released.mergedSha(), "and the announcement names the tagged fold");
+  }
+
+  /**
+   * <b>A source pushed while the tag is being cut is not deleted with its new commits unreleased</b>
+   * (qits-1615). The push re-folds the request onto a fold the tag never saw; the release still
+   * settles on the snapshot, but the branch's head is no longer in what was tagged, so it is not
+   * consumed: it stays on the git host and moves on to an open request, which releases the commits
+   * the tag missed.
+   */
+  @Test
+  public void aSourcePushedWhileTheTagIsCutIsNotDeletedButHandedOn() throws InterruptedException {
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = releaseARequest(reactor());
+    assertTrue(held.awaitEntered(), "the worker reached the executor");
+    String tagged = mergedSha;
+
+    // The push: refs/heads/work resolves to a head the tagged fold does not contain any more, and
+    // the head listener re-folds the request onto it.
+    gitHost.doesNotContain(repoId, "refs/heads/work", tagged);
+    releaseRequests.onBranchMoved(repoId, "work", UUID.randomUUID().toString().replace("-", ""));
+    assertEquals("PENDING", stateOf(id), "the push re-armed it onto a fold nobody will tag");
+    assertNotEquals(tagged, mergedShaOf(id));
+
+    held.release();
+    awaitState(id, "RELEASED");
+    awaitDeletions(1);
+
+    assertEquals(tagged, mergedShaOf(id), "the request names the fold its tag was cut from");
+    assertEquals(
+        List.of(BackingBranches.of(id)),
+        gitHost.deletedBranches(),
+        "the moved branch carries commits nothing released, so it is not deleted");
+    assertEquals(List.of("main"), sourcesOf(id));
+
+    ReleaseRequest handedOn = awaitOpenRequestNaming("work", id);
+    assertNotEquals(id, handedOn.id);
+
+    assertEquals(List.of(), workspaces.calls(), "the moved branch was not released");
+    assertEquals(List.of("main"), releasedChangeOf(id).branches());
   }
 }

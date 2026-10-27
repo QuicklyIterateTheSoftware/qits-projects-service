@@ -43,7 +43,9 @@ import org.jboss.logging.Logger;
  *       than the repository's main is {@code maintenance/*} or a work-item branch ({@link
  *       BranchWorkItems}) of the request's project, and every work item so named is VERIFYING,
  *       VERIFIED or DONE — VERIFYING since qits-1560, so a verify-phase request (a probe, its
- *       restore, a fix found in verification) can ship. It governs the wrapper and every {@code
+ *       restore, a fix found in verification) can ship. On the wrapper, IMPLEMENTING or later
+ *       since qits-1661: an item's agent files wrapper requests as steps of its work and waits for
+ *       them, so waiting for VERIFIED deadlocks. It governs the wrapper and every {@code
  *       manual-review: true} repository, such as {@code qits-agent-config}. It also answers a
  *       desk-admitted {@code no-changes} (qits-1568), which adds one more condition: at least one
  *       branch source other than main and {@code maintenance/*} names a work item of the request's
@@ -112,7 +114,8 @@ public class DeskApprovalPolicy {
   static final String MAINTENANCE_PREFIX = "maintenance/";
 
   /**
-   * The statuses a named work item must stand at under {@link #MANUAL_REVIEW_RULE}: VERIFYING too
+   * The statuses a named work item must stand at under {@link #MANUAL_REVIEW_RULE} off the wrapper
+   * (on the wrapper, {@link #IN_FLIGHT} since qits-1661): VERIFYING too
    * since qits-1560, because a verify probe ships from an item under verification. The rule keeps
    * its id, which recorded notes name.
    */
@@ -222,7 +225,7 @@ public class DeskApprovalPolicy {
           row,
           "its repository is the project's wrapper, which the desk approves only under rule "
               + MANUAL_REVIEW_RULE
-              + ", once the work is VERIFYING or later");
+              + ", once the work is IMPLEMENTING or later");
     }
     int approvalOrder = approvalOrder();
     Map<String, Integer> orders = new HashMap<>();
@@ -243,7 +246,13 @@ public class DeskApprovalPolicy {
       }
     }
     int named = 0;
-    if (MANUAL_REVIEW_RULE.equals(rule)) {
+    if (MANUAL_REVIEW_RULE.equals(rule) && archetype == RepositoryArchetype.PROJECT) {
+      // qits-1661: a wrapper request filed mid-work is a delivery step; waiting for VERIFIED
+      // deadlocks with the item's agent, which waits for the request.
+      named =
+          requireWorkAt(
+              rule, row, sources, mainBranch, Set.copyOf(IN_FLIGHT), String.join(", ", IN_FLIGHT));
+    } else if (MANUAL_REVIEW_RULE.equals(rule)) {
       named =
           requireWorkAt(rule, row, sources, mainBranch, SHIPPABLE, "VERIFYING, VERIFIED or DONE");
     } else if (MEMBER_CI_GREEN_RULE.equals(rule)) {

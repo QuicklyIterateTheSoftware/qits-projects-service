@@ -1166,7 +1166,8 @@ components:
       properties:
         source:
           type: string
-          description: "The source that admitted it: work-verified or approval-needed"
+          description: "The source that admitted it: wait, work-verified, approval-needed\
+            \ or desk-mentioned"
         itemRef:
           type: string
           description: "The item as the desk is shown it, e.g. qits-1580"

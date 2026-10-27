@@ -122,7 +122,7 @@ public class ProjectDeskTriggersController {
       name = "DeskTriggerEvent",
       description = "One item a desk trigger source admitted into a window.")
   public record Event(
-      @Schema(description = "The source that admitted it: work-verified or approval-needed")
+      @Schema(description = "The source that admitted it: wait, work-verified, approval-needed or desk-mentioned")
           String source,
       @Schema(description = "The item as the desk is shown it, e.g. qits-1580") String itemRef,
       @Schema(description = "The item's own id, when the source knows one", nullable = true)

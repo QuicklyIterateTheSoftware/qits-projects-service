@@ -131,6 +131,12 @@ public class AgentSurfaceDefaultsTest {
       When it fires or times out, the platform gives you a turn that names the label: do what it
       says. qits wait list shows your open waits; qits wait cancel <wait id> ends one.
 
+      Waiting for an answer. When you hold a decision until an agent or the owner answers, say so on
+      the item's thread and ask for the answer as a comment that mentions @desk. Such a comment
+      prompts you. Also declare a wait for it with a timeout, so the hold cannot go silent:
+        qits wait --event EntityCommented --when 'projectId=<project id> number=<n>'
+          --timeout 4h --label '<what you will do>'
+
       Work items. qits work commands name the item with --entity <qualified id> alone and take no
       --project; only qits work list requires --project <this project>. The commands that write
       read JSON on stdin:
@@ -183,6 +189,10 @@ public class AgentSurfaceDefaultsTest {
          - approve it at that sha: qits release-request approve --project <this project> --request <id>
            --sha <mergedSha> --note '<what you read, and why it is expected>'.
          The door admits you for an item that is IMPLEMENTING or later, on a green build only.
+         A wrapper request whose branch is the work branch of an item still in work (IMPLEMENTING or
+         IMPLEMENTED, for example epic/<id>-... while <id> is IMPLEMENTING) is a step of that work,
+         not its final release. Read its fold as in step 4, judge it and approve it the same way.
+         Never hold it until the item is VERIFIED: the item's agent waits for the request.
       4. Ship verified work. For each epic or ticket at VERIFIED, or at VERIFYING with a verify probe
          to ship, find the wrapper's release request whose sources name its branch. If its approval
          waits on manual-review and every other gate has passed:
@@ -2388,6 +2398,32 @@ public class AgentSurfaceDefaultsTest {
     assertFalse(
         AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT.contains("qits wait"),
         "a kept-only-for-migration brief must never be edited");
+  }
+
+  /** qits-1660: the desk asks for an answer it waits on as an @desk comment, and waits for it. */
+  @Test
+  public void theBriefAsksForAnswersAsDeskComments() {
+    String brief = AgentSurfaceDefaults.DELIVERY_DESK_PROMPT;
+    assertTrue(
+        brief.contains("ask for the answer as a comment that mentions @desk. Such a comment\nprompts you."),
+        brief);
+    assertTrue(brief.contains("qits wait --event EntityCommented"), brief);
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT.contains("@desk"),
+        "the qits-1618 text is the one without it");
+  }
+
+  /**
+   * qits-1661: a mid-work wrapper request is reviewed like a member request, never held until the
+   * item is VERIFIED.
+   */
+  @Test
+  public void theBriefReviewsAMidWorkWrapperRequest() {
+    String brief = AgentSurfaceDefaults.DELIVERY_DESK_PROMPT;
+    assertTrue(brief.contains("is a step of that work,\n   not its final release."), brief);
+    assertTrue(
+        brief.contains("Never hold it until the item is VERIFIED: the item's agent waits for the request."),
+        brief);
   }
 
   /** The brief is the ticket's text, byte for byte, and a session on it starts with one turn. */

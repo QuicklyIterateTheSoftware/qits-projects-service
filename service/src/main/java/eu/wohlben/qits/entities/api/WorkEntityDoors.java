@@ -39,6 +39,7 @@ import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.bus.EntityCommentAnnouncer;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
@@ -176,6 +177,9 @@ public class WorkEntityDoors {
 
   /** A comment through the door tells the item's agent (qits-1448), off the request thread. */
   @Inject CommentTurns commentTurns;
+
+  /** Tells the bus a comment was written, so a comment to {@code @desk} can wake the desk (qits-1660). */
+  @Inject EntityCommentAnnouncer commented;
 
   // --- read ------------------------------------------------------------------------------------
 
@@ -539,6 +543,11 @@ public class WorkEntityDoors {
     } catch (RuntimeException e) {
       // The comment is written; nothing about telling anybody may turn that into a failure.
       LOG.warnf(e, "Could not tell anybody about comment %s", comment.id);
+    }
+    try {
+      commented.onCommented(entity, written, EntitiesPrincipal.changedBy(identity));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not announce comment %s", comment.id);
     }
     return written;
   }

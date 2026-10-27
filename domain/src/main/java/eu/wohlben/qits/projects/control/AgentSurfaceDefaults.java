@@ -289,6 +289,10 @@ public final class AgentSurfaceDefaults {
    * within its project; both "never" lines stand, and its own rights now name its runners and the
    * MCP catalogue beside its brief, desk and settings ({@link #QITS_1618_DELIVERY_DESK_PROMPT} is
    * kept for the boot migration).
+   * qits-1660 has the desk ask for an answer it waits on as an {@code @desk} comment, which prompts
+   * it, and declare a wait with a timeout for it.
+   * qits-1661 has step 3 review a mid-work wrapper request like a member request, instead of
+   * holding it until the item is VERIFIED while the item's agent waits for it.
    * The owner's rules are enforced by the platform (the dispatch and approve doors, {@code .config/qits/project.yml}'s {@code front_desk.delivery}); this text only
    * tells the desk how to work inside them. A command that changes shape changes it here and in
    * qits-1560 together. Editing it afterwards is the owner's business, through the editor.
@@ -325,6 +329,12 @@ public final class AgentSurfaceDefaults {
         qits wait --event <name> --when '<conditions>' --label '<what you will do>'
       When it fires or times out, the platform gives you a turn that names the label: do what it
       says. qits wait list shows your open waits; qits wait cancel <wait id> ends one.
+
+      Waiting for an answer. When you hold a decision until an agent or the owner answers, say so on
+      the item's thread and ask for the answer as a comment that mentions @desk. Such a comment
+      prompts you. Also declare a wait for it with a timeout, so the hold cannot go silent:
+        qits wait --event EntityCommented --when 'projectId=<project id> number=<n>'
+          --timeout 4h --label '<what you will do>'
 
       Work items. qits work commands name the item with --entity <qualified id> alone and take no
       --project; only qits work list requires --project <this project>. The commands that write
@@ -378,6 +388,10 @@ public final class AgentSurfaceDefaults {
          - approve it at that sha: qits release-request approve --project <this project> --request <id>
            --sha <mergedSha> --note '<what you read, and why it is expected>'.
          The door admits you for an item that is IMPLEMENTING or later, on a green build only.
+         A wrapper request whose branch is the work branch of an item still in work (IMPLEMENTING or
+         IMPLEMENTED, for example epic/<id>-... while <id> is IMPLEMENTING) is a step of that work,
+         not its final release. Read its fold as in step 4, judge it and approve it the same way.
+         Never hold it until the item is VERIFIED: the item's agent waits for the request.
       4. Ship verified work. For each epic or ticket at VERIFIED, or at VERIFYING with a verify probe
          to ship, find the wrapper's release request whose sources name its branch. If its approval
          waits on manual-review and every other gate has passed:

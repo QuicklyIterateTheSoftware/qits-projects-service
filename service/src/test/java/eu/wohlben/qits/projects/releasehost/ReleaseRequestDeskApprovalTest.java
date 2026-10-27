@@ -46,7 +46,8 @@ import org.junit.jupiter.api.Test;
  * holds {@code desk} and {@code agent} of its project; a requirement the project's {@code
  * front_desk.delivery.approves} lists admits {@code desk}; and the approve door then holds the desk
  * to the owner's rule — its own project, every gate before approval passed, and for {@code
- * manual-review} only work-item branches whose items are VERIFYING (qits-1560), VERIFIED or DONE;
+ * manual-review} only work-item branches whose items are VERIFYING (qits-1560), VERIFIED or DONE
+ * (on the wrapper IMPLEMENTING or later, qits-1661);
  * for an {@code automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}),
  * and a {@code config-directory} one (qits-1560), a member repository, never the wrapper, whose work
  * items are IMPLEMENTING or later; for a listed {@code no-changes} (qits-1568) the {@code
@@ -288,13 +289,31 @@ public class ReleaseRequestDeskApprovalTest {
   }
 
   /**
-   * The branch's ticket is only IMPLEMENTED: not VERIFYING, VERIFIED or DONE, so not the desk's to
-   * ship.
+   * qits-1661: a wrapper request filed mid-work (its item IMPLEMENTING) is a delivery step. The desk
+   * reviews it and approves it under the same rule; it never waits for VERIFIED, which would
+   * deadlock with the item's agent waiting for the request.
    */
   @Test
-  void aSourceWhoseItemIsImplementedIsRefused() {
+  void theDeskApprovesAMidWorkWrapperRequest() {
     approves("manual-review");
-    status(ticket, "IMPLEMENTED");
+    status(ticket, "IMPLEMENTING");
+    String id = create(wrapperRepoId, ticketBranch);
+    String fold = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"drops two retired daemons\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+  }
+
+  /** A wrapper request of work not yet started (REFINED) is not the desk's. */
+  @Test
+  void aWrapperSourceWhoseItemIsNotStartedIsRefused() {
+    approves("manual-review");
+    status(ticket, "REFINED");
     String id = create(wrapperRepoId, ticketBranch);
     String fold = mergedShaOf(wrapperRepoId, id);
     verdict(wrapperRepoId, fold);
@@ -305,7 +324,7 @@ public class ReleaseRequestDeskApprovalTest {
         .then()
         .statusCode(403)
         .body("message", containsString("rule manual-review-verified"))
-        .body("message", containsString("is IMPLEMENTED, not VERIFYING, VERIFIED or DONE"));
+        .body("message", containsString("is REFINED, not IMPLEMENTING, IMPLEMENTED"));
   }
 
   /**
