@@ -130,7 +130,12 @@ public class AgentSurfaceConfigurationController {
    * <p>A {@code qits:desk-admin} caller — the delivery desk — edits every surface the coordinator
    * edits but its own: {@link AgentSurfaceDefaults#PROJECT_DELIVERY} is its brief, and the desk
    * never changes its own rights (epic qits-1621). Refused here rather than on the annotation
-   * because the other surfaces stay open to it; the key is compared trimmed, as the store keys it.
+   * because the other surfaces stay open to it; the key is compared trimmed and
+   * case-insensitively, so a variant like {@code " PROJECT.DELIVERY "} cannot slip past the way
+   * the plain key would — the store itself keys {@code surface_key} on the trimmed string alone
+   * ({@code AgentSurfaceConfigurationService.requireSurfaceKey}, no case folding), so this
+   * refusal is deliberately stricter than storage to keep a differently-cased write from ever
+   * being mistaken for an edit of {@code project.delivery} by any reader that does normalise case.
    */
   @PUT
   @Path("/{surface}")
@@ -139,7 +144,7 @@ public class AgentSurfaceConfigurationController {
       @PathParam("surface") String surface, SurfaceUpdateRequest request) {
     if (identity.hasRole(DESK_ADMIN_ROLE)
         && surface != null
-        && AgentSurfaceDefaults.PROJECT_DELIVERY.equals(surface.trim())) {
+        && AgentSurfaceDefaults.PROJECT_DELIVERY.equalsIgnoreCase(surface.trim())) {
       throw new DomainException(
           403, "The delivery desk never edits its own brief: project.delivery is a person's.");
     }
