@@ -10,7 +10,9 @@ import java.util.List;
  * detail} is the sentence explaining a request that is not simply pending or released; {@code
  * version} is the calver the release answered with, once it did. {@code retryable} says, of a FAILED
  * request, whether the sweep keeps retrying the execution or the refusal stands until something
- * re-arms it.
+ * re-arms it; of a RELEASED request, that its deployment gate is FAILED — the deployment was rolled
+ * back or failed and never went live — and a rerun of its DEPLOY phase is what finishes it
+ * (qits-1690). Nothing redeploys on its own.
  *
  * <p><b>{@code qualifiedId} is the id people read</b> (qits-1158): {@code <repoName>-rr-<n>},
  * frozen at creation, unique within the repository. Every door that takes a request id accepts it

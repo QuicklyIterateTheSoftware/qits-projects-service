@@ -147,6 +147,51 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
   @Column(name = "deployment_active_at")
   public Instant deploymentActiveAt;
 
+  /** The longest {@link #deploymentFailedDetail} stored, the column's own width (V64). */
+  public static final int DEPLOYMENT_FAILED_DETAIL_MAX = 1000;
+
+  /**
+   * When this version's deployment was found to have failed without ever going live (V64,
+   * qits-1690): a {@code DeploymentFailed} for it arrived, or the reconcile asked qits-deployments
+   * and its newest deployment was {@code ROLLED_BACK} or failed. Null otherwise.
+   *
+   * <p>Only ever written while {@link #deploymentActiveAt} is null — a version that went live did
+   * ship — and cleared by a later {@code DeploymentActive}, which is a redeploy that succeeded. It
+   * is what turns the deployment gate FAILED on every read, the list included, and what makes the
+   * release red for the qits-1471 hold. Nothing redeploys automatically.
+   */
+  @Column(name = "deployment_failed_at")
+  public Instant deploymentFailedAt;
+
+  /**
+   * {@code "<status>: <first line of the deployer's detail>"}, capped at {@link
+   * #DEPLOYMENT_FAILED_DETAIL_MAX}; null when {@link #deploymentFailedAt} is.
+   */
+  @Column(name = "deployment_failed_detail", length = DEPLOYMENT_FAILED_DETAIL_MAX)
+  public String deploymentFailedDetail;
+
+  /**
+   * The {@code "<status>: <text>"} sentence {@link #deploymentFailedDetail} holds, built in one
+   * place: the status word (FAILED when none), the detail's first non-blank line, capped to the column.
+   */
+  public static String deploymentFailure(String status, String detail) {
+    String word = status == null || status.isBlank() ? "FAILED" : status.trim();
+    String line = null;
+    if (detail != null) {
+      line =
+          detail
+              .lines()
+              .map(String::strip)
+              .filter(candidate -> !candidate.isEmpty())
+              .findFirst()
+              .orElse(null);
+    }
+    String sentence = line == null ? word : word + ": " + line;
+    return sentence.length() <= DEPLOYMENT_FAILED_DETAIL_MAX
+        ? sentence
+        : sentence.substring(0, DEPLOYMENT_FAILED_DETAIL_MAX - 1) + "…";
+  }
+
   /**
    * When a later release of the same repository superseded this one after it went red — its
    * {@link #publishState} FAILED, or its deployment failed and never went live — so nothing will

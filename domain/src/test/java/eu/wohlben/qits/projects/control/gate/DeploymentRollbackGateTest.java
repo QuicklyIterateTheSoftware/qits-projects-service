@@ -72,6 +72,71 @@ class DeploymentRollbackGateTest {
     assertTrue(listRead.checks().isEmpty());
   }
 
+  private static ReleasedTagPendingMerge failed(String recorded) {
+    ReleasedTagPendingMerge tag = released(PublishState.PASSED, false);
+    tag.deploymentFailedAt = java.time.Instant.parse("2026-10-09T10:20:00Z");
+    tag.deploymentFailedDetail = recorded;
+    return tag;
+  }
+
+  /**
+   * qits-1690: a failure recorded on the released row is FAILED on the LIST read, which asks
+   * qits-deployments nothing — rolled back or failed, with the first line and the remedy.
+   */
+  @Test
+  void aRecordedFailureFailsEvenOnAListRead() {
+    GateEvaluation rolledBack =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                failed("ROLLED_BACK: task: non-zero exit"),
+                GateSubject.Deployment.NOT_ASKED));
+    assertEquals(ReleaseGates.State.FAILED, rolledBack.state());
+    assertTrue(
+        rolledBack
+            .detail()
+            .startsWith("2026.1009.100000 was rolled back: task: non-zero exit — redeploy"),
+        rolledBack.detail());
+    assertTrue(rolledBack.detail().contains("DEPLOY phase"), rolledBack.detail());
+
+    GateEvaluation failed =
+        gate.evaluate(with(DEPLOYS, failed("FAILED: no node"), GateSubject.Deployment.NOT_ASKED));
+    assertEquals(ReleaseGates.State.FAILED, failed.state());
+    assertTrue(
+        failed.detail().startsWith("2026.1009.100000 failed to deploy: no node"), failed.detail());
+
+    GateEvaluation unreachable =
+        gate.evaluate(with(DEPLOYS, failed("ROLLED_BACK"), GateSubject.Deployment.COULD_NOT_ASK));
+    assertEquals(ReleaseGates.State.FAILED, unreachable.state(), "the record stands on its own");
+  }
+
+  @Test
+  void aRecordedFailureYieldsToWentLiveAndToARedeployUnderWay() {
+    ReleasedTagPendingMerge live = failed("ROLLED_BACK");
+    live.deploymentActiveAt = java.time.Instant.parse("2026-10-09T10:30:00Z");
+    assertEquals(
+        ReleaseGates.State.PASSED,
+        gate.evaluate(with(DEPLOYS, live, GateSubject.Deployment.NOT_ASKED)).state());
+    assertEquals(
+        ReleaseGates.State.PENDING,
+        gate.evaluate(
+                with(
+                    DEPLOYS,
+                    failed("ROLLED_BACK"),
+                    GateSubject.Deployment.newest("d2", "STARTING")))
+            .state(),
+        "a redeploy under way is believed over the record");
+    assertEquals(
+        ReleaseGates.State.PENDING,
+        gate.evaluate(
+                with(
+                    DEPLOYS,
+                    released(PublishState.PASSED, false),
+                    GateSubject.Deployment.NOT_ASKED))
+            .state(),
+        "no failure recorded: still waiting");
+  }
+
   @Test
   void anUnreachableDeploymentServiceIsUnknown() {
     assertEquals(

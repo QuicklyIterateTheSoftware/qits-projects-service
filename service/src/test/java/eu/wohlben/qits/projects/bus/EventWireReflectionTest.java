@@ -121,6 +121,7 @@ public class EventWireReflectionTest {
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
+            DeploymentFailedListener.DeploymentFailedPayload.class,
             WaitClosedSource.DeskWaitClosedPayload.class,
             eu.wohlben.qits.projects.targethost.TargetLeaseChanged.class,
             EventEnvelope.class,
@@ -616,6 +617,7 @@ public class EventWireReflectionTest {
           "BuildFailed", BuildStatusListener.BuildVerdictPayload.class,
           "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class,
           "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class,
+          "DeploymentFailed", DeploymentFailedListener.DeploymentFailedPayload.class,
           "DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class);
 
   @Test
@@ -667,6 +669,14 @@ public class EventWireReflectionTest {
     assertTrue(
         listeners.stream().anyMatch(DeploymentActiveListener.class::isInstance),
         "a removed listener is a silent one — and here it is main that stops being finalized");
+  }
+
+  /** The rollback's subscription (qits-1690): without it a rolled-back release waits for ever. */
+  @Test
+  public void theDeploymentFailedListenerIsDiscoverableAsADurableListener() {
+    assertTrue(
+        listeners.stream().anyMatch(DeploymentFailedListener.class::isInstance),
+        "a removed listener is a silent one — and here a rollback is never recorded");
   }
 
   /**

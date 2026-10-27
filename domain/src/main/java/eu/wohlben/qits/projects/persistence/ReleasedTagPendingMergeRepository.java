@@ -92,6 +92,19 @@ public class ReleasedTagPendingMergeRepository
   }
 
   /** The tags a page of release requests produced, for naming what reached {@code main}. */
+  /**
+   * The released tags of a request still waiting on their deployment, released before {@code
+   * releasedBefore}: neither merged, owed a merge, abandoned, live nor recorded as failed — the
+   * deployment reconcile's selection (qits-1690). The request's own state is the caller's to check.
+   */
+  public List<ReleasedTagPendingMerge> listAwaitingDeployment(java.time.Instant releasedBefore) {
+    return list(
+        "releaseRequestId is not null and mergedAt is null and mergeRequestedAt is null"
+            + " and abandonedAt is null and deploymentActiveAt is null"
+            + " and deploymentFailedAt is null and releasedAt < ?1 order by releasedAt",
+        releasedBefore);
+  }
+
   public List<ReleasedTagPendingMerge> listByRequests(List<String> requestIds) {
     if (requestIds.isEmpty()) {
       return List.of();

@@ -76,6 +76,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * a native binary that subscribes to every deployment and cannot read one — and {@code main} would
  * never be finalized again, silently, with the JVM suite green.
  *
+ * <p>{@link DeploymentFailedListener.DeploymentFailedPayload} (qits-1690) is its sibling on the
+ * same terms: an absent line is a binary that never hears a deployment was rolled back.
+ *
  * <p>{@link BuildStatusListener.BuildVerdictPayload} is the <em>first</em> of those bound
  * consumptions and the pattern the other one follows: {@code BuildStatusListener} reads qits-ci's
  * {@code BuildSuccessful}/{@code BuildFailed} through {@code CanonicalJson.payloadTo} rather than
@@ -135,6 +138,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
+      DeploymentFailedListener.DeploymentFailedPayload.class,
       WaitClosedSource.DeskWaitClosedPayload.class,
       TargetLeaseChanged.class,
       EventEnvelope.class,

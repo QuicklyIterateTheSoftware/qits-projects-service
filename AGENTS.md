@@ -587,6 +587,19 @@ merely its only occupant. Six things about it are rules:
   already has, two moves that end where they began, and a rolled-back transaction announce nothing.
   The port is `control/ReleaseRequestStateAnnouncer`, the adapter `bus/ReleaseRequestStateChangedAnnouncer`
   (`@DefaultBean`); the suite records through `RecordingReleaseRequestStateAnnouncer`.
+- **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
+  mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
+  `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps
+  `released_tag_pending_merge.deployment_failed_at`/`deployment_failed_detail` (V64,
+  `"<status>: <first line>"`) while `deployment_active_at` is null. The event is not always on the
+  log, so `ReleaseRequestSweep.reconcileDeployments`
+  (`qits.projects.release-requests.deployment-reconcile-every`, 5m, `off` in dev/test; settle
+  `…-reconcile-after`, PT5M) asks qits-deployments about every RELEASED request's tag still waiting
+  under a DEPLOYMENT gate and records a `ROLLED_BACK` or failed newest deployment. A later
+  `DeploymentActive` clears the record and finalizes as before. The record makes
+  `DeploymentRollbackGate` FAILED on every read, the list included, naming the remedy (rerun the
+  DEPLOY phase), and the DTO's `retryable` true for that RELEASED request. Nothing redeploys
+  automatically.
 - **`bus/EventWireReflection` is the native-image registration**, and `EventWireReflectionTest`
   guards its completeness against the registered listener beans. Read that class's javadoc before
   adding a wire type; the failure it prevents is invisible to every JVM test by construction.
@@ -1262,10 +1275,11 @@ one tree listing, both gates, and the merge to `main` when every configured one 
   while the earlier request is RELEASED and not red it is left alone, and the successor runs every
   gate and then stays PENDING with `detail` "Waiting for `<qualifiedId>` (`<version>`) to finalize"
   until the earlier tag reaches `main` (`settleTagsOnMain` re-folds and re-evaluates it; the sweep
-  re-asks too). **Red** is `publish_state = FAILED`, or the newest `DeploymentRequests.forRelease`
-  status folding to FAILED (`ReleasePipelineAssembler.deploymentStateOf`) with no
-  `deployment_active_at` — unreadable, unported or no DEPLOYMENT gate at `main` all count as in
-  flight. A red one is made `OBSOLETE` by `ReleaseRequests.obsolete` — at create, or by
+  re-asks too). **Red** is `publish_state = FAILED`, a recorded `deployment_failed_at`, or the
+  newest `DeploymentRequests.forRelease` status being `ROLLED_BACK` or folding to FAILED
+  (`ReleasePipelineAssembler.deploymentStateOf`, whose ROLLED_BACK → CANCELLED fold stays for the
+  pipeline panel) with no `deployment_active_at` — unreadable, unported or no DEPLOYMENT gate at
+  `main` all count as in flight. A red one is made `OBSOLETE` by `ReleaseRequests.obsolete` — at create, or by
   `supersedeRedSiblings` when the successor releases — with `superseded_by`, its QA runs cancelled
   and its owed merge abandoned. `ReleaseRequests.releasedSiblingsOf` is the one predicate. It
   cannot fight convergence: every convergence read is over `ReleaseRequestRepository.UNRELEASED`

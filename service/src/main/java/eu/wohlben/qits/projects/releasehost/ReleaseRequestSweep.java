@@ -6,6 +6,8 @@ import eu.wohlben.qits.projects.control.ReleaseRequests;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.time.Duration;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
  * The safety net under the event-driven release requests: re-evaluates every open request on a
@@ -61,6 +63,29 @@ public class ReleaseRequestSweep {
       concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
   void sweepGateTickets() {
     releaseRequests.sweepGateTickets();
+  }
+
+  /**
+   * How long a release is left to deploy before the reconcile asks about it — a deployment still
+   * starting is no news. See {@link ReleaseFinalization#reconcileDeployments}.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.deployment-reconcile-after",
+      defaultValue = "PT5M")
+  Duration deploymentReconcileAfter;
+
+  /**
+   * The rolled-back release's belt (qits-1690): every release still waiting on its deployment is
+   * asked of qits-deployments, and one rolled back or failed is recorded on its row — because the
+   * {@code DeploymentFailed} event is not always on the log to be consumed. Its own method and
+   * interval, {@code qits.projects.release-requests.deployment-reconcile-every}: it is a network
+   * call per release, and nothing about it is urgent. It never redeploys.
+   */
+  @Scheduled(
+      every = "{qits.projects.release-requests.deployment-reconcile-every}",
+      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  void reconcileDeployments() {
+    finalization.reconcileDeployments(deploymentReconcileAfter);
   }
 
   /**

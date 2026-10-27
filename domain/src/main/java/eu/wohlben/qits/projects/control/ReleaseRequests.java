@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.control.approval.ApprovalStanding;
 import eu.wohlben.qits.projects.control.approval.Approver;
 import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.control.gate.CiVerdicts;
+import eu.wohlben.qits.projects.control.gate.DeploymentRollbackGate;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
 import eu.wohlben.qits.projects.control.gate.GateEvaluation;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
@@ -1317,9 +1318,11 @@ public class ReleaseRequests {
    * <ul>
    *   <li>its tag row's {@link ReleasedTagPendingMerge#publishState} is {@code FAILED} — its release
    *       run came back red; or
-   *   <li>its deployment failed: the newest of {@link DeploymentRequests#forRelease} folds to {@code
-   *       FAILED} under {@link ReleasePipelineAssembler#deploymentStateOf} ({@code IMAGE_MISSING},
-   *       {@code SPEC_UNREADABLE}, {@code FAILED}, {@code DECLARATION_REFUSED}) <b>and</b> the row's
+   *   <li>its deployment failed: the row records it ({@link
+   *       ReleasedTagPendingMerge#deploymentFailedAt}, qits-1690), or the newest of {@link
+   *       DeploymentRequests#forRelease} is {@code ROLLED_BACK} or folds to {@code FAILED} under
+   *       {@link ReleasePipelineAssembler#deploymentStateOf} ({@code IMAGE_MISSING}, {@code
+   *       SPEC_UNREADABLE}, {@code FAILED}, {@code DECLARATION_REFUSED}) <b>and</b> the row's
    *       {@link ReleasedTagPendingMerge#deploymentActiveAt} is null — a version that once went live
    *       did ship, whatever happened to it afterwards.
    * </ul>
@@ -1344,7 +1347,8 @@ public class ReleaseRequests {
         String version,
         String tagName,
         ReleasedTagPendingMerge.PublishState publish,
-        Instant deploymentActiveAt) {}
+        Instant deploymentActiveAt,
+        String deploymentFailed) {}
     List<Row> rows =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1361,7 +1365,12 @@ public class ReleaseRequests {
                                   row.version,
                                   tag != null && tag.tagName != null ? tag.tagName : row.version,
                                   tag == null ? null : tag.publishState,
-                                  tag == null ? null : tag.deploymentActiveAt);
+                                  tag == null ? null : tag.deploymentActiveAt,
+                                  tag == null || tag.deploymentFailedAt == null
+                                      ? null
+                                      : tag.deploymentFailedDetail == null
+                                          ? "FAILED"
+                                          : tag.deploymentFailedDetail);
                             })
                         .toList());
     if (rows.isEmpty()) {
@@ -1373,6 +1382,15 @@ public class ReleaseRequests {
       String red = null;
       if (row.publish() == ReleasedTagPendingMerge.PublishState.FAILED) {
         red = "the release run of " + row.version() + " FAILED";
+      } else if (row.deploymentActiveAt() == null && row.deploymentFailed() != null) {
+        // Recorded on the row by a DeploymentFailed or the deployment reconcile (qits-1690): no
+        // call is needed to know it, and the event alone may never have come.
+        red =
+            "the deployment of "
+                + row.tagName()
+                + " FAILED and never went live ("
+                + row.deploymentFailed()
+                + ")";
       } else if (row.deploymentActiveAt() == null
           && row.tagName() != null
           && !row.tagName().isBlank()) {
@@ -1431,7 +1449,9 @@ public class ReleaseRequests {
       return false;
     }
     String newest = answered.get().get(0).status();
-    return "FAILED".equals(ReleasePipelineAssembler.deploymentStateOf(newest));
+    // ROLLED_BACK folds to CANCELLED for the pipeline panel, and stays so there; for the hold it is
+    // a deployment that never went live, which is red (qits-1690).
+    return ReleaseFinalization.failedDeployment(newest);
   }
 
   /** The sentence a request held behind {@code inFlight} carries on its detail. */
@@ -7392,7 +7412,7 @@ public class ReleaseRequests {
         supersededByQualifiedId,
         released == null ? null : released.releasedSha,
         released == null ? null : released.mergedAt,
-        row.retryable,
+        row.retryable || redeployable(row, gates.qualityGates()),
         row.createdAt,
         row.updatedAt,
         gates.pipeline(),
@@ -7403,6 +7423,22 @@ public class ReleaseRequests {
         queuedNext == null ? null : queuedNext.id,
         queuedNext == null ? null : queuedNext.qualifiedId,
         featureFreezeOf(row, named, featureFreeze));
+  }
+
+  /**
+   * Whether {@code row} is a RELEASED request whose deployment gate is FAILED (qits-1690): the
+   * deployment was rolled back or failed, the tag cannot be un-cut, and a rerun of the DEPLOY phase
+   * is what finishes it — which {@code retryable} says. The column itself is about a FAILED
+   * execution and is not written for this.
+   */
+  private static boolean redeployable(ReleaseRequest row, List<ReleaseQualityGateDto> gates) {
+    return row.state == ReleaseRequest.State.RELEASED
+        && gates != null
+        && gates.stream()
+            .anyMatch(
+                gate ->
+                    DeploymentRollbackGate.KIND.equals(gate.kind())
+                        && ReleaseGates.State.FAILED.name().equals(gate.state()));
   }
 
   /**

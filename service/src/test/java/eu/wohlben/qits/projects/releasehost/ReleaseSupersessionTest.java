@@ -310,6 +310,57 @@ public class ReleaseSupersessionTest {
   }
 
   /**
+   * <b>A rolled-back deployment is red too</b> (qits-1690). {@code ROLLED_BACK} folds to CANCELLED
+   * for the pipeline panel, and the hold used to read it through that fold — so a rolled-back
+   * release never turned red and held every later request of its repository for ever. It is a
+   * deployment that never went live: the new request is not held behind it, and supersedes it.
+   */
+  @Test
+  public void aRolledBackDeploymentIsRedAndHoldsNothing() {
+    Map<String, String> deployingMain = new java.util.HashMap<>(RecordingReleaseGitHost.GATED_MAIN);
+    deployingMain.put(".config/qits/deployments.yml", "resources: []\n");
+    String tag = releaseOf("work-a", deployingMain);
+    String earlier = firstRequest();
+    deploymentRequests.answerStatus("deployment-1", "ROLLED_BACK");
+
+    String successor = create("work-b");
+
+    assertEquals("OBSOLETE", stateOf(earlier));
+    assertEquals(
+        successor,
+        given().get(base() + "/" + earlier).then().extract().path("request.supersededBy"));
+    assertTrue(detailOf(earlier).contains("deployment"), detailOf(earlier));
+    assertNotNull(rowOf(tag).abandonedAt);
+    assertTrue(
+        !detailOf(successor).contains("to finalize"),
+        "the successor is not held behind it: " + detailOf(successor));
+  }
+
+  /**
+   * The same, from the failure RECORDED on the row (qits-1690) rather than from a live answer:
+   * qits-deployments cannot be asked here, which alone would read as in flight, yet the release is
+   * red because a {@code DeploymentFailed} (or the reconcile) said so.
+   */
+  @Test
+  public void aRecordedDeploymentFailureIsRedWithoutAskingQitsDeployments() {
+    Map<String, String> deployingMain = new java.util.HashMap<>(RecordingReleaseGitHost.GATED_MAIN);
+    deployingMain.put(".config/qits/deployments.yml", "resources: []\n");
+    String tag = releaseOf("work-a", deployingMain);
+    String earlier = firstRequest();
+    deploymentRequests.answerCouldNotAsk();
+    finalization.onDeploymentFailed("supersede", tag, "ROLLED_BACK", "rolled back by swarm");
+    assertNotNull(rowOf(tag).deploymentFailedAt, "the premise: recorded on the row");
+
+    String successor = create("work-b");
+
+    assertEquals("OBSOLETE", stateOf(earlier));
+    assertEquals(
+        successor,
+        given().get(base() + "/" + earlier).then().extract().path("request.supersededBy"));
+    assertNotNull(rowOf(tag).abandonedAt);
+  }
+
+  /**
    * The other half, and the reason superseding a red release is safe at all: the tag really was
    * cut, so the successor folds it in — whether the earlier release is red or still in flight — and
    * every commit it carried ships under the successor's version.

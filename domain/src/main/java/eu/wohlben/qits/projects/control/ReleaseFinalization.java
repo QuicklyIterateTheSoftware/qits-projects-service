@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
@@ -143,6 +145,11 @@ public class ReleaseFinalization {
    */
   @Inject Instance<PublishRuns> publishRuns;
 
+  /** qits-deployments' listing, asked by {@link #reconcileDeployments} — absent is supported. */
+  @Inject Instance<DeploymentRequests> deploymentRequests;
+
+  @Inject ReleaseRequestRepository requests;
+
   /**
    * How long a PENDING publish gate is ordinary before it is worth saying out loud — see {@link
    * PublishGatePatience}. It changes who is told and never whether a gate passes.
@@ -196,6 +203,16 @@ public class ReleaseFinalization {
                         .map(
                             row -> {
                               row.deploymentActiveAt = Instant.now();
+                              // A redeploy that went live after a recorded failure (qits-1690):
+                              // the failure is history, and the gate reads the stamp above now.
+                              if (row.deploymentFailedAt != null) {
+                                LOG.infof(
+                                    "%s of %s went live after its deployment had failed (%s);"
+                                        + " the failure is cleared",
+                                    row.tagName, row.repoId, row.deploymentFailedDetail);
+                                row.deploymentFailedAt = null;
+                                row.deploymentFailedDetail = null;
+                              }
                               return true;
                             })
                         .orElse(false));
@@ -211,6 +228,135 @@ public class ReleaseFinalization {
     // Loud, because a deployment is news: a tag whose tree cannot be read here says so once per
     // deployment rather than once per sweep.
     advance(owed, true);
+  }
+
+  /**
+   * <b>A deployment of {@code version} ended without going live</b> (qits-1690): qits-deployments'
+   * {@code DeploymentFailed} — a rollback, a failure, an image it could not pull — or the {@link
+   * #reconcileDeployments reconcile} finding the same answer on the deployment's own row.
+   *
+   * <p>Correlated exactly as {@link #onDeploymentActive} correlates, and recorded on the released
+   * tag's row ({@code deployment_failed_at}/{@code deployment_failed_detail}) only while that
+   * version has never gone live: a failure of a later redeploy says nothing about a version that
+   * already shipped. The record is what makes the deployment gate FAILED on every read and the
+   * release red for the qits-1471 hold; a later {@code DeploymentActive} clears it. <b>Nothing is
+   * redeployed here</b> — the tag is cut and the remedy is a person's (or an agent's) rerun of the
+   * DEPLOY phase. It never throws past a database failure, which the caller retries.
+   *
+   * @param status the deployer's terminal word, e.g. {@code ROLLED_BACK} or {@code FAILED}
+   * @param detail the deployer's own diagnosis, nullable; only its first line is kept
+   * @return whether a failure was recorded (or re-worded) on a row
+   */
+  public boolean onDeploymentFailed(
+      String applicationName, String version, String status, String detail) {
+    Owed owed = correlate(applicationName, version);
+    if (owed == null) {
+      return false;
+    }
+    return recordDeploymentFailure(owed, status, detail);
+  }
+
+  /** Writes the failure onto {@code owed}'s row, if it is still waiting to go live. */
+  private boolean recordDeploymentFailure(Owed owed, String status, String detail) {
+    String sentence = ReleasedTagPendingMerge.deploymentFailure(status, detail);
+    boolean recorded =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags
+                        .findByIdOptional(owed.id())
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.abandonedAt == null
+                                    && row.deploymentActiveAt == null
+                                    && !sentence.equals(row.deploymentFailedDetail))
+                        .map(
+                            row -> {
+                              row.deploymentFailedAt = Instant.now();
+                              row.deploymentFailedDetail = sentence;
+                              return true;
+                            })
+                        .orElse(false));
+    if (recorded) {
+      LOG.warnf(
+          "The deployment gate FAILED for %s of %s and the release request stays open until it is"
+              + " redeployed: %s",
+          owed.tagName(), owed.repoId(), sentence);
+    }
+    return recorded;
+  }
+
+  /**
+   * <b>The belt under {@code DeploymentFailed}</b> (qits-1690): the event is not always there to be
+   * read — the rollback of qits-containers-service 2026.1026.210534 never reached the events log —
+   * so every released tag still waiting on its deployment is asked about directly. Selected are rows
+   * of a {@code RELEASED} request, released more than {@code settle} ago, neither live nor recorded
+   * as failed, whose repository's gate set (at {@code main}) requires {@link
+   * ReleaseGates.Kind#DEPLOYMENT}; for each, qits-deployments' newest deployment of the version is
+   * read, and a {@code ROLLED_BACK} or failed one is recorded as {@link #onDeploymentFailed} would.
+   *
+   * <p>A deployments port that is absent, cannot answer, or throws costs this pass and nothing else:
+   * the row stays as it was and the next pass asks again. Nothing is redeployed.
+   *
+   * @return how many rows were recorded as failed
+   */
+  public int reconcileDeployments(Duration settle) {
+    if (!deploymentRequests.isResolvable()) {
+      LOG.debug("No qits-deployments is configured, so no released deployment is reconciled");
+      return 0;
+    }
+    Instant before = Instant.now().minus(settle == null ? Duration.ZERO : settle);
+    List<Owed> waiting =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags.listAwaitingDeployment(before).stream()
+                        .filter(
+                            row ->
+                                requests
+                                    .findByIdOptional(row.releaseRequestId)
+                                    .map(request -> request.state == ReleaseRequest.State.RELEASED)
+                                    .orElse(false))
+                        .map(ReleaseFinalization::owedOf)
+                        .toList());
+    int recorded = 0;
+    java.util.Map<String, ReleaseGates.GateSet> sets = new java.util.HashMap<>();
+    for (Owed owed : waiting) {
+      try {
+        ReleaseGates.GateSet set =
+            sets.computeIfAbsent(
+                owed.repoId(),
+                repoId -> QuarkusTransaction.requiringNew().call(() -> gates.resolve(repoId)));
+        if (!set.known() || !set.requires(ReleaseGates.Kind.DEPLOYMENT)) {
+          continue;
+        }
+        Optional<List<DeploymentRequests.DeploymentRequestView>> answered =
+            deploymentRequests.get().forRelease(owed.repoId(), owed.tagName());
+        if (answered == null || answered.isEmpty() || answered.get().isEmpty()) {
+          continue;
+        }
+        String status = answered.get().get(0).status();
+        if (failedDeployment(status) && recordDeploymentFailure(owed, status, null)) {
+          recorded++;
+        }
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            "Could not reconcile the deployment of %s %s; it is asked again next pass: %s",
+            owed.repoId(), owed.tagName(), e.toString());
+      }
+    }
+    return recorded;
+  }
+
+  /**
+   * Whether qits-deployments' word says the deployment ended without going live: {@code
+   * ROLLED_BACK}, or anything {@link ReleasePipelineAssembler#deploymentStateOf} folds to {@code
+   * FAILED}. {@code SUPERSEDED}, {@code GONE} and the rest are not a statement about this version.
+   */
+  static boolean failedDeployment(String status) {
+    return "ROLLED_BACK".equals(status)
+        || "FAILED".equals(ReleasePipelineAssembler.deploymentStateOf(status));
   }
 
   /**
