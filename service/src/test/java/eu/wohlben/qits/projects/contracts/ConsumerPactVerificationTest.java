@@ -660,4 +660,9 @@ class ConsumerPactVerificationTest {
   Map<String, String> aProjectWhoseDeskReceivedATriggerMessage() {
     return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);
   }
+
+  @State(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS)
+  Map<String, String> theDevelopmentGuideShips() {
+    return states.params(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS);
+  }
 }
