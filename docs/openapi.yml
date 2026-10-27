@@ -1186,6 +1186,12 @@ components:
           - string
           - "null"
           description: Who or what caused it
+        commentId:
+          type:
+          - string
+          - "null"
+          description: "The comment it came from, for desk-mentioned; null for the\
+            \ other sources"
         eventId:
           $ref: "#/components/schemas/UUID"
           type: string
@@ -9253,4 +9259,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1026.355
+  version: 2026.1027.110734

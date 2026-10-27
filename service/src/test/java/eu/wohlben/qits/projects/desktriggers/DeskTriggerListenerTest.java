@@ -173,25 +173,40 @@ class DeskTriggerListenerTest {
   void aCommentToTheDeskJoinsTheWindow() {
     String projectId = project(true);
 
+    String commentId = "4f3c2a1b-0000-4000-8000-000000000770";
+
     listener.onFrame(
-        commented(projectId, 770, "Desk triggers", "tok-agent", "qits-12", "tok-agent", "desk"));
+        commented(
+            commentId, projectId, 770, "Desk triggers", "tok-agent", "qits-12", "tok-agent",
+            "desk"));
 
     DeskTriggerEvent line = DeskTriggerFixtures.eventsOf(projectId).get(0);
     assertEquals("desk-mentioned", line.source);
     assertEquals(DeskTriggerFixtures.slugOf(projectId) + "-770", line.itemRef);
     assertEquals("Desk triggers; from qits-12's agent", line.label);
-    assertEquals("tok-agent", line.cause);
+    assertEquals("comment 4f3c2a1b", line.cause, "the cause names the comment, not the token");
+    assertEquals(commentId, line.commentId);
   }
 
   @Test
-  void twoCommentsByOneAuthorOnOneItemAreOneLine() {
+  void twoCommentsByOneAuthorOnOneItemAreTwoRowsWithOneLineInTheMessage() {
     String projectId = project(true);
+    String first = UUID.randomUUID().toString();
+    String second = UUID.randomUUID().toString();
 
-    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana", "desk"));
-    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana", "bob", "desk"));
+    listener.onFrame(commented(first, projectId, 5, "t", "dana", null, "dana", "desk"));
+    listener.onFrame(commented(second, projectId, 5, "t", "dana", null, "dana", "bob", "desk"));
+    listener.onFrame(commented(first, projectId, 5, "t", "dana", null, "dana", "desk"));
 
-    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size());
-    assertEquals("t; from dana", DeskTriggerFixtures.eventsOf(projectId).get(0).label);
+    List<DeskTriggerEvent> rows = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(
+        Set.of(first, second),
+        Set.copyOf(rows.stream().map(row -> row.commentId).toList()),
+        "one row per comment; a redelivered frame adds none");
+    assertEquals(
+        "Comments to @desk:\n- " + DeskTriggerFixtures.slugOf(projectId) + "-5 (t; from dana)",
+        new DeskMentionedSource()
+            .render("p", rows.stream().map(DeskTriggerEventRow::of).toList()));
   }
 
   @Test

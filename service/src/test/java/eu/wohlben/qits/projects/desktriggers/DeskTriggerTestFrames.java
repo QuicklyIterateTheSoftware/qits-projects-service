@@ -117,10 +117,31 @@ final class DeskTriggerTestFrames {
       String authorAgentOf,
       String changedBy,
       String... mentions) {
+    return commented(
+        UUID.randomUUID().toString(),
+        projectId,
+        number,
+        title,
+        author,
+        authorAgentOf,
+        changedBy,
+        mentions);
+  }
+
+  /** {@link #commented(String, long, String, String, String, String, String...)} with its id. */
+  static EventFrame commented(
+      String commentId,
+      String projectId,
+      long number,
+      String title,
+      String author,
+      String authorAgentOf,
+      String changedBy,
+      String... mentions) {
     return frameOf(
         new EntityCommented(
             null,
-            UUID.randomUUID().toString(),
+            commentId,
             UUID.randomUUID().toString(),
             projectId,
             "TICKET",

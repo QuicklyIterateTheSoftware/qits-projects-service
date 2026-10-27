@@ -32,7 +32,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *       when that is earlier, so the next sweep closes the window and the desk is woken within a
  *       sweep interval instead of a window.
  *   <li><b>A repeat is one line.</b> The event insert is {@code on conflict do nothing} against
- *       {@code (window_id, source, item_ref, label)}, so a redelivered frame admits nothing new.
+ *       {@code (window_id, source, item_ref, label, comment_id)}, so a redelivered frame admits
+ *       nothing new. Two comments are two lines: each is its own row (V63).
  * </ul>
  *
  * <p>{@code @Transactional}: it joins the caller's transaction — the listener's own {@code projects}
@@ -88,8 +89,9 @@ public class DeskTriggerWindows {
     }
     em.createNativeQuery(
             "insert into desk_trigger_event (id, window_id, source, item_ref, item_id, label,"
-                + " cause, event_id, occurred_at, admitted_at) values (:id, :window, :source,"
-                + " :ref, :itemId, :label, :cause, :event, :occurred, :admitted)"
+                + " cause, comment_id, event_id, occurred_at, admitted_at) values (:id, :window,"
+                + " :source, :ref, :itemId, :label, :cause, :commentId, :event, :occurred,"
+                + " :admitted)"
                 + " on conflict do nothing")
         .setParameter("id", UUID.randomUUID())
         .setParameter("window", windowId)
@@ -98,6 +100,7 @@ public class DeskTriggerWindows {
         .setParameter("itemId", trigger.itemId())
         .setParameter("label", trigger.label())
         .setParameter("cause", trigger.cause())
+        .setParameter("commentId", trigger.commentId())
         .setParameter("event", trigger.eventId())
         .setParameter("occurred", trigger.occurredAt() == null ? at : trigger.occurredAt())
         .setParameter("admitted", at)

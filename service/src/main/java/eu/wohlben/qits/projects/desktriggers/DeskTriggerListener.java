@@ -35,7 +35,7 @@ import org.jboss.logging.Logger;
  *   <li><b>A project with delivery off</b> ({@code project.delivery_enabled} false): there is no
  *       delivery desk to tell. Only admission is gated — a window opened while delivery was on is
  *       still closed and delivered, because it is owed to a desk that existed.
- *   <li><b>What the desk caused itself</b>: a trigger whose {@code cause} equals any non-null one of
+ *   <li><b>What the desk caused itself</b>: a trigger whose {@code principal} equals any non-null one of
  *       the project's desk subjects ({@code front_desk.delivery_token_subject}, {@code
  *       session_token_subject}, {@code token_subject}). The desk moving a ticket to VERIFIED does not
  *       need telling that it did. A delivery token re-minted since the event leaves its old subject
@@ -168,7 +168,7 @@ public class DeskTriggerListener implements QitsDurableEventListener {
       return false;
     }
     FrontDesk desk = FrontDesk.findById(project.id);
-    if (desk != null && trigger.cause() != null && causedBy(desk, trigger.cause())) {
+    if (desk != null && trigger.principal() != null && causedBy(desk, trigger.principal())) {
       LOG.debugf(
           "%s trigger %s was caused by the desk of project %s itself; dropped",
           source.id(), trigger.itemRef(), project.id);
