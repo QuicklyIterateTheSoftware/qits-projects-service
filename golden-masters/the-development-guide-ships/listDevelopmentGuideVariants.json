@@ -1,0 +1,20 @@
+{
+  "variants": [
+    {
+      "name": "workstation",
+      "description": "A person on a workstation: sign-in, Git, registries, builds and releases."
+    },
+    {
+      "name": "agent",
+      "description": "A workspace agent: its brief and the development flow."
+    },
+    {
+      "name": "desk",
+      "description": "The delivery desk: its brief and the development flow."
+    },
+    {
+      "name": "refinement",
+      "description": "A refinement room: its brief and the development flow."
+    }
+  ]
+}

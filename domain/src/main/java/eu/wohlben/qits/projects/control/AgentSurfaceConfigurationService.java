@@ -82,7 +82,10 @@ public class AgentSurfaceConfigurationService {
   public List<AgentSurfaceConfigurationDto> listAll() {
     Map<String, AgentSurfaceConfiguration> stored = new LinkedHashMap<>();
     for (AgentSurfaceConfiguration row : configurations.allOrdered()) {
-      stored.put(row.surfaceKey, row);
+      // The development guide's rows (qits-1679) are not surfaces: no launch reads them.
+      if (!DevelopmentGuideDefaults.isGuideKey(row.surfaceKey)) {
+        stored.put(row.surfaceKey, row);
+      }
     }
     Map<String, List<AgentSurfaceMcpAttachment>> bySurface = new LinkedHashMap<>();
     for (AgentSurfaceMcpAttachment attachment : attachments.allOrdered()) {

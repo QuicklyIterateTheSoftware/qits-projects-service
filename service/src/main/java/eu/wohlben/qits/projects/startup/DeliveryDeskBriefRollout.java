@@ -10,7 +10,7 @@ import java.util.List;
 import org.jboss.logging.Logger;
 
 /**
- * Rolls the delivery desk's new brief (qits-1621, before it qits-1618, qits-1604, qits-1597, qits-1601,
+ * Rolls the delivery desk's new brief (qits-1679, before it qits-1621, qits-1618, qits-1604, qits-1597, qits-1601,
  * qits-1596, qits-1568, qits-1571, qits-1569, qits-1560 and qits-1517) onto the stored {@code
  * project.delivery} row, where nobody edited an old one.
  *
@@ -33,7 +33,9 @@ import org.jboss.logging.Logger;
  * rollout reached holds qits-1597's ({@link AgentSurfaceDefaults#QITS_1597_DELIVERY_DESK_PROMPT}),
  * one the qits-1604 rollout reached holds qits-1604's ({@link
  * AgentSurfaceDefaults#QITS_1604_DELIVERY_DESK_PROMPT}), and one the qits-1618 rollout reached
- * holds qits-1618's ({@link AgentSurfaceDefaults#QITS_1618_DELIVERY_DESK_PROMPT}).
+ * holds qits-1618's ({@link AgentSurfaceDefaults#QITS_1618_DELIVERY_DESK_PROMPT}), and one the
+ * qits-1621 rollout reached holds qits-1621's ({@link
+ * AgentSurfaceDefaults#QITS_1621_DELIVERY_DESK_PROMPT}).
  * Each is compared in turn, and the first that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
@@ -64,7 +66,8 @@ public class DeliveryDeskBriefRollout {
           AgentSurfaceDefaults.QITS_1601_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1597_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_1621_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 
@@ -87,7 +90,7 @@ public class DeliveryDeskBriefRollout {
       if (rewritten) {
         LOG.infof(
             "Rewrote agent surface configuration %s's system prompt from a previous shipped brief"
-                + " to the current one (qits-1621)",
+                + " to the current one (qits-1679)",
             surface);
       } else {
         LOG.infof(

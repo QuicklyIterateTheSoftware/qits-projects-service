@@ -56,6 +56,8 @@ public class ProviderStates {
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String TWO_PROJECTS_EXIST = "two projects exist";
   public static final String NO_PROJECTS_EXIST = "no projects exist";
+  /** The development guide's parts as they ship (qits-1679). */
+  public static final String THE_DEVELOPMENT_GUIDE_SHIPS = "the development guide ships";
   public static final String A_PROJECT_WITH_ONE_REPOSITORY = "a project with one repository";
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
@@ -441,6 +443,8 @@ public class ProviderStates {
   /** Turns a state's {@code authorization} param into the identity the edge forwards for it. */
   @Inject ContractBearers bearers;
 
+  @Inject eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService surfaceConfigurations;
+
   /** The qits-idp a runner state stands up, closed again by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.idphost.RoutingIdpServer idp;
 
@@ -473,6 +477,7 @@ public class ProviderStates {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
     states.put(TWO_PROJECTS_EXIST, this::twoProjectsExist);
     states.put(NO_PROJECTS_EXIST, this::noProjectsExist);
+    states.put(THE_DEVELOPMENT_GUIDE_SHIPS, this::theDevelopmentGuideShips);
     states.put(A_PROJECT_WITH_ONE_REPOSITORY, this::aProjectWithOneRepository);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
@@ -858,6 +863,15 @@ public class ProviderStates {
    * entries, of which there are none.
    */
   private Setup noProjectsExist() {
+    return new Setup(params(), List.of());
+  }
+
+  /** Every guide part at its shipped text, whatever a test stored before. */
+  private Setup theDevelopmentGuideShips() {
+    for (String key : eu.wohlben.qits.projects.control.DevelopmentGuideDefaults.KEYS) {
+      surfaceConfigurations.save(
+          key, eu.wohlben.qits.projects.control.AgentSurfaceDefaults.shippedDefault(key), null);
+    }
     return new Setup(params(), List.of());
   }
 

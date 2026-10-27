@@ -6853,6 +6853,43 @@
       ]
     },
     {
+      "name": "the development guide ships",
+      "slug": "the-development-guide-ships",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getDevelopmentGuide",
+          "method": "GET",
+          "path": "/projects/api/guide",
+          "query": {
+            "for": "workstation"
+          },
+          "status": 200,
+          "file": "the-development-guide-ships/getDevelopmentGuide.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listDevelopmentGuideVariants",
+          "method": "GET",
+          "path": "/projects/api/guide/variants",
+          "status": 200,
+          "file": "the-development-guide-ships/listDevelopmentGuideVariants.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "the second campaign of an epic in two campaigns",
       "slug": "the-second-campaign-of-an-epic-in-two-campaigns",
       "params": {

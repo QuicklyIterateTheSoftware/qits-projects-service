@@ -494,12 +494,11 @@ public class PhasePromptsTest {
   public void everyDispatchedInstructionOpensWithTheOneFlowBriefPointer() {
     String pointer = PhasePrompts.FLOW_BRIEF_POINTER;
     assertTrue(
-        pointer.contains("/workspace/docs/development-flow.md"),
-        "the path is absolute, because a container's working directory is not guaranteed: "
-            + pointer);
+        pointer.startsWith("Run `qits help guide` first"),
+        "the pointer names the development guide (qits-1679): " + pointer);
     assertTrue(
-        pointer.contains("If that file is not there"),
-        "and a project carrying no brief must not read as a broken instruction: " + pointer);
+        pointer.contains("/workspace/docs/development-flow.md instead, if it is there"),
+        "an older CLI falls back to the checkout's file, by an absolute path: " + pointer);
 
     for (EntityStatus status : EntityStatus.values()) {
       Optional<String> prompt = prompt(ticket(status));
