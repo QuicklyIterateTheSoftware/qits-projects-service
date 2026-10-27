@@ -218,7 +218,7 @@
         <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
              (workspaces, landing, the projects frontend, the platform-access CLI, maintenance,
-             githost, the projects desk runner daemon, artifacts, the bootstrap CLI, ci and the
+             githost, artifacts, the bootstrap CLI, ci and the
              orchestrator), each carrying
              `pacts/<consumer>_qits-projects-service.json`, and ConsumerPactVerificationTest loads
              every such resource off the test classpath. Thirteen frontends besides (qits-1284:
