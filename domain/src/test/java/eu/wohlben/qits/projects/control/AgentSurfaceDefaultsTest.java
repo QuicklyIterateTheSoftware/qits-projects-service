@@ -95,6 +95,18 @@ public class AgentSurfaceDefaultsTest {
       changed before you say the work is done.\
       """;
 
+  /** qits-1679's brief on asking the delivery desk, an independent copy of the bytes. */
+  private static final String AGENT_DESK_BRIEF =
+      """
+      Asking the delivery desk. To ask the desk for something (an approval, an action your
+      credential cannot do, a decision), comment on your work item with a comment that starts with
+      @desk and says exactly what you need: it prompts the desk. Do not block yourself on "a
+      person" for what the desk can do. Then wait for the answer with qits wait, on the comment
+      thread or on the outcome itself (the request's or the item's final state), never on a fold's
+      sha or an intermediate state a refold can skip. How to develop on the platform:
+      qits help guide.\
+      """;
+
   /**
    * The delivery desk's brief, copied from qits-1571, qits-1568, qits-1596, qits-1601, qits-1597,
    * qits-1604, qits-1618, qits-1621 and qits-1679 —
@@ -2147,7 +2159,8 @@ public class AgentSurfaceDefaultsTest {
     for (String surface : List.of("epic.chat", "epic.agent", "workspace.chat", "workspace.agent")) {
       AgentSurfaceConfigurationDto shipped = AgentSurfaceDefaults.SHIPPED.get(surface);
       assertEquals(List.of(QITS), shipped.mcpServers(), surface);
-      assertEquals("", shipped.systemPrompt(), surface + ": the workspace daemon has no desk axis");
+      assertEquals(
+          AGENT_DESK_BRIEF, shipped.systemPrompt(), surface + ": the desk brief alone (qits-1679)");
       assertEquals("", shipped.initialPrompt(), surface + ": the caller composes its own first turn");
     }
   }
@@ -2169,7 +2182,7 @@ public class AgentSurfaceDefaultsTest {
         COMPOSED_RUN_PROMPT, AgentSurfaceDefaults.COMPOSED_RUN_PROMPT, "the constant and the copy");
     for (String surface : List.of("epic.autonomous", "ticket.dispatch")) {
       assertEquals(
-          COMPOSED_RUN_PROMPT,
+          COMPOSED_RUN_PROMPT + "\n\n" + AGENT_DESK_BRIEF,
           AgentSurfaceDefaults.SHIPPED.get(surface).systemPrompt(),
           surface + ": one prompt for both composed runs, and two copies would drift");
     }

@@ -105,6 +105,24 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
   }
 
+  /** qits-1679 follow-up: every variant says how to ask the delivery desk. */
+  @Test
+  public void everyVariantSaysHowToAskTheDesk() {
+    for (String variant : DevelopmentGuideDefaults.VARIANTS) {
+      String markdown = read(variant).getString("markdown");
+      assertTrue(markdown.contains("`@desk`"), variant);
+    }
+    String workstation = read("workstation").getString("markdown");
+    assertTrue(workstation.contains("qits projects desk prompt --project <project>"));
+    assertTrue(workstation.contains("qits projects desk answer --project <project>"));
+    String agent = read("agent").getString("markdown");
+    assertTrue(agent.contains("## Ask the delivery desk"));
+    assertTrue(agent.contains("Never key a wait to a fold's sha"));
+    assertTrue(read("refinement").getString("markdown").contains("## Ask the delivery desk"));
+    assertTrue(
+        read("desk").getString("markdown").contains("declare a `qits wait` with a timeout for it"));
+  }
+
   @Test
   public void anUnknownVariantIsA400() {
     given().queryParam("for", "kiosk").when().get("/projects/api/guide").then().statusCode(400);

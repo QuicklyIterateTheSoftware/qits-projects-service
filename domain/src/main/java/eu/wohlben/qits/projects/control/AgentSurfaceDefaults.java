@@ -236,6 +236,34 @@ public final class AgentSurfaceDefaults {
           + " implement what it describes.";
 
   /**
+   * How a workspace agent asks the delivery desk (qits-1679): an {@code @desk} comment, then a wait
+   * on the outcome. The four workspace surfaces ship it as their whole brief, and the two composed
+   * runs ship it after {@link #COMPOSED_RUN_PROMPT}. Before qits-1679 the four shipped an empty
+   * prompt and the two {@link #COMPOSED_RUN_PROMPT} alone; {@code startup/AgentBriefRollout} rolls
+   * unedited rows forward. The development guide ({@code qits help guide}) says it at length.
+   */
+  public static final String AGENT_DESK_BRIEF =
+      """
+      Asking the delivery desk. To ask the desk for something (an approval, an action your
+      credential cannot do, a decision), comment on your work item with a comment that starts with
+      @desk and says exactly what you need: it prompts the desk. Do not block yourself on "a
+      person" for what the desk can do. Then wait for the answer with qits wait, on the comment
+      thread or on the outcome itself (the request's or the item's final state), never on a fold's
+      sha or an intermediate state a refold can skip. How to develop on the platform:
+      qits help guide.\
+      """;
+
+  /** What the two composed runs ship since qits-1679: the orchestration prompt, then the desk. */
+  public static final String COMPOSED_RUN_BRIEF = COMPOSED_RUN_PROMPT + "\n\n" + AGENT_DESK_BRIEF;
+
+  /** The four workspace surfaces, which ship {@link #AGENT_DESK_BRIEF} since qits-1679. */
+  public static final List<String> WORKSPACE_SURFACES =
+      List.of(EPIC_CHAT, EPIC_AGENT, WORKSPACE_CHAT, WORKSPACE_AGENT);
+
+  /** The two composed runs, which ship {@link #COMPOSED_RUN_BRIEF} since qits-1679. */
+  public static final List<String> COMPOSED_SURFACES = List.of(EPIC_AUTONOMOUS, TICKET_DISPATCH);
+
+  /**
    * The delivery desk's brief — the system prompt {@link #PROJECT_DELIVERY} ships with: qits-1517's
    * text, which rewrote qits-1440's first brief, as qits-1560, qits-1569, qits-1571, qits-1568,
    * qits-1596, qits-1601, qits-1597, qits-1604, qits-1618 and qits-1621 amended it (every earlier
@@ -2343,10 +2371,11 @@ public final class AgentSurfaceDefaults {
     // The four workspace surfaces send byte-identical launch requests today — which is the whole
     // reason the surface had to become a value that travels before any of this could be configured.
     // They are seeded identically here, and that identity is what an editor can now break.
-    map.put(EPIC_CHAT, surface(EPIC_CHAT, true, "", "", qits(false)));
-    map.put(EPIC_AGENT, surface(EPIC_AGENT, false, "", "", qits(false)));
-    map.put(WORKSPACE_CHAT, surface(WORKSPACE_CHAT, true, "", "", qits(false)));
-    map.put(WORKSPACE_AGENT, surface(WORKSPACE_AGENT, false, "", "", qits(false)));
+    // Since qits-1679 they carry the one brief on asking the delivery desk, and nothing else.
+    map.put(EPIC_CHAT, surface(EPIC_CHAT, true, AGENT_DESK_BRIEF, "", qits(false)));
+    map.put(EPIC_AGENT, surface(EPIC_AGENT, false, AGENT_DESK_BRIEF, "", qits(false)));
+    map.put(WORKSPACE_CHAT, surface(WORKSPACE_CHAT, true, AGENT_DESK_BRIEF, "", qits(false)));
+    map.put(WORKSPACE_AGENT, surface(WORKSPACE_AGENT, false, AGENT_DESK_BRIEF, "", qits(false)));
     // The two composed runs: a chat steered by the one orchestration prompt both of them ship, with
     // the bootstrap turn pushed over stdin and the qits url read-only marked, so the central server
     // serves only its read tools. The prompt is shared and the bootstrap turn is not — see
@@ -2356,7 +2385,7 @@ public final class AgentSurfaceDefaults {
         surface(
             EPIC_AUTONOMOUS,
             true,
-            COMPOSED_RUN_PROMPT,
+            COMPOSED_RUN_BRIEF,
             PROJECT_TASK_PROMPT_BOOTSTRAP,
             qits(true)));
     map.put(
@@ -2364,7 +2393,7 @@ public final class AgentSurfaceDefaults {
         surface(
             TICKET_DISPATCH,
             true,
-            COMPOSED_RUN_PROMPT,
+            COMPOSED_RUN_BRIEF,
             WORKSPACE_TASK_PROMPT_BOOTSTRAP,
             qits(true)));
     // The delivery desk: the one front desk's fields, steered by the brief, run when prompted.

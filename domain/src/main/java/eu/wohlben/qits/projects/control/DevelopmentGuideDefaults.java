@@ -145,6 +145,18 @@ public final class DevelopmentGuideDefaults {
       - Run the tests your change affects, not the whole suite: the release request runs it.
       - Quarkus tests: pass `-Dquarkus.http.test-port=0`, so a test does not take a fixed port.
 
+      ## Ask the delivery desk
+
+      Each project has a delivery desk, an agent that keeps its work moving. To ask it for
+      something (an approval, an action your credential cannot do, a decision), comment on the work
+      item with a comment that starts with `@desk` and says exactly what you need. This works from a
+      workstation too, for example from your own Claude Code session. Then wait for the outcome:
+      the request's or the item's final state, not a fold or an intermediate state.
+
+      A person or an admin can also talk to the desk directly:
+      `qits projects desk prompt --project <project> "<text>"`, then
+      `qits projects desk answer --project <project>` for its answer.
+
       ## Ship a change
 
       1. Commit on a branch. Name the work in the subject: `term(<project>-<n>): message`, for
@@ -181,7 +193,12 @@ public final class DevelopmentGuideDefaults {
       # Development guide: delivery desk
 
       You are the project's delivery desk. Your brief comes first, then the development flow that
-      the agents you coordinate follow.\
+      the agents you coordinate follow.
+
+      Agents and people ask you for things with a comment that starts with `@desk`; such a comment
+      prompts you. When you hold a decision until someone answers, ask them for the answer as an
+      `@desk` comment on the item's thread, and declare a `qits wait` with a timeout for it, so the
+      hold cannot go silent.\
       """;
 
   /** A refinement room. */
@@ -314,6 +331,19 @@ public final class DevelopmentGuideDefaults {
       you named, or the timeout passes, the platform gives you a new turn that says
       which. Then carry on: a REJECTED request means fix and push, then wait again.
       `qits wait list` shows your open waits and `qits wait cancel <id>` ends one.
+
+      ## Ask the delivery desk
+
+      To ask the project's delivery desk for something (an approval, an action your credential
+      cannot do, a decision), write a comment on the work item that starts with `@desk` and says
+      exactly what you need. An `@desk` comment prompts the desk through its triggers (qits-1660);
+      the Desk page lists it, with a link to the comment. Do not block yourself on "a person" for
+      what the desk can do, and do not wait for its reply on some generic event.
+
+      After asking, wait for the answer with `qits wait`: on the comment thread, or on the outcome
+      itself, the request's or the item's state. Prefer final states (FINALIZED, REJECTED, FAILED,
+      VERIFIED). Never key a wait to a fold's sha or to an intermediate state a refold can skip:
+      waits keyed to a fold missed the release of qits-projects-service-rr-368.
 
       ## Open them early; do not batch
 
