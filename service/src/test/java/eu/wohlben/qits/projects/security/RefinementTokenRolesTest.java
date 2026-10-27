@@ -60,13 +60,16 @@ class RefinementTokenRolesTest {
   @Test
   void theApproveDoorLeavesTheDecisionToTheApproverCheck() {
     // It admits qits:agent at the role check (a workspace agent may approve where a requirement
-    // admits one), so the refusal of a refinement token is ApproverCheck's — pinned above.
+    // admits one), so the refusal of a refinement token is ApproverCheck's — pinned above. The
+    // delivery desk's qits:desk-admin sits beside qits:admin-agent (qits-1621); it, too, approves
+    // only what ApproverCheck hands it.
     Method approve =
         Arrays.stream(ReleaseRequestController.class.getMethods())
             .filter(m -> m.getName().equals("approve"))
             .findFirst()
             .orElseThrow();
-    assertEquals(List.of("qits:admin", "qits:admin-agent", "qits:agent"), roles(approve));
+    assertEquals(
+        List.of("qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"), roles(approve));
   }
 
   private static Method dispatchMethod() {
