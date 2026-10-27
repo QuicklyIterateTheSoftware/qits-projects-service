@@ -1337,7 +1337,8 @@ approval's roles. The display path stores the content requirements as JSON objec
   source but main is `maintenance/*` or a `ticket/`, `epic/`, `task/<qid>` branch of the project
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is
   VERIFYING, VERIFIED or DONE (VERIFYING since qits-1560, so a verify probe ships; the rule keeps
-  its id); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
+  its id) — on the wrapper IMPLEMENTING or later (qits-1661: an agent files wrapper requests as
+  steps of its work and waits for them, so waiting for VERIFIED deadlocks); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
   too — a main-only or maintenance/*-only request that adds nothing has no work to resolve and stays
   the owner's (qits-maintenance's `BumpDispatcher.openMainOnly` holds `no-changes` transiently until
   its pre-run commits the branch); and for an admitted `automation:*`/`contract:*`
