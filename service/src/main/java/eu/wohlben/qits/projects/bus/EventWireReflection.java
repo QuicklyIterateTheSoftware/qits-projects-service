@@ -6,6 +6,7 @@ import eu.wohlben.qits.githost.events.SCMDeleteBranch;
 import eu.wohlben.qits.githost.events.SCMDeleteTag;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
+import eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource;
 import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import eu.wohlben.qits.projects.targethost.TargetLeaseChanged;
 import io.quarkus.runtime.annotations.RegisterForReflection;
@@ -86,7 +87,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  *
  * <p>{@link WaitClosedSource.DeskWaitClosedPayload} (qits-1618) is the third bound consumption,
  * qits-workspaces' {@code DeskWaitClosed} as the desk trigger source reads it: an absent line is a
- * native binary that never wakes a desk from its {@code qits wait}.
+ * native binary that never wakes a desk from its {@code qits wait}. {@link
+ * CapacityOpenedSource.AgentLeftPayload} (qits-1689) is the fourth: qits-workspaces' {@code
+ * AgentObsolete} and {@code AgentRemoved}, read to tell the desk a slot opened.
  *
  * <p>{@link TargetLeaseChanged} (epic qits-1481, qits-1551) is the fourth bound consumption:
  * qits-system's lease event, which {@code targethost/TargetLeaseEvents} receives bound to that local
@@ -136,6 +139,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
       WaitClosedSource.DeskWaitClosedPayload.class,
+      CapacityOpenedSource.AgentLeftPayload.class,
       TargetLeaseChanged.class,
       EventEnvelope.class,
       EventFrame.class

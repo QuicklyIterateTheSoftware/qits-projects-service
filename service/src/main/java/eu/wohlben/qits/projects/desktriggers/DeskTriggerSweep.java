@@ -26,8 +26,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * <b>Closes due desk trigger windows and delivers them</b> (epic qits-1604). Every pass does two
- * things, in this order:
+ * <b>Closes due desk trigger windows and delivers them</b> (epic qits-1604). Every pass first asks
+ * each source what time passing has made due ({@link DeskTriggerSource#scan}, qits-1689) and admits
+ * it under the listener's drops, then does two things, in this order:
  *
  * <ol>
  *   <li><b>Close.</b> Each OPEN window whose {@code closes_at} has passed is rendered ({@link
@@ -78,6 +79,8 @@ public class DeskTriggerSweep {
 
   @Inject FrontDeskPrompter prompter;
 
+  @Inject DeskTriggerWindows windows;
+
   /** How long a closed window may stay owed before it is given up on. */
   @ConfigProperty(name = "qits.projects.desk-triggers.give-up", defaultValue = "PT4H")
   Duration giveUp;
@@ -104,6 +107,13 @@ public class DeskTriggerSweep {
   /** One pass as of {@code now}; a test's clock. */
   void sweep(Instant now) {
     Instant at = now.truncatedTo(ChronoUnit.MICROS);
+    for (DeskTriggerSource source : sources) {
+      try {
+        QuarkusTransaction.requiringNew().run(() -> scan(source, at));
+      } catch (RuntimeException e) {
+        LOG.warnf(e, "Desk trigger source %s could not scan; tried again next pass", source.id());
+      }
+    }
     for (UUID id : due(at)) {
       try {
         QuarkusTransaction.requiringNew().run(() -> close(id, at));
@@ -116,6 +126,15 @@ public class DeskTriggerSweep {
         deliver(id, at);
       } catch (RuntimeException e) {
         LOG.warnf(e, "Desk trigger window %s could not be delivered; tried again next pass", id);
+      }
+    }
+  }
+
+  /** What {@code source} finds due by time, admitted under the listener's drops. */
+  private void scan(DeskTriggerSource source, Instant now) {
+    for (DeskTrigger trigger : source.scan(now)) {
+      if (DeskTriggerListener.admissible(source, trigger)) {
+        windows.admit(trigger.projectId(), source.id(), trigger, now, source.requestedByDesk());
       }
     }
   }

@@ -123,6 +123,21 @@ public class DevelopmentGuideControllerTest {
         read("desk").getString("markdown").contains("declare a `qits wait` with a timeout for it"));
   }
 
+  /** qits-1689: the desk variant says what to do with a failed or stalled request and a free slot. */
+  @Test
+  public void theDeskVariantSaysWhatToDoWithFailedAndStalledRequests() {
+    String markdown = read("desk").getString("markdown");
+    assertTrue(markdown.contains("only when no active agent was told of it"));
+    assertTrue(markdown.contains("`qits ci retry`"));
+    assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
+    assertTrue(markdown.contains("ask the\nowner on the item's thread"));
+    assertTrue(markdown.contains("you are told a slot opened"));
+    assertEquals(
+        List.of(DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE),
+        DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
+        "an unedited desk part rolls forward to the new text");
+  }
+
   @Test
   public void anUnknownVariantIsA400() {
     given().queryParam("for", "kiosk").when().get("/projects/api/guide").then().statusCode(400);

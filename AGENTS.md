@@ -2722,8 +2722,9 @@ storage, never rename it), `order()` (section order), `signatures()` (bus event 
 occurredAt[, commentId, principal])`; the listener drops a trigger whose `principal` is a desk
 subject, and the short constructor sets `principal` to `cause`), run inside the listener's `projects` transaction so it may read rows),
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
-`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above). Four
-ship:
+`requestedByDesk()` (false: news; true: an answer to the desk's own request, see above), and the
+default `scan(now)` (qits-1689: triggers found by reading rows on each sweep pass, admitted under the
+listener's drops; the source makes them idempotent itself). Seven ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
@@ -2731,6 +2732,9 @@ ship:
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
+| `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1672 notice for the fold, or all of its notices settled with none told. Owed notices are decided by `scan` once settled. Event id: the bus event's, or `foldKey(request, sha)` when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
+| `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
+| `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 
 `EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
 (`WorkEntityDoors.addComment`) after the write: the item, its author, `changedBy` and the body's
@@ -2747,7 +2751,8 @@ with no actor sets `cause` to something no subject can equal (`fold <sha8>`).
 constructed with the list rather than registered as a bean, so it cannot leak into other suites.
 
 **Config** (`application.properties`): `qits.projects.desk-triggers.window` (PT15M),
-`…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`) and `…give-up` (PT4H). The
+`…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`), `…give-up` (PT4H), and the
+stall thresholds `…stall.released` (PT1H), `…stall.pending` (PT2H) and `…stall.max-age` (P7D). The
 prompt hop's bound is the door's `qits.projects.front-desk.relay-timeout-ms`.
 
 **The read door** (qits-1612) is `GET /projects/api/projects/{projectId}/desk-triggers`
