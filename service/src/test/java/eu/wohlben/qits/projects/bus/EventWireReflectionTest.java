@@ -70,6 +70,29 @@ public class EventWireReflectionTest {
   /** And the fifth, the one announcement a whole multi-entity transition makes. */
   @Inject Instance<EntityTransitionAnnouncer> shippedTransitionAnnouncer;
 
+  /** The typed live listener of qits-system's lease event (epic qits-1481). */
+  @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
+
+  /**
+   * <b>A typed live listener's event is bound by the bus's own mapper</b> (epic qits-1481,
+   * qits-1551): {@code TargetLeaseEvents} receives qits-system's {@code TargetLeaseChanged} as the
+   * local record, so that record must be registered — and the bean must ship, or nothing listens.
+   * The JVM suite reads the event either way; only the native binary fails without the line, which
+   * the workspace cutover proved twice.
+   */
+  @Test
+  public void theLeaseEventTheDesksListenForIsRegistered() {
+    assertTrue(leaseEvents.isResolvable(), "TargetLeaseEvents ships as a bean");
+    Class<?> bound = leaseEvents.get().eventType();
+    assertEquals(eu.wohlben.qits.projects.targethost.TargetLeaseChanged.class, bound);
+    assertEquals("TargetLeaseChanged", bound.getSimpleName(), "the simple name is the wire name");
+    RegisterForReflection registration =
+        EventWireReflection.class.getAnnotation(RegisterForReflection.class);
+    assertTrue(
+        Set.of(registration.targets()).contains(bound),
+        "TargetLeaseChanged is bound by the bus and must be registered for native-image");
+  }
+
   @Test
   public void theRegisteredTargetsAreExactlyTheTypesThatCrossTheWire() {
     RegisterForReflection registration =
@@ -95,6 +118,7 @@ public class EventWireReflectionTest {
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
             WaitClosedSource.DeskWaitClosedPayload.class,
+            eu.wohlben.qits.projects.targethost.TargetLeaseChanged.class,
             EventEnvelope.class,
             EventFrame.class),
         Set.of(registration.targets()),
