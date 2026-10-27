@@ -70,8 +70,8 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   path in qits-767, `ContainersRefinementRuntime` with the refinement containers in qits-1316.)
 - `service/…/idphost/` — qits-idp's commission and token APIs, the same adapter shape one directory
   over: `IdpTokens`, `IdpRefinementTokens` behind `refinementhost/RefinementTokens`, and
-  `IdpRunnerCommissioner` for the front-desk runners and their desks (`IdpFrontDeskTokens` behind
-  `deskhost/FrontDeskTokens`), and the shared spellings (`IdpCommissionWire`) and failure
+  `IdpClients` for the legacy one-shots' client and token give-backs, `IdpFrontDeskTokens` behind
+  `deskhost/FrontDeskTokens`, and the shared spellings (`IdpCommissionWire`) and failure
   (`IdpCommissionException`) they all use.
 - `service/…/workspacehost/` — qits-workspaces, and `@DefaultBean` HTTP clients again. A package of
   its own rather than classes in `releasehost/` because **neither is a release verb** —
@@ -2433,57 +2433,107 @@ assignment, not a comment, not a release.
 ## Front desks (qits-767)
 
 **A project's agent container is a front desk now, and this service no longer starts it.** A desk
-is a `front_desk` row (V37) placed on a front-desk runner (`desk_runner`, V36) — a machine an
-operator declared, holding a socket to `/projects/runners/socket` and running the desks it is given
-on its own node. `service/…/deskhost/` is the whole of it. **The direct path is gone** (qits-767):
-`AgentContainers`, `ContainerRuntime`, `ContainersAgentRuntime`, `AgentContainerFactory`, the idle
-and stale-image sweeps, `AgentCommissions`/`AgentCredentials`/`AgentCredentialReconcile`,
-`IdpAgentCredentials` and the `agent_credential` table (dropped by V38) — `DirectAgentPathRetiredTest`
-keeps it so. The agent-container doors keep their paths:
+is a `front_desk` row (V37) that runs under a **DESK lease on an execution target** (epic qits-1481,
+qits-1551, V61): qits-system grants a DESK slot of one of its targets, and that target's
+`qits-system-runner` runs the container. `service/…/deskhost/` is the desk, `service/…/targethost/`
+its lease. **The front-desk runners are gone** (qits-1551): `DeskRunnerSocket`
+(`/projects/runners/socket`), `DeskRunnerRegistry`, the codec, install script, login command,
+`DeskRunnerWork`, `FrontDeskWork`, `FrontDeskEstates`, `DeskRunners`/`DeskRunner`/`DeskRunnerDto`,
+`DeskRunnerController` (`/projects/api/runners/**`), `DeskRunnerCommissionReconcile`, the
+`desk_runner` table, the `qits-projects-desk-runner-protocol` and both qits-runner-javalib
+dependencies, and every `qits.projects.desk-runner.*` key — `LegacyRunnerClientsTest` keeps it so.
+**The direct path is gone too** (qits-767): `AgentContainers`, `ContainerRuntime`,
+`ContainersAgentRuntime`, `AgentContainerFactory`, the idle and stale-image sweeps,
+`AgentCommissions`/`AgentCredentials`/`AgentCredentialReconcile`, `IdpAgentCredentials` and the
+`agent_credential` table (dropped by V38) — `DirectAgentPathRetiredTest` keeps it so. The
+agent-container doors keep their paths:
 
 | route | behaviour |
 | --- | --- |
-| `POST …/agent-container/ensure` | creates the row and mints its token if absent, stamps demand, recomputes desired, pushes the runner's estate, answers the state |
-| `POST …/agent-container/stop` | ON_DEMAND: clears the demand, so desired is STOPPED (the token is kept). ALWAYS_ON: **409** `{"error":"FRONT_DESK_ALWAYS_ON"}` |
+| `POST …/agent-container/ensure` | creates the row if absent, stamps demand, clears a lease failure (an explicit Start tries again), recomputes desired, asks for the lease, answers the state |
+| `POST …/agent-container/stop` | ON_DEMAND: clears the demand, so desired is STOPPED and the lease is ended (the work volume is kept on the target). ALWAYS_ON: **409** `{"error":"FRONT_DESK_ALWAYS_ON"}` |
 | `GET …/agent-container` | the state; `+ qits:agent` |
-| `DELETE …/agent-container` | `remove` to the runner (container **and** volume), row deleted (which unplaces it), token revoked; 204. A wanted desk is created afresh and QUEUED by the next sweep |
+| `DELETE …/agent-container` | row deleted, lease ended and, once ENDED, the work volume `desk-<projectId>` purged, every token revoked; 204. A wanted desk is created afresh and leased by the next sweep |
 
 - **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans): RUNNING while the
   project is `ALWAYS_ON`, its delivery loop is enabled (`DeliveryDemand`, epic qits-1440), or
   `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
   Demand is the ensure door and the daemon frames `AgentDaemonRegistry` counts as use, at most once
   a minute per project and only on a wanted desk. `FrontDeskSweep` (`agent-idle-sweep-interval`,
-  and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, re-mints a missing token,
-  recomputes desired and stamps `queued_at`; the project.yml flip does the same at once
-  (`FrontDeskHooks` implements `FrontDeskLifecycleChanged`).
-- **Placement is pull** (`FrontDesks.take`): a runner's `reserve` claims the oldest queued row with
-  `update … where runner_id is null`; one row updated answers `take`, else the next is tried, else
-  `nothing`. The server's count of the runner's wanted desks gates it against the row's slots, and
-  only new placement: an owned desk wanted again is started whatever the count. A desk is sticky.
-- **The estate** — the full list of a runner's desks, desired state and applied spec — is pushed on
-  the runner's greeting, on every change and every `qits.projects.desk-runner.estate-interval`;
-  `inventory` lands in `reported_*`, `launchFailed` in `failure_detail`, `removed` completes a
-  DELETE. `runtimeStatus` adds `QUEUED` (wanted, unplaced) and `UNAVAILABLE` (computed, never
-  stored: the runner gone longer than `qits.projects.desk-runner.reconnect-grace`); the answer adds
-  `runnerId`, `runnerName`, `lifecycle` and `queuedAt`.
+  and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, clears a lease failure (so a
+  FAILED lease is tried again once an interval, never in a loop), recomputes desired and brings the
+  lease in line; the project.yml flip does the same at once (`FrontDeskHooks` implements
+  `FrontDeskLifecycleChanged`).
+- **The lease** (`targethost/DeskLeases`, over `targethost/SystemLeases` → `HttpSystemLeases`, a
+  `java.net.http` client of `qits.system.url` with `Map`s and no DTOs, bearer the `qits` oidc
+  client's through `SystemBearer`): every change to a desk's desired state ends in
+  `DeskLeases.apply`. A wanted desk with no lease gets one: its `agent-container` token is minted
+  through `FrontDeskTokens` immediately before, stored in `token_*` (the previous lease's token is
+  given back first), then `POST /system/api/leases` with `slotType DESK`, `ownerRef <projectId>`,
+  `workKey desk-<projectId>`, `priority 0` and the spec `FrontDeskSpecs.compose` made. An unwanted
+  desk's lease is ended (`DELETE /system/api/leases/{id}`); its token goes when the lease is over.
+  A refusal about the request (4xx but 409) is FAILED `TARGET_REFUSED: …`; anything else (a 409
+  `LEASE_EXISTS`, no answer) waits and the reconcile asks again.
+- **What a lease's state does** (`DeskLeases.observe`), from qits-system's `TargetLeaseChanged`
+  (owner `qits-projects`, slot type DESK; `targethost/TargetLeaseEvents`, a live
+  `QitsEventListener` binding the local record `targethost/TargetLeaseChanged`, which
+  `bus/EventWireReflection` registers) and from the reconcile every
+  `qits.projects.target-leases.reconcile-interval` (PT30S; `off` in the suites). `reported_state`
+  holds the lease's state, `lease_detail` why a QUEUED lease waits, `target_id` its target:
+
+  | lease | desk `runtimeStatus` |
+  | --- | --- |
+  | none, wanted / QUEUED | `QUEUED`, the lease's `detail` answered as `failureDetail` |
+  | GRANTED | `PROVISIONING` — for as long as the cold pull of the multi-GB image takes; nothing times a grant out |
+  | RUNNING | `RUNNING`, and only then; a legacy desk's `legacy_placement` entry is deleted |
+  | EXITED | token given back, lease ended; a desk still wanted asks for the next lease |
+  | FAILED | `FAILED` with the target's detail, token given back, lease ended; retried by the sweep or a person's Start |
+  | ENDING / ENDED | lease cleared off the row at ENDED, token given back; a wanted desk asks again |
+
+  A desk is found by its lease id, never by the owner ref. **The reconcile never ends a lease from
+  a listing that predates it** (qits-workspaces' qits-1532 fix, copied): the desks that name a
+  lease are read first, then `GET /system/api/leases`; a snapshot lease the listing lacks is asked
+  for directly and only a 404 is ENDED; an unreadable listing moves nothing; a live lease no desk
+  names in a fresh read, older than two minutes, is ended. **RUNNING is only ever a lease's word**:
+  a desk with no lease reads QUEUED or STOPPED, so a desk whose container is gone never reads
+  RUNNING (qits-1592's lesson; V61 cleared every runner report). `UNAVAILABLE` is no longer
+  answered. The answer carries `targetId`; `runnerId` and `runnerName` are gone.
+- **Legacy adoption.** V61 copied every desk a runner held into `legacy_placement` (the runner,
+  its recorded `engineId` and `hostname`, its name) before dropping `front_desk.runner_id` and
+  `desk_runner`. Such a desk's first lease adopts `qits-projects-desk-runner-desk-<projectId>-
+  <oldRunnerId8>` (container and volume) and is pinned to the target whose engine id, else host
+  name, else name matches; with none installed yet it waits QUEUED, saying for which target, and
+  keeps its token (its old container still runs on it). RUNNING deletes the entry; the name stays
+  in `adopted_volume` and every later lease adopts it too. An entry naming nothing to find the node
+  by starts unpinned on a fresh volume, at WARN.
+- **The retirement's boot one-shot** (`targethost/LegacyRunnerClients`, NORMAL mode, idempotent)
+  deletes every idp client and token of the kinds `desk-runner` and `desk-runner-registration`
+  through `idphost/IdpClients` (what is left of `IdpRunnerCommissioner`: client listing and delete,
+  token listing and delete, no commissioning). **It only gives credentials back**: nothing in this
+  service can send a runner `Retire{DELETED}` or a 1008 `RUNNER_DELETED` close, on which the runner
+  toolkit purges every container and volume it holds (qits-1592). The kinds go from qits-idp in a
+  later release.
 - **The spec** is `FrontDeskSpecs.compose`, pure and golden-tested (`FrontDeskSpecsTest`); its
   `spec_hash` is SHA-256 over canonical JSON (sorted keys, env included). `FrontDeskSpecRoll`
-  (`agent-stale-sweep-interval`) applies a new spec only while the desk is not reported RUNNING or is
-  quiet (`agent-stale-quiet-window`) — except a front-desk settings change (qits-1514): the
-  `front_desk.lifecycle`/`front_desk.delivery` hooks set `roll_requested_at` (V51) and roll the desk
-  at once unless a turn is actually running (BUSY; WAITING does not hold it up — qits-1514), else on
-  the next pass after the turn ends; the quiet
+  (`agent-stale-sweep-interval`) rolls a leased desk onto a new spec — `PUT
+  /system/api/leases/{id}/spec`, on which the target recreates the container — only while the
+  lease is not RUNNING or the desk is quiet (`agent-stale-quiet-window`) — except a front-desk
+  settings change (qits-1514): the `front_desk.lifecycle`/`front_desk.delivery` hooks set
+  `roll_requested_at` (V51) and roll the desk at once unless a turn is actually running (BUSY;
+  WAITING does not hold it up — qits-1514), else on the next pass after the turn ends; the quiet
   window does not apply to a requested roll. The image is `registry.qits.<d>/qits/project-agent:<pin>`
   (the pin rule moved here: the override, else `ProjectAgentImage.VERSION`); `user` is
   `qits.projects.agent-user`, else the host uid; memory and swap `agent-memory-limit`, then
   `agent-pids-limit`, `agent-cpus`, `agent-oom-score-adj`. Mounts, network, init and restart policy
-  are the runner's. A blank, dotless or `localhost` `qits.domain` refuses to compose: FAILED
-  `EDGE_PLANE_UNCONFIGURED`.
-- **The token** is one `qits_tok_` per desk (`FrontDeskTokens`, idp kind `agent-container`,
-  claims `{project}`, `gitRefs []`), minted at row creation before the desk can be QUEUED, revoked
-  on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
-  never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
-  `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+  are the target's DESK slot policy, which also owns `HOME`, `CLAUDE_CONFIG_DIR` and `BUILDKIT_HOST`
+  and FAILS a spec naming one (`FrontDeskSpecs.POLICY_OWNED_ENV`). A blank, dotless or `localhost`
+  `qits.domain` refuses to compose: FAILED `EDGE_PLANE_UNCONFIGURED`.
+- **The token** is one `qits_tok_` per lease (`FrontDeskTokens`, idp kind `agent-container`,
+  claims `{project}`, `gitRefs []`), minted immediately before the lease is asked for and revoked
+  once it is over (EXITED, FAILED, ENDED), on DELETE and on project deletion
+  (`ProjectFrontDeskRemoval`); `FrontDeskTokenReconcile` reaps unclaimed ones, and a desk token held
+  by a desk with no lease (and no legacy entry) counts as unclaimed: it is cleared off the desk and
+  revoked. A failed mint is FAILED `TOKEN_UNAVAILABLE: …` and the next pass mints it again.
 - **The delivery token** (epic qits-1440, V48) is a second `qits_tok_` per desk, idp kind
   `desk-delivery` (`qits:agent` + `qits:desk`), claims `{project}`, `gitRefs []`, held in
   `front_desk.delivery_token_*` only while the project's `front_desk.delivery.enabled` is true:
@@ -2539,7 +2589,7 @@ belts).
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |
 | `QITS_PLATFORM_MCP_URL` | `https://mcp.qits.<d>/mcp` |
 | `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | `GitIdentity` |
-| `CLAUDE_CONFIG_DIR` / `KIMI_CODE_HOME` | `/claude-home/.claude` / `/claude-home/.kimi-code` |
+| `KIMI_CODE_HOME` | `/claude-home/.kimi-code` (`CLAUDE_CONFIG_DIR`, `/claude-home/.claude`, is the DESK slot policy's since qits-1551) |
 | `MAVEN_OPTS` | `-Dmaven.repo.local=/caches/m2` |
 | `npm_config_store_dir` | `/caches/pnpm/store` |
 
@@ -2847,7 +2897,7 @@ handed no token does not bind its API at all.
 The per-container idp client (`AgentCommissions`, `agent_credential`), the container runtime over
 qits-containers (`ContainersAgentRuntime`), the idle sweep, the stale-image sweep and the stop-never-
 remove policy went with qits-767. Their successors are the desk's token (`FrontDeskTokens`), the
-runner that holds the container, the demand and `FrontDeskSweep`, `FrontDeskSpecRoll` and the
+DESK lease that runs the container (`targethost/DeskLeases`), the demand and `FrontDeskSweep`, `FrontDeskSpecRoll` and the
 DELETE door — all under "Front desks". A daemon's `ProvisionFailed` is still recorded per project
 in `AgentDaemonRegistry` and still reads `FAILED` with its `failureDetail`.
 
@@ -3236,7 +3286,7 @@ opened before V58 is a session room like every other.
   `AgentDaemonRegistry.SESSIONS_CAPABILITY` = 3): after the credentials on `hello`; on every change —
   a room opened, ensured, stopped or discarded (`RefinementService`), its entity moved, blocked,
   unblocked or retitled (`api/AgentEntitySignals` → `RefinementSessions.entityChanged`, with the
-  announced facts; a campaign's room is told too); and every `qits.projects.desk-runner.estate-interval`
+  announced facts; a campaign's room is told too); and every `qits.projects.desk.sessions-resend-interval`
   for every capable connected desk (`pushAll`). **The credential goes first**: the open mints the
   room's token (which sends `sessionCredentials`) before it stamps demand and pushes, and the hello
   sends credentials before sessions. A room whose token could not be minted is still listed; the
@@ -3403,7 +3453,7 @@ a WARN the next boot retries; it logs what it removed, `LegacyRefinementContaine
 - every row's place `owner/refinement/<rowId>` at qits-containers is deleted, then its volume
   `qits_refinement_<rowId>` (404 is done; a refused place keeps its volume for the next boot);
 - every idp **client** of kind `refinement` this service owns is deleted — through
-  `IdpRunnerCommissioner.liveClients`/`deleteClient`, i.e. `GET`/`DELETE <idp>/api/clients…` and
+  `IdpClients.liveClients`/`deleteClient`, i.e. `GET`/`DELETE <idp>/api/clients…` and
   nothing else. **The rooms' live tokens carry the same kind word and are never touched**: they are
   `qits_tok_`s on the separate `<idp>/api/tokens` listing, which this class has no client for;
 - every `refining/*` branch on every project's wrapper is deleted by an ordinary push through the git
@@ -3417,7 +3467,7 @@ that answer at exactly two rows. It goes when that pact stops counting them.
 ## The container orchestrator
 
 **This service holds no docker socket, spawns no process and starts no container through
-qits-containers any more.** A project's agent container is a front desk on a runner and a refinement
+qits-containers any more.** A project's agent container is a front desk on a DESK lease and a refinement
 room is a session in it. Exactly two classes still call `ContainersClient`, both boot one-shots that
 clear what the retired paths left: `deskhost/LegacyAgentPlaces` (the `project-agent` places, deleted
 with their volumes, and a surviving volume read back to be named) and
