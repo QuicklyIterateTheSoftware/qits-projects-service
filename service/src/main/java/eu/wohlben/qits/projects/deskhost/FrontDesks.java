@@ -4,24 +4,15 @@ import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.entity.DeskRunner;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskDesired;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.error.CodedRefusalException;
 import eu.wohlben.qits.projects.error.DomainException;
-import eu.wohlben.qits.projects.persistence.DeskRunnerRepository;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DesiredState;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskEntry;
-import eu.wohlben.qits.projectsdeskrunner.protocol.DeskState;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Estate;
-import eu.wohlben.qits.projectsdeskrunner.protocol.HeldDesk;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Inventory;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Remove;
-import eu.wohlben.qits.projectsdeskrunner.protocol.Take;
+import eu.wohlben.qits.projects.targethost.DeskLeases;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
 import io.vertx.core.Context;
@@ -29,55 +20,38 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jboss.logging.Logger;
 
 /**
  * The project front desks (qits-767): the {@code front_desk} rows and every verb on them — the
- * doors' ensure, stop, delete and read, placement, the estate a runner is sent, and what a runner's
- * inventory, {@code launchFailed} and {@code removed} say about its desks.
+ * doors' ensure, stop, delete and read, the desired state, the tokens, and the state a desk reads.
  *
- * <p><b>Placement is pull and compare-and-swap.</b> A runner's {@code reserve} ({@link #take}) tries
- * the oldest queued rows in turn and claims one with {@code update … where runner_id is null}; the
- * one that updates a row answers {@code take}, a lost race tries the next. The server's own count of
- * the runner's wanted desks gates it against the row's slots (qits-624), and the gate is only on new
- * placement: an owned desk whose desired state becomes RUNNING is started on its runner whatever its
- * count. A desk is sticky: only {@link #remove} (the DELETE door, the project's deletion) unplaces
- * it, and a runner owning desks cannot be deleted.
+ * <p><b>Where a desk runs is a DESK lease on an execution target</b> (epic qits-1481, qits-1551):
+ * every change to a desk's desired state is handed to {@link DeskLeases#apply}, which asks
+ * qits-system for a lease for a wanted desk with none and ends the lease of an unwanted one. The
+ * front-desk runners, their socket and their pull placement are gone.
  *
- * <p><b>A runner reserves only while it is told there is a backlog</b> (qits-1110): the runner
- * toolkit's slot ledger sends {@code reserve} when a slot is free <em>and</em> the host's last
- * {@code backlog} was above zero, and a {@code nothing} parks it until the next one. So every
- * committed change that adds a desk to the queue or takes one off it ({@link #placeable}) — desired
- * flipping, a late token, a DELETE, a {@code removed} — tells {@link
- * DeskRunnerRegistry#backlogChanged}; a {@code take} is told by the registry itself.
- *
- * <p><b>The token is minted before the desk can be QUEUED</b>, outside any claim transaction, and
- * stored on the row ({@link #mintIfMissing}); a mint that fails leaves the desk FAILED with {@link
- * #TOKEN_UNAVAILABLE} and the sweep retries it. Stop never revokes it; {@link #remove} does.
+ * <p><b>The desk token is a lease's</b>: {@link DeskLeases} mints it immediately before it asks for
+ * a lease, stores it on the row ({@code token_*}) and revokes it once the lease is over; a mint
+ * that fails leaves the desk FAILED with {@link #TOKEN_UNAVAILABLE}, and the next pass retries it.
  *
  * <p><b>The delivery token</b> (epic qits-1440) follows the project's {@code delivery_enabled}
  * instead ({@link #syncDeliveryToken}): minted while the loop is on and the row holds none, revoked
  * and cleared when it is off, and revoked with the desk. A failed mint leaves the desk usable — the
  * loop simply has no credential yet — and the sweep retries it.
  *
- * <p><b>The session token</b> (qits-1482) is minted beside the desk token ({@link
+ * <p><b>The session token</b> (qits-1482) is minted when the row is created ({@link
  * #mintSessionIfMissing}) and goes with the row; a failed mint is a WARN, never a FAILED desk, and
  * the sweep retries it. It is in no spec: {@link #sessionToken} holds it for the control socket.
  * Every mint or revoke of the session or the delivery token re-sends the desk's daemon its session
  * credentials ({@link DeskSessionCredentials#push}).
  *
  * <p><b>The bound subjects</b> — each desk's {@code token_subject} — are also held in memory, loaded
- * at boot and kept with every write here, because the control socket's upgrade check and the
- * dial-back route ask on the event loop.
+ * at boot and kept with every write ({@link #bindSubject}, {@link #unbindSubject}), because the
+ * control socket's upgrade check and the dial-back route ask on the event loop.
  */
 @ApplicationScoped
 public class FrontDesks {
@@ -96,21 +70,18 @@ public class FrontDesks {
 
   @Inject ProjectService projects;
 
-  @Inject DeskRunnerRepository runnerRows;
-
   @Inject FrontDeskTokens tokens;
 
   @Inject FrontDeskDemand demand;
 
   @Inject FrontDeskSpecs specs;
 
-  @Inject DeskRunnerRegistry registry;
+  /** Where a desk runs: its DESK lease (epic qits-1481). */
+  @Inject DeskLeases leases;
 
   @Inject AgentDaemonRegistry daemons;
 
   @Inject AgentTunnels tunnels;
-
-  @Inject FrontDeskEstates estates;
 
   /** Re-sent to the desk's daemon whenever a session or delivery token comes or goes (qits-1482). */
   @Inject DeskSessionCredentials sessionCredentials;
@@ -119,9 +90,6 @@ public class FrontDesks {
   private final ConcurrentHashMap<String, String> subjects = new ConcurrentHashMap<>();
 
   private volatile boolean subjectsLoaded;
-
-  /** Since when this process has been able to see a runner; a never-seen runner's drop is this. */
-  private final Instant bootedAt = Instant.now();
 
   void onStart(@Observes StartupEvent event) {
     try {
@@ -163,6 +131,20 @@ public class FrontDesks {
     return null;
   }
 
+  /** {@code projectId}'s desk holds a token for {@code subject} now (a lease's, epic qits-1481). */
+  public void bindSubject(String projectId, String subject) {
+    if (projectId != null && subject != null) {
+      subjects.put(projectId, subject);
+    }
+  }
+
+  /** {@code projectId}'s desk holds no token any more: its lease is over. */
+  public void unbindSubject(String projectId) {
+    if (projectId != null) {
+      subjects.remove(projectId);
+    }
+  }
+
   private void loadSubjects() {
     List<FrontDesk> rows = QuarkusTransaction.requiringNew().call(() -> desks.listAll());
     for (FrontDesk row : rows) {
@@ -190,8 +172,9 @@ public class FrontDesks {
   // --- the doors ---------------------------------------------------------------------------------
 
   /**
-   * {@code POST …/agent-container/ensure}: the row (and its token) if absent, demand stamped, the
-   * desired state recomputed, the runner told when it moved; answers the desk as it stands.
+   * {@code POST …/agent-container/ensure}: the row if absent, demand stamped, a lease failure
+   * cleared (an explicit Start tries again), the desired state recomputed and the lease asked for;
+   * answers the desk as it stands.
    */
   public FrontDeskState ensure(String projectId) {
     project(projectId);
@@ -199,13 +182,15 @@ public class FrontDesks {
     ensureRow(projectId);
     demand.stamp(projectId, now);
     checkEdge(projectId);
-    reconcileAndPush(projectId, now);
+    clearLeaseFailure(projectId);
+    reconcileAndApply(projectId, now);
     return status(projectId);
   }
 
   /**
    * {@code POST …/agent-container/stop}: an ON_DEMAND desk's demand cleared, so it is desired
-   * STOPPED; an ALWAYS_ON desk is a 409 {@link #FRONT_DESK_ALWAYS_ON}. The token is kept.
+   * STOPPED and its lease ended (its work volume kept); an ALWAYS_ON desk is a 409 {@link
+   * #FRONT_DESK_ALWAYS_ON}.
    */
   public FrontDeskState stop(String projectId) {
     Project project = project(projectId);
@@ -223,7 +208,7 @@ public class FrontDesks {
       return FrontDeskState.absent(project.frontDeskLifecycle);
     }
     demand.clear(projectId);
-    reconcileAndPush(projectId, Instant.now());
+    reconcileAndApply(projectId, Instant.now());
     return status(projectId);
   }
 
@@ -237,10 +222,10 @@ public class FrontDesks {
   }
 
   /**
-   * Remove a desk whole: the row deleted (which unplaces it), {@code remove} sent to the runner that
-   * held it (container <b>and</b> volume) and a fresh estate after it, the token revoked, the tunnel
-   * and the daemon's in-memory state forgotten. A desk still wanted (ALWAYS_ON) is created afresh,
-   * with a new token, and QUEUED by the next sweep. Also the project deletion's path.
+   * Remove a desk whole: the row deleted, its lease ended and its work volume purged once the lease
+   * is ENDED ({@link DeskLeases#retire}), its tokens revoked, the tunnel and the daemon's in-memory
+   * state forgotten. A desk still wanted (ALWAYS_ON) is created afresh and leased again by the next
+   * sweep. Also the project deletion's path.
    */
   public void removeDesk(String projectId) {
     FrontDesk gone =
@@ -257,17 +242,12 @@ public class FrontDesks {
     if (gone == null) {
       return;
     }
-    if (placeable(gone)) {
-      registry.backlogChanged();
-    }
-    if (gone.runnerId != null) {
-      boolean told = registry.send(gone.runnerId, new Remove(projectId));
-      LOG.infof(
-          "The front desk of project %s was removed from runner %s%s",
-          projectId,
-          gone.runnerId,
-          told ? "" : " (not connected: its next estate drops the desk)");
-      estates.push(gone.runnerId);
+    try {
+      leases.retire(gone);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not retire the lease of the removed desk of project %s: %s",
+          projectId, e.getMessage());
     }
     if (gone.tokenId != null && !tokens.revoke(gone.tokenId)) {
       LOG.warnf(
@@ -312,8 +292,9 @@ public class FrontDesks {
   // --- rows and tokens ---------------------------------------------------------------------------
 
   /**
-   * The row of {@code projectId}, created if absent, holding its token if one could be minted — and
-   * its delivery token too while the project's loop is enabled.
+   * The row of {@code projectId}, created if absent, with its session token — and its delivery token
+   * too while the project's loop is enabled. The desk token is a lease's: {@link DeskLeases} mints
+   * it.
    */
   public void ensureRow(String projectId) {
     if (find(projectId).isEmpty()) {
@@ -336,7 +317,6 @@ public class FrontDesks {
         }
       }
     }
-    mintIfMissing(projectId);
     mintSessionIfMissing(projectId);
     syncDeliveryToken(projectId);
   }
@@ -445,50 +425,27 @@ public class FrontDesks {
     }
   }
 
-  /**
-   * Mint the desk's token when it has none: outside any transaction, stored only on a row that still
-   * has none (a lost race, or a row deleted meanwhile, revokes what was minted).
-   */
-  public void mintIfMissing(String projectId) {
-    FrontDesk row = find(projectId).orElse(null);
-    if (row == null || row.tokenId != null) {
-      return;
-    }
-    FrontDeskTokens.Minted minted;
-    try {
-      minted = tokens.mint(projectId);
-    } catch (RuntimeException e) {
-      LOG.warnf("Could not mint the desk token of project %s: %s", projectId, e.getMessage());
-      recordFailure(projectId, TOKEN_UNAVAILABLE + ": " + e.getMessage());
-      return;
-    }
-    int stored =
-        QuarkusTransaction.requiringNew()
-            .call(
-                () ->
-                    desks.update(
-                        "tokenId = ?1, tokenValue = ?2, tokenSubject = ?3"
-                            + " where projectId = ?4 and tokenId is null",
-                        minted.tokenId(),
-                        minted.token(),
-                        minted.subject(),
-                        projectId));
-    if (stored == 0) {
-      tokens.revoke(minted.tokenId());
-      return;
-    }
-    subjects.put(projectId, minted.subject());
-    clearFailure(projectId, TOKEN_UNAVAILABLE);
-    if (find(projectId).filter(FrontDesks::placeable).isPresent()) {
-      // A wanted unplaced desk whose token came late has only now joined the queue.
-      registry.backlogChanged();
-    }
-  }
-
   /** Record why a desk is not usable. */
   void recordFailure(String projectId, String detail) {
     QuarkusTransaction.requiringNew()
         .run(() -> desks.update("failureDetail = ?1 where projectId = ?2", detail, projectId));
+  }
+
+  /**
+   * Clear a failure a lease left (the target's FAILED, a refusal), so the next lease is asked for —
+   * an explicit Start, and the sweep. A failure this service decided (an unconfigured edge, a token
+   * that could not be minted) is left for its own check.
+   */
+  public void clearLeaseFailure(String projectId) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                desks.update(
+                    "failureDetail = null where projectId = ?1 and failureDetail is not null"
+                        + " and failureDetail not like ?2 and failureDetail not like ?3",
+                    projectId,
+                    FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED + "%",
+                    TOKEN_UNAVAILABLE + "%"));
   }
 
   /** Clear a failure that starts with {@code prefix}, leaving any other. */
@@ -517,163 +474,50 @@ public class FrontDesks {
   // --- desired state -----------------------------------------------------------------------------
 
   /**
-   * Recompute the desk's desired state; a wanted unplaced desk is stamped {@code queued_at} if it
-   * has none (once it holds its token), an unwanted unplaced one loses it. Answers the runner to
-   * tell when a placed desk's desired state moved, else null.
+   * Recompute the desk's desired state; a wanted desk with no lease is stamped {@code queued_at} if
+   * it has none, an unwanted one loses it. Answers whether the desired state moved.
    */
-  public UUID reconcile(String projectId, Instant now) {
-    Reconciled reconciled = reconcileRow(projectId, now);
-    if (reconciled.queueMoved()) {
-      registry.backlogChanged();
-    }
-    return reconciled.runner();
-  }
-
-  /** What one reconcile committed: the runner to tell, and whether the desk joined or left the queue. */
-  private record Reconciled(UUID runner, boolean queueMoved) {}
-
-  private Reconciled reconcileRow(String projectId, Instant now) {
+  public boolean reconcile(String projectId, Instant now) {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
               FrontDesk row = desks.findById(projectId);
               Project project = row == null ? null : projectRows.findById(projectId);
               if (row == null || project == null) {
-                return new Reconciled(null, false);
+                return false;
               }
-              boolean wasPlaceable = placeable(row);
               FrontDeskDesired next = demand.desired(project, row, now);
               boolean moved = row.desired != next;
               row.desired = next;
-              if (row.runnerId == null) {
+              if (row.leaseId == null) {
                 if (next == FrontDeskDesired.RUNNING) {
-                  if (row.queuedAt == null && row.tokenValue != null) {
+                  if (row.queuedAt == null) {
                     row.queuedAt = now;
                   }
                 } else {
                   row.queuedAt = null;
+                  row.leaseDetail = null;
                 }
               }
               if (moved) {
                 LOG.infof("The front desk of project %s is now desired %s", projectId, next);
               }
-              return new Reconciled(moved ? row.runnerId : null, wasPlaceable != placeable(row));
+              return moved;
             });
   }
 
-  /**
-   * Whether a desk is waiting for a runner — wanted, unplaced and holding its token: the predicate
-   * of {@link FrontDeskRepository#queued}, which placement tries and the backlog counts.
-   */
-  static boolean placeable(FrontDesk row) {
-    return row.runnerId == null
-        && row.desired == FrontDeskDesired.RUNNING
-        && row.tokenValue != null;
-  }
-
-  /**
-   * How many desks are waiting for a runner: the {@code backlog} a greeted runner is told, without
-   * which its slot ledger never sends a {@code reserve}.
-   */
-  public long backlog() {
-    return QuarkusTransaction.requiringNew().call(() -> desks.countQueued());
-  }
-
-  /** {@link #reconcile}, then the runner's estate when a placed desk moved. */
-  public void reconcileAndPush(String projectId, Instant now) {
-    UUID runner = reconcile(projectId, now);
-    if (runner != null) {
-      estates.push(runner);
+  /** {@link #reconcile}, then the desk's lease brought in line ({@link DeskLeases#apply}). */
+  public void reconcileAndApply(String projectId, Instant now) {
+    reconcile(projectId, now);
+    try {
+      leases.apply(projectId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not bring the lease of project %s's desk in line: %s", projectId, e.getMessage());
     }
   }
 
-  // --- placement ---------------------------------------------------------------------------------
-
-  /**
-   * A runner's {@code reserve}: a {@link Take} for the oldest queued desk this runner wins the
-   * compare-and-swap on, or null for {@code nothing} — also when the server's own count of the
-   * runner's wanted desks is at its slots.
-   */
-  public Take take(UUID runnerId) {
-    DeskRunner runner = QuarkusTransaction.requiringNew().call(() -> runnerRows.findById(runnerId));
-    if (runner == null) {
-      return null;
-    }
-    long held = QuarkusTransaction.requiringNew().call(() -> desks.wantedOn(runnerId));
-    if (held >= runner.slots) {
-      return null;
-    }
-    List<FrontDesk> queued = QuarkusTransaction.requiringNew().call(() -> desks.queued());
-    for (FrontDesk candidate : queued) {
-      Project project =
-          QuarkusTransaction.requiringNew().call(() -> projectRows.findById(candidate.projectId));
-      if (project == null) {
-        continue;
-      }
-      FrontDeskSpecs.Composed composed;
-      try {
-        composed = specs.compose(project, candidate);
-      } catch (FrontDeskSpecs.EdgePlaneUnconfigured unconfigured) {
-        recordFailure(candidate.projectId, FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED);
-        continue;
-      } catch (RuntimeException e) {
-        LOG.warnf(
-            "Could not compose the front desk of project %s: %s", candidate.projectId, e.getMessage());
-        recordFailure(candidate.projectId, "Could not compose the desk: " + e.getMessage());
-        continue;
-      }
-      if (claim(candidate.projectId, runnerId, composed) == 1) {
-        LOG.infof(
-            "Placed the front desk of project %s on runner %s (%s)",
-            candidate.projectId, runner.name, runnerId);
-        return new Take(
-            candidate.projectId, DesiredState.RUNNING, composed.spec(), composed.hash());
-      }
-    }
-    return null;
-  }
-
-  /** The compare-and-swap: 1 when this runner placed the desk, 0 when another got there first. */
-  int claim(String projectId, UUID runnerId, FrontDeskSpecs.Composed composed) {
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () ->
-                desks
-                    .getEntityManager()
-                    .createNativeQuery(
-                        "update front_desk set runner_id = :runner, placed_at = :now,"
-                            + " spec_json = cast(:json as jsonb), spec_hash = :hash,"
-                            + " failure_detail = null, roll_requested_at = null"
-                            + " where project_id = :project and runner_id is null"
-                            + " and desired = 'RUNNING'")
-                    .setParameter("runner", runnerId)
-                    .setParameter("now", Instant.now())
-                    .setParameter("json", composed.json())
-                    .setParameter("hash", composed.hash())
-                    .setParameter("project", projectId)
-                    .executeUpdate());
-  }
-
-  /**
-   * Store a rolled spec on a desk still on {@code runnerId}; 1 when it landed. A pending roll
-   * request (qits-1514) is answered by it, so it is cleared in the same update.
-   */
-  int storeSpec(String projectId, UUID runnerId, FrontDeskSpecs.Composed composed) {
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () ->
-                desks
-                    .getEntityManager()
-                    .createNativeQuery(
-                        "update front_desk set spec_json = cast(:json as jsonb), spec_hash = :hash,"
-                            + " roll_requested_at = null"
-                            + " where project_id = :project and runner_id = :runner")
-                    .setParameter("json", composed.json())
-                    .setParameter("hash", composed.hash())
-                    .setParameter("project", projectId)
-                    .setParameter("runner", runnerId)
-                    .executeUpdate());
-  }
+  // --- roll requests -----------------------------------------------------------------------------
 
   /**
    * Ask for the desk of {@code projectId} to roll between turns (qits-1514): a front-desk settings
@@ -706,165 +550,22 @@ public class FrontDesks {
                     .executeUpdate());
   }
 
-  /** The held desks a greeted runner keeps: those placed on it. */
-  public List<String> adopted(UUID runnerId, List<String> held) {
-    Set<String> owned = new HashSet<>();
-    for (FrontDesk row : QuarkusTransaction.requiringNew().call(() -> desks.onRunner(runnerId))) {
-      owned.add(row.projectId);
-    }
-    return held.stream().filter(owned::contains).toList();
-  }
-
-  // --- the estate --------------------------------------------------------------------------------
-
-  /**
-   * The full estate of {@code runnerId}: every desk placed on it with its desired state and applied
-   * spec. A desk placed with no spec yet is composed now (and stored); one that cannot be is left
-   * out and named. Throws when the rows cannot be read — an estate is sent only from a good read.
-   */
-  public Estate estate(UUID runnerId) {
-    List<FrontDesk> rows = QuarkusTransaction.requiringNew().call(() -> desks.onRunner(runnerId));
-    List<DeskEntry> entries = new ArrayList<>();
-    for (FrontDesk row : rows) {
-      String json = row.specJson;
-      String hash = row.specHash;
-      if (json == null || hash == null) {
-        Project project =
-            QuarkusTransaction.requiringNew().call(() -> projectRows.findById(row.projectId));
-        try {
-          FrontDeskSpecs.Composed composed = specs.compose(project, row);
-          storeSpec(row.projectId, runnerId, composed);
-          json = composed.json();
-          hash = composed.hash();
-        } catch (RuntimeException e) {
-          LOG.warnf(
-              "The front desk of project %s on runner %s has no spec to send: %s",
-              row.projectId, runnerId, e.getMessage());
-          continue;
-        }
-      }
-      entries.add(
-          new DeskEntry(
-              row.projectId,
-              row.wanted() ? DesiredState.RUNNING : DesiredState.STOPPED,
-              FrontDeskSpecs.parse(json),
-              hash));
-    }
-    return new Estate(entries, specs.imageOrNull());
-  }
-
-  // --- what a runner says ------------------------------------------------------------------------
-
-  /**
-   * An inventory: each desk placed on the runner takes its reported state, spec hash and the time;
-   * a desk the inventory does not name is ABSENT. FAILED records the runner's detail; RUNNING — or
-   * STOPPED/ABSENT on a desk desired STOPPED — clears a launch failure.
-   */
-  public void inventory(UUID runnerId, Inventory inventory) {
-    Map<String, HeldDesk> held = new HashMap<>();
-    for (HeldDesk desk : inventory.desks()) {
-      held.put(desk.projectId(), desk);
-    }
-    Instant now = Instant.now();
-    QuarkusTransaction.requiringNew()
-        .run(
-            () -> {
-              for (FrontDesk row : desks.onRunner(runnerId)) {
-                HeldDesk desk = held.get(row.projectId);
-                DeskState state = desk == null ? DeskState.ABSENT : desk.state();
-                row.reportedState = state.name();
-                row.reportedSpecHash = desk == null ? null : desk.specHash();
-                row.reportedAt = now;
-                if (state == DeskState.FAILED) {
-                  row.failureDetail =
-                      desk.detail() == null || desk.detail().isBlank()
-                          ? "The runner reported the desk FAILED with no reason."
-                          : desk.detail();
-                } else if (launchFailure(row.failureDetail)
-                    && (state == DeskState.RUNNING || !row.wanted())) {
-                  row.failureDetail = null;
-                }
-              }
-            });
-  }
-
-  /** A failure the runner reported, as opposed to one this service decided. */
-  private static boolean launchFailure(String detail) {
-    return detail != null
-        && !detail.startsWith(FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED)
-        && !detail.startsWith(TOKEN_UNAVAILABLE);
-  }
-
-  /** A {@code launchFailed}: the detail on the desk, if it is still this runner's. */
-  public void launchFailed(UUID runnerId, String projectId, String detail) {
-    String reason =
-        detail == null || detail.isBlank() ? "The runner could not launch the desk." : detail;
-    QuarkusTransaction.requiringNew()
-        .run(
-            () ->
-                desks.update(
-                    "failureDetail = ?1 where projectId = ?2 and runnerId = ?3",
-                    reason,
-                    projectId,
-                    runnerId));
-    LOG.warnf("Runner %s could not launch the front desk of project %s: %s", runnerId, projectId, reason);
-  }
-
-  /**
-   * A {@code removed}: nothing of the desk is on the runner's node. It completes a DELETE: an
-   * unplaced row left over from a placement (one a DELETE could not drop) is dropped now and its
-   * token revoked. A row created afresh since — never placed — is not touched.
-   */
-  public void removed(UUID runnerId, String projectId) {
-    FrontDesk leftover =
-        QuarkusTransaction.requiringNew()
-            .call(
-                () -> {
-                  FrontDesk row = desks.findById(projectId);
-                  if (row == null || row.runnerId != null || row.placedAt == null) {
-                    return null;
-                  }
-                  desks.delete(row);
-                  return row;
-                });
-    LOG.infof("Runner %s removed the front desk of project %s", runnerId, projectId);
-    if (leftover != null) {
-      subjects.remove(projectId);
-      if (leftover.tokenId != null) {
-        tokens.revoke(leftover.tokenId);
-      }
-      if (leftover.deliveryTokenId != null) {
-        tokens.revokeDelivery(leftover.deliveryTokenId);
-      }
-      if (leftover.sessionTokenId != null) {
-        tokens.revokeSession(leftover.sessionTokenId);
-      }
-      if (placeable(leftover)) {
-        registry.backlogChanged();
-      }
-      sessionCredentials.push(projectId);
-    }
-  }
-
   // --- the computed state ------------------------------------------------------------------------
 
-  /** The desks on a runner, for its listing; inside the caller's transaction. */
-  public List<FrontDesk> desksOn(UUID runnerId) {
-    return desks.onRunner(runnerId);
-  }
-
   /**
-   * A desk's state, from its row, its runner's presence and its daemon; called inside a
-   * transaction (it reads the runner's name).
+   * A desk's state, from its row, its lease as qits-system last called it, and its daemon:
    *
    * <ul>
-   *   <li>ABSENT — no row; FAILED — a failure detail (a launch failure, an unconfigured edge, no
-   *       token) or a daemon's {@code ProvisionFailed};
-   *   <li>UNAVAILABLE — never stored: the owning runner has been disconnected longer than the
-   *       reconnect grace;
-   *   <li>QUEUED — wanted and unplaced; RUNNING — the inventory says so; PROVISIONING — placed,
-   *       wanted, not yet running; STOPPED — otherwise.
+   *   <li>ABSENT — no row; FAILED — a failure detail (the lease FAILED or was refused, an
+   *       unconfigured edge, no token) or a daemon's {@code ProvisionFailed};
+   *   <li>QUEUED — wanted and no lease yet, or the lease QUEUED; the lease's {@code detail} (why it
+   *       waits) is answered as {@code failureDetail};
+   *   <li>PROVISIONING — the lease GRANTED (the target pulls and starts the image: no time limit),
+   *       or wanted with a lease that is not running (EXITED or ending: a new one follows);
+   *   <li>RUNNING — the lease RUNNING, and only then; STOPPED — otherwise.
    * </ul>
+   *
+   * <p>{@code UNAVAILABLE} (a runner gone past its grace) is never computed any more.
    */
   public FrontDeskState state(Project project, FrontDesk row, Instant now) {
     FrontDeskLifecycle lifecycle =
@@ -889,44 +590,22 @@ public class FrontDesks {
     } else if (provisionFailure != null) {
       status = AgentRuntimeStatus.FAILED;
       detail = provisionFailure;
-    } else if (row.runnerId != null && unavailable(row.runnerId, now)) {
-      status = AgentRuntimeStatus.UNAVAILABLE;
-    } else if (row.runnerId == null) {
+    } else if (row.leaseId == null) {
       status = row.wanted() ? AgentRuntimeStatus.QUEUED : AgentRuntimeStatus.STOPPED;
-    } else if (DeskState.RUNNING.name().equals(row.reportedState)) {
+      detail = row.wanted() ? row.leaseDetail : null;
+    } else if ("QUEUED".equals(row.reportedState)) {
+      status = AgentRuntimeStatus.QUEUED;
+      detail = row.leaseDetail;
+    } else if ("GRANTED".equals(row.reportedState)) {
+      status = AgentRuntimeStatus.PROVISIONING;
+    } else if ("RUNNING".equals(row.reportedState)) {
       status = AgentRuntimeStatus.RUNNING;
     } else if (row.wanted()) {
       status = AgentRuntimeStatus.PROVISIONING;
     } else {
       status = AgentRuntimeStatus.STOPPED;
     }
-    String runnerName = null;
-    if (row.runnerId != null) {
-      DeskRunner runner = runnerRows.findById(row.runnerId);
-      runnerName = runner == null ? null : runner.name;
-    }
     return new FrontDeskState(
-        status,
-        connected,
-        version,
-        pinned,
-        stale,
-        detail,
-        row.runnerId,
-        runnerName,
-        lifecycle,
-        row.queuedAt);
-  }
-
-  /** Whether the runner has been gone longer than the reconnect grace. */
-  boolean unavailable(UUID runnerId, Instant now) {
-    if (registry.isConnected(runnerId)) {
-      return false;
-    }
-    Instant since = registry.disconnectedSince(runnerId);
-    if (since == null) {
-      since = bootedAt;
-    }
-    return !since.plus(registry.reconnectGrace()).isAfter(now);
+        status, connected, version, pinned, stale, detail, row.targetId, lifecycle, row.queuedAt);
   }
 }

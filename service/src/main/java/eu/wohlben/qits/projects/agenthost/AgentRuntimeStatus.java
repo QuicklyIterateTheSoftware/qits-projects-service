@@ -5,20 +5,21 @@ package eu.wohlben.qits.projects.agenthost;
  * reports it (qits-767: computed by {@code deskhost/FrontDesks.state}). The wire value is the
  * constant name — the SPA switches on these strings, so they are a published contract and not an
  * internal enum; {@code QUEUED} and {@code UNAVAILABLE} were added with the front-desk runners, after
- * the SPA learned to tolerate them.
+ * the SPA learned to tolerate them. Since the desks run as DESK leases (epic qits-1481) every value
+ * but {@code UNAVAILABLE} is computed from the lease.
  */
 public enum AgentRuntimeStatus {
-  /** The runner's inventory says the desk's container is running. Its daemon may not be connected. */
+  /** qits-system reports the desk's lease RUNNING. Its daemon may not be connected. */
   RUNNING,
 
   /** The desk is desired stopped, and its container is stopped or absent. Its volume is kept. */
   STOPPED,
 
-  /** Placed on a runner and desired running, and not yet reported running. */
+  /** Its lease is granted on a target (the image may be pulling), and not yet running. */
   PROVISIONING,
 
   /**
-   * The desk is not usable: its runner could not launch it, its daemon could not provision it, its
+   * The desk is not usable: its lease FAILED or was refused, its daemon could not provision it, its
    * token could not be minted, or this service has no public domain to address it under. {@code
    * failureDetail} says which.
    */
@@ -27,12 +28,12 @@ public enum AgentRuntimeStatus {
   /** No desk exists for this project. */
   ABSENT,
 
-  /** Desired running and waiting for a runner to take it. */
+  /** Desired running and waiting for a DESK slot: no lease yet, or its lease QUEUED. */
   QUEUED,
 
   /**
-   * Computed, never stored: the runner holding the desk has been disconnected longer than {@code
-   * qits.projects.desk-runner.reconnect-grace}.
+   * No longer answered: it was a front-desk runner disconnected past its reconnect grace, and the
+   * runners are gone (epic qits-1481). Kept because the value is a published contract.
    */
   UNAVAILABLE
 }

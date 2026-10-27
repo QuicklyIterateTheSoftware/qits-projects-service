@@ -22,13 +22,13 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 /**
  * The per-project front desk's lifecycle (qits-767): ensure it is wanted, stop it, delete it, read
  * what it is doing. The paths keep their {@code agent-container} name — the desk <em>is</em> the
- * project's agent container, now placed on a front-desk runner rather than started by this service.
+ * project's agent container, run under a DESK lease on an execution target (epic qits-1481).
  *
  * <p>One response shape for every route that answers a body. The panel that drives this has one
  * question — "can I talk to the agent yet?" — and renders {@code container.runtimeStatus}: QUEUED
- * while the desk waits for a runner, PROVISIONING once one took it, RUNNING when its inventory says
- * so, UNAVAILABLE while its runner is gone past the reconnect grace, FAILED with {@code
- * failureDetail}. When it is RUNNING the panel opens its terminal through {@code
+ * while the desk waits for a slot (with qits-system's reason in {@code failureDetail}), PROVISIONING
+ * once a target was granted, RUNNING when qits-system reports the lease running, FAILED with {@code
+ * failureDetail}. UNAVAILABLE is no longer answered. When it is RUNNING the panel opens its terminal through {@code
  * /projects/container/{projectId}/…}, which reaches the desk's daemon down its own tunnel.
  *
  * <p>Everything below the surface is in {@code deskhost/FrontDesks}. This class only names the
@@ -58,13 +58,15 @@ public class AgentContainerController {
      * @param daemonVersionStale whether the connected daemon's version is not {@code
      *     pinnedDaemonVersion}. False when no daemon is connected. A stale desk is rolled onto the
      *     pin by the spec roll once it is quiet.
-     * @param failureDetail why {@code runtimeStatus} is {@code FAILED}: the runner's launch failure,
-     *     the daemon's failed provision, {@code TOKEN_UNAVAILABLE: …} or {@code
-     *     EDGE_PLANE_UNCONFIGURED}. Null for every other status.
-     * @param runnerId the front-desk runner holding the desk, or null while it is unplaced
-     * @param runnerName that runner's name, or null
+     * @param failureDetail why {@code runtimeStatus} is {@code FAILED}: the target's failure of the
+     *     desk's lease, {@code TARGET_REFUSED: …}, the daemon's failed provision, {@code
+     *     TOKEN_UNAVAILABLE: …} or {@code EDGE_PLANE_UNCONFIGURED}; for {@code QUEUED}, why the
+     *     desk's lease waits, as qits-system said (no target with a free DESK slot, a target not
+     *     signed in, the target holding a legacy desk's volume not installed yet). Null otherwise.
+     * @param targetId the execution target the desk's DESK lease was granted on, or null while it
+     *     has none (epic qits-1481)
      * @param lifecycle the project's {@code front_desk.lifecycle} from its {@code project.yml}
-     * @param queuedAt since when the desk has waited for a runner, or null
+     * @param queuedAt since when the desk has waited for a slot, or null
      */
     public record ContainerView(
         AgentRuntimeStatus runtimeStatus,
@@ -73,8 +75,7 @@ public class AgentContainerController {
         String pinnedDaemonVersion,
         boolean daemonVersionStale,
         String failureDetail,
-        UUID runnerId,
-        String runnerName,
+        UUID targetId,
         FrontDeskLifecycle lifecycle,
         Instant queuedAt) {}
 
@@ -87,8 +88,7 @@ public class AgentContainerController {
               state.pinnedDaemonVersion(),
               state.daemonVersionStale(),
               state.failureDetail(),
-              state.runnerId(),
-              state.runnerName(),
+              state.targetId(),
               state.lifecycle(),
               state.queuedAt()));
     }
@@ -96,7 +96,7 @@ public class AgentContainerController {
 
   /**
    * Want the desk: created (with its token) if absent, demand stamped, its desired state
-   * recomputed and its runner told. Answers at once — a desk still waiting for a runner is QUEUED,
+   * recomputed and its lease asked for. Answers at once — a desk still waiting for a slot is QUEUED,
    * one being brought up PROVISIONING.
    */
   @POST
@@ -106,8 +106,8 @@ public class AgentContainerController {
   }
 
   /**
-   * Stop an ON_DEMAND desk: its demand is cleared, so it is desired STOPPED and its runner stops the
-   * container (keeping it and its volume). An ALWAYS_ON desk answers 409 {@code
+   * Stop an ON_DEMAND desk: its demand is cleared, so it is desired STOPPED and its lease is ended
+   * (its work volume is kept on the target). An ALWAYS_ON desk answers 409 {@code
    * {"error":"FRONT_DESK_ALWAYS_ON"}}. A project with no desk answers {@code ABSENT}.
    */
   @POST
@@ -124,9 +124,9 @@ public class AgentContainerController {
   }
 
   /**
-   * Delete the desk: its runner is sent {@code remove} (container <b>and</b> volume), the desk is
-   * unplaced and its row deleted, and its token revoked. 204, also when there was none. An ALWAYS_ON
-   * desk is created afresh, with a new token, and QUEUED by the next sweep.
+   * Delete the desk: its row deleted, its lease ended and, once ENDED, its work volume purged, and
+   * its tokens revoked. 204, also when there was none. An ALWAYS_ON desk is created afresh and
+   * leased again by the next sweep.
    */
   @DELETE
   @Operation(summary = "Delete the project's front desk: its container, its volume and its token")
