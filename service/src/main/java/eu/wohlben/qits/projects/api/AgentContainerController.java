@@ -1,9 +1,12 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
+import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.deskhost.FrontDeskState;
 import eu.wohlben.qits.projects.deskhost.FrontDesks;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
+import eu.wohlben.qits.projects.security.AgentAccess;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -38,10 +41,26 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 // a POST with no Content-Type a 415 rather than the action it plainly is.
 @Path("/projects/{projectId}/agent-container")
 @Produces(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin"})
 public class AgentContainerController {
 
   @Inject FrontDesks frontDesks;
+
+  @Inject ProjectService projects;
+
+  @Inject SecurityIdentity identity;
+
+  /**
+   * The delivery desk ({@code qits:desk}, carried by {@code qits:desk-admin} too, epic qits-1621)
+   * manages only its own project's container: the project is read first, so an unknown id is still
+   * a 404, then another project's is a 403. Every other caller passes untouched.
+   */
+  private void requireDeskProject(String projectId) {
+    if (AgentAccess.isDesk(identity)) {
+      projects.get(projectId);
+      AgentAccess.requireDeskProject(identity, projectId);
+    }
+  }
 
   /** The single response body the ensure, stop and read routes answer with. */
   public record AgentContainerResponse(
@@ -102,6 +121,7 @@ public class AgentContainerController {
   @POST
   @Path("/ensure")
   public AgentContainerResponse ensure(@PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     return AgentContainerResponse.of(frontDesks.ensure(projectId));
   }
 
@@ -113,12 +133,13 @@ public class AgentContainerController {
   @POST
   @Path("/stop")
   public AgentContainerResponse stop(@PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     return AgentContainerResponse.of(frontDesks.stop(projectId));
   }
 
   /** What the desk is doing, changing nothing. {@code ABSENT} when there is none. */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   public AgentContainerResponse get(@PathParam("projectId") String projectId) {
     return AgentContainerResponse.of(frontDesks.status(projectId));
   }
@@ -132,6 +153,7 @@ public class AgentContainerController {
   @Operation(summary = "Delete the project's front desk: its container, its volume and its token")
   @APIResponse(responseCode = "204", description = "The desk is gone, or there was none")
   public Response delete(@PathParam("projectId") String projectId) {
+    requireDeskProject(projectId);
     frontDesks.remove(projectId);
     return Response.noContent().build();
   }

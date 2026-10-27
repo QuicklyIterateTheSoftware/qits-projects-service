@@ -31,7 +31,7 @@ import java.util.List;
  */
 @Path("/refinements/{id}/prompt-attachments")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
 public class RefinementPromptAttachmentController {
 
   @Inject RefinementService refinements;
@@ -67,7 +67,7 @@ public class RefinementPromptAttachmentController {
    * ability to re-inline a fresh version.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   public ListResponse list(@PathParam("id") long id) {
     var refinement = RefinementAccess.reach(refinements, identity, id);
     var rows = attachments.list(id);
@@ -102,7 +102,7 @@ public class RefinementPromptAttachmentController {
 
   /** The raw image, browser-loadable — what the epic document's embedded URLs point at. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{attachmentId}/content")
   @Produces({"image/png", "image/jpeg"})
   public Response content(@PathParam("id") long id, @PathParam("attachmentId") String attachmentId) {

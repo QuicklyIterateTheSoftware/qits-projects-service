@@ -41,7 +41,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/work/{qualifiedId}/refinement")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
 public class WorkRefinementController {
 
   @Inject EntityIdResolver ids;
@@ -93,7 +93,7 @@ public class WorkRefinementController {
   }
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(
       operationId = "getWorkRefinement",
       summary = "Find a work entity's refinement room",

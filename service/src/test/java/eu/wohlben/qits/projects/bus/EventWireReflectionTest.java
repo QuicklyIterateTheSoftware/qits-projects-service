@@ -70,6 +70,9 @@ public class EventWireReflectionTest {
   /** And the fifth, the one announcement a whole multi-entity transition makes. */
   @Inject Instance<EntityTransitionAnnouncer> shippedTransitionAnnouncer;
 
+  /** And the sixth, which says a comment was written (qits-1660). */
+  @Inject Instance<EntityCommentAnnouncer> shippedCommentAnnouncer;
+
   /** The typed live listener of qits-system's lease event (epic qits-1481). */
   @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
 
@@ -114,6 +117,7 @@ public class EventWireReflectionTest {
             ProjectDeleted.class,
             EntityTransitioned.class,
             EntityTransitioned.Entity.class,
+            EntityCommented.class,
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
@@ -124,7 +128,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the four bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR out, the PUT body, the frame — a twentieth wire type"
+            + " transition's payload PAIR and EntityCommented out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -180,6 +184,10 @@ public class EventWireReflectionTest {
         "and its NESTED payload record, which is as invisible to the image builder as the outer"
             + " one: registering only the enclosing record fails in exactly the same place and in"
             + " exactly the same words as registering neither");
+    assertTrue(
+        targets.contains(EntityCommented.class),
+        "EntityCommentAnnouncer publishes this (qits-1660); unregistered, an @desk comment never"
+            + " wakes the desk");
   }
 
   /**
@@ -197,6 +205,11 @@ public class EventWireReflectionTest {
    * injection point is won by the suite's {@code RecordingProjectAnnouncer}, so asking for the port
    * here would prove nothing about what ships.
    */
+  @Test
+  public void theEntityCommentAnnouncerShipsAsABean() {
+    assertTrue(!shippedCommentAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
   @Test
   public void theProjectLifecycleAnnouncerShipsAsABean() {
     assertTrue(!shippedProjectAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");

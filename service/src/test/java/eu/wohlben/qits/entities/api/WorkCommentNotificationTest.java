@@ -12,6 +12,8 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.CommentTurns;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.bus.EntityCommented;
+import eu.wohlben.qits.projects.bus.RecordingEntityCommentAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -54,6 +56,7 @@ class WorkCommentNotificationTest {
   @Inject RecordingWorkspaceAgentLookup lookup;
   @Inject RecordingWorkspaceAgentTurns turns;
   @Inject CommentTurns commentTurns;
+  @Inject RecordingEntityCommentAnnouncer announced;
 
   private String projectId;
   private WorkEntity ticket;
@@ -68,6 +71,7 @@ class WorkCommentNotificationTest {
     awaitQuiet();
     lookup.reset();
     turns.reset();
+    announced.reset();
     projectId = "notify-" + UUID.randomUUID().toString().substring(0, 8);
     String repositoryId = projectId + "-repo";
     QuarkusTransaction.requiringNew()
@@ -155,6 +159,22 @@ class WorkCommentNotificationTest {
         .when()
         .post("/projects/api/work/" + on.id + "/comments")
         .then();
+  }
+
+  // --- the bus (qits-1660) ---------------------------------------------------------------------
+
+  @Test
+  void aCommentIsAnnouncedWithItsMentions() {
+    comment(person("alice"), ticket, "@desk the totals are fixed; @Bob FYI.").statusCode(200);
+
+    List<EntityCommented> published = announced.published();
+    assertEquals(1, published.size());
+    EntityCommented event = published.get(0);
+    assertEquals(ticket.id, event.entityId());
+    assertEquals(projectId, event.projectId());
+    assertEquals(ticket.number, event.number());
+    assertEquals("alice", event.changedBy());
+    assertEquals(List.of("desk", "bob"), event.mentions());
   }
 
   // --- who is told -----------------------------------------------------------------------------

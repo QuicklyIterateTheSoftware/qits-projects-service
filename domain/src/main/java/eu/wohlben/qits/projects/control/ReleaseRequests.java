@@ -5832,7 +5832,17 @@ public class ReleaseRequests {
       // The tag is tracked BEFORE the request is settled, so that a reader who sees RELEASED can
       // rely on the release being in the in-flight set. Only the siblings' re-fold is left after.
       recordReleasedTag(ask.repoId(), id, outcome.version(), outcome.releasedSha());
-      settle(id, ReleaseRequest.State.RELEASED, null, outcome.version(), false);
+      // WHAT THE TAG RELEASED IS THE SNAPSHOT, NOT THE ROW (qits-1615). The ask above was read once
+      // and the tag was cut outside every lock, so the row may have moved on in that window: a join
+      // or a push to a source re-folds it and re-arms it PENDING on a fold nobody will tag
+      // (qits-qits-rr-200: READY at 69b95ccd, re-armed onto 38477f86 by ticket/qits-1596 joining,
+      // then RELEASED tagging 69b95ccd). The tag is legitimate — its release ships the fold that was
+      // gated — so the request still settles RELEASED, but on the fold it tagged, and every source
+      // the tag does not carry leaves it here and is handed on below instead of being deleted,
+      // announced as released, or stranded in a request outside every unreleased read.
+      Set<String> moved = movedPastTheTag(ask);
+      ReleasedSources split = settleReleased(id, ask, outcome.version(), moved);
+      ReleaseExecutor.Release consumed = ask.consuming(split.released());
       LOG.infof(
           "Release request %s released %s@%s as %s",
           id,
@@ -5848,7 +5858,7 @@ public class ReleaseRequests {
       // git host announces each deletion, and onBranchDeleted reads only unreleased requests, so
       // this request's own deletions cannot come back to withdraw or re-fold it (qits-886). See
       // ReleaseExecutor#deleteConsumedBranches.
-      deleteConsumedBranches(ask);
+      deleteConsumedBranches(consumed);
       // The backing branch is gone now, so any run still building it is doomed to a checkout
       // failure that has nothing to do with the code under test — the exact case cancel() exists
       // for, and best effort for the same reason as every other call to it: the release already
@@ -5862,6 +5872,11 @@ public class ReleaseRequests {
       // so the request holding the features the freeze kept out folds — with this tag as an implicit
       // source — and runs its gates, while evaluate() holds it from READY until this one finalizes.
       activateQueuedBehind(id);
+      // THE SOURCES THE TAG DID NOT CARRY GO ON (qits-1615), after the queue behind this release is
+      // active, so each lands where any other ask would now: the request just activated, a fresh one
+      // waiting for this release to finalize, or — past the freeze — the queue. Through ask() itself,
+      // so every convergence and one-unreleased-request rule holds as it does at the create door.
+      handOn(ask, outcome.version(), split.handedOn());
       // THE PUBLISH PHASE'S FORK, on the release's own thread and the moment it lands: a repository
       // that declares no deployment has nothing to wait for and its tag goes to main now. One that
       // does deploy is left to DeploymentActive. Last, after the row exists and the request is
@@ -5869,13 +5884,207 @@ public class ReleaseRequests {
       // happened — a process that dies here leaves an ungated pending row, which is exactly what
       // ReleaseFinalization's catch-up sweep is for.
       finalization.onReleased(ask.repoId(), outcome.version());
-      resolveWorkspacesOnReleasedBranches(ask, outcome);
+      resolveWorkspacesOnReleasedBranches(consumed, outcome);
       sayItHealed(ask, outcome.version());
     } else {
       settle(id, ReleaseRequest.State.FAILED, outcome.detail(), null, outcome.retryable());
       LOG.warnf(
           "Release request %s was not released (%s): %s",
           id, outcome.retryable() ? "will retry" : "final until re-armed", outcome.detail());
+    }
+  }
+
+  /**
+   * A source the landed release did <b>not</b> consume (qits-1615): detached from the RELEASED
+   * request in the transaction that settled it, and asked for again once it has committed.
+   *
+   * @param joined true where it joined after the snapshot the tag was cut from, false where it was
+   *     in that snapshot and its head moved past the tagged fold
+   */
+  private record HandedOn(
+      String branch, String requester, ReleasePriority priority, boolean joined) {}
+
+  /**
+   * How a landed release split its request's sources (qits-1615).
+   *
+   * @param released the snapshot's named sources the tag carries — what is deleted and announced as
+   *     released, the default branch included as in every ask (the executor never deletes it)
+   * @param handedOn every other branch source the request held when it settled
+   */
+  private record ReleasedSources(List<String> released, List<HandedOn> handedOn) {}
+
+  /**
+   * <b>The snapshot's sources whose head the tagged fold no longer contains</b> (qits-1615) — pushed
+   * while the tag was being cut. Asked of the git host before the settling transaction opens,
+   * because each is an HTTP read, and asked by <b>ref</b>: {@link ReleaseGitHost#contains} resolves
+   * {@code refs/heads/<branch>} at the git host, so one read says whether the branch's head as it
+   * stands now is in the fold, with no head recorded at fold time to compare against.
+   *
+   * <p>Only a snapshot source that is <b>still a source</b> is asked: one dropped since (its branch
+   * deleted) is gone from the git host, and a 404 must not read as "moved" and hand on a branch that
+   * no longer exists. The default branch is never asked — it is never consumed — and neither is an
+   * automation's own branch ({@link #isAutomationBranch}): a commit there is an automation
+   * regenerating something, never a person's work, and the doctrine {@link #payOwedRefold} states
+   * holds for it — the release ships the fold that was gated and the next request's automations
+   * re-plan whatever the branch carried.
+   *
+   * <p><b>A read that fails counts as moved.</b> "Could not ask" must never be read as "yes" here,
+   * because yes deletes the branch: a branch wrongly handed on costs a request that folds nothing
+   * new, a branch wrongly deleted costs the commits nothing released.
+   */
+  private Set<String> movedPastTheTag(ReleaseExecutor.Release ask) {
+    Set<String> moved = new LinkedHashSet<>();
+    if (!gitHosts.isResolvable()) {
+      return moved;
+    }
+    List<String> standing;
+    try {
+      standing =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      sources.listByRequest(ask.requestId()).stream()
+                          .filter(source -> source.kind == ReleaseRequestSource.Kind.BRANCH)
+                          .map(source -> source.name)
+                          .filter(ask.namedSources()::contains)
+                          .filter(name -> !name.equals(ask.defaultBranch()))
+                          .filter(name -> !isAutomationBranch(name))
+                          .toList());
+    } catch (RuntimeException e) {
+      // The tag is cut and the settle below must still happen: read as before qits-1615 — every
+      // snapshot source released — which is the one answer that cannot strand the request.
+      LOG.warnf(e, "Could not read the sources of released request %s", ask.qualifiedId());
+      return moved;
+    }
+    ReleaseGitHost gitHost = gitHosts.get();
+    for (String branch : standing) {
+      ReleaseGitHost.Answer<Boolean> answer;
+      try {
+        answer = gitHost.contains(ask.repoId(), "refs/heads/" + branch, ask.mergedSha());
+      } catch (RuntimeException e) {
+        answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+      }
+      if (answer.ok() && Boolean.TRUE.equals(answer.value())) {
+        continue;
+      }
+      if (answer.ok()) {
+        LOG.infof(
+            "Release request %s: %s moved past the tagged fold %s while it was being released",
+            ask.qualifiedId(), branch, shortSha(ask.mergedSha()));
+      } else {
+        LOG.warnf(
+            "Release request %s: whether %s is in the tagged fold %s could not be read (%s);"
+                + " it is kept and handed on rather than deleted",
+            ask.qualifiedId(), branch, shortSha(ask.mergedSha()), answer.detail());
+      }
+      moved.add(branch);
+    }
+    return moved;
+  }
+
+  /**
+   * {@link #settle} to RELEASED, <b>on the fold that was tagged</b> (qits-1615), in one locked
+   * transaction with the sources split:
+   *
+   * <ul>
+   *   <li>{@code mergedSha} goes back to the snapshot's — the fold the tag was cut from — and what a
+   *       re-fold in the release window wrote about a newer fold goes with it: the conflict, the
+   *       rejecting run and gate, an owed re-fold, the re-arm's sentence. A RELEASED row naming a
+   *       fold nobody tagged would send every reader of {@code mergedSha} to the wrong commit.
+   *   <li>Every branch source other than the default branch that the tag does not carry — joined
+   *       after the snapshot, or in it and {@code moved} — is <b>deleted from this request</b> in the
+   *       same transaction, so the RELEASED announcement (whose branches are read as it commits, see
+   *       {@link ReleaseRequestStates}) names only what was released, and no reader of a RELEASED
+   *       request finds a source it never shipped.
+   * </ul>
+   *
+   * <p>Under the row lock every re-fold's write half takes, so nothing joins or re-arms between the
+   * split and the move; once the row reads RELEASED it is outside every unreleased read, and a later
+   * join or push meets a fresh request instead.
+   */
+  private ReleasedSources settleReleased(
+      String id, ReleaseExecutor.Release ask, String version, Set<String> moved) {
+    automationLedger.forget(id);
+    List<String> released =
+        ask.namedSources().stream().filter(name -> !moved.contains(name)).toList();
+    ReleasedSources split =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row =
+                      requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
+                  if (row == null) {
+                    return new ReleasedSources(released, List.of());
+                  }
+                  List<HandedOn> handedOn = new ArrayList<>();
+                  for (ReleaseRequestSource source : sources.listByRequest(row.id)) {
+                    if (source.kind != ReleaseRequestSource.Kind.BRANCH
+                        || source.name.equals(ask.defaultBranch())) {
+                      continue;
+                    }
+                    boolean joined = !ask.namedSources().contains(source.name);
+                    if (joined || moved.contains(source.name)) {
+                      handedOn.add(
+                          new HandedOn(source.name, source.addedBy, source.priority, joined));
+                      sources.delete(source);
+                    }
+                  }
+                  states.move(row, ReleaseRequest.State.RELEASED);
+                  row.mergedSha = ask.mergedSha();
+                  row.conflictDetail = null;
+                  row.rejectingRunId = null;
+                  row.rejectingGate = null;
+                  row.refoldOwedAt = null;
+                  row.refoldOwedReason = null;
+                  row.detail = null;
+                  row.retryable = false;
+                  if (version != null) {
+                    row.version = version;
+                  }
+                  row.updatedAt = Instant.now();
+                  return new ReleasedSources(released, List.copyOf(handedOn));
+                });
+    // Gate 3's trigger (epic qits-897), as settle() pulls it for every RELEASED move.
+    downstreamReevaluation.upstreamMoved(id);
+    return split;
+  }
+
+  /**
+   * <b>Ask for each source the release did not consume again</b> (qits-1615), so it lands in an
+   * open request rather than nowhere. The same {@link #ask} every door uses, with the source's own
+   * requester and priority, so a branch somebody escalated keeps its urgency. Never throws: the
+   * release already happened, and a branch that could not be placed is still on the git host —
+   * the WARN names it, and the next ask for it (a push, a phase move) places it.
+   */
+  private void handOn(ReleaseExecutor.Release ask, String version, List<HandedOn> handedOn) {
+    for (HandedOn source : handedOn) {
+      String why =
+          source.branch()
+              + (source.joined() ? " joined" : " moved")
+              + " while "
+              + version
+              + " was being released";
+      try {
+        // Under a request context: ask() is a door's method and reads the repository and the
+        // feature classification outside its own transaction, which the worker thread has none for.
+        Asked landed =
+            withRequestContext(
+                () ->
+                    ask(
+                        ask.repoId(),
+                        source.branch(),
+                        "handed on from " + ask.qualifiedId() + ": " + why,
+                        source.requester(),
+                        source.priority() == null ? null : source.priority().name()));
+        LOG.infof(
+            "Release request %s handed %s on to %s: %s",
+            ask.qualifiedId(), source.branch(), landed.request().qualifiedId(), why);
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            e,
+            "Could not hand %s on from released request %s (%s); the branch is kept",
+            source.branch(), ask.qualifiedId(), why);
+      }
     }
   }
 
@@ -5895,8 +6104,10 @@ public class ReleaseRequests {
    * The branches this release just deleted, told to whoever may have a workspace standing on one.
    *
    * <p><b>Exactly the set the executor deleted</b>, read from the same two fields it reads: the
-   * request's named sources <em>minus</em> the repository's default branch, which nothing deletes
-   * and no release consumes. The backing branch is deliberately not among them — it is this flow's
+   * named sources the release consumed <em>minus</em> the repository's default branch, which nothing
+   * deletes and no release consumes. Consumed, not snapshotted (qits-1615): {@code ask} is the
+   * snapshot narrowed by {@link ReleaseExecutor.Release#consuming}, so a source pushed past the tag
+   * while it was cut is neither deleted nor told to qits-workspaces as released. The backing branch is deliberately not among them — it is this flow's
    * own scratch ref, created by the fold, and no workspace was ever made on one.
    *
    * <p>Last, after the row is RELEASED and after {@link ReleaseFinalization#onReleased}, and wrapped

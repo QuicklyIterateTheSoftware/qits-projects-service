@@ -44,6 +44,9 @@ public class EntityMovers {
 
   private static Mover machineOf(SecurityIdentity identity) {
     String name = EntitiesPrincipal.changedBy(identity);
+    // qits:desk-admin is deliberately absent (epic qits-1621): unlike qits:admin-agent it is the
+    // desk's own role, and a desk-admin token is still the desk — its mover keeps the desk's
+    // refusals and its project binding.
     if (identity != null
         && identity.hasRole(DESK_ROLE)
         && !identity.hasRole(AgentAccess.ADMIN_ROLE)

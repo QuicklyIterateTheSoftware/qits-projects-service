@@ -43,7 +43,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/projects/{projectId}/desk-triggers")
 @Produces(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
 public class ProjectDeskTriggersController {
 
   /** How many windows a read answers when it names no {@code limit}. */
@@ -122,7 +122,7 @@ public class ProjectDeskTriggersController {
       name = "DeskTriggerEvent",
       description = "One item a desk trigger source admitted into a window.")
   public record Event(
-      @Schema(description = "The source that admitted it: work-verified or approval-needed")
+      @Schema(description = "The source that admitted it: wait, work-verified, approval-needed or desk-mentioned")
           String source,
       @Schema(description = "The item as the desk is shown it, e.g. qits-1580") String itemRef,
       @Schema(description = "The item's own id, when the source knows one", nullable = true)

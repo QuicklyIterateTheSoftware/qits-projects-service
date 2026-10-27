@@ -48,7 +48,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
 public class RefinementDesignController {
 
   /** What a write with no forwarded identity records as its author. */
@@ -92,7 +92,7 @@ public class RefinementDesignController {
    * own id, which is what makes "in use" answerable at all without a stored back-reference.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(operationId = "listRefinementDesigns", summary = "A refinement's designs, oldest first, without their documents")
   public ListResponse list(@PathParam("id") long id) {
     var refinement = RefinementAccess.reach(refinements, identity, id);
@@ -107,7 +107,7 @@ public class RefinementDesignController {
 
   /** 201 with the row sans html — the caller just sent it. */
   @POST
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(operationId = "addRefinementDesign", summary = "Add a design to a refinement")
   public Response add(@PathParam("id") long id, NewDesign request) {
     EntitiesAgentAccess.requireProject(
@@ -127,7 +127,7 @@ public class RefinementDesignController {
 
   /** One design with its whole document — what the sandboxed iframe is fed. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Path("/{designId}")
   @Operation(operationId = "getRefinementDesign", summary = "One design with its whole document")
   public DesignDto get(@PathParam("id") long id, @PathParam("designId") String designId) {
@@ -142,7 +142,7 @@ public class RefinementDesignController {
    */
   @PUT
   @Path("/{designId}")
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
   @Operation(operationId = "updateRefinementDesign", summary = "Rewrite a design in place, from the version last read")
   public DesignDto update(
       @PathParam("id") long id, @PathParam("designId") String designId, UpdateDesign request) {

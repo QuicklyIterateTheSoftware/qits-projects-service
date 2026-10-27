@@ -36,8 +36,8 @@ import java.util.List;
  * intact — the file the library validates at boot, the path passed in by the host, the snapshot
  * taken at creation, and the recreate-only reach — and the one thing that changes is that the bytes
  * ride the env rather than a bind mount. The cost is honest and worth writing down: a value in env
- * is readable in {@code docker inspect}, which a mounted file would not be. This container's env
- * already carries {@code QITS_COMMISSIONED_CLIENT_SECRET} on the same terms.
+ * is readable in {@code docker inspect}, which a mounted file would not be. The desk's own env
+ * already carries its {@code QITS_TOKEN} on the same terms.
  *
  * @param surfaces every surface, resolved; a surface with no row carries its shipped default
  */

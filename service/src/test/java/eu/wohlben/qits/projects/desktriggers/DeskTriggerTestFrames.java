@@ -4,6 +4,7 @@ import eu.wohlben.qits.eventstream.QitsEvent;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ApprovalRequirementChanged;
+import eu.wohlben.qits.projects.bus.EntityCommented;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
 import java.time.Instant;
 import java.util.List;
@@ -106,5 +107,29 @@ final class DeskTriggerTestFrames {
         null,
         null,
         null);
+  }
+
+  static EventFrame commented(
+      String projectId,
+      long number,
+      String title,
+      String author,
+      String authorAgentOf,
+      String changedBy,
+      String... mentions) {
+    return frameOf(
+        new EntityCommented(
+            null,
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(),
+            projectId,
+            "TICKET",
+            number,
+            title,
+            author,
+            authorAgentOf,
+            changedBy,
+            List.of(mentions),
+            Instant.now()));
   }
 }

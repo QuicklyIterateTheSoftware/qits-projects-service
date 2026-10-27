@@ -273,6 +273,15 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     containment.put(repoId + "@" + earlier + "->" + later, Answer.of(true));
   }
 
+  /**
+   * Say that {@code later} does <b>not</b> contain {@code earlier} — a plain no, winning over the
+   * edge an earlier fold recorded. The shape of a branch pushed past a fold: {@code refs/heads/<b>}
+   * resolves to the new head now, which the fold it was folded into never saw (qits-1615).
+   */
+  public void doesNotContain(String repoId, String earlier, String later) {
+    containment.put(repoId + "@" + earlier + "->" + later, Answer.of(false));
+  }
+
   /** Stage a containment read that fails outright — neither a yes nor a no. */
   public void containmentUnreadable(
       String repoId, String earlier, String later, Answer<Boolean> answer) {
