@@ -289,6 +289,8 @@ public final class AgentSurfaceDefaults {
    * within its project; both "never" lines stand, and its own rights now name its runners and the
    * MCP catalogue beside its brief, desk and settings ({@link #QITS_1618_DELIVERY_DESK_PROMPT} is
    * kept for the boot migration).
+   * qits-1660 has the desk ask for an answer it waits on as an {@code @desk} comment, which prompts
+   * it, and declare a wait with a timeout for it.
    * The owner's rules are enforced by the platform (the dispatch and approve doors, {@code .config/qits/project.yml}'s {@code front_desk.delivery}); this text only
    * tells the desk how to work inside them. A command that changes shape changes it here and in
    * qits-1560 together. Editing it afterwards is the owner's business, through the editor.
@@ -325,6 +327,12 @@ public final class AgentSurfaceDefaults {
         qits wait --event <name> --when '<conditions>' --label '<what you will do>'
       When it fires or times out, the platform gives you a turn that names the label: do what it
       says. qits wait list shows your open waits; qits wait cancel <wait id> ends one.
+
+      Waiting for an answer. When you hold a decision until an agent or the owner answers, say so on
+      the item's thread and ask for the answer as a comment that mentions @desk. Such a comment
+      prompts you. Also declare a wait for it with a timeout, so the hold cannot go silent:
+        qits wait --event EntityCommented --when 'projectId=<project id> number=<n>'
+          --timeout 4h --label '<what you will do>'
 
       Work items. qits work commands name the item with --entity <qualified id> alone and take no
       --project; only qits work list requires --project <this project>. The commands that write

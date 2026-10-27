@@ -131,6 +131,12 @@ public class AgentSurfaceDefaultsTest {
       When it fires or times out, the platform gives you a turn that names the label: do what it
       says. qits wait list shows your open waits; qits wait cancel <wait id> ends one.
 
+      Waiting for an answer. When you hold a decision until an agent or the owner answers, say so on
+      the item's thread and ask for the answer as a comment that mentions @desk. Such a comment
+      prompts you. Also declare a wait for it with a timeout, so the hold cannot go silent:
+        qits wait --event EntityCommented --when 'projectId=<project id> number=<n>'
+          --timeout 4h --label '<what you will do>'
+
       Work items. qits work commands name the item with --entity <qualified id> alone and take no
       --project; only qits work list requires --project <this project>. The commands that write
       read JSON on stdin:
@@ -2388,6 +2394,19 @@ public class AgentSurfaceDefaultsTest {
     assertFalse(
         AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT.contains("qits wait"),
         "a kept-only-for-migration brief must never be edited");
+  }
+
+  /** qits-1660: the desk asks for an answer it waits on as an @desk comment, and waits for it. */
+  @Test
+  public void theBriefAsksForAnswersAsDeskComments() {
+    String brief = AgentSurfaceDefaults.DELIVERY_DESK_PROMPT;
+    assertTrue(
+        brief.contains("ask for the answer as a comment that mentions @desk. Such a comment\nprompts you."),
+        brief);
+    assertTrue(brief.contains("qits wait --event EntityCommented"), brief);
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT.contains("@desk"),
+        "the qits-1618 text is the one without it");
   }
 
   /** The brief is the ticket's text, byte for byte, and a session on it starts with one turn. */

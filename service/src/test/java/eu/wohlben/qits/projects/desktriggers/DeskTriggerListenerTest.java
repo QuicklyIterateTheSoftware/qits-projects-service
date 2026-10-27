@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.desktriggers;
 
+import static eu.wohlben.qits.projects.desktriggers.DeskTriggerTestFrames.commented;
 import static eu.wohlben.qits.projects.desktriggers.DeskTriggerTestFrames.entity;
 import static eu.wohlben.qits.projects.desktriggers.DeskTriggerTestFrames.requirement;
 import static eu.wohlben.qits.projects.desktriggers.DeskTriggerTestFrames.transitioned;
@@ -55,7 +56,8 @@ class DeskTriggerListenerTest {
   void itSubscribesToTheUnionOfItsSourcesUnderItsOwnConsumerId() {
     assertEquals("projects-desk-triggers", listener.consumerId());
     assertEquals(
-        Set.of("EntityTransitioned", "ApprovalRequirementChanged", "DeskWaitClosed"),
+        Set.of(
+            "EntityTransitioned", "ApprovalRequirementChanged", "DeskWaitClosed", "EntityCommented"),
         listener.signatures());
     assertTrue(!listener.replayFromEpoch(), "a desk is told what happens from now on");
   }
@@ -160,6 +162,55 @@ class DeskTriggerListenerTest {
     for (String state : List.of("SATISFIED", "VOID", "DECLINED")) {
       listener.onFrame(
           requirement(projectId, requestId, "p-rr-1", "manual-review", "r", List.of("desk"), state));
+    }
+
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  // ---- desk-mentioned (qits-1660) ---------------------------------------------------------------
+
+  @Test
+  void aCommentToTheDeskJoinsTheWindow() {
+    String projectId = project(true);
+
+    listener.onFrame(
+        commented(projectId, 770, "Desk triggers", "tok-agent", "qits-12", "tok-agent", "desk"));
+
+    DeskTriggerEvent line = DeskTriggerFixtures.eventsOf(projectId).get(0);
+    assertEquals("desk-mentioned", line.source);
+    assertEquals(DeskTriggerFixtures.slugOf(projectId) + "-770", line.itemRef);
+    assertEquals("Desk triggers; from qits-12's agent", line.label);
+    assertEquals("tok-agent", line.cause);
+  }
+
+  @Test
+  void twoCommentsByOneAuthorOnOneItemAreOneLine() {
+    String projectId = project(true);
+
+    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana", "desk"));
+    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana", "bob", "desk"));
+
+    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size());
+    assertEquals("t; from dana", DeskTriggerFixtures.eventsOf(projectId).get(0).label);
+  }
+
+  @Test
+  void aCommentThatDoesNotAddressTheDeskAdmitsNothing() {
+    String projectId = project(true);
+
+    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana"));
+    listener.onFrame(commented(projectId, 5, "t", "dana", null, "dana", "desk-admin", "bob"));
+
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  @Test
+  void aCommentTheDeskWroteItselfAdmitsNothing() {
+    String projectId = project(true);
+    DeskTriggerFixtures.desk(projectId, "tok-desk", "tok-delivery", "tok-session");
+
+    for (String subject : List.of("tok-delivery", "tok-session", "tok-desk")) {
+      listener.onFrame(commented(projectId, 5, "t", subject, null, subject, "desk"));
     }
 
     assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
