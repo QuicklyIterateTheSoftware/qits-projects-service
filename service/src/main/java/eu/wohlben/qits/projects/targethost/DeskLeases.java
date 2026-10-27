@@ -169,7 +169,8 @@ public class DeskLeases {
       return;
     }
     if (specs.imageOrNull() == null) {
-      recordFailure(projectId, FrontDeskSpecs.EDGE_PLANE_UNCONFIGURED);
+      // No edge to dial home through: nothing is minted or asked for. The edge belt
+      // (FrontDesks.checkEdge, on ensure and every sweep) is what records the FAILED.
       return;
     }
     LegacyPin pin = legacyPin(projectId, leases);

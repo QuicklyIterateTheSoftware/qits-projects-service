@@ -1,0 +1,1142 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "createLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "DeskLeases.start"
+          }
+        }
+      },
+      "description": "DeskLeases.start: createLease",
+      "key": "fdf71018",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a queued desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "ownerRef": "00000000-0000-4000-8000-000000000004",
+            "priority": 0,
+            "slotType": "DESK",
+            "spec": {
+              "env": {
+                "QITS_TOKEN": "qits_tok_lease"
+              },
+              "image": "registry.qits.wohlben.eu/qits/project-agent:2026.1",
+              "limits": {
+                "memory": "8g"
+              },
+              "user": "1000"
+            },
+            "workKey": "desk-00000000-0000-4000-8000-000000000004"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/system/api/leases"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "detail": null,
+            "id": "00000000-0000-4000-8000-000000000004",
+            "ownerRef": "00000000-0000-4000-8000-000000000005",
+            "slotType": "DESK",
+            "specHash": "c279ac29fac76c1b5e50f126d85a577699b3c89f4bb3f175db551b7eb442897b",
+            "state": "QUEUED",
+            "targetId": null
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.ownerRef": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.slotType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.specHash": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "listTargets"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "DeskLeases.start"
+          }
+        }
+      },
+      "description": "DeskLeases.start: listTargets",
+      "key": "4dee7509",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a declared target",
+          "params": {
+            "targetId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/system/api/targets"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "engineId": "ENGINE-LAB",
+              "hostname": "lab-host",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "lab"
+            }
+          ],
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].engineId": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$[*].hostname": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "replaceLeaseSpec"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "FrontDeskSpecRoll.roll"
+          }
+        }
+      },
+      "description": "FrontDeskSpecRoll.roll: replaceLeaseSpec",
+      "key": "cfd84dd1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a running desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "spec": {
+              "env": {
+                "QITS_TOKEN": "qits_tok_lease"
+              },
+              "image": "registry.qits.wohlben.eu/qits/project-agent:2026.1",
+              "limits": {
+                "memory": "8g"
+              },
+              "user": "1000"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}/spec",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "PUT",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002/spec"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "detail": null,
+            "id": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "slotType": "DESK",
+            "specHash": "c279ac29fac76c1b5e50f126d85a577699b3c89f4bb3f175db551b7eb442897b",
+            "state": "RUNNING",
+            "targetId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.ownerRef": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.slotType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.specHash": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.targetId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "getLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "TargetLeaseEvents.reconcile"
+          }
+        }
+      },
+      "description": "TargetLeaseEvents.reconcile: getLease",
+      "key": "615562b6",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a queued desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "GET",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "detail": "target lab is not signed in: qits targets sign-in --target lab",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "slotType": "DESK",
+            "specHash": "spec-hash-1",
+            "state": "QUEUED",
+            "targetId": null
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.detail": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.ownerRef": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.slotType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.specHash": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "getLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "TargetLeaseEvents.reconcile"
+          }
+        }
+      },
+      "description": "TargetLeaseEvents.reconcile: getLease",
+      "key": "9ad02ced",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a running desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "GET",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "detail": null,
+            "id": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "slotType": "DESK",
+            "specHash": "spec-hash-1",
+            "state": "RUNNING",
+            "targetId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.ownerRef": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.slotType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.specHash": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.targetId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "listLeases"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "TargetLeaseEvents.reconcile"
+          }
+        }
+      },
+      "description": "TargetLeaseEvents.reconcile: listLeases",
+      "key": "3ddb1b5e",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a running desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "GET",
+        "path": "/system/api/leases"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "detail": null,
+              "id": "00000000-0000-4000-8000-000000000002",
+              "ownerRef": "00000000-0000-4000-8000-000000000003",
+              "requestedAt": "2026-01-01T00:00:00Z",
+              "slotType": "DESK",
+              "specHash": "spec-hash-1",
+              "state": "RUNNING",
+              "targetId": "00000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].ownerRef": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].requestedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$[*].slotType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].specHash": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].targetId": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "endLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "deleteAgentContainer"
+          }
+        }
+      },
+      "description": "deleteAgentContainer: endLease",
+      "key": "8bf01a56",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a queued desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "DELETE",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "state": "ENDED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "purgeWorkVolume"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "deleteAgentContainer"
+          }
+        }
+      },
+      "description": "deleteAgentContainer: purgeWorkVolume",
+      "key": "23b820e6",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an unused desk work volume",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/work-volumes/${workKey}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "DELETE",
+        "path": "/system/api/work-volumes/desk-00000000-0000-4000-8000-000000000003"
+      },
+      "response": {
+        "status": 202
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
+            "operationId": "endLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "stopAgentContainer"
+          }
+        }
+      },
+      "description": "stopAgentContainer: endLease",
+      "key": "b03574a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a running desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "DELETE",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "state": "ENDING"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-system-service"
+  }
+}
