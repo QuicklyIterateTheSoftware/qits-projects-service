@@ -23,8 +23,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A feature's and a task's own status (qits-763): minted REPORTED, moved by the markers and by its
- * own door, carried by five of its epic's moves (two of them the scheduling, qits-887 — see {@code
- * ScheduleCascadeTest}) and by no other, refused while its epic is a draft
+ * own door, carried by six of its epic's moves (two of them the scheduling, qits-887 — see {@code
+ * ScheduleCascadeTest}; one the move to DONE, qits-1685 — see {@code AcceptCascadeTest}) and by no
+ * other, refused while its epic is a draft
  * — and every move of one announced like any other move.
  *
  * <p>The epic's side of the same rules — that VERIFYING and VERIFIED no longer drag the tasks along —
@@ -156,7 +157,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     Plan plan = plan();
     moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
 
-    moveEpic(plan, "VERIFYING", "VERIFIED", "DONE");
+    moveEpic(plan, "VERIFYING", "VERIFIED");
 
     assertEquals("IMPLEMENTED", status(Archetype.FEATURE, plan.feature()));
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()));

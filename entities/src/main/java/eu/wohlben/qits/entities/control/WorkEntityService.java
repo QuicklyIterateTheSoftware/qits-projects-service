@@ -892,12 +892,12 @@ public class WorkEntityService {
    * <ul>
    *   <li><b>{@link #SUPERSEDE}</b> lands the row DROPPED, spawns the successor draft ({@link
    *       #supersede}) and points the old row at it.
-   *   <li><b>Five moves carry the descendants</b> ({@link #carryDescendants}, qits-763, qits-887):
-   *       an epic REPORTED → REFINED and back, REFINED → READY_FOR_DEV and back, and any move to
-   *       {@link EntityStatus#IMPLEMENTED}, which also
-   *       stamps every descendant still unimplemented ({@link #stampImplemented}) — declaring the
-   *       work done is declaring its scope done. Every carried child joins the announcement. No
-   *       other move touches a child.
+   *   <li><b>Six moves carry the descendants</b> ({@link #carryDescendants}, qits-763, qits-887,
+   *       qits-1685): an epic REPORTED → REFINED and back, REFINED → READY_FOR_DEV and back, any
+   *       move to {@link EntityStatus#IMPLEMENTED}, which also stamps every descendant still
+   *       unimplemented ({@link #stampImplemented}) — declaring the work done is declaring its scope
+   *       done — and any move to {@link EntityStatus#DONE}, which closes every open descendant.
+   *       Every carried child joins the announcement. No other move touches a child.
    *   <li><b>A feature's or a task's own move waits for its epic</b>: refused while the epic is
    *       REPORTED ({@link #requireOwnerPastDraft}), and its own scheduling and unscheduling are the
    *       epic's ({@link #requirePieceScheduledWithItsEpic}, qits-887).
@@ -1162,7 +1162,7 @@ public class WorkEntityService {
   /**
    * <b>The downward cascades of a move</b> (qits-763, qits-887), in the move's transaction, each
    * child audited under the move's own {@code changedBy} and handed back to join the move's one
-   * announcement. Five moves carry descendants, and no other does:
+   * announcement. Six moves carry descendants, and no other does:
    *
    * <ul>
    *   <li><b>An epic REPORTED → REFINED</b> moves its REPORTED descendants to REFINED. Scope
@@ -1183,6 +1183,10 @@ public class WorkEntityService {
    *       still before IMPLEMENTED on the walk to IMPLEMENTED, and stamps every unimplemented marker
    *       ({@link #stampImplemented}): declaring the work done is declaring its scope done. A
    *       DROPPED descendant was decided against and is neither moved nor stamped.
+   *   <li><b>Any move to DONE</b> (qits-1685) — accepting an epic, or closing a feature — moves
+   *       every descendant not yet DONE to DONE. DONE is final, so the plan closes with the work
+   *       it belongs to: a feature left VERIFIED or IMPLEMENTED under a DONE epic is open work
+   *       nobody can finish. A DROPPED descendant stays dropped.
    * </ul>
    *
    * <p><b>Nothing else moves a child.</b> In particular an epic going to VERIFYING or VERIFIED
@@ -1200,7 +1204,8 @@ public class WorkEntityService {
     boolean scheduling = epic && from == EntityStatus.REFINED && to == EntityStatus.READY_FOR_DEV;
     boolean unscheduling = epic && from == EntityStatus.READY_FOR_DEV && to == EntityStatus.REFINED;
     boolean implementing = to == EntityStatus.IMPLEMENTED;
-    if (!refining && !reopening && !scheduling && !unscheduling && !implementing) {
+    boolean closing = to == EntityStatus.DONE;
+    if (!refining && !reopening && !scheduling && !unscheduling && !implementing && !closing) {
       return List.of();
     }
     Subtree subtree = subtreeOf(row.id);
@@ -1225,6 +1230,8 @@ public class WorkEntityService {
           && !EntityStateMachine.isOffWalk(current)
           && !EntityStateMachine.isAtOrPast(current, EntityStatus.IMPLEMENTED)) {
         next = EntityStatus.IMPLEMENTED;
+      } else if (closing && current != EntityStatus.DONE && current != EntityStatus.DROPPED) {
+        next = EntityStatus.DONE;
       }
       if (next == null) {
         continue;
