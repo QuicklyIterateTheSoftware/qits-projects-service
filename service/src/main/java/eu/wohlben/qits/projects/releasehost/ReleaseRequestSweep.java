@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
+import eu.wohlben.qits.projects.control.ReleaseRequestFailureNotices;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -24,6 +25,8 @@ public class ReleaseRequestSweep {
   @Inject ReleaseRequests releaseRequests;
 
   @Inject ReleaseFinalization finalization;
+
+  @Inject ReleaseRequestFailureNotices failureNotices;
 
   @Scheduled(
       every = "{qits.projects.release-requests.sweep-every}",
@@ -58,5 +61,16 @@ public class ReleaseRequestSweep {
       concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
   void sweepGateTickets() {
     releaseRequests.sweepGateTickets();
+  }
+
+  /**
+   * The build-failure notices' floor (qits-1672): every notice a crash or an unreachable
+   * qits-workspaces left owed is delivered again. The prompt path is the worker after the commit.
+   */
+  @Scheduled(
+      every = "{qits.projects.release-requests.sweep-every}",
+      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  void sweepFailureNotices() {
+    failureNotices.deliverOwed();
   }
 }

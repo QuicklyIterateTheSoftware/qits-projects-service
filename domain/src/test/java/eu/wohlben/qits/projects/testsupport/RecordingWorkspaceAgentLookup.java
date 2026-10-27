@@ -43,6 +43,17 @@ public class RecordingWorkspaceAgentLookup implements WorkspaceAgentLookup {
   }
 
   /** {@code agentId} works on the row {@code workId}. */
+  @Override
+  public synchronized Optional<List<ActiveAgent>> active() {
+    if (failure != null) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        works.entrySet().stream()
+            .map(entry -> new ActiveAgent(entry.getKey(), entry.getValue()))
+            .toList());
+  }
+
   public synchronized void stage(String agentId, String workId) {
     works.put(agentId, workId);
   }

@@ -472,6 +472,9 @@ public class ReleaseRequests {
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
 
+  /** Tells the agents behind a request that its fold failed its build (qits-1672). */
+  @Inject ReleaseRequestFailureNotices failureNotices;
+
   /** Asked whether a caller's transaction is active — see {@link #closeGateTicket}. */
   @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
@@ -4923,6 +4926,7 @@ public class ReleaseRequests {
                       row.rejectingRunId = null;
                       row.detail = automationDetail(row);
                       row.updatedAt = Instant.now();
+                      failureNotices.owe(row);
                       return false;
                     }
                     waiting(row, automationDetail(row));
@@ -5078,6 +5082,7 @@ public class ReleaseRequests {
                     // leaves it null — that is the whole discrimination.
                     row.rejectingRunId = red.runId();
                     row.rejectingGate = null;
+                    failureNotices.owe(row);
                     row.detail =
                         "Run "
                             + red.runId()
