@@ -875,8 +875,10 @@ names, with a relative url. Three rules follow, and every one of them is enforce
   `components/`, and the role suffixes that README teaches are exactly the ones
   `fromRepositoryName` reads.
 - **A repository the wrapper does not name is not part of the project.** Write paths refuse it
-  (`requireWrapperMembership`), the reconcile reports it `UNDECLARED` and the listing marks it
-  `declared: false`. **The reconcile deletes nothing** (2026-08-26): a delete now destroys the
+  (`requireWrapperMembership`), the reconcile reports it `UNDECLARED`, and both listings — the
+  project's `GET /projects/{projectId}/repositories` and the global catalogue `GET /repositories`
+  (qits-1695, what qits-maintenance stops bumping on) — mark it `declared: false`, from the one rule
+  `WrapperReconcileService.declares`. **The reconcile deletes nothing** (2026-08-26): a delete now destroys the
   repository on the git host, and an edit to one file is not consent to that, so a person decides in
   the UI.
 - **An empty `.gitmodules` is not a manifest.** A wrapper declaring no submodules enforces nothing

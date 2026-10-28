@@ -5,28 +5,32 @@
       "projectId": "00000000-0000-4000-8000-000000000001",
       "name": "contract-00000001-contract-00000001",
       "mainBranch": "main",
-      "archetype": "PROJECT"
+      "archetype": "PROJECT",
+      "declared": true
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
       "projectId": "00000000-0000-4000-8000-000000000001",
       "name": "contract-daemon",
       "mainBranch": "main",
-      "archetype": "DAEMON"
+      "archetype": "DAEMON",
+      "declared": true
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
       "projectId": "00000000-0000-4000-8000-000000000001",
       "name": "contract-frontend",
       "mainBranch": "main",
-      "archetype": "FRONTEND"
+      "archetype": "FRONTEND",
+      "declared": true
     },
     {
       "id": "00000000-0000-4000-8000-000000000005",
       "projectId": "00000000-0000-4000-8000-000000000001",
       "name": "contract-service",
       "mainBranch": "main",
-      "archetype": "SERVICE"
+      "archetype": "SERVICE",
+      "declared": true
     }
   ]
 }

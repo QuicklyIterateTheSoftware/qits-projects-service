@@ -35,9 +35,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -325,29 +322,16 @@ public class ProjectController {
       @PathParam("projectId") String projectId) {
     var repos = projectService.getRepositories(projectId);
     var wrapper = wrapperReconcileService.view(projectId);
-    // The same reading of membership the write guard takes, off the view already computed for the
-    // response: a manifest with entries decides, and anything else declares everything. A second
-    // spelling of the rule here is how the page and the guard would drift — including the null
-    // archetype, which is a member here exactly as it is there. (The reconcile's undeclared report
-    // is the one site that reads null the other way, because its line offers a delete.)
-    Set<String> declaredIds =
-        wrapper == null
-            ? Set.of()
-            : wrapper.entries().stream()
-                .map(WrapperReconcileService.WrapperView.Entry::repositoryId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-    boolean manifestDecides = wrapper != null && !wrapper.entries().isEmpty();
+    // The one reading of membership both listings take (WrapperReconcileService.declares), off the
+    // view already computed for the response. A second spelling of the rule here is how the page,
+    // the catalogue and the write guard would drift.
     var entries =
         repos.stream()
             .map(
                 r ->
                     new ListProjectRepositoriesRequest.Response.Entry(
                         repositoryMapper.toDto(r),
-                        !manifestDecides
-                            || (r.archetype != null && !r.archetype.isComponentOfItsProject())
-                            || r.id.equals(wrapper.repositoryId())
-                            || declaredIds.contains(r.id)))
+                        WrapperReconcileService.declares(wrapper, r.id, r.archetype)))
             // By name: the rows come back in no guaranteed order, and a reader (the CLI's
             // pact, a person scanning the list) should see the same one on every call.
             .sorted(

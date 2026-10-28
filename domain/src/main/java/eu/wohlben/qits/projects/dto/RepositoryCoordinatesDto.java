@@ -8,8 +8,8 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  *
  * <p>It is still smaller than {@link RepositoryDto}: a caller listing every repository is choosing
  * which ones to act on, not drawing one, so the backup status and the wrapper-derived component
- * stay out. What it carries is the pair that addresses a repository publicly, the branch to read —
- * and the archetype.
+ * stay out. What it carries is the pair that addresses a repository publicly, the branch to read,
+ * the archetype — and whether the project's wrapper still declares it.
  *
  * <p><b>The archetype is here because a consumer is keyed on it.</b> This DTO argued the opposite
  * until the release trains landed: archetype was called noise a lister would have to skip past. That
@@ -33,6 +33,18 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  *     role suffix — the reconcile stores null rather than guessing, and a guessed kind is the one
  *     thing nothing downstream could correct. A consumer parses it leniently and treats an absent
  *     key exactly as a null one; it must never key a lookup on it without an answer for the null.
+ * @param declared whether the project's wrapper names this repository — the same reading as {@code
+ *     declared} on {@code GET /projects/{projectId}/repositories}, from the one rule {@code
+ *     WrapperReconcileService.declares}. <b>False is a row no wrapper entry names</b>: it is no
+ *     longer part of its project, and qits-maintenance stops bumping it (qits-1695). True for
+ *     everything membership does not apply to — the wrapper itself, an archetype that is not a
+ *     component of its project, a project with no wrapper, and a manifest that is unreadable or
+ *     declares nothing.
  */
 public record RepositoryCoordinatesDto(
-    String id, String projectId, String name, String mainBranch, RepositoryArchetype archetype) {}
+    String id,
+    String projectId,
+    String name,
+    String mainBranch,
+    RepositoryArchetype archetype,
+    boolean declared) {}

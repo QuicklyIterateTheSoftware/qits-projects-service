@@ -797,6 +797,43 @@ public class WrapperReconcileService {
     public record Entry(String path, String name, String repositoryId) {}
   }
 
+  /**
+   * Whether {@code wrapper} declares the repository {@code repositoryId} — the one reading of
+   * membership both listings take, {@code GET /projects/{projectId}/repositories}' {@code declared}
+   * and the catalogue's ({@link eu.wohlben.qits.projects.dto.RepositoryCoordinatesDto}), so the two
+   * cannot drift. False is a row no wrapper entry names; everything membership does not apply to is
+   * true:
+   *
+   * <ul>
+   *   <li>a project with no wrapper ({@code wrapper} null), and a manifest that declares nothing or
+   *       could not be read — {@link #view} answers both with no entries, and an empty manifest is
+   *       not a manifest;
+   *   <li>an archetype a repository is not a component of its project with ({@code FORK}, {@code
+   *       SERVICE_TEMPLATE}, {@code AGENT_CONFIG});
+   *   <li>the wrapper itself.
+   * </ul>
+   *
+   * <p>A <b>null</b> archetype is judged like any other member, as the write guard judges it. The
+   * reconcile's undeclared report is the one site that reads null the other way — see {@link
+   * #reportUndeclared}.
+   *
+   * @param wrapper the project's {@link #view}, or null for a project with no wrapper
+   */
+  public static boolean declares(
+      WrapperView wrapper, String repositoryId, RepositoryArchetype archetype) {
+    if (wrapper == null || wrapper.entries().isEmpty()) {
+      return true;
+    }
+    if (archetype != null && !archetype.isComponentOfItsProject()) {
+      return true;
+    }
+    if (repositoryId == null) {
+      return false;
+    }
+    return repositoryId.equals(wrapper.repositoryId())
+        || wrapper.entries().stream().anyMatch(e -> repositoryId.equals(e.repositoryId()));
+  }
+
   /** Reading the manifest must never fail a listing — an unreachable wrapper simply has none. */
   private String readQuietly(Repository wrapper) {
     try {

@@ -5,11 +5,13 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 
+import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import eu.wohlben.qits.projects.security.NoDevUserProfile;
+import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
@@ -69,6 +71,8 @@ public class RepositoryCatalogueTest {
   @Inject ProjectRepository projects;
 
   @Inject RepositoryRepository repositories;
+
+  @Inject ProjectService projectService;
 
   @BeforeEach
   public void healthy() {
@@ -153,6 +157,43 @@ public class RepositoryCatalogueTest {
         // The project's wrapper is a repository like any other and is listed too, under its own
         // <slug>-<slug> name.
         .body("repositories.name", hasItem("catalogue-shape-catalogue-shape"));
+  }
+
+  /**
+   * {@code declared} is the project listing's answer, row for row (qits-1695): qits-maintenance
+   * reads it here to stop bumping a repository its wrapper dropped. The create route writes the
+   * wrapper entry, so that component is declared; a row registered past it — the drift a hand-edited
+   * wrapper leaves — is a component no entry names, so it is not; and the wrapper itself always is.
+   */
+  @Test
+  public void theCatalogueSaysWhichRowsTheirWrapperDeclares() throws Exception {
+    String projectId = createProject("Catalogue Declared");
+    String member = createRepository(projectId, "member");
+    String stray =
+        projectService
+            .createRepositoryUnderProject(
+                projectId, GitFixtures.path("testing-repo.git"), RepositoryArchetype.LIBRARY)
+            .id;
+
+    machine()
+        .when()
+        .get("/projects/api/repositories")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repositories.find { it.id == '" + member + "' }.declared", equalTo(true))
+        .body("repositories.find { it.id == '" + stray + "' }.declared", equalTo(false))
+        .body(
+            "repositories.find { it.name == 'catalogue-declared-catalogue-declared' }.declared",
+            equalTo(true));
+
+    // The same reading as the project listing, not merely a similar one.
+    session()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/repositories")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("entries.find { it.repository.id == '" + member + "' }.declared", equalTo(true))
+        .body("entries.find { it.repository.id == '" + stray + "' }.declared", equalTo(false));
   }
 
   /** A row with no name is a fact, not a gap: it is listed, and the caller is what skips it. */

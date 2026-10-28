@@ -30,14 +30,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -2197,28 +2200,48 @@ public class RepositoryService {
    * connection-class failures only; anything else is rethrown at once and becomes a 5xx, which is
    * the honest answer. The wrap sits outside any transaction (this method opens none).
    *
+   * <p><b>Each row's {@code declared} is {@link WrapperReconcileService#declares}</b>, the rule the
+   * project listing applies too, off {@code wrapperViews} — {@link WrapperReconcileService#view} in
+   * production. It is a parameter rather than an injection because that service already injects
+   * this one, and it is asked <b>at most once per project</b> per call: a view reads the wrapper's
+   * {@code .gitmodules}, and once per row would be a read per repository of the same file.
+   *
    * <p>Sorted by project then name so two reads of an unchanged database are byte-identical; a null
    * name sorts last within its project.
+   *
+   * @param wrapperViews a project id to its wrapper view, or to null for a project with no wrapper
    */
-  public List<RepositoryCoordinatesDto> listCoordinates() {
+  public List<RepositoryCoordinatesDto> listCoordinates(
+      Function<String, WrapperReconcileService.WrapperView> wrapperViews) {
     return DbRetry.call(
         "repository catalogue",
-        () ->
-            repositoryRepository.listAll().stream()
-                .map(
-                    repo ->
-                        new RepositoryCoordinatesDto(
-                            repo.id,
-                            repo.project.id,
-                            repositoryNameRepository.nameFor(repo).orElse(null),
-                            repo.mainBranch,
-                            repo.archetype))
-                .sorted(
-                    Comparator.comparing(RepositoryCoordinatesDto::projectId)
-                        .thenComparing(
-                            RepositoryCoordinatesDto::name,
-                            Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList());
+        () -> {
+          // A HashMap and not computeIfAbsent: a project with no wrapper answers null, and that
+          // answer is worth remembering too.
+          Map<String, WrapperReconcileService.WrapperView> views = new HashMap<>();
+          return repositoryRepository.listAll().stream()
+              .map(
+                  repo -> {
+                    String projectId = repo.project.id;
+                    if (!views.containsKey(projectId)) {
+                      views.put(projectId, wrapperViews.apply(projectId));
+                    }
+                    return new RepositoryCoordinatesDto(
+                        repo.id,
+                        projectId,
+                        repositoryNameRepository.nameFor(repo).orElse(null),
+                        repo.mainBranch,
+                        repo.archetype,
+                        WrapperReconcileService.declares(
+                            views.get(projectId), repo.id, repo.archetype));
+                  })
+              .sorted(
+                  Comparator.comparing(RepositoryCoordinatesDto::projectId)
+                      .thenComparing(
+                          RepositoryCoordinatesDto::name,
+                          Comparator.nullsLast(Comparator.naturalOrder())))
+              .toList();
+        });
   }
 
   /**

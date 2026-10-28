@@ -5,6 +5,7 @@ import eu.wohlben.qits.projects.control.BuildStatusLedger;
 import eu.wohlben.qits.projects.control.CommitService;
 import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
 import eu.wohlben.qits.projects.control.RepositoryService;
+import eu.wohlben.qits.projects.control.WrapperReconcileService;
 import eu.wohlben.qits.projects.dto.BranchDto;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitChangesDto;
@@ -47,6 +48,9 @@ public class RepositoryController {
 
   @Inject RepositoryService repositoryService;
 
+  /** Each catalogue row's wrapper membership — see {@link #list}. */
+  @Inject WrapperReconcileService wrapperReconcileService;
+
   /** The debounced backup runner both trigger routes hand off to. */
   @Inject BackupPushService backupPushService;
 
@@ -86,7 +90,8 @@ public class RepositoryController {
     /**
      * @param repositories every repository this service holds, sorted by project then name. A row
      *     with no registered name is present with a null {@code name}, and one whose name declares
-     *     no role suffix with a null {@code archetype} — see {@link RepositoryCoordinatesDto}.
+     *     no role suffix with a null {@code archetype}; {@code declared} false is a row its
+     *     project's wrapper no longer names — see {@link RepositoryCoordinatesDto}.
      */
     public record Response(List<RepositoryCoordinatesDto> repositories) {}
   }
@@ -111,6 +116,11 @@ public class RepositoryController {
    * for a consumer keyed on the kind — qits-maintenance's release-train reader. It is an added
    * optional field and nothing had to change to keep reading this route: an existing client ignores
    * the key, and a null archetype is a row whose name declares no role suffix.
+   *
+   * <p><b>And whether the project's wrapper declares it</b> (qits-1695), so qits-maintenance can
+   * stop bumping a repository its wrapper dropped. It is {@code listProjectRepositories}' {@code
+   * declared}, from the same rule ({@code WrapperReconcileService.declares}), with each project's
+   * wrapper read once per call.
    */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:system", "qits:agent"})
@@ -118,12 +128,17 @@ public class RepositoryController {
       operationId = "listRepositories",
       summary = "Every repository with its public coordinates",
       description =
-          "The machine-readable catalogue: row id, project, addressable name, main branch and"
-              + " archetype, sorted by project then name. A repository that owns no name is listed"
-              + " with a null name; one whose name declares no role suffix carries a null"
-              + " archetype.")
+          "The machine-readable catalogue: row id, project, addressable name, main branch,"
+              + " archetype and wrapper membership, sorted by project then name. A repository that"
+              + " owns no name is listed with a null name; one whose name declares no role suffix"
+              + " carries a null archetype. declared is false when no entry of the project's wrapper .gitmodules"
+              + " names this repository, so it is no longer part of its project — the same reading"
+              + " as declared on listProjectRepositories, and true for the wrapper itself, for"
+              + " archetypes that are not components of their project, and for a project whose"
+              + " wrapper declares nothing.")
   public ListRepositoriesRequest.Response list() {
-    return new ListRepositoriesRequest.Response(repositoryService.listCoordinates());
+    return new ListRepositoriesRequest.Response(
+        repositoryService.listCoordinates(wrapperReconcileService::view));
   }
 
   public static record GetRepositoryRequest() {
