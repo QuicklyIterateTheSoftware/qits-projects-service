@@ -212,14 +212,17 @@ public class BranchDeliveries {
   }
 
   /**
-   * <b>CONFLICTED</b>: {@code row}'s sources could not be folded; every branch it carries. {@code
-   * foldAttempt} ({@link FoldAttempt#ofConflicts}) keys the attempt: the merged sha a conflict
-   * leaves is the last fold that landed, so without it a second, different conflict there would
-   * read as the position already held (qits-1725).
+   * <b>CONFLICTED</b>: {@code row}'s sources could not be folded; every branch it carries. The
+   * attempt ({@link FoldAttempt#ofConflicts} of {@code conflicts}) keys it: the merged sha a
+   * conflict leaves is the last fold that landed, so without it a second, different conflict there
+   * would read as the position already held (qits-1725). {@code conflicts} ride the step to the
+   * in-transaction listeners — never the event — so the notices tell only the heads they name.
    */
-  public void conflicted(ReleaseRequest row, String foldAttempt) {
+  public void conflicted(ReleaseRequest row, List<BackingBranchMerger.Conflict> conflicts) {
+    String foldAttempt = FoldAttempt.ofConflicts(conflicts);
     for (String branch : branchesOf(row)) {
-      step(row, branch, Step.CONFLICTED, null, null, foldAttempt, null, null, null, false);
+      step(
+          row, branch, Step.CONFLICTED, null, null, foldAttempt, null, null, null, false, conflicts);
     }
   }
 
@@ -395,7 +398,7 @@ public class BranchDeliveries {
   // The write
   // ---------------------------------------------------------------------------------------------
 
-  /** One step of one branch carried by {@code row}, if it is a branch this ledger follows. */
+  /** One step of one branch carried by {@code row}, with no conflicts. */
   private void step(
       ReleaseRequest row,
       String branch,
@@ -407,6 +410,33 @@ public class BranchDeliveries {
       String runId,
       String version,
       boolean onlyFromPrevious) {
+    step(
+        row,
+        branch,
+        step,
+        previousId,
+        previousQualifiedId,
+        foldAttempt,
+        failure,
+        runId,
+        version,
+        onlyFromPrevious,
+        null);
+  }
+
+  /** One step of one branch carried by {@code row}, if it is a branch this ledger follows. */
+  private void step(
+      ReleaseRequest row,
+      String branch,
+      Step step,
+      String previousId,
+      String previousQualifiedId,
+      String foldAttempt,
+      String failure,
+      String runId,
+      String version,
+      boolean onlyFromPrevious,
+      List<BackingBranchMerger.Conflict> conflicts) {
     if (row == null) {
       return;
     }
@@ -436,7 +466,8 @@ public class BranchDeliveries {
               runId,
               version,
               null,
-              Instant.now()),
+              Instant.now(),
+              conflicts),
           onlyFromPrevious,
           previousId);
     } catch (RuntimeException e) {
@@ -505,7 +536,8 @@ public class BranchDeliveries {
             taken.runId(),
             taken.version(),
             everywhere(ledger.stepsOf(taken.projectId(), taken.branch())),
-            taken.changedAt());
+            taken.changedAt(),
+            taken.conflicts());
     for (BranchDeliveryStepListener listener : listeners) {
       try {
         listener.onStep(written);

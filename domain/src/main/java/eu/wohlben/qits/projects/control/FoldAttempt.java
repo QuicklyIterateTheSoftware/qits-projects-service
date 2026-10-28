@@ -34,6 +34,10 @@ public final class FoldAttempt {
   /** Hex characters kept of the digest: 64 bits, ample to tell one request's attempts apart. */
   private static final int LENGTH = 16;
 
+  private static final String MISSING = "missing:";
+
+  private static final String HEADS = "refs/heads/";
+
   private FoldAttempt() {}
 
   /** The attempt {@code conflicts} came from; null for none, which a CONFLICT never answers. */
@@ -60,6 +64,31 @@ public final class FoldAttempt {
 
   /** The attempt that found {@code ref} missing on the git host. */
   public static String ofMissingSource(String ref) {
-    return "missing:" + ref;
+    return MISSING + ref;
+  }
+
+  /**
+   * The ref a {@link #ofMissingSource} attempt names, {@code refs/heads/epic/qits-1681}; null for
+   * any other attempt (qits-1725: whose owner is told).
+   */
+  public static String missingRef(String attempt) {
+    return attempt != null && attempt.startsWith(MISSING) ? attempt.substring(MISSING.length())
+        : null;
+  }
+
+  /**
+   * The branch a fold source spells, as the ledger names it: {@code refs/heads/<b>} and a bare
+   * {@code <b>} are both {@code <b>} — {@code ReleaseRequests} hands the host {@code
+   * "refs/heads/" + source.name}, and the host forwards a conflict's {@code head} as it was spelled
+   * to it. A tag ({@code refs/tags/...}) or any other {@code refs/} is no branch: null.
+   */
+  public static String branchOf(String ref) {
+    if (ref == null || ref.isBlank()) {
+      return null;
+    }
+    if (ref.startsWith(HEADS)) {
+      return ref.substring(HEADS.length());
+    }
+    return ref.startsWith("refs/") ? null : ref;
   }
 }

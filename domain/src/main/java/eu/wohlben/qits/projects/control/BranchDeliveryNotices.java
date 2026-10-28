@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -41,6 +42,17 @@ import org.jboss.logging.Logger;
  *       failed its build in <qualifiedId>}. A {@code RELEASE} failure is no build of the branch's
  *       and is not said, as qits-1672 did not say it.
  *   <li><b>MOVED</b>: {@code fyi: your <branch> moved from <previousQualifiedId> to <qualifiedId>}.
+ *   <li><b>CONFLICTED</b> (qits-1725): {@code fyi: your <branch> conflicts in <qualifiedId> on
+ *       <paths>} — only to a branch some conflict names as its {@code head} ({@code
+ *       refs/heads/<branch>} as the request spells its sources, or bare), of the distinct paths
+ *       those conflicts name, in their order, five at most then {@code , and <n> more}. Every
+ *       source took the CONFLICTED step, but a source the conflict does not name did nothing to
+ *       cause it, and a conflict whose only head is {@code main} or a tag tells nobody. The
+ *       conflicts ride the step in process ({@link BranchDeliveryStep#conflicts}), never the event.
+ *   <li><b>FAILED</b> with failure {@code FOLD} (qits-1725): {@code fyi: your <branch> is missing
+ *       on the git host; <qualifiedId> cannot fold} — only to the branch whose {@code
+ *       refs/heads/<branch>} is the missing ref the step's attempt names ({@link
+ *       FoldAttempt#missingRef}); the request's other sources are not told.
  * </ul>
  *
  * <h2>Addressed by the git_refs rule, never by who filed</h2>
@@ -66,9 +78,14 @@ import org.jboss.logging.Logger;
  * <p>{@link #onStep} runs inside the transaction that took the step, under its row locks, so it
  * does one thing: inserts one {@link BranchDeliveryNotice} with {@code on conflict do nothing}. That
  * row is the outbox and the dedupe both. Its key is the notice — {@code
- * FAILED:<requestId>:<foldSha>:<repoId>:<branch>} or {@code
- * MOVED:<repoId>:<branch>:<fromRequestId>:<toRequestId>} — so a retried red run at the same fold, or
- * a replayed hand-on, inserts nothing and nothing is said twice.
+ * FAILED:<requestId>:<foldSha>:<repoId>:<branch>}, {@code
+ * MOVED:<repoId>:<branch>:<fromRequestId>:<toRequestId>}, and for a failed fold attempt (qits-1725)
+ * {@code CONFLICTED:<requestId>:<foldAttempt>:<repoId>:<branch>} or {@code
+ * FAILED:<requestId>:<foldAttempt>:<repoId>:<branch>} — so a retried red run at the same fold, the
+ * same conflict hit again, or a replayed hand-on, inserts nothing and nothing is said twice; a
+ * changed conflict is a new attempt and is said again. A fold attempt is in the key, and nowhere
+ * else in the row: the desk reads a request's notices of one attempt by the key's prefix ({@link
+ * #attemptPrefix}).
  *
  * <p><b>The agent is not in the key, and is not known at the insert.</b> Who owns a branch is an
  * HTTP question to qits-workspaces, and a listener may not make one ({@link
@@ -87,10 +104,12 @@ import org.jboss.logging.Logger;
  * not. {@code NOT_ACTIVE} is qits-1672's word and is still read by the desk, never written here.
  *
  * <p><b>Step-generic.</b> The text is decided at the insert and stored, so the worker knows no step;
- * qits-1725 owes CONFLICTED and further notices through {@link #owe} into the same table.
+ * qits-1725's CONFLICTED and FOLD notices go through {@link #owe} into the same table, worker,
+ * addressing and outcomes.
  *
  * <p>The table is also the audit — who was told, when, about which fold — and the desk's {@code
- * request-failed} trigger reads it to learn whether any agent was told of a failed fold.
+ * request-failed} trigger reads it to learn whether any agent was told of a failed fold, or of the
+ * request's current conflict or missing source.
  */
 @ApplicationScoped
 public class BranchDeliveryNotices implements BranchDeliveryStepListener {
@@ -143,9 +162,94 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
     return "fyi: your " + branch + " moved from " + previousQualifiedId + " to " + qualifiedId;
   }
 
+  /**
+   * {@code fyi: your <branch> conflicts in <qualifiedId> on <paths>} (qits-1725), {@code paths}
+   * as {@link #pathList} joins them.
+   */
+  public static String conflictedText(String branch, String qualifiedId, List<String> paths) {
+    return "fyi: your " + branch + " conflicts in " + qualifiedId + " on " + pathList(paths);
+  }
+
+  /**
+   * {@code fyi: your <branch> is missing on the git host; <qualifiedId> cannot fold} (qits-1725).
+   */
+  public static String missingText(String branch, String qualifiedId) {
+    return "fyi: your " + branch + " is missing on the git host; " + qualifiedId + " cannot fold";
+  }
+
+  /** The most paths a conflict notice names before {@code , and <n> more}. */
+  static final int PATHS_SHOWN = 5;
+
+  /**
+   * {@code paths} joined by {@code ", "}; past {@link #PATHS_SHOWN}, the first five then {@code ,
+   * and <n> more} — {@code a, b, c, d, e, and 2 more}.
+   */
+  public static String pathList(List<String> paths) {
+    if (paths.size() <= PATHS_SHOWN) {
+      return String.join(", ", paths);
+    }
+    return String.join(", ", paths.subList(0, PATHS_SHOWN))
+        + ", and "
+        + (paths.size() - PATHS_SHOWN)
+        + " more";
+  }
+
   /** {@code FAILED:<requestId>:<foldSha>:<repoId>:<branch>}: once per fold and branch. */
   public static String failedKey(String requestId, String foldSha, String repoId, String branch) {
     return "FAILED:" + requestId + ":" + foldSha + ":" + repoId + ":" + branch;
+  }
+
+  /**
+   * {@code CONFLICTED:<requestId>:<foldAttempt>:<repoId>:<branch>} (qits-1725): once per conflict
+   * attempt and branch.
+   */
+  public static String conflictedKey(
+      String requestId, String foldAttempt, String repoId, String branch) {
+    return attemptPrefix("CONFLICTED", requestId, foldAttempt) + repoId + ":" + branch;
+  }
+
+  /**
+   * {@code FAILED:<requestId>:<foldAttempt>:<repoId>:<branch>} (qits-1725), the attempt {@code
+   * missing:<ref>}: once per missing ref and branch.
+   */
+  public static String missingKey(
+      String requestId, String foldAttempt, String repoId, String branch) {
+    return attemptPrefix("FAILED", requestId, foldAttempt) + repoId + ":" + branch;
+  }
+
+  /**
+   * {@code <step>:<requestId>:<foldAttempt>:}, what every notice of one request's fold attempt
+   * starts with (qits-1725) — how the desk's {@code request-failed} reads the notices of the
+   * request's current conflict or missing source, not of whatever else shares its merged sha.
+   */
+  public static String attemptPrefix(String step, String requestId, String foldAttempt) {
+    return step + ":" + requestId + ":" + foldAttempt + ":";
+  }
+
+  /**
+   * The fold attempt a CONFLICTED or fold-FAILED notice's key names, or null for a key that names
+   * none (a build's FAILED, keyed by the fold sha; a MOVED). A ref holds no {@code :}, so the
+   * attempt is the key's third field, or {@code missing:} and the field after it.
+   */
+  public static String attemptOf(String noticeKey, String requestId) {
+    if (noticeKey == null || requestId == null) {
+      return null;
+    }
+    for (String step : List.of("CONFLICTED", "FAILED")) {
+      String head = step + ":" + requestId + ":";
+      if (!noticeKey.startsWith(head)) {
+        continue;
+      }
+      String rest = noticeKey.substring(head.length());
+      boolean missing = rest.startsWith("missing:");
+      if ("FAILED".equals(step) && !missing) {
+        return null;
+      }
+      int from = missing ? "missing:".length() : 0;
+      int end = rest.indexOf(':', from);
+      return end < 0 ? null : rest.substring(0, end);
+    }
+    return null;
   }
 
   /** {@code MOVED:<repoId>:<branch>:<from>:<to>}: once per (branch, from, to). */
@@ -159,8 +263,10 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
 
   /**
    * Owes the notice a step calls for: FAILED by a build ({@code CI} or {@code AUTOMATION}) at a
-   * fold, or MOVED between two requests. Every other step is no news to the branch's agent. A
-   * write to this datasource and nothing else, as the listener contract requires.
+   * fold, MOVED between two requests, and (qits-1725) CONFLICTED for a branch a conflict names as a
+   * head and FAILED with failure {@code FOLD} for the branch that is missing. Every other step is
+   * no news to the branch's agent. A write to this datasource and nothing else, as the listener
+   * contract requires.
    */
   @Override
   public void onStep(BranchDeliveryStep step) {
@@ -169,6 +275,10 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
     }
     switch (step.step()) {
       case "FAILED" -> {
+        if ("FOLD".equals(step.failure())) {
+          oweMissing(step);
+          return;
+        }
         if (!("CI".equals(step.failure()) || "AUTOMATION".equals(step.failure()))
             || step.foldSha() == null) {
           return;
@@ -188,10 +298,47 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
             movedKey(step.repoId(), step.branch(), step.previousRequestId(), step.requestId()),
             movedText(step.branch(), step.previousQualifiedId(), step.qualifiedId()));
       }
+      case "CONFLICTED" -> oweConflict(step);
       default -> {
         // No news to the branch's agent.
       }
     }
+  }
+
+  /**
+   * CONFLICTED: owed only when a conflict names {@code step}'s branch as its head, about the
+   * paths those conflicts name.
+   */
+  private void oweConflict(BranchDeliveryStep step) {
+    if (step.foldAttempt() == null || step.conflicts() == null) {
+      return;
+    }
+    List<String> paths =
+        step.conflicts().stream()
+            .filter(Objects::nonNull)
+            .filter(conflict -> step.branch().equals(FoldAttempt.branchOf(conflict.head())))
+            .map(BackingBranchMerger.Conflict::path)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+    if (paths.isEmpty()) {
+      return;
+    }
+    owe(
+        step,
+        conflictedKey(step.requestId(), step.foldAttempt(), step.repoId(), step.branch()),
+        conflictedText(step.branch(), step.qualifiedId(), paths));
+  }
+
+  /** FAILED with failure FOLD: owed only to the branch that is the missing ref. */
+  private void oweMissing(BranchDeliveryStep step) {
+    if (!step.branch().equals(FoldAttempt.branchOf(FoldAttempt.missingRef(step.foldAttempt())))) {
+      return;
+    }
+    owe(
+        step,
+        missingKey(step.requestId(), step.foldAttempt(), step.repoId(), step.branch()),
+        missingText(step.branch(), step.qualifiedId()));
   }
 
   /**

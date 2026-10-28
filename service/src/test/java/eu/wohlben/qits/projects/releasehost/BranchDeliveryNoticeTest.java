@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
+import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -48,6 +49,9 @@ import org.junit.jupiter.api.Test;
  * build at a fold, and once when it moves to another request. Whoever filed the request or added the
  * source is not what is read: a person's branch, a branch nobody's wrapper covers and an agent no
  * longer ACTIVE hear nothing, and their notices settle {@code NO_AGENT}.
+ *
+ * <p>qits-1725: a conflict tells only the branches it names as a head, once per fold attempt, and a
+ * missing source tells only the missing branch's owner.
  *
  * <p>The red verdicts are {@code ReleaseRequestFailureNoticeTest}'s (the qits-1672 test this
  * replaces), the hand-on is {@link BranchDeliveryTest}'s, which is {@link AutoReleaseTest}'s.
@@ -275,6 +279,127 @@ public class BranchDeliveryNoticeTest {
     assertEquals("DELIVERED", recordedOf(id).get(0).outcome);
   }
 
+  // ---- CONFLICTED and FAILED FOLD (qits-1725) -------------------------------------------------
+
+  /**
+   * Only the branch a conflict names as its head is told, once per attempt; the same conflict hit
+   * again says nothing, and a changed one (a new tip of the head) is a new attempt and is said
+   * again.
+   */
+  @Test
+  public void aConflictTellsOnlyItsHeadOncePerAttemptAndAChangedConflictAgain() {
+    String a = ticket("a");
+    String b = ticket("b");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    agents.stage(agent(), "work-b", wrapperId, b);
+    String id = create(a, PERSON);
+    join(id, b, PERSON);
+    String qid = qualifiedIdOf(id);
+
+    merger.answer(conflict(id, "refs/heads/" + a, "abc1234", "pom.xml"));
+    headMoved(a);
+    awaitState(id, "CONFLICTED");
+    awaitSettled(id, 1);
+    String text = "fyi: your " + a + " conflicts in " + qid + " on pom.xml";
+    assertEquals(List.of(new Spoken("work-a", text)), turns.calls(), "b is no head: not told");
+    BranchDeliveryNotice notice = recordedOf(id).get(0);
+    assertEquals("CONFLICTED", notice.step);
+    String attempt = ledgerRow(a).foldAttempt;
+    assertEquals(BranchDeliveryNotices.conflictedKey(id, attempt, repoId, a), notice.noticeKey);
+    assertEquals("CONFLICTED", ledgerRow(b).step, "every source still takes the step");
+
+    headMoved(b); // the same conflict again: the same attempt
+    notices.deliverOwed();
+    assertEquals(1, turns.calls().size(), "the same conflict is told once");
+
+    merger.answer(conflict(id, "refs/heads/" + a, "def5678", "pom.xml"));
+    headMoved(a);
+    awaitSettled(id, 2);
+    assertEquals(
+        List.of(new Spoken("work-a", text), new Spoken("work-a", text)),
+        turns.calls(),
+        "a changed conflict is a new attempt, told again");
+  }
+
+  /** A conflict whose only head is {@code main} names no source branch, and tells nobody. */
+  @Test
+  public void aConflictWhoseOnlyHeadIsMainTellsNobody() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    merger.answer(conflict(id, "refs/heads/main", "abc1234", "pom.xml"));
+
+    headMoved(a);
+    awaitState(id, "CONFLICTED");
+
+    assertEquals("CONFLICTED", ledgerRow(a).step);
+    notices.deliverOwed();
+    assertEquals(List.of(), recordedOf(id), "nothing owed");
+    assertEquals(List.of(), turns.calls());
+  }
+
+  /**
+   * A head spelled bare names the branch as much as {@code refs/heads/} does; its distinct paths
+   * are listed in conflict order, five at most, then {@code , and <n> more}.
+   */
+  @Test
+  public void aBareHeadIsToldItsPathsCappedAtFive() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    String qid = qualifiedIdOf(id);
+    List<BackingBranchMerger.Conflict> conflicts =
+        List.of("p1", "p2", "p2", "p3", "p4", "p5", "p6", "p7").stream()
+            .map(path -> new BackingBranchMerger.Conflict(path, a, "abc1234", "content"))
+            .toList();
+    merger.answer(BackingBranchMerger.Outcome.conflict(BackingBranches.ref(id), conflicts));
+
+    headMoved(a);
+    awaitState(id, "CONFLICTED");
+    awaitSettled(id, 1);
+
+    assertEquals(
+        List.of(
+            new Spoken(
+                "work-a",
+                "fyi: your " + a + " conflicts in " + qid + " on p1, p2, p3, p4, p5, and 2 more")),
+        turns.calls());
+  }
+
+  /** A missing source tells the missing branch's owner; the request's other sources do not hear. */
+  @Test
+  public void aMissingSourceTellsOnlyTheMissingBranchsOwner() {
+    String a = ticket("a");
+    String b = ticket("b");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    agents.stage(agent(), "work-b", wrapperId, b);
+    String id = create(a, PERSON);
+    join(id, b, PERSON);
+    String qid = qualifiedIdOf(id);
+    merger.answer(BackingBranchMerger.Outcome.missingSource("refs/heads/" + b));
+
+    headMoved(a);
+    awaitState(id, "REJECTED");
+    awaitSettled(id, 1);
+
+    assertEquals(
+        List.of(
+            new Spoken(
+                "work-b",
+                "fyi: your " + b + " is missing on the git host; " + qid + " cannot fold")),
+        turns.calls());
+    BranchDeliveryNotice notice = recordedOf(id).get(0);
+    assertEquals("FAILED", notice.step);
+    assertEquals(
+        BranchDeliveryNotices.missingKey(id, "missing:refs/heads/" + b, repoId, b),
+        notice.noticeKey);
+    assertEquals("FAILED", ledgerRow(a).step, "the other source still takes the step");
+
+    headMoved(a); // still missing: the same attempt
+    notices.deliverOwed();
+    assertEquals(1, turns.calls().size());
+  }
+
   // ---- addressing ------------------------------------------------------------------------------
 
   /**
@@ -483,6 +608,14 @@ public class BranchDeliveryNoticeTest {
             null,
             null,
             null));
+  }
+
+  /** A conflict of the request's fold naming {@code head} at {@code headSha} on {@code path}. */
+  private static BackingBranchMerger.Outcome conflict(
+      String id, String head, String headSha, String path) {
+    return BackingBranchMerger.Outcome.conflict(
+        BackingBranches.ref(id),
+        List.of(new BackingBranchMerger.Conflict(path, head, headSha, "content")));
   }
 
   private void headMoved(String branch) {

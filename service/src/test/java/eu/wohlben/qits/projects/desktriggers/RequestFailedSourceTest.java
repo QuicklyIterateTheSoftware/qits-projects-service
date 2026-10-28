@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.bus.ReleaseRequestStateChanged;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent;
 import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
+import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
@@ -32,7 +33,9 @@ import org.junit.jupiter.api.Test;
  * reaches the desk only when no active agent was told of it (the branch-delivery notices of
  * qits-1722, which replaced qits-1672's) — and, since
  * qits-1694, only while that told agent is still ACTIVE, once per rejection, so a re-rejection at
- * the same fold is decided again rather than from the first rejection's outcome.
+ * the same fold is decided again rather than from the first rejection's outcome. Since qits-1725, a
+ * conflict and a fold's missing source are decided from the notices of the request's current fold
+ * attempt, never from what else shares its merged sha.
  */
 @QuarkusTest
 class RequestFailedSourceTest {
@@ -71,6 +74,7 @@ class RequestFailedSourceTest {
             () -> {
               for (String id : requests) {
                 BranchDeliveryNotice.delete("requestId", id);
+                BranchDelivery.delete("requestId", id);
                 ReleaseRequestApproval.delete("requestId", id);
               }
             });
@@ -246,6 +250,109 @@ class RequestFailedSourceTest {
     assertEquals("dana", lines.get(0).cause);
   }
 
+  // ---- qits-1725: a conflict and a missing source, by fold attempt ----------------------------
+
+  @Test
+  void aConflictToldToItsActiveOwnerIsNoDeskLine() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "tok-person");
+    ledger(row, "CONFLICTED", "c0ffee0000000001");
+    attemptNotice(row, "CONFLICTED", "c0ffee0000000001", "DELIVERED");
+    dispatch.willFind(agent(Agent.ACTIVE));
+
+    listener.onFrame(changed(row, "CONFLICTED", "pom.xml differs"));
+    sweep.sweep(Instant.now());
+
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  @Test
+  void aConflictNoAgentOwnsTellsTheDeskWhoseBranchItIs() {
+    String projectId = project();
+    // An agent filed it: no longer "its agent is not told of a conflict" — the head's owner is.
+    ReleaseRequest row = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
+    ledger(row, "CONFLICTED", "c0ffee0000000002");
+    attemptNotice(row, "CONFLICTED", "c0ffee0000000002", "NO_AGENT");
+
+    listener.onFrame(changed(row, "CONFLICTED", "pom.xml differs"));
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size());
+    assertEquals("CONFLICTED: pom.xml differs; no agent owns " + BRANCH, lines.get(0).label);
+    assertEquals(RequestFailedSource.foldKey(row.id, "c0ffee0000000002"), lines.get(0).eventId);
+  }
+
+  /**
+   * A conflict lands no fold, so the request's merged sha is still the one a build was told about:
+   * that build notice must not silence the conflict, which named no followed branch as a head.
+   */
+  @Test
+  void aBuildNoticeAtTheSameShaDoesNotSilenceALaterConflict() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "tok-person");
+    notice(row, "DELIVERED");
+    dispatch.willFind(agent(Agent.ACTIVE));
+    ledger(row, "CONFLICTED", "c0ffee0000000003");
+
+    listener.onFrame(changed(row, "CONFLICTED", "pom.xml differs"));
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size(), "the build's DELIVERED is about another fold");
+    assertEquals("CONFLICTED: pom.xml differs; no agent owns it", lines.get(0).label);
+  }
+
+  @Test
+  void anOwedConflictNoticeIsDecidedByTheSweepAtItsAttempt() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "tok-person");
+    conflictedRow(row, "pom.xml differs");
+    ledger(row, "CONFLICTED", "c0ffee0000000004");
+    attemptNotice(row, "CONFLICTED", "c0ffee0000000004", null);
+
+    listener.onFrame(changed(row, "CONFLICTED", "pom.xml differs"));
+    sweep.sweep(Instant.now());
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "not decided while owed");
+
+    settle(row, "NO_AGENT");
+    sweep.sweep(Instant.now());
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size());
+    assertEquals("CONFLICTED: pom.xml differs; no agent owns " + BRANCH, lines.get(0).label);
+    assertEquals(RequestFailedSource.foldKey(row.id, "c0ffee0000000004"), lines.get(0).eventId);
+  }
+
+  /**
+   * A fold REJECTED for a missing source: the missing branch's told ACTIVE owner keeps the desk
+   * silent; with no owner the desk is told whose branch is missing — and a build notice at the same
+   * sha does not count as telling anyone.
+   */
+  @Test
+  void aMissingSourceIsTheDesksOnlyWhenNoAgentOwnsTheBranch() {
+    String projectId = project();
+    String attempt = "missing:refs/heads/" + BRANCH;
+    String detail = "The sources could not be folded: refs/heads/" + BRANCH + " does not exist";
+    ReleaseRequest told = request(projectId, "tok-person");
+    foldRejected(told);
+    ledger(told, "FAILED", attempt);
+    attemptNotice(told, "FAILED", attempt, "DELIVERED");
+    ReleaseRequest nobody = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
+    foldRejected(nobody);
+    notice(nobody, "DELIVERED");
+    ledger(nobody, "FAILED", attempt);
+    dispatch.willFind(agent(Agent.ACTIVE));
+
+    listener.onFrame(changed(told, "REJECTED", detail));
+    listener.onFrame(changed(nobody, "REJECTED", detail));
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size(), "the told owner's request is silent: " + lines);
+    assertEquals(nobody.id, lines.get(0).itemId);
+    assertEquals("REJECTED: " + detail + "; no agent owns " + BRANCH, lines.get(0).label);
+  }
+
   @Test
   void otherStatesAdmitNothing() {
     String projectId = project();
@@ -350,6 +457,73 @@ class RequestFailedSourceTest {
                 notice.workId = WORK_ID;
               }
               notice.persist();
+            });
+  }
+
+  /** The request's ledger row for {@link #BRANCH} at {@code step} and {@code attempt}. */
+  private static void ledger(ReleaseRequest row, String step, String attempt) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery delivery = new BranchDelivery();
+              delivery.projectId = row.projectId;
+              delivery.repoId = row.repoId;
+              delivery.repoName = row.repoName;
+              delivery.branch = BRANCH;
+              delivery.step = step;
+              delivery.requestId = row.id;
+              delivery.qualifiedId = row.qualifiedId;
+              delivery.foldSha = SHA;
+              delivery.foldAttempt = attempt;
+              delivery.changedAt = Instant.now();
+              delivery.persist();
+            });
+  }
+
+  /** A CONFLICTED or fold-FAILED notice of {@link #BRANCH} at {@code attempt}. */
+  private static void attemptNotice(
+      ReleaseRequest row, String step, String attempt, String outcome) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDeliveryNotice notice = new BranchDeliveryNotice();
+              notice.noticeKey =
+                  "CONFLICTED".equals(step)
+                      ? BranchDeliveryNotices.conflictedKey(row.id, attempt, row.repoId, BRANCH)
+                      : BranchDeliveryNotices.missingKey(row.id, attempt, row.repoId, BRANCH);
+              notice.projectId = row.projectId;
+              notice.repoId = row.repoId;
+              notice.branch = BRANCH;
+              notice.step = step;
+              notice.requestId = row.id;
+              notice.foldSha = SHA;
+              notice.text =
+                  "CONFLICTED".equals(step)
+                      ? BranchDeliveryNotices.conflictedText(
+                          BRANCH, row.qualifiedId, List.of("pom.xml"))
+                      : BranchDeliveryNotices.missingText(BRANCH, row.qualifiedId);
+              notice.createdAt = Instant.now();
+              notice.outcome = outcome;
+              if (outcome != null && RequestFailedSource.TOLD.contains(outcome)) {
+                notice.agentId = AGENT_ID;
+                notice.workId = WORK_ID;
+              }
+              notice.persist();
+            });
+  }
+
+  private static void foldRejected(ReleaseRequest row) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.<ReleaseRequest>findById(row.id).rejectingGate = "fold");
+  }
+
+  private static void conflictedRow(ReleaseRequest row, String conflictDetail) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest stored = ReleaseRequest.findById(row.id);
+              stored.state = ReleaseRequest.State.CONFLICTED;
+              stored.conflictDetail = conflictDetail;
             });
   }
 

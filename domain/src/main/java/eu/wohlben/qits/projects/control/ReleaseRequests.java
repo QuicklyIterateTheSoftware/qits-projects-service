@@ -4638,8 +4638,9 @@ public class ReleaseRequests {
                 case CONFLICT -> {
                   states.move(row, ReleaseRequest.State.CONFLICTED);
                   // Keyed by the conflicting heads at their tips (qits-1725): mergedSha stays at the
-                  // last fold that landed, so it cannot tell this conflict from the one before.
-                  deliveries.conflicted(row, FoldAttempt.ofConflicts(outcome.conflicts()));
+                  // last fold that landed, so it cannot tell this conflict from the one before. The
+                  // conflicts ride the step so only the branches they name as a head are told.
+                  deliveries.conflicted(row, outcome.conflicts());
                   row.detail =
                       "The sources could not be folded ("
                           + why
