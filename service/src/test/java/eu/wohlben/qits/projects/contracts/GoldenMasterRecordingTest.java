@@ -1238,6 +1238,13 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
             "listDeskTriggerMessages",
             "/projects/api/projects/{projectId}/desk-triggers"));
+    // The branch-delivery read door (qits-1720), as qits-platform-access-cli reads where a branch
+    // stands: by the branch's name alone, which is all an agent waiting on its branch holds.
+    all.add(
+        read(
+            ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
+            "getBranchDeliveries",
+            "/projects/api/branch-deliveries?branch=ticket/qits-9001"));
     return List.copyOf(all);
   }
 

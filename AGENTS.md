@@ -620,6 +620,14 @@ merely its only occupant. Six things about it are rules:
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter
     `bus/BranchDeliveryChangedAnnouncer` (`@DefaultBean`); the suite records through
     `RecordingBranchDeliveryAnnouncer` and `BranchDeliveryTest` drives every step.
+  - **The read door** (qits-1720) is `GET /projects/api/branch-deliveries?branch=&repository=&project=`
+    (`api/BranchDeliveriesController`, `getBranchDeliveries`, the release-requests list's roles,
+    `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
+    requestId, qualifiedId, foldSha, runId, version, changedAt}]}`. `repository` (name or id)
+    narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. An unknown branch is
+    200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
+    `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
+    RELEASED in qits-demo-service` records it for qits-platform-access-cli.
 - **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
   mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
   `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps
