@@ -36,7 +36,9 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestItemDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestWorkItemDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.dto.SubmoduleRefDto;
 import eu.wohlben.qits.projects.entity.ReleasePipelineRun;
@@ -56,6 +58,7 @@ import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestAutomationWaiverRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestUpstreamOverrideRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestParticipantRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
@@ -339,6 +342,15 @@ public class ReleaseRequests {
 
   @Inject ReleaseRequestSourceRepository sources;
 
+  /**
+   * Who took part in each request (qits-1673): written on every ask and on every source an internal
+   * path adds, never deleted, and what {@link #isUnattended} and the failure notices read.
+   */
+  @Inject ReleaseRequestParticipantRepository participants;
+
+  /** What each request is about, and the text that replaced the typed summary (qits-1673). */
+  @Inject ReleaseRequestItems items;
+
   @Inject ReleasedTagPendingMergeRepository pendingTags;
 
   /**
@@ -473,8 +485,12 @@ public class ReleaseRequests {
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
 
-  /** Tells the agents behind a request that its fold failed its build (qits-1672). */
-  @Inject ReleaseRequestFailureNotices failureNotices;
+  /**
+   * Where each branch stands (qits-1719): every point below where a named branch joins, moves,
+   * fails, conflicts, is withdrawn, releases or goes live writes it there, inside the transaction
+   * that took the step, and {@code BranchDeliveryChanged} follows the commit.
+   */
+  @Inject BranchDeliveries deliveries;
 
   /**
    * Tells the work item behind a request withdrawn by a branch deletion that it was, and whether
@@ -498,10 +514,12 @@ public class ReleaseRequests {
   @Inject Instance<ReleaseGitHost> gitHosts;
 
   /**
-   * The requesters that are <b>machines</b>, and therefore the requests nobody is waiting on. A
-   * request carries the forwarded identity of whoever asked; qits-maintenance deliberately sends
-   * none, so its bumps are attributed to its own machine principal and land here. Comma-separated,
-   * matched exactly, and a platform that names none simply files no tickets.
+   * The principals that are <b>machines</b>, and therefore the requests nobody is waiting on: a
+   * request whose participants are all named here is unattended ({@link #isUnattended}). A
+   * participant is the authenticated caller of an ask, never a name a body stated (qits-1673), so
+   * qits-maintenance's bumps are its own machine principal's and land here, and nobody else can claim
+   * to be it. Comma-separated, matched exactly, and a platform that names none simply files no
+   * tickets. The key keeps its old name ({@code unattended-requesters}) until the contract step.
    *
    * <p>Configuration rather than a constant because the identity is an OIDC client name and a
    * platform may run a second robot; it is not a switch for turning the behaviour off, which is what
@@ -593,22 +611,23 @@ public class ReleaseRequests {
    * asks on one repository serialise there and the second one finds — and joins — the request the
    * first minted. Nothing else in the schema forbids a second open request; the lock is the rule.
    *
-   * <h2>Whose words the request carries</h2>
+   * <h2>Who asked, and what the request is about</h2>
    *
-   * <p><b>A re-ask restates the summary (and a non-null requester) only when the caller's branch is
-   * the request's sole asked-for source</b> — its only named branch besides the implied default
-   * branch, or the default branch itself on a request naming nothing else. Then the caller is the
-   * whole of the request's ask and their words are the request's: that is what lets a maintenance
-   * bump re-ask its own request with a new "N dependencies" summary. On a <b>shared</b> request the
-   * words of the ask that opened it stand: letting a second workspace's sentence replace the first's
-   * would erase what a person reading the approval gate is being asked to approve. What a joiner
-   * says reaches its own row instead — {@link ReleaseRequestSource#addedBy} records who put the
-   * branch on, and {@link ReleaseRequestSource#priority} is stated per branch — so nothing a
-   * converging caller says is lost, it is simply recorded against the branch it is about.
+   * <p><b>{@code requester} is the authenticated caller</b> (qits-1673), never a name a body stated:
+   * the doors pass their principal, {@code PhaseAdvance} its {@code changedBy}, the hand-on after a
+   * release the handed-on source's recorded {@code addedBy}. Every ask records it as a participant
+   * of the request it lands in — created, joined or converged on, an ask naming {@code main}
+   * included — and the new source row's {@link ReleaseRequestSource#addedBy} carries it too. The
+   * deprecated {@code requester} column is the opener's, restated only by a re-ask whose branch is
+   * the request's sole asked-for source.
+   *
+   * <p><b>Nobody states what a request is about any more.</b> The typed summary repeated the work
+   * items the request already carries, so it is derived from the sources instead ({@link
+   * ReleaseRequestItems}) and stored on the row only for the readers that still read the column.
    *
    * <p><b>A caller can always tell what happened</b>, because the answer is the whole {@link
    * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
-   * named, and a summary that is somebody else's. See {@code ReleaseRequestController.create}.
+   * named, and participants besides itself. See {@code ReleaseRequestController.create}.
    *
    * <h2>A fresh request WAITS behind a release in flight, and OBSOLETES only a red one</h2>
    *
@@ -647,8 +666,8 @@ public class ReleaseRequests {
    *     without touching a single sibling's row.
    */
   public ReleaseRequestDto request(
-      String repoId, String branch, String summary, String requester, String priority) {
-    return ask(repoId, branch, summary, requester, priority).request();
+      String repoId, String branch, String requester, String priority) {
+    return ask(repoId, branch, requester, priority).request();
   }
 
   /**
@@ -660,13 +679,9 @@ public class ReleaseRequests {
    * minted if absent. A branch already a participant answers where it is ({@code PRESENT}), which is
    * why {@code main}, a source of every request, never queues.
    */
-  public Asked ask(
-      String repoId, String branch, String summary, String requester, String priority) {
+  public Asked ask(String repoId, String branch, String requester, String priority) {
     String named = requireBranch(branch);
     ReleasePriority stated = statedPriority(priority);
-    if (summary == null || summary.isBlank()) {
-      throw new BadRequestException("A release request carries a summary");
-    }
     Repository repository =
         repositories
             .findByIdOptional(repoId)
@@ -691,6 +706,11 @@ public class ReleaseRequests {
     boolean namedFeature = featureBranches.isFeature(named);
     boolean mainFeature = featureBranches.isFeature(main);
     ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
+    // And the text a fresh request is minted with (qits-1673), for the same reason: a work item's
+    // title is read out of the epics database. The first fold rewrites it from all the sources.
+    String mintText =
+        ReleaseRequestItems.text(
+            main.equals(named) ? List.of() : List.of(items.item(named, null, new HashMap<>())));
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
@@ -714,6 +734,8 @@ public class ReleaseRequests {
                   Placement placement = place(repoId, named, threshold);
                   ReleaseRequest target = placement.target();
                   if (target != null) {
+                    // Every ask makes its caller a participant, a converging one included (qits-1673).
+                    participants.add(target.id, requester);
                     if (placement.outcome() == Outcome.JOINED) {
                       // A branch nothing has asked about joins the repository's one open request
                       // instead of opening a second — or, past the freeze, the one queued behind it.
@@ -728,14 +750,10 @@ public class ReleaseRequests {
                       if (stated != null) {
                         participating.priority = stated;
                       }
-                      if (soleAsk(target.id, named, main)) {
-                        // The caller is the whole of this request's ask, so their words are the
-                        // request's. On a shared request they are not — the words of the ask that
-                        // opened it stand. See this method's javadoc.
-                        target.summary = summary.trim();
-                        if (requester != null) {
-                          target.requester = requester;
-                        }
+                      if (soleAsk(target.id, named, main) && requester != null) {
+                        // The caller is the whole of this request's ask, so the deprecated
+                        // requester column names them. On a shared request the opener's stands.
+                        target.requester = requester;
                       }
                     }
                     target.updatedAt = Instant.now();
@@ -748,7 +766,7 @@ public class ReleaseRequests {
                           repoId,
                           projectId,
                           repoName,
-                          summary.trim(),
+                          mintText,
                           requester,
                           main,
                           named,
@@ -1010,6 +1028,9 @@ public class ReleaseRequests {
    * Mint a fresh request of {@code repoId}: PENDING, {@code main} first and then {@code named}
    * (unless they are one branch), inside the caller's transaction. With {@code queuedBehind} set it
    * is minted <b>queued</b> behind that active request (epic qits-1580) and says so on its detail.
+   *
+   * @param summary the derived text of the sources it is minted with ({@link ReleaseRequestItems})
+   * @param requester the authenticated caller, recorded as the request's first participant
    */
   private ReleaseRequest mint(
       String repoId,
@@ -1041,6 +1062,9 @@ public class ReleaseRequests {
       fresh.detail = queuedDetail(queuedBehind.qualifiedId);
     }
     requests.persist(fresh);
+    // The caller takes part however the sources fall: on a main-only request the one source is the
+    // implied main, which names nobody (qits-1673).
+    participants.add(fresh.id, requester);
     // main first: it is the head the fold starts from, and the order sources are added in is the
     // order they become parents. It is IMPLIED rather than asked for, so it takes the default
     // priority — unless the caller named it, in which case that one row is the branch they spoke
@@ -1232,6 +1256,8 @@ public class ReleaseRequests {
       }
       states.move(earlier, ReleaseRequest.State.OBSOLETE);
       earlier.supersededBy = successor.id;
+      // Its branches ride the successor now, inside the tag it folds in (qits-1719).
+      deliveries.superseded(earlier, successor);
       earlier.detail =
           "Superseded by release request "
               + successor.qualifiedId
@@ -1568,6 +1594,8 @@ public class ReleaseRequests {
                   boolean frozen = row.queuedBehind == null && threshold.freezes(counted);
                   ReleaseRequestSource existing =
                       sources.find(row.id, ReleaseRequestSource.Kind.BRANCH, named).orElse(null);
+                  // A join is an ask: its caller takes part, idempotent arm included (qits-1673).
+                  participants.add(row.id, actor);
                   if (existing != null) {
                     if (stated != null && stated != existing.priority) {
                       existing.priority = stated;
@@ -1754,6 +1782,7 @@ public class ReleaseRequests {
                 () -> {
                   ReleaseRequest row = requireOpenForChange(id);
                   states.move(row, ReleaseRequest.State.WITHDRAWN);
+                  deliveries.withdrawn(row);
                   row.detail =
                       (reason == null || reason.isBlank())
                           ? "Withdrawn by " + (actor == null ? "an operator" : actor)
@@ -3348,6 +3377,15 @@ public class ReleaseRequests {
                     requests.findUnreleasedByBranches(repoId, List.of(branch)).stream()
                         .map(row -> row.id)
                         .toList());
+    // THE LEDGER'S PUSHED ROW (qits-1719), in a transaction of its own and never able to stop the
+    // re-folds below: a branch no request carries yet holds its repository at PUSHED, so a branch
+    // that is live elsewhere does not read LIVE everywhere.
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(() -> deliveries.pushed(repoId, branch, !affected.isEmpty()));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record that %s of %s was pushed", branch, repoId);
+    }
     for (String id : affected) {
       String why = "a push moved " + branch + " to " + shortSha(sha);
       if (isAutomationBranch(branch) && deferAutomationRefold(id, why)) {
@@ -3544,6 +3582,9 @@ public class ReleaseRequests {
                 () -> {
                   List<Affected> touched = new ArrayList<>();
                   String main = mainOf(repoId);
+                  // A branch that never got past PUSHED leaves the ledger; one a request carried
+                  // keeps its row, and is WITHDRAWN from that request below (qits-1719).
+                  deliveries.deleted(repoId, branch);
                   for (ReleaseRequest open : requests.findUnreleasedByBranches(repoId, List.of(branch))) {
                     // Read before the drop: the item to tell is named by the source being deleted.
                     List<String> before =
@@ -3554,6 +3595,7 @@ public class ReleaseRequests {
                     sources
                         .find(open.id, ReleaseRequestSource.Kind.BRANCH, branch)
                         .ifPresent(sources::delete);
+                    deliveries.withdrawn(open, List.of(branch));
                     List<ReleaseRequestSource> left = sources.listByRequest(open.id);
                     boolean empty =
                         left.isEmpty()
@@ -3563,6 +3605,7 @@ public class ReleaseRequests {
                       open.detail = "Withdrawn: the branch was deleted";
                       open.retryable = false;
                       open.updatedAt = Instant.now();
+                      deliveries.withdrawn(open);
                       LOG.infof(
                           "Release request %s withdrawn: branch %s of %s was deleted",
                           open.id, branch, repoId);
@@ -3858,6 +3901,10 @@ public class ReleaseRequests {
                           request.detail = null;
                           request.retryable = false;
                           request.updatedAt = now;
+                          // FINALIZED is live for both kinds of repository: a service finalizes
+                          // only once its deployment reported the version live, a library at its
+                          // release (qits-1719).
+                          deliveries.live(request);
                           finalized.add(
                               new Finalized(
                                   request.id,
@@ -4243,7 +4290,8 @@ public class ReleaseRequests {
         String projectId,
         String repoName,
         List<String> refs,
-        String summary,
+        List<ReleaseRequestSource> named,
+        String main,
         String qualifiedId,
         String backingBranch,
         boolean stillOpen) {}
@@ -4253,7 +4301,7 @@ public class ReleaseRequests {
                 () -> {
                   ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
                   if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
-                    return new Ask(null, null, null, List.of(), null, null, null, false);
+                    return new Ask(null, null, null, List.of(), List.of(), null, null, null, false);
                   }
                   if (row.queuedBehind != null) {
                     // A QUEUED REQUEST FOLDS NOTHING (epic qits-1580): no fold, so no automations,
@@ -4262,7 +4310,7 @@ public class ReleaseRequests {
                     LOG.debugf(
                         "Release request %s is queued behind %s; not folding (%s)",
                         row.qualifiedId, row.queuedBehind, why);
-                    return new Ask(null, null, null, List.of(), null, null, null, false);
+                    return new Ask(null, null, null, List.of(), List.of(), null, null, null, false);
                   }
                   // The project is read here, inside the one read transaction, because the fold
                   // itself is made outside every transaction.
@@ -4275,12 +4323,14 @@ public class ReleaseRequests {
                           .orElse(null);
                   // The name rides along for the git host alone, which announces the fold like a
                   // push and is told the address pair because it stores none.
+                  List<ReleaseRequestSource> named = sources.listByRequest(id);
                   return new Ask(
                       row.repoId,
                       projectId,
                       row.repoName,
-                      refsOf(sources.listByRequest(id), implicitFor(row.repoId)),
-                      row.summary,
+                      refsOf(named, implicitFor(row.repoId)),
+                      named,
+                      mainOf(row.repoId),
                       row.qualifiedId,
                       row.backingBranch(),
                       true);
@@ -4293,7 +4343,8 @@ public class ReleaseRequests {
       note(id, "No git host is configured; the sources for this request cannot be folded");
       return;
     }
-    String message = "Release request " + ask.qualifiedId() + ": " + ask.summary();
+    String message =
+        "Release request " + ask.qualifiedId() + ": " + describe(id, ask.repoId(), ask.named(), ask.main());
     BackingBranchMerger.Outcome outcome =
         fold(id, ask.repoId(), ask.projectId(), ask.repoName(), target, ask.refs(), message);
     String attempted = null;
@@ -4356,6 +4407,63 @@ public class ReleaseRequests {
     if (outcome.folded()) {
       evaluate(id);
     }
+  }
+
+  /**
+   * <b>What this fold is about</b> (qits-1673): the derived text the merge message carries, written
+   * onto the row's {@code summary} so the release commit, its tag and the desk's approval line read
+   * the same words.
+   *
+   * <p>A {@code maintenance/*} source is labelled by its head commit's subject, and this is where
+   * that is read: from the git host, once per such source per fold, outside every transaction, and
+   * stored on the source row ({@link ReleaseRequestSource#label}) so that a read never asks the git
+   * host. A branch the host cannot read keeps the label it had — or none, which reads as the branch
+   * name. Never throws: a label is not worth a fold.
+   */
+  private String describe(
+      String id, String repoId, List<ReleaseRequestSource> named, String main) {
+    Map<String, String> read = new HashMap<>();
+    if (gitHosts.isResolvable()) {
+      for (ReleaseRequestSource source : named) {
+        if (!ReleaseRequestItems.labelledByCommit(source.name)) {
+          continue;
+        }
+        try {
+          ReleaseGitHost.Answer<ReleaseGitHost.BranchTip> tip =
+              gitHosts.get().tip(repoId, source.name);
+          String subject =
+              tip.ok() && tip.value() != null
+                  ? ReleaseRequestItems.subjectOf(tip.value().message())
+                  : null;
+          if (subject != null) {
+            read.put(source.id, subject);
+            source.label = subject;
+          }
+        } catch (RuntimeException e) {
+          LOG.debugf(e, "Could not read the head of %s for release request %s", source.name, id);
+        }
+      }
+    }
+    String text = ReleaseRequestItems.text(items.items(named, main));
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () -> {
+                read.forEach(
+                    (sourceId, subject) ->
+                        sources
+                            .findByIdOptional(sourceId)
+                            .filter(row -> !subject.equals(row.label))
+                            .ifPresent(row -> row.label = subject));
+                requests
+                    .findByIdOptional(id)
+                    .filter(row -> !text.equals(row.summary))
+                    .ifPresent(row -> row.summary = text);
+              });
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record what release request %s is about", id);
+    }
+    return text;
   }
 
   /**
@@ -4618,7 +4726,14 @@ public class ReleaseRequests {
                   // of the missing branch re-folds it through onBranchMoved and the fold that lands
                   // lifts the rejection (above); the sweep does not knock again. No unattended-gate
                   // ticket: the sentence names the ref, and only a push or a person can answer it.
+                  // Every branch it carries is FAILED with failure FOLD, keyed by the missing ref
+                  // (qits-1725): the agent waiting on its branch hears it, once per missing ref.
                   states.move(row, ReleaseRequest.State.REJECTED);
+                  deliveries.failed(
+                      row,
+                      BranchDeliveries.Failure.FOLD,
+                      null,
+                      FoldAttempt.ofMissingSource(outcome.detail()));
                   row.rejectingGate = FoldFailure.KIND;
                   row.rejectingRunId = null;
                   row.retryable = false;
@@ -4631,6 +4746,10 @@ public class ReleaseRequests {
                 }
                 case CONFLICT -> {
                   states.move(row, ReleaseRequest.State.CONFLICTED);
+                  // Keyed by the conflicting heads at their tips (qits-1725): mergedSha stays at the
+                  // last fold that landed, so it cannot tell this conflict from the one before. The
+                  // conflicts ride the step so only the branches they name as a head are told.
+                  deliveries.conflicted(row, outcome.conflicts());
                   row.detail =
                       "The sources could not be folded ("
                           + why
@@ -5063,7 +5182,8 @@ public class ReleaseRequests {
                       row.rejectingRunId = null;
                       row.detail = automationDetail(row);
                       row.updatedAt = Instant.now();
-                      failureNotices.owe(row);
+                      deliveries.failed(
+                          row, BranchDeliveries.Failure.AUTOMATION, newestAutomationRun(row));
                       return false;
                     }
                     waiting(row, automationDetail(row));
@@ -5089,6 +5209,7 @@ public class ReleaseRequests {
                       return false;
                     }
                     states.move(row, ReleaseRequest.State.WITHDRAWN);
+                    deliveries.withdrawn(row);
                     row.detail = EMPTY_WRAPPER_WITHDRAWN;
                     row.retryable = false;
                     row.updatedAt = Instant.now();
@@ -5219,7 +5340,7 @@ public class ReleaseRequests {
                     // leaves it null — that is the whole discrimination.
                     row.rejectingRunId = red.runId();
                     row.rejectingGate = null;
-                    failureNotices.owe(row);
+                    deliveries.failed(row, BranchDeliveries.Failure.CI, red.runId());
                     row.detail =
                         "Run "
                             + red.runId()
@@ -5241,7 +5362,7 @@ public class ReleaseRequests {
                               red.runId(),
                               red.status(),
                               row.detail,
-                              row.requester,
+                              participants.principalsOf(row.id),
                               row.gateTicketId));
                     }
                     return false;
@@ -5575,6 +5696,35 @@ public class ReleaseRequests {
   }
 
   /**
+   * The run a branch's AUTOMATION failure names (qits-1719): the newest run of the newest failed
+   * automation in the note for {@code row}'s fold, as {@link #automationDetail} reads that note —
+   * or of any automation there when no failed one names a run. Null without a note at the fold.
+   */
+  private String newestAutomationRun(ReleaseRequest row) {
+    AutomationLedger.Note note =
+        automationLedger
+            .noteFor(row.id)
+            .filter(held -> row.mergedSha != null && row.mergedSha.equals(held.foldSha()))
+            .orElse(null);
+    if (note == null) {
+      return null;
+    }
+    String failed = null;
+    String any = null;
+    for (AutomationLedger.Automation automation : note.automations()) {
+      String run = automation.newestRunId();
+      if (run == null) {
+        continue;
+      }
+      any = run;
+      if ("FAILED".equals(automation.state())) {
+        failed = run;
+      }
+    }
+    return failed != null ? failed : any;
+  }
+
+  /**
    * What a request held by the automations gate says about itself — and it distinguishes the cases
    * the ledger can tell apart, because they are different sentences to whoever is reading.
    *
@@ -5643,16 +5793,23 @@ public class ReleaseRequests {
   }
 
   /**
-   * Is this a request <b>nobody is waiting on</b>? The whole test is who asked: a person's forwarded
-   * identity is a person who watches their request, and a machine principal is the tail of an
-   * automated night with no reader at the end of it.
+   * Is this a request <b>nobody is waiting on</b>? The whole test is who took part (qits-1673): a
+   * person or an agent watches their request, and a machine principal is the tail of an automated
+   * night with no reader at the end of it. So a request is unattended only where it has
+   * participants and <b>every one</b> of them is a machine — a maintenance bump an agent joined has
+   * a reader, and its failure reaches the agent rather than a MAINTENANCE ticket.
    *
-   * <p>A request with no requester at all is <b>not</b> unattended. It is an unattributed call, made
-   * by something this service could not name, and inventing an owner for it either way is a guess —
-   * so it keeps the behaviour it always had.
+   * <p>A request with no participant at all is <b>not</b> unattended. It is an unattributed call,
+   * made by something this service could not name, and inventing an owner for it either way is a
+   * guess — so it keeps the behaviour it always had.
    */
   private boolean isUnattended(ReleaseRequest row) {
-    return row.requester != null && unattendedRequesters.contains(row.requester);
+    return isUnattended(participants.principalsOf(row.id));
+  }
+
+  /** {@link #isUnattended(ReleaseRequest)} over participants already in hand. */
+  private boolean isUnattended(List<String> principals) {
+    return !principals.isEmpty() && unattendedRequesters.containsAll(principals);
   }
 
   /**
@@ -5673,7 +5830,7 @@ public class ReleaseRequests {
       LOG.infof(
           "Release request %s was rejected with nobody watching it (%s); no ticket sink is"
               + " configured, so it is only on the request: %s",
-          rejection.requestId(), rejection.requester(), rejection.detail());
+          rejection.requestId(), rejection.participants(), rejection.detail());
       return;
     }
     String ticketId;
@@ -5930,8 +6087,8 @@ public class ReleaseRequests {
                       row.repoName,
                       row.backingBranch(),
                       row.mergedSha,
+                      // The derived text the fold that produced mergedSha wrote (qits-1673).
                       row.summary,
-                      row.requester,
                       named.stream().map(source -> source.name).toList(),
                       mainOf(row.repoId),
                       // Read LIVE, here and not at the fold: a request can wait a whole pipeline on
@@ -6259,6 +6416,7 @@ public class ReleaseRequests {
                     row.version = version;
                   }
                   row.updatedAt = Instant.now();
+                  deliveries.released(row, released);
                   return new ReleasedSources(released, List.copyOf(handedOn));
                 });
     // Gate 3's trigger (epic qits-897), as settle() pulls it for every RELEASED move.
@@ -6284,15 +6442,19 @@ public class ReleaseRequests {
       try {
         // Under a request context: ask() is a door's method and reads the repository and the
         // feature classification outside its own transaction, which the worker thread has none for.
+        // Inside handingOn: the add is the arrival half of the MOVED written next, not a JOINED.
         Asked landed =
-            withRequestContext(
+            deliveries.handingOn(
                 () ->
-                    ask(
-                        ask.repoId(),
-                        source.branch(),
-                        "handed on from " + ask.qualifiedId() + ": " + why,
-                        source.requester(),
-                        source.priority() == null ? null : source.priority().name()));
+                    withRequestContext(
+                        () ->
+                            ask(
+                                ask.repoId(),
+                                source.branch(),
+                                // The recorded author, carried on: it states nothing new (qits-1673).
+                                source.requester(),
+                                source.priority() == null ? null : source.priority().name())));
+        movedOn(ask, landed.request().id(), source.branch());
         LOG.infof(
             "Release request %s handed %s on to %s: %s",
             ask.qualifiedId(), source.branch(), landed.request().qualifiedId(), why);
@@ -6302,6 +6464,27 @@ public class ReleaseRequests {
             "Could not hand %s on from released request %s (%s); the branch is kept",
             source.branch(), ask.qualifiedId(), why);
       }
+    }
+  }
+
+  /**
+   * <b>MOVED</b> for a branch {@link #handOn} placed (qits-1719): it left the released request
+   * {@code ask} names for {@code landedId}. Its own transaction, after the ask's committed, and
+   * never able to fail the hand-on.
+   */
+  private void movedOn(ReleaseExecutor.Release ask, String landedId, String branch) {
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () ->
+                  requests
+                      .findByIdOptional(landedId)
+                      .ifPresent(
+                          landed ->
+                              deliveries.moved(
+                                  ask.requestId(), ask.qualifiedId(), landed, branch)));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record %s as moved from %s", branch, ask.qualifiedId());
     }
   }
 
@@ -6452,6 +6635,9 @@ public class ReleaseRequests {
                             row.version = version;
                           }
                           row.updatedAt = Instant.now();
+                          if (state == ReleaseRequest.State.FAILED) {
+                            deliveries.failed(row, BranchDeliveries.Failure.RELEASE, null);
+                          }
                         }));
     if (state == ReleaseRequest.State.RELEASED || state == ReleaseRequest.State.FAILED) {
       // Gate 3's trigger (epic qits-897): a release that tagged may now be publishing, one that
@@ -6588,7 +6774,8 @@ public class ReleaseRequests {
       Map<String, GateSubject.Upstreams> upstream,
       Map<String, String> queuedBehind,
       Map<String, ReleaseRequest> queuedNext,
-      Map<String, FeatureFreezeThreshold> featureFreezes) {}
+      Map<String, FeatureFreezeThreshold> featureFreezes,
+      Map<String, List<String>> participants) {}
 
   /**
    * Names a list of rows without a query per row: one read of every named source in the page, one
@@ -6684,7 +6871,9 @@ public class ReleaseRequests {
         // feature counts need none — they are read off the named sources already in hand.
         queuedBehindOf(rows),
         queuedNextOf(ids),
-        featureFreezes(repoIds));
+        featureFreezes(repoIds),
+        // Who took part (qits-1673): one query for the page.
+        participants.principalsOfEach(ids));
   }
 
   /**
@@ -6739,7 +6928,8 @@ public class ReleaseRequests {
         Map.of(row.id, upstreamRequests.forOne(row)),
         queuedBehindOf(List.of(row)),
         queuedNextOf(List.of(row.id)),
-        featureFreezes(repoIds));
+        featureFreezes(repoIds),
+        Map.of(row.id, participants.principalsOf(row.id)));
   }
 
   /** Each queued row's active request's qualified id, keyed by its uuid (epic qits-1580). */
@@ -6834,6 +7024,8 @@ public class ReleaseRequests {
         contentRecorder.displayReadsSynchronously()
             ? withRequestContext(() -> approvalRequirements(page, gateSets))
             : approvalRequirements(page, gateSets);
+    // The items read each work item live (qits-1673), once per distinct branch on the page.
+    Map<String, Optional<ReleaseRequestWorkItemDto>> workItemsSeen = new HashMap<>();
     return page.rows().stream()
         .map(
             row -> {
@@ -6879,7 +7071,12 @@ public class ReleaseRequests {
                   row.supersededBy == null ? null : page.successors().get(row.supersededBy),
                   row.queuedBehind == null ? null : page.queuedBehind().get(row.queuedBehind),
                   page.queuedNext().get(row.id),
-                  page.featureFreezes().getOrDefault(row.repoId, FeatureFreezeThreshold.PLATFORM));
+                  page.featureFreezes().getOrDefault(row.repoId, FeatureFreezeThreshold.PLATFORM),
+                  page.participants().getOrDefault(row.id, List.of()),
+                  items.items(
+                      page.named().getOrDefault(row.id, List.of()),
+                      page.mainBranchByRepo().getOrDefault(row.repoId, DEFAULT_MAIN),
+                      workItemsSeen));
             })
         .toList();
   }
@@ -7457,6 +7654,8 @@ public class ReleaseRequests {
    *     null (epic qits-1580)
    * @param queuedNext the unreleased request queued behind this one, else null
    * @param featureFreeze the threshold in force for this request's repository, and its level
+   * @param participants who took part, sorted (qits-1673)
+   * @param requestItems what the request is about, read for this answer (qits-1673)
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
@@ -7469,7 +7668,9 @@ public class ReleaseRequests {
       String supersededByQualifiedId,
       String queuedBehindQualifiedId,
       ReleaseRequest queuedNext,
-      FeatureFreezeThreshold featureFreeze) {
+      FeatureFreezeThreshold featureFreeze,
+      List<String> participants,
+      List<ReleaseRequestItemDto> requestItems) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -7510,9 +7711,10 @@ public class ReleaseRequests {
         effectivePriorityOf(named).name(),
         row.mergedSha,
         row.state.name(),
-        row.summary,
+        // Deprecated (qits-1673): the derived text, as this read derives it.
+        ReleaseRequestItems.text(requestItems),
         row.requester,
-        isUnattended(row),
+        isUnattended(participants),
         row.gateTicketId,
         row.detail,
         approval.required(),
@@ -7539,7 +7741,9 @@ public class ReleaseRequests {
         queuedBehindQualifiedId,
         queuedNext == null ? null : queuedNext.id,
         queuedNext == null ? null : queuedNext.qualifiedId,
-        featureFreezeOf(row, named, featureFreeze));
+        featureFreezeOf(row, named, featureFreeze),
+        participants,
+        requestItems);
   }
 
   /**
@@ -7615,6 +7819,12 @@ public class ReleaseRequests {
     source.feature = feature;
     source.explicitJoin = explicitJoin;
     sources.persist(source);
+    // Whoever a source is added for takes part, on every path that adds one — the doors, a VERIFIED
+    // phase move, the hand-on after a release (qits-1673). Never removed with the source.
+    participants.add(requestId, actor);
+    // JOINED (qits-1719) — for every add but the default branch's, and silenced when the add is
+    // a hand-on, which handOn writes as MOVED once it knows where the branch landed.
+    requests.findByIdOptional(requestId).ifPresent(row -> deliveries.joined(row, branch));
   }
 
   /**

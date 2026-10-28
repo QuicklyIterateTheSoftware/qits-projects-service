@@ -12,8 +12,6 @@ components:
         branch:
           type: string
           pattern: \S
-        requester:
-          type: string
         priority:
           type: string
     AdoptProjectRepositoryRequest:
@@ -342,6 +340,70 @@ components:
       - AUTH_REQUIRED
       - UNREACHABLE
       - FAILED
+    BranchDeliveries:
+      type: object
+      description: Where one branch stands in each repository of its project.
+      properties:
+        branch:
+          type: string
+          description: The branch asked about
+        everywhere:
+          type:
+          - string
+          - "null"
+          description: "The branch's least advanced step across every repository of\
+            \ its project — PUSHED, JOINED, RELEASED or LIVE — however `repository`\
+            \ narrowed the deliveries; null when the branch has no row"
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchDelivery"
+          description: One row per repository the branch was pushed to or delivered
+            in
+    BranchDelivery:
+      type: object
+      description: The last delivery step one branch reached in one repository.
+      properties:
+        projectId:
+          type: string
+        repoId:
+          type: string
+        repository:
+          type: string
+          description: The repository's name
+        step:
+          type: string
+          description: "PUSHED, JOINED, MOVED, FAILED, CONFLICTED, WITHDRAWN, RELEASED\
+            \ or LIVE"
+        requestId:
+          type:
+          - string
+          - "null"
+          description: The request carrying the branch; null on PUSHED
+        qualifiedId:
+          type:
+          - string
+          - "null"
+          description: That request's qualified id
+        foldSha:
+          type:
+          - string
+          - "null"
+          description: The request's fold at the step; null before its first fold
+        runId:
+          type:
+          - string
+          - "null"
+          description: "FAILED only: the red CI run or the newest automation run"
+        version:
+          type:
+          - string
+          - "null"
+          description: "RELEASED and LIVE: the tag"
+        changedAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: When the step was written
     BranchDto:
       type: object
       properties:
@@ -847,16 +909,15 @@ components:
       type: object
       required:
       - branch
-      - summary
       properties:
         branch:
           type: string
           pattern: \S
         summary:
           type: string
-          pattern: \S
-        requester:
-          type: string
+          deprecated: true
+          description: "Ignored. What a request is about is derived from its sources:\
+            \ see items on the answer."
         priority:
           type: string
     CriterionApprovalDto:
@@ -2155,8 +2216,10 @@ components:
           type: string
         summary:
           type: string
+          deprecated: true
         requester:
           type: string
+          deprecated: true
         unattended:
           type: boolean
         gateTicketId:
@@ -2222,6 +2285,23 @@ components:
           type: string
         featureFreeze:
           $ref: "#/components/schemas/FeatureFreezeDto"
+        participants:
+          type: array
+          items:
+            type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestItemDto"
+    ReleaseRequestItemDto:
+      type: object
+      properties:
+        source:
+          type: string
+        label:
+          type: string
+        workItem:
+          $ref: "#/components/schemas/ReleaseRequestWorkItemDto"
     ReleaseRequestSourceDto:
       type: object
       properties:
@@ -2241,6 +2321,13 @@ components:
           type: boolean
         explicitJoin:
           type: boolean
+    ReleaseRequestWorkItemDto:
+      type: object
+      properties:
+        qualifiedId:
+          type: string
+        title:
+          type: string
     RenameRepositoryRequest:
       type: object
       required:
@@ -2626,8 +2713,6 @@ components:
         priority:
           type: string
           pattern: \S
-        requester:
-          type: string
     SubmoduleChangesDto:
       type: object
       properties:
@@ -3801,6 +3886,49 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
+        - qits:agent
+  /projects/api/branch-deliveries:
+    get:
+      summary: "Where a branch stands on its way to production, in each repository"
+      description: "The branch's delivery ledger rows: per repository the last step\
+        \ it reached (PUSHED, JOINED, MOVED, FAILED, CONFLICTED, WITHDRAWN, RELEASED,\
+        \ LIVE), the request carrying it and the fold, run and version of that step.\
+        \ `everywhere` is the least advanced step over every repository of the project.\
+        \ An unknown branch answers 200 with no deliveries and `everywhere` null;\
+        \ a branch in several projects needs `project`, else 400."
+      operationId: getBranchDeliveries
+      parameters:
+      - name: branch
+        in: query
+        schema:
+          type: string
+      - name: project
+        in: query
+        schema:
+          type: string
+      - name: repository
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchDeliveries"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Branch Deliveries Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:system
         - qits:agent
   /projects/api/gc/tags:
     post:
@@ -6057,19 +6185,20 @@ paths:
         \ before it. A repository has at most one unreleased request, whatever its\
         \ archetype: a branch that already participates answers that request, and\
         \ a branch nothing has asked about JOINS it as a further source, so the answer\
-        \ may carry an id you did not create, sources you did not name and somebody\
-        \ else's summary. Only when your branch is the request's sole asked-for source\
-        \ do your summary and requester replace the request's; otherwise the words\
-        \ of the ask that opened it stand, and yours are recorded on your own source\
-        \ row. Poll until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why,\
-        \ and conflict says what to resolve. A branch of main makes a main-only request:\
-        \ its only source is main, which is how qits-maintenance (qits:system) opens\
-        \ a dependency bump whose pre-run writes the bump itself. A fold is announced\
-        \ on the bus as ReleaseRequestChanged with preRun=PENDING while its release-request\
-        \ automations (the pre-run) settle, and with preRun=DONE once per fold when\
-        \ they are fresh or waived; QA builds on DONE only, and preRun.state on the\
-        \ answer says where the pre-run stands. The project's delivery desk (qits:desk)\
-        \ answers 403: it never opens or joins a release request."
+        \ may carry an id you did not create, sources you did not name and other participants.\
+        \ The request is attributed to the authenticated caller: it becomes a participant\
+        \ (participants on the answer) and the new source's addedBy; a stated requester\
+        \ is ignored. summary is ignored too: what a request is about is derived from\
+        \ its sources (items on the answer). Poll until RELEASED, REJECTED, CONFLICTED\
+        \ or FAILED; detail says why, and conflict says what to resolve. A branch\
+        \ of main makes a main-only request: its only source is main, which is how\
+        \ qits-maintenance (qits:system) opens a dependency bump whose pre-run writes\
+        \ the bump itself. A fold is announced on the bus as ReleaseRequestChanged\
+        \ with preRun=PENDING while its release-request automations (the pre-run)\
+        \ settle, and with preRun=DONE once per fold when they are fresh or waived;\
+        \ QA builds on DONE only, and preRun.state on the answer says where the pre-run\
+        \ stands. The project's delivery desk (qits:desk) answers 403: it never opens\
+        \ or joins a release request."
       operationId: createReleaseRequest
       parameters:
       - name: repoId

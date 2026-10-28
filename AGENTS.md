@@ -587,6 +587,89 @@ merely its only occupant. Six things about it are rules:
   already has, two moves that end where they began, and a rolled-back transaction announce nothing.
   The port is `control/ReleaseRequestStateAnnouncer`, the adapter `bus/ReleaseRequestStateChangedAnnouncer`
   (`@DefaultBean`); the suite records through `RecordingReleaseRequestStateAnnouncer`.
+- **`BranchDeliveryChanged` says where a branch stands (qits-1719).** Keyed by the branch, not the
+  request: a release hands a late branch on, a successor supersedes a red release and carries its
+  branches, and an estate branch rides one request per repository. Payload, every field top level
+  because wait selections read top-level paths: `{projectId, repoId, repository, branch, requestId,
+  qualifiedId, foldSha?, foldAttempt?, step, previousRequestId?, previousQualifiedId?, failure?, runId?,
+  version?, everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure`
+  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, `runId` the red run or the newest automation run, absent for
+  `RELEASE` and `FOLD`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag).
+  `foldAttempt` (qits-1725) is set on `CONFLICTED` and on `FAILED`/`FOLD` only: a conflict or a
+  missing source lands no fold, so `foldSha` stays at the last fold that landed and cannot tell two
+  failed attempts apart. `control/FoldAttempt` is the key — for a conflict the first 16 hex chars of
+  the SHA-256 of the sorted, distinct `head@headSha` pairs joined by `\n`, for a missing source
+  `missing:<ref>` (`missing:refs/heads/epic/qits-1681`). `everywhere` is the branch's least advanced step across the project's
+  repositories (PUSHED/WITHDRAWN 0, JOINED/MOVED/FAILED/CONFLICTED 1, RELEASED 2, LIVE 3), named
+  `PUSHED`, `JOINED`, `RELEASED` or `LIVE`.
+  - **The ledger is `branch_delivery` (V67)**, one row per (project, repository, branch);
+    `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
+    (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
+    the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold, fold attempt
+    — `fold_attempt`, V68) is neither written nor announced: a CI or automation FAILED once per
+    fold, CONFLICTED and a FOLD FAILED once per attempt, JOINED once per request. `PUSHED` is
+    ledger-only — a push (`onBranchMoved`) of a branch no request carries — so a repository that has
+    not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push
+    (the name was reused), and a deletion removes a row only while it is still PUSHED.
+  - **Followed**: the named `BRANCH` sources only — never the default branch, `release/*`,
+    `maintenance/*` or an implicit tag.
+  - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
+    under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
+    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI, failed
+    automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
+    (qits-1725); CONFLICTED in `apply`;
+    WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
+    withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
+    tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
+    step for a decline, a queue's activation or a refold to PENDING.
+  - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
+    the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
+    notices). The port is `control/BranchDeliveryAnnouncer`, the adapter
+    `bus/BranchDeliveryChangedAnnouncer` (`@DefaultBean`); the suite records through
+    `RecordingBranchDeliveryAnnouncer` and `BranchDeliveryTest` drives every step.
+  - **A branch's owning agent is told when it fails its build or moves (qits-1722)**, by
+    `control/BranchDeliveryNotices`, the one `BranchDeliveryStepListener`. It replaced qits-1672's
+    request-keyed `ReleaseRequestFailureNotices` (`fyi: your <qualifiedId> failed its build` to
+    whoever filed or joined; gone, its `release_request_failure_notice` table, V61, kept as history
+    and no longer written). Texts, exactly: FAILED with failure `CI` or `AUTOMATION` (not `RELEASE`)
+    → `fyi: your <branch> failed its build in <qualifiedId>`; MOVED → `fyi: your <branch> moved
+    from <previousQualifiedId> to <qualifiedId>`; (qits-1725) CONFLICTED → `fyi: your <branch>
+    conflicts in <qualifiedId> on <paths>`, only to a branch some conflict names as its `head`
+    (`refs/heads/<branch>` or bare; a conflict whose only head is `main` or a tag tells nobody),
+    `<paths>` the distinct paths of that branch's conflicts in conflict order, the first five then
+    `, and <n> more`; FAILED with failure `FOLD` → `fyi: your <branch> is missing on the git host;
+    <qualifiedId> cannot fold`, only to the branch whose `refs/heads/<branch>` is the missing ref.
+    Every source still takes the ledger step. The conflicts reach the listener on the in-process
+    `BranchDeliveryStep.conflicts` (never on `BranchDeliveryChanged`, never in the ledger), handed
+    in by `BranchDeliveries.conflicted(row, conflicts)`; the missing ref is read off the step's
+    `missing:<ref>` attempt (`FoldAttempt.missingRef`). **Addressed by the git_refs rule, never by
+    `requester`, participants or `addedBy`**: the ACTIVE agent whose `wrapperBranch` equals the
+    branch or whose `<wrapperBranch>-` it starts with, among the agents whose wrapper repository
+    (`repositoryId`) is a repository of the request's project; the longest wrapper branch wins; none
+    is `NO_AGENT` and nothing is said. The agents are listed by `HttpWorkspaceAgentLookup.active()`
+    — `GET /workspaces/api/agents?state=ACTIVE`, reading `repositoryId` and `wrapperBranch` beside
+    `agentId`/`workId` — and narrowed by project on this side, so the consumer pact's request is
+    unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
+    step's transaction, `on conflict do nothing` on `notice_key` — `FAILED:<requestId>:<foldSha>:
+    <repoId>:<branch>` (once per fold and branch), `MOVED:<repoId>:<branch>:<from>:<to>`,
+    `CONFLICTED:<requestId>:<foldAttempt>:<repoId>:<branch>` or (a missing source)
+    `FAILED:<requestId>:<foldAttempt>:<repoId>:<branch>` (once per attempt and branch; a changed
+    conflict is a new attempt and is told again) — with
+    the text stored and `agent_id` null; the owner is an HTTP question, so the worker after the
+    commit resolves it and records `agent_id`/`work_id` with the outcome (`DELIVERED`, `LAUNCHED`,
+    `RESUMED`, `NO_AGENT`, `GAVE_UP`), claiming the row first (2 min), retrying an unreachable
+    lookup or delivery up to 10 attempts and giving up on a notice older than a day.
+    `ReleaseRequestSweep.sweepBranchDeliveryNotices` delivers what a crash left. The fold attempt
+    has no column (no schema change): it is in the key, and `attemptPrefix(step, requestId,
+    attempt)` / `attemptOf(key, requestId)` read it back. `BranchDeliveryNoticeTest` drives it.
+  - **The read door** (qits-1720) is `GET /projects/api/branch-deliveries?branch=&repository=&project=`
+    (`api/BranchDeliveriesController`, `getBranchDeliveries`, the release-requests list's roles,
+    `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
+    requestId, qualifiedId, foldSha, runId, version, changedAt}]}`. `repository` (name or id)
+    narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. An unknown branch is
+    200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
+    `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
+    RELEASED in qits-demo-service` records it for qits-platform-access-cli.
 - **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
   mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
   `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps
@@ -2763,7 +2846,7 @@ listener's drops; the source makes them idempotent itself). Seven ship:
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
-| `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1672 notice for the fold, or all of its notices settled with none told. Owed notices are decided by `scan` once settled. Event id: the bus event's, or `foldKey(request, sha)` when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
+| `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1722 branch notice (`branch_delivery_notice`, step `FAILED`) for the fold, or all of its notices settled with none told to a still-ACTIVE agent. **CONFLICTED, and REJECTED with `rejectingGate` `fold` (a missing source), are read by fold attempt, not by sha** (qits-1725): the request's current attempt is the `fold_attempt` of its newest `branch_delivery` row at that step, its notices those whose key starts `attemptPrefix(step, request, attempt)` — so a build's notice at the same `mergedSha` never silences a later conflict — and the why is `no agent owns <branch>` (the heads or the missing branch whose notice settled `NO_AGENT`, comma-joined; the missing branch, else `it`, with no notice at all). Owed notices are decided by `scan` once settled (an attempt only while the request still stands at it). Event id: the bus event's, or `foldKey(request, sha)` — `foldKey(request, attempt)` for an attempt — when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 

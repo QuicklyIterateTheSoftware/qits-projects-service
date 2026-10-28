@@ -184,8 +184,13 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
     assertTrue(markdown.contains("ask the\nowner on the item's thread"));
     assertTrue(markdown.contains("you are told a slot opened"));
+    assertTrue(
+        markdown.contains("reaches you only when no agent owns the branch"),
+        "qits-1725: a conflict or a missing source ref reaches the desk only without an owner");
     assertEquals(
-        List.of(DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE),
+        List.of(
+            DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }

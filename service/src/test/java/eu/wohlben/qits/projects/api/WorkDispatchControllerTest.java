@@ -754,7 +754,9 @@ public class WorkDispatchControllerTest {
     assertEquals(1, requests.size(), requests.toString());
     String branch = "epic/" + qualifiedIdOf(projectId, epicId);
     assertTrue(sourceNamesOf(requests.get(0)).contains(branch));
-    assertEquals("Epic released-epic: Released epic", requests.get(0).get("summary"));
+    // Derived from the sources (qits-1673): the epic's branch names it, so its id and title.
+    assertEquals(
+        qualifiedIdOf(projectId, epicId) + " Released epic", requests.get(0).get("summary"));
     assertTrue(
         threadOf(epicId).stream()
             .anyMatch(

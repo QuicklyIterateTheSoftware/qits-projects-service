@@ -1,0 +1,18 @@
+{
+  "branch": "ticket/qits-9001",
+  "everywhere": "RELEASED",
+  "deliveries": [
+    {
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repository": "qits-demo-service",
+      "step": "RELEASED",
+      "requestId": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "qits-demo-service-rr-3",
+      "foldSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001",
+      "runId": null,
+      "version": "2026.1028.123714",
+      "changedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

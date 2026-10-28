@@ -30,7 +30,7 @@
     "priority": "MEDIUM",
     "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001",
     "state": "PENDING",
-    "summary": "Release the CSV export",
+    "summary": "feature/export",
     "requester": "dev",
     "unattended": false,
     "gateTicketId": null,
@@ -108,7 +108,17 @@
       "threshold": 3,
       "frozen": false,
       "source": "PLATFORM"
-    }
+    },
+    "participants": [
+      "dev"
+    ],
+    "items": [
+      {
+        "source": "feature/export",
+        "label": "feature/export",
+        "workItem": null
+      }
+    ]
   },
   "placement": {
     "outcome": "CREATED",

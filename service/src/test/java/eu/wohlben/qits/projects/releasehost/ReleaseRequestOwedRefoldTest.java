@@ -340,8 +340,10 @@ public class ReleaseRequestOwedRefoldTest {
   private String inQa(String inRepo) {
     String id =
         given()
+            .header("X-Qits-User", "ada")
+            .header("X-Qits-Roles", "qits:admin")
             .contentType(ContentType.JSON)
-            .body("{\"branch\":\"work\",\"summary\":\"a gated release\",\"requester\":\"ada\"}")
+            .body("{\"branch\":\"work\",\"summary\":\"a gated release\"}")
             .post(base(inRepo))
             .then()
             .statusCode(200)

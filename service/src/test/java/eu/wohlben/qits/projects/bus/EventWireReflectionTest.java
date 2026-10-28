@@ -58,6 +58,9 @@ public class EventWireReflectionTest {
   /** And the one that says how a release request stands (qits-1153). */
   @Inject Instance<ReleaseRequestStateChangedAnnouncer> shippedStateAnnouncer;
 
+  /** And the one that says where a branch stands (qits-1719). */
+  @Inject Instance<BranchDeliveryChangedAnnouncer> shippedBranchDeliveryAnnouncer;
+
   /** And the one that says an approval requirement changed (epic qits-1038). */
   @Inject Instance<ApprovalRequirementChangedAnnouncer> shippedApprovalRequirementAnnouncer;
 
@@ -110,6 +113,7 @@ public class EventWireReflectionTest {
             RepositoryRenamed.class,
             ReleaseRequestChanged.class,
             ReleaseRequestStateChanged.class,
+            BranchDeliveryChanged.class,
             ApprovalRequirementChanged.class,
             SCMRelease.class,
             ProjectCreated.class,
@@ -129,7 +133,7 @@ public class EventWireReflectionTest {
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged, ReleaseRequestStateChanged, SCMRelease, the three project lifecycle events and the"
+            + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, SCMRelease, the three project lifecycle events and the"
             + " transition's payload PAIR and EntityCommented out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
@@ -156,6 +160,10 @@ public class EventWireReflectionTest {
         targets.contains(ReleaseRequestStateChanged.class),
         "ReleaseRequestStateChangedAnnouncer publishes this; it is what wakes an agent waiting on a"
             + " release request");
+    assertTrue(
+        targets.contains(BranchDeliveryChanged.class),
+        "BranchDeliveryChangedAnnouncer publishes this (qits-1719); it is what wakes an agent"
+            + " waiting on its branch rather than on a request");
     assertTrue(
         targets.contains(ApprovalRequirementChanged.class),
         "ApprovalRequirementChangedAnnouncer publishes this (epic qits-1038); an OPEN requirement is"
@@ -226,6 +234,12 @@ public class EventWireReflectionTest {
   @Test
   public void theReleaseRequestStateAnnouncerShipsAsABean() {
     assertTrue(!shippedStateAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  @Test
+  public void theBranchDeliveryAnnouncerShipsAsABean() {
+    assertTrue(
+        !shippedBranchDeliveryAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   @Test

@@ -75,7 +75,11 @@ public class ReleaseRequestSource extends PanacheEntityBase implements CausedRow
   @Column(name = "added_at", nullable = false)
   public Instant addedAt;
 
-  /** Who put it on the request; null for the implied {@code main} of a machine-made create. */
+  /**
+   * Who put it on the request — the authenticated caller of the ask (qits-1673), never a name the
+   * body stated; null for the implied {@code main}. Who took part in the request as a whole is
+   * {@link ReleaseRequestParticipant}, which outlives this row.
+   */
   @Column(name = "added_by")
   public String addedBy;
 
@@ -96,6 +100,16 @@ public class ReleaseRequestSource extends PanacheEntityBase implements CausedRow
    */
   @Column(name = "explicit_join", nullable = false)
   public boolean explicitJoin;
+
+  /**
+   * What this source is about, where a read cannot derive it (qits-1673, V66): the head commit
+   * subject of a {@code maintenance/*} branch — {@code bump(dependencies): 2 dependencies} — read
+   * from the git host when the request folds, so that a read never asks the git host. Null on every
+   * other source, whose label is derived on read ({@code ReleaseRequestItems}), and on a maintenance
+   * source no fold has read yet.
+   */
+  @Column(length = 512)
+  public String label;
 
   @Column(name = "causation_id")
   public UUID causationId;

@@ -22,6 +22,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Optional;
 import org.jboss.logging.Logger;
 
@@ -456,9 +457,14 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     StringBuilder text = new StringBuilder();
     text.append("A release of `")
         .append(named(rejection))
-        .append("` was asked for by **")
-        .append(rejection.requester())
-        .append("** — a machine, so nobody is waiting on it — and its build came back red.")
+        .append("` was asked for by ")
+        .append(askedBy(rejection))
+        .append(" — ")
+        .append(
+            rejection.participants() != null && rejection.participants().size() > 1
+                ? "machines"
+                : "a machine")
+        .append(", so nobody is waiting on it — and its build came back red.")
         .append(" The repository stops moving here until somebody fixes the build: the request")
         .append(" re-arms by itself on the next push to a participating branch.\n\n");
     text.append("| | |\n|---|---|\n");
@@ -475,10 +481,22 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     row(text, "Folded sha", code(rejection.mergedSha()));
     row(text, "Run", code(rejection.runId()) + " (" + rejection.status() + ")");
     text.append("\n**The gate's own words:** ").append(rejection.detail()).append("\n\n");
-    text.append("Reported by qits-projects because the release request has no human requester.")
+    text.append("Reported by qits-projects because the release request has no human or agent")
+        .append(" participant.")
         .append(" Read the run's log in qits-ci to find out why the build failed; this report")
         .append(" deliberately does not guess.\n");
     return text.toString();
+  }
+
+  /** The machine participants, each in bold, joined with "and" — or a placeholder where none. */
+  static String askedBy(Rejection rejection) {
+    List<String> participants = rejection.participants();
+    if (participants == null || participants.isEmpty()) {
+      return "**an unnamed caller**";
+    }
+    return participants.stream()
+        .map(participant -> "**" + participant + "**")
+        .collect(java.util.stream.Collectors.joining(" and "));
   }
 
   /** One further red verdict on a ticket that is already open. */

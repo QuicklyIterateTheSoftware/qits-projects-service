@@ -100,11 +100,11 @@ public class ReleaseRequestAgentBoundsTest {
   }
 
   private static ReleaseRequestController.CreateReleaseRequest ask(String branch) {
-    return new ReleaseRequestController.CreateReleaseRequest(branch, "an agent's release", null, null);
+    return new ReleaseRequestController.CreateReleaseRequest(branch, "an agent's release", null);
   }
 
   private String requestBySomebodyElse(String repoId, String branch) {
-    return releaseRequests.request(repoId, branch, "somebody's release", "setup", null).id();
+    return releaseRequests.request(repoId, branch, "setup", null).id();
   }
 
   private static void refused(Executable call) {
@@ -130,7 +130,7 @@ public class ReleaseRequestAgentBoundsTest {
                 .addSource(
                     OWN_REPO,
                     own,
-                    new ReleaseRequestController.AddReleaseRequestSource("feature/wider", null, null)));
+                    new ReleaseRequestController.AddReleaseRequestSource("feature/wider", null)));
   }
 
   @Test

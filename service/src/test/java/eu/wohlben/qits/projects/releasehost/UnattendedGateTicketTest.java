@@ -20,6 +20,7 @@ import eu.wohlben.qits.projects.control.ReleaseGates;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryName;
@@ -51,9 +52,10 @@ import org.junit.jupiter.api.Test;
  * a double would replace with the thing that cannot go wrong. The tickets are then read back over
  * the ordinary {@code /work} API, because that is what a person's browser reads.
  *
- * <p>Every request here is created with an explicit {@code requester}, which is the whole subject:
- * {@code dev-qits-maintenance} is the platform's bump robot and nobody watches what it asks
- * for; a person's name is somebody who does.
+ * <p>Every request here is created by a named caller, which is the whole subject: {@code
+ * dev-qits-maintenance} is the platform's bump robot and nobody watches what it asks for; a
+ * person's name is somebody who does. The caller is the forwarded identity, never a body field —
+ * the request's participants are what is read (qits-1673).
  */
 @QuarkusTest
 public class UnattendedGateTicketTest {
@@ -810,15 +812,13 @@ public class UnattendedGateTicketTest {
     return "/projects/api/repositories/" + repoId + "/release-requests";
   }
 
+  /** A create by {@code requester} — the forwarded caller, which is what attribution reads. */
   private String create(String branch, String requester) {
     return given()
+        .header("X-Qits-User", requester)
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
-        .body(
-            "{\"branch\":\""
-                + branch
-                + "\",\"summary\":\"bump(dependencies)\",\"requester\":\""
-                + requester
-                + "\"}")
+        .body("{\"branch\":\"" + branch + "\",\"summary\":\"bump(dependencies)\"}")
         .post(base())
         .then()
         .statusCode(200)
@@ -827,17 +827,19 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * A create with no {@code requester} in the body. The suite runs as an authenticated dev user, so
-   * the controller would fall back to that identity — which is precisely a person — and the case
-   * this test wants is the row with a null requester. So the column is blanked directly.
+   * A request nobody is attributed to. Every door attributes to its caller, and the suite's callers
+   * are all authenticated, so the case this test wants — a request with no participant at all — is
+   * made by clearing the participants (and the deprecated column) directly.
    */
   private String createWithoutRequester(String branch) {
     String id = create(branch, "somebody");
     QuarkusTransaction.requiringNew()
         .run(
-            () ->
-                ReleaseRequest.<ReleaseRequest>findByIdOptional(id)
-                    .ifPresent(row -> row.requester = null));
+            () -> {
+              ReleaseRequestParticipant.delete("requestId", id);
+              ReleaseRequest.<ReleaseRequest>findByIdOptional(id)
+                  .ifPresent(row -> row.requester = null);
+            });
     return id;
   }
 

@@ -50,7 +50,7 @@
     "priority": "HIGH",
     "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
     "state": "RELEASED",
-    "summary": "Release the CSV export and the rounding fix",
+    "summary": "feature/export; fix/rounding",
     "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
@@ -215,6 +215,21 @@
       "threshold": 3,
       "frozen": false,
       "source": "PLATFORM"
-    }
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "feature/export",
+        "label": "feature/export",
+        "workItem": null
+      },
+      {
+        "source": "fix/rounding",
+        "label": "fix/rounding",
+        "workItem": null
+      }
+    ]
   }
 }

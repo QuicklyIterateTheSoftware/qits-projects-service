@@ -1,0 +1,12 @@
+-- WHICH FOLD ATTEMPT A CONFLICTED OR A FOLD'S FAILED IS ABOUT (qits-1725).
+--
+-- fold_sha is the request's merged sha, the last fold that LANDED, and a fold that conflicts or names
+-- a missing source lands nothing — so two different failed attempts shared one fold_sha, and the
+-- second was deduplicated away as the position the row already held. A step is now published again
+-- unless (step, request_id, fold_sha, fold_attempt) all equal the row's:
+--
+--   fold_attempt  CONFLICTED: the first 16 hex chars of the SHA-256 of the sorted, distinct
+--                 `head@headSha` pairs the conflicts name, joined by a newline
+--                 (control/FoldAttempt). FAILED with failure FOLD: `missing:<ref>`, the ref the git
+--                 host does not have. Null on every other step, and on every row written before this.
+alter table branch_delivery add column fold_attempt text;

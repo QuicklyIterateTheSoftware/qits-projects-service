@@ -10,7 +10,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "PENDING",
-      "summary": "Waiting on its gates",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -78,7 +78,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -90,7 +94,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "RELEASED",
-      "summary": "Released, deploying",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -158,7 +162,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -170,7 +178,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000004",
       "state": "READY",
-      "summary": "Folded and ready",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -245,7 +253,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -257,7 +269,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000003",
       "state": "REJECTED",
-      "summary": "Rejected by CI",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -332,7 +344,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000a",
@@ -344,7 +360,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "CONFLICTED",
-      "summary": "Cannot fold",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -412,7 +428,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -424,7 +444,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "FINALIZED",
-      "summary": "Finalized release",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -492,7 +512,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     }
   ]
 }

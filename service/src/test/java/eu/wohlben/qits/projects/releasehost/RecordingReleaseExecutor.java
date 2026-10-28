@@ -36,7 +36,6 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
       String branch,
       String expectedSha,
       String summary,
-      String requester,
       List<String> namedSources,
       String defaultBranch,
       String priority) {}
@@ -112,7 +111,6 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
             release.backingBranch(),
             release.mergedSha(),
             release.summary(),
-            release.requester(),
             release.namedSources(),
             release.defaultBranch(),
             release.priority()));
