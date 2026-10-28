@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
@@ -16,8 +17,8 @@ public class DevelopmentGuideService {
   @Inject AgentSurfaceConfigurationService surfaces;
 
   /**
-   * The variant's markdown: the holder's brief (its surface's live system prompt, when it has
-   * one), the variant's own part, then, for an in-platform variant, the development flow.
+   * The variant's markdown: the variant's own part, then, for an in-platform variant, the holder's
+   * brief (see {@link #brief}) and the development flow.
    */
   public String render(String variant) {
     List<String> parts = new ArrayList<>();
@@ -27,8 +28,8 @@ public class DevelopmentGuideService {
     }
     String holder = DevelopmentGuideDefaults.HOLDER_SURFACE.get(variant);
     if (holder != null) {
-      String brief = surfaces.get(holder).systemPrompt();
-      if (brief != null && !brief.isBlank()) {
+      String brief = brief(surfaces.get(holder));
+      if (!brief.isBlank()) {
         parts.add("## Your brief\n\n" + brief.strip());
       }
       String flow = text(DevelopmentGuideDefaults.FLOW_KEY);
@@ -37,6 +38,19 @@ public class DevelopmentGuideService {
       }
     }
     return String.join("\n\n", parts) + "\n";
+  }
+
+  /**
+   * A holder's brief: its surface's live system prompt or, where that is blank, its initial prompt.
+   * {@code ticket.dispatch} keeps its brief in the initial prompt.
+   */
+  static String brief(AgentSurfaceConfigurationDto holder) {
+    String system = holder.systemPrompt();
+    if (system != null && !system.isBlank()) {
+      return system;
+    }
+    String initial = holder.initialPrompt();
+    return initial == null ? "" : initial;
   }
 
   /** One stored part, or its shipped text where no row exists. */

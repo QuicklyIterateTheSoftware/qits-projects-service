@@ -105,6 +105,58 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
   }
 
+  /**
+   * qits-1679: live, {@code ticket.dispatch} keeps its brief in the initial prompt and an empty
+   * system prompt. The agent variant falls back to it rather than print an intro and no brief.
+   */
+  @Test
+  public void theAgentVariantFallsBackToTheHoldersInitialPrompt() {
+    String key = AgentSurfaceDefaults.TICKET_DISPATCH;
+    AgentSurfaceConfigurationDto holder = surfaces.get(key);
+    try {
+      surfaces.save(
+          key, withPrompts(holder, "", "The dispatch brief lives in the initial prompt."), "owner");
+      String markdown = read("agent").getString("markdown");
+      assertTrue(markdown.contains("## Your brief"), markdown);
+      assertTrue(markdown.contains("The dispatch brief lives in the initial prompt."), markdown);
+      assertTrue(
+          markdown.indexOf("## Your brief") < markdown.indexOf("# Development flow"), markdown);
+    } finally {
+      surfaces.save(key, AgentSurfaceDefaults.shippedDefault(key), null);
+    }
+  }
+
+  /** qits-1679: no brief renders for a refinement room, and its part promises none. */
+  @Test
+  public void theRefinementVariantPromisesNoBriefItLacks() {
+    String markdown = read("refinement").getString("markdown");
+    assertFalse(markdown.contains("## Your brief"), markdown);
+    String part = DevelopmentGuideDefaults.REFINEMENT_GUIDE;
+    assertFalse(part.toLowerCase().contains("brief"), part);
+    assertTrue(part.contains("Your dispatched turn carries the refine instruction"), part);
+    assertEquals(
+        List.of(DevelopmentGuideDefaults.QITS_1679_REFINEMENT_GUIDE),
+        DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("refinement")),
+        "an unedited refinement part rolls forward to the new text");
+  }
+
+  /** qits-1679: an unedited refinement row rolls forward on boot; an edited one stays. */
+  @Test
+  public void anUneditedRefinementPartRollsForward() {
+    String key = DevelopmentGuideDefaults.key("refinement");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1679_REFINEMENT_GUIDE), null);
+    assertTrue(guide.rollForward() >= 1);
+    assertTrue(
+        read("refinement")
+            .getString("markdown")
+            .startsWith(DevelopmentGuideDefaults.REFINEMENT_GUIDE));
+
+    surfaces.save(key, withText(part, "an owner's refinement part"), "owner");
+    guide.rollForward();
+    assertTrue(read("refinement").getString("markdown").startsWith("an owner's refinement part"));
+  }
+
   /** qits-1679 follow-up: every variant says how to ask the delivery desk. */
   @Test
   public void everyVariantSaysHowToAskTheDesk() {
@@ -227,6 +279,23 @@ public class DevelopmentGuideControllerTest {
                         "CLAUDE", "", "", false, "SKIP_PERMISSIONS", false, "x", "", List.of(),
                         List.of())));
     assertEquals(403, refusal.statusCode());
+  }
+
+  private static AgentSurfaceConfigurationDto withPrompts(
+      AgentSurfaceConfigurationDto row, String systemPrompt, String initialPrompt) {
+    return new AgentSurfaceConfigurationDto(
+        row.surface(),
+        row.harness(),
+        row.model(),
+        row.effort(),
+        row.remoteControl(),
+        row.permissionMode(),
+        row.activityTracking(),
+        systemPrompt,
+        initialPrompt,
+        row.mcpServers(),
+        row.externalMcpServers(),
+        false);
   }
 
   private static AgentSurfaceConfigurationDto withText(AgentSurfaceConfigurationDto row, String text) {

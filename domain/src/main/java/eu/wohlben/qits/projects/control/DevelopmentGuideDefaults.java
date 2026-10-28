@@ -18,8 +18,9 @@ import java.util.Optional;
  *
  * <p><b>Variants.</b> {@code workstation} is for a person on a workstation. The other three are for
  * the platform's holders: a workspace agent, the delivery desk and a refinement room. An
- * in-platform variant is the holder's own brief (its surface's live system prompt, see {@link
- * #HOLDER_SURFACE}), then its part, then the shared development flow ({@value #FLOW_KEY}). The
+ * in-platform variant is its part, then the holder's own brief (its surface's live system prompt,
+ * else its initial prompt, see {@link #HOLDER_SURFACE}) where one is set, then the shared
+ * development flow ({@value #FLOW_KEY}). The
  * texts are composed, never copied, so the brief and the flow each live once.
  *
  * <p><b>Rolled forward on boot.</b> A stored part whose text equals one in {@link #PREVIOUS} was
@@ -226,14 +227,30 @@ public final class DevelopmentGuideDefaults {
       dispatch the next item as your brief says.\
       """;
 
-  /** A refinement room. */
-  public static final String REFINEMENT_GUIDE =
+  /**
+   * The refinement part as qits-1679 first shipped it, before the guide said where the refine
+   * instruction comes from.
+   */
+  public static final String QITS_1679_REFINEMENT_GUIDE =
       """
       # Development guide: refinement room
 
       You are in a refinement room for one epic or ticket. You refine it: you do not implement it.
       The implement phase starts from what you write, so your plan must fit the development flow
       below.\
+      """;
+
+  /**
+   * A refinement room. Its holder surface ({@code project.work}) carries no brief: the refine
+   * instruction is composed per dispatch, so the part promises none here.
+   */
+  public static final String REFINEMENT_GUIDE =
+      """
+      # Development guide: refinement room
+
+      You are in a refinement room for one epic or ticket. You refine it: you do not implement it.
+      Your dispatched turn carries the refine instruction; the development flow follows. The
+      implement phase starts from what you write, so your plan must fit that flow.\
       """;
 
   /**
@@ -473,5 +490,7 @@ public final class DevelopmentGuideDefaults {
    * entry: the rollout would then miss every unedited row.
    */
   public static final Map<String, List<String>> PREVIOUS =
-      Map.of(key(DESK), List.of(QITS_1679_DESK_GUIDE));
+      Map.of(
+          key(DESK), List.of(QITS_1679_DESK_GUIDE),
+          key(REFINEMENT), List.of(QITS_1679_REFINEMENT_GUIDE));
 }
