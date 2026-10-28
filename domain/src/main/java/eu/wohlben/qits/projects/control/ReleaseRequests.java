@@ -485,9 +485,6 @@ public class ReleaseRequests {
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
 
-  /** Tells the agents behind a request that its fold failed its build (qits-1672). */
-  @Inject ReleaseRequestFailureNotices failureNotices;
-
   /**
    * Where each branch stands (qits-1719): every point below where a named branch joins, moves,
    * fails, conflicts, is withdrawn, releases or goes live writes it there, inside the transaction
@@ -5066,7 +5063,6 @@ public class ReleaseRequests {
                       row.rejectingRunId = null;
                       row.detail = automationDetail(row);
                       row.updatedAt = Instant.now();
-                      failureNotices.owe(row);
                       deliveries.failed(
                           row, BranchDeliveries.Failure.AUTOMATION, newestAutomationRun(row));
                       return false;
@@ -5225,7 +5221,6 @@ public class ReleaseRequests {
                     // leaves it null — that is the whole discrimination.
                     row.rejectingRunId = red.runId();
                     row.rejectingGate = null;
-                    failureNotices.owe(row);
                     deliveries.failed(row, BranchDeliveries.Failure.CI, red.runId());
                     row.detail =
                         "Run "

@@ -3,10 +3,11 @@ package eu.wohlben.qits.projects.desktriggers;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ReleaseRequestStateChanged;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
+import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
-import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -29,13 +30,17 @@ import org.jboss.logging.Logger;
  *
  * <p>Reads this service's own {@link ReleaseRequestStateChanged} at {@code REJECTED}, {@code
  * CONFLICTED} or {@code FAILED}. The desk is the overseer of what nobody else owns, so it is told
- * only when no active agent was: qits-1672 tells the agent that filed or joined a request when a
- * build fails it ({@code release_request_failure_notice}), and that agent can raise an {@code @desk}
- * comment itself. So the source reads those notices for the request's fold:
+ * only when no active agent was: qits-1722 tells the agent owning each branch of a request when a
+ * build fails it ({@code branch_delivery_notice}, which replaced qits-1672's request-keyed {@code
+ * release_request_failure_notice}), and that agent can raise an {@code @desk} comment itself. So
+ * the source reads the fold's notices — those of the fold's step ({@link #noticeStep}: {@code
+ * FAILED} for a rejection or a failed release, {@code CONFLICTED} for a conflict once qits-1725 owes
+ * those), one per branch:
  *
  * <ul>
- *   <li><b>None:</b> no agent will be told (a maintenance bump, a request made off-platform, a
- *       person's, or a conflict, which qits-1672 does not report). The desk is told now.
+ *   <li><b>None:</b> no agent will be told (a maintenance bump or a request carrying no named
+ *       branch, a failed release, a decline, or a conflict, none of which is noticed). The desk is
+ *       told now.
  *   <li><b>Still owed:</b> not decided yet. {@link #scan} decides on a later sweep, once every
  *       notice of the fold is settled.
  *   <li><b>All settled:</b> decided by liveness, now. A told notice ({@code DELIVERED}, {@code
@@ -43,14 +48,14 @@ import org.jboss.logging.Logger;
  *       WorkspaceAgentDispatch#agentsFor} on the told notices' work items, the reading {@code
  *       RunningItems} makes, matched on the notice's agent id): that agent owns it, and nothing is
  *       said here. With none ACTIVE — its agent has since gone OBSOLETE or REMOVED, none was told
- *       ({@code NOT_ACTIVE}, {@code NO_AGENT}, {@code GAVE_UP}), or the read failed or has no
- *       workspaces context to ask — the desk is told.
+ *       ({@code NO_AGENT}: no ACTIVE agent owns the branch; {@code GAVE_UP}; qits-1672's {@code
+ *       NOT_ACTIVE}), or the read failed or has no workspaces context to ask — the desk is told.
  * </ul>
  *
  * <p>Liveness rather than the notices' outcomes, because a fold can be rejected twice without moving
  * sha (qits-1694): {@code reconsider} and {@code reopenAutomationRejection} reopen it at the same
- * {@code mergedSha}, the next red gate rejects it again, and qits-1672 owes no new notice for a fold
- * it already noted. The second rejection is therefore read against the first's settled notices,
+ * {@code mergedSha}, the next red gate rejects it again, and no new notice is owed for a fold
+ * already noted (the ledger holds the step, and the notice key is once per fold and branch). The second rejection is therefore read against the first's settled notices,
  * and an agent told of the first that has gone since reaches nobody unless the desk is told.
  *
  * <p>The notices are written in the transaction that rejects the fold, and the event is published
@@ -80,14 +85,14 @@ public class RequestFailedSource implements DeskTriggerSource {
   /** The states this source reports. */
   static final Set<String> FAILED_STATES = Set.of("REJECTED", "CONFLICTED", "FAILED");
 
-  /** qits-1672's outcomes that mean an agent was told. */
-  static final Set<String> TOLD = Set.of("DELIVERED", "LAUNCHED", "RESUMED");
+  /** The notices' outcomes that mean an agent was told. */
+  static final Set<String> TOLD = BranchDeliveryNotices.TOLD;
 
   private static final Logger LOG = Logger.getLogger(RequestFailedSource.class);
 
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
 
-  /** How old a notice the sweep still looks at: qits-1672 gives up on older ones anyway. */
+  /** How old a notice the sweep still looks at: the delivery gives up on older ones anyway. */
   static final Duration NOTICE_HORIZON = Duration.ofDays(2);
 
   /** A detail is cut here, so a long log line stays one line. */
@@ -125,7 +130,8 @@ public class RequestFailedSource implements DeskTriggerSource {
     }
     ReleaseRequest row = ReleaseRequest.findById(changed.releaseRequestId());
     String sha = changed.mergedSha() != null ? changed.mergedSha() : row == null ? null : row.mergedSha;
-    List<ReleaseRequestFailureNotice> notices = noticesOf(changed.releaseRequestId(), sha);
+    List<BranchDeliveryNotice> notices =
+        noticesOf(changed.releaseRequestId(), sha, noticeStep(changed.state()));
     Instant occurredAt = changed.changedAt() == null ? frame.occurredAt() : changed.changedAt();
     String detail = changed.detail();
     if (isBlank(detail) && row != null) {
@@ -138,7 +144,7 @@ public class RequestFailedSource implements DeskTriggerSource {
       if (notices.stream().anyMatch(n -> n.outcome == null)) {
         return List.of();
       }
-      List<ReleaseRequestFailureNotice> told =
+      List<BranchDeliveryNotice> told =
           notices.stream().filter(n -> TOLD.contains(n.outcome)).toList();
       if (told.isEmpty()) {
         why = notToldPhrase(notices);
@@ -175,16 +181,19 @@ public class RequestFailedSource implements DeskTriggerSource {
    */
   @Override
   public List<DeskTrigger> scan(Instant now) {
-    Map<List<String>, List<ReleaseRequestFailureNotice>> byFold = new LinkedHashMap<>();
-    for (ReleaseRequestFailureNotice notice :
-        ReleaseRequestFailureNotice.<ReleaseRequestFailureNotice>list(
-            "owedAt > ?1 order by owedAt", now.minus(NOTICE_HORIZON))) {
+    Map<List<String>, List<BranchDeliveryNotice>> byFold = new LinkedHashMap<>();
+    for (BranchDeliveryNotice notice :
+        BranchDeliveryNotice.<BranchDeliveryNotice>list(
+            "createdAt > ?1 and step in ?2 and foldSha is not null order by createdAt",
+            now.minus(NOTICE_HORIZON),
+            List.of("FAILED", "CONFLICTED"))) {
       byFold
-          .computeIfAbsent(List.of(notice.requestId, notice.mergedSha), k -> new ArrayList<>())
+          .computeIfAbsent(
+              List.of(notice.requestId, notice.foldSha, notice.step), k -> new ArrayList<>())
           .add(notice);
     }
     List<DeskTrigger> triggers = new ArrayList<>();
-    for (Map.Entry<List<String>, List<ReleaseRequestFailureNotice>> fold : byFold.entrySet()) {
+    for (Map.Entry<List<String>, List<BranchDeliveryNotice>> fold : byFold.entrySet()) {
       if (decide(fold.getValue()) != Decision.NOBODY_TOLD) {
         continue;
       }
@@ -199,6 +208,7 @@ public class RequestFailedSource implements DeskTriggerSource {
           || row.projectId == null
           || row.state == null
           || !FAILED_STATES.contains(row.state.name())
+          || !fold.getKey().get(2).equals(noticeStep(row.state.name()))
           || !sha.equals(row.mergedSha)) {
         continue;
       }
@@ -239,7 +249,7 @@ public class RequestFailedSource implements DeskTriggerSource {
     NOBODY_TOLD
   }
 
-  private static Decision decide(List<ReleaseRequestFailureNotice> notices) {
+  private static Decision decide(List<BranchDeliveryNotice> notices) {
     if (notices.stream().anyMatch(n -> n.outcome != null && TOLD.contains(n.outcome))) {
       return Decision.AGENT_TOLD;
     }
@@ -268,7 +278,7 @@ public class RequestFailedSource implements DeskTriggerSource {
    * notice's own agent when it names one (a fresh agent on the item was not told). A read that
    * fails, or no workspaces context to ask, counts as not told.
    */
-  private Liveness livenessOf(List<ReleaseRequestFailureNotice> told) {
+  private Liveness livenessOf(List<BranchDeliveryNotice> told) {
     List<String> workIds =
         told.stream().map(n -> n.workId).filter(id -> !isBlank(id)).distinct().toList();
     if (workIds.isEmpty()) {
@@ -285,7 +295,7 @@ public class RequestFailedSource implements DeskTriggerSource {
       return Liveness.UNKNOWN;
     }
     boolean listed = false;
-    for (ReleaseRequestFailureNotice notice : told) {
+    for (BranchDeliveryNotice notice : told) {
       for (WorkspaceAgentDispatch.Agent agent : agents) {
         boolean same =
             notice.workId != null
@@ -304,15 +314,29 @@ public class RequestFailedSource implements DeskTriggerSource {
     return DeskTriggerEvent.count("source = ?1 and eventId = ?2", ID, eventId) > 0;
   }
 
-  private static List<ReleaseRequestFailureNotice> noticesOf(String requestId, String sha) {
+  /**
+   * The notices of one fold's step: every branch's, since a request's fold fails or conflicts for
+   * all the branches it carries at once.
+   */
+  private static List<BranchDeliveryNotice> noticesOf(String requestId, String sha, String step) {
     if (sha == null) {
       return List.of();
     }
-    return ReleaseRequestFailureNotice.list("requestId = ?1 and mergedSha = ?2", requestId, sha);
+    return BranchDeliveryNotice.list(
+        "requestId = ?1 and foldSha = ?2 and step = ?3", requestId, sha, step);
   }
 
   /**
-   * Why no agent was told, when qits-1672 owed none. An agent "filed" the request where one of its
+   * The notice step that tells an agent of a request in {@code state}: {@code CONFLICTED} for a
+   * conflict (owed from qits-1725 on), {@code FAILED} otherwise — never a {@code MOVED}, which names
+   * the request a branch moved to and says nothing of its fold.
+   */
+  static String noticeStep(String state) {
+    return "CONFLICTED".equals(state) ? "CONFLICTED" : "FAILED";
+  }
+
+  /**
+   * Why no agent was told, when no notice was owed. An agent "filed" the request where one of its
    * participants is a workspace agent's token subject (qits-1673) — an authenticated principal, so
    * no agent can claim another's request, and one that joined counts as much as one that opened.
    */
@@ -332,8 +356,8 @@ public class RequestFailedSource implements DeskTriggerSource {
     return "no agent owns it";
   }
 
-  /** Why the agents qits-1672 owed were not told. */
-  private static String notToldPhrase(List<ReleaseRequestFailureNotice> notices) {
+  /** Why the agents the notices were owed to were not told. */
+  private static String notToldPhrase(List<BranchDeliveryNotice> notices) {
     Set<String> outcomes =
         notices.stream().map(n -> n.outcome).collect(Collectors.toCollection(java.util.TreeSet::new));
     if (outcomes.contains("NOT_ACTIVE")) {

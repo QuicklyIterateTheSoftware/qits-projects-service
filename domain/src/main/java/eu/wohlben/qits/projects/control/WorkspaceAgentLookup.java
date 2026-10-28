@@ -26,12 +26,44 @@ public interface WorkspaceAgentLookup {
    */
   Optional<String> workOf(String agentId);
 
-  /** An ACTIVE agent and the work item it works on. */
-  record ActiveAgent(String agentId, String workId) {}
+  /**
+   * An ACTIVE agent, the work item it works on, and what places it (qits-1722).
+   *
+   * @param agentId the agent's uuid
+   * @param workId the work item's row id, which a delivered turn names
+   * @param repositoryId the wrapper repository it works in — this service's repository id, so its
+   *     project is this service's to read; null when the far side named none
+   * @param wrapperBranch its wrapper branch, {@code ticket/qits-1615}: it owns that branch and every
+   *     {@code <wrapperBranch>-*} in every repository (qits-workspaces' {@code gitRefsFor}); null
+   *     when the far side named none
+   */
+  record ActiveAgent(String agentId, String workId, String repositoryId, String wrapperBranch) {
+
+    /** An agent nothing places: it owns no branch. */
+    public ActiveAgent(String agentId, String workId) {
+      this(agentId, workId, null, null);
+    }
+
+    /**
+     * Whether this agent owns {@code branch} by the git_refs rule: {@code refs/heads/<wrapper>}
+     * and {@code refs/heads/<wrapper>-*}.
+     */
+    public boolean owns(String branch) {
+      return wrapperBranch != null
+          && !wrapperBranch.isBlank()
+          && branch != null
+          && (branch.equals(wrapperBranch) || branch.startsWith(wrapperBranch + "-"));
+    }
+  }
 
   /**
-   * Every ACTIVE agent (qits-1672), so a token subject can be traced back to its agent. Empty when
-   * that cannot be said; an empty list when there are none. Never throws.
+   * Every ACTIVE agent (qits-1672), with the wrapper repository and branch that say which branches
+   * it owns (qits-1722). Empty when that cannot be said; an empty list when there are none. Never
+   * throws.
+   *
+   * <p>Every project's: a caller wanting one project's narrows by {@link
+   * ActiveAgent#repositoryId}, whose project is this service's own row. The far side's {@code
+   * projectId} filter is not asked for, so the wire stays the one the pact already pins.
    */
   Optional<List<ActiveAgent>> active();
 }

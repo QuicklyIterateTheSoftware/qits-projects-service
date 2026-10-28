@@ -609,8 +609,8 @@ merely its only occupant. Six things about it are rules:
     `maintenance/*` or an implicit tag.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
     under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
-    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI beside
-    `failureNotices.owe`, failed automations) and in `settle` to FAILED; CONFLICTED in `apply`;
+    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI, failed
+    automations) and in `settle` to FAILED; CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
     withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
     tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
@@ -620,6 +620,29 @@ merely its only occupant. Six things about it are rules:
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter
     `bus/BranchDeliveryChangedAnnouncer` (`@DefaultBean`); the suite records through
     `RecordingBranchDeliveryAnnouncer` and `BranchDeliveryTest` drives every step.
+  - **A branch's owning agent is told when it fails its build or moves (qits-1722)**, by
+    `control/BranchDeliveryNotices`, the one `BranchDeliveryStepListener`. It replaced qits-1672's
+    request-keyed `ReleaseRequestFailureNotices` (`fyi: your <qualifiedId> failed its build` to
+    whoever filed or joined; gone, its `release_request_failure_notice` table, V61, kept as history
+    and no longer written). Texts, exactly: FAILED with failure `CI` or `AUTOMATION` (not `RELEASE`)
+    → `fyi: your <branch> failed its build in <qualifiedId>`; MOVED → `fyi: your <branch> moved
+    from <previousQualifiedId> to <qualifiedId>`. **Addressed by the git_refs rule, never by
+    `requester`, participants or `addedBy`**: the ACTIVE agent whose `wrapperBranch` equals the
+    branch or whose `<wrapperBranch>-` it starts with, among the agents whose wrapper repository
+    (`repositoryId`) is a repository of the request's project; the longest wrapper branch wins; none
+    is `NO_AGENT` and nothing is said. The agents are listed by `HttpWorkspaceAgentLookup.active()`
+    — `GET /workspaces/api/agents?state=ACTIVE`, reading `repositoryId` and `wrapperBranch` beside
+    `agentId`/`workId` — and narrowed by project on this side, so the consumer pact's request is
+    unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
+    step's transaction, `on conflict do nothing` on `notice_key` — `FAILED:<requestId>:<foldSha>:
+    <repoId>:<branch>` (once per fold and branch) or `MOVED:<repoId>:<branch>:<from>:<to>` — with
+    the text stored and `agent_id` null; the owner is an HTTP question, so the worker after the
+    commit resolves it and records `agent_id`/`work_id` with the outcome (`DELIVERED`, `LAUNCHED`,
+    `RESUMED`, `NO_AGENT`, `GAVE_UP`), claiming the row first (2 min), retrying an unreachable
+    lookup or delivery up to 10 attempts and giving up on a notice older than a day.
+    `ReleaseRequestSweep.sweepBranchDeliveryNotices` delivers what a crash left. `step` is plain
+    text: qits-1725 owes CONFLICTED notices into the same table through `owe(step, key, text)`.
+    `BranchDeliveryNoticeTest` drives it.
   - **The read door** (qits-1720) is `GET /projects/api/branch-deliveries?branch=&repository=&project=`
     (`api/BranchDeliveriesController`, `getBranchDeliveries`, the release-requests list's roles,
     `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
@@ -2789,7 +2812,7 @@ listener's drops; the source makes them idempotent itself). Seven ship:
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
-| `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1672 notice for the fold, or all of its notices settled with none told. Owed notices are decided by `scan` once settled. Event id: the bus event's, or `foldKey(request, sha)` when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
+| `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1722 branch notice (`branch_delivery_notice`, step `FAILED`, or `CONFLICTED` for a conflict) for the fold, or all of its notices settled with none told. Owed notices are decided by `scan` once settled. Event id: the bus event's, or `foldKey(request, sha)` when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 

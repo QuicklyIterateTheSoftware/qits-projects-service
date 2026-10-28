@@ -7,12 +7,13 @@ import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ReleaseRequestStateChanged;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent;
+import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
+import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
-import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -28,7 +29,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>request-failed</b> (qits-1689): a release request that goes REJECTED, CONFLICTED or FAILED
- * reaches the desk only when no active agent was told of it (qits-1672's notices) — and, since
+ * reaches the desk only when no active agent was told of it (the branch-delivery notices of
+ * qits-1722, which replaced qits-1672's) — and, since
  * qits-1694, only while that told agent is still ACTIVE, once per rejection, so a re-rejection at
  * the same fold is decided again rather than from the first rejection's outcome.
  */
@@ -40,6 +42,9 @@ class RequestFailedSourceTest {
   private static final String AGENT_ID = "0123abcd-0000-4000-8000-000000000001";
 
   private static final String WORK_ID = "work-told-" + UUID.randomUUID();
+
+  /** The branch a fold's notice is about (qits-1722: notices are per branch). */
+  private static final String BRANCH = "ticket/qits-9001";
 
   @Inject DeskTriggerListener listener;
 
@@ -65,7 +70,7 @@ class RequestFailedSourceTest {
         .run(
             () -> {
               for (String id : requests) {
-                ReleaseRequestFailureNotice.delete("requestId", id);
+                BranchDeliveryNotice.delete("requestId", id);
                 ReleaseRequestApproval.delete("requestId", id);
               }
             });
@@ -127,7 +132,7 @@ class RequestFailedSourceTest {
     assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "its agent owned the first");
 
     // reconsider() reopened the fold at the same sha, the agent went, and the next red gate
-    // rejected it again: qits-1672 owes no new notice, so the first's DELIVERED is all there is.
+    // rejected it again: no new notice is owed, so the first's DELIVERED is all there is.
     dispatch.willFind(agent("REMOVED"));
     EventFrame again = changed(row, "REJECTED", "Run r6 finished FAILED");
     listener.onFrame(again);
@@ -329,12 +334,16 @@ class RequestFailedSourceTest {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
-              ReleaseRequestFailureNotice notice = new ReleaseRequestFailureNotice();
+              BranchDeliveryNotice notice = new BranchDeliveryNotice();
+              notice.noticeKey = BranchDeliveryNotices.failedKey(row.id, SHA, row.repoId, BRANCH);
+              notice.projectId = row.projectId;
+              notice.repoId = row.repoId;
+              notice.branch = BRANCH;
+              notice.step = "FAILED";
               notice.requestId = row.id;
-              notice.mergedSha = SHA;
-              notice.agentKey = "0123abcd-0000-4000";
-              notice.subject = row.requester;
-              notice.owedAt = Instant.now();
+              notice.foldSha = SHA;
+              notice.text = BranchDeliveryNotices.failedText(BRANCH, row.qualifiedId);
+              notice.createdAt = Instant.now();
               notice.outcome = outcome;
               if (outcome != null && RequestFailedSource.TOLD.contains(outcome)) {
                 notice.agentId = AGENT_ID;
@@ -353,7 +362,7 @@ class RequestFailedSourceTest {
     QuarkusTransaction.requiringNew()
         .run(
             () ->
-                ReleaseRequestFailureNotice.update(
+                BranchDeliveryNotice.update(
                     "outcome = ?1 where requestId = ?2", outcome, row.id));
   }
 
