@@ -382,6 +382,8 @@ erDiagram
     string id PK "not null"
     instant abandoned_at
     instant deployment_active_at
+    instant deployment_failed_at
+    string deployment_failed_detail "length 1000"
     string merge_detail "length 4000"
     instant merge_requested_at
     instant merged_at
