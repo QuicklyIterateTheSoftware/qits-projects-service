@@ -12,8 +12,6 @@ components:
         branch:
           type: string
           pattern: \S
-        requester:
-          type: string
         priority:
           type: string
     AdoptProjectRepositoryRequest:
@@ -847,16 +845,15 @@ components:
       type: object
       required:
       - branch
-      - summary
       properties:
         branch:
           type: string
           pattern: \S
         summary:
           type: string
-          pattern: \S
-        requester:
-          type: string
+          deprecated: true
+          description: "Ignored. What a request is about is derived from its sources:\
+            \ see items on the answer."
         priority:
           type: string
     CriterionApprovalDto:
@@ -2155,8 +2152,10 @@ components:
           type: string
         summary:
           type: string
+          deprecated: true
         requester:
           type: string
+          deprecated: true
         unattended:
           type: boolean
         gateTicketId:
@@ -2222,6 +2221,23 @@ components:
           type: string
         featureFreeze:
           $ref: "#/components/schemas/FeatureFreezeDto"
+        participants:
+          type: array
+          items:
+            type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestItemDto"
+    ReleaseRequestItemDto:
+      type: object
+      properties:
+        source:
+          type: string
+        label:
+          type: string
+        workItem:
+          $ref: "#/components/schemas/ReleaseRequestWorkItemDto"
     ReleaseRequestSourceDto:
       type: object
       properties:
@@ -2241,6 +2257,13 @@ components:
           type: boolean
         explicitJoin:
           type: boolean
+    ReleaseRequestWorkItemDto:
+      type: object
+      properties:
+        qualifiedId:
+          type: string
+        title:
+          type: string
     RenameRepositoryRequest:
       type: object
       required:
@@ -2626,8 +2649,6 @@ components:
         priority:
           type: string
           pattern: \S
-        requester:
-          type: string
     SubmoduleChangesDto:
       type: object
       properties:
@@ -6057,19 +6078,20 @@ paths:
         \ before it. A repository has at most one unreleased request, whatever its\
         \ archetype: a branch that already participates answers that request, and\
         \ a branch nothing has asked about JOINS it as a further source, so the answer\
-        \ may carry an id you did not create, sources you did not name and somebody\
-        \ else's summary. Only when your branch is the request's sole asked-for source\
-        \ do your summary and requester replace the request's; otherwise the words\
-        \ of the ask that opened it stand, and yours are recorded on your own source\
-        \ row. Poll until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why,\
-        \ and conflict says what to resolve. A branch of main makes a main-only request:\
-        \ its only source is main, which is how qits-maintenance (qits:system) opens\
-        \ a dependency bump whose pre-run writes the bump itself. A fold is announced\
-        \ on the bus as ReleaseRequestChanged with preRun=PENDING while its release-request\
-        \ automations (the pre-run) settle, and with preRun=DONE once per fold when\
-        \ they are fresh or waived; QA builds on DONE only, and preRun.state on the\
-        \ answer says where the pre-run stands. The project's delivery desk (qits:desk)\
-        \ answers 403: it never opens or joins a release request."
+        \ may carry an id you did not create, sources you did not name and other participants.\
+        \ The request is attributed to the authenticated caller: it becomes a participant\
+        \ (participants on the answer) and the new source's addedBy; a stated requester\
+        \ is ignored. summary is ignored too: what a request is about is derived from\
+        \ its sources (items on the answer). Poll until RELEASED, REJECTED, CONFLICTED\
+        \ or FAILED; detail says why, and conflict says what to resolve. A branch\
+        \ of main makes a main-only request: its only source is main, which is how\
+        \ qits-maintenance (qits:system) opens a dependency bump whose pre-run writes\
+        \ the bump itself. A fold is announced on the bus as ReleaseRequestChanged\
+        \ with preRun=PENDING while its release-request automations (the pre-run)\
+        \ settle, and with preRun=DONE once per fold when they are fresh or waived;\
+        \ QA builds on DONE only, and preRun.state on the answer says where the pre-run\
+        \ stands. The project's delivery desk (qits:desk) answers 403: it never opens\
+        \ or joins a release request."
       operationId: createReleaseRequest
       parameters:
       - name: repoId
