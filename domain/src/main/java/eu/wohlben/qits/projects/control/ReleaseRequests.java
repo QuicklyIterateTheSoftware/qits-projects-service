@@ -476,6 +476,12 @@ public class ReleaseRequests {
   /** Tells the agents behind a request that its fold failed its build (qits-1672). */
   @Inject ReleaseRequestFailureNotices failureNotices;
 
+  /**
+   * Tells the work item behind a request withdrawn by a branch deletion that it was, and whether
+   * anything was lost (qits-1671) — see {@link #onBranchDeleted}. Optional: absent is a no-op.
+   */
+  @Inject Instance<ReleaseRequestWithdrawalComments> withdrawalComments;
+
   /** Asked whether a caller's transaction is active — see {@link #closeGateTicket}. */
   @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
@@ -3502,6 +3508,17 @@ public class ReleaseRequests {
    * sweep reads it as done and deletes it. The request still needs it: the pre-run automations and
    * QA fetch it, and the release commits onto it. The re-fold creates it again at the same sha, so
    * nothing re-arms and nothing is announced twice.
+   *
+   * <p><b>A withdrawal is told to the work item that waited on it</b> (qits-1671). Before, the
+   * request's own thread said "Withdrawn: the branch was deleted" and nobody else heard: qits-1675
+   * waited on {@code qits-qits-rr-226} after the request was gone. Now, beside the cancel and the
+   * gate ticket, each work item a source of the request named — read before the deleted source was
+   * dropped, so the deleted branch is among them — gets one comment through {@link
+   * ReleaseRequestWithdrawalComments}, saying which request, which branch, and whether its last fold
+   * added anything to the default branch: asked of the git host as lineage ({@link
+   * ReleaseGitHost#contains}), never assumed, so a fold nobody could ask about is UNKNOWN and is
+   * never told "nothing was lost". The comment changes no item's status, and nothing it does — a
+   * failed ask, a missing port, a port that throws — can throw out of here.
    */
   public void onBranchDeleted(String repoId, String branch) {
     String ownBranch =
@@ -3521,20 +3538,26 @@ public class ReleaseRequests {
       remerge(ownBranch, "its backing branch " + branch + " was deleted");
       return;
     }
-    record Affected(String id, boolean withdrawn, String gateTicketId, String repoName) {}
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   List<Affected> touched = new ArrayList<>();
+                  String main = mainOf(repoId);
                   for (ReleaseRequest open : requests.findUnreleasedByBranches(repoId, List.of(branch))) {
+                    // Read before the drop: the item to tell is named by the source being deleted.
+                    List<String> before =
+                        sources.listByRequest(open.id).stream()
+                            .filter(source -> source.kind == ReleaseRequestSource.Kind.BRANCH)
+                            .map(source -> source.name)
+                            .toList();
                     sources
                         .find(open.id, ReleaseRequestSource.Kind.BRANCH, branch)
                         .ifPresent(sources::delete);
                     List<ReleaseRequestSource> left = sources.listByRequest(open.id);
                     boolean empty =
                         left.isEmpty()
-                            || left.stream().allMatch(s -> s.name.equals(mainOf(repoId)));
+                            || left.stream().allMatch(s -> s.name.equals(main));
                     if (empty) {
                       states.move(open, ReleaseRequest.State.WITHDRAWN);
                       open.detail = "Withdrawn: the branch was deleted";
@@ -3546,7 +3569,17 @@ public class ReleaseRequests {
                     } else {
                       open.updatedAt = Instant.now();
                     }
-                    touched.add(new Affected(open.id, empty, open.gateTicketId, open.repoName));
+                    touched.add(
+                        new Affected(
+                            open.id,
+                            empty,
+                            open.gateTicketId,
+                            open.repoName,
+                            open.qualifiedId != null ? open.qualifiedId : open.id,
+                            open.projectId,
+                            open.mergedSha,
+                            before,
+                            main));
                   }
                   return touched;
                 });
@@ -3559,11 +3592,87 @@ public class ReleaseRequests {
             row.repoName(),
             UnattendedGateTickets.Ending.WITHDRAWN,
             "its branch `" + branch + "` was deleted");
+        tellWithdrawn(repoId, branch, row);
         activateQueuedBehind(row.id());
       } else {
         remerge(row.id(), "the source branch " + branch + " was deleted");
       }
     }
+  }
+
+  /**
+   * One open request {@link #onBranchDeleted} touched, read inside its transaction: whether it was
+   * withdrawn, and what the withdrawal is told with (qits-1671) — the sources it had before the
+   * deletion, its last fold and the default branch it was left with.
+   */
+  private record Affected(
+      String id,
+      boolean withdrawn,
+      String gateTicketId,
+      String repoName,
+      String qualifiedId,
+      String projectId,
+      String mergedSha,
+      List<String> branchesBefore,
+      String defaultBranch) {}
+
+  /**
+   * Tells the work items of a request {@link #onBranchDeleted} withdrew (qits-1671), after the
+   * withdrawal committed. The verdict is asked only when somebody will hear it. <b>Never throws</b>:
+   * the withdrawal is done whatever this does, so a port that broke its own never-throw contract is
+   * a WARN here.
+   */
+  private void tellWithdrawn(String repoId, String branch, Affected row) {
+    try {
+      if (!withdrawalComments.isResolvable()) {
+        return;
+      }
+      withdrawalComments
+          .get()
+          .withdrawn(
+              new ReleaseRequestWithdrawalComments.Withdrawn(
+                  row.id(),
+                  row.qualifiedId(),
+                  repoId,
+                  row.repoName(),
+                  row.projectId(),
+                  branch,
+                  row.branchesBefore(),
+                  row.defaultBranch(),
+                  lostBy(repoId, row)));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not tell the work items of release request %s that it was withdrawn",
+          row.qualifiedId());
+    }
+  }
+
+  /**
+   * What the withdrawn request's last fold added to the default branch (qits-1671): NOTHING when the
+   * git host says the default branch contains it, UNRELEASED when it says it does not, and UNKNOWN
+   * when there is no fold or no answer — "could not ask" is never "nothing was lost".
+   */
+  private ReleaseRequestWithdrawalComments.Lost lostBy(String repoId, Affected row) {
+    if (row.mergedSha() == null || !gitHosts.isResolvable()) {
+      return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
+    }
+    ReleaseGitHost.Answer<Boolean> answer;
+    try {
+      answer =
+          gitHosts.get().contains(repoId, row.mergedSha(), "refs/heads/" + row.defaultBranch());
+    } catch (RuntimeException e) {
+      answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+    }
+    if (!answer.ok() || answer.value() == null) {
+      LOG.warnf(
+          "Release request %s was withdrawn; whether %s contains its fold %s could not be read: %s",
+          row.qualifiedId(), row.defaultBranch(), shortSha(row.mergedSha()), answer.detail());
+      return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
+    }
+    return answer.value()
+        ? ReleaseRequestWithdrawalComments.Lost.NOTHING
+        : ReleaseRequestWithdrawalComments.Lost.UNRELEASED;
   }
 
   /**

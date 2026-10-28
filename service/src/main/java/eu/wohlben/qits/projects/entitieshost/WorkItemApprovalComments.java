@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.entitieshost;
 
 import eu.wohlben.qits.entities.control.EntityCommentService;
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.control.ApprovalRequirementComments;
@@ -12,8 +11,6 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -85,56 +82,18 @@ public class WorkItemApprovalComments implements ApprovalRequirementComments {
     }
   }
 
-  /** The work items the branches name, once each, in branch order. */
+  /** The work items the branches name, once each, in branch order ({@link WorkItemBranches}). */
   private Map<String, CommitSubjectEntities.NamedEntity> workItems(List<String> branches) {
-    Map<String, CommitSubjectEntities.NamedEntity> items = new LinkedHashMap<>();
-    if (branches == null) {
-      return items;
-    }
-    for (String branch : branches) {
-      try {
-        workItemOf(branch).ifPresent(item -> items.putIfAbsent(item.id(), item));
-      } catch (RuntimeException e) {
-        LOG.debugf(e, "Could not resolve the work item of branch %s", branch);
-      }
-    }
-    return items;
+    return WorkItemBranches.workItems(branches, resolver::lookup);
   }
 
   /**
    * The work item {@code branch} names: {@code ticket/<qualified id>} a ticket, {@code
-   * epic/<qualified id>} an epic, each also with a {@code -<suffix>} an agent adds. The whole name is
-   * tried first, then each shorter prefix ending before a hyphen.
+   * epic/<qualified id>} an epic, each also with a {@code -<suffix>} an agent adds — {@link
+   * WorkItemBranches#workItemOf}, shared with {@link WorkItemWithdrawalComments} (qits-1671).
    */
   Optional<CommitSubjectEntities.NamedEntity> workItemOf(String branch) {
-    Archetype archetype;
-    String rest;
-    if (branch == null) {
-      return Optional.empty();
-    } else if (branch.startsWith("ticket/")) {
-      archetype = Archetype.TICKET;
-      rest = branch.substring("ticket/".length());
-    } else if (branch.startsWith("epic/")) {
-      archetype = Archetype.EPIC;
-      rest = branch.substring("epic/".length());
-    } else {
-      return Optional.empty();
-    }
-    List<String> candidates = new ArrayList<>();
-    candidates.add(rest);
-    for (int dash = rest.lastIndexOf('-'); dash > 0; dash = rest.lastIndexOf('-', dash - 1)) {
-      candidates.add(rest.substring(0, dash));
-    }
-    for (String candidate : candidates) {
-      Optional<CommitSubjectEntities.NamedEntity> item =
-          CommitSubjectEntities.parse(candidate)
-              .flatMap(resolver::lookup)
-              .filter(found -> found.archetype() == archetype);
-      if (item.isPresent()) {
-        return item;
-      }
-    }
-    return Optional.empty();
+    return WorkItemBranches.workItemOf(branch, resolver::lookup);
   }
 
   /** The request's project slug, or null where it could not be read. */
