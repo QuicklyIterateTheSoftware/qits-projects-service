@@ -34,6 +34,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *   <li><b>A repeat is one line.</b> The event insert is {@code on conflict do nothing} against
  *       {@code (window_id, source, item_ref, label, comment_id)}, so a redelivered frame admits
  *       nothing new. Two comments are two lines: each is its own row (V63).
+ *   <li><b>An event is one line per item, in any window</b> (qits-1694, V65): {@code (source,
+ *       event_id, item_ref)} is unique across every window, and capacity-opened's {@code (source,
+ *       item_id)} too. A source's own {@code count} check is the fast path; these are what hold
+ *       when two admitters race — two replicas, or a sweep's scan and the listener — and when a
+ *       label that carries a duration ({@code for 2h 5m}) lands in a later window. The conflict
+ *       clause names no target, so it absorbs every one of these indexes and still raises nothing.
  * </ul>
  *
  * <p>{@code @Transactional}: it joins the caller's transaction — the listener's own {@code projects}
@@ -50,7 +56,7 @@ public class DeskTriggerWindows {
    * Admit {@code trigger}, from {@code source}, into {@code projectId}'s open window, opening one
    * closing at {@code now + window} when there is none.
    *
-   * @return the window it is in now (whether or not the line was new)
+   * @return as {@link #admit(String, String, DeskTrigger, Instant, boolean)}
    */
   @Transactional
   public UUID admit(String projectId, String source, DeskTrigger trigger, Instant now) {
@@ -61,7 +67,9 @@ public class DeskTriggerWindows {
    * {@link #admit(String, String, DeskTrigger, Instant)}, and when {@code prompt} the window's
    * {@code closes_at} is brought forward to {@code now} (never back), so the next sweep closes it.
    *
-   * @return the window it is in now (whether or not the line was new)
+   * @return the open window the line is in now (whether or not the line was new); null when the
+   *     line was already admitted to an earlier window and no window was open, in which case the
+   *     window this call opened is removed again rather than left empty
    */
   @Transactional
   public UUID admit(
@@ -70,8 +78,10 @@ public class DeskTriggerWindows {
     Instant at = now.truncatedTo(ChronoUnit.MICROS);
     EntityManager em = DeskTriggerWindow.getEntityManager();
     UUID windowId = openWindowOf(em, projectId);
+    boolean opened = false;
     if (windowId == null) {
-      em.createNativeQuery(
+      opened =
+          em.createNativeQuery(
               "insert into desk_trigger_window (id, project_id, opened_at, closes_at, state,"
                   + " attempts) values (:id, :project, :opened, :closes, :state, 0)"
                   + " on conflict (project_id) where state = 'OPEN' do nothing")
@@ -80,14 +90,16 @@ public class DeskTriggerWindows {
           .setParameter("opened", at)
           .setParameter("closes", at.plus(window))
           .setParameter("state", DeskTriggerWindowState.OPEN.name())
-          .executeUpdate();
+          .executeUpdate()
+              == 1;
       windowId = openWindowOf(em, projectId);
       if (windowId == null) {
         throw new IllegalStateException(
             "project " + projectId + " has no open desk trigger window after opening one");
       }
     }
-    em.createNativeQuery(
+    int inserted =
+        em.createNativeQuery(
             "insert into desk_trigger_event (id, window_id, source, item_ref, item_id, label,"
                 + " cause, comment_id, event_id, occurred_at, admitted_at) values (:id, :window,"
                 + " :source, :ref, :itemId, :label, :cause, :commentId, :event, :occurred,"
@@ -105,6 +117,14 @@ public class DeskTriggerWindows {
         .setParameter("occurred", trigger.occurredAt() == null ? at : trigger.occurredAt())
         .setParameter("admitted", at)
         .executeUpdate();
+    if (inserted == 0 && opened) {
+      // The line is already in an earlier window (V65): the window this admit opened for it holds
+      // nothing, and a window with no lines must never close into an empty message.
+      em.createNativeQuery("delete from desk_trigger_window where id = :id")
+          .setParameter("id", windowId)
+          .executeUpdate();
+      return null;
+    }
     if (prompt) {
       em.createNativeQuery(
               "update desk_trigger_window set closes_at = :at where id = :id and closes_at > :at")
