@@ -112,8 +112,8 @@ import java.util.Optional;
  * template of every archetype</b> — and never inside a template, so a template added beside these
  * inherits it. <b>It goes first</b> because the brief is context for everything that follows. It
  * names {@code qits help guide} (qits-1679), which prints the platform's current guide for the
- * agent's own credential, rather than the checkout's {@code docs/development-flow.md}, which lags
- * behind releases. The fallback to that file covers a container whose CLI predates the command.
+ * agent's own credential. It names no file in the checkout: the guide moved out of the wrapper's
+ * {@code docs/development-flow.md}, and a checkout's copy lags behind releases.
  */
 final class PhasePrompts {
 
@@ -123,8 +123,7 @@ final class PhasePrompts {
   static final String FLOW_BRIEF_POINTER =
       "Run `qits help guide` first: the platform's brief on how work moves through it — branch per"
           + " slug, release request per repository, the quality gates, the transitions, and when the"
-          + " workspace is resolved. If your qits has no `help guide` yet, read"
-          + " /workspace/docs/development-flow.md instead, if it is there.";
+          + " workspace is resolved.";
 
   /**
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,

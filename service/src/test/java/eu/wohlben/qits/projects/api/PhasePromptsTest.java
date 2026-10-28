@@ -496,9 +496,9 @@ public class PhasePromptsTest {
     assertTrue(
         pointer.startsWith("Run `qits help guide` first"),
         "the pointer names the development guide (qits-1679): " + pointer);
-    assertTrue(
-        pointer.contains("/workspace/docs/development-flow.md instead, if it is there"),
-        "an older CLI falls back to the checkout's file, by an absolute path: " + pointer);
+    assertFalse(
+        pointer.contains("development-flow.md"),
+        "the pointer names no stale checkout file: " + pointer);
 
     for (EntityStatus status : EntityStatus.values()) {
       Optional<String> prompt = prompt(ticket(status));
