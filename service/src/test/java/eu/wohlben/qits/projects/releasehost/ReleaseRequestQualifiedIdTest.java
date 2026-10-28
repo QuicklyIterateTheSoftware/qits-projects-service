@@ -134,7 +134,7 @@ public class ReleaseRequestQualifiedIdTest {
         !merger.foldsOf("refs/heads/release/qid-thing-service-rr-1").isEmpty(),
         "the fold lands on release/<qualified id>");
     assertEquals(
-        "Release request qid-thing-service-rr-1: a release",
+        "Release request qid-thing-service-rr-1: work",
         merger.foldsOf("refs/heads/release/qid-thing-service-rr-1").get(0).message().lines()
             .findFirst()
             .orElseThrow(),
@@ -222,8 +222,10 @@ public class ReleaseRequestQualifiedIdTest {
 
   private static String create(String repoId) {
     return given()
+        .header("X-Qits-User", "ada")
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
-        .body("{\"branch\":\"work\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+        .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
         .post(base(repoId))
         .then()
         .statusCode(200)

@@ -88,6 +88,18 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * requirement the caller may satisfy is the domain's. {@code GET /approvals} stays on the class
  * pair: reading who decided is not deciding.
  *
+ * <p><b>Attribution is the caller, and nothing a body says</b> (qits-1673). Create, sources and
+ * priority act as the authenticated principal — {@code null} only for an anonymous caller, which
+ * the role list never admits — and no body field states anybody else: that principal becomes the
+ * new source's {@code addedBy} and a participant of the request. It used to be a stated {@code
+ * requester} that fell back to the caller, on the claim that every caller here held admin or system
+ * and stating an actor was no escalation. That was false: {@code qits:agent} is on this class, and
+ * its bounds limit the project and the branch, never the name, so an agent could attribute a request
+ * to another agent (who then heard of its failures) or to {@code dev-qits-maintenance} (which made
+ * its red request "unattended"). Attribution routes messages now; it is the caller's own identity.
+ * An old client still sending {@code requester} or {@code summary} is not refused: the JSON reader
+ * ignores what a record does not declare, and {@code summary} is declared, deprecated and ignored.
+ *
  * <p><b>An agent reads everything here and writes only for its own work.</b> {@code qits:agent} is
  * on the class list, so every read is open to it with no restriction. The four writes it reaches —
  * create, sources, priority and withdraw — bind a caller that holds it and neither of the other
@@ -120,11 +132,12 @@ public class ReleaseRequestController {
    *     release that does not contain what is already on main is not a release anybody wants — so a
    *     fresh request's named sources are the repository's default branch and this one. Naming the
    *     default branch itself makes a main-only request.
-   * @param summary the release's summary line, which is also the fold's commit message
-   * @param requester whom the caller acts for — attribution as data, for the machine peers whose
-   *     bearer names the service rather than the person at the door. Blank falls back to the
-   *     caller's own identity. Every caller here already holds admin or system, so stating an
-   *     actor is not an escalation.
+   * @param summary <b>ignored</b> and deprecated (qits-1673). It was the release's typed summary
+   *     line; what a request is about is derived from its sources now ({@code items} on the answer),
+   *     so a caller still sending it is accepted and the words go nowhere. Declared only so the
+   *     document says so; it goes with the contract step. There is no {@code requester} any more —
+   *     the request is attributed to the caller's own principal — and a body still carrying one is
+   *     read past like any other undeclared property.
    * @param priority how urgently the named branch wants to be released — {@code LOWEST}, {@code
    *     LOW}, {@code MEDIUM}, {@code HIGH}, {@code HIGHER} or {@code BLOCKING}. Optional: absent is
    *     {@code MEDIUM}, and a word naming no priority is a 400. It is stated <b>per branch</b>, so
@@ -135,7 +148,14 @@ public class ReleaseRequestController {
    *     max over its sources.
    */
   public static record CreateReleaseRequest(
-      @NotBlank String branch, @NotBlank String summary, String requester, String priority) {
+      @NotBlank String branch,
+      @Schema(
+              deprecated = true,
+              description =
+                  "Ignored. What a request is about is derived from its sources: see items on the"
+                      + " answer.")
+          String summary,
+      String priority) {
     /**
      * @param placement where the branch landed and why (epic qits-1580): created, joined or already
      *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
@@ -182,16 +202,15 @@ public class ReleaseRequestController {
    * whatever its archetype (qits-552), so two workspaces releasing one repository on the same night
    * are two asks about one release: the second ask becomes a named source of the first's request
    * instead of minting a rival — one calver tag, one build, one approval, one deployment. Two
-   * consequences a caller has to expect: on a request other branches were asked onto, the summary
-   * and requester they sent do <b>not</b> become the request's (they reach their own source row,
-   * and the opening ask's words stand — only a caller whose branch is the request's sole asked-for
-   * source restates them), and a red gate or a decline on the shared request holds every
-   * participant at once. {@code ReleaseRequests.request} is where the rule lives and argues for
-   * itself.
+   * consequences a caller has to expect: the answer carries {@code items} and {@code participants}
+   * that are not only the caller's — every ask, joining or converging, makes its caller a
+   * participant and its branch an item — and a red gate or a decline on the shared request holds
+   * every participant at once. {@code ReleaseRequests.request} is where the rule lives and argues
+   * for itself.
    *
    * <p><b>A main-only request is qits-maintenance's door for a dependency bump</b> (qits-1133):
    * {@code POST /projects/api/repositories/{repoId}/release-requests} with {@code {"branch":"main",
-   * "summary":"bump(…): N dependencies","priority":"LOWEST"}}, as {@code qits:system} (the role its
+   * "priority":"LOWEST"}}, as {@code qits:system} (the role its
    * {@code PeerClient} presents; {@code qits:admin} works too). It names the repository's default
    * branch, so the request's only source is {@code main} and its first fold is main's head; no
    * person's branch is involved. Its pre-run then writes the bump — the {@code dependency-bump}
@@ -218,10 +237,10 @@ public class ReleaseRequestController {
               + " one unreleased request, whatever its archetype: a branch that already"
               + " participates answers that request, and a branch nothing has asked about JOINS it"
               + " as a further source, so the answer may carry an id you did not create, sources"
-              + " you did not name and somebody else's summary. Only when your branch is the"
-              + " request's sole asked-for source do your summary and requester replace the"
-              + " request's; otherwise the words of the ask that opened it stand, and yours are"
-              + " recorded on your own source row. Poll"
+              + " you did not name and other participants. The request is attributed to the"
+              + " authenticated caller: it becomes a participant (participants on the answer) and"
+              + " the new source's addedBy; a stated requester is ignored. summary is ignored too:"
+              + " what a request is about is derived from its sources (items on the answer). Poll"
               + " until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why, and conflict"
               + " says what to resolve. A branch of main makes a main-only request: its only"
               + " source is main, which is how qits-maintenance (qits:system) opens a dependency"
@@ -238,7 +257,7 @@ public class ReleaseRequestController {
     requireAgentBranch(body == null ? null : body.branch());
     ReleaseRequests.Asked asked =
         releaseRequests.ask(
-            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority());
+            repoId, body.branch(), caller(), body.priority());
     return new CreateReleaseRequest.Response(asked.request(), asked.placement());
   }
 
@@ -246,10 +265,10 @@ public class ReleaseRequestController {
    * @param branch another branch to fold into this request.
    * @param priority how urgently that branch wants to be released, or absent for {@code MEDIUM}.
    *     Adding a branch already on the request with a priority re-states it; adding it with none
-   *     leaves the stored one alone, so a retried add never downgrades an escalation.
+   *     leaves the stored one alone, so a retried add never downgrades an escalation. The branch is
+   *     added by the caller's own principal (qits-1673); a stated {@code requester} is ignored.
    */
-  public static record AddReleaseRequestSource(
-      @NotBlank String branch, String requester, String priority) {
+  public static record AddReleaseRequestSource(@NotBlank String branch, String priority) {
     /**
      * @param placement where the branch landed and why (epic qits-1580) — always the request named:
      *     a join that names a frozen request is admitted past the freeze, and says so
@@ -289,7 +308,7 @@ public class ReleaseRequestController {
     requireAgentRequest(repoId, requestId);
     requireAgentBranch(body == null ? null : body.branch());
     ReleaseRequests.Asked asked =
-        releaseRequests.join(requestId, body.branch(), actorFor(body.requester()), body.priority());
+        releaseRequests.join(requestId, body.branch(), caller(), body.priority());
     return new AddReleaseRequestSource.Response(asked.request(), asked.placement());
   }
 
@@ -300,10 +319,9 @@ public class ReleaseRequestController {
    * @param priority the new urgency: {@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code HIGH},
    *     {@code HIGHER} or {@code BLOCKING}. Required here — this route exists to state a value, so
    *     there is no "said nothing" arm to fall back to.
-   * @param requester whom the caller acts for, the same attribution-as-data the other routes take.
+   *     The change is logged against the caller's own principal (qits-1673).
    */
-  public static record SetReleaseSourcePriority(
-      @NotBlank String branch, @NotBlank String priority, String requester) {
+  public static record SetReleaseSourcePriority(@NotBlank String branch, @NotBlank String priority) {
     public record Response(ReleaseRequestDto request) {}
   }
 
@@ -328,14 +346,14 @@ public class ReleaseRequestController {
     requireAgentRequest(repoId, requestId);
     return new SetReleaseSourcePriority.Response(
         releaseRequests.updateSourcePriority(
-            requestId, body.branch(), body.priority(), actorFor(body.requester())));
+            requestId, body.branch(), body.priority(), caller()));
   }
 
-  /** The stated actor, or the caller's own identity when none is stated. */
-  private String actorFor(String stated) {
-    if (stated != null && !stated.isBlank()) {
-      return stated.trim();
-    }
+  /**
+   * Whom a write is attributed to: the authenticated principal, or null for an anonymous caller.
+   * Never a name the body states (qits-1673) — see the class javadoc.
+   */
+  private String caller() {
     return identity.isAnonymous() ? null : identity.getPrincipal().getName();
   }
 
@@ -471,10 +489,9 @@ public class ReleaseRequestController {
   }
 
   /**
-   * Who is deciding, and which approval roles they hold. Deliberately <b>not</b> {@link
-   * #actorFor(String)}: the other routes take an optional stated actor because their machine callers
-   * act on somebody's behalf and attribution is data there, while a decision's actor is the gate's
-   * whole subject and a body field would let a caller sign somebody else's name to it.
+   * Who is deciding, and which approval roles they hold. Not {@link #caller()}: the other writes
+   * are attributed to the bare principal, while a decision's actor is the gate's whole subject and
+   * has to be <em>proved</em> a person or an agent, not merely be authenticated.
    *
    * <p>The role is only the first filter: the approver comes from {@link ApproverCheck}, which
    * answers 403 unless this service proved a person (qits-891) or an agent itself — so the name is

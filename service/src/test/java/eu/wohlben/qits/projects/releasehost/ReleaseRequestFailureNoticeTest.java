@@ -210,12 +210,13 @@ public class ReleaseRequestFailureNoticeTest {
     return "/projects/api/repositories/" + repoId + "/release-requests";
   }
 
+  /** A create by {@code requester} — the forwarded caller, which is what attribution reads. */
   private String create(String branch, String requester) {
     return given()
+        .header("X-Qits-User", requester)
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
-        .body(
-            "{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\""
-                + requester + "\"}")
+        .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
         .post(base())
         .then()
         .statusCode(200)
@@ -225,8 +226,10 @@ public class ReleaseRequestFailureNoticeTest {
 
   private void join(String id, String branch, String requester) {
     given()
+        .header("X-Qits-User", requester)
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
-        .body("{\"branch\":\"" + branch + "\",\"requester\":\"" + requester + "\"}")
+        .body("{\"branch\":\"" + branch + "\"}")
         .post(base() + "/" + id + "/sources")
         .then()
         .statusCode(200);

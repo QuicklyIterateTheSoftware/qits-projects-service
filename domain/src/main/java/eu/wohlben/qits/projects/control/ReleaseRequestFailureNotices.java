@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestParticipantRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
@@ -74,6 +75,8 @@ public class ReleaseRequestFailureNotices {
 
   @Inject ReleaseRequestSourceRepository sources;
 
+  @Inject ReleaseRequestParticipantRepository participants;
+
   @Inject Instance<WorkspaceAgentLookup> lookup;
 
   @Inject Instance<WorkspaceAgentTurns> turns;
@@ -107,15 +110,16 @@ public class ReleaseRequestFailureNotices {
   }
 
   /**
-   * Owes the notice for {@code row}'s current fold to every agent behind it. Call it inside the
-   * transaction that rejects the fold for a failed build; the delivery runs after the commit.
+   * Owes the notice for {@code row}'s current fold to every agent behind it: its participants and
+   * the authors of its sources (qits-1673), each an authenticated principal — never a name a body
+   * stated, so no agent can make another one hear of its failures. Call it inside the transaction
+   * that rejects the fold for a failed build; the delivery runs after the commit.
    */
   public void owe(ReleaseRequest row) {
     if (row == null || row.mergedSha == null) {
       return;
     }
-    Set<String> subjects = new LinkedHashSet<>();
-    subjects.add(row.requester);
+    Set<String> subjects = new LinkedHashSet<>(participants.principalsOf(row.id));
     for (ReleaseRequestSource source : sources.listByRequest(row.id)) {
       subjects.add(source.addedBy);
     }

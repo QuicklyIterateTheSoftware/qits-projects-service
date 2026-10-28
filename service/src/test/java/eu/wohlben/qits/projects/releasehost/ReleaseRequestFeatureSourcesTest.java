@@ -107,11 +107,11 @@ public class ReleaseRequestFeatureSourcesTest {
     String bump = "maintenance/java-deps/" + UUID.randomUUID();
     String automation = "maintenance/automations/entity-diagram/" + UUID.randomUUID();
 
-    String id = releaseRequests.request(repoId, improvement, "a feature", "alice", null).id();
+    String id = releaseRequests.request(repoId, improvement, "alice", null).id();
     // Converges on the open request: the converging arm stamps the row it adds as well. Below the
     // platform's threshold of 3 nothing is frozen yet, so the third ask still converges.
-    assertEquals(id, releaseRequests.request(repoId, bug, "a fix", "bob", null).id());
-    assertEquals(id, releaseRequests.request(repoId, bump, "bump: 2 dependencies", null, null).id());
+    assertEquals(id, releaseRequests.request(repoId, bug, "bob", null).id());
+    assertEquals(id, releaseRequests.request(repoId, bump, null, null).id());
     releaseRequests.addSource(id, automation, "maintenance", null);
     releaseRequests.addSource(id, maintenanceTicket, "carol", null);
 

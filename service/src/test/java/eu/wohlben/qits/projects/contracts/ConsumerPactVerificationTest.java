@@ -661,6 +661,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);
   }
 
+  @State(ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE)
+  Map<String, String> branchTicketQits9001IsReleasedInQitsDemoService() {
+    return states.params(ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE);
+  }
+
   @State(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS)
   Map<String, String> theDevelopmentGuideShips() {
     return states.params(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS);

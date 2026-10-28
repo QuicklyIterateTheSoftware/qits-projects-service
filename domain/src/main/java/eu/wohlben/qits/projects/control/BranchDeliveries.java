@@ -5,10 +5,12 @@ import eu.wohlben.qits.projects.entity.BranchDelivery.Step;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.persistence.BranchDeliveryRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -294,6 +296,66 @@ public class BranchDeliveries {
         HANDING_ON.set(outer);
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The read door (qits-1720)
+  // ---------------------------------------------------------------------------------------------
+
+  /** What a branch's read is told when its rows span projects and none was named. */
+  public static final String SEVERAL_PROJECTS = "branch in several projects; name --project";
+
+  /**
+   * A branch's rows as the read door answers them (qits-1720).
+   *
+   * @param branch the branch asked about
+   * @param everywhere the least advanced step over every row of the branch in its project — before
+   *     {@code repository} narrowed the rows — or null where the branch has none
+   * @param deliveries the rows, by repository name
+   */
+  public record Answer(String branch, String everywhere, List<BranchDelivery> deliveries) {}
+
+  /**
+   * <b>Where {@code branch} stands</b>: its ledger rows, read in a transaction of their own.
+   *
+   * <ul>
+   *   <li>{@code projectId} (already resolved from an id or a slug by the caller) narrows to that
+   *       project. Without it the branch's rows in every project are answered — and a branch with
+   *       rows in two projects is a 400 ({@link #SEVERAL_PROJECTS}): {@code everywhere} is a fact
+   *       about one project, and answering two side by side would leave the caller to guess which
+   *       one a single word described.
+   *   <li>{@code repository}, a repository's name or id, narrows {@code deliveries} and never
+   *       {@code everywhere}, which is computed over the project's every row first.
+   *   <li>A branch with no rows is no error: an empty answer with {@code everywhere} null, because
+   *       "nothing has happened to it yet" is exactly what a waiter polling a fresh branch is told.
+   * </ul>
+   */
+  public Answer read(String branch, String repository, String projectId) {
+    if (branch == null || branch.isBlank()) {
+      throw new BadRequestException("Name the branch: ?branch=<branch>");
+    }
+    String named = branch.trim();
+    List<BranchDelivery> rows =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    ledger.listByBranch(named).stream()
+                        .filter(row -> projectId == null || projectId.equals(row.projectId))
+                        .toList());
+    if (rows.stream().map(row -> row.projectId).distinct().count() > 1) {
+      throw new BadRequestException(SEVERAL_PROJECTS);
+    }
+    String everywhere = everywhere(rows.stream().map(row -> row.step).toList());
+    List<BranchDelivery> deliveries =
+        repository == null || repository.isBlank()
+            ? rows
+            : rows.stream()
+                .filter(
+                    row ->
+                        repository.trim().equals(row.repoName)
+                            || repository.trim().equals(row.repoId))
+                .toList();
+    return new Answer(named, everywhere, deliveries);
   }
 
   /**

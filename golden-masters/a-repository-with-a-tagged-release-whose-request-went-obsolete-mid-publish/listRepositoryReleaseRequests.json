@@ -21,7 +21,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000003",
       "state": "PENDING",
-      "summary": "Release the rounding fix",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -124,7 +124,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -147,7 +151,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000001",
       "state": "OBSOLETE",
-      "summary": "Release the CSV export",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -269,7 +273,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     }
   ]
 }

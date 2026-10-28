@@ -507,7 +507,7 @@ public class BranchDeliveryTest {
 
   private ReleaseRequests.Asked ask(String branch) {
     ReleaseRequests.Asked asked =
-        releaseRequests.ask(repoA, branch, "a release of " + branch, "alice", null);
+        releaseRequests.ask(repoA, branch, "alice", null);
     requestIds.add(asked.request().id());
     return asked;
   }

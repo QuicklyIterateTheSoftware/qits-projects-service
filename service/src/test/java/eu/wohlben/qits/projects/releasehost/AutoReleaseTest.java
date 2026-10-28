@@ -235,6 +235,19 @@ public class AutoReleaseTest {
   }
 
   /** The consumed branches go after RELEASED is written, so a test reading them waits for them. */
+  /** Waits until the released branches' workspaces have been told {@code expected} times. */
+  private void awaitWorkspaceCalls(int expected) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (workspaces.calls().size() < expected && System.currentTimeMillis() < deadline) {
+      try {
+        Thread.sleep(20);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        fail("interrupted");
+      }
+    }
+  }
+
   private void awaitDeletions(int expected) {
     long deadline = System.currentTimeMillis() + 10_000;
     while (gitHost.deletedBranches().size() < expected && System.currentTimeMillis() < deadline) {
@@ -321,7 +334,8 @@ public class AutoReleaseTest {
     RecordingReleaseGitHost.Commit commit = gitHost.commits().get(0);
     assertEquals(BackingBranches.ref(id), commit.ref());
     assertEquals(mergedSha, commit.parent(), "the bump sits on the gated fold (qits-1647)");
-    assertEquals("release(" + version + "): the thing works now", commit.message());
+    // What the release is about is derived from its sources (qits-1673): the one branch, "work".
+    assertEquals("release(" + version + "): work", commit.message());
     assertEquals(
         java.util.Set.of("pom.xml", "domain/pom.xml"),
         commit.files().keySet(),
@@ -895,6 +909,9 @@ public class AutoReleaseTest {
     assertNotEquals(id, handedOn.id);
     assertTrue(sourcesOf(handedOn.id).contains("late"), "it is a source of an open request now");
 
+    // The workspaces are told last, after the hand-on's ask has folded its request, so the read
+    // waits for them rather than racing the worker.
+    awaitWorkspaceCalls(1);
     assertEquals(
         List.of("work"),
         workspaces.calls().stream()
