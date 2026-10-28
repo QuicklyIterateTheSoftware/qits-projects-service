@@ -210,7 +210,7 @@
              is deleted here rather than kept in step. It carries its OWN version rather than riding
              qits.integrations-quarkus.version above, because it is released out of
              libs/qits-userflows and not out of that reactor. -->
-        <qits.userflows.version>2026.1002.72731</qits.userflows.version>
+        <qits.userflows.version>2026.1028.231715</qits.userflows.version>
         <!-- The recording service mocks the same IT boots against (the generic MockService plus
              idp.MockIdp), released out of libs/qits-integrations-quarkus like qits-arch-rules and
              qits-db-core above — so the same-string policy applies the day this repo consumes a
