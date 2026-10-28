@@ -267,6 +267,16 @@ public class ProviderStates {
   public static final String A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE =
       "a project whose desk received a trigger message";
 
+  // qits-1720: the branch-delivery read door, over one branch the ledger holds RELEASED.
+  public static final String BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE =
+      "branch ticket/qits-9001 is RELEASED in qits-demo-service";
+
+  /** The released branch's name, fixed: the read door is addressed by it. */
+  static final String RELEASED_BRANCH = "ticket/qits-9001";
+
+  /** The repository it was released in, fixed for the same reason. */
+  static final String RELEASED_BRANCH_REPOSITORY = "qits-demo-service";
+
   /** The trigger state's window, fixed so the recording is the same on every run. */
   static final UUID DESK_TRIGGER_WINDOW = UUID.fromString("16040000-0000-4000-8000-000000000001");
 
@@ -563,6 +573,9 @@ public class ProviderStates {
     states.put(
         A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
         this::aProjectWhoseDeskReceivedATriggerMessage);
+    states.put(
+        BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
+        this::branchTicketQits9001IsReleasedInQitsDemoService);
   }
 
   /** Every state name this provider answers for. */
@@ -770,6 +783,55 @@ public class ProviderStates {
               approval.persist();
             });
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A branch the delivery ledger holds RELEASED (qits-1720): {@code ticket/qits-9001} in a project's
+   * {@code qits-demo-service}, released as {@code 2026.1028.123714} by {@code
+   * qits-demo-service-rr-3} — what {@code qits wait} and {@code qits release-request delivery} read
+   * back by branch. The project and the repository are real rows; the ledger row is written
+   * straight to {@code branch_delivery}, as {@code control/BranchDeliveries} writes it at the
+   * release, with its fold, version and instant fixed so it records the same each run. The branch
+   * name is fixed too, and a branch read without {@code project} must find it in one project only,
+   * so every row of it a previous run left is deleted first.
+   */
+  private Setup branchTicketQits9001IsReleasedInQitsDemoService() {
+    String token = token();
+    Project project = project(token, BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE);
+    String repoId = UUID.randomUUID().toString();
+    String requestId = UUID.randomUUID().toString();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              eu.wohlben.qits.projects.entity.BranchDelivery.delete("branch", RELEASED_BRANCH);
+              Project owner = Project.findById(project.id);
+              Repository repository = new Repository();
+              repository.id = repoId;
+              repository.project = owner;
+              repository.mainBranch = "main";
+              repository.archetype = eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE;
+              repository.persist();
+              var alias = new eu.wohlben.qits.projects.entity.RepositoryName();
+              alias.project = owner;
+              alias.repository = repository;
+              alias.name = RELEASED_BRANCH_REPOSITORY;
+              alias.persist();
+              var row = new eu.wohlben.qits.projects.entity.BranchDelivery();
+              row.projectId = project.id;
+              row.repoId = repoId;
+              row.repoName = RELEASED_BRANCH_REPOSITORY;
+              row.branch = RELEASED_BRANCH;
+              row.step = "RELEASED";
+              row.requestId = requestId;
+              row.qualifiedId = RELEASED_BRANCH_REPOSITORY + "-rr-3";
+              row.foldSha = SCRIPTED_FOLD;
+              row.version = "2026.1028.123714";
+              row.changedAt = SEEDED_AT;
+              row.persist();
+            });
+    return new Setup(
+        params("projectId", project.id, "repoId", repoId, "requestId", requestId),
+        List.of(token));
   }
 
   /** One line of the trigger state's window, admitted when it occurred. */

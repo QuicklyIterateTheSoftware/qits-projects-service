@@ -6559,6 +6559,40 @@
       ]
     },
     {
+      "name": "branch ticket/qits-9001 is RELEASED in qits-demo-service",
+      "slug": "branch-ticket-qits-9001-is-released-in-qits-demo-service",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repoId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getBranchDeliveries",
+          "method": "GET",
+          "path": "/projects/api/branch-deliveries",
+          "query": {
+            "branch": "ticket/qits-9001"
+          },
+          "status": 200,
+          "file": "branch-ticket-qits-9001-is-released-in-qits-demo-service/getBranchDeliveries.json",
+          "frozen": {
+            "ids": [
+              "$.deliveries[*].projectId",
+              "$.deliveries[*].repoId",
+              "$.deliveries[*].requestId"
+            ],
+            "instants": [
+              "$.deliveries[*].changedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "no project with the given id",
       "slug": "no-project-with-the-given-id",
       "params": {

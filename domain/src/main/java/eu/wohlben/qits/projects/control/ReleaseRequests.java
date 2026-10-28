@@ -488,6 +488,13 @@ public class ReleaseRequests {
   /** Tells the agents behind a request that its fold failed its build (qits-1672). */
   @Inject ReleaseRequestFailureNotices failureNotices;
 
+  /**
+   * Where each branch stands (qits-1719): every point below where a named branch joins, moves,
+   * fails, conflicts, is withdrawn, releases or goes live writes it there, inside the transaction
+   * that took the step, and {@code BranchDeliveryChanged} follows the commit.
+   */
+  @Inject BranchDeliveries deliveries;
+
   /** Asked whether a caller's transaction is active — see {@link #closeGateTicket}. */
   @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
@@ -1246,6 +1253,8 @@ public class ReleaseRequests {
       }
       states.move(earlier, ReleaseRequest.State.OBSOLETE);
       earlier.supersededBy = successor.id;
+      // Its branches ride the successor now, inside the tag it folds in (qits-1719).
+      deliveries.superseded(earlier, successor);
       earlier.detail =
           "Superseded by release request "
               + successor.qualifiedId
@@ -1770,6 +1779,7 @@ public class ReleaseRequests {
                 () -> {
                   ReleaseRequest row = requireOpenForChange(id);
                   states.move(row, ReleaseRequest.State.WITHDRAWN);
+                  deliveries.withdrawn(row);
                   row.detail =
                       (reason == null || reason.isBlank())
                           ? "Withdrawn by " + (actor == null ? "an operator" : actor)
@@ -3364,6 +3374,15 @@ public class ReleaseRequests {
                     requests.findUnreleasedByBranches(repoId, List.of(branch)).stream()
                         .map(row -> row.id)
                         .toList());
+    // THE LEDGER'S PUSHED ROW (qits-1719), in a transaction of its own and never able to stop the
+    // re-folds below: a branch no request carries yet holds its repository at PUSHED, so a branch
+    // that is live elsewhere does not read LIVE everywhere.
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(() -> deliveries.pushed(repoId, branch, !affected.isEmpty()));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record that %s of %s was pushed", branch, repoId);
+    }
     for (String id : affected) {
       String why = "a push moved " + branch + " to " + shortSha(sha);
       if (isAutomationBranch(branch) && deferAutomationRefold(id, why)) {
@@ -3549,10 +3568,14 @@ public class ReleaseRequests {
             .call(
                 () -> {
                   List<Affected> touched = new ArrayList<>();
+                  // A branch that never got past PUSHED leaves the ledger; one a request carried
+                  // keeps its row, and is WITHDRAWN from that request below (qits-1719).
+                  deliveries.deleted(repoId, branch);
                   for (ReleaseRequest open : requests.findUnreleasedByBranches(repoId, List.of(branch))) {
                     sources
                         .find(open.id, ReleaseRequestSource.Kind.BRANCH, branch)
                         .ifPresent(sources::delete);
+                    deliveries.withdrawn(open, List.of(branch));
                     List<ReleaseRequestSource> left = sources.listByRequest(open.id);
                     boolean empty =
                         left.isEmpty()
@@ -3562,6 +3585,7 @@ public class ReleaseRequests {
                       open.detail = "Withdrawn: the branch was deleted";
                       open.retryable = false;
                       open.updatedAt = Instant.now();
+                      deliveries.withdrawn(open);
                       LOG.infof(
                           "Release request %s withdrawn: branch %s of %s was deleted",
                           open.id, branch, repoId);
@@ -3771,6 +3795,10 @@ public class ReleaseRequests {
                           request.detail = null;
                           request.retryable = false;
                           request.updatedAt = now;
+                          // FINALIZED is live for both kinds of repository: a service finalizes
+                          // only once its deployment reported the version live, a library at its
+                          // release (qits-1719).
+                          deliveries.live(request);
                           finalized.add(
                               new Finalized(
                                   request.id,
@@ -4605,6 +4633,7 @@ public class ReleaseRequests {
                 }
                 case CONFLICT -> {
                   states.move(row, ReleaseRequest.State.CONFLICTED);
+                  deliveries.conflicted(row);
                   row.detail =
                       "The sources could not be folded ("
                           + why
@@ -5038,6 +5067,8 @@ public class ReleaseRequests {
                       row.detail = automationDetail(row);
                       row.updatedAt = Instant.now();
                       failureNotices.owe(row);
+                      deliveries.failed(
+                          row, BranchDeliveries.Failure.AUTOMATION, newestAutomationRun(row));
                       return false;
                     }
                     waiting(row, automationDetail(row));
@@ -5063,6 +5094,7 @@ public class ReleaseRequests {
                       return false;
                     }
                     states.move(row, ReleaseRequest.State.WITHDRAWN);
+                    deliveries.withdrawn(row);
                     row.detail = EMPTY_WRAPPER_WITHDRAWN;
                     row.retryable = false;
                     row.updatedAt = Instant.now();
@@ -5194,6 +5226,7 @@ public class ReleaseRequests {
                     row.rejectingRunId = red.runId();
                     row.rejectingGate = null;
                     failureNotices.owe(row);
+                    deliveries.failed(row, BranchDeliveries.Failure.CI, red.runId());
                     row.detail =
                         "Run "
                             + red.runId()
@@ -5546,6 +5579,35 @@ public class ReleaseRequests {
               + " as recorded",
           id);
     }
+  }
+
+  /**
+   * The run a branch's AUTOMATION failure names (qits-1719): the newest run of the newest failed
+   * automation in the note for {@code row}'s fold, as {@link #automationDetail} reads that note —
+   * or of any automation there when no failed one names a run. Null without a note at the fold.
+   */
+  private String newestAutomationRun(ReleaseRequest row) {
+    AutomationLedger.Note note =
+        automationLedger
+            .noteFor(row.id)
+            .filter(held -> row.mergedSha != null && row.mergedSha.equals(held.foldSha()))
+            .orElse(null);
+    if (note == null) {
+      return null;
+    }
+    String failed = null;
+    String any = null;
+    for (AutomationLedger.Automation automation : note.automations()) {
+      String run = automation.newestRunId();
+      if (run == null) {
+        continue;
+      }
+      any = run;
+      if ("FAILED".equals(automation.state())) {
+        failed = run;
+      }
+    }
+    return failed != null ? failed : any;
   }
 
   /**
@@ -6240,6 +6302,7 @@ public class ReleaseRequests {
                     row.version = version;
                   }
                   row.updatedAt = Instant.now();
+                  deliveries.released(row, released);
                   return new ReleasedSources(released, List.copyOf(handedOn));
                 });
     // Gate 3's trigger (epic qits-897), as settle() pulls it for every RELEASED move.
@@ -6265,15 +6328,19 @@ public class ReleaseRequests {
       try {
         // Under a request context: ask() is a door's method and reads the repository and the
         // feature classification outside its own transaction, which the worker thread has none for.
+        // Inside handingOn: the add is the arrival half of the MOVED written next, not a JOINED.
         Asked landed =
-            withRequestContext(
+            deliveries.handingOn(
                 () ->
-                    ask(
-                        ask.repoId(),
-                        source.branch(),
-                        // The recorded author, carried on: it states nothing new (qits-1673).
-                        source.requester(),
-                        source.priority() == null ? null : source.priority().name()));
+                    withRequestContext(
+                        () ->
+                            ask(
+                                ask.repoId(),
+                                source.branch(),
+                                // The recorded author, carried on: it states nothing new (qits-1673).
+                                source.requester(),
+                                source.priority() == null ? null : source.priority().name())));
+        movedOn(ask, landed.request().id(), source.branch());
         LOG.infof(
             "Release request %s handed %s on to %s: %s",
             ask.qualifiedId(), source.branch(), landed.request().qualifiedId(), why);
@@ -6283,6 +6350,27 @@ public class ReleaseRequests {
             "Could not hand %s on from released request %s (%s); the branch is kept",
             source.branch(), ask.qualifiedId(), why);
       }
+    }
+  }
+
+  /**
+   * <b>MOVED</b> for a branch {@link #handOn} placed (qits-1719): it left the released request
+   * {@code ask} names for {@code landedId}. Its own transaction, after the ask's committed, and
+   * never able to fail the hand-on.
+   */
+  private void movedOn(ReleaseExecutor.Release ask, String landedId, String branch) {
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () ->
+                  requests
+                      .findByIdOptional(landedId)
+                      .ifPresent(
+                          landed ->
+                              deliveries.moved(
+                                  ask.requestId(), ask.qualifiedId(), landed, branch)));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record %s as moved from %s", branch, ask.qualifiedId());
     }
   }
 
@@ -6433,6 +6521,9 @@ public class ReleaseRequests {
                             row.version = version;
                           }
                           row.updatedAt = Instant.now();
+                          if (state == ReleaseRequest.State.FAILED) {
+                            deliveries.failed(row, BranchDeliveries.Failure.RELEASE, null);
+                          }
                         }));
     if (state == ReleaseRequest.State.RELEASED || state == ReleaseRequest.State.FAILED) {
       // Gate 3's trigger (epic qits-897): a release that tagged may now be publishing, one that
@@ -7617,6 +7708,9 @@ public class ReleaseRequests {
     // Whoever a source is added for takes part, on every path that adds one — the doors, a VERIFIED
     // phase move, the hand-on after a release (qits-1673). Never removed with the source.
     participants.add(requestId, actor);
+    // JOINED (qits-1719) — for every add but the default branch's, and silenced when the add is
+    // a hand-on, which handOn writes as MOVED once it knows where the branch landed.
+    requests.findByIdOptional(requestId).ifPresent(row -> deliveries.joined(row, branch));
   }
 
   /**

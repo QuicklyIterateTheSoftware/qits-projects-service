@@ -587,6 +587,47 @@ merely its only occupant. Six things about it are rules:
   already has, two moves that end where they began, and a rolled-back transaction announce nothing.
   The port is `control/ReleaseRequestStateAnnouncer`, the adapter `bus/ReleaseRequestStateChangedAnnouncer`
   (`@DefaultBean`); the suite records through `RecordingReleaseRequestStateAnnouncer`.
+- **`BranchDeliveryChanged` says where a branch stands (qits-1719).** Keyed by the branch, not the
+  request: a release hands a late branch on, a successor supersedes a red release and carries its
+  branches, and an estate branch rides one request per repository. Payload, every field top level
+  because wait selections read top-level paths: `{projectId, repoId, repository, branch, requestId,
+  qualifiedId, foldSha?, step, previousRequestId?, previousQualifiedId?, failure?, runId?, version?,
+  everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure` `CI`/`AUTOMATION`/`RELEASE`,
+  `runId` the red run or the newest automation run), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE`
+  (`version` the tag). `everywhere` is the branch's least advanced step across the project's
+  repositories (PUSHED/WITHDRAWN 0, JOINED/MOVED/FAILED/CONFLICTED 1, RELEASED 2, LIVE 3), named
+  `PUSHED`, `JOINED`, `RELEASED` or `LIVE`.
+  - **The ledger is `branch_delivery` (V67)**, one row per (project, repository, branch);
+    `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
+    (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
+    the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold) is neither
+    written nor announced: FAILED and CONFLICTED once per fold, JOINED once per request. `PUSHED` is
+    ledger-only — a push (`onBranchMoved`) of a branch no request carries — so a repository that has
+    not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push
+    (the name was reused), and a deletion removes a row only while it is still PUSHED.
+  - **Followed**: the named `BRANCH` sources only — never the default branch, `release/*`,
+    `maintenance/*` or an implicit tag.
+  - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
+    under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
+    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI beside
+    `failureNotices.owe`, failed automations) and in `settle` to FAILED; CONFLICTED in `apply`;
+    WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
+    withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
+    tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
+    step for a decline, MISSING_SOURCE, a queue's activation or a refold to PENDING.
+  - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
+    the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
+    notices). The port is `control/BranchDeliveryAnnouncer`, the adapter
+    `bus/BranchDeliveryChangedAnnouncer` (`@DefaultBean`); the suite records through
+    `RecordingBranchDeliveryAnnouncer` and `BranchDeliveryTest` drives every step.
+  - **The read door** (qits-1720) is `GET /projects/api/branch-deliveries?branch=&repository=&project=`
+    (`api/BranchDeliveriesController`, `getBranchDeliveries`, the release-requests list's roles,
+    `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
+    requestId, qualifiedId, foldSha, runId, version, changedAt}]}`. `repository` (name or id)
+    narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. An unknown branch is
+    200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
+    `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
+    RELEASED in qits-demo-service` records it for qits-platform-access-cli.
 - **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
   mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
   `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps

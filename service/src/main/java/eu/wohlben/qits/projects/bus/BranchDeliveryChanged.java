@@ -1,0 +1,83 @@
+package eu.wohlben.qits.projects.bus;
+
+import eu.wohlben.qits.eventstream.QitsEvent;
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * A branch took a delivery step in one repository: joined a request, moved to another, failed,
+ * conflicted, was withdrawn, was released, went live (qits-1719).
+ *
+ * <p><b>What it is for.</b> An agent works on a branch. The request carrying it is not a stable key
+ * — a release hands a late branch on to the next request, a successor supersedes a red release and
+ * carries its branches, and a ticket's branch rides one request per repository of an estate — so
+ * {@link ReleaseRequestStateChanged} cannot answer "where is my branch". This can: a wait on {@code
+ * branch} and {@code step}, or on {@code everywhere}, needs no request id at all. qits-workspaces'
+ * {@code AgentWaitListener} subscribes to {@code *} and receives it with no change.
+ *
+ * <p><b>Only a step that moved the ledger is announced, after its transaction commits</b>: {@code
+ * domain}'s {@code BranchDeliveries} is the one writer of {@code branch_delivery}, and its javadoc
+ * has the rules. A step the row already held (the same step, request and fold) publishes nothing,
+ * and neither does a transaction that rolls back. The ledger-only {@code PUSHED} is never
+ * published.
+ *
+ * <p><b>The fields</b>, all top level because a wait selection reads top-level paths, string ids as
+ * everywhere on the platform:
+ *
+ * <ul>
+ *   <li>{@code projectId}, {@code repoId}, {@code repository} (the name, {@code
+ *       qits-projects-service}), {@code branch} ({@code ticket/qits-1615}) — always set.
+ *   <li>{@code requestId}, {@code qualifiedId} — the request carrying the branch now: the target on
+ *       {@code MOVED}. Always set.
+ *   <li>{@code foldSha} — the request's merged sha at the step; absent before its first fold.
+ *   <li>{@code step} — {@code JOINED}, {@code MOVED}, {@code FAILED}, {@code CONFLICTED}, {@code
+ *       WITHDRAWN}, {@code RELEASED} or {@code LIVE}.
+ *   <li>{@code previousRequestId}, {@code previousQualifiedId} — {@code MOVED} only: the request
+ *       the branch left.
+ *   <li>{@code failure} — {@code FAILED} only: {@code CI}, {@code AUTOMATION} or {@code RELEASE};
+ *       {@code runId} — the red CI run or the newest automation run, absent for {@code RELEASE}.
+ *   <li>{@code version} — {@code RELEASED} and {@code LIVE}: the tag.
+ *   <li>{@code everywhere} — the branch's least advanced step across every repository of the
+ *       project, after this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE}.
+ *       A wait for "my branch is live everywhere" matches {@code everywhere = LIVE}.
+ *   <li>{@code changedAt} — when the step was written, and the envelope's {@code occurredAt}; not
+ *       spelled {@code occurredAt}, which the canonical mix-in drops from the payload.
+ * </ul>
+ *
+ * <p>{@code CanonicalJson} is {@code NON_NULL}, so every null above is an absent key.
+ *
+ * <p><b>It lives here rather than in a published vocabulary module</b>, the ruling {@link
+ * RepositoryRenamed} states; {@code BranchDeliveryChangedContractTest} pins the field list a
+ * consumer builds its local record against. Registered for reflection in {@link
+ * EventWireReflection}.
+ */
+public record BranchDeliveryChanged(
+    UUID eventId,
+    String projectId,
+    String repoId,
+    String repository,
+    String branch,
+    String requestId,
+    String qualifiedId,
+    String foldSha,
+    String step,
+    String previousRequestId,
+    String previousQualifiedId,
+    String failure,
+    String runId,
+    String version,
+    String everywhere,
+    Instant changedAt)
+    implements QitsEvent {
+
+  public BranchDeliveryChanged {
+    if (eventId == null) {
+      eventId = UUID.randomUUID();
+    }
+  }
+
+  @Override
+  public Instant occurredAt() {
+    return changedAt;
+  }
+}
