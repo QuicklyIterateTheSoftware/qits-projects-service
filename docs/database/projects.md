@@ -133,6 +133,25 @@ erDiagram
     string step "not null, length 32"
     string version "length 64"
   }
+  %% branch_delivery_notice: eu.wohlben.qits.projects.entity.BranchDeliveryNotice (domain)
+  branch_delivery_notice {
+    string notice_key PK "not null"
+    string agent_id "length 64"
+    int attempts "not null"
+    string branch "not null"
+    instant claimed_at
+    instant created_at "not null"
+    instant delivered_at
+    string detail
+    string fold_sha
+    string outcome "length 32"
+    string project_id "not null"
+    string repo_id "not null"
+    string request_id "not null"
+    string step "not null, length 32"
+    string text "not null"
+    string work_id
+  }
   %% commit_build_status: eu.wohlben.qits.projects.entity.CommitBuildStatus (domain)
   commit_build_status {
     string run_id PK "not null"
@@ -355,21 +374,6 @@ erDiagram
     string reason "not null"
     string request_id "not null"
     instant waived_at "not null"
-  }
-  %% release_request_failure_notice: eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice (domain)
-  release_request_failure_notice {
-    string agent_key PK "not null, length 64"
-    string merged_sha PK "not null"
-    string request_id PK "not null"
-    string agent_id "length 64"
-    int attempts "not null"
-    instant claimed_at
-    string detail
-    string outcome "length 32"
-    instant owed_at "not null"
-    string subject "not null"
-    instant told_at
-    string work_id
   }
   %% release_request_participant: eu.wohlben.qits.projects.entity.ReleaseRequestParticipant (domain)
   release_request_participant {
