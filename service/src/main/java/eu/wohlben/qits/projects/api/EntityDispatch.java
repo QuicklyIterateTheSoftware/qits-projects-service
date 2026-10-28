@@ -118,7 +118,9 @@ import org.jboss.logging.Logger;
  *       gate's words and nothing moves — then any pending pre-approval is cleared, and the press
  *       goes on exactly as a READY_FOR_DEV press does (into IMPLEMENTING, the implement turn).
  *   <li><b>A PHASE press</b> never grants one, and clears a pending one (it asked for one phase, so
- *       nothing is pre-approved past it). <b>A machine's press</b> neither grants nor clears.
+ *       nothing is pre-approved past it). <b>A machine's press</b> neither grants nor clears —
+ *       except the delivery desk's under {@code start_refined} (qits-1714, below), which grants and
+ *       clears only its own {@link #DESK_PRE_APPROVAL} and never touches a person's.
  *   <li><b>Still refused at REFINED</b>: a machine's press and a PHASE press, with {@link
  *       #REFINED_WAITS}. A refused press writes nothing, the pre-approval included.
  * </ul>
@@ -142,6 +144,18 @@ import org.jboss.logging.Logger;
  * {@link Mover#withDeclaredApproval stamped} with the declaration, which {@code PERSON_APPROVAL}
  * accepts in a person's place (every other gate still runs), and {@code preApprovedBy} records
  * {@link #DESK_PRE_APPROVAL}. Every other machine is unchanged. The thread's comment names the rule.
+ *
+ * <p><b>A desk's FLOW press at REPORTED pre-approves the scheduling under start-refined</b>
+ * (qits-1714), as a person's does under qits-1075: with the project's loop on and {@code
+ * start_refined} declared, the press writes {@link #DESK_PRE_APPROVAL} onto the row, and {@link
+ * PhaseAdvance} spends it when the refine phase lands REFINED — re-reading the declaration then,
+ * and scheduling as the desk stamped with it. Without that the item sat REFINED with no desk
+ * trigger to fire for it. With {@code start_refined} off the press writes nothing. A desk's PHASE
+ * press clears a pending {@link #DESK_PRE_APPROVAL}. A desk press never writes over, nor clears, a
+ * person's pre-approval: that is a person's word, and only a person's press takes it back. The
+ * project's settings are read once, in the desk's own checks, which stamp the mover with the
+ * declaration at REPORTED as well as at REFINED; at REPORTED the stamp schedules nothing (only a
+ * REFINED item is scheduled at the press) and is read only by the pre-approval.
  *
  * <h2>Why a bean and not the controller's body</h2>
  *
@@ -506,16 +520,13 @@ public class EntityDispatch {
    * The pre-approval this press leaves on the row (qits-1075): a person's FLOW press at REPORTED
    * grants one in their name; a scheduling press has just spent one, so a pending one goes; a PHASE
    * press clears a pending one; a machine's press, and a person's FLOW press anywhere else, leave
-   * the row as it is. Written only when it changes, so a press that changes nothing audits nothing
-   * here.
+   * the row as it is. The delivery desk is {@link #recordDeskPreApproval}'s. Written only when it
+   * changes, so a press that changes nothing audits nothing here.
    */
   private WorkEntity recordPreApproval(
       WorkEntity entity, DispatchMode mode, Mover mover, boolean scheduled) {
-    if (mover.isDesk() && scheduled) {
-      // Start-refined (epic qits-1440): the declaration the scheduling was made under, on the row.
-      return java.util.Objects.equals(entity.preApprovedBy, DESK_PRE_APPROVAL)
-          ? entity
-          : entities.setPreApprovedBy(entity.id, DESK_PRE_APPROVAL, mover.name());
+    if (mover.isDesk()) {
+      return recordDeskPreApproval(entity, mode, mover, scheduled);
     }
     if (!mover.isPerson()) {
       // A machine never grants a pre-approval and never takes a person's away either.
@@ -527,6 +538,40 @@ public class EntityDispatch {
       wanted = null;
     } else if (EntityStatus.REPORTED.name().equals(entity.status)) {
       wanted = mover.name();
+    }
+    if (java.util.Objects.equals(now, wanted)) {
+      return entity;
+    }
+    return entities.setPreApprovedBy(entity.id, wanted, mover.name());
+  }
+
+  /**
+   * The delivery desk's half of {@link #recordPreApproval}. A scheduling press (start-refined at
+   * REFINED, epic qits-1440) records the declaration it was made under, as it always has. A FLOW
+   * press at REPORTED under a start-refined declaration — which {@link #deskChecked} stamped onto
+   * the mover from the one read of the project's settings — grants {@link #DESK_PRE_APPROVAL}
+   * (qits-1714), and a PHASE press clears a pending one. Neither ever writes over or clears a
+   * person's pre-approval; everything else leaves the row as it is.
+   */
+  private WorkEntity recordDeskPreApproval(
+      WorkEntity entity, DispatchMode mode, Mover mover, boolean scheduled) {
+    String now = entity.preApprovedBy;
+    if (scheduled) {
+      // Start-refined (epic qits-1440): the declaration the scheduling was made under, on the row.
+      return java.util.Objects.equals(now, DESK_PRE_APPROVAL)
+          ? entity
+          : entities.setPreApprovedBy(entity.id, DESK_PRE_APPROVAL, mover.name());
+    }
+    if (now != null && !DESK_PRE_APPROVAL.equals(now)) {
+      // A person's pre-approval is a person's word: the desk neither overwrites nor clears it.
+      return entity;
+    }
+    String wanted = now;
+    if (mode == DispatchMode.PHASE) {
+      wanted = null;
+    } else if (mover.declaredApproval() != null
+        && EntityStatus.REPORTED.name().equals(entity.status)) {
+      wanted = DESK_PRE_APPROVAL;
     }
     if (java.util.Objects.equals(now, wanted)) {
       return entity;
@@ -686,7 +731,10 @@ public class EntityDispatch {
 
   // ---- the delivery desk (epic qits-1440) ----------------------------------------------------
 
-  /** What a desk's start-refined scheduling records as {@code preApprovedBy}. */
+  /**
+   * What a desk's start-refined scheduling records as {@code preApprovedBy} — and, since qits-1714,
+   * what its FLOW press at REPORTED leaves there for {@link PhaseAdvance} to spend at REFINED.
+   */
   public static final String DESK_PRE_APPROVAL =
       "delivery desk (start-refined, .config/qits/project.yml)";
 
@@ -708,8 +756,8 @@ public class EntityDispatch {
   /**
    * The desk's refusals, in the class javadoc's order and with no side effect; answers the mover
    * the press goes on as — the desk stamped with its project's start-refined declaration where the
-   * press is a FLOW press at REFINED and the project declares it. Any other mover passes through
-   * untouched.
+   * press is a FLOW press at REFINED (the scheduling) or at REPORTED (the pre-approval, qits-1714)
+   * and the project declares it. Any other mover passes through untouched.
    */
   private Mover deskChecked(WorkEntity entity, DispatchMode mode, Mover mover, String rule) {
     if (!mover.isDesk()) {
@@ -760,6 +808,13 @@ public class EntityDispatch {
       if (mode == DispatchMode.FLOW) {
         return mover.withDeclaredApproval(DESK_PRE_APPROVAL);
       }
+    }
+    if (mode == DispatchMode.FLOW
+        && delivery.startRefined()
+        && EntityStatus.REPORTED.name().equals(entity.status)) {
+      // qits-1714: the stamp schedules nothing here (schedulesAtThePress wants REFINED); it is what
+      // recordDeskPreApproval reads to leave the pre-approval PhaseAdvance spends at REFINED.
+      return mover.withDeclaredApproval(DESK_PRE_APPROVAL);
     }
     return mover;
   }
