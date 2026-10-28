@@ -607,7 +607,8 @@ merely its only occupant. Six things about it are rules:
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
     the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold, fold attempt
     — `fold_attempt`, V68) is neither written nor announced: a CI or automation FAILED once per
-    fold, CONFLICTED and a FOLD FAILED once per attempt, JOINED once per request. `PUSHED` is
+    fold, CONFLICTED and a FOLD FAILED once per attempt, JOINED once per request and position
+    (again after a failure the request left, below). `PUSHED` is
     ledger-only — a push (`onBranchMoved`) of a branch no request carries — so a repository that has
     not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push
     (the name was reused), and a deletion removes a row only while it is still PUSHED.
@@ -621,7 +622,18 @@ merely its only occupant. Six things about it are rules:
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
     withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
     tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
-    step for a decline, a queue's activation or a refold to PENDING.
+    step for a decline or a queue's activation, and none for a refold to PENDING — except JOINED
+    again: **a request leaving a failure takes its branches back to JOINED** (qits-1719).
+    `ReleaseRequestStates.move` calls `BranchDeliveries.resumed` on every move of an existing
+    request to PENDING or READY (a push's refold or re-arm, a lifted fold rejection, the UNCHANGED
+    arm ending a conflict, `reconsider`, `reopenAutomationRejection`, `evaluate` to READY), and
+    every row naming that request at FAILED or CONFLICTED takes JOINED at the request's current
+    `mergedSha` through the ordinary step path. Without it the row kept saying FAILED for a branch
+    that was healthy again, and `qits wait branch --until live`, which reads the ledger first and
+    fires early on FAILED/CONFLICTED, answered "already FAILED" to an agent that had just fixed its
+    build. The move reads `mergedSha` at the call, so a path moving onto a new fold sets the sha
+    first (`apply`'s UNCHANGED arm does now). A retried run that is red again reads JOINED then
+    FAILED at the same fold; its agent's notice is still once per fold.
   - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
     the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter

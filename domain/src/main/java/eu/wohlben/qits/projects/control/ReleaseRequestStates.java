@@ -60,6 +60,8 @@ public class ReleaseRequestStates {
 
   @Inject ReleaseRequestSourceRepository sources;
 
+  @Inject BranchDeliveries deliveries;
+
   /** A request moved in this transaction, and the state it had before the first move. */
   private static final class Pending {
     final ReleaseRequest row;
@@ -76,6 +78,12 @@ public class ReleaseRequestStates {
    * Sets {@code row}'s state to {@code to} and, if that is a change, announces it once the
    * transaction commits. A new row (state still null) is a move from nothing.
    *
+   * <p>A move of an existing request to PENDING or READY also puts back to JOINED every branch the
+   * delivery ledger still holds FAILED or CONFLICTED on it ({@link BranchDeliveries#resumed},
+   * qits-1719): this is the one writer of the state, so every path back in front of the gates is
+   * covered by this one call. The ledger reads {@code row.mergedSha} here, at the move, so a caller
+   * that moves the request onto a new fold sets the sha first.
+   *
    * @return whether the state changed
    */
   public boolean move(ReleaseRequest row, ReleaseRequest.State to) {
@@ -84,6 +92,10 @@ public class ReleaseRequestStates {
       return false;
     }
     row.state = to;
+    if (before != null
+        && (to == ReleaseRequest.State.PENDING || to == ReleaseRequest.State.READY)) {
+      deliveries.resumed(row);
+    }
     TransactionSynchronizationRegistry registry = activeTransaction();
     if (registry == null) {
       Pending now = new Pending(row, before);
