@@ -30,7 +30,7 @@
     "priority": "MEDIUM",
     "mergedSha": null,
     "state": "PENDING",
-    "summary": "Release the PDF export",
+    "summary": "ticket/contract-14",
     "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
@@ -98,6 +98,16 @@
       "threshold": 3,
       "frozen": false,
       "source": "PLATFORM"
-    }
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "ticket/contract-14",
+        "label": "ticket/contract-14",
+        "workItem": null
+      }
+    ]
   }
 }

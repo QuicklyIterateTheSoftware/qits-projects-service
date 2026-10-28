@@ -698,8 +698,8 @@ public class ReleaseRequestApprovalRolesTest {
   private String create(String repoId, String branch) {
     gitHost.tree("refs/heads/" + branch, Map.of("README.md", "a change"));
     String id =
-        person("ada")
-            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"wohlben\"}")
+        person("wohlben")
+            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)

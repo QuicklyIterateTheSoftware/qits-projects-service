@@ -31,7 +31,7 @@
       "priority": "BLOCKING",
       "mergedSha": "0000000000000000000000000000000000000007",
       "state": "PENDING",
-      "summary": "Release the export across the suite",
+      "summary": "bump/contract-service",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -217,7 +217,17 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": [
+        {
+          "source": "bump/contract-service",
+          "label": "bump/contract-service",
+          "workItem": null
+        }
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -229,7 +239,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000006",
       "state": "READY",
-      "summary": "Release the rounding fix",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -304,7 +314,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -316,7 +330,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000005",
       "state": "REJECTED",
-      "summary": "Release the CSV export",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -391,7 +405,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
@@ -414,7 +432,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "CONFLICTED",
-      "summary": "Release the dark theme",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -511,7 +529,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000f",
@@ -534,7 +556,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000003",
       "state": "FAILED",
-      "summary": "Release the PDF download",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -624,7 +646,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000011",
@@ -647,7 +673,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000002",
       "state": "RELEASED",
-      "summary": "Release the invoice screens",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -797,7 +823,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000015",
@@ -809,7 +839,7 @@
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000001",
       "state": "FINALIZED",
-      "summary": "Release the invoice service",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -884,7 +914,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     }
   ]
 }

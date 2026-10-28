@@ -40,7 +40,7 @@
     "priority": "HIGH",
     "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
     "state": "PENDING",
-    "summary": "Release the export across the suite",
+    "summary": "bump/contract-service; docs/approval",
     "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
@@ -203,6 +203,21 @@
       "threshold": 3,
       "frozen": false,
       "source": "PLATFORM"
-    }
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "bump/contract-service",
+        "label": "bump/contract-service",
+        "workItem": null
+      },
+      {
+        "source": "docs/approval",
+        "label": "docs/approval",
+        "workItem": null
+      }
+    ]
   }
 }

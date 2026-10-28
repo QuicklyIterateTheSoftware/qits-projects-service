@@ -31,7 +31,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "PENDING",
-      "summary": "Release the PDF export",
+      "summary": "ticket/contract-14",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -99,7 +99,17 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": [
+        {
+          "source": "ticket/contract-14",
+          "label": "ticket/contract-14",
+          "workItem": null
+        }
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -152,7 +162,7 @@
       "priority": "HIGH",
       "mergedSha": null,
       "state": "PENDING",
-      "summary": "Release the CSV export",
+      "summary": "ticket/contract-11; ticket/contract-12; epic/contract-13",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -220,7 +230,27 @@
         "threshold": 3,
         "frozen": true,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": [
+        {
+          "source": "ticket/contract-11",
+          "label": "ticket/contract-11",
+          "workItem": null
+        },
+        {
+          "source": "ticket/contract-12",
+          "label": "ticket/contract-12",
+          "workItem": null
+        },
+        {
+          "source": "epic/contract-13",
+          "label": "epic/contract-13",
+          "workItem": null
+        }
+      ]
     }
   ]
 }

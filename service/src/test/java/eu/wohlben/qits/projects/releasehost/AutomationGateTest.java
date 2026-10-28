@@ -811,13 +811,13 @@ public class AutomationGateTest {
   private String create(String repoId, String branch, String requester) {
     String id =
         given()
+            .header("X-Qits-User", requester)
+            .header("X-Qits-Roles", "qits:admin")
             .contentType(ContentType.JSON)
             .body(
                 "{\"branch\":\""
                     + branch
-                    + "\",\"summary\":\"an automated release\",\"requester\":\""
-                    + requester
-                    + "\"}")
+                    + "\",\"summary\":\"an automated release\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)

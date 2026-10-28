@@ -944,8 +944,10 @@ public class ReleaseRequestPreRunTest {
   private String create(String branch) {
     String id =
         given()
+            .header("X-Qits-User", "ada")
+            .header("X-Qits-Roles", "qits:admin")
             .contentType(ContentType.JSON)
-            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post(base())
             .then()
             .statusCode(200)
@@ -984,8 +986,10 @@ public class ReleaseRequestPreRunTest {
   private String create(String inRepo, String branch) {
     String id =
         given()
+            .header("X-Qits-User", "ada")
+            .header("X-Qits-Roles", "qits:admin")
             .contentType(ContentType.JSON)
-            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post("/projects/api/repositories/" + inRepo + "/release-requests")
             .then()
             .statusCode(200)

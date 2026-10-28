@@ -689,6 +689,10 @@ public class ReleaseRequestApprovalDoorTest {
     return "/projects/api/repositories/" + repoId + "/release-requests";
   }
 
+  /**
+   * @param as the caller, whose principal the request is attributed to (qits-1673)
+   * @param requester the name an old client would have stated; sent and read past
+   */
   private String create(RequestSpecification as, String repoId, String requester) {
     String id =
         as.body(

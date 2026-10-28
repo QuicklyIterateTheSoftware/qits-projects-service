@@ -21,7 +21,7 @@
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "WITHDRAWN",
-      "summary": "Release the README",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -89,7 +89,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -112,7 +116,7 @@
       "priority": "MEDIUM",
       "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002",
       "state": "RELEASED",
-      "summary": "Release the rounding fix",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -195,7 +199,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000005",
@@ -218,7 +226,7 @@
       "priority": "MEDIUM",
       "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001",
       "state": "FINALIZED",
-      "summary": "Release the CSV export",
+      "summary": "main",
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
@@ -301,7 +309,11 @@
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
-      }
+      },
+      "participants": [
+        "contract-seeder"
+      ],
+      "items": []
     }
   ]
 }

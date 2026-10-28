@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.entity.ProjectDnsRecord;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecordType;
 import eu.wohlben.qits.projects.entity.CommitBuildStatus;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import eu.wohlben.qits.projects.entity.ReleaseRequest.State;
 import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -2969,6 +2970,7 @@ public class ProviderStates {
                   row.name(releaseRequestNumbers.next(row.repoId));
                   more.accept(row);
                   row.persist();
+                  seededParticipant(row.id, when);
                   return row.id;
                 });
     seededRequests.add(id);
@@ -3302,6 +3304,7 @@ public class ProviderStates {
                   row.updatedAt = when;
                   row.name(releaseRequestNumbers.next(row.repoId));
                   row.persist();
+                  seededParticipant(row.id, when);
                   if (ciVerdict != null) {
                     CommitBuildStatus verdict = new CommitBuildStatus();
                     verdict.runId = UUID.randomUUID().toString();
@@ -3406,7 +3409,7 @@ public class ProviderStates {
     Project project = project(token, A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH);
     String repoId = releasableRepository(project);
     String requestId =
-        releaseRequests.request(repoId, "feature/export", "Release the CSV export", SEEDER, null).id();
+        releaseRequests.request(repoId, "feature/export", SEEDER, null).id();
     merger
         .get()
         .answer(
@@ -3605,4 +3608,18 @@ public class ProviderStates {
     }
     return Collections.unmodifiableMap(out);
   }
+
+  /**
+   * The seeder as the participant of a seeded request (qits-1673): a request asked for through a
+   * door has its caller as a participant, and a seeded row says the same as its {@code requester}.
+   * Inside the caller's transaction.
+   */
+  private static void seededParticipant(String requestId, Instant when) {
+    ReleaseRequestParticipant participant = new ReleaseRequestParticipant();
+    participant.requestId = requestId;
+    participant.principal = SEEDER;
+    participant.firstSeenAt = when;
+    participant.persist();
+  }
+
 }

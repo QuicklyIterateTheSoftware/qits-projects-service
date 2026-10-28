@@ -48,8 +48,8 @@ public interface ReleaseExecutor {
    *     participant
    * @param mergedSha the fold the gates evaluated. The manifests are read at this commit and the
    *     bump lands on top of it.
-   * @param summary what the requester said this release is, for the commit and the tag message
-   * @param requester who asked, or null
+   * @param summary what this release is about, for the commit and the tag message: the request's
+   *     items' labels joined, as the fold that produced {@code mergedSha} derived them (qits-1673)
    * @param namedSources the request's named source branches, {@code main} included — deleted once
    *     released, <b>except</b> {@link #defaultBranch}, which is never deleted by anything
    * @param defaultBranch the repository's default branch, so the exclusion above is a fact rather
@@ -69,7 +69,6 @@ public interface ReleaseExecutor {
       String backingBranch,
       String mergedSha,
       String summary,
-      String requester,
       List<String> namedSources,
       String defaultBranch,
       String priority) {
@@ -91,7 +90,6 @@ public interface ReleaseExecutor {
           backingBranch,
           mergedSha,
           summary,
-          requester,
           List.copyOf(named),
           defaultBranch,
           priority);
