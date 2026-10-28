@@ -198,6 +198,11 @@ public class ReleaseRequestFlowTest {
   }
 
   /** The sentence, never null, so a test can say what it does and does not name in one breath. */
+  private Instant armedAtOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).armedAt);
+  }
+
   private String detailOf(String id) {
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
     return detail == null ? "" : detail;
@@ -544,9 +549,13 @@ public class ReleaseRequestFlowTest {
     verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
     assertTrue(detailOf(id).contains(red), detailOf(id));
+    Instant armedAtRejection = armedAtOf(id);
 
     verdict("BuildSuccessful", merged, green, red, "");
     awaitState(id, "RELEASED");
+    assertTrue(
+        armedAtOf(id).isAfter(armedAtRejection),
+        "the reopen stamps armed_at, so a stall from here is its own (qits-1694)");
 
     org.junit.jupiter.api.Assertions.assertNull(
         given().get(base() + "/" + id).then().extract().path("request.detail"),

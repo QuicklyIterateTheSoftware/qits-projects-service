@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.TreeSet;
@@ -206,8 +207,15 @@ public record ProjectConfig(
           approvesOf(project.deliveryApproves));
     }
 
-    /** Write these settings onto {@code project}'s {@code delivery_*} columns. */
+    /**
+     * Write these settings onto {@code project}'s {@code delivery_*} columns, and stamp {@code
+     * delivery_enabled_at} when this turns delivery on (qits-1694): only on {@code false → true},
+     * so a reconcile that leaves it on, or moves another key, keeps the stamp it had.
+     */
     public void applyTo(Project project) {
+      if (enabled && !project.deliveryEnabled) {
+        project.deliveryEnabledAt = Instant.now();
+      }
       project.deliveryEnabled = enabled;
       project.deliveryMaxRunning = maxRunning;
       project.deliveryStartRefined = startRefined;

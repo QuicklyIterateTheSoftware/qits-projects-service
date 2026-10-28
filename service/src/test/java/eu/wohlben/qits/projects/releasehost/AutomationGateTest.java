@@ -457,11 +457,15 @@ public class AutomationGateTest {
     assertEquals("REJECTED", stateOf(plainRepoId, id));
 
     // It ends having moved nothing: fresh at this very fold, which the sweep re-reads.
+    Instant armedAtRejection = armedAtOf(id);
     automations.answer(plainName, SCREENSHOTS, "FRESH");
     releaseRequests.sweep();
     awaitState(plainRepoId, id, "PENDING");
     assertEquals(merged, mergedShaOf(plainRepoId, id), "reopened at the same fold");
     assertNull(rejectingGateOf(id));
+    assertTrue(
+        armedAtOf(id).isAfter(armedAtRejection),
+        "the reopen stamps armed_at, so a stall from here is its own (qits-1694)");
     assertEquals(1, automations.askedAbout(id).size(), "re-read, never re-triggered");
 
     verdict(plainRepoId, merged);
@@ -853,6 +857,11 @@ public class AutomationGateTest {
   private String rejectingRunIdOf(String id) {
     return QuarkusTransaction.requiringNew()
         .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).rejectingRunId);
+  }
+
+  private Instant armedAtOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).armedAt);
   }
 
   private String rejectingGateOf(String id) {

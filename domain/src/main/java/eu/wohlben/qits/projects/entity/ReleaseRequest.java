@@ -313,9 +313,12 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String approvalContentFold;
 
   /**
-   * When {@link #mergedSha} was armed — the merge that produced it. The settle window's basis: a
-   * re-armed request waits its own window, and a fold no verdict will ever arrive for still passes
-   * vacuously after it.
+   * When the request was last put in front of its gates at {@link #mergedSha}: the merge that
+   * produced it, an activation from the queue, or a reopen of a rejection at the same fold
+   * (qits-1694 — {@code reconsider}, {@code reopenAutomationRejection}, a fold rejection lifted).
+   * It was the settle window's basis until that window went; today its reader is the desk's
+   * request-stalled trigger, which times and keys a PENDING stall from it, so a reopen at the same
+   * fold can stall again.
    */
   @Column(name = "armed_at", nullable = false)
   public Instant armedAt;

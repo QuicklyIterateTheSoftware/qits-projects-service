@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.control.ProjectConfig;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
@@ -24,7 +25,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>request-stalled</b> (qits-1689): the sweep finds a release request stuck past a threshold and
- * tells the desk once per stall; a new fold is a new stall.
+ * tells the desk once per stall; a new fold is a new stall, and since qits-1694 so is a new arm at
+ * the same fold. READY is a stall too, and a stall is measured from when the desk was turned on.
  */
 @QuarkusTest
 class RequestStalledSourceTest {
@@ -36,6 +38,8 @@ class RequestStalledSourceTest {
   @Inject DeskTriggerSweep sweep;
 
   @Inject ReleaseRequestNumbers numbers;
+
+  @Inject DeskTriggerWindows windows;
 
   private final List<String> projects = new ArrayList<>();
 
@@ -77,7 +81,7 @@ class RequestStalledSourceTest {
         line.label.matches("PENDING on fold aaaaaaaa for 3h \\d+m; Waiting for automations: dependency-bump"),
         line.label);
     assertEquals("fold aaaaaaaa", line.cause);
-    assertEquals(RequestStalledSource.stallKey(id, "PENDING", SHA_A), line.eventId);
+    assertEquals(RequestStalledSource.stallKey(id, "PENDING", SHA_A, rowOf(id).armedAt), line.eventId);
 
     refold(id, SHA_B, hoursAgo(3));
     sweep.sweep(Instant.now());
@@ -121,7 +125,139 @@ class RequestStalledSourceTest {
     assertTrue(DeskTriggerFixtures.windows(off).isEmpty());
   }
 
+  @Test
+  void aReopenAtTheSameShaCanStallAgain() {
+    String projectId = project(true);
+    String id = request(projectId, ReleaseRequest.State.PENDING, SHA_A, hoursAgo(5));
+    sweep.sweep(Instant.now());
+    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size());
+
+    // REJECTED, then reconsider() reopened it at the very same fold and stamped armed_at; it is
+    // stuck again past the threshold.
+    rearmAtTheSameFold(id, hoursAgo(3));
+    sweep.sweep(Instant.now());
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(2, lines.size(), "a second stall at one fold is its own line, once");
+    assertNotEquals(lines.get(0).eventId, lines.get(1).eventId);
+    assertTrue(lines.get(1).label.startsWith("PENDING on fold aaaaaaaa for 3h "), lines.get(1).label);
+  }
+
+  @Test
+  void aStallAlreadyToldUnderTheOldKeyIsNotToldAgain() {
+    String projectId = project(true);
+    String id = request(projectId, ReleaseRequest.State.PENDING, SHA_A, hoursAgo(3));
+    admitUnderTheOldKey(projectId, id, "PENDING", SHA_A);
+
+    sweep.sweep(Instant.now());
+
+    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size(), "the change of key adds nothing");
+  }
+
+  @Test
+  void aReadyRequestPastItsThresholdIsOneLine() {
+    String projectId = project(true);
+    String fresh = request(projectId, ReleaseRequest.State.READY, SHA_A, Instant.now().minusSeconds(600));
+    String id = request(projectId, ReleaseRequest.State.READY, SHA_A, hoursAgo(2));
+
+    sweep.sweep(Instant.now());
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size(), "the fresh one is not stalled; a second sweep adds nothing");
+    DeskTriggerEvent line = lines.get(0);
+    assertEquals(id, line.itemId);
+    assertTrue(line.label.matches("READY for 2h \\d+m, not RELEASED"), line.label);
+    assertEquals(
+        RequestStalledSource.stallKey(id, "READY", SHA_A, rowOf(id).updatedAt), line.eventId);
+    assertTrue(fresh != null);
+  }
+
+  @Test
+  void aStallOlderThanMaxAgeAdmitsNothing() {
+    String projectId = project(true);
+    request(projectId, ReleaseRequest.State.PENDING, SHA_A, Instant.now().minus(Duration.ofDays(8)));
+    request(projectId, ReleaseRequest.State.READY, SHA_A, Instant.now().minus(Duration.ofDays(8)));
+    String released =
+        request(projectId, ReleaseRequest.State.RELEASED, SHA_A, Instant.now().minus(Duration.ofDays(9)));
+    tag(released, Instant.now().minus(Duration.ofDays(8)));
+
+    sweep.sweep(Instant.now());
+
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  @Test
+  void turningDeliveryOnCountsStallsFromThenRatherThanAdmittingThemAllAtOnce() {
+    String projectId = project(false);
+    String pending = request(projectId, ReleaseRequest.State.PENDING, SHA_A, Instant.now().minus(Duration.ofDays(2)));
+    request(projectId, ReleaseRequest.State.READY, SHA_A, hoursAgo(30));
+    String released = request(projectId, ReleaseRequest.State.RELEASED, SHA_A, hoursAgo(30));
+    tag(released, hoursAgo(20));
+    sweep.sweep(Instant.now());
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "delivery off: dropped");
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                new ProjectConfig.DeliverySettings(true, 2, false, java.util.Set.of())
+                    .applyTo(Project.<Project>findById(projectId)));
+    sweep.sweep(Instant.now());
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "no burst when delivery goes on");
+
+    // Delivery has been on for 2h since: each stall has now lasted past its threshold in the
+    // desk's own time, and the labels count from then.
+    QuarkusTransaction.requiringNew()
+        .run(() -> Project.<Project>findById(projectId).deliveryEnabledAt = hoursAgo(2));
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(3, lines.size(), lines.toString());
+    for (DeskTriggerEvent line : lines) {
+      assertTrue(line.label.contains(" for 2h "), "measured from delivery_enabled_at: " + line.label);
+    }
+    assertEquals(
+        RequestStalledSource.stallKey(pending, "PENDING", SHA_A, rowOf(pending).armedAt),
+        lines.stream().filter(l -> l.itemId.equals(pending)).findFirst().orElseThrow().eventId,
+        "the clamp never enters the key");
+  }
+
   // -------------------------------------------------------------------------------------------
+
+  private static ReleaseRequest rowOf(String id) {
+    return QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.findById(id));
+  }
+
+  /** What reconsider() leaves: PENDING at the same sha, armed at {@code armed}. */
+  private static void rearmAtTheSameFold(String id, Instant armed) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = ReleaseRequest.findById(id);
+              row.state = ReleaseRequest.State.PENDING;
+              row.armedAt = armed;
+              row.updatedAt = armed;
+            });
+  }
+
+  /** A line as qits-1689 keyed it, with no arm, admitted now. */
+  private void admitUnderTheOldKey(String projectId, String id, String state, String sha) {
+    windows.admit(
+        projectId,
+        RequestStalledSource.ID,
+        new DeskTrigger(
+            projectId,
+            qualifiedIdOf(id),
+            id,
+            "fold aaaaaaaa",
+            state + " on fold aaaaaaaa for 2h 1m",
+            RequestStalledSource.legacyStallKey(id, state, sha),
+            Instant.now(),
+            null,
+            null),
+        Instant.now());
+  }
 
   private static Instant hoursAgo(int hours) {
     return Instant.now().minus(Duration.ofHours(hours)).minusSeconds(60);
