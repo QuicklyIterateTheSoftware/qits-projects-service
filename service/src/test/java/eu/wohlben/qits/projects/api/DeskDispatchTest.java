@@ -184,7 +184,9 @@ public class DeskDispatchTest {
 
     assertEquals("refine", pressed.dispatch().phase());
     assertEquals(1, dispatch.calls().size());
-    assertNull(row(ticketId).preApprovedBy, "a desk's press at REPORTED pre-approves nothing");
+    assertNull(
+        row(ticketId).preApprovedBy,
+        "with start_refined off, a desk's press at REPORTED pre-approves nothing (qits-1714)");
     List<String> thread = threadOf(ticketId);
     String comment = thread.get(thread.size() - 1);
     assertTrue(
@@ -423,6 +425,70 @@ public class DeskDispatchTest {
     List<String> thread = threadOf(ticketId);
     assertTrue(
         thread.get(thread.size() - 1).endsWith(" Dispatched by the delivery desk under rule `start-refined`."));
+  }
+
+  // ---- the desk's pre-approval at REPORTED (qits-1714) ----------------------------------------
+
+  /**
+   * With start_refined on, a desk's FLOW press at REPORTED pre-approves the scheduling: the row
+   * carries {@link EntityDispatch#DESK_PRE_APPROVAL} for {@code PhaseAdvance} to spend at REFINED,
+   * and the press itself still only starts refine.
+   */
+  @Test
+  public void aDeskFlowPressAtReportedUnderStartRefinedPreApprovesTheScheduling() {
+    String projectId = createProject("Desk Pre-approves");
+    delivery(projectId, true, 2, true);
+    String ticketId = createTicket(projectId, "All the way, on the declaration");
+
+    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
+
+    assertEquals("refine", pressed.dispatch().phase());
+    assertEquals(EntityDispatch.DESK_PRE_APPROVAL, row(ticketId).preApprovedBy);
+  }
+
+  /** With start_refined off, the same press writes nothing. */
+  @Test
+  public void aDeskFlowPressAtReportedWithStartRefinedOffWritesNoPreApproval() {
+    String projectId = createProject("Desk No Pre-approval");
+    delivery(projectId, true, 2, false);
+    String ticketId = createTicket(projectId, "Waits for the owner once refined");
+
+    doors.press(desk(projectId), ticketId, "FLOW", RULE);
+
+    assertNull(row(ticketId).preApprovedBy);
+  }
+
+  /** A desk's PHASE press clears a pending desk pre-approval: it asked for one phase. */
+  @Test
+  public void aDeskPhasePressClearsADeskPreApproval() {
+    String projectId = createProject("Desk Phase Clears");
+    delivery(projectId, true, 2, true);
+    String ticketId = createTicket(projectId, "One phase only");
+    dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
+
+    doors.press(desk(projectId), ticketId, "PHASE", RULE);
+
+    assertNull(row(ticketId).preApprovedBy);
+  }
+
+  /**
+   * A desk press never writes over a person's pre-approval, nor clears it: neither its FLOW press
+   * under start_refined nor its PHASE press.
+   */
+  @Test
+  public void aDeskPressLeavesAPersonsPreApprovalAlone() {
+    String projectId = createProject("Desk Leaves Persons");
+    delivery(projectId, true, 5, true);
+    String flowId = createTicket(projectId, "Dana's, pressed FLOW by the desk");
+    String phaseId = createTicket(projectId, "Dana's, pressed PHASE by the desk");
+    dispatchEntities.setPreApprovedBy(flowId, "dana", "dana");
+    dispatchEntities.setPreApprovedBy(phaseId, "dana", "dana");
+
+    doors.press(desk(projectId), flowId, "FLOW", RULE);
+    doors.press(desk(projectId), phaseId, "PHASE", RULE);
+
+    assertEquals("dana", row(flowId).preApprovedBy);
+    assertEquals("dana", row(phaseId).preApprovedBy);
   }
 
   /** Every other machine is unchanged at REFINED: an admin-agent's FLOW press still waits. */

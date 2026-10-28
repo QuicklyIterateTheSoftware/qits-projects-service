@@ -14,6 +14,7 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchListing;
+import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -85,7 +86,12 @@ import org.jboss.logging.Logger;
  * — starting the work is the next press. <b>Unless that person already said so</b> (qits-1075): a
  * person's <em>Dispatch</em> press at REPORTED leaves a pre-approval on the row ({@link
  * WorkEntity#preApprovedBy}), and the refine landing REFINED is then scheduled as that person and
- * handed on to implement in the same session — one press, REPORTED to VERIFIED. Pressing "Assign
+ * handed on to implement in the same session — one press, REPORTED to VERIFIED. <b>The delivery
+ * desk's FLOW press at REPORTED does the same under its project's {@code start_refined}
+ * declaration</b> (qits-1714): it leaves {@link EntityDispatch#DESK_PRE_APPROVAL}, and the refine
+ * landing REFINED re-reads the declaration and, while it still stands, is scheduled as the desk
+ * stamped with it rather than as a person — with the declaration withdrawn meanwhile, the
+ * pre-approval is cleared and the run waits for a person as it would have. Pressing "Assign
  * agent" stays the way to <em>resume</em> a ticket nobody is working on; it stops being the way to
  * continue one that is.
  *
@@ -463,14 +469,17 @@ public class PhaseAdvance {
     if (phase.isEmpty()) {
       // REFINED (it waits for a person to schedule it, qits-887), DONE and DROPPED, now that
       // VERIFIED is answered above. A flow that has just refined is scheduled on the pre-approval
-      // its person's press left (qits-1075) and carries straight on into implement; without one it
+      // its person's press left (qits-1075), or the delivery desk's under start_refined
+      // (qits-1714), and carries straight on into implement; without one it
       // stops here, and says so on the thread when an agent stands on the branch, so the run does
       // not end in silence. Otherwise there is nothing to do, and nothing to say about having done
       // nothing.
       if (EntityStatus.REFINED.name().equals(entity.status)
           && EntityStatus.REPORTED.name().equals(statusBefore)
           && entity.dispatchContinues) {
-        if (entity.preApprovedBy != null) {
+        if (EntityDispatch.DESK_PRE_APPROVAL.equals(entity.preApprovedBy)) {
+          scheduleOnTheDeskPreApproval(entity, changedBy);
+        } else if (entity.preApprovedBy != null) {
           scheduleOnThePreApproval(entity, changedBy);
         } else {
           noteTheFlowWaitsForAPerson(entity, changedBy);
@@ -566,6 +575,104 @@ public class PhaseAdvance {
    */
   private void scheduleOnThePreApproval(WorkEntity entity, String changedBy) {
     String person = entity.preApprovedBy;
+    scheduleAs(
+        entity,
+        Mover.person(person),
+        person,
+        refusal -> scheduleRefused(entity, person, refusal),
+        "as " + person + " on the pre-approval of their Dispatch press",
+        changedBy);
+  }
+
+  /**
+   * <b>The scheduling the delivery desk pre-approved</b> (qits-1714): {@link
+   * #scheduleOnThePreApproval} for a row whose {@code preApprovedBy} is {@link
+   * EntityDispatch#DESK_PRE_APPROVAL}, left by a desk's FLOW press at REPORTED under the project's
+   * {@code start_refined}.
+   *
+   * <p><b>The declaration is read again now</b>, hours after the press, in a transaction of its own
+   * on the projects datasource (the row was read on the epics one; one non-XA resource per
+   * transaction, as {@code desktriggers/CapacityOpenedSource} keeps it). Withdrawn meanwhile — the
+   * loop off, or {@code start_refined} off — the pre-approval goes with it: it is cleared, and the
+   * run waits for a person exactly as it would have without one ({@link
+   * #noteTheFlowWaitsForAPerson}). A read that fails decides nothing: the pre-approval stays and
+   * the run waits.
+   *
+   * <p>Standing, the move is made as {@link Mover#desk} bound to the row's project and stamped with
+   * the declaration ({@link Mover#withDeclaredApproval}), which {@code PERSON_APPROVAL} accepts in
+   * a person's place on its own project's row; every other gate still runs. <b>The desk's name on
+   * that move is {@link EntityDispatch#DESK_PRE_APPROVAL} itself</b>, not the desk subject that
+   * pressed: the newest audit row of the item is the refine agent's move into REFINED, not the
+   * press, so it does not name the desk, and the declaration is what authorizes the move anyway.
+   * Refused, the pre-approval stays and the thread names the desk's declaration, never a person;
+   * made, it is spent and implement is handed on, as for a person.
+   */
+  private void scheduleOnTheDeskPreApproval(WorkEntity entity, String changedBy) {
+    Optional<DeliverySettings> delivery = deliveryOf(entity);
+    if (delivery.isEmpty()) {
+      noteTheFlowWaitsForAPerson(entity, changedBy);
+      return;
+    }
+    if (!delivery.get().enabled() || !delivery.get().startRefined()) {
+      LOG.infof(
+          "%s %s carries the delivery desk's start-refined pre-approval, but its project no longer"
+              + " declares start_refined (or its delivery loop is off); the pre-approval is cleared",
+          entity.archetype, entity.id);
+      try {
+        entityDispatch.setPreApprovedBy(entity.id, null, changedBy);
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            e,
+            "%s %s: the withdrawn desk pre-approval could not be cleared",
+            entity.archetype,
+            entity.id);
+      }
+      noteTheFlowWaitsForAPerson(entity, changedBy);
+      return;
+    }
+    scheduleAs(
+        entity,
+        Mover.desk(EntityDispatch.DESK_PRE_APPROVAL, entity.projectId)
+            .withDeclaredApproval(EntityDispatch.DESK_PRE_APPROVAL),
+        "the delivery desk (start_refined)",
+        refusal -> deskScheduleRefused(entity, refusal),
+        "by the delivery desk on its start_refined pre-approval",
+        changedBy);
+  }
+
+  /**
+   * The project's delivery settings, read in a transaction of its own on the projects datasource;
+   * empty — logged — when they cannot be read.
+   */
+  private Optional<DeliverySettings> deliveryOf(WorkEntity entity) {
+    try {
+      return Optional.of(
+          QuarkusTransaction.requiringNew()
+              .call(() -> DeliverySettings.of(projects.get(entity.projectId))));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "%s %s carries the delivery desk's pre-approval, but its project's delivery settings"
+              + " could not be read; it is not scheduled",
+          entity.archetype,
+          entity.id);
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * The scheduling move both pre-approvals make, and what follows it: REFINED → READY_FOR_DEV as
+   * {@code mover}; a gate's refusal is logged and said on the thread in {@code refusedSentence}'s
+   * words, keeping the pre-approval; a made move spends the pre-approval and hands implement on.
+   * {@code approver} names who pre-approved, for the log; {@code how} completes the success line.
+   */
+  private void scheduleAs(
+      WorkEntity entity,
+      Mover mover,
+      String approver,
+      java.util.function.UnaryOperator<String> refusedSentence,
+      String how,
+      String changedBy) {
     Optional<WorkEntityService.Transition> scheduled;
     try {
       scheduled =
@@ -574,12 +681,12 @@ public class PhaseAdvance {
               entity.id,
               EntityStatus.REFINED,
               EntityStatus.READY_FOR_DEV,
-              Mover.person(person));
+              mover);
     } catch (ConflictException refused) {
       LOG.infof(
           "%s %s was pre-approved by %s but could not be scheduled: %s",
-          entity.archetype, entity.id, person, refused.getMessage());
-      say(entity, scheduleRefused(entity, person, refused.getMessage()), changedBy);
+          entity.archetype, entity.id, approver, refused.getMessage());
+      say(entity, refusedSentence.apply(refused.getMessage()), changedBy);
       return;
     } catch (RuntimeException e) {
       LOG.warnf(
@@ -587,7 +694,7 @@ public class PhaseAdvance {
           "%s %s was pre-approved by %s but its scheduling failed unexpectedly",
           entity.archetype,
           entity.id,
-          person);
+          approver);
       return;
     }
     if (scheduled.isEmpty()) {
@@ -604,9 +711,7 @@ public class PhaseAdvance {
       LOG.warnf(
           e, "%s %s was scheduled but its pre-approval could not be cleared", row.archetype, row.id);
     }
-    LOG.infof(
-        "%s %s was scheduled as %s on the pre-approval of their Dispatch press",
-        row.archetype, row.id, person);
+    LOG.infof("%s %s was scheduled %s", row.archetype, row.id, how);
     Optional<EntityWorkspaces.Target> target = addressOf(row, Phase.IMPLEMENT);
     if (target.isPresent()) {
       handOff(row, Phase.IMPLEMENT, target.get(), changedBy);
@@ -625,6 +730,19 @@ public class PhaseAdvance {
         + refusal
         + ". It stays REFINED. Once that is fixed, a person can schedule it (READY_FOR_DEV), or"
         + " press Dispatch.";
+  }
+
+  /**
+   * What the thread is told when the delivery desk's pre-approved scheduling is refused (qits-1714):
+   * {@link #scheduleRefused}, naming the desk's start_refined declaration rather than a person.
+   */
+  static String deskScheduleRefused(WorkEntity entity, String refusal) {
+    return "The delivery desk (start_refined) pre-approved scheduling this "
+        + noun(entity)
+        + ", but the platform could not schedule it: "
+        + refusal
+        + ". It stays REFINED. Once that is fixed, a person can schedule it (READY_FOR_DEV), or"
+        + " the delivery desk can dispatch it with its start-refined rule.";
   }
 
   /** Whether {@code from → to} is a person scheduling the entity: REFINED → READY_FOR_DEV. */

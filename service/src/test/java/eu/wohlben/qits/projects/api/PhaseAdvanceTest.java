@@ -81,6 +81,9 @@ public class PhaseAdvanceTest {
 
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
 
+  /** Where a test sets the project's stored delivery settings (qits-1714). */
+  @Inject eu.wohlben.qits.projects.persistence.ProjectRepository projectRows;
+
   /**
    * The git host a VERIFIED ask puts each pushed branch to first (qits-1220): a branch it was not
    * told about answers {@code no-such-branch}, so every agent here that pushed something has its
@@ -203,6 +206,18 @@ public class PhaseAdvanceTest {
   private void scheduled(String ticketId) {
     transition(ticketId, "REFINED");
     transition(ticketId, "READY_FOR_DEV");
+  }
+
+  /** The project's stored delivery settings, as the reconcile would have written them. */
+  private void delivery(String projectId, boolean enabled, boolean startRefined) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var project = projectRows.findById(projectId);
+              project.deliveryEnabled = enabled;
+              project.deliveryMaxRunning = 2;
+              project.deliveryStartRefined = startRefined;
+            });
   }
 
   /** The status move's body, {@code POST /work/{qualifiedId}/status}'s {@code {"target"}}. */
@@ -722,6 +737,109 @@ public class PhaseAdvanceTest {
         .body("dispatch.phase", equalTo("implement"));
     assertEquals("IMPLEMENTING", statusOf(ticketId));
     assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent by the press");
+  }
+
+  /**
+   * <b>The desk's pre-approved twin</b> (qits-1714): the delivery desk's FLOW press at REPORTED
+   * under start_refined left {@link EntityDispatch#DESK_PRE_APPROVAL} on the row, so a FLOW refine
+   * that lands REFINED — the declaration still standing — is scheduled by the desk stamped with it,
+   * never as a person: the move's {@code changedBy} is the declaration. The pre-approval is spent,
+   * the implement turn goes into the same session, and the ticket ends IMPLEMENTING.
+   */
+  @Test
+  public void aDeskPreApprovedFlowRefineIsScheduledByTheDeskAndHandedOn() {
+    String projectId = createProject("Advance Desk Pre-approved");
+    delivery(projectId, true, true);
+    String ticketId = createTicket(projectId, "The desk takes it all the way");
+    dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REFINED"); // the refine agent's claim, made here by dana
+
+    assertEquals(1, turns.calls().size(), "one implement turn");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
+    assertEquals(
+        List.of(
+            "REPORTED->REFINED by dana",
+            "REFINED->READY_FOR_DEV by " + EntityDispatch.DESK_PRE_APPROVAL,
+            "READY_FOR_DEV->IMPLEMENTING by dana"),
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .map(e -> e.statusBefore() + "->" + e.status() + " by " + e.changedBy())
+            .toList());
+    assertEquals(
+        List.of(
+            "Started the implement phase: the agent working in the workspace on"
+                + " `" + branchOf(ticketId) + "` was told."),
+        thread(ticketId));
+  }
+
+  /**
+   * <b>The declaration withdrawn before the refine landed</b> (qits-1714): start_refined is off by
+   * the time the ticket reaches REFINED, so the desk's pre-approval goes with it — cleared, nothing
+   * scheduled, no turn — and the run waits for a person as it would have without one.
+   */
+  @Test
+  public void aDeskPreApprovalWhoseDeclarationWasWithdrawnIsClearedAndTheFlowWaits() {
+    String projectId = createProject("Advance Desk Withdrawn");
+    delivery(projectId, true, true);
+    String ticketId = createTicket(projectId, "The owner changed their mind");
+    dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
+    delivery(projectId, true, false);
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REFINED");
+
+    assertEquals(List.of(), turns.calls(), "no implement turn");
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "cleared");
+    assertEquals(List.of(PhaseAdvance.WAITING_FOR_SCHEDULE), thread(ticketId));
+  }
+
+  /**
+   * <b>A gate refuses the desk's pre-approved scheduling</b> (qits-1714): as for a person's, nothing
+   * moves, the pre-approval stays, and the thread says so once — naming the desk's start_refined
+   * declaration, never a person.
+   */
+  @Test
+  public void aDeskPreApprovedSchedulingAGateRefusesKeepsItAndNamesTheDesk() {
+    String projectId = createProject("Advance Desk Gate");
+    delivery(projectId, true, true);
+    String ticketId = createTicket(projectId, "Lost its criteria under the desk");
+    transition(ticketId, "REFINED");
+    given()
+        .contentType("application/merge-patch+json")
+        .body(Map.of("acceptanceCriteria", List.of()))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+    dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transitions.reset();
+
+    advance.afterTransition(dispatchEntities.fresh(ticketId), "REPORTED", "agent");
+
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals(List.of(), turns.calls(), "no implement turn");
+    assertEquals(List.of(), transitions.published(), "nothing moved");
+    assertEquals(
+        EntityDispatch.DESK_PRE_APPROVAL,
+        dispatchEntities.fresh(ticketId).preApprovedBy,
+        "the pre-approval stays");
+    List<String> said = thread(ticketId);
+    assertEquals(1, said.size(), said.toString());
+    assertTrue(
+        said.get(0)
+            .startsWith("The delivery desk (start_refined) pre-approved scheduling this ticket"),
+        said.get(0));
+    assertTrue(said.get(0).contains("ACCEPTANCE_CRITERIA"), said.get(0));
+    assertTrue(said.get(0).contains("It stays REFINED."), said.get(0));
+    assertFalse(said.get(0).contains("a person pre-approved"), said.get(0));
   }
 
   /** A one-phase run that lands REFINED says nothing: the person who pressed knows it stops. */
