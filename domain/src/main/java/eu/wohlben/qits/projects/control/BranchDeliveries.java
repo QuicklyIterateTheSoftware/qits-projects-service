@@ -54,6 +54,22 @@ import org.jboss.logging.Logger;
  * at the same fold (qits-1725): a conflict or a missing source lands no fold, so the sha alone
  * cannot tell two of them apart, and {@link FoldAttempt} keys them.
  *
+ * <p><b>A failure is a position, and leaving it is one too</b> (qits-1719). FAILED and CONFLICTED
+ * are written when the request goes REJECTED, FAILED or CONFLICTED, but the request does not stay
+ * there: a push refolds it, a fold that lands lifts a conflict or a missing source, a retried run
+ * goes green at the same fold — and each of those moves it back to PENDING (or on to READY) with no
+ * step of its own. Left alone, the row kept saying FAILED for a branch that was healthy again: the
+ * read door reported it, and {@code qits wait branch --until live}, which reads the ledger first and
+ * fires early on FAILED or CONFLICTED, told an agent that had just fixed its build that it had
+ * already failed. So {@link ReleaseRequestStates#move} — the one writer of a request's state, and so
+ * the one place every such path passes — calls {@link #resumed} on a move to PENDING or READY, and
+ * every row still naming that request at FAILED or CONFLICTED takes JOINED at the fold the request
+ * is at now: written, heard by the listeners and announced like any step. The position check above
+ * lets it through because the step differs. One consequence is deliberate: a retried run that comes
+ * back red again reopens the request for a moment (PENDING, then REJECTED), so the branch reads
+ * JOINED then FAILED again at the same fold — two steps where there used to be none — while its
+ * agent is told once, the notice's key being per fold ({@link BranchDeliveryNotices}).
+ *
  * <p>After the row is written, in the same transaction, the branch's rows in every repository of
  * the project are ranked ({@link Step#rank}) and the least advanced is the step's {@code
  * everywhere}: a branch is LIVE everywhere only when every repository it was pushed to has it live.
@@ -172,6 +188,30 @@ public class BranchDeliveries {
       return;
     }
     step(row, branch, Step.JOINED, null, null, null, null, null, null, false);
+  }
+
+  /**
+   * <b>JOINED again</b>: {@code row} went back to PENDING or on to READY — a push refolded it, a
+   * rejection was lifted, a retried run went green at the same fold — so every branch whose ledger
+   * row still names it at FAILED or CONFLICTED is on that request again, at the fold it is at now
+   * ({@code row.mergedSha}). Rows naming another request, or at any other step, are left alone.
+   * Called by {@link ReleaseRequestStates#move} alone, for every move to those two states, so the
+   * caller must have set {@code mergedSha} to the fold before the move.
+   */
+  public void resumed(ReleaseRequest row) {
+    if (row == null || row.id == null || row.repoId == null) {
+      return;
+    }
+    List<String> branches;
+    try {
+      branches = ledger.failedBranchesOf(row.repoId, row.id);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not read the failed branches of release request %s", row.qualifiedId);
+      return;
+    }
+    for (String branch : branches) {
+      step(row, branch, Step.JOINED, null, null, null, null, null, null, false);
+    }
   }
 
   /**

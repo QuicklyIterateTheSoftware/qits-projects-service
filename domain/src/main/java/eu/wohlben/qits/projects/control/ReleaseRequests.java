@@ -4683,10 +4683,12 @@ public class ReleaseRequests {
                     return null;
                   }
                   // The fold is possible again and the tip is the answer, but it is the SAME tip —
-                  // nothing new to build. Back to PENDING against what is already there.
+                  // nothing new to build. Back to PENDING against what is already there. The sha
+                  // is recorded before the move: the move JOINs the CONFLICTED branches again at
+                  // the fold the request is at, and that is this one (qits-1719).
+                  row.mergedSha = outcome.sha();
                   states.move(row, ReleaseRequest.State.PENDING);
                   row.detail = "The conflict is resolved; the fold is unchanged";
-                  row.mergedSha = outcome.sha();
                   if (CiVerdicts.newestOwn(ledger.verdictsOf(row.repoId, row.mergedSha), row, null)
                       .isPresent()) {
                     // A run OF THIS REQUEST has already answered for this exact sha (qits-1266:

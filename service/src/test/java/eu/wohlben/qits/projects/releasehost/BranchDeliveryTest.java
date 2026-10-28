@@ -222,19 +222,138 @@ public class BranchDeliveryTest {
     assertEquals(fold, failed.foldSha());
     assertEquals("JOINED", failed.everywhere(), "a failed fold is still on a request");
 
-    // A retry of that run at the same fold comes back red again: the same position, no second word.
-    verdict("BuildFailed", repoA, fold, run("red-again"), red);
-    pause(300);
+    // A retry of that run at the same fold reopens the request (JOINED again, qits-1719) and comes
+    // back red: FAILED again at the same fold, as a fresh position after the reopen.
+    String redAgain = run("red-again");
+    verdict("BuildFailed", repoA, fold, redAgain, red);
+    List<String> retried =
+        List.of("JOINED@" + qid, "FAILED@" + qid, "JOINED@" + qid, "FAILED@" + qid);
+    awaitMoves(branch, retried);
     assertEquals("REJECTED", stateOf(repoA, id));
-    assertEquals(List.of("JOINED@" + qid, "FAILED@" + qid), announced.movesOf(branch));
+    assertEquals(fold, announced.stepsOf(branch).get(2).foldSha());
+    assertEquals(redAgain, last(branch).runId());
+    pause(300);
+    assertEquals(retried, announced.movesOf(branch), "and nothing more");
 
-    // A push folds anew; that fold's red verdict is news.
+    // A push folds anew: JOINED at the new fold, and that fold's red verdict is news.
     headMoved(repoA, branch, sha());
     String refold = mergedShaOf(repoA, id);
     assertNotEquals(fold, refold);
     verdict("BuildFailed", repoA, refold, run("red-refold"), null);
-    awaitMoves(branch, List.of("JOINED@" + qid, "FAILED@" + qid, "FAILED@" + qid));
-    assertEquals(refold, announced.stepsOf(branch).get(2).foldSha());
+    List<String> refolded = new ArrayList<>(retried);
+    refolded.addAll(List.of("JOINED@" + qid, "FAILED@" + qid));
+    awaitMoves(branch, refolded);
+    assertEquals(refold, announced.stepsOf(branch).get(4).foldSha());
+    assertEquals(refold, last(branch).foldSha());
+  }
+
+  // ---- recovering (qits-1719) -------------------------------------------------------------------
+
+  /** Red CI, then a push refolds: the branch is JOINED again at the new fold, door and ledger. */
+  @Test
+  public void aRefoldAfterARedBuildJoinsTheBranchAgainAtTheNewFold() {
+    String branch = ticketBranch();
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    String fold = mergedShaOf(repoA, id);
+    verdict("BuildFailed", repoA, fold, run("red"), null);
+    awaitMoves(branch, List.of("JOINED@" + qid, "FAILED@" + qid));
+    assertEquals("FAILED", ledgerStep(repoA, branch));
+
+    headMoved(repoA, branch, sha());
+
+    String refold = mergedShaOf(repoA, id);
+    assertNotEquals(fold, refold);
+    assertEquals("PENDING", stateOf(repoA, id));
+    awaitMoves(branch, List.of("JOINED@" + qid, "FAILED@" + qid, "JOINED@" + qid));
+    BranchDeliveryStep joined = last(branch);
+    assertEquals(refold, joined.foldSha(), "JOINED at the fold the request is at now");
+    assertEquals(id, joined.requestId());
+    assertNull(joined.failure());
+    assertNull(joined.runId());
+    assertEquals("JOINED", joined.everywhere());
+    assertEquals("JOINED", ledgerStep(repoA, branch));
+    io.restassured.path.json.JsonPath door =
+        given()
+            .queryParam("branch", branch)
+            .get("/projects/api/branch-deliveries")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertEquals("JOINED", door.getString("everywhere"));
+    assertEquals(List.of("JOINED"), door.getList("deliveries.step"));
+    assertEquals(refold, door.getString("deliveries[0].foldSha"));
+  }
+
+  /** Red, then a retry going green at the same fold: READY, and JOINED again at that fold. */
+  @Test
+  public void aRetryGoingGreenAtTheSameFoldJoinsTheBranchAgain() throws InterruptedException {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    stageRelease();
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    String fold = mergedShaOf(repoA, id);
+    String red = run("red");
+    verdict("BuildFailed", repoA, fold, red, null);
+    awaitMoves(branch, List.of("JOINED@" + qid, "FAILED@" + qid));
+
+    verdict("BuildSuccessful", repoA, fold, run("green-retry"), red);
+
+    assertTrue(held.awaitEntered(), "the request went READY and on to its release");
+    awaitMoves(branch, List.of("JOINED@" + qid, "FAILED@" + qid, "JOINED@" + qid));
+    assertEquals(fold, mergedShaOf(repoA, id), "the premise: the same fold");
+    assertEquals(fold, last(branch).foldSha());
+    assertEquals("JOINED", ledgerStep(repoA, branch));
+    assertEquals(3, announced.stepsOf(branch).size(), "READY adds nothing more");
+    held.release();
+    awaitState(repoA, id, "RELEASED");
+  }
+
+  /** A conflict, then a refold that merges: JOINED again at the fold that landed. */
+  @Test
+  public void aRefoldThatMergesAfterAConflictJoinsTheBranchAgain() {
+    String branch = ticketBranch();
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    String fold = mergedShaOf(repoA, id);
+    merger.answerOnce(conflictOf(id, "refs/heads/" + branch, "abc1234"));
+    headMoved(repoA, branch, sha());
+    assertEquals(List.of("JOINED@" + qid, "CONFLICTED@" + qid), announced.movesOf(branch));
+    assertEquals("CONFLICTED", stateOf(repoA, id));
+
+    headMoved(repoA, branch, sha());
+
+    String landed = mergedShaOf(repoA, id);
+    assertNotEquals(fold, landed);
+    assertEquals("PENDING", stateOf(repoA, id));
+    assertEquals(
+        List.of("JOINED@" + qid, "CONFLICTED@" + qid, "JOINED@" + qid), announced.movesOf(branch));
+    BranchDeliveryStep joined = last(branch);
+    assertEquals(landed, joined.foldSha());
+    assertNull(joined.foldAttempt(), "a fold that landed is no failed attempt");
+    assertEquals("JOINED", ledgerStep(repoA, branch));
+  }
+
+  /** PENDING to READY with no failure before it: the branch is already JOINED; nothing new. */
+  @Test
+  public void aPlainReadyPublishesNothingNew() throws InterruptedException {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    stageRelease();
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+
+    verdict("BuildSuccessful", repoA, mergedShaOf(repoA, id), run("green"), null);
+
+    assertTrue(held.awaitEntered(), "the request went READY and on to its release");
+    assertEquals(List.of("JOINED@" + qid), announced.movesOf(branch));
+    assertEquals("JOINED", ledgerStep(repoA, branch));
+    held.release();
+    awaitState(repoA, id, "RELEASED");
   }
 
   @Test
