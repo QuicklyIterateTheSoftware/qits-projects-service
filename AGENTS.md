@@ -1884,7 +1884,7 @@ gate refusal moves nothing, keeps the flag and says so once on the thread. A per
 **at** REFINED is the scheduling itself (same gates, a refusal is the press's 409) and then a
 READY_FOR_DEV press. A machine's press (an agent, `qits:admin-agent` headers, the campaign executor)
 and a PHASE press at REFINED keep the 409; a PHASE press clears a pending pre-approval, a machine's
-press never touches it, and any move to DROPPED clears it (`WorkEntityService.move`,
+press never touches it (the delivery desk's under `start_refined` is the one exception, below), and any move to DROPPED clears it (`WorkEntityService.move`,
 `EntityTransitionService`). So the registry's `flow` describes a person's press: REPORTED runs
 refine, implement, verify, REFINED runs implement, verify, and REFINED's `next` stays null; the
 read's `dispatchable` is true at an unblocked REFINED.
@@ -1911,6 +1911,21 @@ while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refin
 accepts in a person's place (every other gate still runs), and `preApprovedBy` records `delivery
 desk (start-refined, .config/qits/project.yml)`. Every other machine is unchanged. The dispatch
 comment ends ``Dispatched by the delivery desk under rule `<rule>`.``.
+
+**A desk's FLOW press at REPORTED pre-approves the scheduling under `start_refined` (qits-1714).**
+Before it, a desk's backlog dispatch refined the item and left it REFINED with "waiting for a
+person", and no desk trigger fired for it. Now, with the loop on and `start_refined` declared,
+`EntityDispatch` stamps the desk mover with the declaration at REPORTED too (the one settings read in
+the desk checks; it schedules nothing there) and writes `preApprovedBy = EntityDispatch.DESK_PRE_APPROVAL`.
+When the refine lands REFINED, `PhaseAdvance` re-reads the project's delivery settings in a
+transaction of its own (projects datasource; the row is on the epics one): withdrawn meanwhile (loop
+off or `start_refined` off), it clears the pre-approval and posts `WAITING_FOR_SCHEDULE`; standing,
+it moves REFINED → READY_FOR_DEV as `Mover.desk(DESK_PRE_APPROVAL, projectId).withDeclaredApproval(DESK_PRE_APPROVAL)`
+— the audit names the declaration, not the desk principal, because the item's newest audit row is the
+refine agent's move and not the press — then clears the pre-approval and hands implement on. A gate
+refusal keeps it and posts "The delivery desk (start_refined) pre-approved scheduling this …". A
+desk PHASE press clears a pending `DESK_PRE_APPROVAL`; with `start_refined` off the desk writes
+nothing; a desk press never writes over or clears a person's pre-approval.
 
 **The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
 (declaration only: `entity.assignee` is on every row), and every successful press — refine, implement
