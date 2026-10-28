@@ -18,8 +18,8 @@ import java.util.Objects;
  * repository.
  *
  * <p>Written only by {@code control/BranchDeliveries}, in the transaction that took the step, and
- * read by it to deduplicate (a step equal to the row's step, request and fold is not published
- * again) and to compute a branch's {@code everywhere} — its least advanced step across every
+ * read by it to deduplicate (a step equal to the row's step, request, fold and fold attempt is not
+ * published again) and to compute a branch's {@code everywhere} — its least advanced step across every
  * repository of the project. The read door ({@code GET /projects/api/branch-deliveries}) answers
  * these rows as they stand.
  *
@@ -47,7 +47,10 @@ public class BranchDelivery extends PanacheEntityBase {
     JOINED(1),
     /** The branch was carried over from one request to another: handed on, or superseded. */
     MOVED(1),
-    /** A fold carrying the branch failed its CI, its automations, or its release. */
+    /**
+     * A fold carrying the branch failed its CI, its automations, or its release — or could not be
+     * made, because a source ref is missing on the git host (qits-1725).
+     */
     FAILED(1),
     /** The request carrying the branch could not fold its sources. */
     CONFLICTED(1),
@@ -104,6 +107,13 @@ public class BranchDelivery extends PanacheEntityBase {
   /** The request's merged sha at the step; null before its first fold. */
   @Column(name = "fold_sha")
   public String foldSha;
+
+  /**
+   * {@code CONFLICTED}, and {@code FAILED} for a missing source: which fold attempt it is about
+   * (qits-1725, V67) — see {@code control/FoldAttempt}. Null on every other step.
+   */
+  @Column(name = "fold_attempt")
+  public String foldAttempt;
 
   /** {@code FAILED} only: the CI run or the newest automation run that failed the fold. */
   @Column(name = "run_id")

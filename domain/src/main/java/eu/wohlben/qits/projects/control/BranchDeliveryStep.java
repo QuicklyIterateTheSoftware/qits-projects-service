@@ -17,13 +17,17 @@ import java.time.Instant;
  * @param requestId the request carrying the branch now — the target, on {@code MOVED}
  * @param qualifiedId that request's qualified id, {@code qits-projects-service-rr-368}
  * @param foldSha the request's merged sha at the step, or null before its first fold
+ * @param foldAttempt {@code CONFLICTED}, and {@code FAILED} with failure {@code FOLD}: which fold
+ *     attempt the step is about ({@link FoldAttempt}, qits-1725) — the conflicting heads' digest,
+ *     or {@code missing:<ref>}; null on every other step
  * @param step {@code JOINED}, {@code MOVED}, {@code FAILED}, {@code CONFLICTED}, {@code
  *     WITHDRAWN}, {@code RELEASED} or {@code LIVE} — never {@code PUSHED}, which is ledger-only
  * @param previousRequestId {@code MOVED} only: the request the branch left
  * @param previousQualifiedId {@code MOVED} only: that request's qualified id
- * @param failure {@code FAILED} only: {@code CI}, {@code AUTOMATION} or {@code RELEASE}
+ * @param failure {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE} or {@code
+ *     FOLD}
  * @param runId {@code FAILED} only: the red CI run, or the newest automation run; null for {@code
- *     RELEASE}
+ *     RELEASE} and {@code FOLD}
  * @param version {@code RELEASED} and {@code LIVE}: the tag
  * @param everywhere the branch's least advanced step across every repository of the project, after
  *     this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE}
@@ -37,6 +41,7 @@ public record BranchDeliveryStep(
     String requestId,
     String qualifiedId,
     String foldSha,
+    String foldAttempt,
     String step,
     String previousRequestId,
     String previousQualifiedId,

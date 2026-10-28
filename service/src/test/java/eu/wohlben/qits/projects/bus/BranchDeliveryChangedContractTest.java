@@ -37,6 +37,7 @@ public class BranchDeliveryChangedContractTest {
             "rr-369",
             "qits-projects-service-rr-369",
             "abc123",
+            null,
             "MOVED",
             "rr-368",
             "qits-projects-service-rr-368",
@@ -57,6 +58,7 @@ public class BranchDeliveryChangedContractTest {
             "rr-369",
             "qits-projects-service-rr-369",
             "def456",
+            null,
             "FAILED",
             null,
             null,
@@ -93,7 +95,7 @@ public class BranchDeliveryChangedContractTest {
             "requestId",
             "step"),
         sortedFieldNames(payload),
-        "failure, runId and version are null on a MOVED, so they are absent keys");
+        "foldAttempt, failure, runId and version are null on a MOVED, so they are absent keys");
     assertEquals("ticket/qits-1615", payload.get("branch").asText());
     assertEquals("qits-projects-service", payload.get("repository").asText());
     assertEquals("MOVED", payload.get("step").asText());
@@ -113,6 +115,71 @@ public class BranchDeliveryChangedContractTest {
     assertEquals("run-7", payload.get("runId").asText());
     assertFalse(payload.has("previousRequestId"));
     assertFalse(payload.has("version"));
+    assertFalse(payload.has("foldAttempt"), "a CI failure names its fold by the sha alone");
+  }
+
+  /**
+   * qits-1725: a conflict names its attempt, because the foldSha a conflict leaves is the last fold
+   * that landed and cannot tell two conflicts apart.
+   */
+  @Test
+  public void aConflictNamesItsFoldAttempt() throws Exception {
+    JsonNode payload =
+        payload(
+            BranchDeliveryChangedAnnouncer.event(
+                new BranchDeliveryStep(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "ticket/qits-1615",
+                    "rr-369",
+                    "qits-projects-service-rr-369",
+                    "def456",
+                    "0123456789abcdef",
+                    "CONFLICTED",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "JOINED",
+                    AT)));
+
+    assertEquals("CONFLICTED", payload.get("step").asText());
+    assertEquals("0123456789abcdef", payload.get("foldAttempt").asText());
+    assertEquals("def456", payload.get("foldSha").asText());
+    assertFalse(payload.has("failure"));
+  }
+
+  /** qits-1725: a source missing on the git host is FAILED with failure FOLD and no run. */
+  @Test
+  public void aMissingSourceIsAFoldFailureNamingTheRef() throws Exception {
+    JsonNode payload =
+        payload(
+            BranchDeliveryChangedAnnouncer.event(
+                new BranchDeliveryStep(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "ticket/qits-1615",
+                    "rr-369",
+                    "qits-projects-service-rr-369",
+                    null,
+                    "missing:refs/heads/epic/qits-1681",
+                    "FAILED",
+                    null,
+                    null,
+                    "FOLD",
+                    null,
+                    null,
+                    "JOINED",
+                    AT)));
+
+    assertEquals("FAILED", payload.get("step").asText());
+    assertEquals("FOLD", payload.get("failure").asText());
+    assertEquals("missing:refs/heads/epic/qits-1681", payload.get("foldAttempt").asText());
+    assertFalse(payload.has("runId"));
+    assertFalse(payload.has("foldSha"), "nothing was ever folded");
   }
 
   /** A release carries its tag; a request with no fold yet carries no foldSha. */
@@ -128,6 +195,7 @@ public class BranchDeliveryChangedContractTest {
                     "ticket/qits-1615",
                     "rr-369",
                     "qits-projects-service-rr-369",
+                    null,
                     null,
                     "RELEASED",
                     null,
@@ -159,6 +227,7 @@ public class BranchDeliveryChangedContractTest {
             "requestId",
             "qualifiedId",
             "foldSha",
+            "foldAttempt",
             "step",
             "previousRequestId",
             "previousQualifiedId",

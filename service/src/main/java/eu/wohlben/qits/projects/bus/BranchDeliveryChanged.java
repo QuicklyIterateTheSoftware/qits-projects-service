@@ -17,9 +17,9 @@ import java.util.UUID;
  *
  * <p><b>Only a step that moved the ledger is announced, after its transaction commits</b>: {@code
  * domain}'s {@code BranchDeliveries} is the one writer of {@code branch_delivery}, and its javadoc
- * has the rules. A step the row already held (the same step, request and fold) publishes nothing,
- * and neither does a transaction that rolls back. The ledger-only {@code PUSHED} is never
- * published.
+ * has the rules. A step the row already held (the same step, request, fold and fold attempt)
+ * publishes nothing, and neither does a transaction that rolls back. The ledger-only {@code
+ * PUSHED} is never published.
  *
  * <p><b>The fields</b>, all top level because a wait selection reads top-level paths, string ids as
  * everywhere on the platform:
@@ -30,12 +30,20 @@ import java.util.UUID;
  *   <li>{@code requestId}, {@code qualifiedId} — the request carrying the branch now: the target on
  *       {@code MOVED}. Always set.
  *   <li>{@code foldSha} — the request's merged sha at the step; absent before its first fold.
+ *       A conflict or a missing source lands no fold, so it leaves this where the last fold that
+ *       landed put it.
+ *   <li>{@code foldAttempt} — {@code CONFLICTED}, and {@code FAILED} with failure {@code FOLD}:
+ *       which attempt the step is about (qits-1725) — 16 hex characters keyed on the conflicting
+ *       heads at their tips, or {@code missing:<ref>}. A second conflict at the same {@code
+ *       foldSha} with another key is announced; the same key again is not. Absent on every other
+ *       step.
  *   <li>{@code step} — {@code JOINED}, {@code MOVED}, {@code FAILED}, {@code CONFLICTED}, {@code
  *       WITHDRAWN}, {@code RELEASED} or {@code LIVE}.
  *   <li>{@code previousRequestId}, {@code previousQualifiedId} — {@code MOVED} only: the request
  *       the branch left.
- *   <li>{@code failure} — {@code FAILED} only: {@code CI}, {@code AUTOMATION} or {@code RELEASE};
- *       {@code runId} — the red CI run or the newest automation run, absent for {@code RELEASE}.
+ *   <li>{@code failure} — {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE} or
+ *       {@code FOLD} (a source ref missing on the git host, qits-1725); {@code runId} — the red CI
+ *       run or the newest automation run, absent for {@code RELEASE} and {@code FOLD}.
  *   <li>{@code version} — {@code RELEASED} and {@code LIVE}: the tag.
  *   <li>{@code everywhere} — the branch's least advanced step across every repository of the
  *       project, after this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE}.
@@ -60,6 +68,7 @@ public record BranchDeliveryChanged(
     String requestId,
     String qualifiedId,
     String foldSha,
+    String foldAttempt,
     String step,
     String previousRequestId,
     String previousQualifiedId,

@@ -591,17 +591,23 @@ merely its only occupant. Six things about it are rules:
   request: a release hands a late branch on, a successor supersedes a red release and carries its
   branches, and an estate branch rides one request per repository. Payload, every field top level
   because wait selections read top-level paths: `{projectId, repoId, repository, branch, requestId,
-  qualifiedId, foldSha?, step, previousRequestId?, previousQualifiedId?, failure?, runId?, version?,
-  everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure` `CI`/`AUTOMATION`/`RELEASE`,
-  `runId` the red run or the newest automation run), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE`
-  (`version` the tag). `everywhere` is the branch's least advanced step across the project's
+  qualifiedId, foldSha?, foldAttempt?, step, previousRequestId?, previousQualifiedId?, failure?, runId?,
+  version?, everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure`
+  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, `runId` the red run or the newest automation run, absent for
+  `RELEASE` and `FOLD`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag).
+  `foldAttempt` (qits-1725) is set on `CONFLICTED` and on `FAILED`/`FOLD` only: a conflict or a
+  missing source lands no fold, so `foldSha` stays at the last fold that landed and cannot tell two
+  failed attempts apart. `control/FoldAttempt` is the key — for a conflict the first 16 hex chars of
+  the SHA-256 of the sorted, distinct `head@headSha` pairs joined by `\n`, for a missing source
+  `missing:<ref>` (`missing:refs/heads/epic/qits-1681`). `everywhere` is the branch's least advanced step across the project's
   repositories (PUSHED/WITHDRAWN 0, JOINED/MOVED/FAILED/CONFLICTED 1, RELEASED 2, LIVE 3), named
   `PUSHED`, `JOINED`, `RELEASED` or `LIVE`.
   - **The ledger is `branch_delivery` (V66)**, one row per (project, repository, branch);
     `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
-    the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold) is neither
-    written nor announced: FAILED and CONFLICTED once per fold, JOINED once per request. `PUSHED` is
+    the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold, fold attempt
+    — `fold_attempt`, V67) is neither written nor announced: a CI or automation FAILED once per
+    fold, CONFLICTED and a FOLD FAILED once per attempt, JOINED once per request. `PUSHED` is
     ledger-only — a push (`onBranchMoved`) of a branch no request carries — so a repository that has
     not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push
     (the name was reused), and a deletion removes a row only while it is still PUSHED.
@@ -610,11 +616,12 @@ merely its only occupant. Six things about it are rules:
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
     under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
     it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI beside
-    `failureNotices.owe`, failed automations) and in `settle` to FAILED; CONFLICTED in `apply`;
+    `failureNotices.owe`, failed automations), in `settle` to FAILED and, with `failure` `FOLD`, in
+    `apply`'s MISSING_SOURCE arm (qits-1725); CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
     withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
     tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
-    step for a decline, MISSING_SOURCE, a queue's activation or a refold to PENDING.
+    step for a decline, a queue's activation or a refold to PENDING.
   - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
     the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter

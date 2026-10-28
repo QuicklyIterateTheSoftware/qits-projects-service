@@ -38,6 +38,7 @@ public class BranchDeliveryChangedAnnouncer implements BranchDeliveryAnnouncer {
         step.requestId(),
         step.qualifiedId(),
         step.foldSha(),
+        step.foldAttempt(),
         step.step(),
         step.previousRequestId(),
         step.previousQualifiedId(),

@@ -24,8 +24,12 @@ import java.util.Optional;
 public class BranchDeliveryRepository
     implements PanacheRepositoryBase<BranchDelivery, BranchDelivery.Key> {
 
-  /** What a step is compared with before it is published: the row's step, request and fold. */
-  public record Position(String step, String requestId, String foldSha, String version) {}
+  /**
+   * What a step is compared with before it is published: the row's step, request, fold and fold
+   * attempt (qits-1725).
+   */
+  public record Position(
+      String step, String requestId, String foldSha, String foldAttempt, String version) {}
 
   /** One row's key and version, for the LIVE step's walk over a request's RELEASED rows. */
   public record Released(
@@ -35,7 +39,7 @@ public class BranchDeliveryRepository
   public Optional<Position> position(String projectId, String repoId, String branch) {
     List<?> rows =
         em().createNativeQuery(
-                "select step, request_id, fold_sha, version from branch_delivery"
+                "select step, request_id, fold_sha, fold_attempt, version from branch_delivery"
                     + " where project_id = ?1 and repo_id = ?2 and branch = ?3")
             .setParameter(1, projectId)
             .setParameter(2, repoId)
@@ -46,19 +50,21 @@ public class BranchDeliveryRepository
     }
     Object[] row = (Object[]) rows.get(0);
     return Optional.of(
-        new Position((String) row[0], (String) row[1], (String) row[2], (String) row[3]));
+        new Position(
+            (String) row[0], (String) row[1], (String) row[2], (String) row[3], (String) row[4]));
   }
 
   /** Writes one row whole, inserting or replacing what the key held. */
   public void upsert(BranchDelivery row) {
     em().createNativeQuery(
             "insert into branch_delivery (project_id, repo_id, repo_name, branch, step, request_id,"
-                + " qualified_id, fold_sha, run_id, version, changed_at)"
-                + " values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
+                + " qualified_id, fold_sha, fold_attempt, run_id, version, changed_at)"
+                + " values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
                 + " on conflict (project_id, repo_id, branch) do update set"
                 + " repo_name = excluded.repo_name, step = excluded.step,"
                 + " request_id = excluded.request_id, qualified_id = excluded.qualified_id,"
-                + " fold_sha = excluded.fold_sha, run_id = excluded.run_id,"
+                + " fold_sha = excluded.fold_sha, fold_attempt = excluded.fold_attempt,"
+                + " run_id = excluded.run_id,"
                 + " version = excluded.version, changed_at = excluded.changed_at")
         .setParameter(1, row.projectId)
         .setParameter(2, row.repoId)
@@ -68,9 +74,10 @@ public class BranchDeliveryRepository
         .setParameter(6, row.requestId)
         .setParameter(7, row.qualifiedId)
         .setParameter(8, row.foldSha)
-        .setParameter(9, row.runId)
-        .setParameter(10, row.version)
-        .setParameter(11, row.changedAt)
+        .setParameter(9, row.foldAttempt)
+        .setParameter(10, row.runId)
+        .setParameter(11, row.version)
+        .setParameter(12, row.changedAt)
         .executeUpdate();
   }
 
@@ -98,7 +105,8 @@ public class BranchDeliveryRepository
   public int resetToPushed(String projectId, String repoId, String branch, Instant at) {
     return em().createNativeQuery(
             "update branch_delivery set step = 'PUSHED', request_id = null, qualified_id = null,"
-                + " fold_sha = null, run_id = null, version = null, changed_at = ?4"
+                + " fold_sha = null, fold_attempt = null, run_id = null, version = null,"
+                + " changed_at = ?4"
                 + " where project_id = ?1 and repo_id = ?2 and branch = ?3"
                 + " and step in ('LIVE', 'WITHDRAWN')")
         .setParameter(1, projectId)

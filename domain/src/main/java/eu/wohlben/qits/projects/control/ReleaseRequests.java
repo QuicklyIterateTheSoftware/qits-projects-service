@@ -4537,7 +4537,14 @@ public class ReleaseRequests {
                   // of the missing branch re-folds it through onBranchMoved and the fold that lands
                   // lifts the rejection (above); the sweep does not knock again. No unattended-gate
                   // ticket: the sentence names the ref, and only a push or a person can answer it.
+                  // Every branch it carries is FAILED with failure FOLD, keyed by the missing ref
+                  // (qits-1725): the agent waiting on its branch hears it, once per missing ref.
                   states.move(row, ReleaseRequest.State.REJECTED);
+                  deliveries.failed(
+                      row,
+                      BranchDeliveries.Failure.FOLD,
+                      null,
+                      FoldAttempt.ofMissingSource(outcome.detail()));
                   row.rejectingGate = FoldFailure.KIND;
                   row.rejectingRunId = null;
                   row.retryable = false;
@@ -4550,7 +4557,9 @@ public class ReleaseRequests {
                 }
                 case CONFLICT -> {
                   states.move(row, ReleaseRequest.State.CONFLICTED);
-                  deliveries.conflicted(row);
+                  // Keyed by the conflicting heads at their tips (qits-1725): mergedSha stays at the
+                  // last fold that landed, so it cannot tell this conflict from the one before.
+                  deliveries.conflicted(row, FoldAttempt.ofConflicts(outcome.conflicts()));
                   row.detail =
                       "The sources could not be folded ("
                           + why

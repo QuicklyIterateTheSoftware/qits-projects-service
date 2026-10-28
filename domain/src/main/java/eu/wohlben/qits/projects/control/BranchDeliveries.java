@@ -45,10 +45,12 @@ import org.jboss.logging.Logger;
  *
  * <h2>Once per position, and {@code everywhere}</h2>
  *
- * <p>A step the row already holds — the same step, request and fold — is neither written nor
- * announced again. That is the whole of the deduplication: a retried red run at the same fold is
- * one FAILED, a re-hit conflict on the same fold is one CONFLICTED, and a request is JOINED once.
- * A new fold's verdict is a new position and is announced.
+ * <p>A step the row already holds — the same step, request, fold and fold attempt — is neither
+ * written nor announced again. That is the whole of the deduplication: a retried red run at the
+ * same fold is one FAILED, the same conflict hit again is one CONFLICTED, and a request is JOINED
+ * once. A new fold's verdict is a new position and is announced — and so is a new failed attempt
+ * at the same fold (qits-1725): a conflict or a missing source lands no fold, so the sha alone
+ * cannot tell two of them apart, and {@link FoldAttempt} keys them.
  *
  * <p>After the row is written, in the same transaction, the branch's rows in every repository of
  * the project are ranked ({@link Step#rank}) and the least advanced is the step's {@code
@@ -89,7 +91,13 @@ public class BranchDeliveries {
     /** A release-request automation at the fold failed and nothing else is in flight. */
     AUTOMATION,
     /** The release itself was refused or could not be made. */
-    RELEASE
+    RELEASE,
+    /**
+     * The sources could not be folded because a source ref is missing on the git host
+     * (qits-1725): the fold's {@code MISSING_SOURCE}, which REJECTS the request. No run; the step's
+     * fold attempt is {@code missing:<ref>}.
+     */
+    FOLD
   }
 
   /** Set while {@link #handingOn} runs: an add there is a MOVED its caller writes, not a JOINED. */
@@ -161,7 +169,7 @@ public class BranchDeliveries {
     if (Boolean.TRUE.equals(HANDING_ON.get())) {
       return;
     }
-    step(row, branch, Step.JOINED, null, null, null, null, null, false);
+    step(row, branch, Step.JOINED, null, null, null, null, null, null, false);
   }
 
   /**
@@ -172,7 +180,7 @@ public class BranchDeliveries {
    */
   public void moved(
       String previousId, String previousQualifiedId, ReleaseRequest to, String branch) {
-    step(to, branch, Step.MOVED, previousId, previousQualifiedId, null, null, null, true);
+    step(to, branch, Step.MOVED, previousId, previousQualifiedId, null, null, null, null, true);
   }
 
   /**
@@ -187,15 +195,29 @@ public class BranchDeliveries {
 
   /** <b>FAILED</b>: {@code row}'s fold failed; every branch it carries. */
   public void failed(ReleaseRequest row, Failure failure, String runId) {
+    failed(row, failure, runId, null);
+  }
+
+  /**
+   * <b>FAILED</b> for a fold attempt that landed nothing — {@link Failure#FOLD}, keyed by {@code
+   * foldAttempt} ({@link FoldAttempt#ofMissingSource}) so a second missing ref at the same merged
+   * sha is news and the same one again is not (qits-1725); every branch {@code row} carries.
+   */
+  public void failed(ReleaseRequest row, Failure failure, String runId, String foldAttempt) {
     for (String branch : branchesOf(row)) {
-      step(row, branch, Step.FAILED, null, null, failure.name(), runId, null, false);
+      step(row, branch, Step.FAILED, null, null, foldAttempt, failure.name(), runId, null, false);
     }
   }
 
-  /** <b>CONFLICTED</b>: {@code row}'s sources could not be folded; every branch it carries. */
-  public void conflicted(ReleaseRequest row) {
+  /**
+   * <b>CONFLICTED</b>: {@code row}'s sources could not be folded; every branch it carries. {@code
+   * foldAttempt} ({@link FoldAttempt#ofConflicts}) keys the attempt: the merged sha a conflict
+   * leaves is the last fold that landed, so without it a second, different conflict there would
+   * read as the position already held (qits-1725).
+   */
+  public void conflicted(ReleaseRequest row, String foldAttempt) {
     for (String branch : branchesOf(row)) {
-      step(row, branch, Step.CONFLICTED, null, null, null, null, null, false);
+      step(row, branch, Step.CONFLICTED, null, null, foldAttempt, null, null, null, false);
     }
   }
 
@@ -210,14 +232,14 @@ public class BranchDeliveries {
    */
   public void withdrawn(ReleaseRequest row, Collection<String> branches) {
     for (String branch : branches) {
-      step(row, branch, Step.WITHDRAWN, null, null, null, null, null, false);
+      step(row, branch, Step.WITHDRAWN, null, null, null, null, null, null, false);
     }
   }
 
   /** <b>RELEASED</b>: the tag {@code row.version} carries each of {@code branches}. */
   public void released(ReleaseRequest row, Collection<String> branches) {
     for (String branch : branches) {
-      step(row, branch, Step.RELEASED, null, null, null, null, row.version, false);
+      step(row, branch, Step.RELEASED, null, null, null, null, null, row.version, false);
     }
   }
 
@@ -237,6 +259,7 @@ public class BranchDeliveries {
                 row.id,
                 row.qualifiedId,
                 row.mergedSha,
+                null,
                 Step.LIVE.name(),
                 null,
                 null,
@@ -317,6 +340,7 @@ public class BranchDeliveries {
       Step step,
       String previousId,
       String previousQualifiedId,
+      String foldAttempt,
       String failure,
       String runId,
       String version,
@@ -342,6 +366,7 @@ public class BranchDeliveries {
               row.id,
               row.qualifiedId,
               row.mergedSha,
+              foldAttempt,
               step.name(),
               previousId,
               previousQualifiedId,
@@ -373,7 +398,8 @@ public class BranchDeliveries {
       BranchDeliveryRepository.Position held = current.get();
       if (taken.step().equals(held.step())
           && Objects.equals(taken.requestId(), held.requestId())
-          && Objects.equals(taken.foldSha(), held.foldSha())) {
+          && Objects.equals(taken.foldSha(), held.foldSha())
+          && Objects.equals(taken.foldAttempt(), held.foldAttempt())) {
         return;
       }
       if (onlyFromPrevious
@@ -395,6 +421,7 @@ public class BranchDeliveries {
     row.requestId = taken.requestId();
     row.qualifiedId = taken.qualifiedId();
     row.foldSha = taken.foldSha();
+    row.foldAttempt = taken.foldAttempt();
     row.runId = taken.runId();
     row.version = taken.version();
     row.changedAt = taken.changedAt();
@@ -408,6 +435,7 @@ public class BranchDeliveries {
             taken.requestId(),
             taken.qualifiedId(),
             taken.foldSha(),
+            taken.foldAttempt(),
             taken.step(),
             taken.previousRequestId(),
             taken.previousQualifiedId(),

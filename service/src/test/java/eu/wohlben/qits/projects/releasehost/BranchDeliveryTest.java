@@ -17,6 +17,7 @@ import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchDeliveryStep;
+import eu.wohlben.qits.projects.control.FoldAttempt;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -282,6 +283,96 @@ public class BranchDeliveryTest {
         List.of("JOINED@" + qid, "CONFLICTED@" + qid, "WITHDRAWN@" + qid),
         announced.movesOf(branch));
     assertEquals("PUSHED", last(branch).everywhere(), "nothing is delivering it any more");
+  }
+
+  /**
+   * qits-1725: a conflict lands no fold, so the second one sits at the merged sha the first left.
+   * Another head, or the same head at another tip, is another attempt and is announced again.
+   */
+  @Test
+  public void aDifferentConflictAtTheSameFoldIsConflictedAgain() {
+    String branch = ticketBranch();
+    String other = ticketBranch();
+    String id = create(repoA, branch);
+    releaseRequests.join(id, other, "alice", null);
+    String qid = qualifiedIdOf(repoA, id);
+    String fold = mergedShaOf(repoA, id);
+
+    merger.answer(conflictOf(id, "refs/heads/" + branch, "abc1234"));
+    headMoved(repoA, branch, sha());
+    merger.answer(conflictOf(id, "refs/heads/" + other, "def5678"));
+    headMoved(repoA, other, sha());
+
+    List<String> twice = List.of("JOINED@" + qid, "CONFLICTED@" + qid, "CONFLICTED@" + qid);
+    assertEquals(twice, announced.movesOf(branch));
+    assertEquals(twice, announced.movesOf(other));
+    BranchDeliveryStep first = announced.stepsOf(branch).get(1);
+    BranchDeliveryStep second = announced.stepsOf(branch).get(2);
+    assertEquals(fold, mergedShaOf(repoA, id), "the premise: no conflict moved the merged sha");
+    assertEquals(fold, first.foldSha());
+    assertEquals(fold, second.foldSha());
+    assertEquals(16, first.foldAttempt().length());
+    assertNotEquals(first.foldAttempt(), second.foldAttempt());
+    assertEquals(second.foldAttempt(), announced.stepsOf(other).get(2).foldAttempt());
+
+    // The same head at a new tip is a new attempt too.
+    merger.answer(conflictOf(id, "refs/heads/" + other, "9999999"));
+    headMoved(repoA, other, sha());
+    assertEquals(4, announced.stepsOf(branch).size(), "steps: " + announced.movesOf(branch));
+    assertNotEquals(second.foldAttempt(), last(branch).foldAttempt());
+  }
+
+  /** qits-1725: the same heads at the same tips hit again are the position already held. */
+  @Test
+  public void theSameConflictTwiceIsConflictedOnce() {
+    String branch = ticketBranch();
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    merger.answer(conflictOf(id, "refs/heads/" + branch, "abc1234"));
+
+    headMoved(repoA, branch, sha());
+    headMoved(repoA, branch, sha());
+
+    assertEquals(List.of("JOINED@" + qid, "CONFLICTED@" + qid), announced.movesOf(branch));
+    assertEquals(
+        FoldAttempt.ofConflicts(
+            List.of(
+                new BackingBranchMerger.Conflict(
+                    "pom.xml", "refs/heads/" + branch, "abc1234", "content"),
+                new BackingBranchMerger.Conflict(
+                    "README.md", "refs/heads/" + branch, "abc1234", "content"))),
+        last(branch).foldAttempt(),
+        "keyed on the heads, not on how many paths collide");
+  }
+
+  /**
+   * qits-1725: a source the git host does not have REJECTS the request (qits-1221), and every
+   * branch it carries is FAILED with failure FOLD, keyed by the missing ref — once per ref.
+   */
+  @Test
+  public void aMissingSourceFailsEveryBranchWithAFoldFailure() {
+    String branch = ticketBranch();
+    String other = ticketBranch();
+    String id = create(repoA, branch);
+    releaseRequests.join(id, other, "alice", null);
+    String qid = qualifiedIdOf(repoA, id);
+    String missing = "refs/heads/epic/qits-1681";
+    merger.answer(BackingBranchMerger.Outcome.missingSource(missing));
+
+    headMoved(repoA, branch, sha());
+
+    assertEquals("REJECTED", stateOf(repoA, id), "the premise: the fold rejected it");
+    for (String each : List.of(branch, other)) {
+      assertEquals(List.of("JOINED@" + qid, "FAILED@" + qid), announced.movesOf(each), each);
+      BranchDeliveryStep failed = last(each);
+      assertEquals("FOLD", failed.failure());
+      assertEquals("missing:" + missing, failed.foldAttempt());
+      assertNull(failed.runId());
+      assertEquals("JOINED", failed.everywhere(), "a failed fold is still on a request");
+    }
+
+    headMoved(repoA, other, sha()); // still missing: the same attempt, nothing new
+    assertEquals(List.of("JOINED@" + qid, "FAILED@" + qid), announced.movesOf(branch));
   }
 
   @Test
@@ -561,6 +652,13 @@ public class BranchDeliveryTest {
         frame(
             "SCMPublishCommit",
             "{\"branch\":\"" + branch + "\",\"repoId\":\"" + repoId + "\",\"sha\":\"" + sha + "\"}"));
+  }
+
+  /** A conflict of the request's fold, naming one head at one tip and one path. */
+  private static BackingBranchMerger.Outcome conflictOf(String id, String head, String headSha) {
+    return BackingBranchMerger.Outcome.conflict(
+        BackingBranches.ref(id),
+        List.of(new BackingBranchMerger.Conflict("pom.xml", head, headSha, "content")));
   }
 
   private static EventFrame frame(String name, String payload) {
