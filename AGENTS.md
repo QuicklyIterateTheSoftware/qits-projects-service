@@ -606,7 +606,7 @@ merely its only occupant. Six things about it are rules:
     `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
     the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold, fold attempt
-    — `fold_attempt`, V67) is neither written nor announced: a CI or automation FAILED once per
+    — `fold_attempt`, V68) is neither written nor announced: a CI or automation FAILED once per
     fold, CONFLICTED and a FOLD FAILED once per attempt, JOINED once per request. `PUSHED` is
     ledger-only — a push (`onBranchMoved`) of a branch no request carries — so a repository that has
     not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push

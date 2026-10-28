@@ -110,7 +110,7 @@ public class BranchDelivery extends PanacheEntityBase {
 
   /**
    * {@code CONFLICTED}, and {@code FAILED} for a missing source: which fold attempt it is about
-   * (qits-1725, V67) — see {@code control/FoldAttempt}. Null on every other step.
+   * (qits-1725, V68) — see {@code control/FoldAttempt}. Null on every other step.
    */
   @Column(name = "fold_attempt")
   public String foldAttempt;
