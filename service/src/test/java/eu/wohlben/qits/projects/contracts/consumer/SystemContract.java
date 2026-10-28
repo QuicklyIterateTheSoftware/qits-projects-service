@@ -241,7 +241,7 @@ final class SystemContract {
                   "$[*].name",
                   "$[*].hostname",
                   "$[*].engineId",
-                  "$[*].minimums.desk"),
+                  "$[*].reservations.desk"),
               200,
               START,
               (base, p) -> {
@@ -250,6 +250,6 @@ final class SystemContract {
                 assertNotNull(targets.get(0).name());
               },
               "GET /system/api/targets answering 200 with id, name, hostname, engineId and the"
-                  + " DESK minimum")
+                  + " DESK reservation")
           .withNullable("$[*].hostname", "$[*].engineId"));
 }

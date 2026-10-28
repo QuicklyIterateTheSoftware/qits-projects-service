@@ -702,9 +702,9 @@ public class DeskLeases {
    *   <li>{@code qits.projects.target-leases.legacy-desk-target} — an explicit target name or id;
    *       used when it names a target in the listing, else the fallback declines rather than
    *       refusing;
-   *   <li>the one target in the listing that reserves DESK slots ({@code minimums.desk > 0}) — only
-   *       while exactly one does; two or more reserving targets decline every time, because picking
-   *       either would be a guess this service has no fact to back.
+   *   <li>the one target in the listing that reserves DESK slots ({@code reservations.desk > 0}) —
+   *       only while exactly one does; two or more reserving targets decline every time, because
+   *       picking either would be a guess this service has no fact to back.
    * </ol>
    *
    * <p><b>No match at all is a wait, never an unpinned lease</b>: a lease granted anywhere else
@@ -780,13 +780,13 @@ public class DeskLeases {
   }
 
   /**
-   * The one target in the listing that reserves DESK slots ({@code minimums.desk > 0}); empty
-   * while none does, or while two or more do — picking either of two would be a guess this service
-   * has no fact to back.
+   * The one target in the listing that reserves DESK slots ({@code reservations.desk > 0});
+   * empty while none does, or while two or more do — picking either of two would be a guess this
+   * service has no fact to back.
    */
   private Optional<UUID> soleDeskReservingTarget(String projectId, List<SystemLeases.Target> targets) {
     List<SystemLeases.Target> reserving =
-        targets.stream().filter(t -> t.deskMinimum() > 0).toList();
+        targets.stream().filter(t -> t.deskReservation() > 0).toList();
     if (reserving.size() != 1) {
       return Optional.empty();
     }

@@ -146,7 +146,7 @@ public class HttpSystemLeases implements SystemLeases {
                 text(t, "name"),
                 blankless(text(t, "engineId")),
                 blankless(text(t, "hostname")),
-                t.path("minimums").path("desk").asInt(0)));
+                t.path("reservations").path("desk").asInt(0)));
       }
     }
     return List.copyOf(targets);
