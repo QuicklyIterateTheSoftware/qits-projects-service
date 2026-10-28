@@ -17,9 +17,10 @@ import java.util.Optional;
  * later nothing had noticed. The estate-side half of that (qits-maintenance no longer waiting
  * forever on a release that is never coming) reports the stall; this is the half that tells somebody.
  *
- * <p>The ownership test is {@code release_request.requester}: qits-maintenance deliberately sends no
- * requester, so this service attributes those requests to its machine identity, and that column is
- * the whole of the difference between "somebody is looking at this" and "nobody is".
+ * <p>The ownership test is the request's participants (qits-1673): every principal that asked for
+ * it, joined a branch to it or had a source added for it, each the authenticated caller and never a
+ * stated name. A request whose participants are all machine identities — qits-maintenance's bumps —
+ * is the one nobody is looking at; one an agent or a person joined is not, whoever opened it.
  *
  * <h2>One ticket per stuck request, not one per verdict</h2>
  *
@@ -68,7 +69,8 @@ public interface UnattendedGateTickets {
    * @param status that run's terminal status — FAILED, CANCELLED, whatever the ledger holds
    * @param detail this service's own rejection sentence, verbatim, so the ticket and the request say
    *     the same thing
-   * @param requester the machine identity the request is attributed to
+   * @param participants the request's participants, sorted — every one a machine identity, which
+   *     is what made the request unattended
    * @param existingTicketId the ticket this request already has, or null where it has none; see the
    *     dedupe section of the class javadoc
    */
@@ -83,7 +85,7 @@ public interface UnattendedGateTickets {
       String runId,
       String status,
       String detail,
-      String requester,
+      List<String> participants,
       String existingTicketId) {}
 
   /**

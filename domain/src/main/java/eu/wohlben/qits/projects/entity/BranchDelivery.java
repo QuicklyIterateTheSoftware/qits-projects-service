@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * <b>Where one branch stands in one repository on its way to production</b> (qits-1719, V66): the
+ * <b>Where one branch stands in one repository on its way to production</b> (qits-1719, V67): the
  * last delivery step it reached there, and the request that carried it at that step. One row per
  * (project, repository, branch); the key is the rule that a branch has one position per
  * repository.

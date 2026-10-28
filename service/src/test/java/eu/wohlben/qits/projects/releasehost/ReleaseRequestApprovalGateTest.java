@@ -774,13 +774,13 @@ public class ReleaseRequestApprovalGateTest {
   private String create(String repoId, String branch, String requester) {
     String id =
         given()
+            .header("X-Qits-User", requester)
+            .header("X-Qits-Roles", "qits:admin")
             .contentType(ContentType.JSON)
             .body(
                 "{\"branch\":\""
                     + branch
-                    + "\",\"summary\":\"a gated release\",\"requester\":\""
-                    + requester
-                    + "\"}")
+                    + "\",\"summary\":\"a gated release\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)

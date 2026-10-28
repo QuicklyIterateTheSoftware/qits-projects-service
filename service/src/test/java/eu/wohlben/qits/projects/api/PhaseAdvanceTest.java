@@ -1067,7 +1067,9 @@ public class PhaseAdvanceTest {
     assertTrue(
         sourceNamesOf(request).contains(branchOf(ticketId)),
         "the ticket's own branch is what was put on the request: " + sourceNamesOf(request));
-    assertEquals("Ticket release-me: Release me", request.get("summary"));
+    // Derived from the sources (qits-1673): the ticket's branch names it, so its id and title.
+    assertEquals(
+        branchOf(ticketId).substring("ticket/".length()) + " Release me", request.get("summary"));
     assertTrue(
         thread(ticketId).get(thread(ticketId).size() - 1).contains((String) request.get("qualifiedId")),
         "the thread names the request the ticket waits on: " + thread(ticketId));
@@ -1726,7 +1728,7 @@ public class PhaseAdvanceTest {
   static class RefusingReleaseRequests extends ReleaseRequests {
     @Override
     public ReleaseRequestDto request(
-        String repoId, String branch, String summary, String requester, String priority) {
+        String repoId, String branch, String requester, String priority) {
       throw new IllegalStateException("refused here");
     }
 

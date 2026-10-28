@@ -948,9 +948,8 @@ public class ReleaseRequestDeskApprovalTest {
   private String create(String repoId, String branch) {
     gitHost.tree("refs/heads/" + branch, Map.of("README.md", "a change"));
     String id =
-        person("ada")
-            .body(
-                "{\"branch\":\"" + branch + "\",\"summary\":\"a release\",\"requester\":\"wohlben\"}")
+        person("wohlben")
+            .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)
@@ -979,8 +978,8 @@ public class ReleaseRequestDeskApprovalTest {
   /** A main-only request: its one source is main, whose tree the seed staged and this keeps. */
   private String createMainOnly(String repoId) {
     String id =
-        person("ada")
-            .body("{\"branch\":\"main\",\"summary\":\"a release\",\"requester\":\"wohlben\"}")
+        person("wohlben")
+            .body("{\"branch\":\"main\",\"summary\":\"a release\"}")
             .post(base(repoId))
             .then()
             .statusCode(200)

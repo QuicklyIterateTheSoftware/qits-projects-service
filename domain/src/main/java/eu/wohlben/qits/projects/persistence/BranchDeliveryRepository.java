@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The branch-delivery ledger (qits-1719, V66): where each branch stands in each repository.
+ * The branch-delivery ledger (qits-1719, V67): where each branch stands in each repository.
  *
  * <p><b>Every write is native SQL, and so is every read the writer makes.</b> The ledger is written
  * inside other flows' transactions — an ask, a fold, a verdict, a release — and a branch's push

@@ -30,7 +30,7 @@
     "priority": "BLOCKING",
     "mergedSha": "0000000000000000000000000000000000000007",
     "state": "WITHDRAWN",
-    "summary": "Release the export across the suite",
+    "summary": "bump/contract-service",
     "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
@@ -132,6 +132,16 @@
       "threshold": 3,
       "frozen": false,
       "source": "PLATFORM"
-    }
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "bump/contract-service",
+        "label": "bump/contract-service",
+        "workItem": null
+      }
+    ]
   }
 }

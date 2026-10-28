@@ -248,49 +248,49 @@ public class ReleaseConvergenceTest {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * <b>The words of the ask that opened the request stand.</b> On a shared request the second
-   * workspace's summary would otherwise erase the first's — and that summary is the sentence a
-   * person is shown at the approval gate and the message the fold commits under. What the newcomer
-   * says reaches its <em>own</em> source row instead: {@code addedBy} records who put the branch
-   * on, so nothing is lost, it is simply recorded against the branch it is about.
+   * <b>Nobody's words are the request's any more</b> (qits-1673): what it is about is derived from
+   * its sources, so a converging ask adds its branch to the items and its caller to the
+   * participants, and the typed summaries are ignored. The deprecated {@code requester} stays the
+   * opener's; {@code addedBy} records who put each branch on.
    */
   @Test
-  public void aConvergingAskDoesNotRewriteTheRequestsSummaryOrItsRequester() {
+  public void aConvergingAskAddsItsItemAndItsParticipant() {
     String id = create(wrapperRepoId, "alpha", "the estate ada opened", "ada");
 
     create(wrapperRepoId, "beta", "grace has some work too", "grace");
 
     request(wrapperRepoId, id)
-        .body("summary", equalTo("the estate ada opened"))
+        .body("summary", equalTo("alpha; beta"))
+        .body("items.label", contains("alpha", "beta"))
+        .body("participants", contains("ada", "grace"))
         .body("requester", equalTo("ada"))
         .body("sources.find { it.name == 'alpha' }.addedBy", equalTo("ada"))
         .body("sources.find { it.name == 'beta' }.addedBy", equalTo("grace"));
   }
 
   /**
-   * <b>A caller who is the whole of a request's ask restates its words.</b> When the re-asked branch
-   * is the request's only asked-for source (the implied {@code main} aside), the caller's new
-   * summary and requester become the request's — which is what lets a maintenance bump re-ask its
-   * own request with a new "N dependencies" summary.
+   * <b>A caller who is the whole of a request's ask becomes its requester.</b> When the re-asked
+   * branch is the request's only asked-for source (the implied {@code main} aside), the deprecated
+   * {@code requester} names the re-asking caller; a typed summary changes nothing.
    */
   @Test
-  public void aSoleSourcesReAskRestatesTheSummary() {
+  public void aSoleSourcesReAskRestatesTheRequester() {
     String id = create(plainRepoId, "alpha", "first words", "ada");
 
     assertEquals(id, create(plainRepoId, "alpha", "better words", "grace"));
 
     request(plainRepoId, id)
-        .body("summary", equalTo("better words"))
-        .body("requester", equalTo("grace"));
+        .body("summary", equalTo("alpha"))
+        .body("requester", equalTo("grace"))
+        .body("participants", contains("ada", "grace"));
   }
 
   /**
-   * <b>On a shared request a re-ask does not restate the words</b>, even from the branch that opened
-   * it: other branches were asked onto it on the strength of what it said, and the approval gate
-   * shows that sentence to a person approving all of them.
+   * <b>On a shared request a re-ask does not restate the requester</b>, even from the branch that
+   * opened it, and every caller stays a participant.
    */
   @Test
-  public void aReAskOnASharedRequestKeepsTheOpenersWords() {
+  public void aReAskOnASharedRequestKeepsTheOpener() {
     String id = create(plainRepoId, "alpha", "first words", "ada");
     create(plainRepoId, "beta", "grace's words", "grace");
 
@@ -298,8 +298,9 @@ public class ReleaseConvergenceTest {
     assertEquals(id, create(plainRepoId, "beta", "grace insists", "grace"));
 
     request(plainRepoId, id)
-        .body("summary", equalTo("first words"))
-        .body("requester", equalTo("ada"));
+        .body("summary", equalTo("alpha; beta"))
+        .body("requester", equalTo("ada"))
+        .body("participants", contains("ada", "grace"));
   }
 
   /**
@@ -375,18 +376,20 @@ public class ReleaseConvergenceTest {
 
   private String create(
       String repoId, String branch, String summary, String requester, String priority) {
+    // The summary still rides in the body, as an old client sends it, and is ignored; the request is
+    // attributed to the forwarded caller, never to a stated name (qits-1673).
     StringBuilder body =
         new StringBuilder("{\"branch\":\"")
             .append(branch)
             .append("\",\"summary\":\"")
             .append(summary)
-            .append("\",\"requester\":\"")
-            .append(requester)
             .append('"');
     if (priority != null) {
       body.append(",\"priority\":\"").append(priority).append('"');
     }
     return given()
+        .header("X-Qits-User", requester)
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
         .body(body.append('}').toString())
         .post(base(repoId))

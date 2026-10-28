@@ -88,6 +88,10 @@ public class ApprovalNeededSource implements DeskTriggerSource {
     return isBlank(summary) ? waits : summary + "; " + waits;
   }
 
+  /**
+   * What the request is about: the derived text (qits-1673) its last fold stored in the {@code
+   * summary} column — its items' labels joined — so the line names the work, not a typed sentence.
+   */
   private static String summaryOf(String releaseRequestId) {
     if (releaseRequestId == null) {
       return null;

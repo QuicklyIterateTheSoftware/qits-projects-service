@@ -597,7 +597,7 @@ merely its only occupant. Six things about it are rules:
   (`version` the tag). `everywhere` is the branch's least advanced step across the project's
   repositories (PUSHED/WITHDRAWN 0, JOINED/MOVED/FAILED/CONFLICTED 1, RELEASED 2, LIVE 3), named
   `PUSHED`, `JOINED`, `RELEASED` or `LIVE`.
-  - **The ledger is `branch_delivery` (V66)**, one row per (project, repository, branch);
+  - **The ledger is `branch_delivery` (V67)**, one row per (project, repository, branch);
     `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
     the `ReleaseRequestStates.move` way. A step equal to the row's (step, request, fold) is neither
