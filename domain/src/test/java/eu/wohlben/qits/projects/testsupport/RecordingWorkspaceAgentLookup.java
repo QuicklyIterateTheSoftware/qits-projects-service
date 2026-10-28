@@ -27,7 +27,9 @@ import java.util.Optional;
 @ApplicationScoped
 public class RecordingWorkspaceAgentLookup implements WorkspaceAgentLookup {
 
-  private final Map<String, String> works = new HashMap<>();
+  private final Map<String, String> works = new java.util.LinkedHashMap<>();
+
+  private final Map<String, ActiveAgent> placed = new HashMap<>();
 
   private final List<String> asked = new ArrayList<>();
 
@@ -50,12 +52,31 @@ public class RecordingWorkspaceAgentLookup implements WorkspaceAgentLookup {
     }
     return Optional.of(
         works.entrySet().stream()
-            .map(entry -> new ActiveAgent(entry.getKey(), entry.getValue()))
+            .map(
+                entry ->
+                    placed.getOrDefault(
+                        entry.getKey(), new ActiveAgent(entry.getKey(), entry.getValue())))
             .toList());
   }
 
   public synchronized void stage(String agentId, String workId) {
     works.put(agentId, workId);
+  }
+
+  /**
+   * {@code agentId} works on the row {@code workId} in the wrapper repository {@code
+   * repositoryId}, on {@code wrapperBranch} (qits-1722): it owns that branch and its {@code -*}.
+   */
+  public synchronized void stage(
+      String agentId, String workId, String repositoryId, String wrapperBranch) {
+    works.put(agentId, workId);
+    placed.put(agentId, new ActiveAgent(agentId, workId, repositoryId, wrapperBranch));
+  }
+
+  /** {@code agentId} is no longer ACTIVE: it is not listed. */
+  public synchronized void unstage(String agentId) {
+    works.remove(agentId);
+    placed.remove(agentId);
   }
 
   /** A port bug: an implementation that throws although its contract forbids it. */
@@ -70,6 +91,7 @@ public class RecordingWorkspaceAgentLookup implements WorkspaceAgentLookup {
   /** Forgets everything; one application, and so one instance, serves a whole test class. */
   public synchronized void reset() {
     works.clear();
+    placed.clear();
     asked.clear();
     failure = null;
   }

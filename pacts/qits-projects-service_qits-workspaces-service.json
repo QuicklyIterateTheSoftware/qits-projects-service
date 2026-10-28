@@ -13,12 +13,12 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
-            "schedule": "ReleaseRequestFailureNotices.deliverOwed"
+            "schedule": "BranchDeliveryNotices.deliverOwed"
           }
         }
       },
-      "description": "ReleaseRequestFailureNotices.deliverOwed: listAgents",
-      "key": "8c3e253b",
+      "description": "BranchDeliveryNotices.deliverOwed: listAgents",
+      "key": "313214df",
       "pending": false,
       "providerStates": [
         {
@@ -43,7 +43,9 @@
             "agents": [
               {
                 "agentId": "00000000-0000-4000-8000-0000000000a1",
-                "workId": "00000000-0000-4000-8000-000000000001"
+                "repositoryId": "00000000-0000-4000-8000-000000000013",
+                "workId": "00000000-0000-4000-8000-000000000001",
+                "wrapperBranch": "ticket/contract-00000001-10"
               }
             ]
           },
@@ -75,12 +77,29 @@
                 }
               ]
             },
+            "$.agents[*].repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.agents[*].workId": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "regex",
                   "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.agents[*].wrapperBranch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

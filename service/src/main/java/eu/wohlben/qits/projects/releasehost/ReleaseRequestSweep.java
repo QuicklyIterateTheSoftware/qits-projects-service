@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
-import eu.wohlben.qits.projects.control.ReleaseRequestFailureNotices;
+import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -28,7 +28,7 @@ public class ReleaseRequestSweep {
 
   @Inject ReleaseFinalization finalization;
 
-  @Inject ReleaseRequestFailureNotices failureNotices;
+  @Inject BranchDeliveryNotices branchNotices;
 
   @Scheduled(
       every = "{qits.projects.release-requests.sweep-every}",
@@ -89,13 +89,14 @@ public class ReleaseRequestSweep {
   }
 
   /**
-   * The build-failure notices' floor (qits-1672): every notice a crash or an unreachable
-   * qits-workspaces left owed is delivered again. The prompt path is the worker after the commit.
+   * The branch-delivery notices' floor (qits-1722, which replaced qits-1672's request-keyed
+   * build-failure notices): every notice a crash or an unreachable qits-workspaces left owed is
+   * delivered again. The prompt path is the worker after the commit.
    */
   @Scheduled(
       every = "{qits.projects.release-requests.sweep-every}",
       concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
-  void sweepFailureNotices() {
-    failureNotices.deliverOwed();
+  void sweepBranchDeliveryNotices() {
+    branchNotices.deliverOwed();
   }
 }

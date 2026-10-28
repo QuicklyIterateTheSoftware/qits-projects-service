@@ -355,7 +355,10 @@ final class WorkspacesContract {
                           .isEmpty()),
               "param agentId; GET /workspaces/api/agents/{agentId} answering 404 for an agent it"
                   + " does not know"),
-          // qits-1672: a token subject is traced to its ACTIVE agent before a failed build is told.
+          // qits-1722 (was qits-1672's): a branch's owner is found among the ACTIVE agents — its
+          // wrapper repository places it in the project, its wrapper branch says which branches
+          // are its own — before a failed build or a move is told. The request stays
+          // state=ACTIVE alone: the project is narrowed on this side, by the repository.
           new ConsumerRow(
               PROVIDER,
               APP,
@@ -365,15 +368,22 @@ final class WorkspacesContract {
               "/workspaces/api/agents",
               Map.of("state", "ACTIVE"),
               null,
-              List.of("$.agents[*].agentId", "$.agents[*].workId"),
+              List.of(
+                  "$.agents[*].agentId",
+                  "$.agents[*].workId",
+                  "$.agents[*].repositoryId",
+                  "$.agents[*].wrapperBranch"),
               200,
-              Trigger.schedule("ReleaseRequestFailureNotices.deliverOwed"),
+              Trigger.schedule("BranchDeliveryNotices.deliverOwed"),
               (base, p) ->
-                  assertFalse(
+                  assertTrue(
                       workspaces(new HttpWorkspaceAgentLookup(RowClients.clients()), base)
                           .active()
                           .orElseThrow()
-                          .isEmpty()),
-              "GET /workspaces/api/agents?state=ACTIVE answering 200 with agents[].agentId and"
-                  + " workId"));
+                          .stream()
+                          .anyMatch(
+                              agent ->
+                                  agent.repositoryId() != null && agent.wrapperBranch() != null)),
+              "GET /workspaces/api/agents?state=ACTIVE answering 200 with agents[].agentId,"
+                  + " workId, repositoryId and wrapperBranch"));
 }

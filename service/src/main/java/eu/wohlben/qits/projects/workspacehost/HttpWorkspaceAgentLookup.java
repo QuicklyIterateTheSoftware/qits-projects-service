@@ -139,8 +139,13 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
 
   /**
    * {@code GET /workspaces/api/agents?state=ACTIVE} (qits-1672), read as a {@code Map} for each
-   * entry's {@code agentId} and {@code workId}. Same contract as {@link #workOf}: never throws, one
-   * WARN and empty on every failure.
+   * entry's {@code agentId}, {@code workId}, {@code repositoryId} and {@code wrapperBranch}
+   * (qits-1722). Same contract as {@link #workOf}: never throws, one WARN and empty on every
+   * failure.
+   *
+   * <p>Every project's agents: the caller narrows by repository ({@code BranchDeliveryNotices}),
+   * rather than the far side by {@code projectId}, so this request stays the shape the consumer pact
+   * pins against the provider state that records it.
    */
   @Override
   public Optional<List<ActiveAgent>> active() {
@@ -179,7 +184,12 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
         if (entry instanceof Map<?, ?> agent
             && agent.get("agentId") instanceof String agentId
             && agent.get("workId") instanceof String workId) {
-          agents.add(new ActiveAgent(agentId, workId));
+          agents.add(
+              new ActiveAgent(
+                  agentId,
+                  workId,
+                  agent.get("repositoryId") instanceof String repositoryId ? repositoryId : null,
+                  agent.get("wrapperBranch") instanceof String wrapper ? wrapper : null));
         }
       }
       return Optional.of(List.copyOf(agents));
