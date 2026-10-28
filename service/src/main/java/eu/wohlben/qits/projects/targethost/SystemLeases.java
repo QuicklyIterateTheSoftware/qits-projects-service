@@ -110,11 +110,11 @@ public interface SystemLeases {
   /**
    * One target, as the listing shows it; {@code engineId} and {@code hostname} may be null.
    *
-   * @param deskMinimum {@code minimums.desk}: how many DESK slots this target reserves, 0 when it
-   *     reserves none. Read by {@code DeskLeases.legacyPin}'s sole-desk-reserving-target fallback
-   *     (qits-1551).
+   * @param deskReservation {@code reservations.desk}: how many DESK slots this target reserves, 0
+   *     when it reserves none. Read by {@code DeskLeases.legacyPin}'s sole-desk-reserving-target
+   *     fallback (qits-1551).
    */
-  record Target(UUID id, String name, String engineId, String hostname, int deskMinimum) {}
+  record Target(UUID id, String name, String engineId, String hostname, int deskReservation) {}
 
   /**
    * qits-system refused or did not answer a lease call.

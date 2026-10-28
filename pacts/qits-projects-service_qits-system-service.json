@@ -188,10 +188,10 @@
               "engineId": "ENGINE-LAB",
               "hostname": "lab-host",
               "id": "00000000-0000-4000-8000-000000000001",
-              "minimums": {
+              "name": "lab",
+              "reservations": {
                 "desk": 1
-              },
-              "name": "lab"
+              }
             }
           ],
           "contentType": "application/json",
@@ -244,19 +244,19 @@
                 }
               ]
             },
-            "$[*].minimums.desk": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
-                }
-              ]
-            },
             "$[*].name": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            },
+            "$[*].reservations.desk": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
                 }
               ]
             }
