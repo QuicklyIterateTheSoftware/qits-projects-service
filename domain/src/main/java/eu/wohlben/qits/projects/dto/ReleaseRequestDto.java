@@ -79,8 +79,8 @@ import java.util.List;
  * nothing to have reached {@code main}.
  *
  * <p><b>{@code unattended} says nobody is waiting on this request.</b> It is derived, never stored:
- * true where the {@code requester} is one of the platform's machine identities — a maintenance bump
- * asked for this release and stopped — and it is the difference between a REJECTED request somebody
+ * true where the request has {@code participants} and every one of them is one of the platform's
+ * machine identities — a maintenance bump asked for this release and stopped — and it is the difference between a REJECTED request somebody
  * is answering and one that is simply stuck with no reader. A listing that shows both as "rejected"
  * is how a repository stops moving for four hours without anybody noticing. It is true whatever the
  * state, because who asked does not change when the gate does; a caller that wants "unowned AND
@@ -173,6 +173,23 @@ import java.util.List;
  * this one, if any. Both are null on every request outside a queue. {@code featureFreeze} counts the
  * sources that count toward the freeze against the threshold in force, names the level that set it
  * and says whether this request is frozen; see {@link FeatureFreezeDto}. Never null.
+ *
+ * <p><b>{@code participants} is who took part</b> (qits-1673): the authenticated principals that
+ * created, converged on or joined the request, or that an internal path (a VERIFIED phase move, the
+ * hand-on after a release) added a source for — sorted and distinct, and never shrinking: a source
+ * whose branch was deleted leaves its author here. A door never takes a stated name, so a principal
+ * here is always the caller's own. Never null.
+ *
+ * <p><b>{@code items} is what the request is about</b> (qits-1673): one {@link ReleaseRequestItemDto}
+ * per named source other than the default branch, in source order — a work item's id and title, a
+ * maintenance branch's commit subject, a branch name. Empty for a main-only request no automation
+ * has joined yet. Never null.
+ *
+ * <p><b>{@code summary} and {@code requester} are deprecated</b> and go in a later release.
+ * {@code summary} is no longer anybody's words: it is the items' labels joined with {@code "; "},
+ * capped at 200 characters ({@code …} where cut), and {@code main} where there are none — the same
+ * text the fold's merge message and the release commit carry. {@code requester} is the principal
+ * of the ask that opened the request; read {@code participants}.
  */
 public record ReleaseRequestDto(
     String id,
@@ -184,8 +201,8 @@ public record ReleaseRequestDto(
     String priority,
     String mergedSha,
     String state,
-    String summary,
-    String requester,
+    @Deprecated String summary,
+    @Deprecated String requester,
     boolean unattended,
     String gateTicketId,
     String detail,
@@ -213,4 +230,6 @@ public record ReleaseRequestDto(
     String queuedBehindQualifiedId,
     String queuedNext,
     String queuedNextQualifiedId,
-    FeatureFreezeDto featureFreeze) {}
+    FeatureFreezeDto featureFreeze,
+    List<String> participants,
+    List<ReleaseRequestItemDto> items) {}

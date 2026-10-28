@@ -14,8 +14,9 @@ import org.jboss.logging.Logger;
 
 /**
  * {@link BranchWorkItems} out of the entities module (epic qits-1440): the work item a branch names,
- * for the delivery desk's {@code manual-review-verified} rule and for the feature classification of
- * a release request's sources ({@code FeatureBranches}, epic qits-1580).
+ * for the delivery desk's {@code manual-review-verified} rule, for the feature classification of
+ * a release request's sources ({@code FeatureBranches}, epic qits-1580), and for the items a release
+ * request answers with (qits-1673, which also reads {@code external/} branches).
  *
  * <p>{@code ticket/<qualified id>}, {@code epic/<qualified id>} and {@code task/<qualified id>} name
  * the ticket, epic or task with that qualified id, and so does an agent's {@code <that
@@ -54,30 +55,66 @@ public class EntityBranchWorkItems implements BranchWorkItems {
     return Optional.empty();
   }
 
-  private Optional<WorkItem> resolve(String branch, String prefix, Archetype archetype) {
-    String rest = branch.substring(prefix.length());
-    List<String> candidates = new ArrayList<>();
-    candidates.add(rest);
-    for (int dash = rest.lastIndexOf('-'); dash > 0; dash = rest.lastIndexOf('-', dash - 1)) {
-      candidates.add(rest.substring(0, dash));
+  /**
+   * {@inheritDoc}
+   *
+   * <p>An {@code external/} branch is read the way a work-item branch is — the whole rest, then
+   * each shorter prefix ending before a hyphen — with no archetype to match and no agent-branch
+   * shape to hold it to: {@code external/qits-12-fix-typo} names {@code qits-12}, whatever it is.
+   */
+  @Override
+  public Optional<WorkItem> releaseItemOf(String branch) {
+    if (branch == null || !branch.startsWith(EXTERNAL)) {
+      return workItemOf(branch);
     }
-    for (String candidate : candidates) {
+    try {
+      for (String candidate : candidates(branch.substring(EXTERNAL.length()))) {
+        Optional<CommitSubjectEntities.NamedEntity> item =
+            CommitSubjectEntities.parse(candidate).flatMap(resolver::lookup);
+        if (item.isPresent()) {
+          return Optional.of(workItem(item.get()));
+        }
+      }
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "Could not resolve the work item of branch %s", branch);
+    }
+    return Optional.empty();
+  }
+
+  /** The branch an outside contributor pushes, named for the item it is about. */
+  static final String EXTERNAL = "external/";
+
+  private Optional<WorkItem> resolve(String branch, String prefix, Archetype archetype) {
+    for (String candidate : candidates(branch.substring(prefix.length()))) {
       Optional<CommitSubjectEntities.NamedEntity> item =
           CommitSubjectEntities.parse(candidate)
               .flatMap(resolver::lookup)
               .filter(found -> found.archetype() == archetype)
               .filter(found -> WorkBranches.isAgentBranch(prefix + found.qualifiedId(), branch));
       if (item.isPresent()) {
-        CommitSubjectEntities.NamedEntity found = item.get();
-        return Optional.of(
-            new WorkItem(
-                found.qualifiedId(),
-                found.projectId(),
-                found.status(),
-                found.archetype().name(),
-                found.ticketType() == null ? null : found.ticketType().name()));
+        return Optional.of(workItem(item.get()));
       }
     }
     return Optional.empty();
+  }
+
+  /** The whole name, then each shorter prefix ending before a hyphen. */
+  private static List<String> candidates(String rest) {
+    List<String> candidates = new ArrayList<>();
+    candidates.add(rest);
+    for (int dash = rest.lastIndexOf('-'); dash > 0; dash = rest.lastIndexOf('-', dash - 1)) {
+      candidates.add(rest.substring(0, dash));
+    }
+    return candidates;
+  }
+
+  private static WorkItem workItem(CommitSubjectEntities.NamedEntity found) {
+    return new WorkItem(
+        found.qualifiedId(),
+        found.projectId(),
+        found.status(),
+        found.archetype().name(),
+        found.ticketType() == null ? null : found.ticketType().name(),
+        found.title());
   }
 }

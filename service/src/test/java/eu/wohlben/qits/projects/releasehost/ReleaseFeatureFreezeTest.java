@@ -580,7 +580,7 @@ public class ReleaseFeatureFreezeTest {
   }
 
   private ReleaseRequests.Asked ask(String branch) {
-    return releaseRequests.ask(repoId, branch, "a release of " + branch, "alice", null);
+    return releaseRequests.ask(repoId, branch, "alice", null);
   }
 
   private String feature() {

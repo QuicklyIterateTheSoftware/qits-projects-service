@@ -360,6 +360,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
     return null;
   }
 
+  /** What the release is about: the request's derived text (qits-1673), its id where it has none. */
   private static String summaryOf(Release release) {
     return release.summary() == null || release.summary().isBlank()
         ? "release request " + release.qualifiedId()

@@ -502,7 +502,7 @@ public class UpstreamOverrideDoorTest {
   private String create(String inRepo) {
     String id =
         headersOnly("ada", "qits:admin")
-            .body("{\"branch\":\"work\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+            .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
             .post(base(inRepo))
             .then()
             .statusCode(200)

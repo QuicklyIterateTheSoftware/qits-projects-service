@@ -10,6 +10,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -286,6 +287,14 @@ class RequestFailedSourceTest {
               row.updatedAt = Instant.now();
               row.name(numbers.next(row.repoId));
               row.persist();
+              // Who filed it is the request's participants now (qits-1673), not the column.
+              if (requester != null) {
+                ReleaseRequestParticipant participant = new ReleaseRequestParticipant();
+                participant.requestId = id;
+                participant.principal = requester;
+                participant.firstSeenAt = Instant.now();
+                participant.persist();
+              }
               return row;
             });
   }

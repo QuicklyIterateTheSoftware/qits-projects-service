@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
+import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -310,12 +311,19 @@ public class RequestFailedSource implements DeskTriggerSource {
     return ReleaseRequestFailureNotice.list("requestId = ?1 and mergedSha = ?2", requestId, sha);
   }
 
-  /** Why no agent was told, when qits-1672 owed none. */
+  /**
+   * Why no agent was told, when qits-1672 owed none. An agent "filed" the request where one of its
+   * participants is a workspace agent's token subject (qits-1673) — an authenticated principal, so
+   * no agent can claim another's request, and one that joined counts as much as one that opened.
+   */
   private static String noAgentPhrase(ReleaseRequest row, String state) {
     boolean agentFiled =
         row != null
-            && row.requester != null
-            && row.requester.startsWith("tok-workspace-agent-");
+            && ReleaseRequestParticipant.<ReleaseRequestParticipant>list("requestId", row.id).stream()
+                .anyMatch(
+                    participant ->
+                        participant.principal != null
+                            && participant.principal.startsWith("tok-workspace-agent-"));
     if (agentFiled) {
       return "CONFLICTED".equals(state)
           ? "its agent is not told of a conflict"

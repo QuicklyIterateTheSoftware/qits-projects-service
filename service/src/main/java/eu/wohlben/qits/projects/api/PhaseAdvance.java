@@ -792,12 +792,9 @@ public class PhaseAdvance {
                 + String.join(", ", outOfScope)
                 + ".";
 
+    // No summary: what a release request is about is derived from its sources, this branch naming
+    // the work item among them (qits-1673).
     String requester = changedBy == null || changedBy.isBlank() ? PLATFORM_REQUESTER : changedBy;
-    String summary =
-        (entity.archetype == Archetype.TICKET ? "Ticket " : "Epic ")
-            + entity.slug
-            + ": "
-            + entity.title;
     List<String> asked = new java.util.ArrayList<>();
     List<String> refused = new java.util.ArrayList<>();
     List<String> released = new java.util.ArrayList<>();
@@ -825,12 +822,12 @@ public class PhaseAdvance {
             .add("`" + branch.branch() + "`");
         continue;
       }
-      ask(entity, branch.repositoryId(), branch.branch(), summary, requester, asked, refused);
+      ask(entity, branch.repositoryId(), branch.branch(), requester, asked, refused);
     }
     // Last, after the submodules it points at: the wrapper, always (qits-1224). See the javadoc.
     String wrapperNote =
         askForTheWrapper(
-            entity, wrapperRepoId, wrapperBranch, gitHost, summary, requester, asked, refused);
+            entity, wrapperRepoId, wrapperBranch, gitHost, requester, asked, refused);
     String skipped =
         (released.isEmpty()
                 ? ""
@@ -905,7 +902,6 @@ public class PhaseAdvance {
       WorkEntity entity,
       String repoId,
       String branch,
-      String summary,
       String requester,
       List<String> asked,
       List<String> refused) {
@@ -914,7 +910,6 @@ public class PhaseAdvance {
           releaseRequests.request(
               repoId,
               branch,
-              summary,
               requester,
               // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
               // nothing to state — the entity carries no urgency a release could read.
@@ -968,7 +963,6 @@ public class PhaseAdvance {
       String wrapperRepoId,
       String wrapperBranch,
       ReleaseGitHost gitHost,
-      String summary,
       String requester,
       List<String> asked,
       List<String> refused) {
@@ -1007,7 +1001,7 @@ public class PhaseAdvance {
               + wrapperBranch
               + "` is already released, and was asked for anyway to carry the estate pins.";
     }
-    ask(entity, wrapperRepoId, wrapperBranch, summary, requester, asked, refused);
+    ask(entity, wrapperRepoId, wrapperBranch, requester, asked, refused);
     return note;
   }
 

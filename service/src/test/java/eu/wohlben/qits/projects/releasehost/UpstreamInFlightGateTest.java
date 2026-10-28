@@ -611,8 +611,10 @@ public class UpstreamInFlightGateTest {
 
   private String create(String inRepo) {
     return given()
+        .header("X-Qits-User", "ada")
+        .header("X-Qits-Roles", "qits:admin")
         .contentType(ContentType.JSON)
-        .body("{\"branch\":\"work\",\"summary\":\"a release\",\"requester\":\"ada\"}")
+        .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
         .post("/projects/api/repositories/" + inRepo + "/release-requests")
         .then()
         .statusCode(200)
