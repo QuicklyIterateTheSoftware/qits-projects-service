@@ -6,12 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ReleaseRequestStateChanged;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -20,16 +22,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
  * <b>request-failed</b> (qits-1689): a release request that goes REJECTED, CONFLICTED or FAILED
- * reaches the desk only when no active agent was told of it (qits-1672's notices).
+ * reaches the desk only when no active agent was told of it (qits-1672's notices) — and, since
+ * qits-1694, only while that told agent is still ACTIVE, once per rejection, so a re-rejection at
+ * the same fold is decided again rather than from the first rejection's outcome.
  */
 @QuarkusTest
 class RequestFailedSourceTest {
 
   private static final String SHA = "412911eb" + "0".repeat(32);
+
+  private static final String AGENT_ID = "0123abcd-0000-4000-8000-000000000001";
+
+  private static final String WORK_ID = "work-told-" + UUID.randomUUID();
 
   @Inject DeskTriggerListener listener;
 
@@ -37,12 +46,20 @@ class RequestFailedSourceTest {
 
   @Inject ReleaseRequestNumbers numbers;
 
+  @Inject RecordingWorkspaceAgentDispatch dispatch;
+
   private final List<String> projects = new ArrayList<>();
 
   private final List<String> requests = new ArrayList<>();
 
+  @BeforeEach
+  void resetThePort() {
+    dispatch.reset();
+  }
+
   @AfterEach
   void drop() {
+    dispatch.reset();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -82,15 +99,92 @@ class RequestFailedSourceTest {
   }
 
   @Test
-  void anActiveAgentToldMeansNoDeskLine() {
+  void anActiveAgentToldMeansNoDeskLineForTheRejectionOrARejectionAgainAtTheFold() {
     String projectId = project();
     ReleaseRequest row = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
     notice(row, "DELIVERED");
+    dispatch.willFind(agent(Agent.ACTIVE));
 
     listener.onFrame(changed(row, "REJECTED", "Run r2 finished FAILED"));
     sweep.sweep(Instant.now());
+    listener.onFrame(changed(row, "REJECTED", "Run r2b finished FAILED"));
+    sweep.sweep(Instant.now());
 
     assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+    assertTrue(
+        dispatch.lookups().stream().anyMatch(l -> l.workIds().equals(List.of(WORK_ID))),
+        "the told notice's work item is what is asked about: " + dispatch.lookups());
+  }
+
+  @Test
+  void aSameFoldReRejectionWhoseToldAgentIsGoneIsOneLine() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
+    notice(row, "DELIVERED");
+    dispatch.willFind(agent(Agent.ACTIVE));
+    listener.onFrame(changed(row, "REJECTED", "Run r5 finished FAILED"));
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "its agent owned the first");
+
+    // reconsider() reopened the fold at the same sha, the agent went, and the next red gate
+    // rejected it again: qits-1672 owes no new notice, so the first's DELIVERED is all there is.
+    dispatch.willFind(agent("REMOVED"));
+    EventFrame again = changed(row, "REJECTED", "Run r6 finished FAILED");
+    listener.onFrame(again);
+    listener.onFrame(again);
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size(), "one line; the replay and the sweep add nothing");
+    assertEquals("REJECTED: Run r6 finished FAILED; its agent is not active", lines.get(0).label);
+    assertEquals(RequestFailedSource.foldKey(row.id, SHA), lines.get(0).eventId);
+  }
+
+  @Test
+  void aToldAgentNoLongerListedCountsAsNotTold() {
+    String projectId = project();
+    ReleaseRequest gone = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
+    notice(gone, "RESUMED");
+
+    listener.onFrame(changed(gone, "REJECTED", "Run r7 finished FAILED"));
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size());
+    assertEquals("REJECTED: Run r7 finished FAILED; its agent is gone", lines.get(0).label);
+  }
+
+  @Test
+  void aNotToldReRejectionAfterAFoldKeyLineIsASecondLineKeyedOnItsEvent() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "tok-workspace-agent-0123abcd-0000-4000-x");
+    notice(row, "NOT_ACTIVE");
+    listener.onFrame(changed(row, "REJECTED", "Run r8 finished FAILED"));
+
+    EventFrame again = changed(row, "REJECTED", "Run r9 finished FAILED");
+    listener.onFrame(again);
+    listener.onFrame(again);
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(2, lines.size(), "one line per rejection; a replay and the sweep add nothing");
+    assertEquals(RequestFailedSource.foldKey(row.id, SHA), lines.get(0).eventId);
+    assertEquals("REJECTED: Run r8 finished FAILED; its agent is not active", lines.get(0).label);
+    assertEquals(UUID.fromString(again.id()), lines.get(1).eventId);
+    assertEquals("REJECTED: Run r9 finished FAILED; its agent is not active", lines.get(1).label);
+  }
+
+  @Test
+  void aFailedRequestWithNoNoticesIsALine() {
+    String projectId = project();
+    ReleaseRequest row = request(projectId, "qits-maintenance");
+    EventFrame failed = changed(row, "FAILED", "the release worker could not push the tag");
+
+    listener.onFrame(failed);
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size());
+    assertEquals(
+        "FAILED: the release worker could not push the tag; no agent owns it", lines.get(0).label);
+    assertEquals(UUID.fromString(failed.id()), lines.get(0).eventId);
   }
 
   @Test
@@ -108,10 +202,9 @@ class RequestFailedSourceTest {
     settle(row, "NOT_ACTIVE");
     sweep.sweep(Instant.now());
     sweep.sweep(Instant.now());
-    listener.onFrame(frame);
 
     List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
-    assertEquals(1, lines.size(), "once: sweep, second sweep and replay are one line");
+    assertEquals(1, lines.size(), "once: sweep and second sweep are one line");
     assertEquals("REJECTED: Run r3 finished FAILED; its agent is not active", lines.get(0).label);
     assertEquals(RequestFailedSource.foldKey(row.id, SHA), lines.get(0).eventId);
   }
@@ -197,6 +290,14 @@ class RequestFailedSourceTest {
             });
   }
 
+  /** The told notice's agent, in {@code state}. */
+  private static Agent agent(String state) {
+    return Agent.ACTIVE.equals(state)
+        ? RecordingWorkspaceAgentDispatch.active(AGENT_ID, 7L, "wrapper", WORK_ID, "ticket/x")
+        : RecordingWorkspaceAgentDispatch.inState(
+            AGENT_ID, 7L, "wrapper", WORK_ID, "ticket/x", state, Instant.now());
+  }
+
   private static EventFrame changed(ReleaseRequest row, String state, String detail) {
     return DeskTriggerTestFrames.frameOf(
         new ReleaseRequestStateChanged(
@@ -226,6 +327,10 @@ class RequestFailedSourceTest {
               notice.subject = row.requester;
               notice.owedAt = Instant.now();
               notice.outcome = outcome;
+              if (outcome != null && RequestFailedSource.TOLD.contains(outcome)) {
+                notice.agentId = AGENT_ID;
+                notice.workId = WORK_ID;
+              }
               notice.persist();
             });
   }

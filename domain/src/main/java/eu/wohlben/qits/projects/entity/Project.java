@@ -153,6 +153,17 @@ public class Project extends PanacheEntityBase implements CausedRow {
   @Column(name = "delivery_enabled", nullable = false)
   public boolean deliveryEnabled = false;
 
+  /**
+   * When {@link #deliveryEnabled} last went {@code false → true} (qits-1694, V65), stamped by the
+   * reconcile ({@code ProjectConfig.DeliverySettings.applyTo}); left as it is when delivery goes off
+   * again. {@code desktriggers/RequestStalledSource} measures a stall from the later of this and the
+   * stall's own start, so a desk that has just been turned on is not told a week of stalls at once.
+   * Null for a project whose delivery was already on when the column came, or was never on: no
+   * clamp.
+   */
+  @Column(name = "delivery_enabled_at")
+  public Instant deliveryEnabledAt;
+
   /** {@code front_desk.delivery.max_running}: how many items the loop keeps running, 1..20. */
   @Column(name = "delivery_max_running", nullable = false)
   public int deliveryMaxRunning = 2;

@@ -3874,7 +3874,10 @@ public class ReleaseRequests {
    * is the same, {@code mergedSha} is the same commit qits-ci has just built again. Moving the sha
    * here would invalidate the approval somebody has already given at this fold and re-announce a
    * fold nothing re-folded. So the state goes back to PENDING, the rejection's run and sentence go,
-   * and nothing else on the row is touched.
+   * and {@code armedAt} is stamped: the request is in front of its gates again from now, and a
+   * second PENDING stall at this fold is timed and keyed from the reopen (qits-1694,
+   * {@code desktriggers/RequestStalledSource}). {@code armedAt} gates nothing since the settle window
+   * went, so stamping it re-arms nothing: the sha, the version and the approval are untouched.
    *
    * <p><b>The state is flipped BEFORE {@link #evaluate} rather than by relaxing its guard</b>, and
    * that is the design decision behind this method existing at all. {@code evaluate} is a function
@@ -3908,6 +3911,7 @@ public class ReleaseRequests {
                   row.rejectingGate = null;
                   row.detail = null;
                   row.updatedAt = Instant.now();
+                  row.armedAt = row.updatedAt;
                   return true;
                 });
     if (reopened) {
@@ -3918,7 +3922,8 @@ public class ReleaseRequests {
   /**
    * Put a request the <b>automations</b> rejected back in front of its gates at the fold it already
    * has (qits-1199) — {@link #reconsider}'s twin, and for its reasons not a re-arm: same fold, same
-   * approval, same window. The caller evaluates afterwards.
+   * approval. {@code armedAt} is stamped as there (qits-1694), so a stall after the reopen is its
+   * own. The caller evaluates afterwards.
    *
    * <p>Only a REJECTED row whose {@link ReleaseRequest#rejectingGate} is the automations gate, under
    * the row lock, and only on evidence about that cause: the note at the fold is no longer FAILED
@@ -3961,6 +3966,7 @@ public class ReleaseRequests {
               row.rejectingRunId = null;
               row.detail = null;
               row.updatedAt = Instant.now();
+              row.armedAt = row.updatedAt;
               return true;
             });
   }
@@ -4462,7 +4468,8 @@ public class ReleaseRequests {
                 // THE FOLD REJECTED IT AND NOW FOLDS (qits-1221): the missing source exists again —
                 // a push re-created it — or left the request. Either way the rejection's cause is
                 // gone. A fold onto the sha the request already had is reopened at that fold, like
-                // reconsider(): same window, same approval, nothing new to build. Anything else is
+                // reconsider(): same approval, nothing new to build, armedAt stamped so a stall from
+                // here is its own (qits-1694). Anything else is
                 // the ordinary re-arm onto new content, which the default arm below would make for
                 // any request; it is made here so the UNCHANGED arm cannot leave the row REJECTED.
                 String superseded = row.mergedSha;
@@ -4475,6 +4482,7 @@ public class ReleaseRequests {
                   row.rejectingGate = null;
                   row.rejectingRunId = null;
                   row.detail = "The sources fold again (" + why + ")";
+                  row.armedAt = Instant.now();
                   return null;
                 }
                 row.mergedSha = outcome.sha();

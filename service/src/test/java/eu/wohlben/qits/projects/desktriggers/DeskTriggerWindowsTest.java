@@ -2,9 +2,11 @@ package eu.wohlben.qits.projects.desktriggers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Duration;
@@ -41,6 +43,17 @@ class DeskTriggerWindowsTest {
     String id = DeskTriggerFixtures.project(true);
     projects.add(id);
     return id;
+  }
+
+  /** What the sweep's close does to the row, enough that the next admit opens a new window. */
+  private static void close(UUID windowId) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              DeskTriggerWindow window = DeskTriggerWindow.findById(windowId);
+              window.state = DeskTriggerWindowState.OWED;
+              window.closedAt = T0.plus(Duration.ofMinutes(15));
+            });
   }
 
   private static DeskTrigger trigger(String projectId, String ref, String label) {
@@ -92,6 +105,64 @@ class DeskTriggerWindowsTest {
         projectId, "work-verified", trigger(projectId, "p-1", "one"), T0.plusSeconds(30));
 
     assertEquals(1, DeskTriggerFixtures.events(windowId).size());
+  }
+
+  /**
+   * V65 (qits-1694): an event is one line per item across windows, whatever its label says now — a
+   * stall's label carries its duration, so a second admitter racing the first would otherwise land
+   * the same stall in the next window.
+   */
+  @Test
+  void aDuplicateEventAndItemInALaterWindowInsertsNothing() {
+    String projectId = project();
+    UUID eventId = UUID.randomUUID();
+    UUID first =
+        windows.admit(
+            projectId,
+            "request-stalled",
+            new DeskTrigger(projectId, "p-rr-1", null, "fold aaaaaaaa", "for 2h 1m", eventId, T0),
+            T0);
+    close(first);
+
+    UUID none =
+        windows.admit(
+            projectId,
+            "request-stalled",
+            new DeskTrigger(projectId, "p-rr-1", null, "fold aaaaaaaa", "for 2h 31m", eventId, T0),
+            T0.plus(Duration.ofMinutes(30)));
+
+    assertNull(none, "nothing admitted, and no window left open for it");
+    assertEquals(1, DeskTriggerFixtures.windows(projectId).size(), "no empty window is left behind");
+    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size());
+
+    UUID open =
+        windows.admit(
+            projectId, "work-verified", trigger(projectId, "p-2", "two"), T0.plus(Duration.ofMinutes(31)));
+    windows.admit(
+        projectId,
+        "request-stalled",
+        new DeskTrigger(projectId, "p-rr-1", null, "fold aaaaaaaa", "for 2h 32m", eventId, T0),
+        T0.plus(Duration.ofMinutes(32)));
+    assertEquals(1, DeskTriggerFixtures.events(open).size(), "nor into an open window that exists");
+  }
+
+  /** V65 (qits-1694): capacity-opened's one line per agent is the schema's rule, too. */
+  @Test
+  void aSecondCapacityLineForOneAgentInsertsNothing() {
+    String projectId = project();
+    UUID first =
+        windows.admit(
+            projectId,
+            "capacity-opened",
+            new DeskTrigger(projectId, "p-1", "agent-1", "agent agent-1", "done", UUID.randomUUID(), T0),
+            T0);
+    windows.admit(
+        projectId,
+        "capacity-opened",
+        new DeskTrigger(projectId, "p-1", "agent-1", "agent agent-1", "removed", UUID.randomUUID(), T0),
+        T0.plusSeconds(30));
+
+    assertEquals(1, DeskTriggerFixtures.events(first).size());
   }
 
   @Test

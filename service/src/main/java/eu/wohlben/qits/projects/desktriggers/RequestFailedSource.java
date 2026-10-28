@@ -2,11 +2,14 @@ package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ReleaseRequestStateChanged;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestFailureNotice;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,9 +17,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.jboss.logging.Logger;
 
 /**
  * <b>A release request failed, and no active agent was told</b> (qits-1689).
@@ -30,21 +35,36 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li><b>None:</b> no agent will be told (a maintenance bump, a request made off-platform, a
  *       person's, or a conflict, which qits-1672 does not report). The desk is told now.
- *   <li><b>One told</b> ({@code DELIVERED}, {@code LAUNCHED}, {@code RESUMED}): the agent owns it.
- *       Nothing here.
  *   <li><b>Still owed:</b> not decided yet. {@link #scan} decides on a later sweep, once every
  *       notice of the fold is settled.
- *   <li><b>All settled, none told</b> ({@code NOT_ACTIVE}, {@code NO_AGENT}, {@code GAVE_UP}): the
- *       desk is told.
+ *   <li><b>All settled:</b> decided by liveness, now. A told notice ({@code DELIVERED}, {@code
+ *       LAUNCHED}, {@code RESUMED}) counts only while its agent is still ACTIVE ({@link
+ *       WorkspaceAgentDispatch#agentsFor} on the told notices' work items, the reading {@code
+ *       RunningItems} makes, matched on the notice's agent id): that agent owns it, and nothing is
+ *       said here. With none ACTIVE — its agent has since gone OBSOLETE or REMOVED, none was told
+ *       ({@code NOT_ACTIVE}, {@code NO_AGENT}, {@code GAVE_UP}), or the read failed or has no
+ *       workspaces context to ask — the desk is told.
  * </ul>
+ *
+ * <p>Liveness rather than the notices' outcomes, because a fold can be rejected twice without moving
+ * sha (qits-1694): {@code reconsider} and {@code reopenAutomationRejection} reopen it at the same
+ * {@code mergedSha}, the next red gate rejects it again, and qits-1672 owes no new notice for a fold
+ * it already noted. The second rejection is therefore read against the first's settled notices,
+ * and an agent told of the first that has gone since reaches nobody unless the desk is told.
  *
  * <p>The notices are written in the transaction that rejects the fold, and the event is published
  * after it commits, so the event never arrives before them.
  *
- * <p><b>Once.</b> A line decided from notices carries a synthetic event id, a name-based UUID of
- * (request, fold) ({@link #foldKey}), so the event path and the sweep can never both admit it. A
- * line with no notices carries the bus event's id. Either way the source answers nothing for an
- * event id some window already holds, so a replay adds nothing.
+ * <p><b>Once per rejection.</b> A line decided from notices carries a synthetic event id, a
+ * name-based UUID of (request, fold) ({@link #foldKey}), while that key is free: the fold's first
+ * rejection, so the event path and the sweep can never both admit it. Once a window holds it, a
+ * line from the event path carries the bus event's id — a re-rejection at the same fold, which is
+ * its own line by the no-notice rule. No timestamps are compared. The source answers nothing for an
+ * event id some window already holds, so a replay of a frame that admitted under its own id adds
+ * nothing; the one frame the store cannot tell from a re-rejection is the fold's first, redelivered
+ * after its line was admitted under the fold key (by the sweep, or by an admit that committed under
+ * a claim that then rolled back), and that costs one redundant line rather than a silent failure.
+ * {@link #scan} still reports only folds none of whose notices told an agent, under {@link #foldKey}.
  *
  * <p>The label is {@code <state>: <detail>; <why no agent>}. The principal is the person or desk
  * whose decline rejected the fold, so the desk's own decline is dropped; a build, an automation or a
@@ -61,6 +81,10 @@ public class RequestFailedSource implements DeskTriggerSource {
 
   /** qits-1672's outcomes that mean an agent was told. */
   static final Set<String> TOLD = Set.of("DELIVERED", "LAUNCHED", "RESUMED");
+
+  private static final Logger LOG = Logger.getLogger(RequestFailedSource.class);
+
+  @Inject Instance<WorkspaceAgentDispatch> dispatch;
 
   /** How old a notice the sweep still looks at: qits-1672 gives up on older ones anyway. */
   static final Duration NOTICE_HORIZON = Duration.ofDays(2);
@@ -110,15 +134,24 @@ public class RequestFailedSource implements DeskTriggerSource {
     if (notices.isEmpty()) {
       why = noAgentPhrase(row, changed.state());
     } else {
-      Decision decision = decide(notices);
-      if (decision != Decision.NOBODY_TOLD) {
+      if (notices.stream().anyMatch(n -> n.outcome == null)) {
         return List.of();
       }
-      eventId = foldKey(changed.releaseRequestId(), sha);
-      if (admitted(eventId)) {
-        return List.of();
+      List<ReleaseRequestFailureNotice> told =
+          notices.stream().filter(n -> TOLD.contains(n.outcome)).toList();
+      if (told.isEmpty()) {
+        why = notToldPhrase(notices);
+      } else {
+        Liveness liveness = livenessOf(told);
+        if (liveness == Liveness.ACTIVE) {
+          return List.of();
+        }
+        why = liveness.why;
       }
-      why = notToldPhrase(notices);
+      UUID fold = foldKey(changed.releaseRequestId(), sha);
+      if (!admitted(fold)) {
+        eventId = fold;
+      }
     }
     String principal = declinedBy(row, changed.state(), sha);
     return List.of(
@@ -213,6 +246,57 @@ public class RequestFailedSource implements DeskTriggerSource {
       return Decision.OWED;
     }
     return Decision.NOBODY_TOLD;
+  }
+
+  /** How the agents told of a fold stand now. */
+  private enum Liveness {
+    ACTIVE(null),
+    NOT_ACTIVE("its agent is not active"),
+    GONE("its agent is gone"),
+    UNKNOWN("its agent could not be checked");
+
+    final String why;
+
+    Liveness(String why) {
+      this.why = why;
+    }
+  }
+
+  /**
+   * Whether any told notice's agent is still ACTIVE: an agent on the notice's work item, and the
+   * notice's own agent when it names one (a fresh agent on the item was not told). A read that
+   * fails, or no workspaces context to ask, counts as not told.
+   */
+  private Liveness livenessOf(List<ReleaseRequestFailureNotice> told) {
+    List<String> workIds =
+        told.stream().map(n -> n.workId).filter(id -> !isBlank(id)).distinct().toList();
+    if (workIds.isEmpty()) {
+      return Liveness.GONE;
+    }
+    if (dispatch.isUnsatisfied()) {
+      return Liveness.UNKNOWN;
+    }
+    List<WorkspaceAgentDispatch.Agent> agents;
+    try {
+      agents = Objects.requireNonNullElse(dispatch.get().agentsFor(workIds), List.of());
+    } catch (RuntimeException e) {
+      LOG.debugf("Could not read the told agents of %s: %s", workIds, e.toString());
+      return Liveness.UNKNOWN;
+    }
+    boolean listed = false;
+    for (ReleaseRequestFailureNotice notice : told) {
+      for (WorkspaceAgentDispatch.Agent agent : agents) {
+        boolean same =
+            notice.workId != null
+                && notice.workId.equals(agent.workId())
+                && (isBlank(notice.agentId) || notice.agentId.equals(agent.agentId()));
+        if (same && agent.active()) {
+          return Liveness.ACTIVE;
+        }
+        listed |= same;
+      }
+    }
+    return listed ? Liveness.NOT_ACTIVE : Liveness.GONE;
   }
 
   private static boolean admitted(UUID eventId) {
