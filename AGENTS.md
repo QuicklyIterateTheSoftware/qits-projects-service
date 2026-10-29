@@ -611,6 +611,14 @@ merely its only occupant. Six things about it are rules:
     leaves out rows whose repository is `AGENT_CONFIG` (a row whose repository is gone still
     counts), and a branch known only there has `everywhere` null. Its row is still written and
     announced as before, so a wait naming `--repository qits-agent-config` still sees its `step`.
+  - **A WITHDRAWN row never counts toward `everywhere` (qits-1737).** WITHDRAWN ranks 0 like
+    PUSHED, but the branch no longer ships from that repository: its request was withdrawn, the
+    branch was deleted while on an open request, or the wrapper's empty fold was withdrawn. Ranked,
+    it pinned `everywhere` at PUSHED for good (ticket/qits-1733 LIVE in every code repository read
+    PUSHED off its WITHDRAWN `qits-qits` row). `stepsOf` leaves it out too (`step <> 'WITHDRAWN'`);
+    a re-push resets it to PUSHED and a new ask makes it JOINED, so it counts again then. A branch
+    whose every counted row is WITHDRAWN has `everywhere` null; the WITHDRAWN step is still written,
+    announced (carrying the other repositories' `everywhere`) and listed.
   - **The ledger is `branch_delivery` (V67)**, one row per (project, repository, branch);
     `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
@@ -688,8 +696,9 @@ merely its only occupant. Six things about it are rules:
     `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
     requestId, qualifiedId, foldSha, runId, version, changedAt}]}`. `repository` (name or id)
     narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. `deliveries` lists
-    the `qits-agent-config` row, `everywhere` leaves it out (qits-1736), so a branch known only
-    there answers its row and `everywhere` null. An unknown branch is
+    the `qits-agent-config` row and WITHDRAWN rows, `everywhere` leaves them out (qits-1736,
+    qits-1737), so a branch known only there, or only WITHDRAWN, answers its rows and `everywhere`
+    null. An unknown branch is
     200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
     `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
     RELEASED in qits-demo-service` records it for qits-platform-access-cli.

@@ -20,7 +20,8 @@ import java.util.Objects;
  * <p>Written only by {@code control/BranchDeliveries}, in the transaction that took the step, and
  * read by it to deduplicate (a step equal to the row's step, request, fold and fold attempt is not
  * published again) and to compute a branch's {@code everywhere} — its least advanced step across every
- * repository of the project. The read door ({@code GET /projects/api/branch-deliveries}) answers
+ * repository of the project it still ships to (no agent configuration, qits-1736; no WITHDRAWN row,
+ * qits-1737). The read door ({@code GET /projects/api/branch-deliveries}) answers
  * these rows as they stand.
  *
  * <p>Rows are kept after a release: a LIVE row is the record that the branch reached production in
@@ -69,7 +70,8 @@ public class BranchDelivery extends PanacheEntityBase {
 
     /**
      * How far along the step is, for {@code everywhere}: 0 for a branch nothing is delivering
-     * (PUSHED, WITHDRAWN), 1 on a request, 2 released, 3 live.
+     * (PUSHED), 1 on a request, 2 released, 3 live. WITHDRAWN keeps 0 but never reaches the
+     * minimum: {@code BranchDeliveryRepository#stepsOf} leaves a withdrawn row out (qits-1737).
      */
     public int rank() {
       return rank;

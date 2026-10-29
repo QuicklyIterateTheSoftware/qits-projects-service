@@ -45,9 +45,11 @@ import java.util.UUID;
  *       {@code FOLD} (a source ref missing on the git host, qits-1725); {@code runId} — the red CI
  *       run or the newest automation run, absent for {@code RELEASE} and {@code FOLD}.
  *   <li>{@code version} — {@code RELEASED} and {@code LIVE}: the tag.
- *   <li>{@code everywhere} — the branch's least advanced step across every repository of the
- *       project, after this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE}.
- *       A wait for "my branch is live everywhere" matches {@code everywhere = LIVE}.
+ *   <li>{@code everywhere} — the branch's least advanced step across the repositories of the
+ *       project it still ships to, after this one: {@code PUSHED}, {@code JOINED}, {@code
+ *       RELEASED} or {@code LIVE}. The agent configuration (qits-1736) and a WITHDRAWN row
+ *       (qits-1737) never count; absent when no row does. A wait for "my branch is live
+ *       everywhere" matches {@code everywhere = LIVE}.
  *   <li>{@code changedAt} — when the step was written, and the envelope's {@code occurredAt}; not
  *       spelled {@code occurredAt}, which the canonical mix-in drops from the payload.
  * </ul>

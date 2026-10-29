@@ -401,7 +401,52 @@ public class BranchDeliveryTest {
     assertEquals(
         List.of("JOINED@" + qid, "CONFLICTED@" + qid, "WITHDRAWN@" + qid),
         announced.movesOf(branch));
-    assertEquals("PUSHED", last(branch).everywhere(), "nothing is delivering it any more");
+    assertNull(
+        last(branch).everywhere(), "its one row is withdrawn, and a withdrawn row never counts");
+  }
+
+  /**
+   * qits-1737: a withdrawn request no longer ships the branch from its repository, so the WITHDRAWN
+   * step carries the {@code everywhere} of the repositories it still ships to — LIVE here, where
+   * it used to pin the branch at PUSHED for good. The LIVE row in repository B is written straight
+   * to the ledger: {@link #aFinalizedReleaseIsLiveAndEverywhereWaitsForEveryRepository} drives that
+   * flow.
+   */
+  @Test
+  public void aWithdrawalLeavesTheBranchLiveWhereItIsLiveElsewhere() {
+    String branch = ticketBranch();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery live = new BranchDelivery();
+              live.projectId = projectId;
+              live.repoId = repoB;
+              live.repoName = nameB;
+              live.branch = branch;
+              live.step = "LIVE";
+              live.requestId = UUID.randomUUID().toString();
+              live.qualifiedId = nameB + "-rr-1";
+              live.foldSha = "f01d";
+              live.version = "2026.1029.10000";
+              live.changedAt = Instant.now();
+              live.persist();
+            });
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    assertEquals("JOINED", last(branch).everywhere(), "the premise: repository A is on a request");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"reason\":\"not any more\"}")
+        .post(base(repoA) + "/" + id + "/withdraw")
+        .then()
+        .statusCode(200);
+
+    assertEquals(List.of("JOINED@" + qid, "WITHDRAWN@" + qid), announced.movesOf(branch));
+    BranchDeliveryStep withdrawn = last(branch);
+    assertEquals("WITHDRAWN", withdrawn.step());
+    assertEquals("LIVE", withdrawn.everywhere(), "the withdrawn row never counts");
+    assertEquals("WITHDRAWN", ledgerStep(repoA, branch), "its row is written as ever");
   }
 
   /**

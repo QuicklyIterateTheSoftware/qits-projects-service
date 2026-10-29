@@ -9,9 +9,11 @@ import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.persistence.BranchDeliveryRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.path.json.JsonPath;
+import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +27,8 @@ import org.junit.jupiter.api.Test;
  * branch's rows with its {@code everywhere}, a repository narrowing the rows and not the word, an
  * unknown branch's empty 200, a branch in two projects refused without {@code project} and answered
  * with it (by id and by slug), the 400 and 404 for a missing branch and an unknown project, and
- * the project's {@code qits-agent-config} row listed but never counted (qits-1736).
+ * the project's {@code qits-agent-config} row listed but never counted (qits-1736), and a
+ * WITHDRAWN row listed but never counted until a push resets it (qits-1737).
  *
  * <p>The ledger rows are written straight to {@code branch_delivery}: what is under test is the
  * read, and {@code BranchDeliveryTest} is where the flows that write them are driven.
@@ -34,6 +37,8 @@ import org.junit.jupiter.api.Test;
 public class BranchDeliveriesControllerTest {
 
   private static final String DOOR = "/projects/api/branch-deliveries";
+
+  @Inject BranchDeliveryRepository ledger;
 
   private String projectId;
   private String otherProjectId;
@@ -197,6 +202,70 @@ public class BranchDeliveriesControllerTest {
     assertNull(answer.get("everywhere"), "no row that counts");
   }
 
+  /**
+   * qits-1737: a withdrawn row says the branch no longer ships from that repository, so it is
+   * listed but never holds the branch below LIVE.
+   */
+  @Test
+  public void aWithdrawnRowIsListedButNeverCountsTowardEverywhere() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery.delete("branch", branch);
+              row(projectId, "repo-svc", "door-service", "LIVE", "2026.1028.30000");
+              row(projectId, "repo-wrapper", "door-wrapper", "WITHDRAWN", null);
+            });
+
+    JsonPath answer =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+
+    assertEquals("LIVE", answer.getString("everywhere"), "a WITHDRAWN row never counts");
+    assertEquals(List.of("door-service", "door-wrapper"), answer.getList("deliveries.repository"));
+    assertEquals(List.of("LIVE", "WITHDRAWN"), answer.getList("deliveries.step"));
+  }
+
+  @Test
+  public void aBranchWithdrawnEverywhereHasNoEverywhere() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery.delete("branch", branch);
+              row(projectId, "repo-svc", "door-service", "WITHDRAWN", null);
+              row(projectId, "repo-wrapper", "door-wrapper", "WITHDRAWN", null);
+            });
+
+    JsonPath answer =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+
+    assertEquals(List.of("door-service", "door-wrapper"), answer.getList("deliveries.repository"));
+    assertEquals(List.of("WITHDRAWN", "WITHDRAWN"), answer.getList("deliveries.step"));
+    assertNull(answer.get("everywhere"), "no row that counts");
+  }
+
+  @Test
+  public void aWithdrawnRowResetByAPushCountsAgain() {
+    String withdrawn =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  BranchDelivery.delete("branch", branch);
+                  row(projectId, "repo-svc", "door-service", "LIVE", "2026.1028.30000");
+                  return row(projectId, "repo-wrapper", "door-wrapper", "WITHDRAWN", null);
+                });
+    JsonPath before =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+    assertEquals("LIVE", before.getString("everywhere"), "the premise: withdrawn, not counted");
+
+    QuarkusTransaction.requiringNew()
+        .run(() -> ledger.resetToPushed(projectId, withdrawn, branch, Instant.now()));
+
+    JsonPath answer =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+
+    assertEquals("PUSHED", answer.getString("everywhere"), "the name was reused: it counts again");
+    assertEquals(List.of("LIVE", "PUSHED"), answer.getList("deliveries.step"));
+  }
+
   @Test
   public void aMissingBranchIsA400AndAnUnknownProjectA404() {
     given().get(DOOR).then().statusCode(400);
@@ -240,7 +309,8 @@ public class BranchDeliveriesControllerTest {
     row.persist();
   }
 
-  private void row(String project, String repoId, String repoName, String step, String version) {
+  /** Answers the row's repository id. */
+  private String row(String project, String repoId, String repoName, String step, String version) {
     BranchDelivery row = new BranchDelivery();
     row.projectId = project;
     row.repoId = repoId + "-" + UUID.randomUUID();
@@ -255,5 +325,6 @@ public class BranchDeliveriesControllerTest {
     row.version = version;
     row.changedAt = Instant.now();
     row.persist();
+    return row.repoId;
   }
 }

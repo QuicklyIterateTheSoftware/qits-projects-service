@@ -51,9 +51,10 @@ public class BranchDeliveriesController {
       @Schema(description = "The branch asked about") String branch,
       @Schema(
               description =
-                  "The branch's least advanced step across every repository of its project —"
-                      + " PUSHED, JOINED, RELEASED or LIVE — however `repository` narrowed the"
-                      + " deliveries; null when the branch has no row",
+                  "The branch's least advanced step across the repositories of its project it"
+                      + " still ships to — PUSHED, JOINED, RELEASED or LIVE — leaving out the"
+                      + " agent configuration and withdrawn rows, however `repository` narrowed"
+                      + " the deliveries; null when no row counts",
               nullable = true)
           String everywhere,
       @Schema(description = "One row per repository the branch was pushed to or delivered in")
@@ -119,7 +120,8 @@ public class BranchDeliveriesController {
           "The branch's delivery ledger rows: per repository the last step it reached (PUSHED,"
               + " JOINED, MOVED, FAILED, CONFLICTED, WITHDRAWN, RELEASED, LIVE), the request"
               + " carrying it and the fold, run and version of that step. `everywhere` is the least"
-              + " advanced step over every repository of the project. An unknown branch answers"
+              + " advanced step over the repositories of the project the branch still ships to,"
+              + " leaving out the agent configuration and withdrawn rows. An unknown branch answers"
               + " 200 with no deliveries and `everywhere` null; a branch in several projects needs"
               + " `project`, else 400.")
   public Answer get(

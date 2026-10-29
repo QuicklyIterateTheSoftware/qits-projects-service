@@ -127,10 +127,18 @@ public class BranchDeliveryRepository
 
   /**
    * The steps of one branch across the repositories of one project that count toward its {@code
-   * everywhere}: every repository but an {@code AGENT_CONFIG} one (qits-1736). The project's
+   * everywhere}: every repository but an {@code AGENT_CONFIG} one (qits-1736), and every row but a
+   * {@code WITHDRAWN} one (qits-1737). The project's
    * {@code qits-agent-config} is platform state a desk approval releases after the work, not
    * software, so its row would hold the branch short of LIVE for good. A row whose repository is
    * gone still counts: only a repository known to be the agent configuration is left out.
+   *
+   * <p>Nor does a {@code WITHDRAWN} row count (qits-1737): its request was withdrawn, the branch was
+   * deleted while on an open request, or the wrapper's empty fold was withdrawn — the branch no
+   * longer ships from that repository, and ranked with the rest the row pinned {@code everywhere}
+   * at PUSHED for good. A re-push resets it to PUSHED ({@link #resetToPushed}) and a new ask makes
+   * it JOINED, and it counts again then. A branch whose every counted row is WITHDRAWN has {@code
+   * everywhere} null.
    *
    * <p>The one definition of which rows {@code everywhere} ranges over — the write's announced
    * step and the read door both ask it.
@@ -140,7 +148,7 @@ public class BranchDeliveryRepository
     return em().createNativeQuery(
             "select d.step from branch_delivery d where d.project_id = ?1 and d.branch = ?2"
                 + " and not exists (select 1 from Repository r where r.id = d.repo_id"
-                + " and r.archetype = 'AGENT_CONFIG')")
+                + " and r.archetype = 'AGENT_CONFIG') and d.step <> 'WITHDRAWN'")
         .setParameter(1, projectId)
         .setParameter(2, branch)
         .getResultList();

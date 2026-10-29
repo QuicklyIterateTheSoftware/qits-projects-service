@@ -31,8 +31,10 @@ import java.util.List;
  * @param runId {@code FAILED} only: the red CI run, or the newest automation run; null for {@code
  *     RELEASE} and {@code FOLD}
  * @param version {@code RELEASED} and {@code LIVE}: the tag
- * @param everywhere the branch's least advanced step across every repository of the project, after
- *     this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE}
+ * @param everywhere the branch's least advanced step across the repositories of the project it still
+ *     ships to, after this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE};
+ *     never counting the agent configuration (qits-1736) or a WITHDRAWN row (qits-1737), and null
+ *     when no row counts
  * @param changedAt when the step was written
  * @param conflicts {@code CONFLICTED} only, and <b>in process only</b> (qits-1725): the fold's
  *     conflicts as the git host answered them, so {@link BranchDeliveryNotices} tells only the

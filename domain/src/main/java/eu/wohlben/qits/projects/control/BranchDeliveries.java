@@ -89,6 +89,17 @@ import org.jboss.logging.Logger;
  * everywhere} null. Its row is still written and announced like any other, so a wait naming that
  * repository sees its {@code step}; only the minimum leaves it out.
  *
+ * <p><b>A withdrawn row never counts</b> (qits-1737). WITHDRAWN ranks 0, as PUSHED does, but it
+ * says the branch no longer ships from that repository: its request was withdrawn, the branch was
+ * deleted while on an open request, or the wrapper's empty fold was withdrawn. Ranked with the
+ * rest, such a row pinned {@code everywhere} at PUSHED for good — a branch LIVE in every code
+ * repository read PUSHED because its {@code qits-qits} row was WITHDRAWN — and {@code qits wait
+ * branch --until live} never fired. So {@link BranchDeliveryRepository#stepsOf} leaves WITHDRAWN
+ * rows out as well. A re-push resets the row to PUSHED and a new ask makes it JOINED, and it counts
+ * again from then; a branch whose every counted row is WITHDRAWN has {@code everywhere} null. The
+ * WITHDRAWN step is still written, announced and listed, and carries the {@code everywhere} of the
+ * repositories the branch still ships to.
+ *
  * <h2>Announced after the commit, heard inside it</h2>
  *
  * <p>Every verb runs inside the caller's transaction and requires one. The step is announced
@@ -369,7 +380,7 @@ public class BranchDeliveries {
    * @param branch the branch asked about
    * @param everywhere the least advanced step over the branch's rows in its project — before
    *     {@code repository} narrowed the rows, and leaving out the {@code AGENT_CONFIG} repository's
-   *     (qits-1736) — or null where the branch has no other row
+   *     (qits-1736) and every WITHDRAWN row (qits-1737) — or null where no row counts
    * @param deliveries the rows, by repository name
    */
   public record Answer(String branch, String everywhere, List<BranchDelivery> deliveries) {}
@@ -385,12 +396,13 @@ public class BranchDeliveries {
    *       one a single word described.
    *   <li>{@code repository}, a repository's name or id, narrows {@code deliveries} and never
    *       {@code everywhere}, which is computed over the project's rows first.
-   *   <li>{@code everywhere} never counts the project's {@code qits-agent-config} row, which {@code
-   *       deliveries} still lists (qits-1736; "Once per position, and everywhere" above).
+   *   <li>{@code everywhere} never counts the project's {@code qits-agent-config} row (qits-1736)
+   *       nor a WITHDRAWN row (qits-1737), which {@code deliveries} still lists ("Once per
+   *       position, and everywhere" above).
    *   <li>A branch with no rows is no error: an empty answer with {@code everywhere} null, because
    *       "nothing has happened to it yet" is exactly what a waiter polling a fresh branch is told.
-   *       So is a branch known only in {@code qits-agent-config}: its rows, and {@code everywhere}
-   *       null.
+   *       So is a branch whose rows all go uncounted — known only in {@code qits-agent-config}, or
+   *       WITHDRAWN everywhere else: its rows, and {@code everywhere} null.
    * </ul>
    */
   public Answer read(String branch, String repository, String projectId) {
@@ -408,7 +420,8 @@ public class BranchDeliveries {
                           .toList();
                   List<String> projects =
                       found.stream().map(row -> row.projectId).distinct().toList();
-                  // The rows the write ranks (qits-1736): never the agent configuration's.
+                  // The rows the write ranks: never the agent configuration's (qits-1736), never
+                  // a WITHDRAWN one (qits-1737).
                   return new Read(
                       found,
                       projects.size() == 1
