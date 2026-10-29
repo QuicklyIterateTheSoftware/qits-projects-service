@@ -633,7 +633,8 @@ merely its only occupant. Six things about it are rules:
     `maintenance/*` or an implicit tag.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
     under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
-    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI, failed
+    it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
+    request the source left, current = the request queued behind it); FAILED in `evaluate` (red CI, failed
     automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
     (qits-1725); CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
@@ -702,6 +703,14 @@ merely its only occupant. Six things about it are rules:
     200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
     `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
     RELEASED in qits-demo-service` records it for qits-platform-access-cli.
+- **`ReleaseRequestSourceMoved` says a source was moved to the next request (qits-1665).** Payload
+  `{projectId?, repoId, repoName?, branch, fromRequestId, fromQualifiedId, toRequestId,
+  toQualifiedId, minted, movedBy?, reason, movedAt}`; `movedAt` is the envelope's `occurredAt`.
+  Published once per move after the move's commit by `ReleaseRequests.moveSource`; the port is
+  `control/ReleaseRequestSourceMoveAnnouncer`, the adapter `bus/ReleaseRequestSourceMovedAnnouncer`
+  (`@DefaultBean`); the suite records through `RecordingReleaseRequestSourceMoveAnnouncer`. The
+  branch's own step is `BranchDeliveryChanged` `MOVED`, and the left request's refold is an ordinary
+  `ReleaseRequestChanged`; the queued request folds nothing, so nothing announces it as a fold.
 - **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
   mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
   `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps
@@ -771,12 +780,12 @@ write** (user ruling, 2026-09-12):
 - **Every read route takes it** — each GET, and the SSE streams — with no restriction. On a class
   that also has writes, each GET states `qits:agent` at method level, so the writes keep the class
   list. `api/AgentReadAccessTest` checks the rule for every controller class.
-- **Four writes take it, bound to the agent's own work:** create, sources, priority and withdraw
-  on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
-  belong to that repository, and on create and sources the branch must be in the token's
-  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline admit the agent too
+- **Five writes take it, bound to the agent's own work:** create, sources, priority, move
+  (qits-1665) and withdraw on `ReleaseRequestController`. The repository must be in the token's
+  `project`, a request must belong to that repository, and on create, sources and move the branch
+  must be in the token's `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline admit the agent too
   since epic qits-1038, unbound — see "Approval requirements and roles" below.
-- **A fifth write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
+- **One more write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
   gate and no row, and the new run reports on the bus exactly as the first one did, so there is
   nothing for a binding to protect — an agent re-asks a phase of any request, including one in a
   repository its token does not cover. It is open at all because gates die on estate conditions
@@ -835,7 +844,7 @@ write** (user ruling, 2026-09-12):
   itself, or a person's `qits` CLI bearer (`credential_type=cli`, no `context_kind`, no `clients/…`
   group), holding `qits:admin`. Asserted `X-Qits-*` headers alone are a 403, and the recorded name
   is the proof's. qits-887 and qits-897 reuse it.
-- **A sixth write takes it: `ProjectController.createRepository`** — `POST
+- **Another write takes it: `ProjectController.createRepository`** — `POST
   /projects/{projectId}/repositories`, the route that adds a component to a project. It is granted
   because it is additive: it mints a blank on the git host (or attaches a url) and declares it in
   the wrapper, writing no existing row and destroying nothing. `RepositoryController.delete` is the
@@ -876,7 +885,8 @@ bound to its project, except a commit or a push and a change to its own rights:
   it approves only what `front_desk.delivery.approves` hands it. Both settings are the owner's in
   `.config/qits/project.yml`; qits-1596 deliberately did not widen them.
 - **Refused**: release-request create and join (`refuseDesk`, in the body — the routes admit
-  `qits:agent`); the doors over its own rights (`AgentSurfaceConfigurationController`,
+  `qits:agent`; the move, qits-1665, is not refused: `qits:desk-admin` is admitted for any source of
+  its own project before the bound-agent check, because a move takes nothing new to main); the doors over its own rights (`AgentSurfaceConfigurationController`,
   `AgentContainerController`, `ProjectFrontDeskController`, the
   MCP catalogue and the capability report); everything that writes or deletes a ref (branch and
   repository delete, pull, push, sync, both backup pushes, tag GC, the remote-login push, a new
@@ -1213,6 +1223,37 @@ every outbound call (qits-ci, qits-maintenance) keeps using. `qualifiedId` is th
   `qualifiedId` in its body; the uuid stays in the path.
 - **Texts use the qualified id**: the fold commit subject (`Release request <qualifiedId>: …`), the
   tag fallback, supersession, refusal sentences, ticket threads and the MAINTENANCE ticket body.
+
+## Moving one source to the next request (qits-1665)
+
+`POST /projects/api/repositories/{repoId}/release-requests/{requestId}/sources/move`
+(`moveReleaseRequestSource`), body `{branch, reason}`, answers `{from, to}`, both
+`ReleaseRequestDto`. For a source that alone holds a shared request back — a conflict, a red check,
+a branch not ready — instead of force-pushing it back to main (forbidden by the flow), withdrawing
+every other source with it, or holding them all and the queue behind them.
+
+- **`ReleaseRequests.moveSource`, one transaction under the Repository row lock** `ask`/`join`
+  take: the source row leaves the request; a row of the same branch keeping its `priority`,
+  `added_by`, `added_at`, `feature`, `label` and `causation_id` (`explicit_join` false — an
+  ordinary member, counted by `featureCountOf`) goes onto the request queued behind it, minted with
+  `mint(..., queuedBehind)` when there is none (main alone, then the branch; its participant is the
+  branch's author, never the mover); `BranchDeliveries.moved` writes MOVED, so `qits wait branch`
+  follows the branch and `BranchDeliveryNotices` tells its owner `fyi: your <branch> moved from …
+  to …`; the move is recorded in `release_request_source_move` (V71). After the commit: the event,
+  then `remerge(from, "<branch> moved to <qid> by <actor>: <reason>")`, which re-arms it to
+  PENDING like any refold (approvals and waivers are keyed by the fold). The queued request folds
+  once `activateQueuedBehind` or the sweep activates it.
+- **Refusals**: blank reason 400; unknown request or a branch it does not name 404; 409 when the
+  request is not `UNRELEASED` (`requireOpenForChange`), is itself queued, the branch is the default
+  branch or a released tag (implicit or stored `RELEASED_TAG`), or it is the only branch besides
+  the default one (the message points at withdraw).
+- **Who**: `qits:admin`, `qits:admin-agent`, `qits:system` any source; `qits:desk-admin` any
+  source of its own project (`requireDeskProject`), checked by role before the bound-agent check
+  and never `refuseDesk`'d; any other `qits:agent` bound (`requireAgentRequest`) and only a branch
+  its `git_refs` cover, else 403.
+- **Wire**: `ReleaseRequestDto.sourceMoves` (additive, never null) lists the moves into or out of
+  the request, oldest first — `{branch, fromQualifiedId, toQualifiedId, movedBy, reason, movedAt}`
+  — read with one query per page plus one for the qualified ids.
 
 ## Release request gates
 
