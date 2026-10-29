@@ -1187,7 +1187,9 @@ public class PhaseAdvanceTest {
         "the ticket's own branch is what was put on the request: " + sourceNamesOf(request));
     // Derived from the sources (qits-1673): the ticket's branch names it, so its id and title.
     assertEquals(
-        branchOf(ticketId).substring("ticket/".length()) + " Release me", request.get("summary"));
+        java.util.List.of(branchOf(ticketId).substring("ticket/".length()) + " Release me"),
+        ((java.util.List<?>) request.get("items"))
+            .stream().map(item -> ((Map<?, ?>) item).get("label")).toList());
     assertTrue(
         thread(ticketId).get(thread(ticketId).size() - 1).contains((String) request.get("qualifiedId")),
         "the thread names the request the ticket waits on: " + thread(ticketId));

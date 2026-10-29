@@ -808,7 +808,6 @@ public class ReleaseRequestFoldDiffTest {
               row.id = id;
               row.repoId = repo.id;
               row.projectId = repo.project.id;
-              row.summary = "a release worth diffing";
               row.state = ReleaseRequest.State.RELEASED;
               row.mergedSha = mergedSha;
               row.createdAt = Instant.now();

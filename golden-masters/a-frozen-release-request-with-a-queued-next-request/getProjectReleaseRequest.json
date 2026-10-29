@@ -30,8 +30,6 @@
     "priority": "MEDIUM",
     "mergedSha": null,
     "state": "PENDING",
-    "summary": "ticket/contract-14",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "Queued behind contract-service-rr-1: it folds once that request has released",

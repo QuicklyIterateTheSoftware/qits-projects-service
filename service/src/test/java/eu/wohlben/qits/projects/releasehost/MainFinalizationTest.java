@@ -372,7 +372,6 @@ public class MainFinalizationTest {
               released.id = requestId;
               released.repoId = repoId;
               released.projectId = projectId;
-              released.summary = "shipped";
               released.state = ReleaseRequest.State.RELEASED;
               released.version = tag;
               released.armedAt = Instant.now();

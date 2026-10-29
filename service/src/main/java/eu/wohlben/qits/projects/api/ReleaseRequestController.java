@@ -98,7 +98,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * to another agent (who then heard of its failures) or to {@code dev-qits-maintenance} (which made
  * its red request "unattended"). Attribution routes messages now; it is the caller's own identity.
  * An old client still sending {@code requester} or {@code summary} is not refused: the JSON reader
- * ignores what a record does not declare, and {@code summary} is declared, deprecated and ignored.
+ * ignores what a record does not declare, and neither is declared any more.
  *
  * <p><b>An agent reads everything here and writes only for its own work.</b> {@code qits:agent} is
  * on the class list, so every read is open to it with no restriction. The four writes it reaches —
@@ -132,12 +132,10 @@ public class ReleaseRequestController {
    *     release that does not contain what is already on main is not a release anybody wants — so a
    *     fresh request's named sources are the repository's default branch and this one. Naming the
    *     default branch itself makes a main-only request.
-   * @param summary <b>ignored</b> and deprecated (qits-1673). It was the release's typed summary
-   *     line; what a request is about is derived from its sources now ({@code items} on the answer),
-   *     so a caller still sending it is accepted and the words go nowhere. Declared only so the
-   *     document says so; it goes with the contract step. There is no {@code requester} any more —
-   *     the request is attributed to the caller's own principal — and a body still carrying one is
-   *     read past like any other undeclared property.
+   *     There is no {@code summary} and no {@code requester} (qits-1673): what a request is about
+   *     is derived from its sources ({@code items} on the answer), and the request is attributed
+   *     to the caller's own principal. A body still carrying either is read past like any other
+   *     undeclared property.
    * @param priority how urgently the named branch wants to be released — {@code LOWEST}, {@code
    *     LOW}, {@code MEDIUM}, {@code HIGH}, {@code HIGHER} or {@code BLOCKING}. Optional: absent is
    *     {@code MEDIUM}, and a word naming no priority is a 400. It is stated <b>per branch</b>, so
@@ -148,14 +146,7 @@ public class ReleaseRequestController {
    *     max over its sources.
    */
   public static record CreateReleaseRequest(
-      @NotBlank String branch,
-      @Schema(
-              deprecated = true,
-              description =
-                  "Ignored. What a request is about is derived from its sources: see items on the"
-                      + " answer.")
-          String summary,
-      String priority) {
+      @NotBlank String branch, String priority) {
     /**
      * @param placement where the branch landed and why (epic qits-1580): created, joined or already
      *     present, and whether the request is queued behind a frozen one — see {@link PlacementDto}
@@ -239,8 +230,9 @@ public class ReleaseRequestController {
               + " as a further source, so the answer may carry an id you did not create, sources"
               + " you did not name and other participants. The request is attributed to the"
               + " authenticated caller: it becomes a participant (participants on the answer) and"
-              + " the new source's addedBy; a stated requester is ignored. summary is ignored too:"
-              + " what a request is about is derived from its sources (items on the answer). Poll"
+              + " the new source's addedBy; a stated requester is ignored, and so is a stated"
+              + " summary: what a request is about is derived from its sources (items on the"
+              + " answer). Poll"
               + " until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why, and conflict"
               + " says what to resolve. A branch of main makes a main-only request: its only"
               + " source is main, which is how qits-maintenance (qits:system) opens a dependency"

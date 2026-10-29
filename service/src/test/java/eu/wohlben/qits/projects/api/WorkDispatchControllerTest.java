@@ -756,7 +756,9 @@ public class WorkDispatchControllerTest {
     assertTrue(sourceNamesOf(requests.get(0)).contains(branch));
     // Derived from the sources (qits-1673): the epic's branch names it, so its id and title.
     assertEquals(
-        qualifiedIdOf(projectId, epicId) + " Released epic", requests.get(0).get("summary"));
+        List.of(qualifiedIdOf(projectId, epicId) + " Released epic"),
+        ((List<?>) requests.get(0).get("items"))
+            .stream().map(item -> ((Map<?, ?>) item).get("label")).toList());
     assertTrue(
         threadOf(epicId).stream()
             .anyMatch(

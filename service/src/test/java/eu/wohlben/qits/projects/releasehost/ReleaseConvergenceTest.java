@@ -4,6 +4,8 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -250,8 +252,8 @@ public class ReleaseConvergenceTest {
   /**
    * <b>Nobody's words are the request's any more</b> (qits-1673): what it is about is derived from
    * its sources, so a converging ask adds its branch to the items and its caller to the
-   * participants, and the typed summaries are ignored. The deprecated {@code requester} stays the
-   * opener's; {@code addedBy} records who put each branch on.
+   * participants, and the typed summaries are ignored. The answer carries neither a {@code summary}
+   * nor a {@code requester}; {@code addedBy} records who put each branch on.
    */
   @Test
   public void aConvergingAskAddsItsItemAndItsParticipant() {
@@ -260,37 +262,35 @@ public class ReleaseConvergenceTest {
     create(wrapperRepoId, "beta", "grace has some work too", "grace");
 
     request(wrapperRepoId, id)
-        .body("summary", equalTo("alpha; beta"))
+        .body("$", not(hasKey("summary")))
+        .body("$", not(hasKey("requester")))
         .body("items.label", contains("alpha", "beta"))
         .body("participants", contains("ada", "grace"))
-        .body("requester", equalTo("ada"))
         .body("sources.find { it.name == 'alpha' }.addedBy", equalTo("ada"))
         .body("sources.find { it.name == 'beta' }.addedBy", equalTo("grace"));
   }
 
   /**
-   * <b>A caller who is the whole of a request's ask becomes its requester.</b> When the re-asked
-   * branch is the request's only asked-for source (the implied {@code main} aside), the deprecated
-   * {@code requester} names the re-asking caller; a typed summary changes nothing.
+   * <b>A sole source's re-ask makes its caller a participant</b> and changes nothing else: the
+   * items stay the one branch, and a typed summary goes nowhere.
    */
   @Test
-  public void aSoleSourcesReAskRestatesTheRequester() {
+  public void aSoleSourcesReAskAddsAParticipant() {
     String id = create(plainRepoId, "alpha", "first words", "ada");
 
     assertEquals(id, create(plainRepoId, "alpha", "better words", "grace"));
 
     request(plainRepoId, id)
-        .body("summary", equalTo("alpha"))
-        .body("requester", equalTo("grace"))
+        .body("items.label", contains("alpha"))
         .body("participants", contains("ada", "grace"));
   }
 
   /**
-   * <b>On a shared request a re-ask does not restate the requester</b>, even from the branch that
-   * opened it, and every caller stays a participant.
+   * <b>On a shared request a re-ask from either branch keeps every caller a participant</b>, and
+   * the items stay the two branches in the order they were added.
    */
   @Test
-  public void aReAskOnASharedRequestKeepsTheOpener() {
+  public void aReAskOnASharedRequestKeepsEveryParticipant() {
     String id = create(plainRepoId, "alpha", "first words", "ada");
     create(plainRepoId, "beta", "grace's words", "grace");
 
@@ -298,8 +298,7 @@ public class ReleaseConvergenceTest {
     assertEquals(id, create(plainRepoId, "beta", "grace insists", "grace"));
 
     request(plainRepoId, id)
-        .body("summary", equalTo("alpha; beta"))
-        .body("requester", equalTo("ada"))
+        .body("items.label", contains("alpha", "beta"))
         .body("participants", contains("ada", "grace"));
   }
 

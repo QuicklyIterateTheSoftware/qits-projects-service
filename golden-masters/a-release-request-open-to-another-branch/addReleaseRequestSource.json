@@ -40,8 +40,6 @@
     "priority": "MEDIUM",
     "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002",
     "state": "PENDING",
-    "summary": "feature/export; fix/rounding",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "Waiting for a CI verdict for 5eed5eed5e",

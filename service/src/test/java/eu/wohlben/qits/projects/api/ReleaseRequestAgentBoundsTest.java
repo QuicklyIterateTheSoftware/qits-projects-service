@@ -100,7 +100,7 @@ public class ReleaseRequestAgentBoundsTest {
   }
 
   private static ReleaseRequestController.CreateReleaseRequest ask(String branch) {
-    return new ReleaseRequestController.CreateReleaseRequest(branch, "an agent's release", null);
+    return new ReleaseRequestController.CreateReleaseRequest(branch, null);
   }
 
   private String requestBySomebodyElse(String repoId, String branch) {

@@ -40,8 +40,6 @@
     "priority": "HIGH",
     "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
     "state": "WITHDRAWN",
-    "summary": "feature/export; fix/rounding",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "Withdrawn by dana.weber: the export moves to next quarter's release",

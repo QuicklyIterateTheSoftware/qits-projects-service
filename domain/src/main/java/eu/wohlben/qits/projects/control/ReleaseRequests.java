@@ -513,7 +513,8 @@ public class ReleaseRequests {
    * participant is the authenticated caller of an ask, never a name a body stated (qits-1673), so
    * qits-maintenance's bumps are its own machine principal's and land here, and nobody else can claim
    * to be it. Comma-separated, matched exactly, and a platform that names none simply files no
-   * tickets. The key keeps its old name ({@code unattended-requesters}) until the contract step.
+   * tickets. The key keeps the name it shipped with ({@code unattended-requesters}) although it
+   * lists participants: deployments set it, and a renamed key would leave their value unread.
    *
    * <p>Configuration rather than a constant because the identity is an OIDC client name and a
    * platform may run a second robot; it is not a switch for turning the behaviour off, which is what
@@ -612,12 +613,11 @@ public class ReleaseRequests {
    * release the handed-on source's recorded {@code addedBy}. Every ask records it as a participant
    * of the request it lands in — created, joined or converged on, an ask naming {@code main}
    * included — and the new source row's {@link ReleaseRequestSource#addedBy} carries it too. The
-   * deprecated {@code requester} column is the opener's, restated only by a re-ask whose branch is
-   * the request's sole asked-for source.
+   * request row itself names nobody: {@code release_request.requester} was dropped by V70.
    *
    * <p><b>Nobody states what a request is about any more.</b> The typed summary repeated the work
    * items the request already carries, so it is derived from the sources instead ({@link
-   * ReleaseRequestItems}) and stored on the row only for the readers that still read the column.
+   * ReleaseRequestItems}) by every reader at the moment it needs it, and stored nowhere.
    *
    * <p><b>A caller can always tell what happened</b>, because the answer is the whole {@link
    * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
@@ -700,11 +700,6 @@ public class ReleaseRequests {
     boolean namedFeature = featureBranches.isFeature(named);
     boolean mainFeature = featureBranches.isFeature(main);
     ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
-    // And the text a fresh request is minted with (qits-1673), for the same reason: a work item's
-    // title is read out of the epics database. The first fold rewrites it from all the sources.
-    String mintText =
-        ReleaseRequestItems.text(
-            main.equals(named) ? List.of() : List.of(items.item(named, null, new HashMap<>())));
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
@@ -744,11 +739,6 @@ public class ReleaseRequests {
                       if (stated != null) {
                         participating.priority = stated;
                       }
-                      if (soleAsk(target.id, named, main) && requester != null) {
-                        // The caller is the whole of this request's ask, so the deprecated
-                        // requester column names them. On a shared request the opener's stands.
-                        target.requester = requester;
-                      }
                     }
                     target.updatedAt = Instant.now();
                     qualified.set(target.qualifiedId);
@@ -760,7 +750,6 @@ public class ReleaseRequests {
                           repoId,
                           projectId,
                           repoName,
-                          mintText,
                           requester,
                           main,
                           named,
@@ -1023,14 +1012,12 @@ public class ReleaseRequests {
    * (unless they are one branch), inside the caller's transaction. With {@code queuedBehind} set it
    * is minted <b>queued</b> behind that active request (epic qits-1580) and says so on its detail.
    *
-   * @param summary the derived text of the sources it is minted with ({@link ReleaseRequestItems})
    * @param requester the authenticated caller, recorded as the request's first participant
    */
   private ReleaseRequest mint(
       String repoId,
       String projectId,
       String repoName,
-      String summary,
       String requester,
       String main,
       String named,
@@ -1045,8 +1032,6 @@ public class ReleaseRequests {
     fresh.repoName = repoName;
     // Its own transaction: a create that rolls back leaves a gap (qits-1158).
     fresh.name(numbers.next(repoId));
-    fresh.summary = summary;
-    fresh.requester = requester;
     states.move(fresh, ReleaseRequest.State.PENDING);
     fresh.createdAt = Instant.now();
     fresh.armedAt = fresh.createdAt;
@@ -1503,21 +1488,6 @@ public class ReleaseRequests {
           earlier.version());
     }
   }
-
-  /**
-   * Whether {@code named} is the whole of what {@code requestId} was asked for — the only named
-   * branch on it besides the implied default branch {@code main}, or {@code main} itself on a
-   * request naming nothing else. A re-ask restates the request's words only then; see {@link
-   * #request}.
-   */
-  private boolean soleAsk(String requestId, String named, String main) {
-    return sources.listByRequest(requestId).stream()
-        .filter(source -> source.kind == ReleaseRequestSource.Kind.BRANCH)
-        .map(source -> source.name)
-        .filter(name -> !name.equals(main) || name.equals(named))
-        .allMatch(named::equals);
-  }
-
 
   /**
    * Put another branch on an open request. Idempotent — a branch already named is not added twice
@@ -4301,9 +4271,9 @@ public class ReleaseRequests {
   }
 
   /**
-   * <b>What this fold is about</b> (qits-1673): the derived text the merge message carries, written
-   * onto the row's {@code summary} so the release commit, its tag and the desk's approval line read
-   * the same words.
+   * <b>What this fold is about</b> (qits-1673): the derived text the merge message carries. The
+   * release commit, its tag and the desk's approval line derive the same words from the same
+   * sources when they need them ({@link #textOf}); nothing stores the text.
    *
    * <p>A {@code maintenance/*} source is labelled by its head commit's subject, and this is where
    * that is read: from the git host, once per such source per fold, outside every transaction, and
@@ -4324,7 +4294,7 @@ public class ReleaseRequests {
               gitHosts.get().tip(repoId, source.name);
           String subject =
               tip.ok() && tip.value() != null
-                  ? ReleaseRequestItems.subjectOf(tip.value().message())
+                  ? ReleaseRequestItems.maintenanceLabelOf(tip.value().message())
                   : null;
           if (subject != null) {
             read.put(source.id, subject);
@@ -4346,15 +4316,33 @@ public class ReleaseRequests {
                             .findByIdOptional(sourceId)
                             .filter(row -> !subject.equals(row.label))
                             .ifPresent(row -> row.label = subject));
-                requests
-                    .findByIdOptional(id)
-                    .filter(row -> !text.equals(row.summary))
-                    .ifPresent(row -> row.summary = text);
               });
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not record what release request %s is about", id);
     }
     return text;
+  }
+
+  /**
+   * <b>What request {@code id} is about, now</b> (qits-1673): its items' text ({@link
+   * ReleaseRequestItems#text}) derived from the sources it carries at this moment, with the labels
+   * the last fold stored on its {@code maintenance/*} sources. The release commit and its tag, and
+   * the desk's approval line, read it here. Reads the request in a short transaction of its own and
+   * the work items outside it, so it is called outside every transaction; null for a request that
+   * does not exist.
+   */
+  public String textOf(String id) {
+    record Read(List<ReleaseRequestSource> named, String main) {}
+    Read read =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                  return row == null
+                      ? null
+                      : new Read(sources.listByRequest(row.id), mainOf(row.repoId));
+                });
+    return read == null ? null : ReleaseRequestItems.text(items.items(read.named(), read.main()));
   }
 
   /**
@@ -5958,6 +5946,9 @@ public class ReleaseRequests {
    * <b>one</b> short transaction, and the release happens outside it.
    */
   private void execute(String id) {
+    // The named source rows, carried out of the transaction: what the release is about is derived
+    // from them (qits-1673), and a work item's title is a read of the epics database.
+    AtomicReference<List<ReleaseRequestSource>> namedRows = new AtomicReference<>(List.of());
     ReleaseExecutor.Release ask =
         QuarkusTransaction.requiringNew()
             .call(
@@ -5970,6 +5961,7 @@ public class ReleaseRequests {
                     return null;
                   }
                   List<ReleaseRequestSource> named = sources.listByRequest(row.id);
+                  namedRows.set(named);
                   return new ReleaseExecutor.Release(
                       row.id,
                       row.qualifiedId,
@@ -5978,8 +5970,8 @@ public class ReleaseRequests {
                       row.repoName,
                       row.backingBranch(),
                       row.mergedSha,
-                      // The derived text the fold that produced mergedSha wrote (qits-1673).
-                      row.summary,
+                      // Derived below, outside this transaction.
+                      null,
                       named.stream().map(source -> source.name).toList(),
                       mainOf(row.repoId),
                       // Read LIVE, here and not at the fold: a request can wait a whole pipeline on
@@ -5989,6 +5981,9 @@ public class ReleaseRequests {
     if (ask == null) {
       return;
     }
+    // What the release is about, derived from the sources it carries now (qits-1673): the same
+    // items, and so the same text, as the fold's merge message, read afresh rather than stored.
+    ask = ask.describedAs(ReleaseRequestItems.text(items.items(namedRows.get(), ask.defaultBranch())));
     // THE BELT UNDER THE HOLD (qits-1471). evaluate() does not move a request to READY while an
     // earlier release of its repository is in flight, but a READY row can still meet one — a sibling
     // that released between that evaluation and this worker, or a retryable FAILED row the sweep
@@ -7602,9 +7597,6 @@ public class ReleaseRequests {
         effectivePriorityOf(named).name(),
         row.mergedSha,
         row.state.name(),
-        // Deprecated (qits-1673): the derived text, as this read derives it.
-        ReleaseRequestItems.text(requestItems),
-        row.requester,
         isUnattended(participants),
         row.gateTicketId,
         row.detail,

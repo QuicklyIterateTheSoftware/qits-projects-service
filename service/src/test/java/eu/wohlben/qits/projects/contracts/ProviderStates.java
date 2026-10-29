@@ -3021,8 +3021,6 @@ public class ProviderStates {
                   row.repoId = repoId;
                   row.projectId = project.id;
                   row.repoName = repoName;
-                  row.summary = summary;
-                  row.requester = SEEDER;
                   row.state = state;
                   row.mergedSha = mergedSha;
                   row.createdAt = when;
@@ -3349,8 +3347,6 @@ public class ProviderStates {
                   row.repoId = repoId;
                   row.projectId = project.id;
                   row.repoName = repoName;
-                  row.summary = summary;
-                  row.requester = SEEDER;
                   row.state = state;
                   if (state == ReleaseRequest.State.CONFLICTED) {
                     row.conflictDetail = "package.json: both branches changed it";

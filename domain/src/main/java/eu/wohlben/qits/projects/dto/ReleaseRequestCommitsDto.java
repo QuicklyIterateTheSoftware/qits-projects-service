@@ -22,7 +22,8 @@ import java.util.List;
  * @param commits the commits the fold brought in, newest first — <b>the fold itself leads them</b>,
  *     and the backing branch's own fold merges carry {@code fold: true},
  *     because a range ending at a commit contains it. That is the honest shape: the merge is the
- *     newest thing in the release and its message is the request's own summary. Empty is a real
+ *     newest thing in the release and its message carries what the request is about, its items'
+ *     text as the fold derived it. Empty is a real
  *     answer.
  * @param detail why the list is empty, where the emptiness needs a sentence — nothing folded yet,
  *     the fold pruned out of the repository's history, or a fold that genuinely added nothing. Null

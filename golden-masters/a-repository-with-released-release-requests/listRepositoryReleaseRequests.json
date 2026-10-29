@@ -21,8 +21,6 @@
       "priority": "MEDIUM",
       "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002",
       "state": "RELEASED",
-      "summary": "main",
-      "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
       "detail": null,

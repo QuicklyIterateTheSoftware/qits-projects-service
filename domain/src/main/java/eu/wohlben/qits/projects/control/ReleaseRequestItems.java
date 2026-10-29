@@ -12,12 +12,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
 
 /**
  * <b>What a release request is about, read off its sources</b> (qits-1673) — the items that
- * replace the typed {@code summary}, and the text they join into.
+ * replaced the typed {@code summary}, and the text they join into.
  *
  * <p>The summary was a sentence the first asker typed, which repeated the work items the request
  * already carries and said nothing about anything that joined after. What a request is about is
@@ -37,8 +39,8 @@ import org.jboss.logging.Logger;
  * main-only bump labelled with the version it carries forward would read as a release of that
  * version.
  *
- * <p>{@link #text} is what the fold's merge message, the release commit and its tag, the desk's
- * approval line and the stored (deprecated) {@code summary} carry.
+ * <p>{@link #text} is what the fold's merge message, the release commit and its tag, and the desk's
+ * approval line carry — each derived from the sources when it is needed, and stored nowhere.
  */
 @ApplicationScoped
 public class ReleaseRequestItems {
@@ -53,6 +55,18 @@ public class ReleaseRequestItems {
 
   /** The prefix whose branches are labelled by their head commit's subject. */
   public static final String MAINTENANCE_PREFIX = "maintenance/";
+
+  /**
+   * A leading conventional-commit prefix whose scope is a list of work-item ids — {@code
+   * chore(qits-112, qits-142): } — which {@link #maintenanceLabelOf} strips. The ids are {@code
+   * <project-slug>-<number>}, comma-separated; the type is one word, a breaking-change {@code !}
+   * allowed after the scope.
+   */
+  private static final Pattern WORK_ITEM_SCOPE_PREFIX =
+      Pattern.compile(
+          "^[A-Za-z][A-Za-z0-9_-]*\\("
+              + "\\s*[A-Za-z0-9][A-Za-z0-9-]*-\\d+(?:\\s*,\\s*[A-Za-z0-9][A-Za-z0-9-]*-\\d+)*\\s*"
+              + "\\)!?:\\s+(.*)$");
 
   @Inject Instance<BranchWorkItems> workItems;
 
@@ -150,5 +164,29 @@ public class ReleaseRequestItems {
       return null;
     }
     return first.length() <= 512 ? first : first.substring(0, 511) + "…";
+  }
+
+  /**
+   * The label a {@code maintenance/*} source is stored with: its head commit's {@link #subjectOf
+   * subject}, less one leading conventional prefix whose scope lists work items. qits-maintenance
+   * folds a bump's commits under {@code chore(<every ticket it carries>): <inner subject>}, so the
+   * prefix is a list of ids, often a hundred long, that says nothing about the bump; {@code
+   * chore(qits-112, qits-142): bump(qits-112): 1 dependencies} is labelled {@code bump(qits-112): 1
+   * dependencies}. Only one prefix goes, and only when what remains is not blank; a scope that is
+   * not a list of work-item ids is left alone. Null where the message has no subject.
+   */
+  public static String maintenanceLabelOf(String message) {
+    String subject = subjectOf(message);
+    if (subject == null) {
+      return null;
+    }
+    Matcher matcher = WORK_ITEM_SCOPE_PREFIX.matcher(subject);
+    if (matcher.matches()) {
+      String rest = matcher.group(1).strip();
+      if (!rest.isEmpty()) {
+        return rest;
+      }
+    }
+    return subject;
   }
 }

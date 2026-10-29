@@ -11,7 +11,9 @@ import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -114,7 +116,7 @@ class DeskTriggerListenerTest {
   @Test
   void anOpenRequirementAdmittingTheDeskJoinsTheWindow() {
     String projectId = project(true);
-    String requestId = releaseRequest(projectId, "Release qits-1597 wrapper");
+    String requestId = releaseRequest(projectId, "bump(qits-1597): 2 dependencies");
 
     listener.onFrame(
         transitioned(entity(projectId, "TICKET", 1580, "Ship it", "VERIFYING", "VERIFIED", "dana")));
@@ -137,8 +139,9 @@ class DeskTriggerListenerTest {
     assertEquals("qits-qits-rr-201", line.itemRef);
     assertEquals(requestId, line.itemId);
     assertEquals(
-        "Release qits-1597 wrapper; waits on manual-review: configured by manual-review",
-        line.label);
+        "bump(qits-1597): 2 dependencies; waits on manual-review: configured by manual-review",
+        line.label,
+        "the request's items' text, derived from its sources now (qits-1673)");
     assertEquals("fold 412911eb", line.cause);
   }
 
@@ -300,8 +303,11 @@ class DeskTriggerListenerTest {
 
   // -------------------------------------------------------------------------------------------
 
-  /** A release request of a fresh repository of the project, carrying {@code summary}. */
-  private String releaseRequest(String projectId, String summary) {
+  /**
+   * A release request of a fresh repository of the project whose one named source is a {@code
+   * maintenance/*} branch labelled {@code label}, so what it is about derives to {@code label}.
+   */
+  private String releaseRequest(String projectId, String label) {
     String id = UUID.randomUUID().toString();
     QuarkusTransaction.requiringNew()
         .run(
@@ -319,11 +325,19 @@ class DeskTriggerListenerTest {
               row.state = ReleaseRequest.State.PENDING;
               row.retryable = false;
               row.armedAt = Instant.now();
-              row.summary = summary;
               row.createdAt = Instant.now();
               row.updatedAt = Instant.now();
               row.name(releaseRequestNumbers.next(row.repoId));
               row.persist();
+              ReleaseRequestSource source = new ReleaseRequestSource();
+              source.id = UUID.randomUUID().toString();
+              source.requestId = id;
+              source.kind = ReleaseRequestSource.Kind.BRANCH;
+              source.name = "maintenance/bump";
+              source.priority = ReleasePriority.DEFAULT;
+              source.addedAt = Instant.now();
+              source.label = label;
+              source.persist();
             });
     return id;
   }

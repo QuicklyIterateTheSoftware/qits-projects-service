@@ -41,8 +41,6 @@
       "priority": "HIGH",
       "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
       "state": "PENDING",
-      "summary": "bump/contract-service; docs/approval",
-      "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
       "detail": "Waiting for a person to approve bd6360a2c6",

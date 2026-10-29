@@ -3,7 +3,9 @@ package eu.wohlben.qits.projects.releasehost;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -1052,13 +1054,11 @@ public class ReleaseRequestFlowTest {
               row.repoName = null;
               row.mergedSha = null;
               row.conflictDetail = null;
-              row.requester = null;
               row.detail = null;
               row.version = null;
               row.state = ReleaseRequest.State.PENDING;
               row.retryable = false;
               row.armedAt = Instant.now();
-              row.summary = "nothing has happened to this one yet";
               row.createdAt = Instant.now();
               row.updatedAt = Instant.now();
               row.name(releaseRequestNumbers.next(row.repoId));
@@ -1080,7 +1080,8 @@ public class ReleaseRequestFlowTest {
         .body("requests[0].mergedToMainAt", nullValue())
         .body("requests[0].conflict", nullValue())
         .body("requests[0].detail", nullValue())
-        .body("requests[0].requester", nullValue());
+        .body("requests[0].participants.size()", equalTo(0))
+        .body("requests[0]", not(hasKey("requester")));
 
     // The same row through the single-row path, which is what answered 200 while the listing was
     // accused. Both are asserted so a future divergence is a failure here rather than a 500 there.

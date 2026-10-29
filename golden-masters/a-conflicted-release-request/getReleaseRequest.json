@@ -40,8 +40,6 @@
     "priority": "HIGH",
     "mergedSha": null,
     "state": "CONFLICTED",
-    "summary": "feature/export; fix/rounding",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "The sources cannot be folded: src/invoice.txt, README.md",

@@ -913,11 +913,6 @@ components:
         branch:
           type: string
           pattern: \S
-        summary:
-          type: string
-          deprecated: true
-          description: "Ignored. What a request is about is derived from its sources:\
-            \ see items on the answer."
         priority:
           type: string
     CriterionApprovalDto:
@@ -2214,12 +2209,6 @@ components:
           type: string
         state:
           type: string
-        summary:
-          type: string
-          deprecated: true
-        requester:
-          type: string
-          deprecated: true
         unattended:
           type: boolean
         gateTicketId:
@@ -6188,8 +6177,8 @@ paths:
         \ may carry an id you did not create, sources you did not name and other participants.\
         \ The request is attributed to the authenticated caller: it becomes a participant\
         \ (participants on the answer) and the new source's addedBy; a stated requester\
-        \ is ignored. summary is ignored too: what a request is about is derived from\
-        \ its sources (items on the answer). Poll until RELEASED, REJECTED, CONFLICTED\
+        \ is ignored, and so is a stated summary: what a request is about is derived\
+        \ from its sources (items on the answer). Poll until RELEASED, REJECTED, CONFLICTED\
         \ or FAILED; detail says why, and conflict says what to resolve. A branch\
         \ of main makes a main-only request: its only source is main, which is how\
         \ qits-maintenance (qits:system) opens a dependency bump whose pre-run writes\
