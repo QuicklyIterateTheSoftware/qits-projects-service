@@ -53,6 +53,9 @@ import org.junit.jupiter.api.Test;
  * <p>qits-1725: a conflict tells only the branches it names as a head, once per fold attempt, and a
  * missing source tells only the missing branch's owner.
  *
+ * <p>qits-1751: a conflict or missing-source notice whose fold a push lifted before it was delivered
+ * settles {@code LIFTED} and tells nobody.
+ *
  * <p>The red verdicts are {@code ReleaseRequestFailureNoticeTest}'s (the qits-1672 test this
  * replaces), the hand-on is {@link BranchDeliveryTest}'s, which is {@link AutoReleaseTest}'s.
  */
@@ -400,6 +403,68 @@ public class BranchDeliveryNoticeTest {
     assertEquals(1, turns.calls().size());
   }
 
+  /**
+   * qits-1751: a missing-source notice owed, then the missing branch is pushed and the rejection
+   * lifted before the notice could be delivered — it settles LIFTED and nobody is told.
+   */
+  @Test
+  public void aMissingSourceNoticeWhoseRejectionAPushLiftedIsNotSaid() {
+    String a = ticket("a");
+    String b = ticket("b");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    agents.stage(agent(), "work-b", wrapperId, b);
+    String id = create(a, PERSON);
+    join(id, b, PERSON);
+    agents.willThrow(new IllegalStateException("qits-workspaces is unreachable"));
+    merger.answer(BackingBranchMerger.Outcome.missingSource("refs/heads/" + b));
+
+    headMoved(a);
+    awaitState(id, "REJECTED");
+    awaitOwedAndTried(id);
+
+    merger.answerFreshMerges();
+    headMoved(b); // the push lands: the fold succeeds and the rejection is lifted
+    awaitState(id, "PENDING");
+    agents.willThrow(null);
+    releaseClaims(id);
+    notices.deliverOwed();
+
+    BranchDeliveryNotice notice = recordedOf(id).get(0);
+    assertEquals(
+        BranchDeliveryNotices.missingKey(id, "missing:refs/heads/" + b, repoId, b),
+        notice.noticeKey);
+    assertEquals("LIFTED", notice.outcome);
+    assertNull(notice.agentId);
+    assertNull(notice.deliveredAt);
+    assertEquals(List.of(), turns.calls(), "nobody is told of a failure a push already answered");
+  }
+
+  /** qits-1751: the same for a conflict notice whose conflict was pushed away before delivery. */
+  @Test
+  public void aConflictNoticeWhoseConflictClearedIsNotSaid() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    agents.willThrow(new IllegalStateException("qits-workspaces is unreachable"));
+    merger.answer(conflict(id, "refs/heads/" + a, "abc1234", "pom.xml"));
+
+    headMoved(a);
+    awaitState(id, "CONFLICTED");
+    awaitOwedAndTried(id);
+
+    merger.answerFreshMerges();
+    headMoved(a); // a new tip that folds: the conflict is gone
+    awaitState(id, "PENDING");
+    agents.willThrow(null);
+    releaseClaims(id);
+    notices.deliverOwed();
+
+    BranchDeliveryNotice notice = recordedOf(id).get(0);
+    assertEquals("CONFLICTED", notice.step);
+    assertEquals("LIFTED", notice.outcome);
+    assertEquals(List.of(), turns.calls());
+  }
+
   // ---- addressing ------------------------------------------------------------------------------
 
   /**
@@ -658,6 +723,23 @@ public class BranchDeliveryNoticeTest {
           return recorded.size() == count && recorded.stream().allMatch(n -> n.outcome != null);
         },
         "the notices of " + id + " never settled: " + recordedOf(id));
+  }
+
+  /** At least one notice owed, every one tried once and still owed (the lookup failed). */
+  private void awaitOwedAndTried(String id) {
+    await(
+        () -> {
+          List<BranchDeliveryNotice> recorded = recordedOf(id);
+          return !recorded.isEmpty()
+              && recorded.stream().allMatch(n -> n.attempts > 0 && n.outcome == null);
+        },
+        "the notices of " + id + " were never tried: " + recordedOf(id));
+  }
+
+  /** Frees every claim on the request's notices, so the next sweep may take them at once. */
+  private void releaseClaims(String id) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> BranchDeliveryNotice.update("claimedAt = null where requestId = ?1", id));
   }
 
   private void awaitAttempted(String id) {

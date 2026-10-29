@@ -547,6 +547,56 @@ public class ReleaseRequests {
   List<String> unattendedRequesters;
 
   /**
+   * <b>How long a freshly added source may be missing on the git host before the fold rejects
+   * over it</b> (qits-1751). An agent commits and a daemon pushes the branch seconds later, so a
+   * request created right after the commit folds before the ref exists. Inside this window, counted
+   * from the source's {@link ReleaseRequestSource#addedAt}, a {@code no-such-source} is a push still
+   * on its way: the request stays where it was and owes a re-fold the sweep pays ({@link
+   * #AWAITING_PUSH}). Past it, the fold rejects as qits-1221 made it. Configuration so the suite can
+   * set it to zero; a zero or negative value is no grace.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.missing-source-grace",
+      defaultValue = "PT2M")
+  java.time.Duration missingSourceGrace;
+
+  /**
+   * The {@link ReleaseRequest#refoldOwedReason} prefix of a re-fold owed because a fresh source is
+   * not on the git host yet (qits-1751). Owed this way, the knock is not held for a fold in flight
+   * ({@link #payOwedRefold}) and an automation's move does not defer over it ({@link
+   * #deferAutomationRefold}): the fold that pays it is the one that must carry the new source.
+   */
+  static final String AWAITING_PUSH = "a source is not on the git host yet: ";
+
+  /** Whether {@code row} owes its re-fold to a fresh source still on its way (qits-1751). */
+  private static boolean awaitingPush(ReleaseRequest row) {
+    return row.refoldOwedAt != null
+        && row.refoldOwedReason != null
+        && row.refoldOwedReason.startsWith(AWAITING_PUSH);
+  }
+
+  /**
+   * The source of {@code requestId} that {@code ref} spells — {@code refs/heads/<branch>} or bare —
+   * when it was added less than {@link #missingSourceGrace} ago; null when none is that fresh
+   * (qits-1751). Read in the caller's transaction.
+   */
+  private ReleaseRequestSource freshSourceNamed(String requestId, String ref, Instant now) {
+    String branch = FoldAttempt.branchOf(ref);
+    if (branch == null
+        || missingSourceGrace == null
+        || missingSourceGrace.isZero()
+        || missingSourceGrace.isNegative()) {
+      return null;
+    }
+    Instant since = now.minus(missingSourceGrace);
+    return sources.listByRequest(requestId).stream()
+        .filter(source -> branch.equals(source.name))
+        .filter(source -> source.addedAt != null && source.addedAt.isAfter(since))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
    * The publish phase, called on the worker the instant a release lands: a repository that declares
    * no deployment has nothing to wait for and its tag is merged to {@code main} there and then.
    *
@@ -3674,6 +3724,12 @@ public class ReleaseRequests {
                 if (row == null || !foldInFlight(row)) {
                   return false;
                 }
+                if (awaitingPush(row)) {
+                  // A FRESH SOURCE IS AWAITED (qits-1751): the fold in flight is replaced the
+                  // moment its push lands anyway, and coalescing would overwrite the marker that
+                  // lets the sweep knock for it. Re-fold now, as before qits-1570.
+                  return false;
+                }
                 boolean first = row.refoldOwedAt == null;
                 if (first) {
                   row.refoldOwedAt = Instant.now();
@@ -3748,7 +3804,9 @@ public class ReleaseRequests {
                         || row.refoldOwedAt == null
                         || row.state == ReleaseRequest.State.READY
                         || !ReleaseRequestRepository.UNRELEASED.contains(row.state)
-                        || foldInFlight(row)) {
+                        // A fresh source awaited (qits-1751) is knocked for over a fold in
+                        // flight: the fold that pays it is the one that carries the new source.
+                        || (!awaitingPush(row) && foldInFlight(row))) {
                       return null;
                     }
                     return row.refoldOwedReason == null
@@ -4507,6 +4565,10 @@ public class ReleaseRequests {
    * things that change it are all triggers of their own. A request the <b>fold</b> REJECTED — a
    * source the git host does not have (qits-1221, {@code rejecting_gate = fold}) — is left alone for
    * the same reason: neither re-folded nor re-read, and answered by the push that re-creates it.
+   * A source missing inside its grace is not rejected at all (qits-1751): the request stays where it
+   * was, owing a re-fold ({@link #AWAITING_PUSH}), and this pass knocks for it — as the first fold
+   * where none was made yet, else as the owed re-fold — until the push lands or the grace runs out
+   * and the knock rejects.
    *
    * <p><b>A queued request is skipped, and a stale queue is activated first</b> (epic qits-1580): a
    * request queued behind the active one is neither folded nor evaluated while that one is
@@ -5091,8 +5153,33 @@ public class ReleaseRequests {
                   // of the missing branch re-folds it through onBranchMoved and the fold that lands
                   // lifts the rejection (above); the sweep does not knock again. No unattended-gate
                   // ticket: the sentence names the ref, and only a push or a person can answer it.
+                  // (That is the rejection past the grace; a fresh source is waited for, below.)
                   // Every branch it carries is FAILED with failure FOLD, keyed by the missing ref
                   // (qits-1725): the agent waiting on its branch hears it, once per missing ref.
+                  //
+                  // EXCEPT A SOURCE ADDED MOMENTS AGO (qits-1751): an agent commits, its daemon
+                  // pushes seconds later, and a create made in between folded before the ref
+                  // existed — rejected, a FOLD notice owed, then lifted by the push while the
+                  // outbox still told the agent its branch was missing. Inside missingSourceGrace
+                  // of the source's addedAt the missing ref is a push on its way: no move, no FAILED
+                  // step, no rejecting gate — only the sentence, and a re-fold owed under
+                  // AWAITING_PUSH that the sweep pays even over a fold in flight. The push folds it
+                  // through onBranchMoved; a knock past the grace rejects as below. (Owed here,
+                  // after the top of apply cleared any marker: this fold paid the old one.)
+                  ReleaseRequestSource fresh = freshSourceNamed(row.id, outcome.detail(), now);
+                  if (fresh != null) {
+                    LOG.infof(
+                        "Release request %s: %s is not on the git host yet; %s was added at %s,"
+                            + " so its push is waited for (%s)",
+                        row.qualifiedId, outcome.detail(), fresh.name, fresh.addedAt, why);
+                    row.detail =
+                        "The sources could not be folded yet: "
+                            + outcome.detail()
+                            + " is not on the git host; waiting for its push";
+                    row.refoldOwedAt = now;
+                    row.refoldOwedReason = AWAITING_PUSH + outcome.detail();
+                    return null;
+                  }
                   states.move(row, ReleaseRequest.State.REJECTED);
                   deliveries.failed(
                       row,
