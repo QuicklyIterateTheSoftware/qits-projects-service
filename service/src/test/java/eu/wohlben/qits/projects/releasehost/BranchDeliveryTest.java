@@ -604,6 +604,58 @@ public class BranchDeliveryTest {
     assertEquals("PUSHED", ledgerStep(repoA, branch), "the name was reused: it starts over");
   }
 
+  /**
+   * qits-1736: the workspace daemon pushes agent memory to the project's {@code qits-agent-config}
+   * on the ticket branch's own name, and that repository releases only on a desk approval after the
+   * work. Its PUSHED row is written as ever and listed by the read door, but it never holds the
+   * branch's {@code everywhere} below LIVE.
+   */
+  @Test
+  public void theAgentConfigRepositoryNeverHoldsEverywhereBelowLive() {
+    String branch = ticketBranch();
+    String agentConfig = "deliver-agent-config-" + UUID.randomUUID();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project project = Project.findById(projectId);
+              Repository repository = repository(project, agentConfig);
+              repository.archetype = RepositoryArchetype.AGENT_CONFIG;
+              alias(project, repository, "qits-agent-config");
+            });
+    activeBuilds.answer(Optional.of(0));
+    releaseRequests.onBranchMoved(agentConfig, branch, sha());
+    assertEquals("PUSHED", ledgerStep(agentConfig, branch), "its row is written as ever");
+
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+    assertEquals("RELEASED", last(branch).everywhere(), "the agent config's PUSHED is left out");
+
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid, "LIVE@" + qid));
+    assertEquals("LIVE", last(branch).everywhere());
+    assertEquals("PUSHED", ledgerStep(agentConfig, branch));
+
+    io.restassured.path.json.JsonPath door =
+        given()
+            .queryParam("branch", branch)
+            .get("/projects/api/branch-deliveries")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertEquals("LIVE", door.getString("everywhere"));
+    assertEquals(
+        List.of("PUSHED", "LIVE"),
+        List.of(
+            door.getString("deliveries.find { it.repoId == '" + agentConfig + "' }.step"),
+            door.getString("deliveries.find { it.repoId == '" + repoA + "' }.step")),
+        "the agent config's row is still listed");
+  }
+
   // ---- helpers ---------------------------------------------------------------------------------
 
   private String base(String repoId) {

@@ -5,6 +5,7 @@ import eu.wohlben.qits.projects.entity.BranchDelivery.Step;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.persistence.BranchDeliveryRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
@@ -76,6 +77,17 @@ import org.jboss.logging.Logger;
  * That is what the ledger-only {@code PUSHED} row is for — {@link #pushed} writes it for a branch
  * no request carries yet, so a repository that has not asked for a release holds the branch at
  * PUSHED rather than being absent from the minimum.
+ *
+ * <p><b>The project's {@code qits-agent-config} never counts</b> (qits-1736). The workspace daemon
+ * pushes an agent's memory to the {@link RepositoryArchetype#AGENT_CONFIG AGENT_CONFIG} repository
+ * on the same branch name as its ticket branch, and that repository is platform state rather than
+ * software: it releases only after a desk approval, long after the work itself is live, or its
+ * request is withdrawn. Ranked with the rest, its row held the branch at PUSHED, JOINED or
+ * WITHDRAWN and {@code qits wait branch --until live} never fired. So {@code everywhere} ranges
+ * over the rows of every other repository — {@link BranchDeliveryRepository#stepsOf} is the one
+ * definition, asked by the write and the read door alike — and a branch known only there has {@code
+ * everywhere} null. Its row is still written and announced like any other, so a wait naming that
+ * repository sees its {@code step}; only the minimum leaves it out.
  *
  * <h2>Announced after the commit, heard inside it</h2>
  *
@@ -348,12 +360,16 @@ public class BranchDeliveries {
   /** What a branch's read is told when its rows span projects and none was named. */
   public static final String SEVERAL_PROJECTS = "branch in several projects; name --project";
 
+  /** One read of a branch's rows and the {@code everywhere} ranked in the same transaction. */
+  private record Read(List<BranchDelivery> rows, String everywhere) {}
+
   /**
    * A branch's rows as the read door answers them (qits-1720).
    *
    * @param branch the branch asked about
-   * @param everywhere the least advanced step over every row of the branch in its project — before
-   *     {@code repository} narrowed the rows — or null where the branch has none
+   * @param everywhere the least advanced step over the branch's rows in its project — before
+   *     {@code repository} narrowed the rows, and leaving out the {@code AGENT_CONFIG} repository's
+   *     (qits-1736) — or null where the branch has no other row
    * @param deliveries the rows, by repository name
    */
   public record Answer(String branch, String everywhere, List<BranchDelivery> deliveries) {}
@@ -368,9 +384,13 @@ public class BranchDeliveries {
    *       about one project, and answering two side by side would leave the caller to guess which
    *       one a single word described.
    *   <li>{@code repository}, a repository's name or id, narrows {@code deliveries} and never
-   *       {@code everywhere}, which is computed over the project's every row first.
+   *       {@code everywhere}, which is computed over the project's rows first.
+   *   <li>{@code everywhere} never counts the project's {@code qits-agent-config} row, which {@code
+   *       deliveries} still lists (qits-1736; "Once per position, and everywhere" above).
    *   <li>A branch with no rows is no error: an empty answer with {@code everywhere} null, because
    *       "nothing has happened to it yet" is exactly what a waiter polling a fresh branch is told.
+   *       So is a branch known only in {@code qits-agent-config}: its rows, and {@code everywhere}
+   *       null.
    * </ul>
    */
   public Answer read(String branch, String repository, String projectId) {
@@ -378,17 +398,28 @@ public class BranchDeliveries {
       throw new BadRequestException("Name the branch: ?branch=<branch>");
     }
     String named = branch.trim();
-    List<BranchDelivery> rows =
+    Read read =
         QuarkusTransaction.requiringNew()
             .call(
-                () ->
-                    ledger.listByBranch(named).stream()
-                        .filter(row -> projectId == null || projectId.equals(row.projectId))
-                        .toList());
+                () -> {
+                  List<BranchDelivery> found =
+                      ledger.listByBranch(named).stream()
+                          .filter(row -> projectId == null || projectId.equals(row.projectId))
+                          .toList();
+                  List<String> projects =
+                      found.stream().map(row -> row.projectId).distinct().toList();
+                  // The rows the write ranks (qits-1736): never the agent configuration's.
+                  return new Read(
+                      found,
+                      projects.size() == 1
+                          ? everywhere(ledger.stepsOf(projects.get(0), named))
+                          : null);
+                });
+    List<BranchDelivery> rows = read.rows();
     if (rows.stream().map(row -> row.projectId).distinct().count() > 1) {
       throw new BadRequestException(SEVERAL_PROJECTS);
     }
-    String everywhere = everywhere(rows.stream().map(row -> row.step).toList());
+    String everywhere = read.everywhere();
     List<BranchDelivery> deliveries =
         repository == null || repository.isBlank()
             ? rows

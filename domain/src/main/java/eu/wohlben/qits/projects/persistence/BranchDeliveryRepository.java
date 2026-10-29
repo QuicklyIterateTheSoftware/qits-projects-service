@@ -125,11 +125,22 @@ public class BranchDeliveryRepository
         .executeUpdate();
   }
 
-  /** The steps of one branch across every repository of one project. */
+  /**
+   * The steps of one branch across the repositories of one project that count toward its {@code
+   * everywhere}: every repository but an {@code AGENT_CONFIG} one (qits-1736). The project's
+   * {@code qits-agent-config} is platform state a desk approval releases after the work, not
+   * software, so its row would hold the branch short of LIVE for good. A row whose repository is
+   * gone still counts: only a repository known to be the agent configuration is left out.
+   *
+   * <p>The one definition of which rows {@code everywhere} ranges over — the write's announced
+   * step and the read door both ask it.
+   */
   @SuppressWarnings("unchecked")
   public List<String> stepsOf(String projectId, String branch) {
     return em().createNativeQuery(
-            "select step from branch_delivery where project_id = ?1 and branch = ?2")
+            "select d.step from branch_delivery d where d.project_id = ?1 and d.branch = ?2"
+                + " and not exists (select 1 from Repository r where r.id = d.repo_id"
+                + " and r.archetype = 'AGENT_CONFIG')")
         .setParameter(1, projectId)
         .setParameter(2, branch)
         .getResultList();

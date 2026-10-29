@@ -602,6 +602,15 @@ merely its only occupant. Six things about it are rules:
   `missing:<ref>` (`missing:refs/heads/epic/qits-1681`). `everywhere` is the branch's least advanced step across the project's
   repositories (PUSHED/WITHDRAWN 0, JOINED/MOVED/FAILED/CONFLICTED 1, RELEASED 2, LIVE 3), named
   `PUSHED`, `JOINED`, `RELEASED` or `LIVE`.
+  - **`qits-agent-config` never counts toward `everywhere` (qits-1736).** The workspace daemon
+    pushes agent memory to the project's `AGENT_CONFIG` repository on the ticket branch's own name,
+    and that repository is platform state, not software: it releases only on a desk approval after
+    the work is live, or its request is withdrawn. Ranked with the rest, its PUSHED/JOINED/WITHDRAWN
+    row kept `everywhere` short of LIVE and `qits wait branch --until live` never fired. So
+    `BranchDeliveryRepository.stepsOf` — the one definition, used by the write and the read door —
+    leaves out rows whose repository is `AGENT_CONFIG` (a row whose repository is gone still
+    counts), and a branch known only there has `everywhere` null. Its row is still written and
+    announced as before, so a wait naming `--repository qits-agent-config` still sees its `step`.
   - **The ledger is `branch_delivery` (V67)**, one row per (project, repository, branch);
     `control/BranchDeliveries` is its one writer and writes in the transaction that took the step
     (native upserts, so a push racing an ask cannot fail the ask), then announces after the commit
@@ -678,7 +687,9 @@ merely its only occupant. Six things about it are rules:
     (`api/BranchDeliveriesController`, `getBranchDeliveries`, the release-requests list's roles,
     `qits:agent` included): `{branch, everywhere, deliveries: [{projectId, repoId, repository, step,
     requestId, qualifiedId, foldSha, runId, version, changedAt}]}`. `repository` (name or id)
-    narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. An unknown branch is
+    narrows `deliveries`, never `everywhere`; `project` takes an id or a slug. `deliveries` lists
+    the `qits-agent-config` row, `everywhere` leaves it out (qits-1736), so a branch known only
+    there answers its row and `everywhere` null. An unknown branch is
     200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
     `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
     RELEASED in qits-demo-service` records it for qits-platform-access-cli.
