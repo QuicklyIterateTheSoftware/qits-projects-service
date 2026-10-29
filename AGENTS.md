@@ -3768,6 +3768,22 @@ enum column still refuses one, and both epics backfills went because every datab
 is empty. **A second clean start is not a precedent** — this one cost a re-bootstrap, and the
 ordinary rule (keep appending, never edit an applied migration) is back from V1 onward.
 
+**A new migration takes main's highest version + 1, read from main at the time of the request, not
+from the branch base.** Two branches cut from the same base pick the same number; the fold merges
+them cleanly because the file names differ, and Flyway only refuses "more than one migration with
+version N" at the first `@QuarkusTest` boot, ~15 minutes into the release run
+(qits-projects-service-rr-362: `V57__desk_triggers.sql` from qits-1604 and
+`V57__refinement_sessions.sql` from qits-770). A version at or below main's highest that main
+skipped is worse: tests on a clean database pass it, and production, already past it, refuses it as
+out of order and the new instance does not start. qits-ci's step prelude now checks both and names
+the free version (qits-1669); rename to what it names.
+
+**Expand/contract: drop a column one release after its last reader, never in the release that
+unmaps it**, because a rolling deploy drains the old instance against the new schema. qits-770's
+`V59__refinement_containers_retired.sql` (commit `8b5458ff`) unmapped and dropped four `refinement`
+columns in one release, and the draining old instance logged `column ... does not exist`. Unmap
+first and drop next release, so the draining old instance never loses a column it still mapped.
+
 **`V2__causation.sql`, once per lineage, is that rule being followed.** Both add the platform's
 generic `causation_id uuid` column (qits-eventstream's `CausedRow`): nullable, in no constraint,
 never a foreign key — the event it names lives in qits-events' store — and with no backfill, since
