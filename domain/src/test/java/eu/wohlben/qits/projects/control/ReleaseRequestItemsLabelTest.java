@@ -62,4 +62,22 @@ class ReleaseRequestItemsLabelTest {
         "bump(qits-112): 1 dependencies",
         ReleaseRequestItems.maintenanceLabelOf("bump(qits-112): 1 dependencies"));
   }
+
+  @Test
+  void aScopeLongerThanTheLabelColumnIsStillStripped() {
+    String ids =
+        java.util.stream.IntStream.rangeClosed(1, 200)
+            .mapToObj(n -> "qits-" + (1000 + n))
+            .collect(java.util.stream.Collectors.joining(", "));
+    assertEquals(
+        "bump(qits-112): 1 dependencies",
+        ReleaseRequestItems.maintenanceLabelOf("chore(" + ids + "): bump(qits-112): 1 dependencies"));
+  }
+
+  @Test
+  void aLongSubjectWithNoPrefixIsCappedAtTheColumn() {
+    String label = ReleaseRequestItems.maintenanceLabelOf("x".repeat(600));
+    assertEquals(512, label.length());
+    assertEquals('…', label.charAt(511));
+  }
 }

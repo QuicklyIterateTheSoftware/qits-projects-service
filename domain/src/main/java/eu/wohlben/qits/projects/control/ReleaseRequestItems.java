@@ -163,11 +163,24 @@ public class ReleaseRequestItems {
     if (message == null) {
       return null;
     }
-    String first = message.strip().lines().findFirst().orElse("").strip();
-    if (first.isEmpty()) {
+    return capped(firstLineOf(message));
+  }
+
+  /** The message's first line, whole: the prefix is stripped from this before anything is cut. */
+  private static String firstLineOf(String message) {
+    if (message == null) {
       return null;
     }
-    return first.length() <= 512 ? first : first.substring(0, 511) + "…";
+    String first = message.strip().lines().findFirst().orElse("").strip();
+    return first.isEmpty() ? null : first;
+  }
+
+  /** At most the label column's 512 characters, {@code …} where cut. */
+  private static String capped(String text) {
+    if (text == null) {
+      return null;
+    }
+    return text.length() <= 512 ? text : text.substring(0, 511) + "…";
   }
 
   /**
@@ -183,7 +196,10 @@ public class ReleaseRequestItems {
    * message has no subject.
    */
   public static String maintenanceLabelOf(String message) {
-    String subject = subjectOf(message);
+    // Stripped from the WHOLE first line, then capped: qits-maintenance's scope lists a couple of
+    // hundred ids, so its closing parenthesis lies far past the 512 characters a label keeps, and a
+    // subject cut first never matches (qits-projects-service-rr-386 kept the list, 2026-10-29).
+    String subject = firstLineOf(message);
     if (subject == null) {
       return null;
     }
@@ -191,9 +207,9 @@ public class ReleaseRequestItems {
     if (matcher.matches()) {
       String rest = matcher.group(1).strip();
       if (CONVENTIONAL_SUBJECT.matcher(rest).matches()) {
-        return rest;
+        return capped(rest);
       }
     }
-    return subject;
+    return capped(subject);
   }
 }
