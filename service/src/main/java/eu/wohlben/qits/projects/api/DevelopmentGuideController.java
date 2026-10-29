@@ -50,7 +50,20 @@ public class DevelopmentGuideController {
       @Schema(description = "workstation, agent, desk or refinement") String variant,
       @Schema(description = "True when the variant was chosen from the caller's credential.")
           boolean detected,
-      @Schema(description = "The guide, as markdown.") String markdown) {}
+      @Schema(description = "The guide, as markdown.") String markdown,
+      @Schema(
+              description =
+                  "The guide-hash: the first 16 lowercase hex characters of the SHA-256 of"
+                      + " `markdown`'s UTF-8 bytes. A session re-reads the guide only when this"
+                      + " differs from the hash it last read.")
+          String hash) {
+
+    /** The response for {@code markdown}, carrying its hash. */
+    static GuideResponse of(String variant, boolean detected, String markdown) {
+      return new GuideResponse(
+          variant, detected, markdown, DevelopmentGuideService.hash(markdown));
+    }
+  }
 
   /** One variant, for the listing. */
   public record GuideVariantDto(String name, String description) {}
@@ -64,7 +77,7 @@ public class DevelopmentGuideController {
   public GuideResponse get(@QueryParam("for") String wanted) {
     if (wanted == null || wanted.isBlank()) {
       String variant = detect(identity);
-      return new GuideResponse(variant, true, guide.render(variant));
+      return GuideResponse.of(variant, true, guide.render(variant));
     }
     String variant =
         DevelopmentGuideDefaults.variant(wanted)
@@ -76,7 +89,7 @@ public class DevelopmentGuideController {
                             + " (known: "
                             + String.join(", ", DevelopmentGuideDefaults.VARIANTS)
                             + ")"));
-    return new GuideResponse(variant, false, guide.render(variant));
+    return GuideResponse.of(variant, false, guide.render(variant));
   }
 
   /** The variants there are. */

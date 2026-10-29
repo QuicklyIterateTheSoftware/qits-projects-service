@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -12,8 +13,8 @@ import java.util.Map;
  * <b>The prompt a closed window becomes</b> (epic qits-1604) — exactly:
  *
  * <pre>
- * You are the delivery desk of project &lt;slug&gt;. Read /tmp/qits-delivery-brief.md and follow it,
- * then act on what happened below. (desk trigger &lt;window id&gt;, &lt;opened&gt; to &lt;closes&gt;)
+ * You are the delivery desk of project &lt;slug&gt;. &lt;DeskBrief.pointer(hash)&gt; Then act on what
+ * happened below. (desk trigger &lt;window id&gt;, &lt;opened&gt; to &lt;closes&gt;)
  *
  * Moved to VERIFIED:
  * - qits-1580 (Title of 1580)
@@ -27,6 +28,11 @@ import java.util.Map;
  * sections; a source with nothing in the window has no section, and nothing follows the last. The
  * bounds are ISO-8601 instants to the second.
  *
+ * <p><b>The pointer</b> (qits-1734) is {@link DeskBrief#pointer}, composed from the protocol jar
+ * rather than written out here: it sends the desk to {@code qits help guide} and states the desk
+ * variant's guide-hash at the moment the window closed, so the desk re-reads its guide only when
+ * that hash differs from the one it last read. The sentence itself lives only in {@link DeskBrief}.
+ *
  * <p>The opening sentence is what the desk's brief keys on: "a message that starts {@code You are
  * the delivery desk}" is a desk trigger. Changing it is a change to the brief too.
  *
@@ -35,7 +41,8 @@ import java.util.Map;
  * opens with a shorter preamble instead:
  *
  * <pre>
- * A wait you declared has closed. (desk trigger &lt;window id&gt;, &lt;opened&gt; to &lt;closes&gt;)
+ * A wait you declared has closed. &lt;DeskBrief.pointer(hash)&gt; (desk trigger &lt;window id&gt;,
+ * &lt;opened&gt; to &lt;closes&gt;)
  *
  * Waits you declared:
  * Your wait "approve rr-264" matched: ReleaseRequestStateChanged at … (event …).
@@ -43,27 +50,22 @@ import java.util.Map;
  * </pre>
  *
  * <p>Such a window is the common case with delivery off, where the desk is not the delivery desk and
- * must not be sent to the delivery brief; with delivery on it needs no brief either, because the
- * turn's label says what the desk meant to do. A window that mixes both keeps the delivery preamble:
- * its other lines are delivery news.
+ * must not be called the delivery desk; the turn's label says what the desk meant to do. It still
+ * carries the same pointer, so a desk whose guide moved re-reads it before acting. A window that
+ * mixes both keeps the delivery preamble: its other lines are delivery news.
  */
 public final class DeskTriggerMessage {
-
-  /**
-   * Where the desk's daemon writes the delivery brief. A copy of qits-projects-daemon's {@code
-   * DeliveryKeeper.BRIEF_PATH} — that repository is not a dependency of this one, and the path is
-   * part of the daemon's contract with the desk session, so a move there is a move here.
-   */
-  public static final String BRIEF_PATH = "/tmp/qits-delivery-brief.md";
 
   private DeskTriggerMessage() {}
 
   /**
    * The message of {@code window}, from its events grouped by the source that admitted them. A
-   * source with an empty list renders nothing.
+   * source with an empty list renders nothing. {@code guideHash} is the desk variant's guide-hash at
+   * close, stated in the pointer.
    */
   public static String render(
       String projectSlug,
+      String guideHash,
       DeskTriggerWindow window,
       Map<DeskTriggerSource, List<DeskTriggerEventRow>> eventsBySource) {
     boolean onlyRequested =
@@ -74,14 +76,14 @@ public final class DeskTriggerMessage {
         eventsBySource.values().stream().anyMatch(events -> events != null && !events.isEmpty());
     StringBuilder message = new StringBuilder();
     if (anyLine && onlyRequested) {
-      message.append("A wait you declared has closed.");
+      message.append("A wait you declared has closed. ").append(DeskBrief.pointer(guideHash));
     } else {
       message
           .append("You are the delivery desk of project ")
           .append(projectSlug)
-          .append(". Read ")
-          .append(BRIEF_PATH)
-          .append(" and follow it, then act on what happened below.");
+          .append(". ")
+          .append(DeskBrief.pointer(guideHash))
+          .append(" Then act on what happened below.");
     }
     message
         .append(" (desk trigger ")

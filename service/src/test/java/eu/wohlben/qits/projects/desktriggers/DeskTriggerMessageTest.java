@@ -1,8 +1,10 @@
 package eu.wohlben.qits.projects.desktriggers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,10 +34,44 @@ class DeskTriggerMessageTest {
     return new DeskTriggerEventRow(source, ref, null, label, cause, UUID.randomUUID(), at, at);
   }
 
-  private static final String PREAMBLE =
-      "You are the delivery desk of project qits. Read /tmp/qits-delivery-brief.md and follow it,"
-          + " then act on what happened below. (desk trigger 6f1c4a52-0000-4000-8000-000000000001,"
+  /** The desk variant's guide-hash the window closed at. */
+  private static final String HASH = "0123456789abcdef";
+
+  private static final String BOUNDS =
+      " (desk trigger 6f1c4a52-0000-4000-8000-000000000001,"
           + " 2026-10-25T10:00:00Z to 2026-10-25T10:15:00Z)";
+
+  /** qits-1734: the sentence is DeskBrief's; the test composes it rather than spelling it. */
+  private static final String PREAMBLE =
+      "You are the delivery desk of project qits. "
+          + DeskBrief.pointer(HASH)
+          + " Then act on what happened below."
+          + BOUNDS;
+
+  /** qits-1734: both preambles point at the guide and state the hash the window closed at. */
+  @Test
+  void everyPreamblePointsAtTheGuideAndStatesTheHash() {
+    String news =
+        DeskTriggerMessage.render(
+            "qits",
+            HASH,
+            window(),
+            Map.of(new WorkVerifiedSource(), List.of(row("work-verified", "qits-7", null, "d"))));
+    assertTrue(news.startsWith("You are the delivery desk of project qits. "), news);
+    String waits =
+        DeskTriggerMessage.render(
+            "qits",
+            HASH,
+            window(),
+            Map.of(new WaitClosedSource(), List.of(row("wait", "w-1", "Your wait timed out.", "x"))));
+    assertTrue(waits.startsWith("A wait you declared has closed. "), waits);
+    for (String message : List.of(news, waits)) {
+      String preamble = message.substring(0, message.indexOf("(desk trigger"));
+      assertTrue(preamble.contains(DeskBrief.INSTRUCTION), preamble);
+      assertTrue(preamble.contains(HASH), preamble);
+      assertTrue(preamble.contains(DeskBrief.hashNote(HASH)), preamble);
+    }
+  }
 
   @Test
   void bothSectionsInSourceOrderWhateverTheMapOrder() {
@@ -63,7 +99,7 @@ class DeskTriggerMessageTest {
             + "Needs your approval:\n"
             + "- qits-qits-rr-201 (Release qits-1597 wrapper; waits on manual-review: configured by"
             + " manual-review), fold 412911eb",
-        DeskTriggerMessage.render("qits", window(), events));
+        DeskTriggerMessage.render("qits", HASH, window(), events));
   }
 
   @Test
@@ -77,7 +113,7 @@ class DeskTriggerMessageTest {
     assertEquals(
         PREAMBLE
             + "\n\nNeeds your approval:\n- p-rr-1 (waits on no-changes), fold 0123abcd",
-        DeskTriggerMessage.render("qits", window(), events));
+        DeskTriggerMessage.render("qits", HASH, window(), events));
   }
 
   @Test
@@ -87,7 +123,7 @@ class DeskTriggerMessageTest {
 
     assertEquals(
         PREAMBLE + "\n\nMoved to VERIFIED:\n- qits-7",
-        DeskTriggerMessage.render("qits", window(), events));
+        DeskTriggerMessage.render("qits", HASH, window(), events));
   }
 
   private static final String TURN_A =
@@ -106,13 +142,14 @@ class DeskTriggerMessageTest {
         List.of(row("wait", "w-1", TURN_A, "x"), row("wait", "w-2", TURN_B, "y")));
 
     assertEquals(
-        "A wait you declared has closed. (desk trigger 6f1c4a52-0000-4000-8000-000000000001,"
-            + " 2026-10-25T10:00:00Z to 2026-10-25T10:15:00Z)"
+        "A wait you declared has closed. "
+            + DeskBrief.pointer(HASH)
+            + BOUNDS
             + "\n\nWaits you declared:\n"
             + TURN_A
             + "\n\n"
             + TURN_B,
-        DeskTriggerMessage.render("qits", window(), events));
+        DeskTriggerMessage.render("qits", HASH, window(), events));
   }
 
   /** qits-1618: a window mixing waits and news keeps the delivery preamble; waits come first. */
@@ -124,6 +161,6 @@ class DeskTriggerMessageTest {
 
     assertEquals(
         PREAMBLE + "\n\nWaits you declared:\n" + TURN_B + "\n\nMoved to VERIFIED:\n- qits-7 (T)",
-        DeskTriggerMessage.render("qits", window(), events));
+        DeskTriggerMessage.render("qits", HASH, window(), events));
   }
 }

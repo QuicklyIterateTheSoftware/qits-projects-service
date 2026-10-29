@@ -10,8 +10,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.agenthost.FakeProjectDaemon;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.vertx.core.Vertx;
@@ -53,6 +56,8 @@ class DeskTriggerSweepTest {
   @Inject DeskTriggerWindows windows;
 
   @Inject DeskTriggerSweep sweep;
+
+  @Inject DevelopmentGuideService guide;
 
   @TestHTTPResource("/")
   URL root;
@@ -143,8 +148,9 @@ class DeskTriggerSweepTest {
     String expected =
         "You are the delivery desk of project "
             + slug
-            + ". Read /tmp/qits-delivery-brief.md and follow it, then act on what happened"
-            + " below. (desk trigger "
+            + ". "
+            + DeskBrief.pointer(guide.renderHash(DevelopmentGuideDefaults.DESK))
+            + " Then act on what happened below. (desk trigger "
             + windowId
             + ", "
             + window.openedAt.truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
@@ -159,6 +165,10 @@ class DeskTriggerSweepTest {
             + " 412911eb";
     assertEquals(expected, textOf(seen));
     assertEquals(expected, window.message, "what was sent is what is stored");
+    // qits-1734: the pointer is DeskBrief's, with the desk variant's guide-hash at close.
+    assertTrue(window.message.contains(DeskBrief.INSTRUCTION), window.message);
+    assertTrue(
+        window.message.contains(guide.renderHash(DevelopmentGuideDefaults.DESK)), window.message);
   }
 
   @Test

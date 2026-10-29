@@ -12,7 +12,7 @@
       "lastDetail": null,
       "commandId": "desk-command-1",
       "queuePosition": null,
-      "message": "You are the delivery desk of project contract-00000001. Read /tmp/qits-delivery-brief.md and follow it, then act on what happened below. (desk trigger 00000000-0000-4000-8000-000000000002, 2026-01-01T00:00:00Z to 2026-01-01T00:00:00Z)\n\nMoved to VERIFIED:\n- contract-00000001-1580 (Desk triggers read door)\n\nNeeds your approval:\n- contract-service-rr-7 (Release qits-1580; waits on manual-review: a person approves), fold 5eed5eed",
+      "message": "You are the delivery desk of project contract-00000001. Run `qits help guide` and follow your brief. Its guide-hash is 0000000000000000: re-read the guide only when that differs from the hash you last read. Then act on what happened below. (desk trigger 00000000-0000-4000-8000-000000000002, 2026-01-01T00:00:00Z to 2026-01-01T00:00:00Z)\n\nMoved to VERIFIED:\n- contract-00000001-1580 (Desk triggers read door)\n\nNeeds your approval:\n- contract-service-rr-7 (Release qits-1580; waits on manual-review: a person approves), fold 5eed5eed",
       "events": [
         {
           "source": "work-verified",

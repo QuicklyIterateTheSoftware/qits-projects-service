@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import java.util.Optional;
 
 /**
@@ -64,8 +65,9 @@ import java.util.Optional;
  *       same branch, releases it and verifies again, with the status left where it stands
  *       (qits-1154); it blocks only on what it cannot resolve — a person's decision, a shut door,
  *       someone else's unreleased work; closing is a person's move too.
- *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER} and
- *       the substituted title, type, qualified id, slug and id. {@code PhasePromptsTest} renders
+ *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER}, the
+ *       guide-hash note after it ({@link DeskBrief#hashNote}) and the substituted title, type,
+ *       qualified id, slug and id. {@code PhasePromptsTest} renders
  *       all six and enforces it.
  * </ol>
  *
@@ -114,6 +116,12 @@ import java.util.Optional;
  * names {@code qits help guide} (qits-1679), which prints the platform's current guide for the
  * agent's own credential. It names no file in the checkout: the guide moved out of the wrapper's
  * {@code docs/development-flow.md}, and a checkout's copy lags behind releases.
+ *
+ * <p><b>The guide-hash follows it</b> (qits-1734): {@link DeskBrief#hashNote} with the {@code agent}
+ * variant's guide-hash at the moment the turn is rendered — always the agent variant, because a
+ * dispatched agent reads that variant in every phase — so an agent whose context already holds the
+ * guide re-reads it only when the hash moved. The caller supplies the hash ({@code
+ * DevelopmentGuideService#renderHash}); this class stays a pure renderer.
  */
 final class PhasePrompts {
 
@@ -160,8 +168,8 @@ final class PhasePrompts {
    * none. Empty is an answer and not a failure — the dispatch path refuses on it, and the advance
    * delivers nothing on it.
    */
-  static Optional<Started> startedBy(WorkEntity entity, String qualifiedId) {
-    return phaseOf(entity).map(phase -> start(entity, phase, qualifiedId));
+  static Optional<Started> startedBy(WorkEntity entity, String qualifiedId, String agentHash) {
+    return phaseOf(entity).map(phase -> start(entity, phase, qualifiedId, agentHash));
   }
 
   /**
@@ -169,13 +177,14 @@ final class PhasePrompts {
    * dispatch door decides it before its refusals, and renders once it holds the qualified id it
    * names the workspace with, so the two cannot disagree).
    */
-  static Started start(WorkEntity entity, Phase phase, String qualifiedId) {
-    return new Started(phase.word(), render(entity.archetype, phase, entity, qualifiedId));
+  static Started start(WorkEntity entity, Phase phase, String qualifiedId, String agentHash) {
+    return new Started(
+        phase.word(), render(entity.archetype, phase, entity, qualifiedId, agentHash));
   }
 
   /** The agent's first turn alone, which is what every assertion about the words reads. */
-  static Optional<String> promptFor(WorkEntity entity, String qualifiedId) {
-    return startedBy(entity, qualifiedId).map(Started::instruction);
+  static Optional<String> promptFor(WorkEntity entity, String qualifiedId, String agentHash) {
+    return startedBy(entity, qualifiedId, agentHash).map(Started::instruction);
   }
 
   /**
@@ -185,8 +194,10 @@ final class PhasePrompts {
    * @param qualifiedId the entity's {@code <project-slug>-<number>} ({@code qits-297}), or null where
    *     it cannot be had — the turn then names the row by slug and id alone and carries no
    *     commit-subject sentence, since there is no id to put in one (qits-301)
+   * @param agentHash the {@code agent} variant's guide-hash now, stated after the pointer (qits-1734)
    */
-  static String render(Archetype archetype, Phase phase, WorkEntity entity, String qualifiedId) {
+  static String render(
+      Archetype archetype, Phase phase, WorkEntity entity, String qualifiedId, String agentHash) {
     String q = qualifiedId == null || qualifiedId.isBlank() ? null : qualifiedId;
     String phaseTurn =
         switch (archetype) {
@@ -209,7 +220,7 @@ final class PhasePrompts {
               throw new IllegalStateException(
                   "A CAMPAIGN starts through its executor, so it has no phase prompts");
         };
-    return FLOW_BRIEF_POINTER + " " + phaseTurn;
+    return FLOW_BRIEF_POINTER + " " + DeskBrief.hashNote(agentHash) + " " + phaseTurn;
   }
 
   /**

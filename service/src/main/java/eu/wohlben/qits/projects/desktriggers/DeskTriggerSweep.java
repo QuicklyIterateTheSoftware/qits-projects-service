@@ -2,6 +2,8 @@ package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter;
 import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter.Outcome;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
@@ -80,6 +82,8 @@ public class DeskTriggerSweep {
   @Inject FrontDeskPrompter prompter;
 
   @Inject DeskTriggerWindows windows;
+
+  @Inject DevelopmentGuideService guide;
 
   /** How long a closed window may stay owed before it is given up on. */
   @ConfigProperty(name = "qits.projects.desk-triggers.give-up", defaultValue = "PT4H")
@@ -194,7 +198,9 @@ public class DeskTriggerSweep {
     }
     Project project = Project.findById(window.projectId);
     String slug = project == null || project.slug == null ? window.projectId : project.slug;
-    window.message = DeskTriggerMessage.render(slug, window, grouped);
+    window.message =
+        DeskTriggerMessage.render(
+            slug, guide.renderHash(DevelopmentGuideDefaults.DESK), window, grouped);
     window.closedAt = now;
     window.state = DeskTriggerWindowState.OWED;
     LOG.infof(
