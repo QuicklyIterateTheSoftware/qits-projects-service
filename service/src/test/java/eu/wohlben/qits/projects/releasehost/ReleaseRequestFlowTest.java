@@ -73,6 +73,10 @@ public class ReleaseRequestFlowTest {
 
   @Inject eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents downstream;
 
+  @Inject RecordingReleaseGitHost gitHost;
+
+  @Inject RecordingReleaseRequestWithdrawalComments withdrawalComments;
+
   private String repoId;
   private String projectId;
 
@@ -85,6 +89,7 @@ public class ReleaseRequestFlowTest {
     announcer.reset();
     releasedBranchWorkspaces.reset();
     downstream.reset();
+    withdrawalComments.reset();
     repoId = "release-repo-" + UUID.randomUUID();
     projectId = "release-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -952,11 +957,90 @@ public class ReleaseRequestFlowTest {
         .body("request.state", equalTo("WITHDRAWN"))
         .body("request.detail", equalTo("Withdrawn: the branch was deleted"));
 
+    // The work item behind it is told (qits-1671), naming every source it had before the drop.
+    List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
+        withdrawalComments.callsFor(id);
+    assertEquals(1, told.size(), "told once: " + told);
+    assertEquals("work", told.get(0).deletedBranch());
+    assertTrue(told.get(0).branches().containsAll(List.of("main", "work")), told.toString());
+    assertEquals("main", told.get(0).defaultBranch());
+
     // WITHDRAWN is not open: a moving head revives nothing, and a new ask mints a fresh row.
     headMoved("work", sha());
     assertEquals("WITHDRAWN", stateOf(id));
     String fresh = create("work");
     assertTrue(!fresh.equals(id), "a withdrawn request is never converged on");
+  }
+
+  /**
+   * <b>qits-qits-rr-226, replayed</b> (qits-1671): sources {@code [main, ticket/qits-N]}, the ticket
+   * branch standing at {@code main}'s head, so the fold is {@code main}'s head and adds nothing. A
+   * merged-branch sweep deletes the ticket branch; the request is withdrawn, and the work item is
+   * told by the request's qualified id that nothing of its work was lost — the git host said
+   * {@code main} contains the fold, which is the only ground on which that may be said.
+   */
+  @Test
+  public void aWithdrawalWhoseFoldMainContainsTellsTheItemNothingWasLost() {
+    activeBuilds.answer(Optional.of(1));
+    String head = sha();
+    merger.answer(
+        eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.fastForward(head, List.of()));
+    String id = create("ticket/qits-1675");
+    assertEquals(head, mergedShaOf(id), "the fold is main's head itself");
+    gitHost.containsCommit(repoId, head, "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoId, "ticket/qits-1675");
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    String qualifiedId =
+        given().get(base() + "/" + id).then().extract().path("request.qualifiedId");
+    List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
+        withdrawalComments.callsFor(id);
+    assertEquals(1, told.size(), "told once: " + told);
+    var withdrawn = told.get(0);
+    assertEquals(
+        eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Lost.NOTHING,
+        withdrawn.lost());
+    assertEquals(qualifiedId, withdrawn.releaseRequestQualifiedId());
+    assertEquals("ticket/qits-1675", withdrawn.deletedBranch());
+    assertEquals(repoId, withdrawn.repoId());
+    assertEquals(projectId, withdrawn.projectId());
+    assertTrue(
+        withdrawn.branches().containsAll(List.of("main", "ticket/qits-1675")),
+        withdrawn.branches().toString());
+  }
+
+  /** The same withdrawal over a fold {@code main} does not contain: the work was not released. */
+  @Test
+  public void aWithdrawalWhoseFoldMainLacksTellsTheItemItsWorkIsUnreleased() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("ticket/qits-1676");
+    String merged = mergedShaOf(id);
+    gitHost.doesNotContain(repoId, merged, "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoId, "ticket/qits-1676");
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
+        withdrawalComments.callsFor(id);
+    assertEquals(1, told.size(), "told once: " + told);
+    assertEquals(
+        eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Lost.UNRELEASED,
+        told.get(0).lost());
+    assertEquals("ticket/qits-1676", told.get(0).deletedBranch());
+  }
+
+  /** A port that breaks its never-throw contract cannot undo or interrupt the withdrawal. */
+  @Test
+  public void aThrowingWithdrawalPortLeavesTheWithdrawalStanding() {
+    activeBuilds.answer(Optional.of(1));
+    withdrawalComments.failWith(true);
+    String id = create("ticket/qits-1677");
+
+    releaseRequests.onBranchDeleted(repoId, "ticket/qits-1677");
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    assertEquals(1, withdrawalComments.callsFor(id).size());
   }
 
   /**

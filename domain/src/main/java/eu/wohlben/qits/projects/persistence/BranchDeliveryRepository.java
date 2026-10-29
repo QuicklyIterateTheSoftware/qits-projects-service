@@ -156,6 +156,20 @@ public class BranchDeliveryRepository
         .toList();
   }
 
+  /**
+   * The branches whose row still names {@code requestId} in {@code repoId} at a failed position —
+   * FAILED or CONFLICTED: what that request's return to PENDING or READY puts back to JOINED.
+   */
+  @SuppressWarnings("unchecked")
+  public List<String> failedBranchesOf(String repoId, String requestId) {
+    return em().createNativeQuery(
+            "select branch from branch_delivery where repo_id = ?1 and request_id = ?2"
+                + " and step in ('FAILED', 'CONFLICTED') order by branch")
+        .setParameter(1, repoId)
+        .setParameter(2, requestId)
+        .getResultList();
+  }
+
   /** The read door: every row of one branch, in every project, by project and repository. */
   public List<BranchDelivery> listByBranch(String branch) {
     return list("branch = ?1 order by projectId, repoName, repoId", branch);

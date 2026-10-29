@@ -30,7 +30,7 @@
          the mandatory -Dqits.variant=oauth|forwardauth|local auth profiles. -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-projects</artifactId>
-    <version>2026.1028.230057</version>
+    <version>2026.1029.33202</version>
     <packaging>pom</packaging>
     <name>qits-projects</name>
 
@@ -210,7 +210,7 @@
              is deleted here rather than kept in step. It carries its OWN version rather than riding
              qits.integrations-quarkus.version above, because it is released out of
              libs/qits-userflows and not out of that reactor. -->
-        <qits.userflows.version>2026.1002.72731</qits.userflows.version>
+        <qits.userflows.version>2026.1028.231715</qits.userflows.version>
         <!-- The recording service mocks the same IT boots against (the generic MockService plus
              idp.MockIdp), released out of libs/qits-integrations-quarkus like qits-arch-rules and
              qits-db-core above — so the same-string policy applies the day this repo consumes a
@@ -234,7 +234,7 @@
         <qits.landing-app-pacts-qits-projects-service.version>2026.1028.102953</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1026.32335</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1028.140655</qits.platform-access-cli-pacts-qits-projects-service.version>
-        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1028.101312</qits.maintenance-service-pacts-qits-projects-service.version>
+        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1028.235307</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
         <qits.bootstrap-cli-pacts-qits-projects-service.version>2026.1019.194129</qits.bootstrap-cli-pacts-qits-projects-service.version>
