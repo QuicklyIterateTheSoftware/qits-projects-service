@@ -15,11 +15,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * qits-1517, qits-1560, qits-1569, qits-1571, qits-1568, qits-1596, qits-1601, qits-1597,
- * qits-1604, qits-1618, qits-1621: the boot step that rolls the delivery desk's new brief onto the
- * stored {@code project.delivery} row — the one row, since surface configurations are
- * platform-wide — only where the stored brief is still byte for byte one of the previous shipped
- * texts: qits-1440's, qits-1517's, qits-1560's, qits-1569's, qits-1571's, qits-1568's,
- * qits-1596's, qits-1601's, qits-1597's, qits-1604's or qits-1618's.
+ * qits-1604, qits-1618, qits-1621, qits-1714, qits-1748: the boot step that rolls the delivery
+ * desk's new brief onto the stored {@code project.delivery} row — the one row, since surface
+ * configurations are platform-wide — only where the stored brief is still byte for byte one of
+ * the previous shipped texts: qits-1440's, qits-1517's, qits-1560's, qits-1569's, qits-1571's,
+ * qits-1568's, qits-1596's, qits-1601's, qits-1597's, qits-1604's, qits-1618's, qits-1621's,
+ * qits-1679's, qits-1724's (the text qits-1714 found shipping) or qits-1748's.
  *
  * <p>Driven through {@link DeliveryDeskBriefRollout#rollOut()} directly, as the seed's neighbours
  * are. The row is staged through the store's own write and put back to the shipped default after
@@ -450,6 +451,42 @@ public class DeliveryDeskBriefRolloutTest {
   @Test
   public void anOwnerEditedQits1724BriefIsLeftAlone() {
     String edited = AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
+   * qits-1748: an unedited qits-1748 brief — the one that still addressed agents with {@code qits
+   * workspaces agents} — rolls to the current one, which addresses them with {@code qits agents}
+   * and tells the desk how to stop or interrupt a runaway one.
+   */
+  @Test
+  public void anUneditedQits1748BriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1748_DELIVERY_DESK_PROMPT.contains("qits workspaces agents"),
+        "the qits-1748 text is the one before qits agents existed");
+    stage(AgentSurfaceDefaults.QITS_1748_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1748 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertFalse(after.contains("qits workspaces agents"), after);
+    assertTrue(after.contains("qits agents prompt --work <work id>"), after);
+    assertTrue(after.contains("qits agents list --state ACTIVE"), after);
+    assertTrue(after.contains("qits agents stop --work <work id>"), after);
+    assertTrue(after.contains("qits agents interrupt"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1748: an edit of the qits-1748 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1748BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1748_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
     stage(edited);
 
     assertFalse(rollout.rollOut(), "an edit is the owner's");
