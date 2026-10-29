@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.ReleasePipelineRuns;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,7 @@ class ReleasePipelineRunListenerTest {
 
   private ReleasePipelineRunListener listener;
   private RecordingPipelineRuns runs;
+  private RecordingRequests requests;
 
   /**
    * The mirror's far side. It records what it was handed rather than deciding anything, because
@@ -48,11 +50,67 @@ class ReleasePipelineRunListenerTest {
     }
   }
 
+  /**
+   * The state machine's far side (qits-1731): which run starts it was told about, and in what order
+   * relative to the mirror write. Whether a start reopens anything is {@code ReleaseRequestFlowTest}.
+   */
+  private static final class RecordingRequests extends ReleaseRequests {
+    final List<String> started = new ArrayList<>();
+    RecordingPipelineRuns mirror;
+
+    @Override
+    public void onOwnRunStarted(String repoId, String runId) {
+      started.add(repoId + "/" + runId + " after " + mirror.recorded.size() + " mirrored");
+    }
+  }
+
   @BeforeEach
   void setUp() {
     listener = new ReleasePipelineRunListener();
     runs = new RecordingPipelineRuns();
+    requests = new RecordingRequests();
+    requests.mirror = runs;
     listener.pipelineRuns = runs;
+    listener.releaseRequests = requests;
+  }
+
+  /**
+   * <b>A QA run queued or running is a start the state machine hears, after the mirror write</b>
+   * (qits-1731): the reopen reads the mirror row this frame wrote, so the order is the contract.
+   */
+  @Test
+  void aQaRunThatIsQueuedOrRunningIsHandedToTheStateMachineAfterTheMirror() {
+    listener.onFrame(
+        frame(
+            "{\"branch\":\"release/req-1\",\"commitSha\":\"abc123\",\"phase\":\"RELEASE_REQUEST\","
+                + "\"repoId\":\"repo-1\",\"runId\":\"run-q\",\"status\":\"QUEUED\"}"));
+    listener.onFrame(
+        frame(
+            "{\"branch\":\"release/req-1\",\"commitSha\":\"abc123\",\"phase\":\"RELEASE_REQUEST\","
+                + "\"repoId\":\"repo-1\",\"runId\":\"run-q\",\"status\":\"RUNNING\"}"));
+
+    assertEquals(
+        List.of("repo-1/run-q after 1 mirrored", "repo-1/run-q after 2 mirrored"),
+        requests.started);
+  }
+
+  /**
+   * Only a start: a terminal frame is the verdict listener's to decide, and a publish-phase run has
+   * no CI rejection to reopen. Both are mirrored and nothing more.
+   */
+  @Test
+  void aTerminalOrPublishPhaseFrameIsMirroredAndChangesNoState() {
+    listener.onFrame(
+        frame(
+            "{\"branch\":\"release/req-1\",\"commitSha\":\"abc123\",\"phase\":\"RELEASE_REQUEST\","
+                + "\"repoId\":\"repo-1\",\"runId\":\"run-t\",\"status\":\"FAILED\"}"));
+    listener.onFrame(
+        frame(
+            "{\"branch\":\"2026.1029.1\",\"commitSha\":\"abc123\",\"phase\":\"RELEASE\","
+                + "\"repoId\":\"repo-1\",\"runId\":\"run-p\",\"status\":\"RUNNING\"}"));
+
+    assertEquals(2, runs.recorded.size());
+    assertTrue(requests.started.isEmpty(), requests.started.toString());
   }
 
   @Test

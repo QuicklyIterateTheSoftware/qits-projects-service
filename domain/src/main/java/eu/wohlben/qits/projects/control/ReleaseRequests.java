@@ -428,10 +428,12 @@ public class ReleaseRequests {
    * The live position of this request's phase runs, and the thing that draws them beside the gates.
    *
    * <p>Both are this module's own beans rather than ports, and both are <b>read-only</b> from here:
-   * the mirror is written by a bus consumption of its own and nothing on any decision path in this
-   * class reads it. Every gate is still settled by the fields above — the ledger, the approval
-   * table, the released tag's row — so removing the pipeline block would cost a surface and change
-   * no outcome, which is the property that let it be added without touching the state machine.
+   * the mirror is written by a bus consumption of its own. Every gate is still settled by the fields
+   * above — the ledger, the approval table, the released tag's row. <b>The one decision path that
+   * reads the mirror is a hold, never a pass</b> (qits-1731): a red verdict does not reject, and a
+   * run's start reopens a CI rejection, while a newer QA run of the request's own is building the
+   * same fold ({@link ReleasePipelineRuns#buildingAgain}, {@link #onOwnRunStarted}). A mirror that
+   * fell behind therefore delays a rejection by its lag and can never release anything.
    */
   @Inject ReleasePipelineRuns pipelineRuns;
 
@@ -3991,6 +3993,106 @@ public class ReleaseRequests {
   }
 
   /**
+   * A QA run of a request's own was queued or started — reopen its CI rejection while that run
+   * builds the very fold the red judged (qits-1731). Called by the {@code BuildStatusChanged}
+   * consumption for a {@code RELEASE_REQUEST}-phase frame in {@code QUEUED} or {@code RUNNING},
+   * <b>after</b> the mirror write, in a transaction of its own: the caller runs under the bus claim's
+   * transaction on the eventstream datasource, {@link #onVerdict}'s arrangement and for its reason.
+   *
+   * <p><b>Why at the start and not only at the verdict.</b> A {@code qits ci retry} of the rejecting
+   * run used to leave the request REJECTED for the whole of the retry, publishing nothing, until the
+   * new verdict reopened and re-decided it 1.3 s apart (qits-projects-service-rr-385: retry {@code
+   * 20082d84} queued at 06:40:49, PENDING announced 06:43:02). Every {@code qits wait
+   * release-request} armed during the retry therefore fired on the stale REJECTED at once. Reopening
+   * here announces {@code ReleaseRequestStateChanged} PENDING when the run is queued, through {@link
+   * ReleaseRequestStates#move} after this transaction commits — the same move, the same announcement
+   * and the same branch-delivery resume {@link #reconsider} makes.
+   *
+   * <p><b>The request is the one the mirror correlated the run to</b> ({@link
+   * ReleasePipelineRuns#requestOf}), so a frame's {@code releaseRequestId} wins where it carries one
+   * and the backing-branch correlation answers where it does not — read back rather than derived a
+   * second time, so the mirror and this reopen cannot name two different requests for one run.
+   *
+   * <p><b>What reopens, under the row lock:</b> REJECTED; a CI rejection — {@code rejectingGate}
+   * null and {@code rejectingRunId} set, which leaves a decline (no run), a fold failure and an
+   * automation rejection (a gate, no run) exactly where they are; and {@link
+   * ReleasePipelineRuns#buildingAgain} finding a run other than the rejecting one, building {@code
+   * mergedSha}, newer than the red. That last read is the SAME predicate {@link #evaluate} holds the
+   * red on, so a reopen is never undone by the next sweep tick; it also makes a start frame at a
+   * superseded fold, a stale frame delivered after its run's terminal one, and a redelivery (the row
+   * is PENDING by then) all no-ops.
+   *
+   * <p><b>It is not a re-arm</b>, {@link #reconsider}'s rule: the sha, the version and the approvals
+   * stay; the rejection's run and gate go, the detail names the run building, {@code armedAt} is
+   * stamped. And it does <b>not</b> evaluate: nothing new is known about the fold yet, and the run's
+   * verdict ({@link #onVerdict} → {@code findPendingByCommit}) is what decides it.
+   */
+  public void onOwnRunStarted(String repoId, String runId) {
+    if (repoId == null || runId == null) {
+      return;
+    }
+    String reopened =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  String id = pipelineRuns.requestOf(runId).orElse(null);
+                  if (id == null) {
+                    return null;
+                  }
+                  ReleaseRequest row =
+                      requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
+                  if (row == null
+                      || !repoId.equals(row.repoId)
+                      || row.state != ReleaseRequest.State.REJECTED
+                      || row.rejectingGate != null
+                      || row.rejectingRunId == null
+                      || row.rejectingRunId.equals(runId)
+                      || row.mergedSha == null) {
+                    return null;
+                  }
+                  Instant redAt = verdictInstantOf(row.repoId, row.mergedSha, row.rejectingRunId);
+                  ReleasePipelineRun again =
+                      pipelineRuns
+                          .buildingAgain(row.id, row.mergedSha, row.rejectingRunId, redAt)
+                          .orElse(null);
+                  if (again == null) {
+                    return null;
+                  }
+                  LOG.infof(
+                      "Release request %s is reopened at %s: run %s is building it again after"
+                          + " run %s rejected it",
+                      id, shortSha(row.mergedSha), again.runId, row.rejectingRunId);
+                  states.move(row, ReleaseRequest.State.PENDING);
+                  row.rejectingRunId = null;
+                  row.rejectingGate = null;
+                  row.detail = buildingAgainDetail(again.runId);
+                  row.updatedAt = Instant.now();
+                  row.armedAt = row.updatedAt;
+                  return id;
+                });
+    if (reopened != null) {
+      // A PENDING request with a QA run going is an upstream building (gate 3, epic qits-897), which
+      // a REJECTED one was not: its downstream requests read that, so they are asked again.
+      downstreamReevaluation.upstreamMoved(reopened);
+    }
+  }
+
+  /** The sentence a request held by a run building its fold again carries (qits-1731). */
+  static String buildingAgainDetail(String runId) {
+    return "Run " + runId + " is building this fold again";
+  }
+
+  /** The instant the ledger holds for one run's verdict at a fold, or null where it holds none. */
+  private Instant verdictInstantOf(String repoId, String sha, String runId) {
+    return ledger.verdictsOf(repoId, sha).stream()
+        .filter(verdict -> runId.equals(verdict.runId()))
+        .map(CommitBuildStatusDto::finishedAt)
+        .filter(java.util.Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
    * Put a REJECTED request back in front of its gates <b>at the fold it already has</b>, and
    * evaluate it there.
    *
@@ -4016,6 +4118,12 @@ public class ReleaseRequests {
    * <p>The sentence is dropped rather than rewritten: what it said was which run rejected this fold,
    * and that run has been superseded. What holds the request now, if anything does, is
    * {@code evaluate}'s to say in the very next breath.
+   *
+   * <p><b>Since qits-1731 this is the BACKSTOP and not the first answer to a retry.</b> The retry's
+   * own start frame reopens the request the moment qits-ci queues the run ({@link
+   * #onOwnRunStarted}), and {@code evaluate} holds the red while that run builds; this method is
+   * still what reopens a rejection whose start frame was missed (consumed late, or never), from the
+   * verdict path and from the sweep, exactly as before.
    */
   private void reconsider(String id, String verdictSha, String why) {
     boolean reopened =
@@ -5320,6 +5428,23 @@ public class ReleaseRequests {
                           : null;
                   CommitBuildStatusDto red =
                       newest != null && !CiVerdicts.success(newest) ? newest : null;
+                  // A RED THAT IS BEING ANSWERED IS HELD, NOT ACTED ON (qits-1731). A newer QA run
+                  // of this request's own, queued or running at this very fold — a `qits ci retry`
+                  // of the red, a phase rerun — is about to replace the red as the newest own
+                  // verdict, so rejecting now would only be taken back by that verdict. This is what
+                  // keeps the sweep from re-rejecting a request onOwnRunStarted reopened on a red
+                  // ledger row that still stands; the run's verdict decides it through onVerdict, and
+                  // a run cancelled with nothing after it lifts the hold with its terminal frame.
+                  ReleasePipelineRun buildingAgain =
+                      red == null
+                          ? null
+                          : pipelineRuns
+                              .buildingAgain(row.id, row.mergedSha, red.runId(), red.finishedAt())
+                              .orElse(null);
+                  if (buildingAgain != null) {
+                    waiting(row, buildingAgainDetail(buildingAgain.runId));
+                    return false;
+                  }
                   if (red != null) {
                     states.move(row, ReleaseRequest.State.REJECTED);
                     rejected.set(true);

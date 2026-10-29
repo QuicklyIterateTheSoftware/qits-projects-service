@@ -79,6 +79,10 @@ public class ReleaseRequestFlowTest {
 
   @Inject RecordingReleaseRequestWithdrawalComments withdrawalComments;
 
+  @Inject eu.wohlben.qits.projects.bus.ReleasePipelineRunListener runTransitions;
+
+  @Inject RecordingReleaseRequestStateAnnouncer announcedStates;
+
   private String repoId;
   private String projectId;
 
@@ -121,6 +125,9 @@ public class ReleaseRequestFlowTest {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
+              // The mirror rows the qits-1731 cases write: a QUEUED/RUNNING row is a hold, and it
+              // must not outlive the request it holds.
+              eu.wohlben.qits.projects.entity.ReleasePipelineRun.delete("repoId = ?1", repoId);
               ReleaseRequest.delete("projectId = ?1", projectId);
               // The released tags this class's releases record are swept by the finalization belt,
               // which has no scope either — same discipline, one table over.
@@ -712,6 +719,186 @@ public class ReleaseRequestFlowTest {
     assertTrue(detail.contains("CONFIG_ERROR"), detail);
     assertTrue(!detail.contains(old), "the superseded run is not what holds this fold: " + detail);
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  // ---- qits-1731: a retried rejection is PENDING while its run builds ---------------------------
+
+  /**
+   * <b>The retry reopens the request the moment it is queued, and says so once</b> (qits-1731). A
+   * {@code qits ci retry} of the rejecting run used to leave the request REJECTED for the whole of
+   * the retry, so every wait armed on it fired at once on the stale state; the retry's own {@code
+   * BuildStatusChanged} QUEUED is now what moves it back to PENDING and announces that, at the very
+   * same fold. Its RUNNING frame, and a redelivery of the QUEUED one, find it PENDING and add
+   * nothing — and a sweep while the run builds does not re-reject it on the red that still stands.
+   * Then the retry's red verdict rejects it again, naming the new run.
+   *
+   * <p>The QUEUED frame names its request by {@code releaseRequestId}, the field qits-ci now carries;
+   * {@link #aGreenRetryOfTheRejectingRunReopensOnItsStartAndReleasesAtTheSameFold} drives the
+   * branch correlation instead.
+   */
+  @Test
+  public void aRetryOfTheRejectingRunReopensTheRequestOnItsStartAndItsRedRejectsAgain() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    int foldsAfterCreate = merger.folds().size();
+    String red = run("red");
+    String retry = run("retry");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    Instant armedAtRejection = armedAtOf(id);
+
+    EventFrame queued = runFrame(id, retry, merged, "QUEUED", id);
+    runTransitions.onFrame(queued);
+    assertEquals("PENDING", stateOf(id), "the retry's start reopens the rejection it re-fires");
+    assertEquals("Run " + retry + " is building this fold again", detailOf(id));
+    assertEquals(
+        List.of("null>PENDING", "PENDING>REJECTED", "REJECTED>PENDING"),
+        announcedStates.movesOf(id),
+        "and ReleaseRequestStateChanged PENDING is announced when the run is queued");
+    eu.wohlben.qits.projects.control.ReleaseRequestStateAnnouncer.StateChange reopened =
+        announcedStates.changesOf(id).get(2);
+    assertEquals(merged, reopened.mergedSha(), "at the fold that was rejected");
+    assertTrue(reopened.detail().contains(retry), reopened.detail());
+    assertTrue(armedAtOf(id).isAfter(armedAtRejection), "the reopen stamps armed_at (qits-1694)");
+
+    runTransitions.onFrame(queued);
+    runTransitions.onFrame(runFrame(id, retry, merged, "RUNNING", null));
+    releaseRequests.sweep();
+    assertEquals("PENDING", stateOf(id), "a sweep while the retry builds holds the red, not acts on it");
+    assertEquals("Run " + retry + " is building this fold again", detailOf(id));
+    assertEquals(
+        3,
+        announcedStates.movesOf(id).size(),
+        "a redelivery, the RUNNING frame and the sweep add nothing: " + announcedStates.movesOf(id));
+
+    verdict("BuildFailed", merged, retry, red, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    assertTrue(detailOf(id).contains(retry), detailOf(id));
+    assertTrue(!detailOf(id).contains(red), detailOf(id));
+    assertEquals(merged, mergedShaOf(id), "the reopen is not a re-arm: the fold never moved");
+    assertEquals(foldsAfterCreate, merger.folds().size(), "and nothing was re-folded");
+    assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  /**
+   * The green half: reopened on the retry's start (correlated by its backing branch, no {@code
+   * releaseRequestId} on the frame), held through a sweep, then released at the very fold the red
+   * judged when the retry's green verdict lands — one way back, announced once.
+   */
+  @Test
+  public void aGreenRetryOfTheRejectingRunReopensOnItsStartAndReleasesAtTheSameFold() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    int foldsAfterCreate = merger.folds().size();
+    String red = run("red");
+    String retry = run("retry");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    runTransitions.onFrame(runFrame(id, retry, merged, "RUNNING", null));
+    assertEquals("PENDING", stateOf(id));
+    releaseRequests.sweep();
+    assertEquals("PENDING", stateOf(id), "held while the retry builds");
+
+    verdict("BuildSuccessful", merged, retry, red, "");
+    awaitState(id, "RELEASED");
+    assertEquals(
+        List.of(
+            "null>PENDING", "PENDING>REJECTED", "REJECTED>PENDING", "PENDING>READY", "READY>RELEASED"),
+        announcedStates.movesOf(id));
+    assertEquals(merged, mergedShaOf(id), "the retry is not a re-arm: the fold never moved");
+    assertEquals(foldsAfterCreate, merger.folds().size(), "and nothing was re-folded");
+    assertEquals(merged, executor.calls().get(0).expectedSha(), "released at the fold that was judged");
+  }
+
+  /**
+   * A run building some OTHER commit — a fold this request has moved past — is no answer to the red
+   * at this one: the request stays REJECTED, announces nothing, and the sweep leaves it there.
+   */
+  @Test
+  public void aRunStartingAtASupersededFoldLeavesTheRejectionStanding() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    List<String> before = announcedStates.movesOf(id);
+
+    runTransitions.onFrame(runFrame(id, run("stale"), sha(), "QUEUED", null));
+    releaseRequests.sweep();
+
+    assertEquals("REJECTED", stateOf(id));
+    assertTrue(detailOf(id).contains(red), detailOf(id));
+    assertEquals(before, announcedStates.movesOf(id), "nothing moved, nothing was said");
+  }
+
+  /**
+   * <b>Only a CI rejection is reopened by a run.</b> A person's decline names no run; a fold failure
+   * and an automation rejection name a gate. Each is written onto a REJECTED row here (with the
+   * rejecting run kept beside the gate, so the gate alone is what refuses), and a run starting at
+   * the very fold reopens none of them.
+   */
+  @Test
+  public void aDeclineAFoldFailureAndAnAutomationRejectionIgnoreARunStart() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    List<String> before = announcedStates.movesOf(id);
+
+    rejectionShape(id, null, null, "Declined by dana at " + merged);
+    runTransitions.onFrame(runFrame(id, run("after-decline"), merged, "QUEUED", null));
+    assertEquals("REJECTED", stateOf(id), "a decline is a person's no, and no run answers it");
+
+    rejectionShape(id, red, eu.wohlben.qits.projects.control.gate.FoldFailure.KIND, "a fold failure");
+    runTransitions.onFrame(runFrame(id, run("after-fold"), merged, "QUEUED", null));
+    assertEquals("REJECTED", stateOf(id), "a fold failure is answered by a push");
+
+    rejectionShape(
+        id, red, eu.wohlben.qits.projects.control.gate.AutomationsGate.KIND, "an automation failed");
+    runTransitions.onFrame(runFrame(id, run("after-automation"), merged, "RUNNING", null));
+    assertEquals("REJECTED", stateOf(id), "an automation rejection is answered by its automations");
+
+    assertEquals(before, announcedStates.movesOf(id));
+  }
+
+  /** Rewrite a REJECTED row's cause, as the decline, fold and automation arms leave it. */
+  private void rejectionShape(String id, String runId, String gate, String detail) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = ReleaseRequest.findById(id);
+              row.rejectingRunId = runId;
+              row.rejectingGate = gate;
+              row.detail = detail;
+            });
+  }
+
+  /**
+   * One {@code BuildStatusChanged} of a QA run on the request's backing branch, stamped now — after
+   * any verdict the test sent before it, which is the order a retry's frames arrive in.
+   *
+   * @param releaseRequestId what the frame names as its request, or null for the branch correlation
+   */
+  private EventFrame runFrame(
+      String id, String runId, String sha, String status, String releaseRequestId) {
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        "BuildStatusChanged",
+        Instant.now(),
+        "{\"branch\":\"" + BackingBranches.of(id) + "\",\"commitSha\":\"" + sha
+            + "\",\"phase\":\"RELEASE_REQUEST\""
+            + (releaseRequestId == null ? "" : ",\"releaseRequestId\":\"" + releaseRequestId + "\"")
+            + ",\"repoId\":\"" + repoId + "\",\"runId\":\"" + runId + "\",\"status\":\""
+            + status + "\"}",
+        null,
+        null,
+        null);
   }
 
   /**

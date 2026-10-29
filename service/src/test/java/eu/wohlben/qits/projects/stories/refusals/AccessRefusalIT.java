@@ -55,9 +55,12 @@ import org.junit.jupiter.api.TestMethodOrder;
  *       because there is no caller to have been forbidden.
  * </ol>
  *
- * <p>Each story also makes the claim a presence check cannot: {@code assertNoEdgesTo(qits-githost)}.
- * A refusal is decided at the door, so the git host is never asked — and a route that reached it
- * before deciding would be doing work on behalf of a caller it was about to refuse.
+ * <p>Each story also makes the claim a presence check cannot. The person's and the anonymous
+ * caller's stories assert {@code assertNoEdgesTo(qits-githost)}: a refusal is decided at the door,
+ * so the git host is never asked — and a route that reached it before deciding would be doing work
+ * on behalf of a caller it was about to refuse. The machine's story keeps that claim for its two
+ * refusals, which reach nowhere, and documents its one permitted read — the catalogue — together
+ * with the wrapper-manifest fetch that read causes at the git host.
  */
 @QuarkusIntegrationTest
 @QuarkusTestResource(GitHostFixture.class)
@@ -172,7 +175,10 @@ public class AccessRefusalIT {
       but the shape of a plan is a person's judgement about scope, so adding a feature under an
       epic and the whole-entity transition are qits:admin and qits:agent and never qits:system. A
       perfectly valid machine bearer, minted against the same signing keys this service fetches
-      when a bearer arrives, is 403 on both there, and 200 on the catalogue in the same breath.
+      when a bearer arrives, is 403 on both there, and 200 on the catalogue in the same breath. The
+      two refusals are decided at the door and reach nothing; the one read it is let through on —
+      the catalogue — joins each project's wrapper manifest, so it reaches the git host for a
+      mirror refresh before it can answer.
       """)
   @Order(2)
   void aMachineIsRefusedThePlanningSurface(Interactions story) {
@@ -206,6 +212,11 @@ public class AccessRefusalIT {
         .note("…nor mark a task implemented, and the refusal comes before the lookup")
         .as("task-refused");
 
+    // The catalogue joins the project's wrapper manifest, and that refresh is throttled, so
+    // waiting out the freshness window first makes the fetch below a fact about this route rather
+    // than a stopwatch accident — see StoryPlatform#awaitMirrorFreshnessLapse.
+    StoryPlatform.awaitMirrorFreshnessLapse();
+
     // The same bearer on the route it exists for. qits-ci reads this catalogue with exactly it.
     given()
         .header("Authorization", "Bearer " + platformBearer)
@@ -214,6 +225,10 @@ public class AccessRefusalIT {
         .then()
         .statusCode(200);
     story.note("the same bearer reads the repository catalogue it exists for").as("catalogue-served");
+    // The mirror refresh happens inside the request; this only guards the last bytes reaching the
+    // recording.
+    StoryGitHost.awaitRead(
+        StoryGitHost.fetchAdvertisementPath(StoryPlatform.wrapperRepositoryId()));
   }
 
   @UserStory(value = "An unauthenticated caller reaches nothing at all", category = CATEGORY)
@@ -307,8 +322,17 @@ public class AccessRefusalIT {
         PLATFORM,
         StoryTarget.SERVICE,
         "GET " + StoryTarget.REPOSITORIES_PATH + " -> 200");
-    ReportAssertions.assertOnlyEdgesFrom(CATEGORY, MACHINE_SLUG, List.of(PLATFORM));
-    ReportAssertions.assertNoEdgesTo(CATEGORY, MACHINE_SLUG, StoryGitHost.SERVICE_NAME);
+    ReportAssertions.assertEdge(
+        CATEGORY,
+        MACHINE_SLUG,
+        NetworkEdge.HTTP,
+        StoryTarget.SERVICE,
+        StoryGitHost.SERVICE_NAME,
+        StoryGitHost.label("GET", StoryGitHost.fetchAdvertisementPath("{id}"), 200));
+    ReportAssertions.assertOnlyEdgesFrom(
+        CATEGORY, MACHINE_SLUG, List.of(PLATFORM, StoryTarget.SERVICE));
+    // Three inbound (two refusals, one served) plus the one fetch the served read causes.
+    ReportAssertions.assertEdgeCount(CATEGORY, MACHINE_SLUG, 4);
     // A story that authenticates holds a credential, and a report is a document somebody publishes:
     // the diagram carries the door and the status, and never the key.
     assertNotNull(platformBearer, "the machine story must have minted a bearer");

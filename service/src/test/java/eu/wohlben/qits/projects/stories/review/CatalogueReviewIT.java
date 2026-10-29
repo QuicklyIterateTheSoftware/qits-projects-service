@@ -40,21 +40,23 @@ import org.junit.jupiter.api.TestMethodOrder;
  * <b>What reading costs</b> — the two answers this service's read surface gives, and they are
  * different answers.
  *
- * <p>Almost everything a person opens here is served out of this service's own two databases: the
- * projects overview, the flat repository catalogue, one repository by id, a project's epics. Those
- * reach <b>nothing</b>, and only a count and an actor set can say so — a presence check cannot
- * express "and no other arrow exists".
+ * <p>Most of what a person opens here is served out of this service's own two databases: the
+ * projects overview, one repository by id, a project's epics. Those reach <b>nothing</b>, and only
+ * a count and an actor set can say so — a presence check cannot express "and no other arrow
+ * exists".
  *
- * <p>One read is not like the others, and this class exists to say which. {@code GET
- * /projects/{id}/repositories} answers with the project's components <em>joined to the wrapper's
- * manifest</em>, and the manifest is a file in a git repository rather than a column — so the read
- * refreshes the wrapper's mirror from the git host before it can answer. That is a real dependency
- * of a screen people leave open, it belongs in the diagram, and hiding it inside the first story's
- * "reads reach nothing" would have made that claim false.
+ * <p>Two reads are not like the others, and this class exists to say which. The flat repository
+ * catalogue ({@code GET /repositories}, what a machine enumerates the platform with) and a
+ * project's own component list ({@code GET /projects/{id}/repositories}) both answer with
+ * repositories <em>joined to a wrapper's {@code .gitmodules}</em>, and a manifest is a file in a
+ * git repository rather than a column — so each read refreshes the owning wrapper's mirror from the
+ * git host before it can answer. That is a real dependency of a screen people leave open, and of a
+ * listing a machine polls, and it belongs in the diagram — hiding either inside "reads reach
+ * nothing" would have made that claim false.
  *
- * <p><b>That refresh is throttled, which is why the second story waits before it reads.</b> {@code
+ * <p><b>That refresh is throttled, which is why both reads wait before they run.</b> {@code
  * RepoMirror.refresh()} trusts a mirror fetched inside {@code qits.projects.git.mirror-freshness-ms}
- * (5s), so whether a given request pays for a fetch depends on how long the neighbouring story took
+ * (5s), so whether a given request pays for a fetch depends on how long the neighbouring read took
  * — an edge that comes and goes between runs, moving the {@code networkHash} with nothing having
  * changed. {@link StoryPlatform#awaitMirrorFreshnessLapse()} is what turns it back into a fact
  * about the route.
@@ -112,9 +114,12 @@ public class CatalogueReviewIT {
       The walk somebody takes when they want to know what the platform holds: the projects
       overview, the flat repository catalogue a machine enumerates the platform with, one
       repository opened by id — the only way in from a deep link that carries no project — and a
-      project's epics. Four reads, four rows-out-of-a-database answers, and not one call to any
-      other service. That is the claim worth making about a read surface, and it is a claim about
-      absence: the count and the single initiator are what say it.
+      project's epics. The overview, the single repository and the epics are
+      rows-out-of-a-database answers that reach no other service; the catalogue is not one of
+      them — it now carries `declared`, so it joins the same wrapper manifest the component list
+      does and reaches the git host for a mirror refresh. Five arrows, one person and the one hop
+      the catalogue causes, and the count and the actor set are what make that claim rather than a
+      presence check.
       """)
   @UserflowRunsAfter({
     TokenValidationBootstrapIT.class,
@@ -143,6 +148,11 @@ public class CatalogueReviewIT {
         "the overview names the project this run created");
     story.note("the operator opens the projects overview").as("projects-listed");
 
+    // The flat catalogue carries `declared` now, joined from the wrapper's manifest the same way
+    // the component list is, so it reaches the git host too — wait the freshness window out
+    // first. See StoryPlatform#awaitMirrorFreshnessLapse.
+    StoryPlatform.awaitMirrorFreshnessLapse();
+
     List<Map<String, Object>> repositories =
         StoryIdentities.person(given(), OPERATOR_USER)
             .when()
@@ -165,6 +175,10 @@ public class CatalogueReviewIT {
     story
         .note("…and the flat catalogue, which is what a machine enumerates the platform with")
         .as("catalogue-listed");
+    // The mirror refresh happens inside the request; this only guards the last bytes reaching the
+    // recording.
+    StoryGitHost.awaitRead(
+        StoryGitHost.fetchAdvertisementPath(StoryPlatform.wrapperRepositoryId()));
 
     JsonPath repository =
         StoryIdentities.person(given(), OPERATOR_USER)
@@ -282,6 +296,13 @@ public class CatalogueReviewIT {
         CATEGORY,
         READS_SLUG,
         NetworkEdge.HTTP,
+        StoryTarget.SERVICE,
+        StoryGitHost.SERVICE_NAME,
+        StoryGitHost.label("GET", StoryGitHost.fetchAdvertisementPath("{id}"), 200));
+    ReportAssertions.assertEdge(
+        CATEGORY,
+        READS_SLUG,
+        NetworkEdge.HTTP,
         OPERATOR,
         StoryTarget.SERVICE,
         "GET " + StoryTarget.repositoryPath("{id}") + " -> 200");
@@ -292,10 +313,11 @@ public class CatalogueReviewIT {
         OPERATOR,
         StoryTarget.SERVICE,
         "GET " + StoryTarget.projectWorkPath("{id}") + " -> 200");
-    // Four arrows, one person, and nothing left this process. That is the whole story.
-    ReportAssertions.assertEdgeCount(CATEGORY, READS_SLUG, 4);
-    ReportAssertions.assertOnlyEdgesFrom(CATEGORY, READS_SLUG, List.of(OPERATOR));
-    ReportAssertions.assertNoEdgesTo(CATEGORY, READS_SLUG, StoryGitHost.SERVICE_NAME);
+    // Five arrows, one person and the one hop the flat catalogue causes at the git host — every
+    // other read still leaves nothing behind it.
+    ReportAssertions.assertEdgeCount(CATEGORY, READS_SLUG, 5);
+    ReportAssertions.assertOnlyEdgesFrom(
+        CATEGORY, READS_SLUG, List.of(OPERATOR, StoryTarget.SERVICE));
 
     // --- the read that is not free --------------------------------------------------------------
     ReportAssertions.assertComplete(CATEGORY, MANIFEST_SLUG, UserflowReport.PASSED);
