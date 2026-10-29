@@ -55,4 +55,11 @@ class ReleaseRequestItemsLabelTest {
     assertNull(ReleaseRequestItems.maintenanceLabelOf(null));
     assertNull(ReleaseRequestItems.maintenanceLabelOf("  \n "));
   }
+
+  @Test
+  void aBareBumpSubjectWhoseScopeLooksLikeAWorkItemKeepsItsWholeSubject() {
+    assertEquals(
+        "bump(qits-112): 1 dependencies",
+        ReleaseRequestItems.maintenanceLabelOf("bump(qits-112): 1 dependencies"));
+  }
 }

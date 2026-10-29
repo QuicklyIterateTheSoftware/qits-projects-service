@@ -68,6 +68,10 @@ public class ReleaseRequestItems {
               + "\\s*[A-Za-z0-9][A-Za-z0-9-]*-\\d+(?:\\s*,\\s*[A-Za-z0-9][A-Za-z0-9-]*-\\d+)*\\s*"
               + "\\)!?:\\s+(.*)$");
 
+  /** What has to remain for {@link #WORK_ITEM_SCOPE_PREFIX} to be stripped: {@code type(scope): text}. */
+  private static final Pattern CONVENTIONAL_SUBJECT =
+      Pattern.compile("^[A-Za-z][A-Za-z0-9_-]*\\([^)]+\\)!?:\\s+\\S.*$");
+
   @Inject Instance<BranchWorkItems> workItems;
 
   /** Whether {@code branch} is labelled by its head commit subject, read at fold time. */
@@ -172,8 +176,11 @@ public class ReleaseRequestItems {
    * folds a bump's commits under {@code chore(<every ticket it carries>): <inner subject>}, so the
    * prefix is a list of ids, often a hundred long, that says nothing about the bump; {@code
    * chore(qits-112, qits-142): bump(qits-112): 1 dependencies} is labelled {@code bump(qits-112): 1
-   * dependencies}. Only one prefix goes, and only when what remains is not blank; a scope that is
-   * not a list of work-item ids is left alone. Null where the message has no subject.
+   * dependencies}. Only one prefix goes, and only when what remains is itself a conventional
+   * subject ({@code type(scope): text}): a bare {@code bump(qits-112): 1 dependencies}, whose scope
+   * merely looks like a work item, keeps its whole subject rather than shrinking to {@code 1
+   * dependencies}. A scope that is not a list of work-item ids is left alone. Null where the
+   * message has no subject.
    */
   public static String maintenanceLabelOf(String message) {
     String subject = subjectOf(message);
@@ -183,7 +190,7 @@ public class ReleaseRequestItems {
     Matcher matcher = WORK_ITEM_SCOPE_PREFIX.matcher(subject);
     if (matcher.matches()) {
       String rest = matcher.group(1).strip();
-      if (!rest.isEmpty()) {
+      if (CONVENTIONAL_SUBJECT.matcher(rest).matches()) {
         return rest;
       }
     }
