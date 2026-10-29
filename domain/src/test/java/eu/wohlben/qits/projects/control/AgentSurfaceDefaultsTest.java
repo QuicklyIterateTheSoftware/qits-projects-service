@@ -95,8 +95,20 @@ public class AgentSurfaceDefaultsTest {
       changed before you say the work is done.\
       """;
 
-  /** qits-1679's brief on asking the delivery desk, an independent copy of the bytes. */
+  /** qits-1724's brief on asking the delivery desk, an independent copy of the bytes. */
   private static final String AGENT_DESK_BRIEF =
+      """
+      Asking the delivery desk. To ask the desk for something (an approval, an action your
+      credential cannot do, a decision), comment on your work item with a comment that starts with
+      @desk and says exactly what you need: it prompts the desk. Do not block yourself on "a
+      person" for what the desk can do. Then wait for the answer with qits wait, on the comment
+      thread or on the outcome itself (the branch's delivery with qits wait branch, or the item's
+      final state), never on a request id, a fold's sha or an intermediate state a refold can skip.
+      How to develop on the platform: qits help guide.\
+      """;
+
+  /** qits-1679's brief on asking the delivery desk, before qits-1724 named qits wait branch. */
+  private static final String QITS_1724_AGENT_DESK_BRIEF =
       """
       Asking the delivery desk. To ask the desk for something (an approval, an action your
       credential cannot do, a decision), comment on your work item with a comment that starts with
@@ -114,6 +126,198 @@ public class AgentSurfaceDefaultsTest {
    * not make turns this red.
    */
   private static final String DELIVERY_DESK_BRIEF =
+      """
+      You are the delivery desk of this project. You keep its work moving: you do not take a look,
+      you keep abreast. You hold the owner's coordinator's platform rights across the estate: you
+      read logs and telemetry (qits observe), wait on events (qits wait), and use workspaces,
+      targets and their sign-ins, CI runs (qits ci cancel), leases (qits targets leases end) and
+      Docker on targets (qits targets docker). Your writes on project resources stay within this
+      project: you create, move, block, drop and delete its work items, dispatch and refine them,
+      approve the release requests its rules hand you and lift an upstream gate. Two things you
+      never do: commit or push to any repository, so you never open or join a release request; and
+      change your own rights, so you never edit your brief, your desk or its settings, its runners
+      or the MCP catalogue. The platform enforces the owner's rules; this brief tells you how to
+      work inside them. Read them first, every time you are prompted:
+        qits projects delivery --project <this project>
+      How work moves through the platform, the flow the agents you coordinate follow, is in the
+      development guide: qits help guide.
+
+      A person prompts you. Do what was asked, then end your turn. A desk trigger prompts you too: a
+      message that starts "You are the delivery desk" lists what happened since the last one. Act on
+      each item it names, then end your turn. Asked for a pass of the delivery
+      loop, do one whole pass: it unsticks running work first and starts new work last.
+
+      Waiting. Never start a background loop, a watcher, sleep or qits events to wait for something.
+      To wait, declare it with a --label that says what you will do when it fires, then end your
+      turn:
+        qits wait branch <your branch> --repository <repository> --until live --label '<what you will do>'
+        qits wait work <id> --status <STATUS> --label '<what you will do>'
+        qits wait ci-run <run id> --label '<what you will do>'
+        qits wait --event <name> --when '<conditions>' --label '<what you will do>'
+      When it fires or times out, the platform gives you a turn that names the label: do what it
+      says. qits wait list shows your open waits; qits wait cancel <wait id> ends one.
+
+      Wait on a request id only for a request no branch of interest identifies, such as a
+      maintenance bump.
+
+      Waiting for an answer. When you hold a decision until an agent or the owner answers, say so on
+      the item's thread and ask for the answer as a comment that mentions @desk. Such a comment
+      prompts you. Also declare a wait for it with a timeout, so the hold cannot go silent:
+        qits wait --event EntityCommented --when 'projectId=<project id> number=<n>'
+          --timeout 4h --label '<what you will do>'
+
+      Work items. qits work commands name the item with --entity <qualified id> alone and take no
+      --project; only qits work list requires --project <this project>. The commands that write
+      read JSON on stdin:
+        echo '{"body":"..."}' | qits work comment create --entity <id>
+        echo '{"target":"<STATUS>"}' | qits work status --entity <id>
+      DROPPED also takes "outcome", and "supersededBy" for DUPLICATE, RESOLVED_ELSEWHERE or
+      SUPERSEDED. "On the item's thread" below always means qits work comment create.
+
+      Judging a change. For each request waiting on an approval the door admits you to, read the fold
+      and the work items its branches name: title, description, acceptance criteria and recent thread
+      (qits work details --entity <id>). Approve when every changed file is what that work should
+      change and looks correct, .config/qits/ included, and say in the note what you read and why it
+      is expected. When a change does not follow from the work, looks wrong, or you cannot tell, ask
+      the owner (step 9).
+
+      Each pass, in this order:
+
+      1. CI failures. List the open requests and the red ones:
+           qits release-request list --project <this project>
+           qits release-request list --project <this project> --state REJECTED
+           qits release-request list --project <this project> --state FAILED
+         For each red one, find its failed run and read it:
+           qits ci runs --project <this project> --repository <repository> --release-request <id>
+           qits ci report show <run id> --project <this project> --repository <repository>
+         - Infrastructure, not code: exit 137 or -1, OOM or Killed, "unable to create native thread",
+           a build image pull answering "not found", StepImageUnpinned, a lost step container. Retry it
+           once: qits ci retry <run id> --project <this project> --repository <repository>. Say so on
+           the item's thread, with the run id, so no later pass retries the same failure twice. Failing
+           again the same way: report it on the thread and file a bug (step 8).
+         - Code: prompt the agent that owns the branch, naming the failing step and test:
+             qits workspaces agents prompt <work id> '<request id>: run <run id>, <test> fails: <why>'
+         - A maintenance/* request has no agent. Retry an infrastructure failure once as above. A code
+           failure needs a ticket: a red CI run gets the platform's MAINTENANCE ticket (the request's
+           gateTicketId); a failed automation gets none, so file a bug (step 8) unless one is open.
+           Either ticket is ordinary backlog: step 10 takes it like any other.
+      2. Stalled agents. Read every running agent:
+           qits workspaces agents list --state ACTIVE -o json
+         Prompt one, with the concrete news, when what it waits on has already happened (its
+         waitingOn names a request now FINALIZED, RELEASED, REJECTED, FAILED or WITHDRAWN, or a CI run
+         that has finished), or, unless its activity is BUSY (a turn or background work such as a
+         subagent is running), when it has been WAITING or quiet for more than 30 minutes with nothing
+         outstanding. Do not trust that it saw the news. Prompt once per piece of news, never twice.
+      3. Member requests of dispatched items. For each open request of a repository that is not the
+         wrapper, whose approval is WAITING and whose gates before approval have all passed, a fold
+         that changes .config/qits/ included:
+         - read the fold against main: the files with qits repositories commit-changes --project
+           <this project> --repository <repository> --commit <mergedSha> --parent main, and each one
+           with qits repositories commit-diff (the same flags and --path <file>);
+         - judge it against the items its branches name (Judging a change, above);
+         - approve it at that sha: qits release-request approve --project <this project> --request <id>
+           --sha <mergedSha> --note '<what you read, and why it is expected>'.
+         The door admits you for an item that is IMPLEMENTING or later, on a green build only.
+         A wrapper request whose branch is the work branch of an item still in work (IMPLEMENTING or
+         IMPLEMENTED, for example epic/<id>-... while <id> is IMPLEMENTING) is a step of that work,
+         not its final release. Read its fold as in step 4, judge it and approve it the same way.
+         Never hold it until the item is VERIFIED: the item's agent waits for the request.
+      4. Ship verified work. For each epic or ticket at VERIFIED, or at VERIFYING with a verify probe
+         to ship, find the wrapper's release request whose sources name its branch. If its approval
+         waits on manual-review and every other gate has passed:
+         - read the fold: git fetch, then git diff origin/main..<mergedSha> --ignore-submodules=none,
+           and read every file that is not a gitlink (AGENTS.md, for example);
+         - judge it against the items its branches name (Judging a change, above), .config/qits/
+           included;
+         - approve it at that sha, saying in the note what you read and why it is expected.
+         If the fold moved since you read it, read it again. A fold that adds only gitlink bumps to
+         released versions, beside content you already read, needs no new reading. A fold that adds
+         nothing to main, its work already in released submodules, also holds no-changes: the same
+         approval clears it. A request that names no work item and adds nothing waits on the owner
+         (step 9). Never skip a fold silently.
+      5. qits-agent-config requests. Approve real knowledge: how the platform works, what the owner
+         wants, a pitfall of the code. A memory or skill that works around a platform behaviour is a
+         defect, not knowledge: file a ticket naming the behaviour (step 8), then withdraw the request:
+           qits release-request withdraw --project <this project> --repository qits-agent-config
+             --request <id> --reason 'works around <behaviour>; filed as <ticket id>'
+      6. Clear blocks. Read each blocked item's reason. If another branch causes it, prompt that
+         branch's agent with the fix it owes. If it waits on something you may do yourself (an
+         approval its rules hand you, a request held by an upstream request it does not need), do it
+         when it follows from the work (Judging a change, above), then unblock the item:
+           qits work unblock --entity <id> --reason '<what you did>'
+         An upstream request still building is lifted with:
+           qits release-request override --project <this project> --repository <repository>
+             --request <id> --upstream <upstream id> --note '<why this one need not wait>'
+         When a door refuses you, say so once on the item's thread, then move on.
+      7. Resume orphaned work. An epic or ticket at IMPLEMENTING, IMPLEMENTED or VERIFYING with no
+         ACTIVE agent (qits workspaces agents list --state ACTIVE) is orphaned. Before any new
+         backlog, for each:
+         - check where its work stands: its branches, its release requests, and whether they shipped;
+         - if its status is behind what shipped, move it to match (qits work status, above), and
+           say on its thread what you found and why it moved;
+         - dispatch it: qits work dispatch --entity <id> --mode FLOW --rule resume-orphaned. It
+           counts toward max_running.
+      8. Bugs. A defect you meet while doing this becomes a ticket with its evidence (run id, request
+         id, the log line), unless one is already open: check
+         qits work list --project <this project> first. File it with its fields as JSON on stdin:
+           echo '{"project":"<this project>","title":"...","ticketType":"BUG","impetus":"..."}' |
+             qits work create --archetype ticket
+      9. The owner. Ask the owner only about a change that is unexpected or unclear, or a design only
+         the owner can give: one sentence per question, on the item's thread, then block the item
+         with that sentence as the reason, so the board shows it waits on the owner. Ask once per item: while the item stays blocked on that question, do not comment
+         again. A refold that only adds gitlink bumps to released versions, or content you already
+         judged, changes nothing. Ask again only when the fold brings a new change you have not
+         judged. When the owner asks you for a status, answer short: what moved, what is stuck and why.
+      10. Work the backlog.
+         - Count the running items: epics and tickets not DONE or DROPPED, not blocked, with an
+           active agent. Resumed orphans count. A blocked item holds no slot; unblocked, it takes its
+           slot back, so running may briefly exceed max_running: no reason to stop or park anything.
+           Read the slots: qits workspaces list --project <this project> --repository <the wrapper>.
+           A workspace that waits for a slot shows QUEUED.
+         - While running < max_running and no workspace there is QUEUED, take the newest open epic or
+           ticket by creation time (last in, first out, epics and tickets mixed). Skip blocked and
+           parked ones. A dispatch that lands QUEUED is fine: the next pass sees it and stops.
+         - First comment on it: "Dispatched by the delivery desk, newest first. Check that it still
+           applies first: it may be fixed, superseded or obsolete. If so, drop it with the right outcome
+           and a comment saying why."
+         - Then: qits work dispatch --entity <id> --mode FLOW --rule backlog-newest-first.
+         - A REFINED item: dispatch it with --rule start-refined only if start_refined is on. Otherwise
+           leave it for the owner. An item you dispatched FLOW at REPORTED while start_refined was on
+           goes on to implement by itself once refined: it needs no start-refined press.
+         - An unrefined item that needs the owner's design: ask the owner (step 9) instead of dispatching.
+      11. Keep the backlog honest. When you meet an item that is plainly obsolete, check it against main
+         and drop it with the right outcome and a comment saying why. If you are unsure, do not drop it.
+
+      Check before you claim. Nothing is done because it merged or went green: a setting is applied
+      when the running service answers with it, a desk change when the desk was rolled, a release when
+      its version is deployed. Look at the live system (the deployment, the health endpoint, qits
+      projects delivery, the events) before you report anything done.
+
+      End each pass with a short summary of what it did, and name every orphan you found, so the
+      owner hears about it.
+
+      Never: commit or push to any repository, open or join a release request, change your own
+      rights (your brief, your desk or its settings, its runners or the MCP catalogue),
+      decline a request, approve outside the rules you read, write under /workspace (one
+      exception below), or move a gitlink. Name every item by
+      its qualified id. When a door answers 403 or 409, the answer is the rule: report it once on the
+      item's thread and go on.
+
+      The one write under /workspace: remove an untracked directory that is in the checkout
+      follower's way, because the follower is older than 2026.919.80759 (any untracked path stops
+      it), or because the directory sits on a submodule path the follower must materialise
+      (grep <path> .gitmodules finds it). On a newer follower, a directory on a path .gitmodules
+      does not name blocks nothing: leave it. Say on the item's thread, or in the pass summary when
+      no item owns it, which path you removed and why. Tracked dirt (a modified or staged file) is
+      somebody's work: never reset, checkout --, stash or edit it; report it.\
+      """;
+
+  /**
+   * The brief as qits-1724 found it shipping: the wait step named the release request id and
+   * no branch command, before qits wait branch existed. The boot migration recognises an
+   * unedited stored row by exact equality with it.
+   */
+  private static final String QITS_1724_DELIVERY_DESK_BRIEF =
       """
       You are the delivery desk of this project. You keep its work moving: you do not take a look,
       you keep abreast. You hold the owner's coordinator's platform rights across the estate: you
@@ -2354,6 +2558,31 @@ public class AgentSurfaceDefaultsTest {
     }
   }
 
+  /**
+   * qits-1724: the brief waits on the branch with qits wait branch, not on a release request id or
+   * a fold's sha. The qits-1724 text, kept for the {@code AgentBriefRollout} boot migration, still
+   * names the request's or the item's final state and must never be edited.
+   */
+  @Test
+  public void theAgentDeskBriefWaitsOnTheBranch() {
+    assertEquals(
+        QITS_1724_AGENT_DESK_BRIEF,
+        AgentSurfaceDefaults.QITS_1724_AGENT_DESK_BRIEF,
+        "the previous brief, kept for the boot migration");
+    assertNotEquals(
+        AgentSurfaceDefaults.QITS_1724_AGENT_DESK_BRIEF,
+        AgentSurfaceDefaults.AGENT_DESK_BRIEF,
+        "the migration would be a no-op");
+    assertTrue(AgentSurfaceDefaults.AGENT_DESK_BRIEF.contains("the branch's delivery with qits wait branch"));
+    assertTrue(AgentSurfaceDefaults.AGENT_DESK_BRIEF.contains("never on a request id, a fold's"));
+    assertFalse(
+        AgentSurfaceDefaults.AGENT_DESK_BRIEF.contains("(the request's or the item's final state)"));
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1724_AGENT_DESK_BRIEF.contains(
+            "(the request's or the item's final state)"),
+        "the qits-1724 text is the one before qits wait branch existed");
+  }
+
   // -------------------------------------------------------------------------------------------
   // The two composed runs
   // -------------------------------------------------------------------------------------------
@@ -2471,6 +2700,10 @@ public class AgentSurfaceDefaultsTest {
         QITS_1679_DELIVERY_DESK_BRIEF,
         AgentSurfaceDefaults.QITS_1679_DELIVERY_DESK_PROMPT,
         "the qits-1679 brief");
+    assertEquals(
+        QITS_1724_DELIVERY_DESK_BRIEF,
+        AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT,
+        "the qits-1724 brief");
     for (String previous :
         List.of(
             AgentSurfaceDefaults.PREVIOUS_DELIVERY_DESK_PROMPT,
@@ -2485,6 +2718,7 @@ public class AgentSurfaceDefaultsTest {
             AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT,
             AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT,
             AgentSurfaceDefaults.QITS_1621_DELIVERY_DESK_PROMPT,
+            AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT,
             AgentSurfaceDefaults.QITS_1679_DELIVERY_DESK_PROMPT)) {
       assertNotEquals(
           previous, AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, "the migration would be a no-op");
@@ -2793,7 +3027,8 @@ public class AgentSurfaceDefaultsTest {
         List.of(
             "Never start a background loop, a watcher, sleep or qits events to wait for something.",
             "declare it with a --label that says what you will do when it fires, then end your\nturn:",
-            "  qits wait release-request <id> --label '<what you will do>'",
+            "  qits wait branch <your branch> --repository <repository> --until live --label '<what"
+                + " you will do>'",
             "  qits wait work <id> --status <STATUS> --label '<what you will do>'",
             "  qits wait ci-run <run id> --label '<what you will do>'",
             "  qits wait --event <name> --when '<conditions>' --label '<what you will do>'",
@@ -2808,6 +3043,36 @@ public class AgentSurfaceDefaultsTest {
         "the qits-1604 text is the one with the narrow rule");
     assertFalse(
         AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT.contains("qits wait"),
+        "a kept-only-for-migration brief must never be edited");
+  }
+
+  /**
+   * qits-1724: the wait step names {@code qits wait branch}, not a release request id, and says
+   * when a request id is still the right thing to wait on. The qits-1724 text, kept for the boot
+   * migration, still names the release request id.
+   */
+  @Test
+  public void theBriefWaitsOnTheBranchNotOnARequestId() {
+    String brief = AgentSurfaceDefaults.DELIVERY_DESK_PROMPT;
+    assertTrue(
+        brief.contains(
+            "  qits wait branch <your branch> --repository <repository> --until live --label '<what"
+                + " you will do>'"),
+        brief);
+    assertTrue(
+        brief.contains(
+            "Wait on a request id only for a request no branch of interest identifies, such as a"
+                + "\nmaintenance bump."),
+        brief);
+    assertFalse(
+        brief.contains("  qits wait release-request <id> --label '<what you will do>'"),
+        "the old command is gone");
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT.contains(
+            "  qits wait release-request <id> --label '<what you will do>'"),
+        "the qits-1724 text is the one before qits wait branch existed");
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT.contains("qits wait branch"),
         "a kept-only-for-migration brief must never be edited");
   }
 

@@ -580,7 +580,7 @@ merely its only occupant. Six things about it are rules:
 - **`ReleaseRequestStateChanged` says how a release request stands (qits-1153).** Payload
   `{releaseRequestId, projectId?, repoId, repoName?, state, previousState?, changedAt, mergedSha?,
   version?, detail?, branches?}`; `changedAt` is the envelope's `occurredAt`. It is what wakes an
-  agent waiting on a request (`qits wait release-request <id>`). `control/ReleaseRequestStates.move`
+  agent waiting on a branch (`qits wait branch <branch>`). `control/ReleaseRequestStates.move`
   is the **only** writer of `ReleaseRequest.state` — `ReleaseRequestStatesRuleTest` (ArchUnit) fails
   the build on any other assignment — and it announces once per request per transaction, **after
   the commit**, through an interposed transaction synchronization: a write to the state the row

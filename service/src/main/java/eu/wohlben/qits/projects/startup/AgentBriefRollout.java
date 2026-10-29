@@ -57,9 +57,15 @@ public class AgentBriefRollout {
 
   private static Map<String, List<String>> previous() {
     Map<String, List<String>> all = new LinkedHashMap<>();
-    AgentSurfaceDefaults.WORKSPACE_SURFACES.forEach(s -> all.put(s, List.of("")));
+    AgentSurfaceDefaults.WORKSPACE_SURFACES.forEach(
+        s -> all.put(s, List.of("", AgentSurfaceDefaults.QITS_1724_AGENT_DESK_BRIEF)));
     AgentSurfaceDefaults.COMPOSED_SURFACES.forEach(
-        s -> all.put(s, List.of(AgentSurfaceDefaults.COMPOSED_RUN_PROMPT)));
+        s ->
+            all.put(
+                s,
+                List.of(
+                    AgentSurfaceDefaults.COMPOSED_RUN_PROMPT,
+                    AgentSurfaceDefaults.QITS_1724_COMPOSED_RUN_BRIEF)));
     return Map.copyOf(all);
   }
 }
