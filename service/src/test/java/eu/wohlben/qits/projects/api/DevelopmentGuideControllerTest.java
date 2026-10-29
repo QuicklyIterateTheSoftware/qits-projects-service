@@ -225,8 +225,7 @@ public class DevelopmentGuideControllerTest {
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }
@@ -273,11 +272,12 @@ public class DevelopmentGuideControllerTest {
   }
 
   /**
-   * qits-1665: the flow and the desk part say to move a source that alone blocks a shared request
-   * to the next one, never to force-push it out; an unedited row of the texts before rolls forward.
+   * qits-1665: the flow says to move a source that alone blocks a shared request to the next one,
+   * never to force-push it out; an unedited row of the text before rolls forward. The desk is told
+   * so in its prompt (AgentSurfaceDefaults.DELIVERY_DESK_PROMPT).
    */
   @Test
-  public void theFlowAndTheDeskMoveABlockingSourceToTheNextRequest() {
+  public void theFlowMovesABlockingSourceToTheNextRequest() {
     String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
     assertTrue(flow.contains("`qits release-request move --project <project> --repository <repository>"));
     assertTrue(flow.contains("Never force-push a branch to take it out of a request"));
@@ -285,23 +285,16 @@ public class DevelopmentGuideControllerTest {
     assertFalse(
         DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW.contains("release-request move"),
         "the qits-1665 text is the one before the move existed");
-    assertTrue(DevelopmentGuideDefaults.DESK_GUIDE.contains("`qits release-request move`"));
-    assertFalse(DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE.contains("release-request move"));
 
     String key = DevelopmentGuideDefaults.FLOW_KEY;
     surfaces.save(
         key,
         withText(surfaces.get(key), DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW),
         null);
-    String desk = DevelopmentGuideDefaults.key("desk");
-    surfaces.save(
-        desk, withText(surfaces.get(desk), DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE), null);
 
-    assertTrue(guide.rollForward() >= 2);
+    assertTrue(guide.rollForward() >= 1);
 
-    String markdown = read("desk").getString("markdown");
-    assertTrue(markdown.contains(DevelopmentGuideDefaults.DESK_GUIDE));
-    assertTrue(markdown.contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
+    assertTrue(read("agent").getString("markdown").contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
   }
 
   /** qits-1724: the workstation guide waits on the branch too. */
