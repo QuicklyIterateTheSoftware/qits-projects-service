@@ -131,6 +131,12 @@ public class TokenValidationBootstrapIT {
       // rows behind the catalogue this story reads: an empty catalogue is a 200 too, and a story
       // about who may READ it is clearer when what it answers is nobody's incidental state.
       overrides.put("qits.startup-seed.enabled", "false");
+      // The name reconcile is a timer, 30s after boot and every 5m after, that PUTs every
+      // repository's names to qits-githost — off in %dev/%test, but this is NORMAL mode. No story
+      // causes it, so a pass that lands inside a story's window is an arrow nobody drew: it put
+      // two stray `PUT /git/{id}/names` edges into CatalogueReviewIT's reads story (qits-1729).
+      // Adoption's own names PUT is synchronous and unaffected.
+      overrides.put("qits.projects.githost-names.reconcile-every", "off");
       // THE OUTBOUND HALF, and it is what lets the catalogue stories exist at all.
       // HttpGitHostRepositories fails CLOSED: every lifecycle call to qits-githost asks
       // IdpGitHostBearer for a machine token first and throws "No machine bearer is available"
