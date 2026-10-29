@@ -222,10 +222,14 @@ public class DevelopmentGuideControllerTest {
     assertTrue(
         markdown.contains("reaches you only when no agent owns the branch"),
         "qits-1725: a conflict or a missing source ref reaches the desk only without an owner");
+    assertTrue(
+        markdown.contains("A request created right after a commit, before the\nbranch's push"),
+        "qits-1751: a fresh source missing on the git host is waited for, not rejected");
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }

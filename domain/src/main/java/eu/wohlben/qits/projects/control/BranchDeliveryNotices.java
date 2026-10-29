@@ -1,6 +1,9 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.control.gate.FoldFailure;
+import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PostConstruct;
@@ -100,8 +103,20 @@ import org.jboss.logging.Logger;
  * sweep never both send it; an unreachable lookup or delivery is retried until {@link #MAX_ATTEMPTS},
  * and a notice owed for longer than {@link #TOO_OLD} is given up, since news a day late is noise.
  * Outcomes: {@code DELIVERED}, {@code LAUNCHED}, {@code RESUMED} when said; {@code NO_AGENT} (no
- * ACTIVE agent owns the branch, or its work item had none at delivery) and {@code GAVE_UP} when
- * not. {@code NOT_ACTIVE} is qits-1672's word and is still read by the desk, never written here.
+ * ACTIVE agent owns the branch, or its work item had none at delivery), {@code GAVE_UP} and
+ * {@code LIFTED} when not. {@code NOT_ACTIVE} is qits-1672's word and is still read by the desk,
+ * never written here.
+ *
+ * <p><b>A fold attempt's notice is said only while the attempt still stands</b> (qits-1751). A
+ * CONFLICTED or fold-FAILED notice ({@link #attemptOf} names an attempt) is news about the request's
+ * current fold, and a push can answer it between the owe and the delivery: the missing branch lands
+ * and re-folds, the conflict is pushed away. So after the claim, before any HTTP, the request is
+ * re-read: a fold-FAILED notice is current while the request stands {@link FoldFailure#rejected} and
+ * its newest fold-FAILED ledger row names the same attempt; a CONFLICTED one while the request is
+ * CONFLICTED and its newest CONFLICTED row names the same attempt (an attempt the ledger no longer
+ * holds is judged by the state alone). Otherwise the row settles {@code LIFTED} — the fold that owed
+ * it was lifted — and nobody is told. A build's FAILED (keyed by the fold sha, so {@link #attemptOf}
+ * names none) and a MOVED are said as before.
  *
  * <p><b>Step-generic.</b> The text is decided at the insert and stored, so the worker knows no step;
  * qits-1725's CONFLICTED and FOLD notices go through {@link #owe} into the same table, worker,
@@ -421,6 +436,13 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
       finish(key, "GAVE_UP", null, null, false, "owed for longer than " + TOO_OLD);
       return;
     }
+    if (!stillStands(key, claim)) {
+      // THE FOLD THAT OWED IT WAS LIFTED (qits-1751): a push landed the missing branch, or pushed
+      // the conflict away, between the owe and this delivery. Telling the agent now would report a
+      // failure its own push already answered.
+      finish(key, "LIFTED", null, null, false, "the fold that owed it was lifted");
+      return;
+    }
     Optional<List<WorkspaceAgentLookup.ActiveAgent>> active =
         lookup.isResolvable() ? lookup.get().active() : Optional.empty();
     if (active.isEmpty()) {
@@ -486,9 +508,56 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
                         .getResultList()));
   }
 
+  /**
+   * Whether the fold attempt {@code key} is about still stands on its request (qits-1751): true for
+   * a notice that names no attempt (a build's FAILED, a MOVED) and for a request that is gone; see
+   * the class Javadoc. One short read, no HTTP; a read that fails says "stands", so a notice is
+   * never dropped over a database hiccup.
+   */
+  private static boolean stillStands(String key, Claim claim) {
+    String attempt = attemptOf(key, claim.requestId());
+    if (attempt == null) {
+      return true;
+    }
+    boolean conflict = key.startsWith("CONFLICTED:");
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () -> {
+                ReleaseRequest request = ReleaseRequest.findById(claim.requestId());
+                if (request == null) {
+                  return true;
+                }
+                boolean standing =
+                    conflict
+                        ? request.state == ReleaseRequest.State.CONFLICTED
+                        : FoldFailure.rejected(request);
+                if (!standing) {
+                  return false;
+                }
+                BranchDelivery newest =
+                    BranchDelivery.<BranchDelivery>find(
+                            "requestId = ?1 and step = ?2 and foldAttempt is not null"
+                                + " order by changedAt desc",
+                            claim.requestId(),
+                            conflict ? "CONFLICTED" : "FAILED")
+                        .firstResult();
+                return newest == null || attempt.equals(newest.foldAttempt);
+              });
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not tell whether notice %s still stands; delivering it", key);
+      return true;
+    }
+  }
+
   /** The row as the claim found it. */
   private record Claim(
-      String projectId, String branch, String text, Instant createdAt, int attempts) {}
+      String projectId,
+      String requestId,
+      String branch,
+      String text,
+      Instant createdAt,
+      int attempts) {}
 
   /** Takes the row if no other delivery holds it. Empty when another does, or it is settled. */
   private Optional<Claim> claim(String key) {
@@ -508,7 +577,13 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
               }
               BranchDeliveryNotice row = BranchDeliveryNotice.findById(key);
               return Optional.of(
-                  new Claim(row.projectId, row.branch, row.text, row.createdAt, row.attempts));
+                  new Claim(
+                      row.projectId,
+                      row.requestId,
+                      row.branch,
+                      row.text,
+                      row.createdAt,
+                      row.attempts));
             });
   }
 

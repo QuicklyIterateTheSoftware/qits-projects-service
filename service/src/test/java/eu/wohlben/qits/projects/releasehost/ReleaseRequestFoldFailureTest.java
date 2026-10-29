@@ -11,14 +11,20 @@ import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
+import eu.wohlben.qits.projects.entity.BranchDelivery;
+import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
+import io.quarkus.arc.ClientProxy;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
+import java.lang.reflect.Field;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +43,11 @@ import org.junit.jupiter.api.Test;
  * (qits-projects-service-rr-261). It is a fact about the request: the request is REJECTED with
  * {@code rejecting_gate = fold}, the state and every gate name the missing ref, the sweep leaves it
  * alone, and a push of the branch folds it again.
+ *
+ * <p>qits-1751: not while the missing source is fresh. A source added inside the grace window is a
+ * push on its way — the request stays PENDING saying so, no FOLD step is taken and nobody is told,
+ * and the sweep knocks until the push lands or the grace runs out. The suite's properties set the
+ * grace to zero, so every other test here reads the rejection; the grace tests set it on the bean.
  */
 @QuarkusTest
 public class ReleaseRequestFoldFailureTest {
@@ -89,9 +100,15 @@ public class ReleaseRequestFoldFailureTest {
 
   /** {@code sweep()} walks every open row in the database, so none outlives its test. */
   @AfterEach
-  void dropTheFixturesRequests() {
+  void dropTheFixturesRequests() throws Exception {
+    grace(Duration.ZERO);
     QuarkusTransaction.requiringNew()
-        .run(() -> ReleaseRequest.delete("projectId = ?1", projectId));
+        .run(
+            () -> {
+              ReleaseRequest.delete("projectId = ?1", projectId);
+              BranchDelivery.delete("projectId = ?1", projectId);
+              BranchDeliveryNotice.delete("projectId = ?1", projectId);
+            });
     merger.reset();
   }
 
@@ -195,7 +212,144 @@ public class ReleaseRequestFoldFailureTest {
     assertNull(rejectingGateOf(id));
   }
 
+  // ---- qits-1751: a fresh source is waited for ---------------------------------------------
+
+  private static final String WAITING =
+      "The sources could not be folded yet: "
+          + MISSING
+          + " is not on the git host; waiting for its push";
+
+  @Test
+  public void aFreshMissingSourceStaysPendingAndTellsNobody() throws Exception {
+    grace(Duration.ofMinutes(2));
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+    String id = create("ticket/qits-1199");
+
+    JsonPath waiting = request(id);
+    assertEquals("PENDING", waiting.getString("state"), "a push on its way is no rejection");
+    assertEquals(WAITING, waiting.getString("detail"));
+    assertNull(rejectingGateOf(id));
+    assertNotNull(row(id).refoldOwedAt, "the sweep owes it a knock");
+    assertFalse(states.movesOf(id).contains("PENDING>REJECTED"), "moves: " + states.movesOf(id));
+    assertEquals(0, failedStepsOf(id), "no FAILED/FOLD step is taken");
+    assertEquals(0, noticesOf(id), "nobody is owed a notice");
+
+    // The sweep knocks again (the first fold has not been made), and it is still a push on its way.
+    int folds = merger.foldsOf(BackingBranches.ref(id)).size();
+    releaseRequests.sweep();
+    assertTrue(merger.foldsOf(BackingBranches.ref(id)).size() > folds, "the sweep knocked");
+    assertEquals("PENDING", request(id).getString("state"));
+    assertEquals(0, noticesOf(id));
+  }
+
+  @Test
+  public void aPushInsideTheGraceFoldsNormally() throws Exception {
+    grace(Duration.ofMinutes(2));
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+    String id = create("ticket/qits-1199");
+    assertEquals("PENDING", request(id).getString("state"));
+
+    merger.answerFreshMerges();
+    headMoved("ticket/qits-1199");
+
+    JsonPath folded = request(id);
+    assertEquals("PENDING", folded.getString("state"));
+    assertNotNull(folded.getString("mergedSha"), "the fold landed");
+    assertNull(rejectingGateOf(id));
+    assertNull(row(id).refoldOwedAt, "the fold that landed paid the owed knock");
+    assertFalse(states.movesOf(id).contains("PENDING>REJECTED"), "moves: " + states.movesOf(id));
+    assertEquals(0, noticesOf(id));
+  }
+
+  @Test
+  public void aSourceStillMissingAfterTheGraceRejectsOnTheSweepsKnock() throws Exception {
+    grace(Duration.ofMinutes(2));
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+    String id = create("ticket/qits-1199");
+    assertEquals("PENDING", request(id).getString("state"));
+
+    backdateSources(id, Duration.ofMinutes(3));
+    releaseRequests.sweep();
+
+    JsonPath rejected = request(id);
+    assertEquals("REJECTED", rejected.getString("state"));
+    assertEquals(
+        "The sources could not be folded: " + MISSING + " does not exist on the git host",
+        rejected.getString("detail"));
+    assertEquals(FoldFailure.KIND, rejectingGateOf(id));
+    assertNull(row(id).refoldOwedAt);
+    assertTrue(failedStepsOf(id) > 0, "the FOLD step is taken now");
+  }
+
+  /**
+   * A branch joining a request already folded: the fold it lands nothing, so the last fold stays,
+   * and the owed knock is what the sweep pays — once the grace is over, it rejects.
+   */
+  @Test
+  public void aFreshBranchJoiningAFoldedRequestIsWaitedForThenRejected() throws Exception {
+    grace(Duration.ofMinutes(2));
+    String id = create("ticket/qits-1198");
+    String merged = request(id).getString("mergedSha");
+    assertNotNull(merged);
+
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+    join(id, "ticket/qits-1199");
+    JsonPath waiting = request(id);
+    assertEquals("PENDING", waiting.getString("state"));
+    assertEquals(merged, waiting.getString("mergedSha"), "the last fold is kept");
+    assertNotNull(row(id).refoldOwedAt);
+    assertEquals(0, noticesOf(id));
+
+    int folds = merger.foldsOf(BackingBranches.ref(id)).size();
+    releaseRequests.sweep();
+    assertTrue(merger.foldsOf(BackingBranches.ref(id)).size() > folds, "the owed knock was paid");
+    assertEquals("PENDING", request(id).getString("state"));
+
+    backdateSources(id, Duration.ofMinutes(3));
+    releaseRequests.sweep();
+    assertEquals("REJECTED", request(id).getString("state"));
+    assertEquals(FoldFailure.KIND, rejectingGateOf(id));
+  }
+
   // -----------------------------------------------------------------------------------------
+
+  /** Sets the bean's missing-source grace; the suite's own is zero. */
+  private void grace(Duration grace) throws Exception {
+    Field field = ReleaseRequests.class.getDeclaredField("missingSourceGrace");
+    field.setAccessible(true);
+    field.set(ClientProxy.unwrap(releaseRequests), grace);
+  }
+
+  private void backdateSources(String id, Duration by) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequestSource.update(
+                    "addedAt = ?1 where requestId = ?2", Instant.now().minus(by), id));
+  }
+
+  private ReleaseRequest row(String id) {
+    return QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.findById(id));
+  }
+
+  private long failedStepsOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> BranchDelivery.count("requestId = ?1 and step = 'FAILED'", id));
+  }
+
+  private long noticesOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> BranchDeliveryNotice.count("requestId", id));
+  }
+
+  private void join(String id, String branch) {
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"" + branch + "\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+  }
 
   private String base() {
     return "/projects/api/repositories/" + repoId + "/release-requests";

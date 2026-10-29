@@ -686,7 +686,8 @@ merely its only occupant. Six things about it are rules:
     conflict is a new attempt and is told again) — with
     the text stored and `agent_id` null; the owner is an HTTP question, so the worker after the
     commit resolves it and records `agent_id`/`work_id` with the outcome (`DELIVERED`, `LAUNCHED`,
-    `RESUMED`, `NO_AGENT`, `GAVE_UP`), claiming the row first (2 min), retrying an unreachable
+    `RESUMED`, `NO_AGENT`, `GAVE_UP`, and `LIFTED` for a CONFLICTED or FOLD notice whose request no
+    longer stands at that attempt when it is delivered, qits-1751), claiming the row first (2 min), retrying an unreachable
     lookup or delivery up to 10 attempts and giving up on a notice older than a day.
     `ReleaseRequestSweep.sweepBranchDeliveryNotices` delivers what a crash left. The fold attempt
     has no column (no schema change): it is in the key, and `attemptPrefix(step, requestId,
@@ -1338,7 +1339,12 @@ a consumer may rely on:
   does not exist on the git host"; every applying gate that has not itself FAILED reads FAILED with
   that sentence, in `qualityGates[]`, `gates[]` and the pipeline alike. The sweep neither re-folds
   nor re-reads it; a push of the missing branch re-folds it, and the fold that lands lifts it (a
-  reopen at the same sha, a re-arm at a new one). Every other failure to fold — a timeout, a 5xx,
+  reopen at the same sha, a re-arm at a new one). **Not while the source is fresh** (qits-1751): a
+  source whose `addedAt` is inside `qits.projects.release-requests.missing-source-grace` (PT2M; PT0S
+  in the suite's properties) is a push on its way — no move, no FOLD step, `detail` "The sources
+  could not be folded yet: <ref> is not on the git host; waiting for its push", and a re-fold owed
+  under the reason prefix `ReleaseRequests.AWAITING_PUSH`, which the sweep pays even over a fold in
+  flight; past the grace the knock rejects as above. Every other failure to fold — a timeout, a 5xx,
   any other 404, `ref-moved`, no address — is still `UNREACHABLE`: the state stays where it was and
   the sweep folds again.
 
