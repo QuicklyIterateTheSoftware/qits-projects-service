@@ -7,10 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import eu.wohlben.qits.projects.control.BranchDeliveries;
 import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.path.json.JsonPath;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -21,7 +24,8 @@ import org.junit.jupiter.api.Test;
  * {@code GET /projects/api/branch-deliveries} (qits-1720): one test per answer the door gives — a
  * branch's rows with its {@code everywhere}, a repository narrowing the rows and not the word, an
  * unknown branch's empty 200, a branch in two projects refused without {@code project} and answered
- * with it (by id and by slug), and the 400 and 404 for a missing branch and an unknown project.
+ * with it (by id and by slug), the 400 and 404 for a missing branch and an unknown project, and
+ * the project's {@code qits-agent-config} row listed but never counted (qits-1736).
  *
  * <p>The ledger rows are written straight to {@code branch_delivery}: what is under test is the
  * read, and {@code BranchDeliveryTest} is where the flows that write them are driven.
@@ -35,6 +39,7 @@ public class BranchDeliveriesControllerTest {
   private String otherProjectId;
   private String slug;
   private String branch;
+  private final List<String> repositories = new ArrayList<>();
 
   @BeforeEach
   void seed() {
@@ -59,6 +64,9 @@ public class BranchDeliveriesControllerTest {
         .run(
             () -> {
               BranchDelivery.delete("branch", branch);
+              if (!repositories.isEmpty()) {
+                Repository.delete("id in ?1", repositories);
+              }
               Project.delete("id in ?1", List.of(projectId, otherProjectId));
             });
   }
@@ -149,6 +157,46 @@ public class BranchDeliveriesControllerTest {
     assertEquals("PUSHED", bySlug.getString("everywhere"));
   }
 
+  /**
+   * qits-1736: the agent configuration's row is listed, but it is platform state a desk approval
+   * releases after the work, so it never holds the branch below LIVE.
+   */
+  @Test
+  public void theAgentConfigRowIsListedButNeverCountsTowardEverywhere() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery.delete("branch", branch);
+              row(projectId, "repo-svc", "door-service", "LIVE", "2026.1028.30000");
+              agentConfigRow(projectId, "PUSHED");
+            });
+
+    JsonPath answer =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+
+    assertEquals("LIVE", answer.getString("everywhere"), "qits-agent-config never counts");
+    assertEquals(
+        List.of("door-service", "qits-agent-config"), answer.getList("deliveries.repository"));
+    assertEquals(List.of("LIVE", "PUSHED"), answer.getList("deliveries.step"));
+  }
+
+  @Test
+  public void aBranchKnownOnlyInTheAgentConfigHasNoEverywhere() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery.delete("branch", branch);
+              agentConfigRow(projectId, "JOINED");
+            });
+
+    JsonPath answer =
+        given().queryParam("branch", branch).get(DOOR).then().statusCode(200).extract().jsonPath();
+
+    assertEquals(List.of("qits-agent-config"), answer.getList("deliveries.repository"));
+    assertEquals(List.of("JOINED"), answer.getList("deliveries.step"));
+    assertNull(answer.get("everywhere"), "no row that counts");
+  }
+
   @Test
   public void aMissingBranchIsA400AndAnUnknownProjectA404() {
     given().get(DOOR).then().statusCode(400);
@@ -166,6 +214,30 @@ public class BranchDeliveriesControllerTest {
     project.name = slug;
     project.slug = slug;
     project.persist();
+  }
+
+  /** A real {@code AGENT_CONFIG} repository of {@code project} and the branch's row in it. */
+  private void agentConfigRow(String project, String step) {
+    Repository repository = new Repository();
+    repository.id = "repo-agent-config-" + UUID.randomUUID();
+    repository.project = Project.findById(project);
+    repository.mainBranch = "main";
+    repository.archetype = RepositoryArchetype.AGENT_CONFIG;
+    repository.persist();
+    repositories.add(repository.id);
+    BranchDelivery row = new BranchDelivery();
+    row.projectId = project;
+    row.repoId = repository.id;
+    row.repoName = "qits-agent-config";
+    row.branch = branch;
+    row.step = step;
+    if (!"PUSHED".equals(step)) {
+      row.requestId = UUID.randomUUID().toString();
+      row.qualifiedId = "qits-agent-config-rr-1";
+      row.foldSha = "f01d";
+    }
+    row.changedAt = Instant.now();
+    row.persist();
   }
 
   private void row(String project, String repoId, String repoName, String step, String version) {
