@@ -44,8 +44,8 @@ import org.jboss.logging.Logger;
  *
  * <h2>Correlating a run to its release request</h2>
  *
- * <p><b>{@code BuildStatusChanged} does not carry a release request id, so this class derives one</b>
- * — and the derivation is not a guess, because each phase's run is anchored at a ref this service
+ * <p><b>{@code BuildStatusChanged} need not carry a release request id, so this class derives one
+ * where it does not</b> — and the derivation is not a guess, because each phase's run is anchored at a ref this service
  * itself chose:
  *
  * <ul>
@@ -60,10 +60,12 @@ import org.jboss.logging.Logger;
  *       run belongs to.
  * </ul>
  *
- * <p><b>A {@code releaseRequestId} on the payload wins, always.</b> The field is bound leniently and
- * is absent today; if qits-ci ever carries it, the publisher's own answer is better than any
- * inference here and this class stops inferring for those frames with no further change. That is why
- * the derivation is a fallback rather than the rule.
+ * <p><b>A {@code releaseRequestId} on the payload wins, always.</b> The field is bound leniently;
+ * qits-ci now carries it on a {@code RELEASE_REQUEST} run's frames, and the publisher's own answer is
+ * better than any inference here, so this class stops inferring for those frames. A frame without it
+ * (older frames, and anything the consumer pact does not promise) falls back to the derivation —
+ * which is why it is a fallback rather than the rule. {@link #requestOf} reads the answer back for
+ * {@code ReleaseRequests.onOwnRunStarted} (qits-1731), so the reopen never correlates a second time.
  *
  * <p><b>A run that correlates to nothing is dropped, quietly.</b> A QA-phase run on a branch that is
  * not a backing branch, and a publish-phase run for a tag no row names, are both ordinary: the first
