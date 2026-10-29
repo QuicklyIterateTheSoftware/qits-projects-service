@@ -968,12 +968,13 @@
         }
       },
       "description": "setWorkBlocked: markAgentDispatchBlocked",
-      "key": "c2948716",
+      "key": "f6e536ca",
       "pending": false,
       "providerStates": [
         {
           "name": "an agent working on a ticket",
           "params": {
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
             "ticketId": "00000000-0000-4000-8000-000000000001"
           }
         }
@@ -1084,12 +1085,13 @@
         }
       },
       "description": "setWorkStatus: markAgentDispatchEntity",
-      "key": "db3f5d31",
+      "key": "f900ce5",
       "pending": false,
       "providerStates": [
         {
           "name": "an agent working on a ticket",
           "params": {
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
             "ticketId": "00000000-0000-4000-8000-000000000001"
           }
         }
@@ -1199,12 +1201,13 @@
         }
       },
       "description": "transitionWork: deliverAgentTurn",
-      "key": "55734aa6",
+      "key": "89c3fa5a",
       "pending": false,
       "providerStates": [
         {
           "name": "an agent working on a ticket",
           "params": {
+            "agentId": "00000000-0000-4000-8000-0000000000a1",
             "ticketId": "00000000-0000-4000-8000-000000000001"
           }
         }
