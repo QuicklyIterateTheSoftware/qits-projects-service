@@ -58,6 +58,40 @@ public class DevelopmentGuideControllerTest {
   }
 
   @Test
+  public void theGuideHashIsSixteenLowercaseHexCharacters() {
+    String hash = DevelopmentGuideService.hash("# A guide\n");
+    assertTrue(hash.matches("[0-9a-f]{16}"), hash);
+  }
+
+  @Test
+  public void theGuideHashIsStableForTheSameTextAndMovesWithIt() {
+    assertEquals(DevelopmentGuideService.hash("# A guide\n"), DevelopmentGuideService.hash("# A guide\n"));
+    assertFalse(
+        DevelopmentGuideService.hash("# A guide\n").equals(DevelopmentGuideService.hash("# A guide.\n")));
+    // The first sixteen hex characters of SHA-256("abc").
+    assertEquals("ba7816bf8f01cfea", DevelopmentGuideService.hash("abc"));
+  }
+
+  @Test
+  public void everyVariantAnswersTheHashOfTheMarkdownItReturns() {
+    for (String variant : DevelopmentGuideDefaults.VARIANTS) {
+      JsonPath answer = read(variant);
+      String markdown = answer.getString("markdown");
+      assertEquals(DevelopmentGuideService.hash(markdown), answer.getString("hash"), variant);
+      assertEquals(guide.renderHash(variant), answer.getString("hash"), variant);
+    }
+  }
+
+  @Test
+  public void anEditedPartMovesTheHash() {
+    String before = guide.renderHash("workstation");
+    String key = DevelopmentGuideDefaults.key("workstation");
+    surfaces.save(key, withText(surfaces.get(key), "# Development guide: workstation\n\nEdited."), null);
+    String after = read("workstation").getString("hash");
+    assertFalse(before.equals(after), "an edit moves the hash");
+  }
+
+  @Test
   public void theListingNamesTheFourVariants() {
     JsonPath answer =
         given().when().get("/projects/api/guide/variants").then().statusCode(200).extract().jsonPath();

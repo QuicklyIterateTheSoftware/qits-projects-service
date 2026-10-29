@@ -766,6 +766,9 @@ public class ProviderStates {
               window.message =
                   eu.wohlben.qits.projects.desktriggers.DeskTriggerMessage.render(
                       project.slug,
+                      // A fixed guide-hash (qits-1734): the real one moves with every edit to the
+                      // guide's shipped text, which would churn this golden master for nothing.
+                      "0000000000000000",
                       window,
                       Map.of(
                           workVerifiedSource,

@@ -1634,6 +1634,11 @@ components:
         markdown:
           type: string
           description: "The guide, as markdown."
+        hash:
+          type: string
+          description: "The guide-hash: the first 16 lowercase hex characters of the\
+            \ SHA-256 of `markdown`'s UTF-8 bytes. A session re-reads the guide only\
+            \ when this differs from the hash it last read."
     GuideVariantDto:
       type: object
       properties:
@@ -4436,6 +4441,9 @@ paths:
   /projects/api/projects/{projectId}/front-desk/prompt:
     post:
       summary: "Hand the project's front desk a prompt: delivered at once, or queued"
+      description: "The desk receives the text prefixed with the brief pointer — run\
+        \ `qits help guide` and follow the brief, with the desk guide's current hash\
+        \ — and a blank line, so it re-reads its guide only when that hash moved."
       operationId: promptFrontDesk
       parameters:
       - name: projectId

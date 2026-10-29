@@ -14,6 +14,8 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -195,6 +197,9 @@ public class EntityDispatch {
 
   @Inject RunningItems runningItems;
 
+  /** The agent variant's guide-hash, stated in every dispatched turn (qits-1734). */
+  @Inject DevelopmentGuideService guide;
+
   /**
    * What one press did.
    *
@@ -354,7 +359,11 @@ public class EntityDispatch {
     // the session label and the commit subjects the turn asks for cannot disagree (qits-301).
     WorkspaceAgentDispatch.Subject subject = workspaces.subjectOf(recorded);
     PhasePrompts.Started started =
-        PhasePrompts.start(recorded, checked.phase(), subject.qualifiedId());
+        PhasePrompts.start(
+            recorded,
+            checked.phase(),
+            subject.qualifiedId(),
+            guide.renderHash(DevelopmentGuideDefaults.AGENT));
 
     WorkspaceAgentDispatch.Dispatch made =
         dispatch

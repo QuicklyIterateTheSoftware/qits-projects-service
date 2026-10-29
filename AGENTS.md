@@ -2135,7 +2135,10 @@ Five things are rules rather than details:
   was found — no "leave the status alone" arm, and no backward move, a failed verification
   included. Each turn is at most 900 characters (`PhasePromptsTest` enforces it) and copies nothing
   from the tool descriptions or the flow brief. Every turn opens with
-  `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam.
+  `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam, followed by
+  `DeskBrief.hashNote(hash)` with the **agent** variant's guide-hash at render time (qits-1734; the
+  callers, `EntityDispatch` and `PhaseAdvance`, supply `DevelopmentGuideService.renderHash("agent")`)
+  — neither counts against the 900.
 - **A dispatch writes one comment on the entity's thread, and nothing else on it.** The comment
   names the phase (and, for PHASE, that the run stops there), for an epic exactly as for a ticket
   since qits-551, with the hint of its archetype (`EPICS`/`TICKETS`); every sentence `PhaseAdvance`
@@ -2784,6 +2787,23 @@ spec roll onto the pinned daemon resolves it, not a retry. That reading is
 `agenthost/FrontDeskPrompter`'s since qits-1604 (`classify`, `unreachable`), shared with the desk
 trigger sweep below, which asks it for a typed outcome (`prompt`) instead of a response.
 
+**The prompt door prefixes the brief pointer** (qits-1734): the daemon is handed
+`DeskBrief.pointer(<desk variant's guide-hash now>) + "\n\n" + text`, never the person's text
+alone, so the desk re-reads its guide before answering whenever it moved. The blank-text 400 is
+decided on the person's own text, before the prefix.
+
+### The development guide (qits-1679)
+
+`api/DevelopmentGuideController`, `GET /projects/api/guide[?for=<variant>]`
+(`getDevelopmentGuide`) and `GET /projects/api/guide/variants`: the guide `qits help guide` prints,
+composed by `control/DevelopmentGuideService.render` from the agent-surface store. The answer
+carries `variant`, `detected`, `markdown` and (qits-1734) **`hash`**: the first 16 lowercase hex
+characters of the SHA-256 of `markdown`'s UTF-8 bytes (`DevelopmentGuideService.hash`), computed
+over exactly the text returned. `renderHash(variant)` is the same value without the HTTP hop; the
+desk trigger message and the front-desk prompt state the `desk` variant's, every dispatched phase
+turn the `agent` variant's, so a session compares the hash it is handed with the one it last read
+(or runs `qits help guide --hash-only`) and re-reads only on a change.
+
 Contracts: the provider state `a project whose front desk is running` stands up
 `agenthost/FakeProjectDaemon` (a test-scope daemon that dials the control socket and serves the
 dial-backs, as `AgentTunnelProxyTest` does inline) behind the real tunnel, and `cleanUp` closes it;
@@ -2828,13 +2848,20 @@ is the whole of it:
   `requestedByDesk()` is true** (qits-1618): the desk asked to be woken, so it is woken with delivery
   off too — the prompt goes to the project's one kept front desk session either way, delivery only
   decides that session's rights.
-- **The message** (`DeskTriggerMessage`): one preamble line naming the desk's brief
-  (`/tmp/qits-delivery-brief.md`, `DeskTriggerMessage.BRIEF_PATH`, a copy of qits-projects-daemon's
-  `DeliveryKeeper.BRIEF_PATH`), the window id and its bounds, then each source's section in
-  `order()`, a blank line between, nothing after. It is stored at the close, so every retry sends
-  the same text. The opening words `You are the delivery desk` are what the desk's brief keys on.
-  A window whose every line came from a `requestedByDesk()` source opens instead with `A wait you
-  declared has closed.` and the same bounds: the desk asked, and need not read the delivery brief.
+- **The message** (`DeskTriggerMessage`): one preamble line — `You are the delivery desk of
+  project <slug>.`, then `DeskBrief.pointer(hash)`, then `Then act on what happened below.` — the
+  window id and its bounds, then each source's section in `order()`, a blank line between, nothing
+  after. `DeskBrief` is qits-projects-daemon's `projects-daemon-protocol` class and the **only**
+  owner of the pointer sentence (qits-1734): it sends the desk to `qits help guide` and states the
+  **desk variant's guide-hash at the close** (`DevelopmentGuideService.renderHash("desk")`, supplied
+  by `DeskTriggerSweep`), so the desk re-reads its guide only when that hash differs from the one it
+  last read. No brief file is written into the container any more. The message is stored at the
+  close, so every retry sends the same text and the same hash. The opening words `You are the
+  delivery desk` are what the desk's brief keys on. A window whose every line came from a
+  `requestedByDesk()` source opens instead with `A wait you declared has closed.`, the same
+  `DeskBrief.pointer(hash)` and the same bounds: the desk asked, and is not called the delivery desk.
+  `BriefSourceScanTest` keeps the pointer sentence from being spelled out anywhere in this
+  repository — compose it from `DeskBrief`.
 - **Delivery** reuses the person's prompt door's reading (`FrontDeskPrompter`), outside any
   transaction, one window per project per pass so owed windows arrive in order: 200 `delivered` →
   DELIVERED, 200 `queued` → QUEUED (with `queue_position`), both stamping `accepted_at` and

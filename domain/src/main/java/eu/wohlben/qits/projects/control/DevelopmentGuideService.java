@@ -1,9 +1,14 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +43,34 @@ public class DevelopmentGuideService {
       }
     }
     return String.join("\n\n", parts) + "\n";
+  }
+
+  /**
+   * The guide-hash of a text (qits-1734): the first {@value #HASH_LENGTH} lowercase hex characters
+   * of the SHA-256 of its UTF-8 bytes. A session compares it against the hash it last read to know
+   * whether the guide moved under it.
+   */
+  public static String hash(String markdown) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of()
+          .formatHex(digest.digest(markdown.getBytes(StandardCharsets.UTF_8)))
+          .substring(0, HASH_LENGTH);
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is unavailable", e);
+    }
+  }
+
+  /** How many hex characters a guide-hash keeps. */
+  public static final int HASH_LENGTH = 16;
+
+  /**
+   * The {@link #hash} of exactly the text {@link #render} answers for {@code variant} now. Read in
+   * the caller's transaction or, where it stands in none, one of its own: the desk trigger sweep, the
+   * front-desk door and the phase hand-off all ask, and only some of them stand in a request context.
+   */
+  public String renderHash(String variant) {
+    return hash(QuarkusTransaction.joiningExisting().call(() -> render(variant)));
   }
 
   /**
