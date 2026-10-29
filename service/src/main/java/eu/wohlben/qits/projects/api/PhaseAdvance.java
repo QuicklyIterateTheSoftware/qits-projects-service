@@ -193,11 +193,14 @@ import org.jboss.logging.Logger;
  * <h2>A move back into VERIFYING or IMPLEMENTED names the request and withdraws nothing</h2>
  *
  * <p>Verification can fail after the release was asked for, and then the ticket moves back. Nothing
- * is withdrawn, because there is no honest inverse to perform: no door removes a single source from
- * a request, the wrapper's request is estate-wide so {@code withdraw} would settle every other
- * branch's release along with this one, and deleting the branch would destroy the work. What the
- * platform owes a person instead is the request id on the thread, so that withdrawing or declining
- * it is a decision they can actually make.
+ * is withdrawn automatically, because there is no honest inverse to perform: the wrapper's request
+ * is estate-wide so {@code withdraw} would settle every other branch's release along with this one,
+ * and deleting the branch would destroy the work. Since qits-1665 one source can be taken out of a
+ * request — {@code POST …/release-requests/{requestId}/sources/move} puts it on the request queued
+ * after it and refolds the rest — but whether this branch should leave is a judgement, the agent's
+ * or the desk's, not a transition's side effect. What the platform owes a person is the request id
+ * on the thread, so that moving the branch out, withdrawing or declining it is a decision they can
+ * actually make.
  *
  * <p><b>That note is conditioned on the request existing and never on the direction of the move</b>,
  * which is this class's rule applied where it would be easiest to break: arriving at IMPLEMENTED

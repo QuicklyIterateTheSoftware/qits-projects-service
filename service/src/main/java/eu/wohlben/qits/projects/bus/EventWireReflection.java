@@ -110,6 +110,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * <p>{@link ReleaseRequestStateChanged} (qits-1153) is the seventh published one, one line: its
  * only nested value is a list of strings. {@link BranchDeliveryChanged} (qits-1719) is one line
  * too: every field is a flat scalar, by design, since a wait selection reads top-level paths.
+ * {@link ReleaseRequestSourceMoved} (qits-1665) is one line for the same reason.
  *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
@@ -132,6 +133,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ReleaseRequestChanged.class,
       ReleaseRequestStateChanged.class,
       BranchDeliveryChanged.class,
+      ReleaseRequestSourceMoved.class,
       ApprovalRequirementChanged.class,
       SCMRelease.class,
       ProjectCreated.class,

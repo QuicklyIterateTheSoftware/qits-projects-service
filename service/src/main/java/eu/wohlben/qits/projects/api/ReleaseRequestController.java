@@ -101,11 +101,12 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * ignores what a record does not declare, and neither is declared any more.
  *
  * <p><b>An agent reads everything here and writes only for its own work.</b> {@code qits:agent} is
- * on the class list, so every read is open to it with no restriction. The four writes it reaches —
- * create, sources, priority and withdraw — bind a caller that holds it and neither of the other
- * two: the repository must be in the project its token names ({@code project}) and a request must
- * be one of that repository; on create and sources the branch must also be one its token may push
- * ({@code git_refs}). Anything else is a 403. Approve and decline are <b>not</b> bound to the
+ * on the class list, so every read is open to it with no restriction. The five writes it reaches —
+ * create, sources, priority, move and withdraw — bind a caller that holds it and neither of the
+ * other two: the repository must be in the project its token names ({@code project}) and a request
+ * must be one of that repository; on create, sources and move the branch must also be one its token
+ * may push ({@code git_refs}). Anything else is a 403. The move admits the delivery desk's {@code
+ * qits:desk-admin} for any source of its own project (qits-1665), before that binding. Approve and decline are <b>not</b> bound to the
  * agent's project: a requirement says whom it admits, including {@code agent@<another project>}, and
  * that is the binding.
  */
@@ -339,6 +340,84 @@ public class ReleaseRequestController {
     return new SetReleaseSourcePriority.Response(
         releaseRequests.updateSourcePriority(
             requestId, body.branch(), body.priority(), caller()));
+  }
+
+  /**
+   * @param branch which named source to move — <b>in the body and not the path</b>, as on {@code
+   *     …/sources/priority}, because a branch name contains slashes
+   * @param reason why it leaves the request, as the mover says it: required and never blank (a 400
+   *     otherwise), recorded on both requests' {@code sourceMoves} and announced
+   */
+  public static record MoveReleaseRequestSource(@NotBlank String branch, @NotBlank String reason) {
+    /**
+     * @param from the request the source left, as it stands after its refold without it
+     * @param to the request queued after it, which holds the source now — minted if none was
+     */
+    // Named, so the anonymous ResponseN schemas of docs/openapi.yml are not renumbered.
+    @Schema(name = "MoveReleaseRequestSourceResponse")
+    public record Response(ReleaseRequestDto from, ReleaseRequestDto to) {}
+  }
+
+  /**
+   * <b>Move one source that alone holds a request back into the request queued after it</b>
+   * (qits-1665) — instead of force-pushing the branch back to {@code main}, withdrawing every other
+   * source with it, or holding them all. {@code ReleaseRequests.moveSource} is the rule and lists
+   * the refusals.
+   *
+   * <p><b>Who may move what.</b> {@code qits:admin}, {@code qits:admin-agent} and {@code qits:system}
+   * any movable source, as on every write here. The delivery desk's {@code qits:desk-admin} any
+   * movable source of its own project's requests: admitted by the role <b>before</b> the bound-agent
+   * check, because the desk's token also carries {@code qits:agent} with an empty {@code git_refs}
+   * and would otherwise be bound to no branch at all. It is not refused as a desk the way create and
+   * join are (qits-1596): a move takes nothing new to {@code main}. Any other {@code qits:agent} is
+   * bound like on every write — the request must be its project's and its repository's — and may
+   * move only a branch its token may push ({@code git_refs}), its own work's; another's is a 403.
+   */
+  @POST
+  @Path("/{requestId}/sources/move")
+  @Operation(
+      operationId = "moveReleaseRequestSource",
+      summary = "Move one source of an open release request to the request queued after it",
+      description =
+          "For a source that alone holds a shared request back (it conflicts, its check is red, or"
+              + " it is not ready): it leaves this request, which is folded again without it and"
+              + " goes back to PENDING, and joins the request queued after this one (queuedNext),"
+              + " minted queued behind it if there is none, keeping its priority, author and"
+              + " feature stamp. The queued request folds nothing until this one has released or"
+              + " been withdrawn; the branch releases from there. The branch's delivery ledger"
+              + " takes MOVED, its owning agent is told, and both requests list the move in"
+              + " sourceMoves with who moved it and why. The answer is both requests: from (this"
+              + " one, refolded) and to (the queued one). A blank reason is a 400. A request or"
+              + " source that does not exist is a 404. 409 when the request is not PENDING, READY,"
+              + " FAILED, REJECTED or CONFLICTED; when it is itself queued; for the default branch"
+              + " and a released tag, which every request carries; and for the request's only"
+              + " branch besides the default one, which is withdraw's job. qits:admin,"
+              + " qits:admin-agent, qits:system and the project's delivery desk (qits:desk-admin)"
+              + " may move any source; another agent (qits:agent) only a branch in its git_refs,"
+              + " in its own project, and 403 otherwise.")
+  public MoveReleaseRequestSource.Response moveSource(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      MoveReleaseRequestSource body) {
+    requestId = releaseRequests.resolveId(repoId, requestId);
+    String branch = body == null ? null : body.branch();
+    if (identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)) {
+      requireDeskRequest(repoId, requestId);
+    } else {
+      requireAgentRequest(repoId, requestId);
+      if (AgentAccess.isBoundAgent(identity, WIDER)
+          && !AgentAccess.coversBranch(identity, branch)) {
+        throw new DomainException(
+            403,
+            "An agent may move only a branch in its git_refs, its own work's; "
+                + branch
+                + " is not. The branch's own agent or the delivery desk moves it.");
+      }
+    }
+    ReleaseRequests.Moved moved =
+        releaseRequests.moveSource(
+            requestId, branch, body == null ? null : body.reason(), caller());
+    return new MoveReleaseRequestSource.Response(moved.from(), moved.to());
   }
 
   /**
@@ -1026,6 +1105,27 @@ public class ReleaseRequestController {
               + ".");
     }
     return actor;
+  }
+
+  /**
+   * The delivery desk's {@code qits:desk-admin} reaches the requests of its own project's
+   * repositories (qits-1665's move): the repository's project must be the token's, and the request
+   * that repository's. A caller holding a wider role besides passes the project check, as {@link
+   * AgentAccess#requireDeskProject} judges it.
+   */
+  private void requireDeskRequest(String repoId, String requestId) {
+    Repository repository = repositories.get(repoId); // 404 if absent
+    AgentAccess.requireDeskProject(
+        identity, repository.project == null ? null : repository.project.id);
+    if (!repoId.equals(releaseRequests.get(requestId).repoId())) {
+      throw new DomainException(
+          403,
+          "Release request "
+              + releaseRequests.get(requestId).qualifiedId()
+              + " is not a request of repository "
+              + repoId
+              + ".");
+    }
   }
 
   /** A bound agent reaches only the repositories of its own project. */
