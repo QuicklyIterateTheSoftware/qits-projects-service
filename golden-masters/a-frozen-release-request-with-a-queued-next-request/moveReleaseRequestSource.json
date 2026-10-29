@@ -38,11 +38,11 @@
       }
     ],
     "priority": "MEDIUM",
-    "mergedSha": "516e939e1c8247e5ac50eb4bee35c0bc243feaba",
+    "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001",
     "state": "PENDING",
     "unattended": false,
     "gateTicketId": null,
-    "detail": "Waiting for a CI verdict for 516e939e1c",
+    "detail": "Waiting for a CI verdict for 5eed5eed5e",
     "approvalRequired": false,
     "approvalState": "NOT_REQUIRED",
     "approvedBy": null,
@@ -98,7 +98,7 @@
         "label": "CI build",
         "position": "qa-publish",
         "state": "PENDING",
-        "detail": "Waiting for a CI verdict for 516e939e1c",
+        "detail": "Waiting for a CI verdict for 5eed5eed5e",
         "checks": [],
         "runId": null,
         "link": null

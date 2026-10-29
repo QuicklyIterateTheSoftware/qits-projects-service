@@ -3082,6 +3082,14 @@ public class ProviderStates {
     String queuedQualifiedId =
         QuarkusTransaction.requiringNew()
             .call(() -> ReleaseRequest.<ReleaseRequest>findById(queued).qualifiedId);
+    // A move out of the frozen request (qits-1665) refolds it: the fold is scripted, so the
+    // recorded answer names the same sha on every run.
+    mergerTouched = true;
+    merger
+        .get()
+        .answer(
+            eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.merged(
+                SCRIPTED_FOLD, List.of()));
     return new Setup(
         params(
             "projectId",
