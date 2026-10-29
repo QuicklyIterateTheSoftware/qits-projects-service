@@ -1422,6 +1422,37 @@
             "strings": [],
             "listFilteredTo": null
           }
+        },
+        {
+          "operationId": "moveReleaseRequestSource",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/sources/move",
+          "body": {
+            "branch": "ticket/contract-12",
+            "reason": "It conflicts with ticket/contract-11."
+          },
+          "status": 200,
+          "file": "a-frozen-release-request-with-a-queued-next-request/moveReleaseRequestSource.json",
+          "frozen": {
+            "ids": [
+              "$.from.id",
+              "$.from.repoId",
+              "$.from.queuedNext",
+              "$.to.id",
+              "$.to.repoId",
+              "$.to.queuedBehind"
+            ],
+            "instants": [
+              "$.from.createdAt",
+              "$.from.updatedAt",
+              "$.from.sourceMoves[*].movedAt",
+              "$.to.createdAt",
+              "$.to.updatedAt",
+              "$.to.sourceMoves[*].movedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
         }
       ]
     },

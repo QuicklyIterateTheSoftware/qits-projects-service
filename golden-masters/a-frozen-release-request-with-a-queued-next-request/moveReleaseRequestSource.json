@@ -1,0 +1,280 @@
+{
+  "from": {
+    "id": "00000000-0000-4000-8000-000000000004",
+    "qualifiedId": "contract-service-rr-1",
+    "repoId": "00000000-0000-4000-8000-000000000003",
+    "repoName": "contract-service",
+    "backingBranch": "release/contract-service-rr-1",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "ticket/contract-11",
+        "ref": "refs/heads/ticket/contract-11",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "epic/contract-13",
+        "ref": "refs/heads/epic/contract-13",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      }
+    ],
+    "priority": "MEDIUM",
+    "mergedSha": "516e939e1c8247e5ac50eb4bee35c0bc243feaba",
+    "state": "PENDING",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Waiting for a CI verdict for 516e939e1c",
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "approvalRequirements": [],
+    "gates": [
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": [],
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "supersededByQualifiedId": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null,
+    "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "upstream-in-flight",
+        "label": "Upstream releases",
+        "position": "pre-run-qa",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Waiting for a CI verdict for 516e939e1c",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ],
+    "preRun": {
+      "state": "PASSED"
+    },
+    "queuedBehind": null,
+    "queuedBehindQualifiedId": null,
+    "queuedNext": "00000000-0000-4000-8000-000000000002",
+    "queuedNextQualifiedId": "contract-service-rr-2",
+    "featureFreeze": {
+      "features": 2,
+      "threshold": 3,
+      "frozen": false,
+      "source": "PLATFORM"
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "ticket/contract-11",
+        "label": "ticket/contract-11",
+        "workItem": null
+      },
+      {
+        "source": "epic/contract-13",
+        "label": "epic/contract-13",
+        "workItem": null
+      }
+    ],
+    "sourceMoves": [
+      {
+        "branch": "ticket/contract-12",
+        "fromQualifiedId": "contract-service-rr-1",
+        "toQualifiedId": "contract-service-rr-2",
+        "movedBy": "dev",
+        "reason": "It conflicts with ticket/contract-11.",
+        "movedAt": "2026-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "to": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "qualifiedId": "contract-service-rr-2",
+    "repoId": "00000000-0000-4000-8000-000000000003",
+    "repoName": "contract-service",
+    "backingBranch": "release/contract-service-rr-2",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": false,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "ticket/contract-12",
+        "ref": "refs/heads/ticket/contract-12",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      },
+      {
+        "kind": "BRANCH",
+        "name": "ticket/contract-14",
+        "ref": "refs/heads/ticket/contract-14",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder",
+        "feature": true,
+        "explicitJoin": false
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": null,
+    "state": "PENDING",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Queued behind contract-service-rr-1: it folds once that request has released",
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "approvalRequirements": [],
+    "gates": [
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": null,
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "supersededByQualifiedId": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null,
+    "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PENDING",
+        "detail": "Waiting for the automations to answer",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Nothing is folded yet",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ],
+    "preRun": {
+      "state": "PENDING"
+    },
+    "queuedBehind": "00000000-0000-4000-8000-000000000004",
+    "queuedBehindQualifiedId": "contract-service-rr-1",
+    "queuedNext": null,
+    "queuedNextQualifiedId": null,
+    "featureFreeze": {
+      "features": 2,
+      "threshold": 3,
+      "frozen": false,
+      "source": "PLATFORM"
+    },
+    "participants": [
+      "contract-seeder"
+    ],
+    "items": [
+      {
+        "source": "ticket/contract-12",
+        "label": "ticket/contract-12",
+        "workItem": null
+      },
+      {
+        "source": "ticket/contract-14",
+        "label": "ticket/contract-14",
+        "workItem": null
+      }
+    ],
+    "sourceMoves": [
+      {
+        "branch": "ticket/contract-12",
+        "fromQualifiedId": "contract-service-rr-1",
+        "toQualifiedId": "contract-service-rr-2",
+        "movedBy": "dev",
+        "reason": "It conflicts with ticket/contract-11.",
+        "movedAt": "2026-01-01T00:00:00Z"
+      }
+    ]
+  }
+}
