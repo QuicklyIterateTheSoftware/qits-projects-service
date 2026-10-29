@@ -4,6 +4,7 @@ import eu.wohlben.qits.eventstream.QitsDurableEventListener;
 import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.ReleasePipelineRuns;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.Set;
@@ -22,6 +23,19 @@ import org.jboss.logging.Logger;
  * and the terminal transition. A live pipeline view is about precisely the two states the verdict
  * events leave out, so the two consumptions want opposite halves of one run and neither event could
  * have been widened into the other.
+ *
+ * <p><b>It changes request state, in exactly one case (qits-1731).</b> After the mirror write, a
+ * {@code RELEASE_REQUEST}-phase frame in {@code QUEUED} or {@code RUNNING} is handed to {@code
+ * ReleaseRequests.onOwnRunStarted}, which reopens a request a red CI verdict REJECTED when a newer
+ * run of its own is building that same fold again — a {@code qits ci retry}, typically — and so
+ * announces {@code ReleaseRequestStateChanged} PENDING when the retry is queued rather than seconds
+ * before its verdict. Before that, a retried request read REJECTED for the whole retry and every
+ * wait on it fired at once on the stale state. The order is load-bearing: the reopen reads the
+ * mirror row this frame just wrote, both for the request the run belongs to and for whether it is
+ * still building, so the mirror and the reopen can never disagree. Each opens its own transaction
+ * on the service datasource, never this claim's ({@code BuildStatusListener}'s arrangement), and a
+ * redelivered frame finds the request PENDING and does nothing. Every other frame — a terminal
+ * one, a publish-phase one — is mirrored and nothing more; the verdict listener still decides.
  *
  * <p><b>{@link #CONSUMER_ID} is a NEW storage key and {@code BuildStatusListener}'s is untouched.</b>
  * A consumer id names every {@code consumed_event} row and the watermark, so the two consumptions
@@ -47,11 +61,12 @@ import org.jboss.logging.Logger;
  *       when the payload names no request; see {@code ReleasePipelineRuns}.
  *   <li>{@code commitSha} — the commit the run built. The QA phase is the run at the request's
  *       current fold, and this is how the read tells it from a superseded fold's run.
- *   <li>{@code releaseRequestId} — <b>bound leniently and absent today</b>. {@code
- *       BuildStatusChanged} does not carry it, so the field reads null and the correlation is
- *       derived from the phase and the branch. It is bound anyway because the publisher's own answer
- *       would be better than any inference here, and binding it now is what makes that a
- *       zero-change improvement rather than a release on both sides.
+ *   <li>{@code releaseRequestId} — <b>bound leniently, and the publisher's answer wins where it is
+ *       there</b>. qits-ci now carries it on a {@code RELEASE_REQUEST} run's frames, beside {@code
+ *       releaseRequestQualifiedId}, {@code projectId} and {@code repoName}, none of which is bound;
+ *       a frame without it — every frame published before qits-ci carried it, and whatever the
+ *       consumer pact does not promise — reads null and is correlated from the phase and the branch,
+ *       so nothing here (the reopen of qits-1731 included) requires it.
  * </ul>
  *
  * <p><b>{@code startedAt} and {@code finishedAt} are deliberately not bound</b>, exactly as {@code
@@ -108,6 +123,8 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
 
   @Inject ReleasePipelineRuns pipelineRuns;
 
+  @Inject ReleaseRequests releaseRequests;
+
   @Override
   public String consumerId() {
     return CONSUMER_ID;
@@ -148,6 +165,12 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
             run.commitSha(),
             frame.occurredAt(),
             causeOf(frame)));
+    if (ReleasePipelineRuns.PHASE_RELEASE_REQUEST.equals(run.phase())
+        && ReleasePipelineRuns.BUILDING.contains(run.status())) {
+      // A run of a request's own was queued or started: a CI rejection it is building the fold of
+      // again is reopened (qits-1731). After the mirror write, which it reads — see the javadoc.
+      releaseRequests.onOwnRunStarted(run.repoId(), run.runId());
+    }
   }
 
   /**

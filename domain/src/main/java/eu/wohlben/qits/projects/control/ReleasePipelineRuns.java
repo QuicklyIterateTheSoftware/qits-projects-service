@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.jboss.logging.Logger;
@@ -26,6 +27,12 @@ import org.jboss.logging.Logger;
  * got. That is the property that lets this consumption be added without touching the state machine:
  * the whole of it is a mirror, and a mirror that fell behind would cost a surface rather than a
  * release.
+ *
+ * <p><b>One read here does feed a decision since qits-1731, and only as a HOLD</b>: {@link
+ * #buildingAgain} is what {@code ReleaseRequests} asks before a red verdict rejects a fold, and
+ * before a run's start reopens a CI rejection. It can delay a rejection while a newer run of the
+ * request's own builds the same fold, and it can never pass a gate: a mirror that fell behind holds
+ * for exactly as long as it lags, and a terminal frame — or no row at all — lifts the hold.
  *
  * <p><b>{@code record} opens its own transaction</b>, for {@link BuildStatusLedger}'s measured
  * reason exactly: its caller is a durable bus listener running under the claim transaction, which
@@ -94,6 +101,13 @@ public class ReleasePipelineRuns {
 
   /** The word a run reaches when a worker claims it — the one that stamps {@code startedAt}. */
   private static final String RUNNING = "RUNNING";
+
+  /**
+   * qits-ci's words for a run that has not finished — {@code UpstreamRequests.BUILDING}'s set, and
+   * deliberately the closed one where {@link #TERMINAL} is open: a word nobody has heard of is not
+   * evidence that anything is still building, so it holds nothing (qits-1731).
+   */
+  public static final Set<String> BUILDING = Set.of("QUEUED", RUNNING);
 
   @Inject ReleasePipelineRunRepository runs;
 
@@ -220,6 +234,44 @@ public class ReleasePipelineRuns {
           .orElse(null);
     }
     return null;
+  }
+
+  /**
+   * A QA run of this request that is building {@code sha} again after a red verdict, or empty
+   * (qits-1731) — the evidence that a {@code qits ci retry} (or a phase rerun) is in flight at the
+   * fold the red judged, so the red is not the gate's last word yet.
+   *
+   * <p>Qualifies: phase {@link #PHASE_RELEASE_REQUEST}, the mirror's {@code commitSha} equal to
+   * {@code sha}, status in {@link #BUILDING}, a run id other than {@code redRunId}, and — where the
+   * red's {@code finishedAt} is known — a newest transition strictly after it. That last clause is
+   * what keeps a <em>parallel</em> pipeline queued before the red finished from holding a rejection
+   * it was never an answer to; both instants are qits-ci's own (a verdict's {@code finishedAt} and a
+   * transition's {@code updatedAt} are the frames' {@code occurredAt}), so they are one clock.
+   *
+   * <p>Read in the caller's transaction: it is one indexed query on this datasource.
+   *
+   * @param redRunId the run whose red verdict is held; never itself the run that holds it
+   * @param redFinishedAt that verdict's instant, or null where none is known (no ordering clause)
+   */
+  public Optional<ReleasePipelineRun> buildingAgain(
+      String releaseRequestId, String sha, String redRunId, Instant redFinishedAt) {
+    if (releaseRequestId == null || sha == null) {
+      return Optional.empty();
+    }
+    return runs.findByRequest(releaseRequestId).stream()
+        .filter(run -> PHASE_RELEASE_REQUEST.equals(run.phase))
+        .filter(run -> sha.equals(run.commitSha))
+        .filter(run -> BUILDING.contains(run.status))
+        .filter(run -> !run.runId.equals(redRunId))
+        .filter(run -> redFinishedAt == null || run.updatedAt.isAfter(redFinishedAt))
+        .findFirst();
+  }
+
+  /** The request a mirrored run was correlated to, or empty where the mirror holds no row for it. */
+  public Optional<String> requestOf(String runId) {
+    return runId == null
+        ? Optional.empty()
+        : runs.findByIdOptional(runId).map(row -> row.releaseRequestId);
   }
 
   /** Every phase run of one request, newest transition first. Empty means "no phase has run". */
