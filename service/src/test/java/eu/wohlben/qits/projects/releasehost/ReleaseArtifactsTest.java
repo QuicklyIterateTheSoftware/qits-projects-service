@@ -538,7 +538,6 @@ public class ReleaseArtifactsTest {
               request.repoId = repoId;
               request.projectId = projectId;
               request.repoName = "qits-thing-service";
-              request.summary = "a release worth reading";
               request.state = state;
               request.version = version;
               request.mergedSha = MERGED_SHA;

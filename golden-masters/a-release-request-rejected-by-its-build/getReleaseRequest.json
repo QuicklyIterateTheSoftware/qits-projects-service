@@ -40,8 +40,6 @@
     "priority": "HIGH",
     "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
     "state": "REJECTED",
-    "summary": "feature/export; fix/rounding",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "Run 00000000-0000-4000-8000-000000000004 finished FAILURE for cb9776855921387be1951de5bbbf0914aa54b1bf",

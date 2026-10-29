@@ -185,11 +185,8 @@ import java.util.List;
  * maintenance branch's commit subject, a branch name. Empty for a main-only request no automation
  * has joined yet. Never null.
  *
- * <p><b>{@code summary} and {@code requester} are deprecated</b> and go in a later release.
- * {@code summary} is no longer anybody's words: it is the items' labels joined with {@code "; "},
- * capped at 200 characters ({@code …} where cut), and {@code main} where there are none — the same
- * text the fold's merge message and the release commit carry. {@code requester} is the principal
- * of the ask that opened the request; read {@code participants}.
+ * <p>There is no {@code summary} and no {@code requester} any more (qits-1673, the contract step):
+ * read {@code items} for what the request is about and {@code participants} for who took part.
  */
 public record ReleaseRequestDto(
     String id,
@@ -201,8 +198,6 @@ public record ReleaseRequestDto(
     String priority,
     String mergedSha,
     String state,
-    @Deprecated String summary,
-    @Deprecated String requester,
     boolean unattended,
     String gateTicketId,
     String detail,

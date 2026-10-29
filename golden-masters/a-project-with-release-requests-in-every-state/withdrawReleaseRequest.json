@@ -30,8 +30,6 @@
     "priority": "BLOCKING",
     "mergedSha": "0000000000000000000000000000000000000007",
     "state": "WITHDRAWN",
-    "summary": "bump/contract-service",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "The export moves to next quarter's release.",

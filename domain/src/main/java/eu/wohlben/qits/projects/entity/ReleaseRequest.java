@@ -323,22 +323,6 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   @Column(name = "armed_at", nullable = false)
   public Instant armedAt;
 
-  /**
-   * <b>Derived, and stored only until the contract step drops it</b> (qits-1673): the request's
-   * items' labels joined, capped at 200 characters, or {@code main} where it has none — see {@code
-   * ReleaseRequestItems#text}. Written at creation and again on every fold, which is also the
-   * moment the fold's merge message and the release commit read it. Nobody states it any more.
-   */
-  @Column(nullable = false)
-  public String summary;
-
-  /**
-   * <b>Deprecated</b> (qits-1673): the authenticated principal of the ask that opened the request,
-   * or of a later sole-source re-ask. Written so the contract step can drop it cleanly; nothing
-   * decides on it. Who took part is {@link ReleaseRequestParticipant}.
-   */
-  @Column public String requester;
-
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 32)
   public State state;

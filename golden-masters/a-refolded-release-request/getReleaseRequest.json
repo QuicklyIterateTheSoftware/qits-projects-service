@@ -40,8 +40,6 @@
     "priority": "HIGH",
     "mergedSha": "a1e24622a6b22ddf43a4f8d7674758a6d9b42a31",
     "state": "READY",
-    "summary": "feature/export; fix/rounding",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": null,

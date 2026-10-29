@@ -1145,8 +1145,7 @@ class GoldenMasterRecordingTest {
             "createReleaseRequest",
             "POST",
             requests,
-            "{\"branch\":\"feature/export\",\"summary\":\"Release the CSV export\","
-                + "\"priority\":\"LOWEST\"}"));
+            "{\"branch\":\"feature/export\",\"priority\":\"LOWEST\"}"));
     all.add(
         write(
             ProviderStates.A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH,

@@ -392,8 +392,6 @@ class RequestFailedSourceTest {
               row.state = ReleaseRequest.State.REJECTED;
               row.retryable = false;
               row.armedAt = Instant.now();
-              row.summary = "a request";
-              row.requester = requester;
               row.mergedSha = SHA;
               row.createdAt = Instant.now();
               row.updatedAt = Instant.now();

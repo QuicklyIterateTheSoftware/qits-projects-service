@@ -60,8 +60,8 @@ import org.jboss.logging.Logger;
  * <p>The owner is the ACTIVE agent of the request's project whose wrapper branch is the branch, or
  * whose {@code <wrapperBranch>-} the branch starts with — exactly the refs qits-workspaces lets that
  * agent push ({@code refs/heads/<wrapper>} and {@code refs/heads/<wrapper>-*}, its {@code
- * gitRefsFor}). Pushing the branch is what makes it the agent's; no request's {@code requester},
- * participants or source {@code addedBy} is read. Where two agents match (an epic's {@code
+ * gitRefsFor}). Pushing the branch is what makes it the agent's; no request's participants or
+ * source {@code addedBy} is read. Where two agents match (an epic's {@code
  * epic/qits-1} and a ticket wrapper {@code epic/qits-1-x} both prefix {@code epic/qits-1-x-y}), the
  * longest wrapper branch wins: it is the narrower claim. None matching is {@code NO_AGENT} and
  * nothing is said — a person's branch, a {@code maintenance/} bump that slipped the ledger's filter,

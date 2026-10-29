@@ -158,7 +158,6 @@ public class ReleaseRequestListGateReadsTest {
               row.id = UUID.randomUUID().toString();
               row.repoId = warmRepo;
               row.projectId = warmProject;
-              row.summary = "warming up";
               row.state = ReleaseRequest.State.CONFLICTED;
               row.mergedSha = fold(99);
               row.createdAt = when;
@@ -536,7 +535,6 @@ public class ReleaseRequestListGateReadsTest {
               row.id = id;
               row.repoId = repoId;
               row.projectId = projectId;
-              row.summary = "an open release of " + repoId;
               row.state = ReleaseRequest.State.CONFLICTED;
               row.mergedSha = fold;
               row.createdAt = when;
@@ -650,7 +648,6 @@ public class ReleaseRequestListGateReadsTest {
               row.id = UUID.randomUUID().toString();
               row.repoId = repoId;
               row.projectId = projectId;
-              row.summary = "a finished release of " + repoId;
               row.state = ReleaseRequest.State.FINALIZED;
               row.version = "2026.1014." + Math.abs(repoId.hashCode() % 900000 + 100000);
               row.createdAt = when;

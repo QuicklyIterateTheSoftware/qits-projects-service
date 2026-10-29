@@ -174,7 +174,6 @@ public class ProjectReleaseRequestsTest {
               row.id = UUID.randomUUID().toString();
               row.repoId = repoId;
               row.projectId = projectId;
-              row.summary = summary;
               row.state = state;
               row.version = "2026.903." + Math.abs(summary.hashCode() % 900000 + 100000);
               row.createdAt = when;

@@ -2,8 +2,9 @@ package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ApprovalRequirementChanged;
-import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +19,8 @@ import java.util.stream.Collectors;
  * second policy to consult here. One line per (request, requirement) — two open requirements of one
  * fold are two lines, because the label names the requirement.
  *
- * <p>The label is the request's summary, read from its row now (left out when there is none), then
+ * <p>The label is what the request is about — its items' text, derived from its sources now
+ * ({@link ReleaseRequests#textOf}; left out for a request that is gone) — then
  * what it waits on. The cause is {@code fold <sha8>}: a fold has no actor, and the phrase can never
  * equal a desk's subject.
  */
@@ -32,6 +34,9 @@ public class ApprovalNeededSource implements DeskTriggerSource {
 
   /** {@code ApprovalRole.DESK_WORD}, as {@code admits} renders the desk. */
   private static final String DESK = "desk";
+
+  /** Derives what a request is about; null on an instance built outside CDI, which leaves it out. */
+  @Inject ReleaseRequests requests;
 
   @Override
   public String id() {
@@ -79,7 +84,7 @@ public class ApprovalNeededSource implements DeskTriggerSource {
   }
 
   /** {@code <summary>; waits on <requirement>: <reason>}, each part left out when absent. */
-  private static String label(ApprovalRequirementChanged changed) {
+  private String label(ApprovalRequirementChanged changed) {
     String waits =
         "waits on "
             + changed.requirementId()
@@ -89,15 +94,14 @@ public class ApprovalNeededSource implements DeskTriggerSource {
   }
 
   /**
-   * What the request is about: the derived text (qits-1673) its last fold stored in the {@code
-   * summary} column — its items' labels joined — so the line names the work, not a typed sentence.
+   * What the request is about: its items' labels joined (qits-1673), derived from the sources it
+   * carries now, so the line names the work, not a typed sentence.
    */
-  private static String summaryOf(String releaseRequestId) {
-    if (releaseRequestId == null) {
+  private String summaryOf(String releaseRequestId) {
+    if (releaseRequestId == null || requests == null) {
       return null;
     }
-    ReleaseRequest request = ReleaseRequest.findById(releaseRequestId);
-    return request == null ? null : request.summary;
+    return requests.textOf(releaseRequestId);
   }
 
   private static String sha8(String sha) {

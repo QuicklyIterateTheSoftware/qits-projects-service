@@ -17,6 +17,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestWorkItemDto;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.releasehost.FakeActiveBuilds;
 import eu.wohlben.qits.projects.releasehost.RecordingBackingBranchMerger;
@@ -123,14 +124,15 @@ public class ReleaseRequestAttributionTest {
   /**
    * An agent's create is the agent's: the source it adds and the participant it becomes are its own
    * principal. Over the controller with its token, and over HTTP with a body that still states
-   * another agent as {@code requester} — read past, not refused.
+   * another agent as {@code requester} and a typed {@code summary} — neither declared any more
+   * (qits-1673, the contract step), both read past, and the answer a 200 carrying neither.
    */
   @Test
   void anAgentStatingAnotherRequesterIsAttributedToItself() {
     String branch = "ticket/" + projectId + "-own";
     ReleaseRequestDto viaToken =
         door(agentToken(branch))
-            .create(repoId, new ReleaseRequestController.CreateReleaseRequest(branch, null, null))
+            .create(repoId, new ReleaseRequestController.CreateReleaseRequest(branch, null))
             .request();
     assertEquals(AGENT, addedByOf(viaToken, branch));
     assertEquals(List.of(AGENT), viaToken.participants());
@@ -151,6 +153,8 @@ public class ReleaseRequestAttributionTest {
     assertEquals(AGENT, read.getString("request.sources.find { it.name == 'feature/stated' }.addedBy"));
     assertEquals(List.of(AGENT), read.getList("request.participants"));
     assertFalse(read.getList("request.participants").contains(OTHER_AGENT));
+    assertFalse(read.getMap("request").containsKey("requester"), "no requester on the answer");
+    assertFalse(read.getMap("request").containsKey("summary"), "no summary on the answer");
   }
 
   /** Naming the maintenance robot in the body does not make an agent's request unattended. */
@@ -168,7 +172,6 @@ public class ReleaseRequestAttributionTest {
     JsonPath read = read(id);
     assertEquals(List.of(AGENT), read.getList("request.participants"));
     assertFalse(read.getBoolean("request.unattended"));
-    assertEquals(AGENT, read.getString("request.requester"));
   }
 
   /**
@@ -191,7 +194,7 @@ public class ReleaseRequestAttributionTest {
     assertTrue(read.getBoolean("request.unattended"));
     assertNull(read.getString("request.sources.find { it.name == 'main' }.addedBy"));
     assertEquals(List.of(), read.getList("request.items"));
-    assertEquals("main", read.getString("request.summary"), "no item reads as main");
+    assertEquals("main", releaseRequests.textOf(id), "no item reads as main");
   }
 
   /** A maintenance request an agent joined has a reader, so it is attended. */
@@ -254,7 +257,7 @@ public class ReleaseRequestAttributionTest {
                 qualifiedId + " Fix the export",
                 new ReleaseRequestWorkItemDto(qualifiedId, "Fix the export"))),
         read.items());
-    assertEquals(qualifiedId + " Fix the export", read.summary());
+    assertEquals(qualifiedId + " Fix the export", releaseRequests.textOf(id));
     assertEquals(
         "Release request " + read.qualifiedId() + ": " + qualifiedId + " Fix the export",
         merger.foldsOf("refs/heads/" + read.backingBranch()).get(0).message().lines()
@@ -287,12 +290,43 @@ public class ReleaseRequestAttributionTest {
     assertEquals(
         List.of(new ReleaseRequestItemDto(branch, "bump(dependencies): 2 dependencies", null)),
         read.items());
-    assertEquals("bump(dependencies): 2 dependencies", read.summary());
+    assertEquals("bump(dependencies): 2 dependencies", releaseRequests.textOf(id));
     assertEquals(
         "bump(dependencies): 2 dependencies",
         QuarkusTransaction.requiringNew()
-            .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).summary),
-        "the stored summary is the derived text the fold wrote");
+            .call(
+                () ->
+                    ReleaseRequestSource.<ReleaseRequestSource>find(
+                            "requestId = ?1 and name = ?2", id, branch)
+                        .firstResult()
+                        .label),
+        "the label the fold stored on the source");
+  }
+
+  /**
+   * qits-maintenance folds a bump's commits under {@code chore(<every ticket it carries>): …}; the
+   * stored label drops that work-item scope and keeps the inner subject.
+   */
+  @Test
+  void aMaintenanceBranchsLabelLosesItsWorkItemScope() {
+    String branch = "maintenance/dependencies/" + UUID.randomUUID();
+    gitHost.commit(
+        repoId,
+        projectId,
+        null,
+        "refs/heads/" + branch,
+        null,
+        null,
+        "chore(qits-112, qits-142, qits-1708): bump(qits-112): 1 dependencies\n",
+        Map.of(),
+        Map.of());
+
+    String id = releaseRequests.request(repoId, branch, MAINTENANCE, null).id();
+
+    assertEquals(
+        List.of(new ReleaseRequestItemDto(branch, "bump(qits-112): 1 dependencies", null)),
+        releaseRequests.get(id).items());
+    assertEquals("bump(qits-112): 1 dependencies", releaseRequests.textOf(id));
   }
 
   // ---- helpers ----------------------------------------------------------------------------------

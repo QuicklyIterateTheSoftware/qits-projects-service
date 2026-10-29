@@ -288,7 +288,6 @@ class RequestStalledSourceTest {
               row.state = state;
               row.retryable = false;
               row.armedAt = armed;
-              row.summary = "a request";
               row.mergedSha = sha;
               row.createdAt = armed;
               row.updatedAt = armed;

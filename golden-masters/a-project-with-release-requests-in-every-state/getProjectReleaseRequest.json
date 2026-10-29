@@ -30,8 +30,6 @@
     "priority": "BLOCKING",
     "mergedSha": "0000000000000000000000000000000000000007",
     "state": "PENDING",
-    "summary": "bump/contract-service",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": "Waiting for a person to approve 0000000000",

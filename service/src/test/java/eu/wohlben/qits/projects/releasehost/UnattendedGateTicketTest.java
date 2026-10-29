@@ -212,7 +212,7 @@ public class UnattendedGateTicketTest {
   /**
    * qits-maintenance's retired client id is not in the shipped list any more (qits-162's cutover is
    * finished, and no environment signs in with it) — a red gate on a bump filed under that old name
-   * is treated like any other named requester's, not like the robot's.
+   * is treated like any other named participant's, not like the robot's.
    */
   @Test
   public void aRedGateOnTheRobotsRetiredClientIdIsNoLongerUnattended() {
@@ -829,7 +829,7 @@ public class UnattendedGateTicketTest {
   /**
    * A request nobody is attributed to. Every door attributes to its caller, and the suite's callers
    * are all authenticated, so the case this test wants — a request with no participant at all — is
-   * made by clearing the participants (and the deprecated column) directly.
+   * made by clearing the participants directly.
    */
   private String createWithoutRequester(String branch) {
     String id = create(branch, "somebody");
@@ -837,8 +837,6 @@ public class UnattendedGateTicketTest {
         .run(
             () -> {
               ReleaseRequestParticipant.delete("requestId", id);
-              ReleaseRequest.<ReleaseRequest>findByIdOptional(id)
-                  .ifPresent(row -> row.requester = null);
             });
     return id;
   }

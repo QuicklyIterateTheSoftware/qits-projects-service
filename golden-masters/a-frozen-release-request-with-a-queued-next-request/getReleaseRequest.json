@@ -50,8 +50,6 @@
     "priority": "HIGH",
     "mergedSha": null,
     "state": "PENDING",
-    "summary": "ticket/contract-11; ticket/contract-12; epic/contract-13",
-    "requester": "contract-seeder",
     "unattended": false,
     "gateTicketId": null,
     "detail": null,

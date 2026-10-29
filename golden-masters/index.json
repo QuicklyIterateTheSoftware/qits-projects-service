@@ -4398,7 +4398,6 @@
           "path": "/projects/api/repositories/{repositoryId}/release-requests",
           "body": {
             "branch": "feature/export",
-            "summary": "Release the CSV export",
             "priority": "LOWEST"
           },
           "status": 200,

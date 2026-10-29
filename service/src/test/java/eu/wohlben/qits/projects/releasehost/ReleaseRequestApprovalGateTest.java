@@ -705,7 +705,6 @@ public class ReleaseRequestApprovalGateTest {
               row.id = id;
               row.repoId = repoId;
               row.projectId = projectId;
-              row.summary = "settled history";
               row.state = state;
               row.mergedSha = "settled-fold-" + id;
               row.createdAt = Instant.now();
