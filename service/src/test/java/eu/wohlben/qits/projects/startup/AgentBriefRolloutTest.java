@@ -63,6 +63,24 @@ public class AgentBriefRolloutTest {
     assertEquals(0, rollout.rollOut(), "idempotent");
   }
 
+  /**
+   * qits-1724: an unedited row still holding the brief that waited on a release request id rolls
+   * forward to the one that waits on the branch with qits wait branch.
+   */
+  @Test
+  public void anUneditedQits1724BriefRollsForward() {
+    stage(AgentSurfaceDefaults.WORKSPACE_AGENT, AgentSurfaceDefaults.QITS_1724_AGENT_DESK_BRIEF);
+    stage(
+        AgentSurfaceDefaults.TICKET_DISPATCH, AgentSurfaceDefaults.QITS_1724_COMPOSED_RUN_BRIEF);
+
+    assertTrue(rollout.rollOut() >= 2, "both staged rows roll");
+
+    assertEquals(AgentSurfaceDefaults.AGENT_DESK_BRIEF, prompt(AgentSurfaceDefaults.WORKSPACE_AGENT));
+    assertEquals(
+        AgentSurfaceDefaults.COMPOSED_RUN_BRIEF, prompt(AgentSurfaceDefaults.TICKET_DISPATCH));
+    assertEquals(0, rollout.rollOut(), "idempotent");
+  }
+
   @Test
   public void anOwnersEditStays() {
     stage(AgentSurfaceDefaults.WORKSPACE_AGENT, "Steer like this.");

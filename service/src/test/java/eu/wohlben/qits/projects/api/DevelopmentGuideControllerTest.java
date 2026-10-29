@@ -169,7 +169,8 @@ public class DevelopmentGuideControllerTest {
     assertTrue(workstation.contains("qits projects desk answer --project <project>"));
     String agent = read("agent").getString("markdown");
     assertTrue(agent.contains("## Ask the delivery desk"));
-    assertTrue(agent.contains("Never key a wait to a fold's sha"));
+    assertTrue(agent.contains("Wait on your branch, never on a release request id or a fold's sha"));
+    assertTrue(agent.contains("qits wait branch"), "qits-1724: the development flow names it");
     assertTrue(read("refinement").getString("markdown").contains("## Ask the delivery desk"));
     assertTrue(
         read("desk").getString("markdown").contains("declare a `qits wait` with a timeout for it"));
@@ -193,6 +194,77 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
+  }
+
+  /** qits-1724: the flow waits on the branch, never on a release request id or a fold's sha. */
+  @Test
+  public void theFlowWaitsOnTheBranch() {
+    assertTrue(
+        DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
+            "## Waiting for your branch or a run: declare it and end your turn"));
+    assertTrue(
+        DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
+            "qits wait branch <your branch> --repository <repository> --until live"));
+    assertTrue(
+        DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
+            "qits wait branch <your branch> --until live"));
+    assertFalse(
+        DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
+            "qits wait release-request <request id>"));
+    assertEquals(
+        List.of(
+            DevelopmentGuideDefaults.QITS_1679_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW),
+        DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
+        "an unedited flow part rolls forward to the new text");
+    assertTrue(
+        DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW.contains(
+            "qits wait release-request <request id>"),
+        "the qits-1724 text is the one before qits wait branch existed");
+  }
+
+  /** qits-1724: an unedited flow row holding the qits-1724 text rolls forward on boot. */
+  @Test
+  public void anUneditedFlowPartRollsForwardFromQits1724() {
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    AgentSurfaceConfigurationDto flow = surfaces.get(key);
+    surfaces.save(
+        key, withText(flow, DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains("qits wait branch"));
+  }
+
+  /** qits-1724: the workstation guide waits on the branch too. */
+  @Test
+  public void theWorkstationGuideWaitsOnTheBranch() {
+    assertTrue(
+        DevelopmentGuideDefaults.WORKSTATION_GUIDE.contains(
+            "Then wait for the outcome\non your branch (`qits wait branch <branch> --until"
+                + " live`) or on the item's final state,\nnever on a request id or a fold."));
+    assertEquals(
+        List.of(
+            DevelopmentGuideDefaults.QITS_1679_WORKSTATION_GUIDE,
+            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_WORKSTATION_GUIDE),
+        DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("workstation")),
+        "an unedited workstation part rolls forward to the new text");
+  }
+
+  /** qits-1724: an unedited workstation row holding the qits-1724 text rolls forward on boot. */
+  @Test
+  public void anUneditedWorkstationPartRollsForwardFromQits1724() {
+    String key = DevelopmentGuideDefaults.key("workstation");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(
+        key, withText(part, DevelopmentGuideDefaults.QITS_1724_PREVIOUS_WORKSTATION_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(
+        read("workstation")
+            .getString("markdown")
+            .contains("qits wait branch <branch> --until live"));
   }
 
   @Test

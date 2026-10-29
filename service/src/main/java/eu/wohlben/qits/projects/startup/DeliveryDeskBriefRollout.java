@@ -69,7 +69,8 @@ public class DeliveryDeskBriefRollout {
           AgentSurfaceDefaults.QITS_1604_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1621_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1679_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_1679_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 

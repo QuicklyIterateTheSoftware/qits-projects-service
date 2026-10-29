@@ -349,7 +349,7 @@ public class DeliveryDeskBriefRolloutTest {
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(after.contains("A desk trigger prompts you too"), after);
-    assertTrue(after.contains("qits wait release-request <id>"), after);
+    assertTrue(after.contains("qits wait branch <your branch>"), after);
     assertFalse(after.contains("Never loop or\nsleep inside a turn."), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
@@ -383,7 +383,7 @@ public class DeliveryDeskBriefRolloutTest {
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(after.contains("platform rights across the estate"), after);
-    assertTrue(after.contains("qits wait release-request <id>"), after);
+    assertTrue(after.contains("qits wait branch <your branch>"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
@@ -413,6 +413,43 @@ public class DeliveryDeskBriefRolloutTest {
   @Test
   public void anOwnerEditedQits1517BriefIsLeftAlone() {
     String edited = AgentSurfaceDefaults.QITS_1517_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
+   * qits-1724: an unedited qits-1724 brief — the one that waited on a release request id — rolls
+   * to the current one, which waits on the branch with qits wait branch.
+   */
+  @Test
+  public void anUneditedQits1724BriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT.contains(
+            "qits wait release-request <id> --label '<what you will do>'"),
+        "the qits-1724 text is the one before qits wait branch existed");
+    stage(AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1724 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(
+        after.contains(
+            "qits wait branch <your branch> --repository <repository> --until live --label '<what"
+                + " you will do>'"),
+        after);
+    assertFalse(after.contains("qits wait release-request <id>"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1724: an edit of the qits-1724 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1724BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
     stage(edited);
 
     assertFalse(rollout.rollOut(), "an edit is the owner's");
