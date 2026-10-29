@@ -4205,7 +4205,7 @@ else happened", which is most of what is worth knowing about this service:
 | `authorization` | a browser session at the two `qits:system` doors; a machine bearer at the planning surface; an anonymous caller | `assertNoEdgesTo(qits-githost)` — a refusal is decided at the door, so no work is done for a caller about to be refused |
 | `catalogue` | a project created and its wrapper published; a component joined; the bootstrap's adoption | `assertEdgeCount(3)` on the adoption — it asks the git host **once** and clones, pushes and mirrors nothing |
 | `planning` | a plan proposed and frozen; a task marked implemented | `assertOnlyEdgesFrom(<one person>)` — the whole planning surface is rows in this service's own `epics` database |
-| `operations` | an operator reviews the catalogue; opening a project's components | `assertEdgeCount(4)` + one initiator on the reads, against the **one** read that is not free: the component list refreshes the wrapper's mirror from the git host, because membership is a file rather than a column |
+| `operations` | an operator reviews the catalogue; opening a project's components | `assertEdgeCount(5)` on the reads — the overview, the single repository and the epics reach nothing, and the two reads that are not free each refresh a wrapper's mirror from the git host, because membership is a file rather than a column: the component list, and since qits-1695 the flat catalogue, which carries `declared` |
 
 That last pair is the finding worth carrying: **`GET /projects/{id}/repositories` is a git fetch.**
 It joins the project's rows to the wrapper's `.gitmodules`, which lives in a repository, so
@@ -4216,6 +4216,18 @@ window, not one per request. That throttle is also why the story has to **wait t
 before its read (`StoryPlatform.awaitMirrorFreshnessLapse`): without it, whether the arrow appears
 depends on how long the neighbouring story took, which is a `networkHash` that never settles.
 Anything that puts this route behind a poll faster than the window is polling the git host.
+
+**The flat catalogue `GET /repositories` is a git fetch too, since qits-1695** made it carry
+`declared`: `RepositoryService.listCoordinates` asks `WrapperReconcileService.view` once per project,
+the same path. So every story that reads it waits the window out first and asserts the fetch —
+`CatalogueReviewIT`'s reads and `AccessRefusalIT`'s machine story (qits-1729). Without the wait the
+arrow came and went with the neighbour's timing, and `AccessRefusalIT` failed release gates at random.
+
+**`PackagedWithMockIdp` turns the git-host name reconcile timer off**
+(`qits.projects.githost-names.reconcile-every=off`), as `%dev`/`%test` do. It is NORMAL mode, so the
+timer would otherwise run 30s after boot and every 5m. No story causes its `PUT /git/{id}/names`, so
+a pass landing in a story's window is an arrow nobody drew, and the 7s waits above made that likely
+(qits-1729). Adoption's names PUT is synchronous and still drawn.
 
 **Running them:**
 
