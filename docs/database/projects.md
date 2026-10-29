@@ -333,10 +333,8 @@ erDiagram
     string rejecting_run_id
     string repo_id "not null"
     string repo_name
-    string requester
     boolean retryable "not null"
     enum state "not null"
-    string summary "not null"
     string superseded_by
     instant updated_at "not null"
     string version
