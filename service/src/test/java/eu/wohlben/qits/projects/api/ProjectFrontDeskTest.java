@@ -6,11 +6,15 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.agenthost.FakeProjectDaemon;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -47,6 +51,10 @@ public class ProjectFrontDeskTest {
   @Inject Vertx vertx;
 
   @Inject AgentTunnels tunnels;
+
+  @Inject DevelopmentGuideService guide;
+
+  @Inject ObjectMapper json;
 
   @TestHTTPResource("/")
   URL root;
@@ -129,7 +137,8 @@ public class ProjectFrontDeskTest {
   // ---- through the tunnel ------------------------------------------------------------------------
 
   @Test
-  public void aPromptReachesTheDaemonWithItsBearerAndTheAnswerPassesThroughVerbatim() {
+  public void aPromptReachesTheDaemonWithItsBearerAndTheAnswerPassesThroughVerbatim()
+      throws Exception {
     String projectId = createProject("Front Desk Prompt " + UUID.randomUUID());
     replies.set(Map.of("front-desk/prompt", new FakeProjectDaemon.Reply(200, PROMPTED)));
     connectDaemon(projectId);
@@ -150,7 +159,12 @@ public class ProjectFrontDeskTest {
     assertEquals(ContainerProxyPath.base(projectId) + "front-desk/prompt", seen.uri());
     assertEquals("Bearer qits-projects-daemon", seen.authorization());
     assertEquals("localhost:13338", seen.host());
-    assertEquals("{\"text\":\"What is ready for dev?\"}", seen.body());
+    // qits-1734: the person's text rides behind the brief pointer, with the desk guide's hash.
+    String relayed = json.readTree(seen.body()).get("text").asText();
+    String pointer = DeskBrief.pointer(guide.renderHash(DevelopmentGuideDefaults.DESK));
+    assertTrue(relayed.startsWith(DeskBrief.INSTRUCTION), relayed);
+    assertEquals(pointer + "\n\nWhat is ready for dev?", relayed);
+    assertTrue(relayed.contains("What is ready for dev?"), relayed);
   }
 
   @Test

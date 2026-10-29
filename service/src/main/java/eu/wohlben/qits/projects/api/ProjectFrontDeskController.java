@@ -3,9 +3,12 @@ package eu.wohlben.qits.projects.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.DaemonApiClient;
 import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.security.AgentAccess;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -48,6 +51,11 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *       command.
  * </ul>
  *
+ * <p><b>The brief pointer</b> (qits-1734): the prompt door relays the person's text behind {@link
+ * DeskBrief#pointer} and a blank line, stating the desk variant's guide-hash at that moment, so the
+ * desk re-reads its guide before answering whenever the guide moved since it last read it. The
+ * blank-text check runs on the person's own text, before the pointer is added.
+ *
  * <p>A person's doors, and an admin agent's: the class admits {@code qits:admin}, {@code
  * qits:admin-agent} and, since epic qits-1621, {@code qits:desk-admin} — bound to its own project
  * ({@link AgentAccess#isDesk}/{@link AgentAccess#requireDeskProject}, in {@link #unknownProject}:
@@ -77,6 +85,8 @@ public class ProjectFrontDeskController {
   @Inject FrontDeskPrompter prompter;
 
   @Inject ObjectMapper json;
+
+  @Inject DevelopmentGuideService guide;
 
   /**
    * How long one proxied call may take. The daemon only queues or reads — it never waits on a turn
@@ -120,7 +130,11 @@ public class ProjectFrontDeskController {
   @Consumes(MediaType.APPLICATION_JSON)
   @Operation(
       operationId = "promptFrontDesk",
-      summary = "Hand the project's front desk a prompt: delivered at once, or queued")
+      summary = "Hand the project's front desk a prompt: delivered at once, or queued",
+      description =
+          "The desk receives the text prefixed with the brief pointer — run `qits help guide`"
+              + " and follow the brief, with the desk guide's current hash — and a blank line,"
+              + " so it re-reads its guide only when that hash moved.")
   @APIResponse(
       responseCode = "200",
       description = "Delivered or queued",
@@ -155,7 +169,7 @@ public class ProjectFrontDeskController {
     }
     String body;
     try {
-      body = json.writeValueAsString(Map.of("text", request.text()));
+      body = json.writeValueAsString(Map.of("text", relayed(request.text())));
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }
@@ -172,6 +186,14 @@ public class ProjectFrontDeskController {
       Thread.currentThread().interrupt();
       return refusal(503, "Interrupted while asking the project's front desk.");
     }
+  }
+
+  /**
+   * What the desk is handed for a person's {@code text}: {@link DeskBrief#pointer} with the desk
+   * variant's current guide-hash, a blank line, then the text verbatim.
+   */
+  String relayed(String text) {
+    return DeskBrief.pointer(guide.renderHash(DevelopmentGuideDefaults.DESK)) + "\n\n" + text;
   }
 
   @GET

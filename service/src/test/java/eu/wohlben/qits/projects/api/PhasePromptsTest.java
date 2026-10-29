@@ -8,6 +8,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -48,12 +49,15 @@ public class PhasePromptsTest {
     return entity.archetype == Archetype.TICKET ? "qits-123" : "qits-9";
   }
 
+  /** The agent variant's guide-hash each fixture is rendered with (qits-1734). */
+  private static final String HASH = "0123456789abcdef";
+
   private static Optional<String> prompt(WorkEntity entity) {
-    return PhasePrompts.promptFor(entity, qualifiedOf(entity));
+    return PhasePrompts.promptFor(entity, qualifiedOf(entity), HASH);
   }
 
   private static Optional<PhasePrompts.Started> started(WorkEntity entity) {
-    return PhasePrompts.startedBy(entity, qualifiedOf(entity));
+    return PhasePrompts.startedBy(entity, qualifiedOf(entity), HASH);
   }
 
   private static String promptFor(EntityStatus status) {
@@ -394,13 +398,14 @@ public class PhasePromptsTest {
 
   /**
    * <b>The length budget</b> (qits-592): each phase turn is at most 900 characters, not counting the
-   * flow-brief pointer and its separating space, and not counting the substituted title, type,
+   * flow-brief pointer, the guide-hash note after it (qits-1734) and their separating spaces, and
+   * not counting the substituted title, type,
    * qualified id, slug, id and pre-approving person's name (qits-1075) — each occurrence of each.
    * Realistic values, so a long title cannot hide in the budget.
    */
   @Test
   public void everyPhaseTurnFitsTheBudget() {
-    String pointer = PhasePrompts.FLOW_BRIEF_POINTER;
+    String pointer = PhasePrompts.FLOW_BRIEF_POINTER + " " + DeskBrief.hashNote(HASH);
     StringBuilder report = new StringBuilder();
     boolean over = false;
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
@@ -522,6 +527,31 @@ public class PhasePromptsTest {
                   "and so does every epic phase, from the same seam and the same constant: "
                       + turn));
     }
+  }
+
+  /**
+   * <b>The guide-hash follows the pointer</b> (qits-1734): every dispatched turn of either archetype
+   * states the agent variant's hash it was rendered with, right after the pointer, so an agent re-reads
+   * the guide only when it moved.
+   */
+  @Test
+  public void everyDispatchedInstructionStatesTheGuideHashAfterThePointer() {
+    String opening = PhasePrompts.FLOW_BRIEF_POINTER + " " + DeskBrief.hashNote(HASH) + " ";
+    for (EntityStatus status : EntityStatus.values()) {
+      for (WorkEntity entity : new WorkEntity[] {ticket(status), epic(status)}) {
+        prompt(entity)
+            .ifPresent(
+                turn -> {
+                  assertTrue(turn.startsWith(opening), turn);
+                  assertTrue(turn.contains(HASH), turn);
+                });
+      }
+    }
+    assertTrue(
+        PhasePrompts.promptFor(ticket(EntityStatus.REPORTED), "qits-123", "fedcba9876543210")
+            .orElseThrow()
+            .contains(DeskBrief.hashNote("fedcba9876543210")),
+        "the hash is the caller's, not a constant");
   }
 
   private static WorkEntity epic(EntityStatus status) {
@@ -750,7 +780,7 @@ public class PhasePromptsTest {
   public void aRowWithNoQualifiedIdIsNamedAsBeforeAndGetsNoCommitSentence() {
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
       for (String missing : new String[] {null, "", "  "}) {
-        String turn = PhasePrompts.promptFor(entity, missing).orElseThrow();
+        String turn = PhasePrompts.promptFor(entity, missing, HASH).orElseThrow();
         String where = entity.archetype + " " + entity.status + " [" + missing + "]: " + turn;
         assertFalse(turn.contains("null"), where);
         assertFalse(turn.contains("term("), where);

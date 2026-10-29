@@ -14,6 +14,8 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchListing;
+import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
+import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
@@ -342,6 +344,9 @@ public class PhaseAdvance {
   /** The wrapper's registered name, for the address pair the git host announces a creation under. */
   @Inject RepositoryNameRepository repositoryNames;
 
+  /** The agent variant's guide-hash, stated in every dispatched turn (qits-1734). */
+  @Inject DevelopmentGuideService guide;
+
   /**
    * The {@code version} that hand-off carries in place of a release version: what the far side's
    * history entry records as having ended the agent's work.
@@ -541,7 +546,11 @@ public class PhaseAdvance {
     // The turn is rendered here, once a workspace could stand on the branch, with the same
     // qualified id the dispatch named that workspace with (qits-301).
     PhasePrompts.Started started =
-        PhasePrompts.start(entity, phase, workspaces.qualifiedIdOf(entity));
+        PhasePrompts.start(
+            entity,
+            phase,
+            workspaces.qualifiedIdOf(entity),
+            guide.renderHash(DevelopmentGuideDefaults.AGENT));
     boolean spoken = deliver(entity, started, target, changedBy);
     if (spoken) {
       startPhase(entity, changedBy);

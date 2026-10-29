@@ -11,6 +11,7 @@ import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
+import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -184,8 +185,9 @@ class WaitClosedSourceTest {
     DeskTriggerWindow window = DeskTriggerFixtures.windows(projectId).get(0);
     assertTrue(window.state != DeskTriggerWindowState.OPEN, "closed by the next sweep");
     assertTrue(
-        window.message.startsWith("A wait you declared has closed. (desk trigger " + window.id),
+        window.message.startsWith("A wait you declared has closed. " + DeskBrief.INSTRUCTION),
         window.message);
+    assertTrue(window.message.contains(" (desk trigger " + window.id), window.message);
     assertTrue(window.message.endsWith("\n\nWaits you declared:\n" + TURN), window.message);
   }
 
