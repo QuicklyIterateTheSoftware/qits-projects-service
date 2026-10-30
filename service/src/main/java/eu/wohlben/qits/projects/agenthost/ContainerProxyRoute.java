@@ -1,5 +1,8 @@
 package eu.wohlben.qits.projects.agenthost;
 
+import eu.wohlben.qits.projects.security.AgentAccess;
+import io.quarkus.security.identity.SecurityIdentity;
+import io.quarkus.vertx.http.runtime.security.QuarkusHttpUser;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -21,7 +24,9 @@ import io.vertx.httpproxy.ProxyResponse;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -60,14 +65,30 @@ import org.jboss.logging.Logger;
  * loopback tunnel port does on every reconnect. The upgrade path arranges both for itself, one
  * mechanism per path.
  *
- * <p>Security posture, stated plainly because it is easy to overstate: this route scopes a request
- * to a project with a live daemon and forwards it. It does not authorize the caller, because there
- * is no owner to authorize against — qits is single-user.
+ * <p><b>Who is admitted, and why the list is this short.</b> The daemon behind this route is the
+ * project's delivery desk: its commands, its coding-agent sessions and its last answer, which this
+ * service's own REST doors ({@code ProjectFrontDeskController}, {@code AgentContainerController})
+ * open only to {@code qits:admin}, {@code qits:admin-agent} and {@code qits:desk-admin}. A raw
+ * Vert.x route is reached by no {@code @RolesAllowed}, so it used to forward anyone — and a plain
+ * {@code qits:agent} bearer read the desk through here what the doors refused it. The owner's ruling
+ * on qits-1575 is that agents do not reach the desk's daemon, so {@link #admit} decides before the
+ * tunnel is looked up and before a single byte, upgrade included, goes anywhere: {@code
+ * qits:system}, {@code qits:admin} and {@code qits:admin-agent} reach any project's daemon; {@code
+ * qits:desk-admin} reaches only the one its token's {@code project} claim names ({@link
+ * AgentAccess#coversProject}), the same binding the doors apply to the desk; an anonymous caller is
+ * a 401 and everyone else — {@code qits:agent} alone, a plain {@code qits:desk}, {@code qits:ci-run}
+ * — a 403. The {@code container-proxy} permission in {@code application.properties} keeps the
+ * anonymous out before this class runs; the check here is what judges the authenticated. It mirrors
+ * qits-workspaces' admission (qits-1386) minus the agent binding, because no agent is admitted.
  */
 @ApplicationScoped
 public class ContainerProxyRoute {
 
   private static final Logger LOG = Logger.getLogger(ContainerProxyRoute.class);
+
+  /** The roles that reach any project's daemon; {@code qits:desk-admin} reaches only its own. */
+  private static final List<String> ANY_PROJECT_ROLES =
+      List.of(AgentAccess.SYSTEM_ROLE, AgentAccess.ADMIN_ROLE, AgentAccess.ADMIN_AGENT_ROLE);
 
   @Inject Vertx vertx;
 
@@ -108,13 +129,52 @@ public class ContainerProxyRoute {
     }
     String projectId = segments[0];
 
-    // The request stays untouched while the lookup runs off the event loop — opening a tunnel
-    // awaits a bind on first use. The proxy resumes it when forwarding.
+    // The request stays untouched while the caller is judged and the lookup runs off the event loop
+    // — opening a tunnel awaits a bind on first use. The proxy resumes it when forwarding; a
+    // refusal resumes it to drain. Nothing goes on the wire, and no upgrade is answered, before the
+    // decision.
     rc.request().pause();
+    QuarkusHttpUser.getSecurityIdentity(rc, null)
+        .subscribe()
+        .with(
+            identity -> admit(rc, projectId, identity),
+            failure -> refuse(rc, 401, "Authentication required.", null, projectId));
+  }
+
+  /** Decide who may reach this project's daemon, then look the daemon up. See the class javadoc. */
+  private void admit(RoutingContext rc, String projectId, SecurityIdentity identity) {
+    if (identity == null || identity.isAnonymous()) {
+      refuse(rc, 401, "Authentication required.", identity, projectId);
+      return;
+    }
+    boolean admitted =
+        ANY_PROJECT_ROLES.stream().anyMatch(identity::hasRole)
+            || (identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)
+                && AgentAccess.coversProject(identity, projectId));
+    if (!admitted) {
+      refuse(rc, 403, "The project agent is not yours to reach.", identity, projectId);
+      return;
+    }
     rc.vertx()
         .executeBlocking(() -> tunnels.originFor(projectId).orElse(null))
         .onFailure(e -> respond(rc, 502, "The project agent could not be reached."))
         .onSuccess(origin -> route(rc, origin));
+  }
+
+  /** Answer a refusal and say who was refused — subject, roles, project; never a credential. */
+  private void refuse(
+      RoutingContext rc, int status, String message, SecurityIdentity identity, String projectId) {
+    LOG.infof(
+        "Refused the project daemon proxy (%d): %s with roles %s for project %s",
+        status,
+        identity == null || identity.getPrincipal() == null
+            ? null
+            : identity.getPrincipal().getName(),
+        identity == null ? Set.of() : identity.getRoles(),
+        projectId);
+    // Paused since `handle`; let whatever body follows drain rather than stall the connection.
+    rc.request().resume();
+    respond(rc, status, message);
   }
 
   /**

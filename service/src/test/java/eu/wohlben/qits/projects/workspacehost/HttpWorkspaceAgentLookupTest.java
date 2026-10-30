@@ -181,6 +181,51 @@ class HttpWorkspaceAgentLookupTest {
     assertTrue(received.isEmpty(), "nothing dialled: " + received);
   }
 
+  /**
+   * qits-1756: the ACTIVE list carries each agent's activity, last turn and waits; a member that is
+   * absent, null or unreadable reads as null, and a wait without a label or a state is left out.
+   */
+  @Test
+  void theActiveListReadsActivityLastTurnAndWaits() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"agents\":["
+            + "{\"agentId\":\"a-1\",\"workId\":\"w-1\",\"repositoryId\":\"r-1\","
+            + "\"wrapperBranch\":\"ticket/qits-1\",\"activity\":\"WAITING\","
+            + "\"lastActivityAt\":\"2026-10-30T07:03:04.123456Z\",\"waits\":["
+            + "{\"label\":\"qits-1 live\",\"state\":\"OPEN\",\"subjectKind\":\"BRANCH\","
+            + "\"subjectRef\":\"ticket/qits-1\",\"subjectQualifiedId\":null,"
+            + "\"subjectState\":\"JOINED\",\"expiresAt\":\"2026-10-30T12:54:00Z\"},"
+            + "{\"label\":\"no state\"}]},"
+            + "{\"agentId\":\"a-2\",\"workId\":\"w-2\",\"activity\":null,"
+            + "\"lastActivityAt\":\"not an instant\"},"
+            + "{\"agentId\":\"a-3\"}]}");
+
+    List<eu.wohlben.qits.projects.control.WorkspaceAgentLookup.ActiveAgent> agents =
+        against(base).active().orElseThrow();
+
+    assertEquals("/workspaces/api/agents", received.get(0).path());
+    assertEquals(2, agents.size(), "an entry with no workId is left out");
+    var first = agents.get(0);
+    assertEquals("WAITING", first.activity());
+    assertEquals(java.time.Instant.parse("2026-10-30T07:03:04.123456Z"), first.lastActivityAt());
+    assertEquals(
+        List.of(
+            new eu.wohlben.qits.projects.control.WorkspaceAgentLookup.AgentWait(
+                "qits-1 live",
+                "OPEN",
+                "BRANCH",
+                "ticket/qits-1",
+                null,
+                "JOINED",
+                java.time.Instant.parse("2026-10-30T12:54:00Z"))),
+        first.waits());
+    var second = agents.get(1);
+    assertEquals(null, second.activity());
+    assertEquals(null, second.lastActivityAt(), "unreadable reads as null: never idle");
+    assertTrue(second.waits().isEmpty());
+  }
+
   /** The two keys of every hop to qits-workspaces, in their order — no third address. */
   @Test
   void theReleaseKeyIsTheFallbackAddress() throws Exception {

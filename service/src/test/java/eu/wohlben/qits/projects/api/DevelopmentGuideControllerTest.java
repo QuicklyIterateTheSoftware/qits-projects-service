@@ -217,6 +217,7 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains("only when no active agent was told of it"));
     assertTrue(markdown.contains("`qits ci retry`"));
     assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
+    assertTrue(markdown.contains("ask the owner on the item's thread"));
     assertTrue(markdown.contains("you are told a slot opened"));
     assertTrue(
         markdown.contains("reaches you only when no agent owns the branch"),
@@ -224,32 +225,37 @@ public class DevelopmentGuideControllerTest {
     assertTrue(
         markdown.contains("A request created right after a commit, before the\nbranch's push"),
         "qits-1751: a fresh source missing on the git host is waited for, not rejected");
-    assertTrue(markdown.contains("ask the owner on the item's thread"));
+    assertTrue(
+        markdown.contains(
+            "An agent that has had no turn for 2h reaches you once per idle stretch"),
+        "qits-1756: the desk is told of an idle agent");
+    assertTrue(markdown.contains("leave a deliberate wait alone"), "qits-1756");
     assertTrue(
         markdown.contains("qits release-request move"),
         "qits-1755: the desk moves a source that alone holds a shared request back");
     assertFalse(
-        DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE.contains("qits release-request move"),
-        "the qits-1751 text is the one before the desk moved a source itself");
+        DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE.contains("qits release-request move"),
+        "the qits-1756 text is the one before the desk moved a source itself");
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }
 
   /**
-   * qits-1755: the desk variant moves a source that alone holds a shared request back; an unedited
-   * row holding the qits-1751 text rolls forward on boot.
+   * qits-1755: the desk variant moves a source that alone holds a shared request back; an
+   * unedited row holding the qits-1756 text rolls forward on boot.
    */
   @Test
-  public void anUneditedDeskPartRollsForwardFromQits1751() {
+  public void anUneditedDeskPartRollsForwardFromQits1756() {
     String key = DevelopmentGuideDefaults.key("desk");
     AgentSurfaceConfigurationDto part = surfaces.get(key);
-    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE), null);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE), null);
 
     assertTrue(guide.rollForward() >= 1);
 
@@ -299,8 +305,8 @@ public class DevelopmentGuideControllerTest {
 
   /**
    * qits-1665: the flow says to move a source that alone blocks a shared request to the next one,
-   * never to force-push it out; an unedited row of the text before rolls forward. The desk is told
-   * so in its prompt (AgentSurfaceDefaults.DELIVERY_DESK_PROMPT).
+   * never to force-push it out; an unedited row of the text before rolls forward. The desk's own
+   * brief is left to a follow-up, for the owner to approve on its own.
    */
   @Test
   public void theFlowMovesABlockingSourceToTheNextRequest() {

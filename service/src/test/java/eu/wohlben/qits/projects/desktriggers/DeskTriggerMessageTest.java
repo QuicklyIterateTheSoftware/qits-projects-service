@@ -163,4 +163,36 @@ class DeskTriggerMessageTest {
         PREAMBLE + "\n\nWaits you declared:\n" + TURN_B + "\n\nMoved to VERIFIED:\n- qits-7 (T)",
         DeskTriggerMessage.render("qits", HASH, window(), events));
   }
+
+  /** qits-1756: idle agents have their own section, between the stalled requests and a slot. */
+  @Test
+  void idleAgentsHaveTheirSectionBetweenStalledRequestsAndAnOpenedSlot() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events = new LinkedHashMap<>();
+    events.put(
+        new CapacityOpenedSource(),
+        List.of(row("capacity-opened", "qits-9", "its agent is done; running 1 of 2", "agent a")));
+    events.put(
+        new AgentIdleSource(),
+        List.of(
+            row(
+                "agent-idle",
+                "qits-1625",
+                "Some title; IMPLEMENTING; idle 2h 19m since 2026-10-30T07:03Z; waits on:"
+                    + " qits-1625 live in qits-projects-service (JOINED, expires"
+                    + " 2026-10-30T12:54Z)",
+                "agent 6f1c2a8e")));
+    events.put(
+        new RequestStalledSource(),
+        List.of(row("request-stalled", "p-rr-1", "READY for 2h 1m, not RELEASED", "fold a")));
+
+    assertEquals(
+        PREAMBLE
+            + "\n\nRelease requests that stopped moving:\n- p-rr-1 (READY for 2h 1m, not RELEASED)"
+            + "\n\nAgents idle for 2h or more:\n"
+            + "- qits-1625 (Some title; IMPLEMENTING; idle 2h 19m since 2026-10-30T07:03Z;"
+            + " waits on: qits-1625 live in qits-projects-service (JOINED, expires 2026-10-30T12:54Z))"
+            + "\n\nA slot opened; dispatch the next item:\n"
+            + "- qits-9 (its agent is done; running 1 of 2)",
+        DeskTriggerMessage.render("qits", HASH, window(), events));
+  }
 }
