@@ -217,7 +217,6 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains("only when no active agent was told of it"));
     assertTrue(markdown.contains("`qits ci retry`"));
     assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
-    assertTrue(markdown.contains("ask the\nowner on the item's thread"));
     assertTrue(markdown.contains("you are told a slot opened"));
     assertTrue(
         markdown.contains("reaches you only when no agent owns the branch"),
@@ -225,13 +224,36 @@ public class DevelopmentGuideControllerTest {
     assertTrue(
         markdown.contains("A request created right after a commit, before the\nbranch's push"),
         "qits-1751: a fresh source missing on the git host is waited for, not rejected");
+    assertTrue(markdown.contains("ask the owner on the item's thread"));
+    assertTrue(
+        markdown.contains("qits release-request move"),
+        "qits-1755: the desk moves a source that alone holds a shared request back");
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE.contains("qits release-request move"),
+        "the qits-1751 text is the one before the desk moved a source itself");
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
+  }
+
+  /**
+   * qits-1755: the desk variant moves a source that alone holds a shared request back; an unedited
+   * row holding the qits-1751 text rolls forward on boot.
+   */
+  @Test
+  public void anUneditedDeskPartRollsForwardFromQits1751() {
+    String key = DevelopmentGuideDefaults.key("desk");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("desk").getString("markdown").contains("qits release-request move"));
   }
 
   /** qits-1724: the flow waits on the branch, never on a release request id or a fold's sha. */
