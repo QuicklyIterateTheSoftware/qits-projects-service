@@ -16,7 +16,7 @@ import java.util.Optional;
  * ({@link ArchetypeRegistryDocument.LegalMove#gates}) names it on every move it applies to without a
  * line of its own. {@link TransitionGates} is the shared reading of that.
  *
- * <p><b>Gates judge FORWARD and SKIP moves only.</b> A BACK, a DROP or a REOPEN is a correction —
+ * <p><b>Gates judge FORWARD, SKIP and CLOSE moves only.</b> A BACK, a DROP or a REOPEN is a correction —
  * undoing a claim, abandoning work — and is never refused by a quality gate; that rule is the
  * caller's ({@link TransitionGates#gated}), so a gate does not restate it. Every gate that refuses is
  * reported together in one 409, so a caller fixes everything in one round trip.

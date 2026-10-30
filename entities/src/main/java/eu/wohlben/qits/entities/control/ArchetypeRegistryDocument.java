@@ -98,7 +98,7 @@ public record ArchetypeRegistryDocument(
    *     first phase out of this list — {@link #lifecycle} is the ordered one
    * @param transitions the legal moves of this kind's lifecycle, keyed by <b>every</b> status word
    *     in {@link #lifecycle} order; each value lists the moves out of that status, FORWARD first,
-   *     then BACK, then DROP/REOPEN — and DONE maps to an empty list, because DONE is final. Empty
+   *     then SKIP, BACK, CLOSE, then DROP/REOPEN — and DONE maps to an empty list, because DONE is final. Empty
    *     for a kind with no lifecycle. Read off {@link EntityStateMachine#transitionsFrom}, so the
    *     served moves and the enforced ones are one declaration. Added after {@link #legalStatuses}
    *     and beside it, never instead of it
@@ -167,10 +167,11 @@ public record ArchetypeRegistryDocument(
    * One legal move out of a status, as served: where it lands and what kind of move it is.
    *
    * @param to the status the move lands on
-   * @param kind FORWARD, BACK, DROP or REOPEN — {@link EntityStateMachine.TransitionKind}
+   * @param kind FORWARD, SKIP, BACK, CLOSE, DROP or REOPEN — {@link
+   *     EntityStateMachine.TransitionKind}
    * @param gates the quality gates this move has to pass (qits-887), by name, in name order —
    *     {@code ACCEPTANCE_CRITERIA}, {@code PERSON_APPROVAL} — so a client can say in advance what a
-   *     move needs without a status model of its own. Only a FORWARD or SKIP move has any ({@link
+   *     move needs without a status model of its own. Only a FORWARD, SKIP or CLOSE move has any ({@link
    *     TransitionGates#namesOf}); left off the wire when empty, which keeps it additive
    */
   public record LegalMove(

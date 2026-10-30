@@ -24,8 +24,9 @@ import java.util.Set;
  *            ◀─         ◀─                                ◀─             ◀─           ◀─       (final)
  *                                 └──────── SKIP ─────────▶ └──────── SKIP ───────▶
  *   FORWARD one step right, BACK one step left (below DONE, and never out of IMPLEMENTING), the two
- *   SKIPs over an "-ING" status, DROP from every open state to DROPPED, and DROPPED REOPENs to
- *   REPORTED.
+ *   SKIPs over an "-ING" status, DROP from every open state to DROPPED, DROPPED REOPENs to
+ *   REPORTED, and — for a campaign, an epic or a feature only — CLOSE from every open state short
+ *   of VERIFIED straight to DONE (qits-1757).
  *
  *   starts phase:  REPORTED → refine,  READY_FOR_DEV and IMPLEMENTING → implement,
  *                  IMPLEMENTED and VERIFYING → verify;  REFINED (it waits for a person), VERIFIED,
@@ -71,6 +72,13 @@ import java.util.Set;
  * REPORTED and to nothing else: somebody who has changed their mind about abandoned work is asking
  * what it is for again, which is the refine phase.
  *
+ * <p><b>A campaign, an epic or a feature may CLOSE straight to DONE</b> (qits-1757) from every open
+ * state short of VERIFIED — finished work that was never walked: every child it gathers is closed
+ * already, and scheduling it to walk it would be a scheduling act about nothing. Whether the
+ * children are closed, and who may make the move, is the {@code CHILDREN_CLOSED} gate's to judge;
+ * this class only says the move exists, and only for {@link #closes} archetypes. VERIFIED → DONE is
+ * not a CLOSE: it stays the walk's FORWARD, ungated, so each target is still reached by one move.
+ *
  * <p><b>A campaign walks the same machine with IMPLEMENTING and VERIFYING elided</b> (qits-749). A
  * campaign enters neither — its press starts it — so for that archetype the two are taken out and
  * its lifecycle is <em>the walk with the elided states removed</em>: REPORTED → REFINED →
@@ -100,6 +108,13 @@ public final class EntityStateMachine {
     SKIP,
     /** A step back along the walk. */
     BACK,
+    /**
+     * Straight to {@link EntityStatus#DONE} from an open state on the walk short of VERIFIED
+     * (qits-1757): closing a campaign, an epic or a feature whose children are all closed already.
+     * Served only to the archetypes that have children ({@link #CLOSES}); VERIFIED → DONE stays the
+     * FORWARD it always was, so at most one move out of a state leads to each target.
+     */
+    CLOSE,
     /** From an open state on the walk to {@link EntityStatus#DROPPED}. */
     DROP,
     /** From {@link EntityStatus#DROPPED} back into the walk. */
@@ -153,28 +168,35 @@ public final class EntityStateMachine {
 
   /**
    * <b>Every legal move, and the one place they are written.</b> Grouped by source state in
-   * lifecycle order, and within a state FORWARD first, then SKIP, then BACK, then DROP/REOPEN — the order the
-   * registry serves. DONE has no row, because DONE is final.
+   * lifecycle order, and within a state FORWARD first, then SKIP, then BACK, then CLOSE, then
+   * DROP/REOPEN — the order the registry serves. DONE has no row, because DONE is final. The CLOSE
+   * rows are declared for every archetype and served only to those in {@link #CLOSES}.
    */
   private static final List<Transition> TRANSITIONS =
       List.of(
           t(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
+          t(EntityStatus.REPORTED, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
           t(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
+          t(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
           t(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
           t(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+          t(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+          t(EntityStatus.IMPLEMENTING, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
           t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP),
           t(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
+          t(EntityStatus.IMPLEMENTED, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
           t(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
+          t(EntityStatus.VERIFYING, EntityStatus.DONE, TransitionKind.CLOSE),
           t(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
           t(EntityStatus.VERIFIED, EntityStatus.VERIFYING, TransitionKind.BACK),
@@ -222,6 +244,14 @@ public final class EntityStateMachine {
       Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
 
   /**
+   * The archetypes served the {@link TransitionKind#CLOSE} moves (qits-1757): the ones that have
+   * children — a campaign its members, an epic its features, a feature its tasks — so "every child
+   * is closed" can be true of them. A ticket and a task have none and close by the walk alone.
+   */
+  private static final Set<Archetype> CLOSES =
+      EnumSet.of(Archetype.CAMPAIGN, Archetype.EPIC, Archetype.FEATURE);
+
+  /**
    * The statuses a started campaign runs at (qits-887, decision 19): REFINED, and READY_FOR_DEV —
    * which means "ready for development", not "start it". The start press is accepted at either, the
    * executor claims at either, and moving between the two neither starts nor pauses anything; a
@@ -259,7 +289,11 @@ public final class EntityStateMachine {
     return TRANSITIONS;
   }
 
-  /** The legal moves out of {@code from}, FORWARD first, then SKIP, BACK, then DROP/REOPEN. */
+  /**
+   * The declared moves out of {@code from}, FORWARD first, then SKIP, BACK, CLOSE, then DROP/REOPEN
+   * — the declaration, for every archetype at once, CLOSE included. A move is legal for an archetype
+   * by {@link #transitionsFrom(Archetype, EntityStatus)}.
+   */
   public static List<Transition> transitionsFrom(EntityStatus from) {
     return OUTGOING.getOrDefault(from, List.of());
   }
@@ -300,13 +334,18 @@ public final class EntityStateMachine {
    * FORWARD (or a SKIP landing on the same place) moves FORWARD to the next kept state; a SKIP to a
    * kept state further on stays a SKIP; one that has a BACK moves BACK to the previous kept state;
    * DROP and REOPEN are unchanged. So however many elided states sit next to each other, the walk
-   * stays closed over the gap. Empty for a state the archetype does not hold. The order (FORWARD,
-   * SKIP, BACK, DROP/REOPEN) is kept.
+   * stays closed over the gap. Empty for a state the archetype does not hold. A CLOSE is kept for an
+   * archetype in {@link #CLOSES} and taken out for every other (qits-1757). The order (FORWARD,
+   * SKIP, BACK, CLOSE, DROP/REOPEN) is kept.
    */
   public static List<Transition> transitionsFrom(Archetype archetype, EntityStatus from) {
     Set<EntityStatus> elided = elided(archetype);
     if (elided.isEmpty()) {
-      return transitionsFrom(from);
+      return closes(archetype)
+          ? transitionsFrom(from)
+          : transitionsFrom(from).stream()
+              .filter(move -> move.kind() != TransitionKind.CLOSE)
+              .toList();
     }
     if (elided.contains(from)) {
       return List.of();
@@ -328,13 +367,15 @@ public final class EntityStateMachine {
                         : move;
             case BACK ->
                 previous == null ? null : new Transition(from, previous, TransitionKind.BACK);
+            case CLOSE -> closes(archetype) && !elided.contains(move.to()) ? move : null;
             case DROP, REOPEN -> elided.contains(move.to()) ? null : move;
           };
       if (collapsed != null && !moves.contains(collapsed)) {
         moves.add(collapsed);
       }
     }
-    // FORWARD before SKIP before BACK before DROP/REOPEN, as the declaration orders them.
+    // FORWARD before SKIP before BACK before CLOSE before DROP/REOPEN, as the declaration orders
+    // them.
     moves.sort((a, b) -> Integer.compare(rank(a.kind()), rank(b.kind())));
     return List.copyOf(moves);
   }
@@ -355,6 +396,20 @@ public final class EntityStateMachine {
 
   private static Set<EntityStatus> elided(Archetype archetype) {
     return ELIDED.getOrDefault(archetype, Set.of());
+  }
+
+  /** Whether {@code archetype} is served the CLOSE moves — see {@link #CLOSES}. */
+  public static boolean closes(Archetype archetype) {
+    return CLOSES.contains(archetype);
+  }
+
+  /**
+   * Whether {@code from → to} is a {@link TransitionKind#CLOSE} move for {@code archetype} — the one
+   * question the CHILDREN_CLOSED gate asks of a move. False for VERIFIED → DONE, which is FORWARD.
+   */
+  public static boolean isClose(Archetype archetype, EntityStatus from, EntityStatus to) {
+    return transitionsFrom(archetype, from).stream()
+        .anyMatch(move -> move.to() == to && move.kind() == TransitionKind.CLOSE);
   }
 
   /**
@@ -563,7 +618,18 @@ public final class EntityStateMachine {
       }
       for (int i = 1; i < moves.size(); i++) {
         if (rank(moves.get(i - 1).kind()) > rank(moves.get(i).kind())) {
-          throw new IllegalStateException(state + "'s moves are not FORWARD, SKIP, BACK, DROP/REOPEN");
+          throw new IllegalStateException(
+              state + "'s moves are not FORWARD, SKIP, BACK, CLOSE, DROP/REOPEN");
+        }
+      }
+    }
+    for (Archetype archetype : Archetype.values()) {
+      // The service picks a move by its target alone (transition(from, to) is a findFirst), so no
+      // two moves out of one state may lead to the same place, for any archetype.
+      for (EntityStatus state : states(archetype)) {
+        List<Transition> moves = transitionsFrom(archetype, state);
+        if (moves.stream().map(Transition::to).distinct().count() != moves.size()) {
+          throw new IllegalStateException(archetype + ": two moves out of " + state + " share a target");
         }
       }
     }
@@ -617,6 +683,10 @@ public final class EntityStateMachine {
           (move.from() == EntityStatus.READY_FOR_DEV || move.from() == EntityStatus.IMPLEMENTED)
               && to == from + 2;
       case BACK -> from >= 0 && to >= 0 && to == from - 1;
+      case CLOSE ->
+          from >= 0
+              && move.to() == EntityStatus.DONE
+              && from < WALK.indexOf(EntityStatus.VERIFIED);
       case DROP -> from >= 0 && move.to() == OFF_WALK;
       case REOPEN -> move.from() == OFF_WALK && to >= 0;
     };
@@ -627,7 +697,8 @@ public final class EntityStateMachine {
       case FORWARD -> 0;
       case SKIP -> 1;
       case BACK -> 2;
-      case DROP, REOPEN -> 3;
+      case CLOSE -> 3;
+      case DROP, REOPEN -> 4;
     };
   }
 }

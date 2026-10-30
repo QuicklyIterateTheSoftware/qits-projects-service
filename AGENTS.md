@@ -1920,7 +1920,7 @@ restated — same items, same order — passes at every status, because the SPA'
 whole row through `POST /work/transition`. The list rows of `EntitySummary` carry none, like the
 description; a feature's or task's merged shape omits the key.
 
-**Quality gates judge FORWARD and SKIP moves (qits-935).** `control/TransitionGate` — `name()`,
+**Quality gates judge FORWARD, SKIP and CLOSE moves (qits-935, qits-1757).** `control/TransitionGate` — `name()`,
 `appliesTo(archetype, from, to)` (pure: the served registry asks it with no row), `refusal(row,
 mover)` — is a CDI bean, and `WorkEntityService` collects every one through
 `Instance<TransitionGate>`, so a gate is added by writing one: neither the state machine nor any other
@@ -1936,6 +1936,20 @@ status a gate or a person stands in front of**: `EntityTransitionService` answer
 status that differs from the row's when either side is READY_FOR_DEV, when it enters started work
 from before READY_FOR_DEV, or when a gate applies — after its 400s, so DONE-is-final still speaks
 first. Restating the status a row holds passes, at READY_FOR_DEV too.
+
+**Closing finished work straight to DONE (qits-1757): the CLOSE kind and `CHILDREN_CLOSED`.** A
+CAMPAIGN, EPIC or FEATURE (`EntityStateMachine.closes`) has a CLOSE move `X → DONE` from every open
+status it holds short of VERIFIED; VERIFIED → DONE stays the ungated FORWARD, so each target is still
+reached by exactly one move (`verify()` checks it per archetype). A TICKET or TASK serves no CLOSE —
+the archetype-less `transitionsFrom(from)` is the declaration and does list them, so a door asks the
+archetype-aware reading. `campaign/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges the CLOSE moves
+only (`EntityStateMachine.isClose`, never VERIFIED → DONE, which the PUT door would otherwise start
+refusing): every direct child — a campaign's CAMPAIGN members, an epic's or feature's STRUCTURAL
+children — must be DONE or DROPPED (VERIFIED is open), at least one child must exist, and the mover
+must be a person or the delivery desk of the row's own project; a machine (`qits:agent`,
+`qits:system`) is a 409. Nothing derives a parent from its children: the close is asked for, and the
+gate only says whether it is true. The move emits the usual one `EntityTransitioned`
+(`statusBefore`, DONE, `changedBy`), with no kind on the event.
 
 **Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
 READY_FOR_DEV, for every archetype, unless the `control/Mover` is a person — and the entities module

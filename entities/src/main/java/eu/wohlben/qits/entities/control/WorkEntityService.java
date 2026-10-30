@@ -159,8 +159,8 @@ public class WorkEntityService {
   @Inject Instance<RetitleAnnouncer> retitles;
 
   /**
-   * The quality gates on a move (qits-887) — every {@link TransitionGate} bean, judged on a FORWARD
-   * or SKIP move by {@link TransitionGates#require}, in {@link #planTransition} and again in {@link
+   * The quality gates on a move (qits-887) — every {@link TransitionGate} bean, judged on a FORWARD,
+   * SKIP or CLOSE move by {@link TransitionGates#require}, in {@link #planTransition} and again in {@link
    * #move}. A gate is added by writing one; nothing here names any of them.
    */
   @Inject Instance<TransitionGate> gates;
@@ -908,7 +908,7 @@ public class WorkEntityService {
    *       only thing that sets it; a kind that is never blocked writes false over false.
    * </ul>
    *
-   * <p><b>The quality gates judge a FORWARD or SKIP move</b> (qits-887): every {@link
+   * <p><b>The quality gates judge a FORWARD, SKIP or CLOSE move</b> (qits-887, qits-1757): every {@link
    * TransitionGate} that applies to it, each with {@code mover} in hand, all refusals in one 409. A
    * BACK, DROP or REOPEN passes every gate — it is a correction.
    *
@@ -1028,8 +1028,8 @@ public class WorkEntityService {
     // that does not exist is its 409 whatever it states, and before the gates and any write.
     requireDropShape(kind, target, drop);
     requireReference(row, drop);
-    // The quality gates (qits-887), last of the refusals and before anything is written: a FORWARD
-    // or SKIP move every applying gate passes, judged on the row as it stands. The cascade below is
+    // The quality gates (qits-887), last of the refusals and before anything is written: a FORWARD,
+    // SKIP or CLOSE move every applying gate passes, judged on the row as it stands. The cascade below is
     // judged once, here, on the row that moves — never per carried piece.
     TransitionGates.require(gates, kind.noun(), row, statusOf(statusBefore), to, mover);
 

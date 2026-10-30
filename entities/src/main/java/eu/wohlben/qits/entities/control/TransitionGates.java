@@ -20,12 +20,13 @@ public final class TransitionGates {
   private TransitionGates() {}
 
   /**
-   * Whether a move of this kind is judged by gates at all: FORWARD and SKIP. A BACK, DROP or REOPEN
-   * is a correction and passes every gate — see {@link TransitionGate}.
+   * Whether a move of this kind is judged by gates at all: FORWARD, SKIP and CLOSE (qits-1757). A
+   * BACK, DROP or REOPEN is a correction and passes every gate — see {@link TransitionGate}.
    */
   public static boolean gated(EntityStateMachine.TransitionKind kind) {
     return kind == EntityStateMachine.TransitionKind.FORWARD
-        || kind == EntityStateMachine.TransitionKind.SKIP;
+        || kind == EntityStateMachine.TransitionKind.SKIP
+        || kind == EntityStateMachine.TransitionKind.CLOSE;
   }
 
   /** The gates that apply to {@code from → to} of {@code archetype}, in name order. */
@@ -58,7 +59,7 @@ public final class TransitionGates {
   /**
    * <b>The gates on a move, judged</b>: a 409 carrying every refusal at once — {@code "Epic <id>
    * cannot move to READY_FOR_DEV: ACCEPTANCE_CRITERIA: …; PERSON_APPROVAL: …"} — or nothing. A move
-   * that is not FORWARD or SKIP for {@code row}'s archetype is not judged; {@code from → to} must be
+   * that is not FORWARD, SKIP or CLOSE for {@code row}'s archetype is not judged; {@code from → to} must be
    * a legal move already (the machine's refusal comes first).
    */
   public static void require(
