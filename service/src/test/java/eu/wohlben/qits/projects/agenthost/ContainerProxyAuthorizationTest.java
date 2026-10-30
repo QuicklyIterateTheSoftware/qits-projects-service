@@ -237,11 +237,10 @@ class ContainerProxyAuthorizationTest {
   }
 
   /**
-   * The ping is resent until it echoes because the proxy's 101-to-pipe handoff can drop whatever
-   * arrives before its pipe is wired (qits-1762): a single ping written the moment the upgrade
-   * completes went unanswered in about one rep in ten under load, while every close completed
-   * (qits-1760). Once one ping has made the round trip the pipe is up, so the close is awaited
-   * directly, and the 1 s closing timeout caps it should the close frame go unanswered.
+   * One ping, one echo: the browser socket is taken over and piped in the same event-loop task that
+   * writes the 101, so a frame sent the moment the upgrade completes cannot fall into the handoff
+   * (qits-1762; under load it used to be lost in about one rep in ten). Then the close is awaited
+   * directly, and the 1 s closing timeout caps it should the close frame go unanswered (qits-1760).
    */
   @Test
   void anAdminsUpgradeIsForwarded() throws Exception {
@@ -268,22 +267,10 @@ class ContainerProxyAuthorizationTest {
       var echoed = new CompletableFuture<String>();
       socket.handler(buffer -> echoed.complete(buffer.toString()));
       socket.writeTextMessage("ping");
-      long resend =
-          daemonVertx.setPeriodic(
-              100,
-              id -> {
-                if (!echoed.isDone()) {
-                  socket.writeTextMessage("ping");
-                }
-              });
-      try {
-        assertEquals(
-            "ping",
-            echoed.get(TIMEOUT_SECONDS, TimeUnit.SECONDS),
-            "the forwarded upgrade carries bytes both ways");
-      } finally {
-        daemonVertx.cancelTimer(resend);
-      }
+      assertEquals(
+          "ping",
+          echoed.get(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+          "the forwarded upgrade carries bytes both ways");
     } finally {
       socket.close();
       closed.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
