@@ -3,19 +3,21 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import eu.wohlben.qits.projects.confighost.FakeMcpCredentials;
-import eu.wohlben.qits.projects.control.AgentMcpCatalog;
 import eu.wohlben.qits.projects.persistence.AgentMcpCatalogEntryRepository;
+import eu.wohlben.qits.projects.persistence.AgentMcpCredentialRepository;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository;
 import eu.wohlben.qits.projects.startup.AgentSurfaceSeed;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
+import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Map;
@@ -32,9 +34,9 @@ import org.junit.jupiter.api.Test;
  * theDocumentCarriesTheFullyRenderedServer}, which is the one place a value is allowed to be. Delete
  * either and the other stops meaning anything.
  *
- * <p>Credentials come from {@code confighost/FakeMcpCredentials}, an in-memory qits-configuration
- * that models all three answers — value, "asked, not there", and "could not ask" — because the
- * catalog's write door treats the last two differently on purpose.
+ * <p>Credentials live in this service's own {@code agent_mcp_credential} table (qits-1394), set and
+ * removed through the write-only doors under {@code /agent-mcp-catalog/credentials}; the tests write
+ * them through those doors, exactly as the {@code qits agent-mcp credentials} verbs do.
  */
 @QuarkusTest
 public class AgentMcpCatalogControllerTest {
@@ -42,13 +44,14 @@ public class AgentMcpCatalogControllerTest {
   private static final String CATALOG = "/projects/api/agent-mcp-catalog";
   private static final String SURFACES = "/projects/api/agent-surfaces";
   private static final String DOCUMENT = "/projects/api/agent-configuration";
+  private static final String CREDENTIALS = CATALOG + "/credentials";
 
   private static final String KEY = "env.EXAMPLE_MCP_TOKEN";
   private static final String SECRET = "s3cr3t-do-not-log-me";
 
   @Inject AgentSurfaceSeed seed;
 
-  @Inject FakeMcpCredentials credentials;
+  @Inject AgentMcpCredentialRepository credentials;
 
   @Inject AgentMcpCatalogEntryRepository entries;
 
@@ -64,9 +67,9 @@ public class AgentMcpCatalogControllerTest {
             () -> {
               attachments.deleteAll();
               entries.deleteAll();
+              credentials.deleteAll();
             });
-    credentials.reset();
-    credentials.set(KEY, SECRET);
+    setCredential(KEY, SECRET);
   }
 
   // -------------------------------------------------------------------------------------- writes
@@ -87,9 +90,8 @@ public class AgentMcpCatalogControllerTest {
     assertThat(
         answer.getList("reservedKeys", String.class),
         is(List.of("repository", "observability", "actions", "qits")));
-    // The namespace is answered, so the editor can tell an operator where to create the key.
-    assertThat(
-        answer.getString("credentialApplication"), is(AgentMcpCatalog.CREDENTIAL_APPLICATION));
+    // The application segment of the retired qits-configuration store is gone from the wire.
+    assertThat(answer.getMap(""), not(hasKey("credentialApplication")));
   }
 
   /**
@@ -137,9 +139,9 @@ public class AgentMcpCatalogControllerTest {
     assertThat(detail, containsString("http"));
   }
 
-  /** A confirmed-missing reference is a 400 at the form, naming the key and the application. */
+  /** A key with no credential set is a 400 at the form, naming the key and how to set it. */
   @Test
-  public void aCredentialKeyQitsConfigurationDoesNotHoldIsRefusedNamingIt() {
+  public void aCredentialKeyWithNoCredentialSetIsRefusedNamingIt() {
     String detail =
         given()
             .contentType(ContentType.JSON)
@@ -152,28 +154,22 @@ public class AgentMcpCatalogControllerTest {
             .asString();
 
     assertThat(detail, containsString("env.NOBODY_SET_THIS"));
-    assertThat(detail, containsString(AgentMcpCatalog.CREDENTIAL_APPLICATION));
+    assertThat(detail, containsString("qits agent-mcp credentials set"));
   }
 
-  /**
-   * "Could not ask" is not "not there". An outage of qits-configuration may not be dressed up as a
-   * validation error — the strict gate is the document build, which is where a running agent is
-   * actually protected.
-   */
+  /** `credentials` is the credential doors' segment, so no catalog entry may take it. */
   @Test
-  public void aReferenceThatCannotBeConfirmedIsStoredRatherThanRefused() {
-    credentials.unreachable(true);
-
+  public void theCredentialsSegmentIsNotACatalogKey() {
     given()
         .contentType(ContentType.JSON)
         .body(entryBody(KEY))
         .when()
-        .put(CATALOG + "/weather")
+        .put(CATALOG + "/credentials")
         .then()
-        .statusCode(200);
+        .statusCode(anyOf(is(400), is(405)));
   }
 
-  /** A key outside qits-configuration's own grammar could not be created there at all. */
+  /** A key outside the `env.<VAR>` grammar is refused. */
   @Test
   public void aCredentialKeyOutsideTheEnvGrammarIsRefused() {
     String detail =
@@ -358,7 +354,8 @@ public class AgentMcpCatalogControllerTest {
   public void anUnresolvableCredentialFailsTheDocumentBuildLoudlyAndNamesTheKey() {
     define("weather", KEY);
     attach("project.work", List.of("weather"));
-    credentials.unreachable(true);
+    // Deleted after the entry was saved: the document build is the gate that catches it.
+    given().when().delete(CREDENTIALS + "/" + KEY).then().statusCode(204);
 
     String detail =
         given().when().get(DOCUMENT).then().statusCode(500).extract().asString();
@@ -367,10 +364,10 @@ public class AgentMcpCatalogControllerTest {
     assertThat(detail, containsString("weather"));
   }
 
-  /** With nothing attached, the document is built without asking qits-configuration anything. */
+  /** With nothing attached, the document is built without any credential set at all. */
   @Test
   public void aSurfaceAttachingNothingNeedsNoCredentialAtAll() {
-    credentials.unreachable(true);
+    given().when().delete(CREDENTIALS + "/" + KEY).then().statusCode(204);
 
     JsonPath document = given().when().get(DOCUMENT).then().statusCode(200).extract().jsonPath();
 
@@ -378,7 +375,149 @@ public class AgentMcpCatalogControllerTest {
     assertThat(document.getList("surfaces[0].externalMcpServers", Object.class), is(List.of()));
   }
 
+  // ------------------------------------------------------------------------- the credential doors
+
+  /**
+   * Set, list, replace, delete — and no answer of any credential door ever carries a value. The PUT
+   * answers the key and who set it; the listing answers keys only.
+   */
+  @Test
+  public void aCredentialIsSetListedByKeyOnlyReplacedAndDeleted() {
+    String set =
+        given()
+            .contentType(ContentType.JSON)
+            .body(Map.of("value", "another-s3cr3t"))
+            .when()
+            .put(CREDENTIALS + "/env.OTHER_TOKEN")
+            .then()
+            .statusCode(200)
+            .body("key", is("env.OTHER_TOKEN"))
+            .body("updatedAt", org.hamcrest.Matchers.notNullValue())
+            .body("$", not(hasKey("value")))
+            .extract()
+            .asString();
+    assertFalse(set.contains("another-s3cr3t"), "the PUT answered the value");
+
+    String listing = given().when().get(CREDENTIALS).then().statusCode(200).extract().asString();
+    JsonPath list = JsonPath.from(listing);
+    assertThat(
+        list.getList("credentials.key", String.class), is(List.of(KEY, "env.OTHER_TOKEN")));
+    assertFalse(listing.contains(SECRET), "the listing answered a value");
+    assertFalse(listing.contains("another-s3cr3t"), "the listing answered a value");
+    assertThat(list.getMap("credentials[0]"), not(hasKey("value")));
+
+    // Replace in place: still one row under the key.
+    setCredential("env.OTHER_TOKEN", "rotated");
+    assertThat(
+        given().when().get(CREDENTIALS).then().extract().jsonPath()
+            .getList("credentials.key", String.class),
+        is(List.of(KEY, "env.OTHER_TOKEN")));
+
+    given().when().delete(CREDENTIALS + "/env.OTHER_TOKEN").then().statusCode(204);
+    assertThat(
+        given().when().get(CREDENTIALS).then().extract().jsonPath()
+            .getList("credentials.key", String.class),
+        is(List.of(KEY)));
+  }
+
+  /** A rotated value is what the next document carries. */
+  @Test
+  public void theDocumentReadsTheValueFromTheStore() {
+    define("weather", KEY);
+    attach("project.work", List.of("weather"));
+    setCredential(KEY, "rotated-value");
+
+    JsonPath document = given().when().get(DOCUMENT).then().statusCode(200).extract().jsonPath();
+    int work =
+        document.getList("surfaces.configuration.surface", String.class).indexOf("project.work");
+    assertThat(
+        document.getString("surfaces[" + work + "].externalMcpServers[0].headerValue"),
+        is("rotated-value"));
+  }
+
+  @Test
+  public void deletingACredentialThatIsNotSetIs404() {
+    given().when().delete(CREDENTIALS + "/env.NEVER_SET").then().statusCode(404);
+  }
+
+  /** The key grammar is the catalog's, and a blank value is not a credential. */
+  @Test
+  public void aBadKeyOrABlankValueIsRefused() {
+    String detail =
+        given()
+            .contentType(ContentType.JSON)
+            .body(Map.of("value", "x"))
+            .when()
+            .put(CREDENTIALS + "/secrets.WEATHER")
+            .then()
+            .statusCode(400)
+            .extract()
+            .asString();
+    assertThat(detail, containsString("env.<VAR>"));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(Map.of("value", "  "))
+        .when()
+        .put(CREDENTIALS + "/env.BLANK")
+        .then()
+        .statusCode(400);
+    given().when().delete(CREDENTIALS + "/not-a-key").then().statusCode(400);
+  }
+
+  /**
+   * An agent reads the keys and writes nothing; the desk-admin is refused the writes too, since the
+   * catalogue its surface is built from is its own rights. An admin-agent writes.
+   */
+  @Test
+  public void anAgentListsButCannotWriteACredential() {
+    as("an-agent", "qits:agent").when().get(CREDENTIALS).then().statusCode(200);
+    as("an-agent", "qits:agent")
+        .body(Map.of("value", "x"))
+        .when()
+        .put(CREDENTIALS + "/env.AGENT_TRY")
+        .then()
+        .statusCode(403);
+    as("an-agent", "qits:agent").when().delete(CREDENTIALS + "/" + KEY).then().statusCode(403);
+    as("a-desk", "qits:agent,qits:desk,qits:desk-admin")
+        .body(Map.of("value", "x"))
+        .when()
+        .put(CREDENTIALS + "/env.DESK_TRY")
+        .then()
+        .statusCode(403);
+
+    as("an-admin-agent", "qits:admin-agent")
+        .body(Map.of("value", "x"))
+        .when()
+        .put(CREDENTIALS + "/env.ADMIN_AGENT")
+        .then()
+        .statusCode(200)
+        .body("updatedBy", is("an-admin-agent"));
+    as("an-admin-agent", "qits:admin-agent")
+        .when()
+        .delete(CREDENTIALS + "/env.ADMIN_AGENT")
+        .then()
+        .statusCode(204);
+  }
+
   // -----------------------------------------------------------------------------------------
+
+  private static RequestSpecification as(String user, String roles) {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", user)
+        .header("X-Qits-Roles", roles);
+  }
+
+  private static void setCredential(String key, String value) {
+    given()
+        .contentType(ContentType.JSON)
+        .body(Map.of("value", value))
+        .when()
+        .put(CREDENTIALS + "/" + key)
+        .then()
+        .statusCode(200);
+  }
 
   private static Map<String, Object> entryBody(String credentialKey) {
     return Map.of(

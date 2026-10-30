@@ -9,7 +9,7 @@ import java.util.List;
  * <p>It appears in exactly one place: {@link AgentDocumentSurfaceDto} inside the document a container
  * is created with. That is what "the container needs no second lookup" means — the container gets a
  * url and a header value and calls the server, rather than holding a reference it would have to
- * resolve against qits-configuration from inside a workspace.
+ * resolve against the credential store from inside a workspace.
  *
  * <p><b>{@link #headerValue} is the reason this record is separate from {@link
  * AgentMcpCatalogEntryDto}.</b> The catalog record goes into the editor's answers, into revision
@@ -27,7 +27,7 @@ import java.util.List;
  * @param key the key this server renders under
  * @param url the http(s) URL, verbatim from the catalog
  * @param headerName the header to send; empty when the server takes no credential
- * @param headerValue that header's value, resolved from qits-configuration; empty exactly when
+ * @param headerValue that header's value, resolved from the credential store; empty exactly when
  *     {@code headerName} is
  * @param allowedTools the tools pre-approved on this server
  */

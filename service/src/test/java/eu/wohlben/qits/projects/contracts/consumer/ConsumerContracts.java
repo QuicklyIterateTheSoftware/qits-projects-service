@@ -27,7 +27,6 @@ final class ConsumerContracts {
             MaintenanceContract.ROWS,
             WorkspacesContract.ROWS,
             IdpContract.ROWS,
-            ConfigurationContract.ROWS,
             ContainersContract.ROWS,
             ProjectsDaemonContract.ROWS,
             SystemContract.ROWS)) {

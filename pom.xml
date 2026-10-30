@@ -254,7 +254,7 @@
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1021.194304</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
-             qits-idp, qits-deployments, qits-configuration, qits-containers and
+             qits-idp, qits-deployments, qits-containers and
              qits-projects-daemon record
              for their provider states. Test scope, read off the classpath by
              service/src/test/.../contracts/consumer/ConsumerGoldenMasters. A row of a consumer
@@ -268,7 +268,6 @@
         <qits.ci-golden-masters.version>2026.1026.163551</qits.ci-golden-masters.version>
         <qits.idp-golden-masters.version>2026.1027.165632</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1010.145913</qits.deployments-golden-masters.version>
-        <qits.configuration-golden-masters.version>2026.1011.84651</qits.configuration-golden-masters.version>
         <qits.containers-golden-masters.version>2026.1019.103940</qits.containers-golden-masters.version>
         <qits.projects-daemon-golden-masters.version>2026.1024.75123</qits.projects-daemon-golden-masters.version>
         <!-- qits-system's golden masters (epic qits-1481): the lease, work-volume and target doors
@@ -635,12 +634,6 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-deployments-golden-masters</artifactId>
                 <version>${qits.deployments-golden-masters.version}</version>
-            </dependency>
-            <dependency>
-                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
-                <groupId>${project.groupId}</groupId>
-                <artifactId>qits-configuration-golden-masters</artifactId>
-                <version>${qits.configuration-golden-masters.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site: recordings a test reads, never code. -->

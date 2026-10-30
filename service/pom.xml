@@ -464,12 +464,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <!-- qits-configuration's recorded answers, for the consumer rows against it. -->
-            <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-configuration-golden-masters</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <!-- qits-containers's recorded answers, for the consumer rows against it. -->
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-containers-golden-masters</artifactId>

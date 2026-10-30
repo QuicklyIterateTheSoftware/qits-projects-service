@@ -7,63 +7,28 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * The rules an external MCP catalog entry has to survive, and the credential key namespace this
- * epic settled on.
+ * The rules an external MCP catalog entry has to survive, and the credential key grammar.
  *
- * <h2>The namespace, and why it is the application segment rather than a key prefix</h2>
+ * <h2>The credential key</h2>
  *
- * <p>The epic left one thing open for whoever built the catalog: the config-declarations epic's
- * declared keys are {@code env.}-prefixed because they render as container environment variables, and
- * an MCP credential is not an env var of any app — so pick a non-colliding namespace, or an
- * operator-class entry, and write down which.
+ * <p>An entry names a credential by key and never carries its value. The value lives in this
+ * service's own {@code agent_mcp_credential} table ({@link AgentMcpCredentialStore}), set with
+ * {@code qits agent-mcp credentials set --key <KEY>} and never answered back (qits-1394).
  *
- * <p><b>It cannot be a new key prefix.</b> qits-configuration addresses a value by {@code (env,
- * application, key)} and its key grammar is <em>closed</em>: {@code ConfigurationKeys.requireKey}
- * accepts {@code env.<VAR>} and the four indexed families ({@code mounts[i]}, {@code publishes[i]},
- * {@code groups[i]}, {@code aliases[i]}) and answers 400 to everything else. A {@code secrets.} or
- * {@code mcp.} prefix could not be <em>written</em> over there, and widening that grammar is another
- * repository's change and outside this epic.
- *
- * <p><b>So it is the application segment, which is the axis that is actually open</b> — {@code
- * requireApplication} validates a dns-label shape and nothing more — and, better, it is the axis the
- * concern is really about. The worry is not the three characters {@code env}; it is that the key
- * would be an environment variable <em>of an application</em>, injected into that application's
- * container by the deployer. Under an application nothing deploys, it is not: no deployment names
- * {@link #CREDENTIAL_APPLICATION}, so no deployer ever renders these keys into anybody's
- * environment, and no application's declaration can collide with them. That is precisely an
- * operator-class entry, spelled with the one key grammar the store has.
- *
- * <p><b>Forward-compatible with secrets by construction.</b> The entry is {@code plain} today,
- * because qits-configuration's {@code secret} class does not exist yet, and that is accepted on
- * purpose: the reference is the point. When secrets management lands there, the same {@code
- * (application, key)} pair is served as a secret, no field here moves and no editor changes — only
- * the class of the entry behind the name.
- *
- * <p><b>The cost, stated rather than hidden:</b> {@code qits-agent-mcp} has no declaration, so its
- * entries read as {@code orphaned} in qits-configuration's own listing. That flag means "no
- * declaration accounts for this key", which is true and harmless — nothing is written or removed on
- * the strength of it — and it is the honest price of using a store whose key grammar is shaped for
- * deployments.
+ * <p><b>The grammar is {@code env.<VAR>}</b>, which is what the store this replaced —
+ * qits-configuration, under a reserved application nothing deployed — could hold. It is kept as it is
+ * so every reference an entry already stores stays valid unchanged; the {@code env.} prefix no longer
+ * renders as anybody's environment variable and never did, because nothing deployed those keys.
  */
 public final class AgentMcpCatalog {
 
   private AgentMcpCatalog() {}
 
   /**
-   * The qits-configuration application every MCP credential key lives under.
+   * The credential key grammar, {@code env.<VAR>}.
    *
-   * <p>Reserved: nothing deploys under this name and nothing may. It is the namespace — see this
-   * class's javadoc for why the namespace is the application rather than the key.
-   */
-  public static final String CREDENTIAL_APPLICATION = "qits-agent-mcp";
-
-  /**
-   * The key grammar, which is qits-configuration's own {@code env.<VAR>} and not a second opinion
-   * about it.
-   *
-   * <p>Checked here so that a mistyped key is a 400 an operator reads at the catalog form, rather
-   * than a 400 from a peer service at document-build time — or, worse, a reference that validates
-   * here and cannot be created over there.
+   * <p>Checked on a catalog write and on the credential doors alike, so a key that can be set is
+   * exactly a key an entry can reference.
    */
   private static final Pattern CREDENTIAL_KEY = Pattern.compile("^env\\.[A-Za-z_][A-Za-z0-9_]*$");
 
@@ -73,6 +38,12 @@ public final class AgentMcpCatalog {
    * a bad day.
    */
   private static final Pattern CATALOG_KEY = Pattern.compile("^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$");
+
+  /**
+   * The path segment the credential doors sit under, {@code /agent-mcp-catalog/credentials}, and so
+   * the one dns-label-shaped name a catalog entry may not take.
+   */
+  public static final String CREDENTIALS_SEGMENT = "credentials";
 
   private static final int MAX_URL = 2000;
   private static final int MAX_DISPLAY_NAME = 200;
@@ -92,6 +63,15 @@ public final class AgentMcpCatalog {
               + " belong to this platform, now or before). An external entry under one of those"
               + " names would silently replace the platform's own server in the rendered mcpServers"
               + " object, or be refused by a harness that still reserves it.");
+    }
+    if (CREDENTIALS_SEGMENT.equals(trimmed)) {
+      throw new BadRequestException(
+          "`"
+              + CREDENTIALS_SEGMENT
+              + "` is not a catalog key: /agent-mcp-catalog/"
+              + CREDENTIALS_SEGMENT
+              + " is where the credentials an entry references are set, so an entry under that"
+              + " name could never be read back.");
     }
     if (!CATALOG_KEY.matcher(trimmed).matches()) {
       throw new BadRequestException(
@@ -165,24 +145,30 @@ public final class AgentMcpCatalog {
     boolean hasKey = credentialKey != null && !credentialKey.isBlank();
     if (hasHeader != hasKey) {
       throw new BadRequestException(
-          "A header name and a configuration key go together: set both, or neither. A header with"
+          "A header name and a credential key go together: set both, or neither. A header with"
               + " no key would render an empty credential and a key with no header would render"
               + " nowhere — either is a server that 401s on the agent's first tool call.");
     }
     if (!hasKey) {
       return;
     }
+    requireCredentialKey(credentialKey);
+  }
+
+  /** A credential key, trimmed, or a 400 naming what is wrong with it. */
+  public static String requireCredentialKey(String credentialKey) {
+    if (credentialKey == null || credentialKey.isBlank()) {
+      throw new BadRequestException("A credential key is required");
+    }
     String trimmed = credentialKey.trim();
     if (!CREDENTIAL_KEY.matcher(trimmed).matches()) {
       throw new BadRequestException(
-          "Not a valid configuration key: "
+          "Not a valid credential key: "
               + trimmed
-              + ". It is a qits-configuration key under the reserved `"
-              + CREDENTIAL_APPLICATION
-              + "` application, so it is spelled `env.<VAR>`: after `env.` it starts with a letter"
-              + " or an underscore and holds only letters, digits and underscores. That grammar is"
-              + " qits-configuration's own — a key outside it could not be created there at all.");
+              + ". It is spelled `env.<VAR>`: after `env.` it starts with a letter or an underscore"
+              + " and holds only letters, digits and underscores.");
     }
+    return trimmed;
   }
 
   /** The header names refused outright: a caller may not steer the transport itself. */

@@ -28,6 +28,8 @@ class DeskAdminParityTest {
       Set.of(
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
+          "AgentMcpCatalogController.setCredential",
+          "AgentMcpCatalogController.deleteCredential",
           "GcController.collectTags",
           "ProjectController.create",
           "ProjectController.delete",

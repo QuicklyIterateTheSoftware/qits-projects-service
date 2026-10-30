@@ -21,7 +21,6 @@ contracts:
   # what the qits-eventstream library asks on this service's behalf, written by EventstreamPactTest.
   pacts:
     qits-ci-service: { packages: [maven] }
-    qits-configuration-service: { packages: [maven] }
     qits-containers-service: { packages: [maven] }
     qits-deployments-service: { packages: [maven] }
     qits-events-service: { packages: [maven] }

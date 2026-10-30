@@ -19,7 +19,7 @@ import java.util.List;
  *
  * <p><b>{@code externalMcpServers} carries references and never a credential's value.</b> A surface
  * names the catalog entries it attaches; each entry travels with its url, its header name and the
- * qits-configuration key the header's value lives behind. This record is serialized into revision
+ * credential key the header's value lives behind. This record is serialized into revision
  * snapshots, into the editor's answers and into the OpenAPI document, so the value must not be here
  * — it is resolved once, when a container's document is built, into {@code AgentResolvedMcpServerDto}
  * inside {@code AgentDocumentSurfaceDto}, and nowhere else.

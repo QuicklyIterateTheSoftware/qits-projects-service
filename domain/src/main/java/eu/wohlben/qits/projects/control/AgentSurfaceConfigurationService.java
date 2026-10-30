@@ -123,7 +123,7 @@ public class AgentSurfaceConfigurationService {
    *
    * <p><b>This is where credentials are read, and the only place.</b> Each surface's attached catalog
    * entries are rendered whole — url and header value — so a container needs no second lookup and
-   * never holds a qits-configuration reference it would have to resolve from inside a workspace. A
+   * never holds a credential reference it would have to resolve from inside a workspace. A
    * reference that cannot be resolved throws out of here and the whole document fails, naming the key
    * and the surface: a partially-resolved document handed to a container would be a server that 401s
    * on the agent's first tool call, which surfaces as a confused agent hours later rather than as an

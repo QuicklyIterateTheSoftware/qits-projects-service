@@ -155,6 +155,15 @@ components:
           type: array
           items:
             type: string
+    AgentMcpCredentialDto:
+      type: object
+      properties:
+        key:
+          type: string
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+        updatedBy:
+          type: string
     AgentPermissionMode:
       type: string
       enum:
@@ -652,9 +661,10 @@ components:
             \ Empty means the server takes no credential."
         credentialKey:
           type: string
-          description: The qits-configuration key holding that header's value — `env.<VAR>`
-            under the reserved `qits-agent-mcp` application. Empty exactly when headerName
-            is. The value lives there and never here.
+          description: "The credential key holding that header's value — `env.<VAR>`,\
+            \ set through PUT /agent-mcp-catalog/credentials/{key}. Empty exactly\
+            \ when headerName is. The value lives in the credential store and never\
+            \ here."
         allowedTools:
           type: array
           items:
@@ -675,11 +685,6 @@ components:
             type: string
           description: "Keys an entry may not claim: the platform's own server and\
             \ the retired ones."
-        credentialApplication:
-          type: string
-          description: "The qits-configuration application every credentialKey lives\
-            \ under. Reserved: nothing deploys under it, so these keys are never rendered\
-            \ into any application's environment."
     CollectTagsRequest:
       type: object
       required:
@@ -916,6 +921,20 @@ components:
           pattern: \S
         priority:
           type: string
+    CredentialListResponse:
+      type: object
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentMcpCredentialDto"
+    CredentialRequest:
+      type: object
+      properties:
+        value:
+          type: string
+          description: "The header value, verbatim. Write-only: no door answers it\
+            \ back."
     CriterionApprovalDto:
       type: object
       properties:
@@ -3725,6 +3744,86 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
+  /projects/api/agent-mcp-catalog/credentials:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialListResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List Credentials
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/agent-mcp-catalog/credentials/{key}:
+    put:
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMcpCredentialDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Set Credential
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+    delete:
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Delete Credential
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
   /projects/api/agent-mcp-catalog/{key}:
     put:
       parameters:
@@ -8957,4 +9056,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1027.154457
+  version: 2026.1030.153006

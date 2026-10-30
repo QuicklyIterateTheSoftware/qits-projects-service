@@ -294,6 +294,8 @@ class AgentReadAccessTest {
           "ProjectFrontDeskController.prompt",
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
+          "AgentMcpCatalogController.setCredential",
+          "AgentMcpCatalogController.deleteCredential",
           "AgentCapabilityController.report",
           "GcController.collectTags",
           "ProjectController.create",
@@ -320,6 +322,8 @@ class AgentReadAccessTest {
       Set.of(
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
+          "AgentMcpCatalogController.setCredential",
+          "AgentMcpCatalogController.deleteCredential",
           "GcController.collectTags",
           "ProjectController.create",
           "ProjectController.delete",

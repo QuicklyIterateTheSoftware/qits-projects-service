@@ -11,7 +11,6 @@ import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.persistence.AgentMcpCatalogEntryRepository;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import java.time.Instant;
@@ -30,16 +29,10 @@ import org.jboss.logging.Logger;
  * may not be one of the three reserved built-ins, or the entry would displace a platform server in
  * the rendered {@code mcpServers} object and the session would look normal while talking to somebody
  * else's server. The URL must be http(s), because that is the only transport both harnesses can
- * carry. And the referenced qits-configuration key must exist, so a mistyped reference is a 400 at
- * the form rather than a failed container provision later.
- *
- * <p><b>The third one has a third answer, and it matters.</b> {@link McpCredentials#exists} is empty
- * when qits-configuration could not be asked — the address unset, the service unreachable — which is
- * neither "the key is there" nor "the key is missing". A write is <em>accepted</em> in that case,
- * with a WARN, because refusing would make an unrelated outage look like a validation error and
- * would make the catalog unusable on a topology that has not configured the hop. What is <b>not</b>
- * lenient is {@link #resolve}: a reference that cannot be resolved when a document is built fails
- * that build loudly and names the key, which is the gate that actually protects a running agent.
+ * carry. And the referenced credential must be set in this service's own store ({@link
+ * AgentMcpCredentialStore}, qits-1394), so a mistyped reference is a 400 at the form rather than a
+ * failed container provision later. {@link #resolve} checks again when a document is built, because
+ * a credential can be deleted after an entry referencing it was saved.
  *
  * <p><b>Nothing here logs a header value, and nothing may.</b> The value is read once, in {@link
  * #resolve}, straight into {@code AgentResolvedMcpServerDto}, which travels only into the document a
@@ -56,17 +49,8 @@ public class AgentMcpCatalogService {
 
   @Inject AgentSurfaceExternalMcpAttachmentRepository attachments;
 
-  /**
-   * The credential hop, {@code Instance} like every other port out of this module.
-   *
-   * <p>Absent is a supported configuration and reads as the third answer this service already has to
-   * handle: <b>"could not ask"</b>. That is what {@code domain}'s own suite runs as — the adapter
-   * lives in {@code service/…/confighost/} and this module has no HTTP client at all — and it is
-   * also what a topology with no qits-configuration wired is. It never means "no credential": a
-   * catalog write is stored unverified with a WARN, and {@link #resolve} still fails the document
-   * build loudly, which is the gate that protects a running agent.
-   */
-  @Inject Instance<McpCredentials> credentials;
+  /** The credential store — {@link AgentMcpCredentialStore}, the one implementation. */
+  @Inject McpCredentials credentials;
 
   // -------------------------------------------------------------------------------------------
   // Reads
@@ -127,23 +111,21 @@ public class AgentMcpCatalogService {
     for (AgentMcpCatalogEntryDto entry : attachedTo(surfaceKey)) {
       String headerValue = "";
       if (!entry.credentialKey().isBlank()) {
-        Optional<String> value =
-            credentials.isResolvable()
-                ? credentials.get().value(entry.credentialKey())
-                : Optional.empty();
+        Optional<String> value = credentials.value(entry.credentialKey());
         if (value.isEmpty() || value.get().isBlank()) {
           throw new InternalServerErrorException(
               "Could not resolve the credential for MCP server `"
                   + entry.key()
                   + "` on surface `"
                   + surfaceKey
-                  + "`: qits-configuration key `"
+                  + "`: credential `"
                   + entry.credentialKey()
-                  + "` under application `"
-                  + AgentMcpCatalog.CREDENTIAL_APPLICATION
-                  + "` is missing, empty or unreadable. The document is not built: a server"
+                  + "` is not set. The document is not built: a server"
                   + " attached with no credential would render as an unauthenticated server and"
-                  + " 401 on the agent's first tool call.");
+                  + " 401 on the agent's first tool call. Set it with `qits agent-mcp credentials"
+                  + " set --key "
+                  + entry.credentialKey()
+                  + "`.");
         }
         headerValue = value.get();
       }
@@ -180,7 +162,7 @@ public class AgentMcpCatalogService {
     String checkedUrl = AgentMcpCatalog.requireUrl(url);
     String name = AgentMcpCatalog.requireDisplayName(displayName);
     if (!reference.isBlank()) {
-      requireReferenceResolvable(key, reference);
+      requireReferenceResolvable(reference);
     }
 
     Instant now = Instant.now();
@@ -247,32 +229,17 @@ public class AgentMcpCatalogService {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Confirm the reference before the entry is stored, with the third answer handled honestly.
-   *
-   * <p>A confirmed-missing key is a 400 naming it and the application it should live under — the
-   * whole reason this check is at the form. "Could not ask" is a WARN and the write proceeds:
-   * refusing would dress an outage of another service up as a validation error, and would make the
-   * catalog unusable wherever the hop is unconfigured. The gate that protects a running agent is
-   * {@link #resolve}, which is strict.
+   * Confirm the reference before the entry is stored: a key with no credential set is a 400 naming
+   * it and how to set it — the whole reason this check is at the form.
    */
-  private void requireReferenceResolvable(String catalogKey, String reference) {
-    Optional<Boolean> exists =
-        credentials.isResolvable() ? credentials.get().exists(reference) : Optional.empty();
-    if (exists.isEmpty()) {
-      LOG.warnf(
-          "Could not confirm qits-configuration key %s (application %s) for MCP catalog entry %s;"
-              + " storing the reference unverified. Building a container's document will fail"
-              + " loudly if it is still unresolvable then.",
-          reference, AgentMcpCatalog.CREDENTIAL_APPLICATION, catalogKey);
-      return;
-    }
-    if (!exists.get()) {
+  private void requireReferenceResolvable(String reference) {
+    if (!credentials.exists(reference)) {
       throw new BadRequestException(
-          "qits-configuration holds no key `"
+          "No credential is set under `"
               + reference
-              + "` under application `"
-              + AgentMcpCatalog.CREDENTIAL_APPLICATION
-              + "`. Create it there first — this catalog stores a reference and never the value, so"
+              + "`. Set it first with `qits agent-mcp credentials set --key "
+              + reference
+              + "` (the value on stdin) — this catalog stores a reference and never the value, so"
               + " an entry pointing at nothing would fail every container provision that attaches"
               + " it.");
     }

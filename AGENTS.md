@@ -3351,9 +3351,8 @@ and this service caches the report — `V17`, `entity/AgentHarnessCapability`,
   `observability`, `actions`, `qits`) would displace a platform server in the rendered `key → config` object
   and the session would look normal while talking to somebody else's server. A non-http(s) URL cannot
   be carried: Kimi's ACP shape is `(key, url, tools)` with no place for a stdio command. And a
-  credential reference qits-configuration does not hold is a 400 naming it — but **"could not ask" is
-  a third answer**: an outage of that service is not a validation error, so the write is accepted
-  with a WARN and the strict gate stays where it protects a running agent.
+  credential key with no credential set is a 400 naming it and the `qits agent-mcp credentials set`
+  verb; the document build checks again, because a credential can be deleted after the entry.
 - **`AgentMcpCatalogEntryDto` never carries a value; `AgentResolvedMcpServerDto` is the only shape
   that does.** The first goes into the editor's answers, revision snapshots and the OpenAPI document;
   the second exists only inside `AgentDocumentSurfaceDto`, in the document mounted into a container.
@@ -3373,44 +3372,34 @@ and this service caches the report — `V17`, `entity/AgentHarnessCapability`,
   server it has never heard of. Under
   `--dangerously-skip-permissions` it is the only lever until the permission-mode knob is used.
 
-#### The credential key namespace: `env.<VAR>` under the reserved application `qits-agent-mcp`
+#### The credentials: this service's own store, write-only (qits-1394)
 
-The epic left this open ("the config epic's declared keys are `env.`-prefixed because they render as
-container environment variables, and an MCP credential is not an env var of any app — pick a
-non-colliding namespace, or an operator-class entry, and write down which"). It is settled in
-`control/AgentMcpCatalog`, and the reasoning is short:
+The values behind the catalog's credential keys live in `agent_mcp_credential` (`V72`;
+`entity/AgentMcpCredential`, `control/AgentMcpCredentialStore`, the one implementation of the
+`control/McpCredentials` port). They used to be read from qits-configuration under the reserved
+application `qits-agent-mcp` (`confighost/`, deleted with that service's removal, epic qits-765);
+that application held nothing when the store moved, so nothing was migrated.
 
-- **It cannot be a new key prefix.** qits-configuration addresses a value by `(env, application,
-  key)` and its key grammar is **closed** — `ConfigurationKeys.requireKey` accepts `env.<VAR>` and
-  the four indexed families (`mounts[i]`, `publishes[i]`, `groups[i]`, `aliases[i]`) and answers 400
-  to everything else. A `secrets.` or `mcp.` key could not be *written* over there, and widening that
-  grammar is another repository's change.
-- **So it is the application segment** — the axis that is open (`requireApplication` checks a dns
-  label and nothing more) and, better, the axis the concern is actually about. The worry is not the
-  three characters `env`; it is that the key would be an environment variable **of an application**,
-  injected into that application's container by the deployer. Under `qits-agent-mcp`, which nothing
-  deploys, it is not: no deployer renders these keys anywhere, and no application's declaration can
-  collide with them. That is precisely an operator-class entry, spelled with the one grammar the
-  store has.
-- **The application name is a constant, deliberately not configurable.** A per-deployment namespace
-  would be a per-deployment place for a credential to hide.
-- **Forward-compatible with secrets by construction.** The entry is `plain` today because
-  qits-configuration's `secret` class does not exist yet, and that is accepted on purpose — *the
-  reference is the point*. When secrets land there the same `(application, key)` pair is served as a
-  secret, no field moves and no editor changes.
-- **The cost, stated rather than hidden:** `qits-agent-mcp` has no declaration, so its entries read
-  as `orphaned` in qits-configuration's own listing. That flag means "no declaration accounts for
-  this key", which is true and harmless — nothing is written or removed on the strength of it.
+    PUT    /projects/api/agent-mcp-catalog/credentials/{key}  {"value":"…"}
+           → 200 {key, updatedAt, updatedBy}          qits:admin, qits:admin-agent
+    DELETE /projects/api/agent-mcp-catalog/credentials/{key}
+           → 204, 404 when none is set                qits:admin, qits:admin-agent
+    GET    /projects/api/agent-mcp-catalog/credentials
+           → 200 {credentials:[{key, updatedAt, updatedBy}]}   the catalog GET's roles, qits:agent included
 
-The hop itself is `confighost/` — the fifth `@DefaultBean` HTTP client in this service, seam
-`control/McpCredentials`, address `qits.projects.agent-mcp.configuration-url` plus
-`-configuration-env` (**both unset shipped, and there is deliberately no default env**: a guessed one
-would read another tier's credential). **No header fallback**, unlike the ci and maintenance hops:
-qits-configuration's entry routes take `qits:admin` or `qits:system` and a forwarded `X-Qits-*` pair
-from a machine-driven document build carries neither honestly, so with the named oidc client off the
-read is not attempted and the document fails naming the key. **Nothing in that package logs a value
-at any level** — a log line names the key, the status code or the exception, and the value is not
-interpolated into any message, including an exception's.
+- **Write-only.** No answer carries a value — not the PUT's, not the listing's, not a log line, a
+  revision snapshot or an exception message. The value leaves the store only through
+  `McpCredentials.value`, into the document a container is created with.
+- **The key grammar is the catalog's `env.<VAR>`** (`AgentMcpCatalog.requireCredentialKey`), 400
+  otherwise, kept from the qits-configuration days so every reference an entry already holds stays
+  valid; a blank value is a 400 too. `credentials` is refused as a catalog key, since the literal
+  segment wins over `/{key}`.
+- **The desk-admin is refused both writes** (`DeskAdminParityTest.REFUSED`,
+  `AgentReadAccessTest.DESK_REFUSED_WRITES`/`DESK_ADMIN_REFUSED_WRITES`): the catalogue its surface
+  is built from is its own rights, like the entry writes.
+- **A credential change moves the document's bytes**, so the desk's `spec_hash` moves and the spec
+  roll replaces it once it is quiet — the same "an edit applies to the next container" as any store
+  edit.
 
 ### Injecting the document into the project's agent container
 
@@ -3464,7 +3453,7 @@ argument.
   document, so the spec roll replaces the desk once it is quiet and the edit takes effect. No push,
   no poll, no staleness flag, and nothing in the UI about it.
 - **A document that cannot be built fails the ensure, loudly.** A surface attaching an external MCP
-  server whose qits-configuration credential does not resolve throws out of `document()` naming the
+  server whose credential is not set throws out of `document()` naming the
   key and the surface, and the desk reads `FAILED` with the reason on `failureDetail`. **This is deliberately the opposite of
   qits-workspaces' policy**, and the difference is what fails: over there the document arrives over
   the network from a peer that can be down, so refusing to create the workspace would trade a

@@ -18,7 +18,7 @@ import java.util.UUID;
  *
  * <p>Beside the server this platform owns ({@code qits}) an operator may define servers it does
  * not: a key, a display name, a URL, an optional
- * header name with the qits-configuration key holding its value, and the tools pre-approved for it.
+ * header name with the credential key holding its value, and the tools pre-approved for it.
  * Defined once and attached many times, so a server is not re-entered — with its token — for each of
  * eight surfaces.
  *
@@ -33,21 +33,10 @@ import java.util.UUID;
  * else's server. It is refused on write, and refused again at render in the library, because a
  * document can reach a container from an older service.
  *
- * <p><b>{@link #credentialKey} is a reference and never material.</b> It names a qits-configuration
- * entry; the value is read when a container's document is built and is not stored here, not written
- * into a revision snapshot and never logged. When qits-configuration grows its {@code secret} entry
- * class the same key is served as a secret and nothing on this entity moves — that the reference is
- * the model rather than the value is the whole design, and a {@code plain} entry today is accepted
- * on purpose.
- *
- * <p><b>The namespace.</b> qits-configuration addresses a value by {@code (env, application, key)}
- * and its key grammar is closed — {@code ConfigurationKeys.requireKey} takes {@code env.<VAR>} and
- * four indexed families and refuses the rest — so no new key prefix can be written there without
- * changing that service. The open axis is the application segment, which is also the axis the
- * concern is really about ("an MCP credential is not an env var of <em>any app</em>"): the reference
- * is {@code env.<VAR>} under the reserved application {@code qits-agent-mcp}, an application nothing
- * deploys, so no deployer ever renders these keys into a container's environment. See {@code
- * control/AgentMcpCatalog}.
+ * <p><b>{@link #credentialKey} is a reference and never material.</b> It names an {@link
+ * AgentMcpCredential} row ({@code env.<VAR>}); the value is read when a container's document is built
+ * and is not stored here, not written into a revision snapshot and never logged. That the reference
+ * is the model rather than the value is the whole design. See {@code control/AgentMcpCatalog}.
  *
  * <p><b>{@link #allowedTools} is operator-editable here, unlike the built-ins'.</b> The platform
  * ships no pre-approval constant for a server it has never heard of, so the person entering the
@@ -77,7 +66,7 @@ public class AgentMcpCatalogEntry extends PanacheEntityBase implements CausedRow
   @Column(name = "header_name", nullable = false, columnDefinition = "text")
   public String headerName;
 
-  /** The qits-configuration key holding the header's value. Empty exactly when the header is. */
+  /** The credential key holding the header's value. Empty exactly when the header is. */
   @Column(name = "credential_key", nullable = false, columnDefinition = "text")
   public String credentialKey;
 

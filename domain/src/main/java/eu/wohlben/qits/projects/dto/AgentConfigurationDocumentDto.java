@@ -20,7 +20,7 @@ import java.util.List;
  *     how old the configuration it holds is, which is the only honest way to read a snapshot
  * <p><b>It is the only shape that carries a credential.</b> Each surface's attached external MCP
  * servers arrive fully rendered — url and header value — so a container needs no second lookup and
- * never holds a qits-configuration reference it would have to resolve from inside a workspace. So
+ * never holds a credential reference it would have to resolve from inside a workspace. So
  * this document must not be logged, echoed into an event, or answered to anyone but a container's
  * provisioner and an operator.
  *
