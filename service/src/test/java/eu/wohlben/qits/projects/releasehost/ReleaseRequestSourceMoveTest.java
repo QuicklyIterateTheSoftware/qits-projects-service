@@ -427,6 +427,35 @@ public class ReleaseRequestSourceMoveTest {
     assertEquals(0, queuedRequestsOf(), "nothing was minted");
   }
 
+  /**
+   * Found verifying qits-1665 live (qits-docs-frontend-rr-38): an automation's branch is not a
+   * branch of anybody's, so with only it left besides main the move is still refused.
+   */
+  @Test
+  void theOnlyBranchBesidesMainAndTheAutomationsIs409() {
+    String only = feature();
+    String active = ask(only, "alice").request().id();
+    String automation = "maintenance/automations/dependency-bump/" + active;
+    releaseRequests.addSource(active, automation, "dev-qits-maintenance", null);
+
+    String message = assertStatus(409, () -> releaseRequests.moveSource(active, only, "why", "c"));
+    assertTrue(message.contains("withdraw"), message);
+    assertEquals(0, queuedRequestsOf(), "nothing was minted");
+  }
+
+  @Test
+  void anAutomationsBranchIs409() {
+    String active = ask(feature(), "alice").request().id();
+    ask(feature(), "bob");
+    String automation = "maintenance/automations/dependency-bump/" + active;
+    releaseRequests.addSource(active, automation, "dev-qits-maintenance", null);
+
+    String message =
+        assertStatus(409, () -> releaseRequests.moveSource(active, automation, "why", "c"));
+    assertTrue(message.contains("automation's branch"), message);
+    assertEquals(0, queuedRequestsOf(), "nothing was minted");
+  }
+
   @Test
   void aQueuedRequestIs409() {
     String active = ask(feature(), "alice").request().id();
