@@ -155,6 +155,16 @@ public record EntityWrite(
   }
 
   /**
+   * An edit that sets ({@code ideaId}) or clears ({@code clear}) the idea the work was inspired by
+   * and touches nothing else (qits-1387). Neither scope nor a marker: legal at every status.
+   */
+  public static EntityWrite inspiration(String ideaId, boolean clear) {
+    return new EntityWrite(
+        null, null, false, null, false, null, null, false, null, null, false, null, false, null,
+        null, ideaId, clear);
+  }
+
+  /**
    * This write with its acceptance criteria (qits-887) replaced by {@code criteria} — null leaves
    * them alone on an edit, an empty list clears them. The surfaces that take criteria beside the
    * words of an archetype's factory ({@code update_epic}, {@code create_ticket}) build it this way.
