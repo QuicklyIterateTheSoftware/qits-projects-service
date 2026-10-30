@@ -186,7 +186,7 @@
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1026.133840</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1030.30851</qits.arch-rules.version>
         <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
              and published no db-core. -->
         <qits.db-core.version>2026.1002.70617</qits.db-core.version>
