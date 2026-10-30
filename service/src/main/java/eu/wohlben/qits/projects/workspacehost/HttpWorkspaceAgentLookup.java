@@ -144,8 +144,8 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
    * entry's {@code agentId}, {@code workId}, {@code repositoryId} and {@code wrapperBranch}
    * (qits-1722), and its {@code activity}, {@code lastActivityAt} and {@code waits[]} (qits-1756).
    * A member that is absent, null or unreadable reads as null — an entry with no {@code agentId}
-   * or {@code workId} is left out — so a far side older than a field still lists. Same contract as {@link #workOf}: never throws, one WARN and empty on every
-   * failure.
+   * or {@code workId} is left out — so a far side older than a field still lists. Same contract
+   * as {@link #workOf}: never throws, one WARN and empty on every failure.
    *
    * <p>Every project's agents: the caller narrows by repository ({@code BranchDeliveryNotices}),
    * rather than the far side by {@code projectId}, so this request stays the shape the consumer pact
