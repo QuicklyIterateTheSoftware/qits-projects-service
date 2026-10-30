@@ -256,7 +256,9 @@ public class WorkEntityDoors {
             null,
             false,
             null,
-            EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null));
+            EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null),
+            text(body, EntitySchemas.INSPIRED_BY),
+            false);
     requireRepositoryIn(write.repositoryId(), projectId);
 
     Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
@@ -346,7 +348,10 @@ public class WorkEntityDoors {
     for (Iterator<String> names = body.fieldNames(); names.hasNext(); ) {
       String name = names.next();
       JsonNode value = body.get(name);
-      if (MOVES.containsKey(name)) {
+      if (name.equals(EntitySchemas.INSPIRED_BY)) {
+        // The idea the work was inspired by (qits-1387): no registry property, so judged here.
+        EntitySchemas.inspiredByRefusal(archetype, value).ifPresent(refused::add);
+      } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
       } else if (SERVER_OWNED.contains(name)) {
@@ -395,7 +400,9 @@ public class WorkEntityDoors {
         implementedAt == null ? null : Instant.parse(implementedAt),
         cleared(body, "implementedAt"),
         implementingAt == null ? null : Instant.parse(implementingAt),
-        criteria(body));
+        criteria(body),
+        patchText(body, EntitySchemas.INSPIRED_BY),
+        cleared(body, EntitySchemas.INSPIRED_BY));
   }
 
   /**
