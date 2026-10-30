@@ -942,10 +942,10 @@
                   "agent"
                 ],
                 "committablePaths": [
-                  ":(glob)**/pom.xml"
+                  ":(glob)tapes/golden/**"
                 ],
-                "kind": "dependency-bump",
-                "label": "Dependency bump"
+                "kind": "cli-tapes",
+                "label": "CLI tapes"
               }
             ]
           },

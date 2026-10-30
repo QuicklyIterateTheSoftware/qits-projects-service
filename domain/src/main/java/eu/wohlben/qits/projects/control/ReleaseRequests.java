@@ -1926,6 +1926,10 @@ public class ReleaseRequests {
                             row);
                   }
                   sources.delete(source);
+                  // The request's automation branches go with it (qits-1764): each sits on the old
+                  // fold, which carries the source that left, so the refold would take it back in.
+                  // They regenerate from the new fold.
+                  List<String> dropped = dropAutomationSources(row);
                   ReleaseRequestSource carried = new ReleaseRequestSource();
                   carried.id = UUID.randomUUID().toString();
                   carried.requestId = queued.id;
@@ -1966,13 +1970,14 @@ public class ReleaseRequests {
                   record.movedAt = now;
                   sourceMoves.persist(record);
                   LOG.infof(
-                      "Release request %s: source %s moved to %s%s by %s: %s",
+                      "Release request %s: source %s moved to %s%s by %s: %s%s",
                       row.qualifiedId,
                       named,
                       queued.qualifiedId,
                       minted ? " (minted queued behind it)" : "",
                       actor == null ? "an operator" : actor,
-                      said);
+                      said,
+                      dropped.isEmpty() ? "" : "; automation branches dropped: " + dropped);
                   return new ReleaseRequestSourceMoveAnnouncer.SourceMove(
                       locked.project == null ? null : locked.project.id,
                       repoId,
@@ -1999,6 +2004,24 @@ public class ReleaseRequests {
             + said);
     activated.forEach(activation -> remerge(activation.id(), activation.why()));
     return new Moved(get(requestId), get(move.toRequestId()));
+  }
+
+  /**
+   * Deletes every automation-branch source ({@link #isAutomationBranch}) of a request a person's
+   * source just left (qits-1764), inside the caller's transaction, and answers their names. An
+   * automation commit's only parent is the fold it was made on, and that fold carries the source
+   * that left: kept as a source, the branch would fold it straight back in. The refold that follows
+   * re-runs the pre-run, which regenerates from the new fold.
+   */
+  private List<String> dropAutomationSources(ReleaseRequest row) {
+    List<String> dropped = new ArrayList<>();
+    for (ReleaseRequestSource other : sources.listByRequest(row.id)) {
+      if (other.kind == ReleaseRequestSource.Kind.BRANCH && isAutomationBranch(other.name)) {
+        dropped.add(other.name);
+        sources.delete(other);
+      }
+    }
+    return dropped;
   }
 
   /**
@@ -3947,6 +3970,18 @@ public class ReleaseRequests {
                           "Release request %s withdrawn: branch %s of %s was deleted",
                           open.id, branch, repoId);
                     } else {
+                      if (!isAutomationBranch(branch)) {
+                        // A person's source is gone, so the automation branches go too
+                        // (qits-1764): each sits on the old fold, which carries the deleted
+                        // branch, so the refold would take it back in. They regenerate from the
+                        // new fold.
+                        List<String> dropped = dropAutomationSources(open);
+                        if (!dropped.isEmpty()) {
+                          LOG.infof(
+                              "Release request %s: %s was deleted; automation branches dropped: %s",
+                              open.qualifiedId, branch, dropped);
+                        }
+                      }
                       open.updatedAt = Instant.now();
                     }
                     touched.add(

@@ -283,6 +283,39 @@ public class ReleaseRequestSourceMoveTest {
     assertFalse(announcer.announcedFor(id).isEmpty(), "the new fold is announced");
   }
 
+  /**
+   * qits-1764: the request's automation branches go with the moved source. Each automation commit
+   * sits on the old fold, which carries the moved branch, so refolding with it would take the moved
+   * branch straight back in.
+   */
+  @Test
+  void theRequestItLeftDropsItsAutomationBranchesAndRefoldsWithoutThem() {
+    String a = feature();
+    String id = ask(a, "alice").request().id();
+    String b = feature();
+    ask(b, "bob");
+    String automation = "maintenance/automations/dependency-bump/" + id;
+    releaseRequests.addSource(id, automation, "dev-qits-maintenance", null);
+    String backing = "refs/heads/" + releaseRequests.get(id).backingBranch();
+    assertTrue(
+        merger.lastFold().sources().contains("refs/heads/" + automation),
+        "the premise: the automation branch folds: " + merger.lastFold());
+    merger.reset();
+
+    ReleaseRequests.Moved answer = releaseRequests.moveSource(id, b, "not ready", "carol");
+
+    assertEquals(List.of("main", a), names(answer.from()), "main and a only");
+    assertEquals(List.of("main", a), names(releaseRequests.get(id)));
+    assertEquals(List.of("main", b), names(answer.to()), "the automation branch is not carried");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(backing);
+    assertFalse(folds.isEmpty(), "the request refolded");
+    RecordingBackingBranchMerger.Fold last = folds.get(folds.size() - 1);
+    assertEquals(
+        List.of("refs/heads/main", "refs/heads/" + a),
+        last.sources(),
+        "without the moved branch and without the automation branch");
+  }
+
   @Test
   void theLedgerTakesMovedAndTheBranchsOwnerIsTold() {
     String active = ask(feature(), "alice").request().id();

@@ -1162,6 +1162,58 @@ public class ReleaseRequestFlowTest {
   }
 
   /**
+   * qits-1764: a person's deleted source takes the request's automation branches with it. Each
+   * automation commit sits on the old fold, which carries the deleted branch, so refolding with the
+   * automation branch would fold the deleted work straight back in.
+   */
+  @Test
+  public void aDeletedSourceTakesTheRequestsAutomationBranchesWithIt() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("work");
+    assertEquals(id, create("other"), "the premise: one request carries both");
+    String automation = "maintenance/automations/dependency-bump/" + id;
+    releaseRequests.addSource(id, automation, "dev-qits-maintenance", null);
+    String target = BackingBranches.ref(id);
+    assertTrue(
+        merger.lastFold().sources().contains("refs/heads/" + automation),
+        "the premise: the automation branch folds: " + merger.lastFold());
+    merger.reset();
+
+    releaseRequests.onBranchDeleted(repoId, "other");
+
+    assertEquals("PENDING", stateOf(id), "work is left, so the request stands");
+    assertEquals(List.of("main", "work"), sourceNames(id), "the automation branch went too");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+    assertEquals(1, folds.size(), "the deletion folds the request again: " + folds);
+    assertEquals(
+        List.of("refs/heads/main", "refs/heads/work"),
+        folds.get(0).sources(),
+        "without the deleted branch and without the automation branch");
+  }
+
+  /** The automation's own branch deleted: only it leaves, as before qits-1764. */
+  @Test
+  public void aDeletedAutomationBranchLeavesTheOtherSourcesAlone() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("work");
+    create("other");
+    String automation = "maintenance/automations/dependency-bump/" + id;
+    releaseRequests.addSource(id, automation, "dev-qits-maintenance", null);
+
+    releaseRequests.onBranchDeleted(repoId, automation);
+
+    assertEquals("PENDING", stateOf(id));
+    assertEquals(List.of("main", "work", "other"), sourceNames(id));
+  }
+
+  private List<String> sourceNames(String id) {
+    return releaseRequests.get(id).sources().stream()
+        .filter(source -> !source.implicit())
+        .map(eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto::name)
+        .toList();
+  }
+
+  /**
    * <b>qits-qits-rr-226, replayed</b> (qits-1671): sources {@code [main, ticket/qits-N]}, the ticket
    * branch standing at {@code main}'s head, so the fold is {@code main}'s head and adds nothing. A
    * merged-branch sweep deletes the ticket branch; the request is withdrawn, and the work item is
