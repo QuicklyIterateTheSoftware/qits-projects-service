@@ -217,7 +217,7 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains("only when no active agent was told of it"));
     assertTrue(markdown.contains("`qits ci retry`"));
     assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
-    assertTrue(markdown.contains("ask the\nowner on the item's thread"));
+    assertTrue(markdown.contains("ask the owner on the item's thread"));
     assertTrue(markdown.contains("you are told a slot opened"));
     assertTrue(
         markdown.contains("reaches you only when no agent owns the branch"),
@@ -234,15 +234,55 @@ public class DevelopmentGuideControllerTest {
             "An agent that has had no turn for 2h reaches you once per idle stretch"),
         "qits-1756: the desk is told of an idle agent");
     assertTrue(markdown.contains("leave a deliberate wait alone"), "qits-1756");
+    assertTrue(
+        markdown.contains("qits release-request move"),
+        "qits-1755: the desk moves a source that alone holds a shared request back");
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE.contains("qits release-request move"),
+        "the qits-1756 text is the one before the desk moved a source itself");
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE.contains("Close finished work"),
+        "the qits-1755 text is the one before the desk closed finished work straight to DONE");
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
+  }
+
+  /**
+   * qits-1755: the desk variant moves a source that alone holds a shared request back; an
+   * unedited row holding the qits-1756 text rolls forward on boot.
+   */
+  @Test
+  public void anUneditedDeskPartRollsForwardFromQits1756() {
+    String key = DevelopmentGuideDefaults.key("desk");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("desk").getString("markdown").contains("qits release-request move"));
+  }
+
+  /**
+   * qits-1757: the desk variant closes finished work straight to DONE; an unedited row holding the
+   * qits-1755 text rolls forward on boot.
+   */
+  @Test
+  public void anUneditedDeskPartRollsForwardFromQits1755() {
+    String key = DevelopmentGuideDefaults.key("desk");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("desk").getString("markdown").contains("Close finished work"));
   }
 
   /** qits-1724: the flow waits on the branch, never on a release request id or a fold's sha. */

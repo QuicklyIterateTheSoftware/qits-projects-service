@@ -85,11 +85,22 @@ class ContainerProxyAuthorizationTest {
     other = "proxy-other-" + suffix;
   }
 
+  /**
+   * Stops the stub. A close that outlasts the timeout is not a failure: the upgrade test leaves a
+   * WebSocket open through the proxy back into this very Vert.x, and its close handshake can hang
+   * the stub's shutdown — which is not what any test here asserts (qits-1559 saw it fail two release
+   * folds of qits-projects-service-rr-395 in a row).
+   */
   @AfterEach
   void stopTheStubDaemon() throws Exception {
     if (daemonVertx != null) {
-      daemonVertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-      daemonVertx = null;
+      try {
+        daemonVertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
+      } catch (java.util.concurrent.TimeoutException slow) {
+        // Abandoned, not awaited: the next test stands up a Vert.x of its own.
+      } finally {
+        daemonVertx = null;
+      }
     }
   }
 

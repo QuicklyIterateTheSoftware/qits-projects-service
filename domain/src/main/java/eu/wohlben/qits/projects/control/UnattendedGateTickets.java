@@ -54,7 +54,8 @@ import java.util.Optional;
 public interface UnattendedGateTickets {
 
   /**
-   * A red verdict on an unattended request, as much as a ticket needs to name it.
+   * A red verdict on an unattended request — a red CI run or a failed release-request automation —
+   * as much as a ticket needs to name it.
    *
    * @param requestId the release request that was rejected — the address of the thing that stopped
    * @param qualifiedId the same request's logical id ({@code <repo>-rr-<n>}), the one the ticket
@@ -65,10 +66,15 @@ public interface UnattendedGateTickets {
    * @param repoName the repository's public name, or null where it has none
    * @param branches the request's named branch sources — what was being released
    * @param mergedSha the fold the gate evaluated
-   * @param runId the run that came back red, as the ledger recorded it
-   * @param status that run's terminal status — FAILED, CANCELLED, whatever the ledger holds
+   * @param runId the run that came back red, as the ledger recorded it — for a failed automation the
+   *     newest run of the failed automation, or null where the note names none
+   * @param status that run's terminal status — FAILED, CANCELLED, whatever the ledger holds; always
+   *     FAILED for a failed automation
    * @param detail this service's own rejection sentence, verbatim, so the ticket and the request say
    *     the same thing
+   * @param gate the gate that rejected: null for a red CI run, {@link
+   *     eu.wohlben.qits.projects.control.gate.AutomationsGate#KIND} ({@code "automations"}) for a
+   *     failed release-request automation (qits-1561)
    * @param participants the request's participants, sorted — every one a machine identity, which
    *     is what made the request unattended
    * @param existingTicketId the ticket this request already has, or null where it has none; see the
@@ -85,6 +91,7 @@ public interface UnattendedGateTickets {
       String runId,
       String status,
       String detail,
+      String gate,
       List<String> participants,
       String existingTicketId) {}
 

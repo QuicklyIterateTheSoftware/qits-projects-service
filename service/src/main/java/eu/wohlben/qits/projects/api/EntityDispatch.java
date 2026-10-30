@@ -19,6 +19,7 @@ import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.control.ProjectConfig.DeliverySettings;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -71,7 +72,14 @@ import org.jboss.logging.Logger;
  *       its phase. A refine press moves nothing — REPORTED has no "-ING" status.
  *   <li><b>The dispatch</b>, with the entity as the workspace's {@link WorkspaceAgentDispatch.Subject}
  *       and the archetype's own turn. A failure surfaces as the port's 502/503 and nothing is written
- *       on the entity after it.
+ *       on the entity after it. <b>An agent already running</b> ({@code SKIPPED_RUNNING}) drops
+ *       that turn on the far side; when this press moved the status (it scheduled, or it moved into
+ *       the "-ING" status) nothing else would tell the agent — the move bypassed {@link
+ *       PhaseAdvance} on purpose — so the turn goes to it through {@link WorkspaceAgentTurns}
+ *       instead (qits-1559). That hand-off never fails the press nor undoes the move: an absent
+ *       port, a throw or a turn not spoken is said on the thread and the status stands. A press that
+ *       moved nothing (a re-press at IMPLEMENTING or VERIFYING, a REPORTED item while refine runs)
+ *       hands nothing on: the agent is already on that phase.
  *   <li><b>The assignee</b> (qits-887): the agent the far side names ({@link
  *       WorkspaceAgentDispatch.Dispatch#agentIdentity}), or {@code agent <agentId>} when it named
  *       none, written through {@code EntityDispatchService.setAssignee} with an audit row. Every
@@ -79,7 +87,8 @@ import org.jboss.logging.Logger;
  *       campaign executor — because it records who is on the work, which is the agent. A refused or
  *       failed press writes nothing.
  *   <li><b>The record</b>: the entity's thread gets one comment naming the phase, the mode and the
- *       assignee, and
+ *       assignee — for a running agent, whether the phase this press started was handed to it
+ *       (qits-1559) — and
  *       the hint of its archetype — {@code TICKETS} for a ticket, {@code EPICS} for an epic. Until
  *       qits-551 an epic had no thread and got the hint alone, so nothing on the epic said an agent
  *       had been put on it; its description is still the plan and is never written here.
@@ -194,6 +203,12 @@ public class EntityDispatch {
 
   /** Optional, like every port here. Absent is a 503 naming what is missing. */
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
+
+  /**
+   * The turn a running agent is handed when this press moved its status (qits-1559). Optional, and
+   * its absence only costs that hand-off — the thread says the agent must be prompted by hand.
+   */
+  @Inject Instance<WorkspaceAgentTurns> turns;
 
   @Inject RunningItems runningItems;
 
@@ -348,6 +363,9 @@ public class EntityDispatch {
     EntityWorkspaces.Target target = checked.target();
     String branch = target.branch();
 
+    // The status this press read, captured before any write, so "did this press move it" (qits-1559)
+    // cannot be answered by a row object a write updated in place.
+    String readStatus = entity.status;
     WorkEntity recorded = entity;
     if (schedules) {
       recorded = schedule(entity, mover);
@@ -370,13 +388,21 @@ public class EntityDispatch {
             .get()
             .dispatchAgent(target.repositoryId(), branch, subject, started.instruction());
 
+    // qits-1559: an agent already running dropped the turn above; if this press moved the status,
+    // nothing else will tell it (the move bypassed PhaseAdvance), so hand it the turn directly.
+    boolean moved = schedules || !java.util.Objects.equals(readStatus, recorded.status);
+    WorkspaceAgentTurns.Turn handedOn =
+        "SKIPPED_RUNNING".equals(made.agentLaunch()) && moved
+            ? handOn(recorded, started, branch)
+            : null;
+
     // qits-887: who is on it now is the agent this press put there, whoever pressed — and the
     // answer carries the row as that write left it.
     recorded = entities.setAssignee(recorded.id, made.assignee(), changedBy);
 
     comments.addComment(
         recorded.id,
-        comment(noun(recorded), branch, made, started.phase(), mode)
+        comment(noun(recorded), branch, made, started.phase(), mode, handedOn)
             + (mover.isDesk() ? deskSuffix(rule) : ""),
         changedBy);
     publisher.fire(recorded.projectId, ProjectChangeHint.Topic.of(recorded.archetype));
@@ -845,6 +871,46 @@ public class EntityDispatch {
     return qualifiedId == null ? entity.id : qualifiedId;
   }
 
+  /**
+   * Hands the running agent the turn its dispatch dropped (qits-1559), by the entity's row id. Never
+   * throws: an absent port or a throwing one is a {@link WorkspaceAgentTurns.Outcome#COULD_NOT}
+   * with a reason for the thread, exactly as {@link PhaseAdvance} treats its own delivery.
+   */
+  private WorkspaceAgentTurns.Turn handOn(
+      WorkEntity entity, PhasePrompts.Started started, String branch) {
+    if (turns.isUnsatisfied()) {
+      LOG.warnf(
+          "Could not hand the %s phase of %s %s to its running agent on %s: no delivery port",
+          started.phase(), noun(entity), entity.id, branch);
+      return new WorkspaceAgentTurns.Turn(
+          WorkspaceAgentTurns.Outcome.COULD_NOT, "no delivery port");
+    }
+    WorkspaceAgentTurns.Turn turn;
+    try {
+      turn = turns.get().deliver(entity.id, started.instruction());
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not hand the %s phase of %s %s to its running agent on %s: the delivery port threw",
+          started.phase(),
+          noun(entity),
+          entity.id,
+          branch);
+      return new WorkspaceAgentTurns.Turn(
+          WorkspaceAgentTurns.Outcome.COULD_NOT, "the delivery failed unexpectedly");
+    }
+    if (turn.spoken()) {
+      LOG.infof(
+          "Handed the %s phase of %s %s to its running agent on %s (%s)",
+          started.phase(), noun(entity), entity.id, branch, turn.outcome());
+    } else {
+      LOG.warnf(
+          "Could not hand the %s phase of %s %s to its running agent on %s: %s %s",
+          started.phase(), noun(entity), entity.id, branch, turn.outcome(), turn.detail());
+    }
+    return turn;
+  }
+
   /** What a desk's dispatch comment ends with. */
   private static String deskSuffix(String rule) {
     return " Dispatched by the delivery desk under rule `" + rule + "`.";
@@ -855,13 +921,46 @@ public class EntityDispatch {
    * (qits-887), and for a one-phase run says that it stops there, so a reader can tell a flow from a
    * single step. A re-dispatch that found an agent already
    * working says so and names no phase: that agent was started for whatever the status said then.
+   * Unless the press moved the status (qits-1559): then {@code handedOn} is the turn handed to that
+   * agent, and the comment says the phase was handed over, or that it could not be and why — the
+   * status stands either way, so a reader knows to prompt the agent by hand.
    */
   private static String comment(
       String noun,
       String branch,
       WorkspaceAgentDispatch.Dispatch made,
       String phase,
-      DispatchMode mode) {
+      DispatchMode mode,
+      WorkspaceAgentTurns.Turn handedOn) {
+    String phaseSuffix =
+        mode == DispatchMode.PHASE
+            ? " This run stops after that phase: the next one starts when somebody presses again."
+            : "";
+    if (handedOn != null && handedOn.spoken()) {
+      return "An agent was already working on this "
+          + noun
+          + " on `"
+          + branch
+          + "`; handed it the "
+          + phase
+          + " phase. Assignee: `"
+          + made.assignee()
+          + "`."
+          + phaseSuffix;
+    }
+    if (handedOn != null) {
+      String reason = handedOn.detail().isBlank() ? handedOn.outcome().name() : handedOn.detail();
+      return "Started the "
+          + phase
+          + " phase, but its turn could not be handed to the agent already running on `"
+          + branch
+          + "`: "
+          + reason
+          + ". The status stands; prompt the agent by hand. Assignee: `"
+          + made.assignee()
+          + "`."
+          + phaseSuffix;
+    }
     if ("SKIPPED_RUNNING".equals(made.agentLaunch())) {
       return "An agent is already working on this "
           + noun
@@ -882,9 +981,7 @@ public class EntityDispatch {
         + " phase. Assignee: `"
         + made.assignee()
         + "`."
-        + (mode == DispatchMode.PHASE
-            ? " This run stops after that phase: the next one starts when somebody presses again."
-            : "");
+        + phaseSuffix;
   }
 
   private static String noun(WorkEntity entity) {

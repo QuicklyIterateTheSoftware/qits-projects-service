@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.control.UnattendedGateTickets;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.control.gate.AutomationsGate;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.arc.DefaultBean;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -450,6 +451,9 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
    * being folded, the fold itself, the run that came back red and this service's own rejection
    * sentence verbatim, so the ticket and the release request never say two different things.
    *
+   * <p>A failed release-request automation (qits-1561) says so instead of a red build, and names the
+   * three ways out: push, re-run, waive.
+   *
    * <p>It deliberately does not guess at the cause. Reading the build log is the job of whoever —
    * or whatever — picks this ticket up; "Assign agent" is one press away on this very page.
    */
@@ -464,9 +468,16 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
             rejection.participants() != null && rejection.participants().size() > 1
                 ? "machines"
                 : "a machine")
-        .append(", so nobody is waiting on it — and its build came back red.")
-        .append(" The repository stops moving here until somebody fixes the build: the request")
-        .append(" re-arms by itself on the next push to a participating branch.\n\n");
+        .append(", so nobody is waiting on it — and ");
+    if (isAutomation(rejection)) {
+      text.append("a release-request automation failed on its fold.")
+          .append(" The repository stops moving here until somebody answers the automation: the")
+          .append(" request re-arms by itself on the next push to a participating branch.\n\n");
+    } else {
+      text.append("its build came back red.")
+          .append(" The repository stops moving here until somebody fixes the build: the request")
+          .append(" re-arms by itself on the next push to a participating branch.\n\n");
+    }
     text.append("| | |\n|---|---|\n");
     row(text, "Repository", code(named(rejection)));
     row(text, "Repository id", code(rejection.repoId()));
@@ -479,12 +490,27 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
             : rejection.branches().stream().map(TicketUnattendedGateTickets::code).reduce(
                 (a, b) -> a + ", " + b).orElse("—"));
     row(text, "Folded sha", code(rejection.mergedSha()));
-    row(text, "Run", code(rejection.runId()) + " (" + rejection.status() + ")");
+    row(
+        text,
+        isAutomation(rejection) ? "Automation run" : "Run",
+        (isAutomation(rejection) && rejection.runId() == null
+                ? "_none recorded_"
+                : code(rejection.runId()))
+            + " ("
+            + rejection.status()
+            + ")");
     text.append("\n**The gate's own words:** ").append(rejection.detail()).append("\n\n");
     text.append("Reported by qits-projects because the release request has no human or agent")
-        .append(" participant.")
-        .append(" Read the run's log in qits-ci to find out why the build failed; this report")
-        .append(" deliberately does not guess.\n");
+        .append(" participant.");
+    if (isAutomation(rejection)) {
+      text.append(" Read the automation run's log to find out why it failed; this report")
+          .append(" deliberately does not guess. Then push a fix to a participating branch, re-run")
+          .append(" the automation (`qits maintenance automation run`), or waive the automations")
+          .append(" at this fold.\n");
+    } else {
+      text.append(" Read the run's log in qits-ci to find out why the build failed; this report")
+          .append(" deliberately does not guess.\n");
+    }
     return text.toString();
   }
 
@@ -501,6 +527,20 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
 
   /** One further red verdict on a ticket that is already open. */
   static String comment(Rejection rejection) {
+    if (isAutomation(rejection)) {
+      return "The gate is still red. "
+          + (rejection.runId() == null
+              ? "A release-request automation"
+              : "Automation run " + code(rejection.runId()))
+          + " "
+          + rejection.status()
+          + " for the fold "
+          + code(rejection.mergedSha())
+          + " of release request "
+          + code(rejection.qualifiedId())
+          + ".\n\n> "
+          + rejection.detail();
+    }
     return "The gate is still red. Run "
         + code(rejection.runId())
         + " finished "
@@ -511,6 +551,11 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
         + code(rejection.qualifiedId())
         + ".\n\n> "
         + rejection.detail();
+  }
+
+  /** Whether a failed release-request automation rejected the fold, rather than a red CI run. */
+  private static boolean isAutomation(Rejection rejection) {
+    return AutomationsGate.KIND.equals(rejection.gate());
   }
 
   private static void row(StringBuilder text, String label, String value) {

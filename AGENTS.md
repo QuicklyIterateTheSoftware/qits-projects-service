@@ -1657,8 +1657,8 @@ started four release builds for one change. Now:
   row there). Not FRESH any more → recorded, and the request holds or rejects. An unreadable read,
   or one about another fold, leaves it FRESH. The re-run door confirms the same way.
 - **A failed automation REJECTS** (qits-1199) — no DONE, `rejecting_gate = automations` (V43),
-  the ledger note kept so the gate and `automations[]` still show the failure, no unattended-gate
-  ticket — once no kind at the fold is still REQUESTED, RUNNING or COMMITTED (a failure beside one
+  the ledger note kept so the gate and `automations[]` still show the failure, and an unattended
+  request gets its MAINTENANCE gate ticket as a red build does (qits-1561) — once no kind at the fold is still REQUESTED, RUNNING or COMMITTED (a failure beside one
   still moving holds PENDING, as UNKNOWN and no note do). A push re-arms it; a re-run that comes back
   fresh or is running again reopens it at the same fold (the sweep's REJECTED arm re-reads, and so
   does the re-run door at once); a person's waiver of the fold reopens it. None of the three reopens

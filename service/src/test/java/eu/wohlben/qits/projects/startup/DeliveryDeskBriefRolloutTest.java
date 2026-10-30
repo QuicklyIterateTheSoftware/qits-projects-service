@@ -13,7 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-  /**
+/**
  * qits-1517, qits-1560, qits-1569, qits-1571, qits-1568, qits-1596, qits-1601, qits-1597,
  * qits-1604, qits-1618, qits-1621, qits-1714, qits-1748: the boot step that rolls the delivery
  * desk's new brief onto the stored {@code project.delivery} row — the one row, since surface
@@ -487,6 +487,37 @@ public class DeliveryDeskBriefRolloutTest {
   @Test
   public void anOwnerEditedQits1748BriefIsLeftAlone() {
     String edited = AgentSurfaceDefaults.QITS_1748_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
+   * qits-1755: an unedited qits-1755 brief — the one with no move — rolls to the current one,
+   * which moves a source that alone blocks a request to the next one.
+   */
+  @Test
+  public void anUneditedQits1755BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1755_DELIVERY_DESK_PROMPT.contains("qits release-request move"),
+        "the qits-1755 text is the one before the move existed");
+    stage(AgentSurfaceDefaults.QITS_1755_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1755 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("qits release-request move --project <this project>"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1755: an edit of the qits-1755 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1755BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1755_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
     stage(edited);
 
     assertFalse(rollout.rollOut(), "an edit is the owner's");
