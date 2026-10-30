@@ -1,0 +1,31 @@
+{
+  "id": "00000000-0000-4000-8000-000000000003",
+  "projectId": "00000000-0000-4000-8000-000000000004",
+  "title": "Faster builds",
+  "description": "Cache the dependencies between runs.\n\nShare the cache across runners.",
+  "enabledBy": null,
+  "enabledByIdea": null,
+  "status": "QUEUED",
+  "archived": false,
+  "archiveReason": null,
+  "archivedAt": null,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "inspired": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "qualifiedId": "contract-00000001-1",
+      "title": "Cache the build dependencies",
+      "status": "REPORTED",
+      "archetype": "EPIC"
+    }
+  ],
+  "enables": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "title": "Share the build cache",
+      "status": "PLANNED",
+      "archived": false
+    }
+  ]
+}
