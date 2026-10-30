@@ -610,6 +610,85 @@ public class WorkDispatchControllerTest {
     }
   }
 
+  // ---- an agent already running (qits-1559) ----------------------------------------------------
+
+  private static WorkspaceAgentDispatch.Dispatch skippedRunning() {
+    return new WorkspaceAgentDispatch.Dispatch("agent-1", 1L, null, false, "SKIPPED_RUNNING", null);
+  }
+
+  /**
+   * qits-1559: a person's FLOW press at REFINED schedules and starts implement; the agent already
+   * running dropped the turn, so the press hands it on.
+   */
+  @Test
+  public void aPersonsSchedulingPressOnARunningAgentHandsItTheImplementTurn() {
+    String projectId = createProject("Dispatch Running Refined");
+    String ticketId = createTicket(projectId, "Refined, running");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    dispatch.willAnswer(skippedRunning());
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    assertEquals("implement", press(ticketId, "FLOW"));
+
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(1, turns.calls().size());
+    assertEquals(ticketId, turns.lastCall().workId());
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    List<String> thread = threadOf(ticketId);
+    String comment = thread.get(thread.size() - 1);
+    assertFalse(comment.contains("left it to carry on"), comment);
+    assertTrue(comment.contains("handed it the implement phase"), comment);
+  }
+
+  /** qits-1559: a press at READY_FOR_DEV moves into IMPLEMENTING and hands the running agent on. */
+  @Test
+  public void aScheduledPressOnARunningAgentMovesItAndHandsItTheImplementTurn() {
+    String projectId = createProject("Dispatch Running Scheduled");
+    String ticketId = createTicket(projectId, "Scheduled, running");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(skippedRunning());
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    assertEquals("implement", press(ticketId, "PHASE"));
+
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(1, turns.calls().size());
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    List<String> thread = threadOf(ticketId);
+    String comment = thread.get(thread.size() - 1);
+    assertFalse(comment.contains("left it to carry on"), comment);
+    assertTrue(comment.contains("This run stops after that phase"), comment);
+  }
+
+  /**
+   * qits-1559: a re-press at IMPLEMENTING moves nothing, so the running agent is already on that
+   * phase and is left to carry on — no turn handed on.
+   */
+  @Test
+  public void aRePressOnARunningImplementingAgentHandsNothingOn() {
+    String projectId = createProject("Dispatch Running Implementing");
+    String ticketId = createTicket(projectId, "Implementing, running");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    transitionTicket(ticketId, "IMPLEMENTING");
+    dispatch.willAnswer(skippedRunning());
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    assertEquals("implement", press(ticketId, "FLOW"));
+
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    assertTrue(turns.calls().isEmpty(), turns.calls().toString());
+    List<String> thread = threadOf(ticketId);
+    assertTrue(thread.get(thread.size() - 1).contains("left it to carry on"), thread.toString());
+  }
+
   /** <b>A press on an IMPLEMENTING entity resumes the implement phase</b> and moves nothing. */
   @Test
   public void aPressOnAnImplementingEntityResumesImplementWithoutMovingIt() {

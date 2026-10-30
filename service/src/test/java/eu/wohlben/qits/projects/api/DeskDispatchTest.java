@@ -19,12 +19,14 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
@@ -64,6 +66,8 @@ public class DeskDispatchTest {
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
 
+  @Inject RecordingWorkspaceAgentTurns turns;
+
   @Inject ProjectRepository projectRows;
 
   @Inject WorkEntityRepository entityRows;
@@ -79,6 +83,7 @@ public class DeskDispatchTest {
   @BeforeEach
   void resetThePort() {
     dispatch.reset();
+    turns.reset();
   }
 
   @AfterEach
@@ -425,6 +430,69 @@ public class DeskDispatchTest {
     List<String> thread = threadOf(ticketId);
     assertTrue(
         thread.get(thread.size() - 1).endsWith(" Dispatched by the delivery desk under rule `start-refined`."));
+  }
+
+  /** What the far side answers when the item's agent is already running: the turn is dropped. */
+  private static WorkspaceAgentDispatch.Dispatch skippedRunning() {
+    return new WorkspaceAgentDispatch.Dispatch("agent-1", 1L, null, false, "SKIPPED_RUNNING", null);
+  }
+
+  /**
+   * qits-1559: a start-refined press that finds the item's agent already running moves it into
+   * IMPLEMENTING and hands that agent the implement turn the dispatch dropped, so it is not left
+   * sitting at IMPLEMENTING never prompted.
+   */
+  @Test
+  public void aDeskStartRefinedPressOnARunningAgentHandsItTheImplementTurn() {
+    String projectId = createProject("Desk Refined Running");
+    delivery(projectId, true, 2, true);
+    String ticketId = createTicket(projectId, "Refined, agent running");
+    transition(ticketId, "REFINED");
+    dispatch.willAnswer(skippedRunning());
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
+
+    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("IMPLEMENTING", row(ticketId).status);
+    assertEquals(1, turns.calls().size(), "the dropped implement turn is handed on once");
+    assertEquals(ticketId, turns.lastCall().workId());
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    List<String> thread = threadOf(ticketId);
+    String comment = thread.get(thread.size() - 1);
+    assertFalse(comment.contains("left it to carry on"), comment);
+    assertTrue(comment.contains("handed it the implement phase"), comment);
+    assertTrue(
+        comment.endsWith(" Dispatched by the delivery desk under rule `start-refined`."), comment);
+  }
+
+  /**
+   * qits-1559: when that hand-off cannot be made the press still succeeds and the move stands; the
+   * thread says the turn could not be handed on, and why.
+   */
+  @Test
+  public void aDeskStartRefinedPressWhoseTurnCannotBeHandedOnStillMovesTheItem() {
+    String projectId = createProject("Desk Refined Running Unheard");
+    delivery(projectId, true, 2, true);
+    String ticketId = createTicket(projectId, "Refined, agent deaf");
+    transition(ticketId, "REFINED");
+    dispatch.willAnswer(skippedRunning());
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.COULD_NOT, "qits-workspaces is unreachable");
+
+    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
+
+    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("IMPLEMENTING", row(ticketId).status);
+    assertEquals(1, turns.calls().size());
+    List<String> thread = threadOf(ticketId);
+    String comment = thread.get(thread.size() - 1);
+    assertFalse(comment.contains("left it to carry on"), comment);
+    assertTrue(comment.contains("could not be handed to the agent already running"), comment);
+    assertTrue(comment.contains("qits-workspaces is unreachable"), comment);
+    assertTrue(
+        comment.endsWith(" Dispatched by the delivery desk under rule `start-refined`."), comment);
   }
 
   // ---- the desk's pre-approval at REPORTED (qits-1714) ----------------------------------------
