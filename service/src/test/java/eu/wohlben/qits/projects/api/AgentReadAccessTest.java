@@ -73,6 +73,7 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.WorkAuditController.class,
           eu.wohlben.qits.entities.api.WorkProgressController.class,
           eu.wohlben.qits.entities.api.WorkMembersController.class,
+          eu.wohlben.qits.entities.api.IdeaController.class,
           WorkDispatchController.class,
           WorkRefinementController.class,
           WorkWorkspacesController.class,
@@ -207,13 +208,25 @@ class AgentReadAccessTest {
   private static final Set<String> DESIGN_AGENT_WRITES =
       Set.of("RefinementDesignController.add", "RefinementDesignController.update");
 
+  /**
+   * <b>The idea writes an agent reaches</b> (qits-1387): a project's ideas are planning notes beside
+   * its work, and an agent filing or archiving one makes the same claim its work writes make. Bound
+   * to the idea's project by {@code EntitiesAgentAccess}. There is no delete to keep off the list.
+   */
+  private static final Set<String> IDEA_AGENT_WRITES =
+      Set.of(
+          "IdeaController.create",
+          "IdeaController.patch",
+          "IdeaController.archive",
+          "IdeaController.unarchive");
+
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
       union(
           union(
               union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
               CAMPAIGN_AGENT_WRITES),
-          DESIGN_AGENT_WRITES);
+          union(DESIGN_AGENT_WRITES, IDEA_AGENT_WRITES));
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a

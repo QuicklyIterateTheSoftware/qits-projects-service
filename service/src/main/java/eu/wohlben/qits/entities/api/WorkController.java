@@ -113,7 +113,12 @@ public class WorkController {
       @Schema(description = "A feature's or task's sibling dependency, by qualified id or UUID.")
           String dependsOn,
       @Schema(description = "An epic's or a ticket's acceptance criteria, in order.")
-          List<String> acceptanceCriteria) {}
+          List<String> acceptanceCriteria,
+      @Schema(
+              description =
+                  "An epic's, a ticket's or a campaign's inspiration: the id of an idea of the same"
+                      + " project (GET /projects/api/ideas). Refused on a feature or a task.")
+          String inspiredBy) {}
 
   /**
    * The documentation of the patch's body, and only that: the body itself is read as a {@link
@@ -175,7 +180,14 @@ public class WorkController {
                       + AcceptanceCriteria.RULES
                       + " Editable at REFINED (outside an epic's scope freeze); from READY_FOR_DEV"
                       + " on a changed list is a 409, and restating the same list passes.")
-          List<String> acceptanceCriteria) {}
+          List<String> acceptanceCriteria,
+      @Schema(
+              nullable = true,
+              description =
+                  "An epic's, a ticket's or a campaign's inspiration: the id of an idea of the same"
+                      + " project; null clears it. Editable at every status. Refused on a feature or"
+                      + " a task. Setting, changing or clearing it re-derives the ideas' status.")
+          String inspiredBy) {}
 
   @Schema(
       name = "WorkStatusMove",

@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.agenthost;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.vertx.http.runtime.security.QuarkusHttpUser;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -134,15 +135,19 @@ public class ContainerProxyRoute {
     // refusal resumes it to drain. Nothing goes on the wire, and no upgrade is answered, before the
     // decision.
     rc.request().pause();
+    // The request's own context — in Quarkus a duplicate on the connection's event loop. An upgrade
+    // hands the browser socket over on it; see UpgradePipe for the frame that is lost otherwise.
+    Context inboundContext = Vertx.currentContext();
     QuarkusHttpUser.getSecurityIdentity(rc, null)
         .subscribe()
         .with(
-            identity -> admit(rc, projectId, identity),
+            identity -> admit(rc, projectId, identity, inboundContext),
             failure -> refuse(rc, 401, "Authentication required.", null, projectId));
   }
 
   /** Decide who may reach this project's daemon, then look the daemon up. See the class javadoc. */
-  private void admit(RoutingContext rc, String projectId, SecurityIdentity identity) {
+  private void admit(
+      RoutingContext rc, String projectId, SecurityIdentity identity, Context inboundContext) {
     if (identity == null || identity.isAnonymous()) {
       refuse(rc, 401, "Authentication required.", identity, projectId);
       return;
@@ -158,7 +163,7 @@ public class ContainerProxyRoute {
     rc.vertx()
         .executeBlocking(() -> tunnels.originFor(projectId).orElse(null))
         .onFailure(e -> respond(rc, 502, "The project agent could not be reached."))
-        .onSuccess(origin -> route(rc, origin));
+        .onSuccess(origin -> route(rc, origin, inboundContext));
   }
 
   /** Answer a refusal and say who was refused — subject, roles, project; never a credential. */
@@ -183,7 +188,7 @@ public class ContainerProxyRoute {
    * one, because a live control socket is the only evidence this route has or needs — it is
    * stronger than {@code docker inspect} and costs one round-trip less.
    */
-  private void route(RoutingContext rc, AgentTunnels.TunnelOrigin origin) {
+  private void route(RoutingContext rc, AgentTunnels.TunnelOrigin origin, Context inboundContext) {
     if (origin == null) {
       respond(
           rc,
@@ -192,16 +197,16 @@ public class ContainerProxyRoute {
       return;
     }
     // The client is the tunnel's, never a shared one; see AgentTunnels for what sharing would cost.
-    forward(rc, origin.client(), origin.port());
+    forward(rc, origin.client(), origin.port(), inboundContext);
   }
 
   /**
    * One origin, two transports. An ordinary request goes through {@code vertx-http-proxy}; a
    * WebSocket upgrade does not, and {@link #proxyUpgrade} says why.
    */
-  private void forward(RoutingContext rc, HttpClient client, int port) {
+  private void forward(RoutingContext rc, HttpClient client, int port, Context inboundContext) {
     if (isWebSocketUpgrade(rc.request())) {
-      proxyUpgrade(rc, client, port);
+      proxyUpgrade(rc, client, port, inboundContext);
       return;
     }
     HttpProxy.reverseProxy(client)
@@ -245,7 +250,8 @@ public class ContainerProxyRoute {
    * than the browser's — what {@link #hostRewrite} arranges for an ordinary request, and what the
    * client's own default arranges here.
    */
-  private void proxyUpgrade(RoutingContext rc, HttpClient client, int port) {
+  private void proxyUpgrade(
+      RoutingContext rc, HttpClient client, int port, Context inboundContext) {
     HttpServerRequest inbound = rc.request();
     client
         .request(
@@ -260,12 +266,15 @@ public class ContainerProxyRoute {
               inbound.resume();
               respond(rc, 502, "The project agent is not reachable — try restarting it.");
             })
-        .onSuccess(outbound -> openUpgrade(rc, inbound, outbound));
+        .onSuccess(outbound -> openUpgrade(rc, inbound, outbound, inboundContext));
   }
 
   /** Send the handshake on, streaming whatever precedes the 101 with a queue bound on it. */
   private void openUpgrade(
-      RoutingContext rc, HttpServerRequest inbound, HttpClientRequest outbound) {
+      RoutingContext rc,
+      HttpServerRequest inbound,
+      HttpClientRequest outbound,
+      Context inboundContext) {
     for (Map.Entry<String, String> header : inbound.headers()) {
       if (HttpHeaders.CONNECTION.toString().equalsIgnoreCase(header.getKey())) {
         outbound.headers().set(HttpHeaders.CONNECTION, HttpHeaders.UPGRADE);
@@ -294,7 +303,7 @@ public class ContainerProxyRoute {
               LOG.debugf("projects-daemon refused the upgrade: %s", String.valueOf(failure));
               respond(rc, 502, "The project agent closed the connection.");
             })
-        .onSuccess(response -> completeUpgrade(rc, inbound, response));
+        .onSuccess(response -> completeUpgrade(rc, inbound, response, inboundContext));
   }
 
   /**
@@ -303,9 +312,18 @@ public class ContainerProxyRoute {
    * <p>A refusal is forwarded with its own status and body rather than flattened into a 502: the
    * daemon answers 401 for a bad bearer and 404 for a command that is not running, and those say
    * what to do. {@code vertx-http-proxy} answers the status alone with no body at all.
+   *
+   * <p>An agreement is handed to {@link UpgradePipe#marry} straight after {@code netSocket()}, on
+   * the daemon response's context and before anything else runs there, and the browser's {@code
+   * toNetSocket()} is called on {@code inboundContext}, the request's own: each side has a window
+   * in which an event reaches a socket with no handler and is dropped, and that class says how the
+   * two are closed.
    */
   private void completeUpgrade(
-      RoutingContext rc, HttpServerRequest inbound, HttpClientResponse response) {
+      RoutingContext rc,
+      HttpServerRequest inbound,
+      HttpClientResponse response,
+      Context inboundContext) {
     HttpServerResponse out = inbound.response();
     if (response.statusCode() != 101) {
       out.setStatusCode(response.statusCode());
@@ -323,53 +341,7 @@ public class ContainerProxyRoute {
     out.setStatusCode(101);
     out.headers().addAll(response.headers());
     NetSocket daemon = response.netSocket();
-    inbound
-        .toNetSocket()
-        .onFailure(
-            failure -> {
-              LOG.debugf("could not take over the browser socket: %s", String.valueOf(failure));
-              daemon.close();
-            })
-        .onSuccess(browser -> pipe(browser, daemon));
-  }
-
-  /**
-   * Pump bytes both ways with a bound on each queue — the mirror of {@code DaemonStreamRoute.pipe},
-   * and it has to be, because it is the same pipe one hop closer to the browser.
-   *
-   * <p><b>Raw bytes, not frames.</b> Neither end is decoded: what the browser sends is what the
-   * daemon receives, frame boundaries, fragmentation, ping/pong and close codes included. That is
-   * the property that lets the terminal's own close semantics (a bare 1000 meaning "detached, the
-   * process survives") arrive intact, and it is why this is a {@code NetSocket} pipe rather than a
-   * WebSocket client that would re-frame everything it forwarded.
-   *
-   * <p>The backpressure is the point. A write into a full queue is buffered on the heap without
-   * complaint, so the reader on the other side has to be paused until it drains. Every close, end
-   * and exception path closes the other side, so neither socket outlives its peer.
-   */
-  private static void pipe(NetSocket browser, NetSocket daemon) {
-    browser.handler(
-        buffer -> {
-          daemon.write(buffer);
-          if (daemon.writeQueueFull()) {
-            browser.pause();
-            daemon.drainHandler(drained -> browser.resume());
-          }
-        });
-    daemon.handler(
-        buffer -> {
-          browser.write(buffer);
-          if (browser.writeQueueFull()) {
-            daemon.pause();
-            browser.drainHandler(drained -> daemon.resume());
-          }
-        });
-    browser.endHandler(end -> daemon.close());
-    daemon.endHandler(end -> browser.close());
-    browser.closeHandler(closed -> daemon.close());
-    daemon.closeHandler(closed -> browser.close());
-    browser.exceptionHandler(failure -> daemon.close());
-    daemon.exceptionHandler(failure -> browser.close());
+    UpgradePipe.marry(daemon, inboundContext, inbound::toNetSocket);
   }
 
   /**

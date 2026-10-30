@@ -67,6 +67,12 @@ public class ProviderStates {
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
   public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
   public static final String A_PROJECT_WITH_NO_WORK = "a project with no work";
+  /**
+   * A project's ideas (qits-1387): one QUEUED by the epic it inspired, one it enables, and one
+   * archived. Params {@code projectId}, {@code ideaId}, {@code enabledIdeaId}, {@code
+   * archivedIdeaId}.
+   */
+  public static final String A_PROJECT_WITH_IDEAS = "a project with ideas";
   public static final String A_PROJECT_WITH_PENDING_RELEASE_REQUESTS =
       "a project with pending release requests";
   public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
@@ -328,6 +334,9 @@ public class ProviderStates {
 
   @Inject WorkEntityService work;
 
+  /** The ideas the idea state seeds (qits-1387). */
+  @Inject eu.wohlben.qits.entities.control.IdeaService ideas;
+
   @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
 
   @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
@@ -470,6 +479,7 @@ public class ProviderStates {
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
+    states.put(A_PROJECT_WITH_IDEAS, this::aProjectWithIdeas);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
     RELEASE_REQUEST_DETAILS.forEach(name -> states.put(name, () -> releaseRequestInDetail(name)));
@@ -2235,6 +2245,41 @@ public class ProviderStates {
   /** Marks a feature or task implemented now, as an edit of its marker. */
   private void implemented(String id) {
     work.update(work.find(id).archetype, id, EntityWrite.implementedAt(Instant.now()), SEEDER);
+  }
+
+  private Setup aProjectWithIdeas() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_IDEAS);
+    String idea =
+        ideas
+            .create(
+                project.id,
+                "Faster builds",
+                "Cache the dependencies between runs.\n\nShare the cache across runners.",
+                null,
+                SEEDER)
+            .id;
+    String enabled =
+        ideas.create(project.id, "Share the build cache", null, idea, SEEDER).id;
+    String archived = ideas.create(project.id, "Nightly rebuilds", null, null, SEEDER).id;
+    ideas.archive(archived, "The cache makes them unnecessary.", SEEDER);
+    work.create(
+        Archetype.EPIC,
+        project.id,
+        EntityWrite.epic("Cache the build dependencies", "A shared dependency cache.")
+            .withInspiredBy(idea, false),
+        SEEDER);
+    return new Setup(
+        params(
+            "projectId",
+            project.id,
+            "ideaId",
+            idea,
+            "enabledIdeaId",
+            enabled,
+            "archivedIdeaId",
+            archived),
+        List.of(token));
   }
 
   private Setup aProjectWithNoWork() {

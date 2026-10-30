@@ -129,7 +129,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy) {
 
   /**
    * The same entity, told what it is called in a commit subject: the value is resolved in {@code
@@ -168,7 +169,8 @@ public record TransitionedEntity(
         blockSource,
         blockReason,
         blockedBy,
-        waitingOn);
+        waitingOn,
+        inspiredBy);
   }
 
   /**
@@ -229,7 +231,8 @@ public record TransitionedEntity(
         block == null ? null : block.source(),
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
-        block == null ? null : block.waitingOn());
+        block == null ? null : block.waitingOn(),
+        row.inspiredByIdeaId);
   }
 
   /**
@@ -273,7 +276,8 @@ public record TransitionedEntity(
         read.blockSource(),
         read.blockReason(),
         read.blockedBy(),
-        read.waitingOn());
+        read.waitingOn(),
+        read.inspiredBy());
   }
 
   /**
@@ -316,7 +320,8 @@ public record TransitionedEntity(
         block == null ? null : block.source(),
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
-        block == null ? null : block.waitingOn());
+        block == null ? null : block.waitingOn(),
+        row.inspiredByIdeaId);
   }
 
   /**

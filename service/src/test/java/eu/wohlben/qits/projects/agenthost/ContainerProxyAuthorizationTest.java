@@ -20,10 +20,12 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.UpgradeRejectedException;
 import io.vertx.core.http.WebSocket;
 import io.vertx.core.http.WebSocketClient;
+import io.vertx.core.http.WebSocketClientOptions;
 import io.vertx.core.http.WebSocketConnectOptions;
 import java.net.URI;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,14 +60,21 @@ class ContainerProxyAuthorizationTest {
   private String project;
   private String other;
 
-  /** A stub daemon on loopback, reached for any project through a stubbed tunnel lookup. */
+  /**
+   * A stub daemon on loopback, reached for any project through a stubbed tunnel lookup. Its
+   * WebSocket handler also echoes: whatever a WebSocket sends it, it writes straight back.
+   */
   @BeforeEach
   void aStubDaemon() throws Exception {
     daemonVertx = Vertx.vertx();
     HttpServer server =
         daemonVertx
             .createHttpServer()
-            .webSocketHandler(ws -> daemonHits.incrementAndGet())
+            .webSocketHandler(
+                ws -> {
+                  daemonHits.incrementAndGet();
+                  ws.handler(ws::write);
+                })
             .requestHandler(
                 req -> {
                   daemonHits.incrementAndGet();
@@ -85,19 +94,16 @@ class ContainerProxyAuthorizationTest {
     other = "proxy-other-" + suffix;
   }
 
-  /**
-   * Stops the stub. A close that outlasts the timeout is not a failure: the upgrade test leaves a
-   * WebSocket open through the proxy back into this very Vert.x, and its close handshake can hang
-   * the stub's shutdown — which is not what any test here asserts (qits-1559 saw it fail two release
-   * folds of qits-projects-service-rr-395 in a row).
-   */
+  /** Stops the stub; a close that outlasts the timeout fails the test (qits-1760). */
   @AfterEach
   void stopTheStubDaemon() throws Exception {
     if (daemonVertx != null) {
       try {
-        daemonVertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
-      } catch (java.util.concurrent.TimeoutException slow) {
-        // Abandoned, not awaited: the next test stands up a Vert.x of its own.
+        daemonVertx
+            .close()
+            .toCompletionStage()
+            .toCompletableFuture()
+            .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
       } finally {
         daemonVertx = null;
       }
@@ -230,9 +236,16 @@ class ContainerProxyAuthorizationTest {
     forwarded(bearer(null, "qits:system"), project);
   }
 
+  /**
+   * One ping, one echo: the browser socket is taken over and piped in the same event-loop task that
+   * writes the 101, so a frame sent the moment the upgrade completes cannot fall into the handoff
+   * (qits-1762; under load it used to be lost in about one rep in ten). Then the close is awaited
+   * directly, and the 1 s closing timeout caps it should the close frame go unanswered (qits-1760).
+   */
   @Test
   void anAdminsUpgradeIsForwarded() throws Exception {
-    WebSocketClient client = daemonVertx.createWebSocketClient();
+    WebSocketClient client =
+        daemonVertx.createWebSocketClient(new WebSocketClientOptions().setClosingTimeout(1));
     WebSocket socket =
         client
             .connect(
@@ -244,10 +257,23 @@ class ContainerProxyAuthorizationTest {
             .toCompletionStage()
             .toCompletableFuture()
             .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    var closed = new CompletableFuture<Void>();
+    socket.closeHandler(v -> closed.complete(null));
     try {
       assertEquals(1, daemonHits.get(), "the upgrade reached the daemon");
+
+      // The stub echoes with ws::write, which always frames as binary, so the echo is read with
+      // the raw buffer handler rather than textMessageHandler (which only fires for text frames).
+      var echoed = new CompletableFuture<String>();
+      socket.handler(buffer -> echoed.complete(buffer.toString()));
+      socket.writeTextMessage("ping");
+      assertEquals(
+          "ping",
+          echoed.get(TIMEOUT_SECONDS, TimeUnit.SECONDS),
+          "the forwarded upgrade carries bytes both ways");
     } finally {
       socket.close();
+      closed.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
   }
 }

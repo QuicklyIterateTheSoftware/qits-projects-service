@@ -1,0 +1,13 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "projectId": "00000000-0000-4000-8000-000000000004",
+  "title": "Share the build cache",
+  "description": null,
+  "enabledBy": "00000000-0000-4000-8000-000000000003",
+  "status": "PLANNED",
+  "archived": true,
+  "archiveReason": "Folded into the cache epic.",
+  "archivedAt": "2026-01-01T00:00:00Z",
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z"
+}

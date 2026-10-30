@@ -59,7 +59,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
-                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome"
+                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -97,6 +97,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.agentWaitingCause = (String) c[24];
     row.agentWaitingOn = (String) c[25];
     row.outcome = (WorkOutcome) c[26];
+    row.inspiredByIdeaId = (String) c[27];
     return row;
   }
 
@@ -149,6 +150,27 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    */
   public List<WorkEntity> listBySupersededBy(String entityId) {
     return find("supersededByEntityId", OLDEST_FIRST, entityId).list();
+  }
+
+  /**
+   * <b>The work naming {@code ideaId} as its {@code inspiredBy}</b> (qits-1387), oldest first —
+   * every status, DROPPED included; the idea's derived status decides which of them count.
+   */
+  public List<WorkEntity> listInspiredBy(String ideaId) {
+    return find("inspiredByIdeaId", OLDEST_FIRST, ideaId).list();
+  }
+
+  /**
+   * The statuses of the work naming {@code ideaId}, one per row — all {@code IdeaStatusRecompute}
+   * needs, read without loading the rows. Inside a write it sees that write's own changes: the
+   * query auto-flushes the dirty rows it touches.
+   */
+  public List<String> statusesInspiredBy(String ideaId) {
+    return getEntityManager()
+        .createQuery(
+            "select e.status from WorkEntity e where e.inspiredByIdeaId = ?1", String.class)
+        .setParameter(1, ideaId)
+        .getResultList();
   }
 
   /**
