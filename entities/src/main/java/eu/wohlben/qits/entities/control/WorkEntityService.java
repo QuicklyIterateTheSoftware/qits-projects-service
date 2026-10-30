@@ -115,6 +115,21 @@ public class WorkEntityService {
   @Inject CampaignStartRecordRepository campaignStarts;
 
   /**
+   * The idea rules on {@code inspiredBy} (qits-1387): which kinds may carry one, and that it names
+   * an idea of the row's own project.
+   */
+  @Inject IdeaService ideaRules;
+
+  /**
+   * Re-derives an idea's stored status inside every write here that can move it — a create or an
+   * edit naming one, every lifecycle move, a supersede, a delete (qits-1387).
+   */
+  @Inject IdeaStatusRecompute ideaStatus;
+
+  /** Hands the idea changes those recomputes made on, after the hold. */
+  @Inject IdeaAnnouncements ideaAnnouncements;
+
+  /**
    * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
    * status until qits-392 folded it into {@link EntityStatus#DROPPED}: it said two things at once —
    * this work will not be done, and here is what replaced it — and only the first is a status. The
@@ -144,7 +159,8 @@ public class WorkEntityService {
    * in the same transaction — the edges are only readable in there, and the announcement itself is
    * made outside it.
    */
-  private record Moved(Transition transition, List<TransitionedEntity> batch) {}
+  private record Moved(
+      Transition transition, List<TransitionedEntity> batch, List<IdeaChange> ideas) {}
 
   /**
    * The announcement seam, optional like every port here: with no implementation a move still moves
@@ -426,9 +442,15 @@ public class WorkEntityService {
     }
     requireIntake(archetype, write);
     TicketType type = parseType(write.type());
-    return writes.hold(
+    if (write.touchesInspiration()) {
+      IdeaService.requireCarrier(archetype);
+    }
+    List<IdeaChange> ideaChanges = new ArrayList<>(1);
+    Nested made =
+        writes.hold(
         kind.label("create"),
         () -> {
+          ideaChanges.clear();
           String projectId = under;
           String rootId = null;
           if (!kind.isRoot()) {
@@ -446,6 +468,10 @@ public class WorkEntityService {
           WorkEntity row = insert(kind, projectId, kind.isRoot() ? projectId : under, write, type);
           row.createdBy =
               Archetypes.spec(archetype).permits(EntityProperty.CREATED_BY) ? changedBy : null;
+          if (write.inspiredBy() != null) {
+            ideaRules.requireInspirable(archetype, write.inspiredBy(), projectId);
+            row.inspiredByIdeaId = write.inspiredBy();
+          }
           requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
           if (!kind.isRoot()) {
@@ -453,8 +479,11 @@ public class WorkEntityService {
           }
           WorkEntity created = settled(row);
           audit(created, rootId == null ? created.id : rootId, AuditOperation.CREATE, changedBy);
+          ideaChanges.addAll(ideaStatus.recompute(null, created.inspiredByIdeaId, changedBy));
           return new Nested(created, kind.isRoot() ? null : under);
         });
+    ideaAnnouncements.announce(ideaChanges);
+    return made;
   }
 
   /**
@@ -536,17 +565,23 @@ public class WorkEntityService {
     Kind kind = kind(archetype);
     boolean[] retitled = {false};
     List<TransitionedEntity> moved = new ArrayList<>(1);
+    List<IdeaChange> ideaChanges = new ArrayList<>(2);
+    if (write.touchesInspiration()) {
+      IdeaService.requireCarrier(archetype);
+    }
     Nested updated =
         writes.hold(
             kind.label("update"),
             () -> {
               retitled[0] = false;
               moved.clear();
-              return edit(kind, archetype, id, write, changedBy, retitled, moved);
+              ideaChanges.clear();
+              return edit(kind, archetype, id, write, changedBy, retitled, moved, ideaChanges);
             });
     if (!moved.isEmpty()) {
       announce(List.copyOf(moved));
     }
+    ideaAnnouncements.announce(ideaChanges);
     if (retitled[0] && !retitles.isUnsatisfied()) {
       retitles.get().onRetitled(updated.entity());
     }
@@ -572,7 +607,8 @@ public class WorkEntityService {
       EntityWrite write,
       String changedBy,
       boolean[] retitled,
-      List<TransitionedEntity> moved) {
+      List<TransitionedEntity> moved,
+      List<IdeaChange> ideaChanges) {
     WorkEntity row = lookup(archetype, id);
     String parentId = kind.isRoot() ? null : parentOf(id);
     WorkEntity owner = owner(kind, row, parentId);
@@ -624,6 +660,15 @@ public class WorkEntityService {
       requireNoCycle(kind, id, write.dependsOn());
       row.dependsOnEntityId = write.dependsOn();
     }
+    // The idea the work was inspired by (qits-1387): neither scope nor a marker, so editable at
+    // every status. Both the idea it left and the one it names now are re-derived below.
+    String ideaBefore = row.inspiredByIdeaId;
+    if (write.clearInspiredBy()) {
+      row.inspiredByIdeaId = null;
+    } else if (write.inspiredBy() != null) {
+      ideaRules.requireInspirable(archetype, write.inspiredBy(), row.projectId);
+      row.inspiredByIdeaId = write.inspiredBy();
+    }
     String statusBefore = row.status;
     boolean piece = Archetypes.isPlanPiece(archetype);
     if (write.implementingAt() != null) {
@@ -649,6 +694,7 @@ public class WorkEntityService {
     if (!java.util.Objects.equals(statusBefore, updated.status)) {
       moved.add(TransitionedEntity.of(updated, edgeOf(updated.id), statusBefore, changedBy));
     }
+    ideaChanges.addAll(ideaStatus.recompute(ideaBefore, updated.inspiredByIdeaId, changedBy));
     return new Nested(updated, parentId);
   }
 
@@ -940,6 +986,7 @@ public class WorkEntityService {
         writes.hold(
             kind.label("transition"), () -> move(kind, archetype, id, null, target, mover, stated));
     announce(moved.batch());
+    ideaAnnouncements.announce(moved.ideas());
     return moved.transition();
   }
 
@@ -991,6 +1038,7 @@ public class WorkEntityService {
       return Optional.empty();
     }
     announce(moved.batch());
+    ideaAnnouncements.announce(moved.ideas());
     return Optional.of(moved.transition());
   }
 
@@ -1077,7 +1125,19 @@ public class WorkEntityService {
     for (Carried child : carried) {
       batch.add(TransitionedEntity.of(child.row(), child.edge(), child.statusBefore(), changedBy));
     }
-    return new Moved(new Transition(moved, successor, statusBefore), List.copyOf(batch));
+    // Every idea a moved row names is re-derived in this transaction (qits-1387): the row, the
+    // supersede's successor (which carries the idea on), and every carried descendant.
+    List<String> inspiring = new ArrayList<>();
+    inspiring.add(moved.inspiredByIdeaId);
+    if (successor != null) {
+      inspiring.add(successor.inspiredByIdeaId);
+    }
+    for (Carried child : carried) {
+      inspiring.add(child.row().inspiredByIdeaId);
+    }
+    List<IdeaChange> ideas = ideaStatus.recompute(inspiring, changedBy);
+    return new Moved(
+        new Transition(moved, successor, statusBefore), List.copyOf(batch), List.copyOf(ideas));
   }
 
   /** A descendant a move carried with it, the status it left and the edge it hangs by. */
@@ -1473,6 +1533,8 @@ public class WorkEntityService {
             EntityWrite.epic(old.title, old.description)
                 .withAcceptanceCriteria(List.copyOf(old.acceptanceCriteria)),
             old.ticketType);
+    // The successor carries the copied scope on, and with it the idea that inspired it (qits-1387).
+    successorRow.inspiredByIdeaId = old.inspiredByIdeaId;
     requireArchetypeValid(successorRow, Demand.AT_CREATE);
     entities.persist(successorRow);
 
@@ -1574,9 +1636,11 @@ public class WorkEntityService {
    */
   public void delete(Archetype archetype, String id, String changedBy) {
     Kind kind = kind(archetype);
+    List<IdeaChange> ideaChanges = new ArrayList<>(1);
     writes.run(
         kind.label("delete"),
         () -> {
+          ideaChanges.clear();
           WorkEntity row = lookup(archetype, id);
           EntityMembership edge =
               kind.isRoot() ? null : memberships.structuralMembershipOf(id).orElse(null);
@@ -1622,9 +1686,18 @@ public class WorkEntityService {
             memberships.delete(edge);
             memberships.closeGapAfter(parentId, gone);
           }
+          List<String> inspiring = new ArrayList<>();
+          inspiring.add(row.inspiredByIdeaId);
+          for (WorkEntity descendant : subtree.rows().values()) {
+            inspiring.add(descendant.inspiredByIdeaId);
+          }
           entities.delete(row);
           audit(row, rootId, AuditOperation.DELETE, changedBy);
+          // The work is gone, so every idea it named is re-derived without it (qits-1387).
+          entities.getEntityManager().flush();
+          ideaChanges.addAll(ideaStatus.recompute(inspiring, changedBy));
         });
+    ideaAnnouncements.announce(ideaChanges);
   }
 
   /**

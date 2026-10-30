@@ -45,13 +45,15 @@ public record EntityWrite(
     Instant implementedAt,
     boolean clearImplementedAt,
     Instant implementingAt,
-    List<String> acceptanceCriteria) {
+    List<String> acceptanceCriteria,
+    String inspiredBy,
+    boolean clearInspiredBy) {
 
   /** An epic: its title and its long-form spine. */
   public static EntityWrite epic(String title, String description) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, null, null, false, null, false,
-        null, null);
+        null, null, null, false);
   }
 
   /** A campaign: a title and a description, the same two words an epic is written in. */
@@ -64,14 +66,14 @@ public record EntityWrite(
       String title, String impetus, String description, String type, String assignee) {
     return new EntityWrite(
         title, description, false, impetus, false, type, assignee, false, null, null, false, null,
-        false, null, null);
+        false, null, null, null, false);
   }
 
   /** A feature under an epic, optionally depending on a sibling. */
   public static EntityWrite feature(String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, null, dependsOn, false, null,
-        false, null, null);
+        false, null, null, null, false);
   }
 
   /** A task under a feature: the work in one repository, optionally depending on a sibling. */
@@ -79,7 +81,7 @@ public record EntityWrite(
       String repositoryId, String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, repositoryId, dependsOn, false,
-        null, false, null, null);
+        null, false, null, null, null, false);
   }
 
   /** An edit of a ticket's words, each nullable field with its clear flag. */
@@ -106,7 +108,7 @@ public record EntityWrite(
         false,
         null,
         false,
-        null, null);
+        null, null, null, false);
   }
 
   /**
@@ -134,7 +136,7 @@ public record EntityWrite(
         clearDependsOn,
         implementedAt,
         clearImplementedAt,
-        null, null);
+        null, null, null, false);
   }
 
   /** Only the implemented marker, stamped — what {@code mark_task_implemented} writes. */
@@ -149,7 +151,17 @@ public record EntityWrite(
   public static EntityWrite implementingAt(Instant at) {
     return new EntityWrite(
         null, null, false, null, false, null, null, false, null, null, false, null, false, at,
-        null);
+        null, null, false);
+  }
+
+  /**
+   * An edit that sets ({@code ideaId}) or clears ({@code clear}) the idea the work was inspired by
+   * and touches nothing else (qits-1387). Neither scope nor a marker: legal at every status.
+   */
+  public static EntityWrite inspiration(String ideaId, boolean clear) {
+    return new EntityWrite(
+        null, null, false, null, false, null, null, false, null, null, false, null, false, null,
+        null, ideaId, clear);
   }
 
   /**
@@ -173,7 +185,40 @@ public record EntityWrite(
         implementedAt,
         clearImplementedAt,
         implementingAt,
-        criteria);
+        criteria,
+        inspiredBy,
+        clearInspiredBy);
+  }
+
+  /**
+   * This write, also stating the idea the work was inspired by (qits-1387): {@code ideaId} sets it,
+   * {@code clear} empties it, and neither leaves it alone. Only an EPIC, a TICKET or a CAMPAIGN
+   * carries one ({@link IdeaService#CARRIERS}); the writer refuses it on any other kind.
+   */
+  public EntityWrite withInspiredBy(String ideaId, boolean clear) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        ideaId,
+        clear);
+  }
+
+  /** Whether this write sets or clears the idea the work was inspired by. */
+  boolean touchesInspiration() {
+    return inspiredBy != null || clearInspiredBy;
   }
 
   /**
@@ -212,6 +257,6 @@ public record EntityWrite(
         || repositoryId != null
         || dependsOn != null
         || clearDependsOn
-        || (!touchesMarker() && !touchesCriteria());
+        || (!touchesMarker() && !touchesCriteria() && !touchesInspiration());
   }
 }

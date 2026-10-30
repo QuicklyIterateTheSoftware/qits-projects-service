@@ -718,6 +718,52 @@ class GoldenMasterRecordingTest {
    */
   private static List<Interaction> withWorkFamily(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
+    // Ideas (qits-1387): every door once, and a refused create.
+    all.add(
+        read(ProviderStates.A_PROJECT_WITH_IDEAS, "listIdeas", "/projects/api/ideas?project={projectId}"));
+    all.add(read(ProviderStates.A_PROJECT_WITH_IDEAS, "getIdea", "/projects/api/ideas/{ideaId}"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_NO_WORK,
+            "createIdea",
+            "POST",
+            "/projects/api/ideas",
+            201,
+            null,
+            null,
+            "{\"project\":\"{projectId}\",\"title\":\"Faster builds\","
+                + "\"description\":\"Cache the dependencies between runs.\"}"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_IDEAS,
+            "createIdea",
+            "POST",
+            "/projects/api/ideas",
+            400,
+            null,
+            null,
+            "{\"project\":\"{projectId}\",\"title\":\"Faster builds. Fewer waits. Less cost\"}"));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WITH_IDEAS,
+            "patchIdea",
+            "PATCH",
+            "/projects/api/ideas/{enabledIdeaId}",
+            "{\"title\":\"Share the build cache across runners\"}"));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WITH_IDEAS,
+            "archiveIdea",
+            "POST",
+            "/projects/api/ideas/{enabledIdeaId}/archive",
+            "{\"reason\":\"Folded into the cache epic.\"}"));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WITH_IDEAS,
+            "unarchiveIdea",
+            "POST",
+            "/projects/api/ideas/{archivedIdeaId}/unarchive",
+            null));
     all.add(
         read(
             ProviderStates.THE_ARCHETYPE_REGISTRY,

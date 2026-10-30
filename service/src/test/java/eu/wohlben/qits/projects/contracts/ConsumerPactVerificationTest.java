@@ -364,6 +364,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_NO_WORK);
   }
 
+  @State(ProviderStates.A_PROJECT_WITH_IDEAS)
+  Map<String, String> aProjectWithIdeas() {
+    return states.params(ProviderStates.A_PROJECT_WITH_IDEAS);
+  }
+
   @State(ProviderStates.A_REPOSITORY_EXISTS)
   Map<String, String> aRepositoryExists() {
     return states.params(ProviderStates.A_REPOSITORY_EXISTS);

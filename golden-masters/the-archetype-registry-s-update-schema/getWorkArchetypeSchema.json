@@ -51,6 +51,14 @@
         "description": "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
         "pattern": "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
       }
+    },
+    "inspiredBy": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "\\S",
+      "description": "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
     }
   },
   "required": [],

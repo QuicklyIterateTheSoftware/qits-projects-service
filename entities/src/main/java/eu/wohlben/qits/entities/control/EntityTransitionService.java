@@ -173,6 +173,14 @@ public class EntityTransitionService {
   @Inject Instance<TransitionAnnouncer> announcer;
 
   /**
+   * Re-derives the ideas the written rows name (qits-1387): a status stated here, or an archetype
+   * that can no longer carry an idea, can move one.
+   */
+  @Inject IdeaStatusRecompute ideaStatus;
+
+  @Inject IdeaAnnouncements ideaAnnouncements;
+
+  /**
    * Applies {@code requested} as one post-state and answers what was written, keyed by id in the
    * order it was stated.
    *
@@ -185,12 +193,19 @@ public class EntityTransitionService {
       Map<String, EntityTransition> requested, String changedBy) {
     Map<String, EntityTransition> stated = normalise(requested);
 
+    List<IdeaChange> ideaChanges = new ArrayList<>();
     Map<String, TransitionedEntity> written =
-        writes.hold("entity transition", () -> apply(stated, changedBy));
+        writes.hold(
+            "entity transition",
+            () -> {
+              ideaChanges.clear();
+              return apply(stated, changedBy, ideaChanges);
+            });
 
     // After the transaction, never inside it: the WritePatience body re-runs on a retry and an
     // announcement in it would be made twice.
     announce(written);
+    ideaAnnouncements.announce(ideaChanges);
     return written;
   }
 
@@ -234,7 +249,7 @@ public class EntityTransitionService {
 
   /** Validate the whole post-state, then write it. One transaction, so nothing moves in between. */
   private Map<String, TransitionedEntity> apply(
-      Map<String, EntityTransition> stated, String changedBy) {
+      Map<String, EntityTransition> stated, String changedBy, List<IdeaChange> ideaChanges) {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
     refuseCampaignLifecycle(stated, rows);
@@ -253,8 +268,10 @@ public class EntityTransitionService {
     // they only know where they went. Nothing is created here, so every entry has one — and a row
     // the batch reshapes without moving its status reports the same word on both ends.
     Map<String, String> statusBefore = new HashMap<>();
+    List<String> inspiring = new ArrayList<>();
     for (String id : stated.keySet()) {
       statusBefore.put(id, rows.get(id).status);
+      inspiring.add(rows.get(id).inspiredByIdeaId);
     }
 
     Instant now = Instant.now();
@@ -272,6 +289,9 @@ public class EntityTransitionService {
 
     // Flushed so the edges and the managed timestamps are settled before anything is read back.
     entities.getEntityManager().flush();
+
+    // The ideas the rows named, re-derived on the statuses just written (qits-1387).
+    ideaChanges.addAll(ideaStatus.recompute(inspiring, changedBy));
 
     Map<String, EntityMembership> edges = edgesOf(stated.keySet());
     Map<String, TransitionedEntity> written = new LinkedHashMap<>();
@@ -828,6 +848,11 @@ public class EntityTransitionService {
       row.createdBy = null;
     }
     row.slugScope = slugScope;
+    if (!IdeaService.CARRIERS.contains(target.archetype())) {
+      // The idea it was inspired by is not stated here and is carried like the slug (qits-1387),
+      // except onto a kind that cannot carry one: a reshape into a FEATURE or a TASK drops it.
+      row.inspiredByIdeaId = null;
+    }
   }
 
   /**

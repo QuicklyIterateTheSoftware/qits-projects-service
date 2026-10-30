@@ -47,15 +47,24 @@ public final class AcceptanceCriteria {
 
   /** What is wrong with one item, or empty when it obeys every rule. */
   public static Optional<String> refusal(String item) {
+    return refusal(item, "criterion");
+  }
+
+  /**
+   * {@link #refusal(String)} for another one-line statement held to the same rules — an idea's
+   * title (qits-1387) — with {@code noun} naming what the line is in the refusal.
+   */
+  public static Optional<String> refusal(String item, String noun) {
     if (item == null || item.isBlank()) {
       return Optional.of("is blank");
     }
     if (item.indexOf('\n') >= 0 || item.indexOf('\r') >= 0) {
-      return Optional.of("contains a line break; one criterion is one line");
+      return Optional.of("contains a line break; one " + noun + " is one line");
     }
     long dots = item.chars().filter(c -> c == '.').count();
     if (dots > 1) {
-      return Optional.of("has " + dots + " '.' characters; at most one, so one criterion is one sentence");
+      return Optional.of(
+          "has " + dots + " '.' characters; at most one, so one " + noun + " is one sentence");
     }
     long whitespace = item.chars().filter(Character::isWhitespace).count();
     if (whitespace >= WHITESPACE_LIMIT) {
