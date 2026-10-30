@@ -457,6 +457,26 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
+  /**
+   * qits-1757: an unedited qits-1757 brief — the one that named no way to close finished work —
+   * rolls to the current one, which closes it straight to DONE.
+   */
+  @Test
+  public void anUneditedQits1757BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1757_DELIVERY_DESK_PROMPT.contains("Close finished work"),
+        "the qits-1757 text is the one before the close-as-done move existed");
+    stage(AgentSurfaceDefaults.QITS_1757_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1757 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("Never walk finished work through READY_FOR_DEV to close it."), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
   /** The boot after the rewrite finds the new text and writes nothing. */
   @Test
   public void aSecondBootIsANoOp() {

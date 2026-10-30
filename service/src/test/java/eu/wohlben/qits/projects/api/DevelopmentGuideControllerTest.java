@@ -225,11 +225,16 @@ public class DevelopmentGuideControllerTest {
     assertTrue(
         markdown.contains("A request created right after a commit, before the\nbranch's push"),
         "qits-1751: a fresh source missing on the git host is waited for, not rejected");
+    assertTrue(
+        markdown.contains("Close finished work: a campaign, epic or feature whose children are all"),
+        "qits-1757: the desk closes finished work straight to DONE");
+    assertTrue(markdown.contains("Never\nschedule finished work to walk it."), markdown);
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1689_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }
