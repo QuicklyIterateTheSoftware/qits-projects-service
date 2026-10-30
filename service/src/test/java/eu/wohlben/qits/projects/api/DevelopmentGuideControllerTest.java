@@ -277,8 +277,8 @@ public class DevelopmentGuideControllerTest {
 
   /**
    * qits-1665: the flow says to move a source that alone blocks a shared request to the next one,
-   * never to force-push it out; an unedited row of the text before rolls forward. The desk's own
-   * brief is left to a follow-up, for the owner to approve on its own.
+   * never to force-push it out; an unedited row of the text before rolls forward. The desk is told
+   * so in its prompt (AgentSurfaceDefaults.DELIVERY_DESK_PROMPT).
    */
   @Test
   public void theFlowMovesABlockingSourceToTheNextRequest() {
