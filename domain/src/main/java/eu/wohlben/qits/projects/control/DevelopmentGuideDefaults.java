@@ -377,8 +377,11 @@ public final class DevelopmentGuideDefaults {
       dispatch the next item as your brief says.\
       """;
 
-  /** The delivery desk. */
-  public static final String DESK_GUIDE =
+  /**
+   * The desk part as qits-1725 shipped it, before qits-1751 said that a request created right
+   * after a commit waits for the branch's push rather than rejecting.
+   */
+  public static final String QITS_1725_DESK_GUIDE =
       """
       # Development guide: delivery desk
 
@@ -397,6 +400,35 @@ public final class DevelopmentGuideDefaults {
       PENDING on automations or CI) reaches you once per stall. For each: retry a run that failed
       through the platform's fault (`qits ci retry`), or regenerate what an automation owes; fix it
       yourself or hand it to the agent that owns the work;
+      withdraw a dependency bump of a repository that is retired. When it is unclear, ask the
+      owner on the item's thread.
+
+      When an agent leaves and fewer items run than `max_running`, you are told a slot opened:
+      dispatch the next item as your brief says.\
+      """;
+
+  /** The delivery desk. */
+  public static final String DESK_GUIDE =
+      """
+      # Development guide: delivery desk
+
+      You are the project's delivery desk. Your brief comes first, then the development flow that
+      the agents you coordinate follow.
+
+      Agents and people ask you for things with a comment that starts with `@desk`; such a comment
+      prompts you. When you hold a decision until someone answers, ask them for the answer as an
+      `@desk` comment on the item's thread, and declare a `qits wait` with a timeout for it, so the
+      hold cannot go silent.
+
+      You are also told of release requests nobody else watches. A request that went REJECTED,
+      CONFLICTED or FAILED reaches you only when no active agent was told of it. A conflict, or a
+      source ref missing on the git host, reaches you only when no agent owns the branch: the
+      agent that owns it is told directly. A request created right after a commit, before the
+      branch's push reaches the git host, is fine: a source added in the last two minutes is
+      waited for, not rejected, and nobody is told. A request that stalls (RELEASED but not
+      FINALIZED, or PENDING on automations or CI) reaches you once per stall. For each: retry a
+      run that failed through the platform's fault (`qits ci retry`), or regenerate what an
+      automation owes; fix it yourself or hand it to the agent that owns the work;
       withdraw a dependency bump of a repository that is retired. When it is unclear, ask the
       owner on the item's thread.
 
@@ -1364,7 +1396,7 @@ public final class DevelopmentGuideDefaults {
       Map.of(
           key(WORKSTATION),
               List.of(QITS_1679_WORKSTATION_GUIDE, QITS_1724_PREVIOUS_WORKSTATION_GUIDE),
-          key(DESK), List.of(QITS_1679_DESK_GUIDE, QITS_1689_DESK_GUIDE),
+          key(DESK), List.of(QITS_1679_DESK_GUIDE, QITS_1689_DESK_GUIDE, QITS_1725_DESK_GUIDE),
           key(REFINEMENT), List.of(QITS_1679_REFINEMENT_GUIDE),
           FLOW_KEY,
               List.of(
