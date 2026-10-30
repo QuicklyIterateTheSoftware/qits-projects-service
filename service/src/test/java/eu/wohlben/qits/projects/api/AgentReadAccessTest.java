@@ -100,8 +100,9 @@ class AgentReadAccessTest {
           TechnicalProcessEventsController.class);
 
   /**
-   * <b>The release-request writes an agent reaches.</b> The first four are bound to the agent's
-   * project and {@code git_refs}; {@code rerunPhase} and {@code rerunAutomation} (qits-978) are
+   * <b>The release-request writes an agent reaches.</b> The first five are bound to the agent's
+   * project and {@code git_refs} ({@code moveSource}, qits-1665, admits the desk's {@code
+   * qits:desk-admin} for any source of its project before that binding); {@code rerunPhase} and {@code rerunAutomation} (qits-978) are
    * deliberately unbound — they decide nothing, so there is nothing to bind. {@code approve} and
    * {@code decline} (epic qits-1038) admit the agent at the filter and are bound by eligibility
    * instead: a requirement says which roles may satisfy it, and {@code ApproverCheck} proves the
@@ -112,6 +113,7 @@ class AgentReadAccessTest {
           "ReleaseRequestController.create",
           "ReleaseRequestController.addSource",
           "ReleaseRequestController.setSourcePriority",
+          "ReleaseRequestController.moveSource",
           "ReleaseRequestController.withdraw",
           "ReleaseRequestController.rerunPhase",
           "ReleaseRequestController.rerunAutomation",

@@ -1817,6 +1817,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
+    MoveReleaseRequestSource:
+      type: object
+      required:
+      - branch
+      - reason
+      properties:
+        branch:
+          type: string
+          pattern: \S
+        reason:
+          type: string
+          pattern: \S
+    MoveReleaseRequestSourceResponse:
+      type: object
+      properties:
+        from:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+        to:
+          $ref: "#/components/schemas/ReleaseRequestDto"
     NewAttachment:
       type: object
       required:
@@ -2288,6 +2307,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestItemDto"
+        sourceMoves:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestSourceMoveDto"
     ReleaseRequestItemDto:
       type: object
       properties:
@@ -2316,6 +2339,21 @@ components:
           type: boolean
         explicitJoin:
           type: boolean
+    ReleaseRequestSourceMoveDto:
+      type: object
+      properties:
+        branch:
+          type: string
+        fromQualifiedId:
+          type: string
+        toQualifiedId:
+          type: string
+        movedBy:
+          type: string
+        reason:
+          type: string
+        movedAt:
+          $ref: "#/components/schemas/Instant"
     ReleaseRequestWorkItemDto:
       type: object
       properties:
@@ -6528,7 +6566,10 @@ paths:
         \ active for this request and kind, the request is RELEASED, FINALIZED, OBSOLETE\
         \ or WITHDRAWN, the request has no fold, or bumping is off; 404 for an unknown\
         \ kind. 404 also for an unknown request or one that is not this repository's,\
-        \ and 503 where qits-maintenance is not configured or cannot be reached."
+        \ and 503 where qits-maintenance is not configured or cannot be reached —\
+        \ nothing ran. 504 where the ask was sent and qits-maintenance did not answer\
+        \ in time: whether the run was opened is unknown, the sentence names where\
+        \ to look, and a second press answers 409 if it was."
       operationId: rerunReleaseRequestAutomation
       parameters:
       - name: kind
@@ -6954,6 +6995,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Response25"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:system
+        - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/sources/move:
+    post:
+      summary: Move one source of an open release request to the request queued after
+        it
+      description: "For a source that alone holds a shared request back (it conflicts,\
+        \ its check is red, or it is not ready): it leaves this request, which is\
+        \ folded again without it and goes back to PENDING, and joins the request\
+        \ queued after this one (queuedNext), minted queued behind it if there is\
+        \ none, keeping its priority, author and feature stamp. The queued request\
+        \ folds nothing until this one has released or been withdrawn; the branch\
+        \ releases from there. The branch's delivery ledger takes MOVED, its owning\
+        \ agent is told, and both requests list the move in sourceMoves with who moved\
+        \ it and why. The answer is both requests: from (this one, refolded) and to\
+        \ (the queued one). A blank reason is a 400. A request or source that does\
+        \ not exist is a 404. 409 when the request is not PENDING, READY, FAILED,\
+        \ REJECTED or CONFLICTED; when it is itself queued; for the default branch\
+        \ and a released tag, which every request carries; and for the request's only\
+        \ branch besides the default one, which is withdraw's job. qits:admin, qits:admin-agent,\
+        \ qits:system and the project's delivery desk (qits:desk-admin) may move any\
+        \ source; another agent (qits:agent) only a branch in its git_refs, in its\
+        \ own project, and 403 otherwise."
+      operationId: moveReleaseRequestSource
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveReleaseRequestSource"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveReleaseRequestSourceResponse"
         "401":
           description: Not Authorized
         "403":

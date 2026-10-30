@@ -132,7 +132,8 @@
         "label": "fix/rounding",
         "workItem": null
       }
-    ]
+    ],
+    "sourceMoves": []
   },
   "placement": {
     "outcome": "JOINED",

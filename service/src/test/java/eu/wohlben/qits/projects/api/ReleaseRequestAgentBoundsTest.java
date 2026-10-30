@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.PipelinePhaseReruns;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -188,6 +189,68 @@ public class ReleaseRequestAgentBoundsTest {
             new RecordingPipelinePhaseReruns.Asked(
                 FOREIGN_REPO, foreign, PipelinePhaseReruns.CI_PHASE_QA)),
         reruns.asked());
+  }
+
+  // ---- the move (qits-1665) ----------------------------------------------------------------------
+
+  /** The delivery desk's token: its project, an empty git_refs, and the coordinator's rights. */
+  private static final SecurityIdentity DESK =
+      AgentTokens.token(
+          Map.of("project", OWN_PROJECT, "git_refs", List.of()),
+          "qits:agent",
+          "qits:desk",
+          "qits:desk-admin");
+
+  private static ReleaseRequestController.MoveReleaseRequestSource move(String branch) {
+    return new ReleaseRequestController.MoveReleaseRequestSource(branch, "it holds the others back");
+  }
+
+  /** A request of the agent's own repository holding its branch and somebody else's. */
+  private String sharedRequest() {
+    String id = requestBySomebodyElse(OWN_REPO, "ticket/own");
+    releaseRequests.addSource(id, "feature/someone-elses", "setup", null);
+    return id;
+  }
+
+  @Test
+  void anAgentMovesItsOwnBranchToTheNextRequest() {
+    String id = sharedRequest();
+
+    var answer = door(AGENT).moveSource(OWN_REPO, id, move("ticket/own"));
+
+    assertEquals(id, answer.from().id());
+    assertEquals(id, answer.to().queuedBehind());
+    assertTrue(
+        answer.to().sources().stream().anyMatch(source -> source.name().equals("ticket/own")));
+  }
+
+  @Test
+  void anAgentMovingAnotherBranchOrAForeignRequestIs403() {
+    String id = sharedRequest();
+    String foreign = requestBySomebodyElse(FOREIGN_REPO, "feature/elsewhere");
+
+    refused(() -> door(AGENT).moveSource(OWN_REPO, id, move("feature/someone-elses")));
+    refused(() -> door(AGENT).moveSource(FOREIGN_REPO, foreign, move("feature/elsewhere")));
+    refused(() -> door(AGENT).moveSource(OWN_REPO, foreign, move("feature/elsewhere")));
+  }
+
+  /**
+   * The desk holds {@code qits:agent} with an empty {@code git_refs}, so bound like an agent it
+   * could move nothing; its {@code qits:desk-admin} admits it for any source of its own project, and
+   * no other project's.
+   */
+  @Test
+  void theDeskMovesAnySourceOfItsOwnProject() {
+    String id = sharedRequest();
+    String foreign = requestBySomebodyElse(FOREIGN_REPO, "feature/elsewhere");
+
+    var answer = door(DESK).moveSource(OWN_REPO, id, move("feature/someone-elses"));
+
+    assertEquals(id, answer.from().id());
+    assertTrue(
+        answer.to().sources().stream()
+            .anyMatch(source -> source.name().equals("feature/someone-elses")));
+    refused(() -> door(DESK).moveSource(FOREIGN_REPO, foreign, move("feature/elsewhere")));
   }
 
   /** A caller that also holds qits:system is judged as before, on any repository and branch. */

@@ -633,7 +633,8 @@ merely its only occupant. Six things about it are rules:
     `maintenance/*` or an implicit tag.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
     under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
-    it) and in `obsolete` (current = `supersededBy`); FAILED in `evaluate` (red CI, failed
+    it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
+    request the source left, current = the request queued behind it); FAILED in `evaluate` (red CI, failed
     automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
     (qits-1725); CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
@@ -677,8 +678,10 @@ merely its only occupant. Six things about it are rules:
     (`repositoryId`) is a repository of the request's project; the longest wrapper branch wins; none
     is `NO_AGENT` and nothing is said. The agents are listed by `HttpWorkspaceAgentLookup.active()`
     — `GET /workspaces/api/agents?state=ACTIVE`, reading `repositoryId` and `wrapperBranch` beside
-    `agentId`/`workId` — and narrowed by project on this side, so the consumer pact's request is
-    unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
+    `agentId`/`workId` (and, since qits-1756, `activity`, `lastActivityAt` and `waits[]`, which
+    `desktriggers/AgentIdleSource` reads; a second consumer row pins those under the provider state
+    `a project with agents needing attention`) — and narrowed by project on this side, so the
+    consumer pact's request is unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
     step's transaction, `on conflict do nothing` on `notice_key` — `FAILED:<requestId>:<foldSha>:
     <repoId>:<branch>` (once per fold and branch), `MOVED:<repoId>:<branch>:<from>:<to>`,
     `CONFLICTED:<requestId>:<foldAttempt>:<repoId>:<branch>` or (a missing source)
@@ -686,7 +689,8 @@ merely its only occupant. Six things about it are rules:
     conflict is a new attempt and is told again) — with
     the text stored and `agent_id` null; the owner is an HTTP question, so the worker after the
     commit resolves it and records `agent_id`/`work_id` with the outcome (`DELIVERED`, `LAUNCHED`,
-    `RESUMED`, `NO_AGENT`, `GAVE_UP`), claiming the row first (2 min), retrying an unreachable
+    `RESUMED`, `NO_AGENT`, `GAVE_UP`, and `LIFTED` for a CONFLICTED or FOLD notice whose request no
+    longer stands at that attempt when it is delivered, qits-1751), claiming the row first (2 min), retrying an unreachable
     lookup or delivery up to 10 attempts and giving up on a notice older than a day.
     `ReleaseRequestSweep.sweepBranchDeliveryNotices` delivers what a crash left. The fold attempt
     has no column (no schema change): it is in the key, and `attemptPrefix(step, requestId,
@@ -702,6 +706,14 @@ merely its only occupant. Six things about it are rules:
     200 with no deliveries and `everywhere` null; a branch in two projects without `project` is 400
     `branch in several projects; name --project`. Provider state `branch ticket/qits-9001 is
     RELEASED in qits-demo-service` records it for qits-platform-access-cli.
+- **`ReleaseRequestSourceMoved` says a source was moved to the next request (qits-1665).** Payload
+  `{projectId?, repoId, repoName?, branch, fromRequestId, fromQualifiedId, toRequestId,
+  toQualifiedId, minted, movedBy?, reason, movedAt}`; `movedAt` is the envelope's `occurredAt`.
+  Published once per move after the move's commit by `ReleaseRequests.moveSource`; the port is
+  `control/ReleaseRequestSourceMoveAnnouncer`, the adapter `bus/ReleaseRequestSourceMovedAnnouncer`
+  (`@DefaultBean`); the suite records through `RecordingReleaseRequestSourceMoveAnnouncer`. The
+  branch's own step is `BranchDeliveryChanged` `MOVED`, and the left request's refold is an ordinary
+  `ReleaseRequestChanged`; the queued request folds nothing, so nothing announces it as a fold.
 - **`DeploymentFailedListener` records a deployment that never went live (qits-1690).** Same
   mechanics as `DeploymentActiveListener` (local payload record, head-of-log consumer
   `projects-deployment-failure`), calling `ReleaseFinalization.onDeploymentFailed`, which stamps
@@ -771,12 +783,12 @@ write** (user ruling, 2026-09-12):
 - **Every read route takes it** — each GET, and the SSE streams — with no restriction. On a class
   that also has writes, each GET states `qits:agent` at method level, so the writes keep the class
   list. `api/AgentReadAccessTest` checks the rule for every controller class.
-- **Four writes take it, bound to the agent's own work:** create, sources, priority and withdraw
-  on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
-  belong to that repository, and on create and sources the branch must be in the token's
-  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline admit the agent too
+- **Five writes take it, bound to the agent's own work:** create, sources, priority, move
+  (qits-1665) and withdraw on `ReleaseRequestController`. The repository must be in the token's
+  `project`, a request must belong to that repository, and on create, sources and move the branch
+  must be in the token's `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline admit the agent too
   since epic qits-1038, unbound — see "Approval requirements and roles" below.
-- **A fifth write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
+- **One more write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
   gate and no row, and the new run reports on the bus exactly as the first one did, so there is
   nothing for a binding to protect — an agent re-asks a phase of any request, including one in a
   repository its token does not cover. It is open at all because gates die on estate conditions
@@ -835,7 +847,7 @@ write** (user ruling, 2026-09-12):
   itself, or a person's `qits` CLI bearer (`credential_type=cli`, no `context_kind`, no `clients/…`
   group), holding `qits:admin`. Asserted `X-Qits-*` headers alone are a 403, and the recorded name
   is the proof's. qits-887 and qits-897 reuse it.
-- **A sixth write takes it: `ProjectController.createRepository`** — `POST
+- **Another write takes it: `ProjectController.createRepository`** — `POST
   /projects/{projectId}/repositories`, the route that adds a component to a project. It is granted
   because it is additive: it mints a blank on the git host (or attaches a url) and declares it in
   the wrapper, writing no existing row and destroying nothing. `RepositoryController.delete` is the
@@ -876,7 +888,8 @@ bound to its project, except a commit or a push and a change to its own rights:
   it approves only what `front_desk.delivery.approves` hands it. Both settings are the owner's in
   `.config/qits/project.yml`; qits-1596 deliberately did not widen them.
 - **Refused**: release-request create and join (`refuseDesk`, in the body — the routes admit
-  `qits:agent`); the doors over its own rights (`AgentSurfaceConfigurationController`,
+  `qits:agent`; the move, qits-1665, is not refused: `qits:desk-admin` is admitted for any source of
+  its own project before the bound-agent check, because a move takes nothing new to main); the doors over its own rights (`AgentSurfaceConfigurationController`,
   `AgentContainerController`, `ProjectFrontDeskController`, the
   MCP catalogue and the capability report); everything that writes or deletes a ref (branch and
   repository delete, pull, push, sync, both backup pushes, tag GC, the remote-login push, a new
@@ -1214,6 +1227,37 @@ every outbound call (qits-ci, qits-maintenance) keeps using. `qualifiedId` is th
 - **Texts use the qualified id**: the fold commit subject (`Release request <qualifiedId>: …`), the
   tag fallback, supersession, refusal sentences, ticket threads and the MAINTENANCE ticket body.
 
+## Moving one source to the next request (qits-1665)
+
+`POST /projects/api/repositories/{repoId}/release-requests/{requestId}/sources/move`
+(`moveReleaseRequestSource`), body `{branch, reason}`, answers `{from, to}`, both
+`ReleaseRequestDto`. For a source that alone holds a shared request back — a conflict, a red check,
+a branch not ready — instead of force-pushing it back to main (forbidden by the flow), withdrawing
+every other source with it, or holding them all and the queue behind them.
+
+- **`ReleaseRequests.moveSource`, one transaction under the Repository row lock** `ask`/`join`
+  take: the source row leaves the request; a row of the same branch keeping its `priority`,
+  `added_by`, `added_at`, `feature`, `label` and `causation_id` (`explicit_join` false — an
+  ordinary member, counted by `featureCountOf`) goes onto the request queued behind it, minted with
+  `mint(..., queuedBehind)` when there is none (main alone, then the branch; its participant is the
+  branch's author, never the mover); `BranchDeliveries.moved` writes MOVED, so `qits wait branch`
+  follows the branch and `BranchDeliveryNotices` tells its owner `fyi: your <branch> moved from …
+  to …`; the move is recorded in `release_request_source_move` (V71). After the commit: the event,
+  then `remerge(from, "<branch> moved to <qid> by <actor>: <reason>")`, which re-arms it to
+  PENDING like any refold (approvals and waivers are keyed by the fold). The queued request folds
+  once `activateQueuedBehind` or the sweep activates it.
+- **Refusals**: blank reason 400; unknown request or a branch it does not name 404; 409 when the
+  request is not `UNRELEASED` (`requireOpenForChange`), is itself queued, the branch is the default
+  branch or a released tag (implicit or stored `RELEASED_TAG`), or it is the only branch besides
+  the default one (the message points at withdraw).
+- **Who**: `qits:admin`, `qits:admin-agent`, `qits:system` any source; `qits:desk-admin` any
+  source of its own project (`requireDeskProject`), checked by role before the bound-agent check
+  and never `refuseDesk`'d; any other `qits:agent` bound (`requireAgentRequest`) and only a branch
+  its `git_refs` cover, else 403.
+- **Wire**: `ReleaseRequestDto.sourceMoves` (additive, never null) lists the moves into or out of
+  the request, oldest first — `{branch, fromQualifiedId, toQualifiedId, movedBy, reason, movedAt}`
+  — read with one query per page plus one for the qualified ids.
+
 ## Release request gates
 
 A release request releases only once every gate its repository configures has passed.
@@ -1338,7 +1382,12 @@ a consumer may rely on:
   does not exist on the git host"; every applying gate that has not itself FAILED reads FAILED with
   that sentence, in `qualityGates[]`, `gates[]` and the pipeline alike. The sweep neither re-folds
   nor re-reads it; a push of the missing branch re-folds it, and the fold that lands lifts it (a
-  reopen at the same sha, a re-arm at a new one). Every other failure to fold — a timeout, a 5xx,
+  reopen at the same sha, a re-arm at a new one). **Not while the source is fresh** (qits-1751): a
+  source whose `addedAt` is inside `qits.projects.release-requests.missing-source-grace` (PT2M; PT0S
+  in the suite's properties) is a push on its way — no move, no FOLD step, `detail` "The sources
+  could not be folded yet: <ref> is not on the git host; waiting for its push", and a re-fold owed
+  under the reason prefix `ReleaseRequests.AWAITING_PUSH`, which the sweep pays even over a fold in
+  flight; past the grace the knock rejects as above. Every other failure to fold — a timeout, a 5xx,
   any other 404, `ref-moved`, no address — is still `UNREACHABLE`: the state stays where it was and
   the sweep folds again.
 
@@ -2897,7 +2946,7 @@ subject, and the short constructor sets `principal` to `cause`), run inside the 
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
 `requestedByDesk()` (false: news; true: an answer to the desk's own request, see above), and the
 default `scan(now)` (qits-1689: triggers found by reading rows on each sweep pass, admitted under the
-listener's drops; the source makes them idempotent itself). Seven ship:
+listener's drops; the source makes them idempotent itself). Eight ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
@@ -2907,6 +2956,7 @@ listener's drops; the source makes them idempotent itself). Seven ship:
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
 | `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1722 branch notice (`branch_delivery_notice`, step `FAILED`) for the fold, or all of its notices settled with none told to a still-ACTIVE agent. **CONFLICTED, and REJECTED with `rejectingGate` `fold` (a missing source), are read by fold attempt, not by sha** (qits-1725): the request's current attempt is the `fold_attempt` of its newest `branch_delivery` row at that step, its notices those whose key starts `attemptPrefix(step, request, attempt)` — so a build's notice at the same `mergedSha` never silences a later conflict — and the why is `no agent owns <branch>` (the heads or the missing branch whose notice settled `NO_AGENT`, comma-joined; the missing branch, else `it`, with no notice at all). Owed notices are decided by `scan` once settled (an attempt only while the request still stands at it). Event id: the bus event's, or `foldKey(request, sha)` — `foldKey(request, attempt)` for an attempt — when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
+| `AgentIdleSource` (qits-1756) | `agent-idle`, 55 | no signature; `scan` reads the ACTIVE agents (`WorkspaceAgentLookup.active()`, now also `activity`, `lastActivityAt` and `waits[]`) and raises each whose `activity` is not `BUSY` (null counts) and whose `lastActivityAt` is at least `THRESHOLD` (2h, a constant, not a setting) old, measured from the later of `lastActivityAt` and `delivery_enabled_at`, younger than `MAX_AGE` (7d). The item is this service's `WorkEntity` by `workId` (unknown: skipped); `item_id` is the agent id. Event id `idleKey(agent, lastActivityAt)`, skipped when a row holds it: once per idle stretch, and a new turn (a new `lastActivityAt`) is a new stretch. No migration: V65's one-per-agent index is `capacity-opened`'s only | `- <qualifiedId> (<title>; <STATUS>; idle 2h 19m since 2026-10-30T07:03Z; waits on: <label> (<subjectState or state>, expires <instant or never>)[; …] or no open wait[; blocked: <reason>])`, section `Agents idle for 2h or more:`, cause `agent <id8>`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 
 `EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
@@ -2925,7 +2975,8 @@ constructed with the list rather than registered as a bean, so it cannot leak in
 
 **Config** (`application.properties`): `qits.projects.desk-triggers.window` (PT15M),
 `…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`), `…give-up` (PT4H), and the
-stall thresholds `…stall.released` (PT1H), `…stall.pending` (PT2H) and `…stall.max-age` (P7D). The
+stall thresholds `…stall.released` (PT1H), `…stall.pending` (PT2H) and `…stall.max-age` (P7D).
+`AgentIdleSource`'s 2h and 7d are constants, deliberately not settings (qits-1756). The
 prompt hop's bound is the door's `qits.projects.front-desk.relay-timeout-ms`.
 
 **The read door** (qits-1612) is `GET /projects/api/projects/{projectId}/desk-triggers`

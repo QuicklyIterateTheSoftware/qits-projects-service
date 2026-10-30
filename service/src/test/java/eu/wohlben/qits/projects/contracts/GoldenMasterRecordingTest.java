@@ -1180,6 +1180,16 @@ class GoldenMasterRecordingTest {
             frozen,
             "getProjectReleaseRequest",
             "/projects/api/projects/{projectId}/release-requests/{queuedRequestQualifiedId}"));
+    // qits-1665: one source of the frozen request moved into the request queued behind it — what
+    // qits release-request move and the landing app's "Move to next request" call.
+    all.add(
+        write(
+            frozen,
+            "moveReleaseRequestSource",
+            "POST",
+            requests + "/{requestId}/sources/move",
+            "{\"branch\":\"ticket/contract-12\",\"reason\":\"It conflicts with"
+                + " ticket/contract-11.\"}"));
     all.add(
         read(
             ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA,

@@ -25,9 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * in which every release-request test that is not about automations behaves exactly as it did
  * before the gate existed: an empty list is a FRESH note and the request releases on the same pass.
  * A test about the gate scripts kinds per repository name ({@link #answer}) — the same states for
- * the trigger and the read, at whatever fold is asked — and the four other postures are one call
+ * the trigger and the read, at whatever fold is asked — and the five other postures are one call
  * each: {@link #answerNothing()} (unreachable), {@link #answerNoStatus()} (the read alone down,
- * qits-1249), {@link #unconfigure()} (no address at all) and {@link #refuseReruns}.
+ * qits-1249), {@link #unconfigure()} (no address at all), {@link #refuseReruns} and {@link
+ * #leaveRerunsUnanswered} (sent and not answered in time, qits-1625).
  */
 @ApplicationScoped
 public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations {
@@ -134,6 +135,11 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   /** The next re-runs are refused with this status and sentence. */
   public void refuseReruns(int status, String detail) {
     rerunAnswer = Run.refused(status, detail);
+  }
+
+  /** The next re-runs are sent and not answered in time: the outcome is unknown (qits-1625). */
+  public void leaveRerunsUnanswered(String detail) {
+    rerunAnswer = Run.unknown(detail);
   }
 
   public void reset() {

@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.bus.DeploymentFailedListener;
 import eu.wohlben.qits.projects.bus.ReleasePipelineRunListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.bus.ScmBackupTriggerListener;
+import eu.wohlben.qits.projects.desktriggers.AgentIdleSource;
 import eu.wohlben.qits.projects.desktriggers.ApprovalNeededSource;
 import eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource;
 import eu.wohlben.qits.projects.desktriggers.DeskMentionedSource;
@@ -51,6 +52,7 @@ class EventstreamPactTest {
                       new DeskMentionedSource(),
                       new RequestFailedSource(),
                       new RequestStalledSource(),
+                      new AgentIdleSource(),
                       new CapacityOpenedSource()),
                   null))
           .publishes(true)

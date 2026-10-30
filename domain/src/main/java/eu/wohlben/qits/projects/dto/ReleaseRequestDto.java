@@ -187,6 +187,11 @@ import java.util.List;
  *
  * <p>There is no {@code summary} and no {@code requester} any more (qits-1673, the contract step):
  * read {@code items} for what the request is about and {@code participants} for who took part.
+ *
+ * <p><b>{@code sourceMoves} is every source moved into or out of this request</b> (qits-1665),
+ * oldest first: a source that alone held its request back, moved to the request queued after it
+ * through {@code POST …/sources/move}, with who moved it and why. See {@link
+ * ReleaseRequestSourceMoveDto}. Empty where nothing moved. Never null.
  */
 public record ReleaseRequestDto(
     String id,
@@ -227,4 +232,5 @@ public record ReleaseRequestDto(
     String queuedNextQualifiedId,
     FeatureFreezeDto featureFreeze,
     List<String> participants,
-    List<ReleaseRequestItemDto> items) {}
+    List<ReleaseRequestItemDto> items,
+    List<ReleaseRequestSourceMoveDto> sourceMoves) {}

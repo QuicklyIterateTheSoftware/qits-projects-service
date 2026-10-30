@@ -644,6 +644,32 @@ public class ReleaseRequestApprovalDoorTest {
         .statusCode(503);
   }
 
+  /**
+   * qits-1625: a re-run qits-maintenance was sent and did not answer in time may have been opened,
+   * so the door answers 504 and says the outcome is unknown and where to look — never that nothing
+   * ran, which is the 503's sentence and would be false here.
+   */
+  @Test
+  public void aRerunLeftUnansweredIs504AndSaysTheOutcomeIsUnknown() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    held(id);
+    automations.leaveRerunsUnanswered("qits-maintenance did not answer within 10 s");
+
+    String message =
+        as("ada", "qits:admin")
+            .body("{}")
+            .post(base(automationRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+            .then()
+            .statusCode(504)
+            .extract()
+            .path("message");
+
+    assertTrue(message.contains("qits maintenance automations"), message);
+    assertTrue(message.contains("is unknown"), message);
+    assertTrue(!message.contains("nothing ran") && !message.contains("could not be asked"), message);
+    assertEquals(1, automations.reruns().size(), "the ask was made once");
+  }
+
   // -----------------------------------------------------------------------------------------
   // Driving it
   // -----------------------------------------------------------------------------------------

@@ -38,6 +38,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestItemDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestSourceMoveDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestWorkItemDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.dto.SubmoduleRefDto;
@@ -48,6 +49,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver;
 import eu.wohlben.qits.projects.entity.ReleaseRequestUpstreamOverride;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
+import eu.wohlben.qits.projects.entity.ReleaseRequestSourceMove;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -60,6 +62,7 @@ import eu.wohlben.qits.projects.persistence.ReleaseRequestUpstreamOverrideReposi
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestParticipantRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceMoveRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
@@ -342,6 +345,12 @@ public class ReleaseRequests {
 
   @Inject ReleaseRequestSourceRepository sources;
 
+  /** Every source moved out of a request into the one queued after it (qits-1665, V71). */
+  @Inject ReleaseRequestSourceMoveRepository sourceMoves;
+
+  /** Announces each such move after its commit, as {@code ReleaseRequestSourceMoved}. */
+  @Inject Instance<ReleaseRequestSourceMoveAnnouncer> sourceMoveAnnouncers;
+
   /**
    * Who took part in each request (qits-1673): written on every ask and on every source an internal
    * path adds, never deleted, and what {@link #isUnattended} and the failure notices read.
@@ -536,6 +545,56 @@ public class ReleaseRequests {
       name = "qits.projects.release-requests.unattended-requesters",
       defaultValue = "dev-qits-maintenance")
   List<String> unattendedRequesters;
+
+  /**
+   * <b>How long a freshly added source may be missing on the git host before the fold rejects
+   * over it</b> (qits-1751). An agent commits and a daemon pushes the branch seconds later, so a
+   * request created right after the commit folds before the ref exists. Inside this window, counted
+   * from the source's {@link ReleaseRequestSource#addedAt}, a {@code no-such-source} is a push still
+   * on its way: the request stays where it was and owes a re-fold the sweep pays ({@link
+   * #AWAITING_PUSH}). Past it, the fold rejects as qits-1221 made it. Configuration so the suite can
+   * set it to zero; a zero or negative value is no grace.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.missing-source-grace",
+      defaultValue = "PT2M")
+  java.time.Duration missingSourceGrace;
+
+  /**
+   * The {@link ReleaseRequest#refoldOwedReason} prefix of a re-fold owed because a fresh source is
+   * not on the git host yet (qits-1751). Owed this way, the knock is not held for a fold in flight
+   * ({@link #payOwedRefold}) and an automation's move does not defer over it ({@link
+   * #deferAutomationRefold}): the fold that pays it is the one that must carry the new source.
+   */
+  static final String AWAITING_PUSH = "a source is not on the git host yet: ";
+
+  /** Whether {@code row} owes its re-fold to a fresh source still on its way (qits-1751). */
+  private static boolean awaitingPush(ReleaseRequest row) {
+    return row.refoldOwedAt != null
+        && row.refoldOwedReason != null
+        && row.refoldOwedReason.startsWith(AWAITING_PUSH);
+  }
+
+  /**
+   * The source of {@code requestId} that {@code ref} spells — {@code refs/heads/<branch>} or bare —
+   * when it was added less than {@link #missingSourceGrace} ago; null when none is that fresh
+   * (qits-1751). Read in the caller's transaction.
+   */
+  private ReleaseRequestSource freshSourceNamed(String requestId, String ref, Instant now) {
+    String branch = FoldAttempt.branchOf(ref);
+    if (branch == null
+        || missingSourceGrace == null
+        || missingSourceGrace.isZero()
+        || missingSourceGrace.isNegative()) {
+      return null;
+    }
+    Instant since = now.minus(missingSourceGrace);
+    return sources.listByRequest(requestId).stream()
+        .filter(source -> branch.equals(source.name))
+        .filter(source -> source.addedAt != null && source.addedAt.isAfter(since))
+        .findFirst()
+        .orElse(null);
+  }
 
   /**
    * The publish phase, called on the worker the instant a release lands: a repository that declares
@@ -1736,6 +1795,278 @@ public class ReleaseRequests {
   }
 
   /**
+   * What the move door answers (qits-1665): the request the source left, as it stands after its
+   * refold, and the request queued after it, which holds the source now.
+   */
+  public record Moved(ReleaseRequestDto from, ReleaseRequestDto to) {}
+
+  /**
+   * <b>Move one source out of an open request into the request queued after it</b> (qits-1665) —
+   * the door for a source that alone holds a shared request back: it conflicts, its check is red, or
+   * it is not ready. Before this nothing removed a single source short of a release, so the way out
+   * was to force-push the branch back to {@code main}'s sha (which the daemon never does and the
+   * development flow forbids), to withdraw the whole request with every other source in it, or to
+   * hold every other source, and the queue behind them, hostage.
+   *
+   * <p><b>One transaction, under the repository's row lock</b> — the lock {@link #ask} and {@link
+   * #join} place a branch under, so a move and a concurrent ask cannot disagree about which request
+   * is queued after this one:
+   *
+   * <ol>
+   *   <li>The source's row leaves this request.
+   *   <li>A row naming the same branch is put on the request queued behind this one ({@code
+   *       queuedBehind} = this request, this request's {@code queuedNext}), keeping the moved row's
+   *       priority, author, time added, feature stamp, label and causation; {@code explicit_join} is
+   *       false, so it is an ordinary member there and counts toward that request's freeze like any
+   *       other. Where nothing is queued yet, the move mints the queued request the way a branch
+   *       asked for past the freeze does ({@link #mint} with {@code queuedBehind}): {@code main} and
+   *       this branch, PENDING, unfolded.
+   *   <li>The ledger takes {@code MOVED} for the branch ({@link BranchDeliveries#moved}), which is
+   *       what lets {@code qits wait branch} follow it and tells its owning agent {@code fyi: your
+   *       <branch> moved from <old> to <new>} — no notice of its own.
+   *   <li>The move is recorded ({@code release_request_source_move}, V71) and, after the commit,
+   *       announced ({@link ReleaseRequestSourceMoveAnnouncer}).
+   * </ol>
+   *
+   * <p>After the commit this request is folded again without the branch ({@link #remerge}), which
+   * re-arms it to PENDING the way any refold does; approvals and waivers are keyed by the fold, so
+   * they go stale by themselves. The queued request folds nothing until it is active: {@link
+   * #activateQueuedBehind} or the sweep activates it once this one has released or been withdrawn,
+   * and the moved branch releases from there.
+   *
+   * <p>Refusals, in the order they are met: a blank reason is a 400; a request that does not exist,
+   * or a branch it does not name, is a 404; a request that is not unreleased (RELEASED, FINALIZED,
+   * WITHDRAWN, OBSOLETE) is a 409 ({@link #requireOpenForChange}); so is a request that is itself
+   * queued, which has no request after it; the default branch, an implicit released-tag source and
+   * a stored {@code RELEASED_TAG} source are a 409, because every request carries them; and the
+   * request's only branch besides the default one is a 409 pointing at withdraw, because moving it
+   * would leave nothing to release.
+   *
+   * @param reason why the source leaves, as the mover says it — required, recorded and announced
+   * @param actor the authenticated caller, recorded as {@code movedBy}
+   */
+  public Moved moveSource(String requestId, String branch, String reason, String actor) {
+    String named = requireBranch(branch);
+    if (reason == null || reason.isBlank()) {
+      throw new BadRequestException(
+          "A move says why: name the reason " + named + " leaves the release request");
+    }
+    String said = reason.trim();
+    String repoId =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests
+                        .findByIdOptional(requestId)
+                        .map(row -> row.repoId)
+                        .orElseThrow(
+                            () -> new NotFoundException("Release request not found: " + requestId)));
+    // Before the transaction, as ask() reads it: the classification reads the epics database, and
+    // a minted queue's main row is stamped with it.
+    String main = QuarkusTransaction.requiringNew().call(() -> mainOf(repoId));
+    boolean mainFeature = featureBranches.isFeature(main);
+    List<Activation> activated = new ArrayList<>();
+    ReleaseRequestSourceMoveAnnouncer.SourceMove move =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  // The repository's row lock first, the order every placement takes.
+                  Repository locked =
+                      repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
+                  activated.addAll(activateStale(repoId));
+                  ReleaseRequest row = requireOpenForChange(requestId);
+                  requireMovable(row, named, main);
+                  ReleaseRequestSource source =
+                      sources
+                          .find(row.id, ReleaseRequestSource.Kind.BRANCH, named)
+                          .orElseThrow(
+                              () ->
+                                  new NotFoundException(
+                                      "Release request "
+                                          + row.qualifiedId
+                                          + " has no named source "
+                                          + named));
+                  boolean others =
+                      sources.listByRequest(row.id).stream()
+                          .anyMatch(
+                              other ->
+                                  other.kind == ReleaseRequestSource.Kind.BRANCH
+                                      && !other.name.equals(main)
+                                      && !other.name.equals(named)
+                                      // An automation's branch regenerates what this request
+                                      // releases; left alone it releases nothing of anybody's.
+                                      && !isAutomationBranch(other.name));
+                  if (!others) {
+                    throw new DomainException(
+                        409,
+                        named
+                            + " is the only branch of release request "
+                            + row.qualifiedId
+                            + " besides "
+                            + main
+                            + ": moving it would leave nothing to release. Withdraw the request"
+                            + " instead (qits release-request withdraw)");
+                  }
+                  ReleaseRequest queued = requests.findQueuedBehind(row.id).orElse(null);
+                  boolean minted = queued == null;
+                  if (minted) {
+                    // The queue a branch asked for past the freeze would open: main alone, then the
+                    // moved row below. Its first participant is the branch's author, not the mover.
+                    queued =
+                        mint(
+                            repoId,
+                            locked.project == null ? null : locked.project.id,
+                            names.nameFor(locked).orElse(row.repoName),
+                            source.addedBy,
+                            main,
+                            main,
+                            null,
+                            mainFeature,
+                            mainFeature,
+                            row);
+                  }
+                  sources.delete(source);
+                  ReleaseRequestSource carried = new ReleaseRequestSource();
+                  carried.id = UUID.randomUUID().toString();
+                  carried.requestId = queued.id;
+                  carried.kind = ReleaseRequestSource.Kind.BRANCH;
+                  carried.name = source.name;
+                  carried.priority = source.priority;
+                  carried.addedAt = source.addedAt;
+                  carried.addedBy = source.addedBy;
+                  carried.feature = source.feature;
+                  // An ordinary member of the queue: nothing joined past a freeze here.
+                  carried.explicitJoin = false;
+                  carried.label = source.label;
+                  carried.causationId = source.causationId;
+                  sources.persist(carried);
+                  // Sources fold in the order they were added, main first: it is the head the fold
+                  // starts from. The carried row keeps when it was first added, which predates the
+                  // queue's own main row, so main is set back to just before it.
+                  ReleaseRequest target = queued;
+                  sources
+                      .find(target.id, ReleaseRequestSource.Kind.BRANCH, main)
+                      .filter(mainRow -> !mainRow.addedAt.isBefore(carried.addedAt))
+                      .ifPresent(mainRow -> mainRow.addedAt = carried.addedAt.minusMillis(1));
+                  // Its author takes part in the request that carries it now; the mover does not,
+                  // so a desk's move leaves an unattended request unattended.
+                  participants.add(queued.id, source.addedBy);
+                  Instant now = Instant.now();
+                  row.updatedAt = now;
+                  queued.updatedAt = now;
+                  deliveries.moved(row.id, row.qualifiedId, queued, named);
+                  ReleaseRequestSourceMove record = new ReleaseRequestSourceMove();
+                  record.id = UUID.randomUUID().toString();
+                  record.repositoryId = repoId;
+                  record.fromRequestId = row.id;
+                  record.toRequestId = queued.id;
+                  record.branch = named;
+                  record.movedBy = actor;
+                  record.reason = said;
+                  record.movedAt = now;
+                  sourceMoves.persist(record);
+                  LOG.infof(
+                      "Release request %s: source %s moved to %s%s by %s: %s",
+                      row.qualifiedId,
+                      named,
+                      queued.qualifiedId,
+                      minted ? " (minted queued behind it)" : "",
+                      actor == null ? "an operator" : actor,
+                      said);
+                  return new ReleaseRequestSourceMoveAnnouncer.SourceMove(
+                      locked.project == null ? null : locked.project.id,
+                      repoId,
+                      row.repoName,
+                      named,
+                      row.id,
+                      row.qualifiedId,
+                      queued.id,
+                      queued.qualifiedId,
+                      minted,
+                      actor,
+                      said,
+                      now);
+                });
+    announceMoved(move);
+    remerge(
+        requestId,
+        named
+            + " moved to "
+            + move.toQualifiedId()
+            + " by "
+            + (actor == null ? "an operator" : actor)
+            + ": "
+            + said);
+    activated.forEach(activation -> remerge(activation.id(), activation.why()));
+    return new Moved(get(requestId), get(move.toRequestId()));
+  }
+
+  /**
+   * The refusals of {@link #moveSource} that need no source row (qits-1665): a queued request has
+   * no request after it, and the default branch and the released tags are on every request.
+   */
+  private void requireMovable(ReleaseRequest row, String named, String main) {
+    if (isAutomationBranch(named)) {
+      throw new DomainException(
+          409,
+          named
+              + " is an automation's branch of release request "
+              + row.qualifiedId
+              + ": it regenerates what this request releases and goes with it, so it cannot be"
+              + " moved");
+    }
+    if (row.queuedBehind != null) {
+      throw new DomainException(
+          409,
+          "Release request "
+              + row.qualifiedId
+              + " is queued behind "
+              + qualifiedIdOf(row.queuedBehind)
+              + ": no request is queued after a queued one, so "
+              + named
+              + " cannot be moved out of it");
+    }
+    if (main.equals(named)) {
+      throw new DomainException(
+          409,
+          named
+              + " is the default branch of "
+              + repositoryWord(row)
+              + ": every release request folds it, so it cannot be moved");
+    }
+    String tag = named.startsWith("refs/tags/") ? named.substring("refs/tags/".length()) : named;
+    boolean implicit =
+        implicitFor(row.repoId).stream().anyMatch(pending -> tag.equals(pending.tagName));
+    boolean storedTag =
+        sources.find(row.id, ReleaseRequestSource.Kind.RELEASED_TAG, tag).isPresent();
+    if (implicit || storedTag || named.startsWith("refs/tags/")) {
+      throw new DomainException(
+          409,
+          named
+              + " is a released tag of "
+              + repositoryWord(row)
+              + ", an implicit source of every request until it reaches main: it cannot be moved");
+    }
+  }
+
+  /** {@code ReleaseRequestSourceMoved}, after the move's commit. Never throws: the move happened. */
+  private void announceMoved(ReleaseRequestSourceMoveAnnouncer.SourceMove move) {
+    if (!sourceMoveAnnouncers.isResolvable()) {
+      return;
+    }
+    try {
+      sourceMoveAnnouncers.get().onSourceMoved(move);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not announce %s moving from %s to %s",
+          move.branch(),
+          move.fromQualifiedId(),
+          move.toQualifiedId());
+    }
+  }
+
+  /**
    * Withdraw an open request: the ask is moot and a person (or the branch's deletion) said so.
    * WITHDRAWN is terminal and leaves its branches free — the next ask mints a fresh request rather
    * than reviving this one, and a push no longer re-merges it. A request already settled (RELEASED,
@@ -2363,6 +2694,13 @@ public class ReleaseRequests {
    * off, an unknown kind — because that sentence is the fact the person pressing the button has not
    * got. No port, or a port with nowhere to ask, or one that could not be reached, is a 503.
    *
+   * <p><b>A port that sent the ask and got no answer in time is a 504, and never a 503</b>
+   * (qits-1625). The far side may have opened the run before the bound ran out, so "could not be
+   * asked" would tell the person nothing ran when it may have; the sentence says the outcome is
+   * unknown and names where to look instead, and a second press settles it — 409 if the first one
+   * did open the run. The same best-effort reconsideration an accepted run gets is made first,
+   * because it re-reads the truth from the far side rather than assuming either answer.
+   *
    * @return the far side's id for the run it accepted
    */
   public String rerunAutomation(String repoId, String id, String kind) {
@@ -2403,6 +2741,25 @@ public class ReleaseRequests {
       throw new DomainException(
           run.refusal(),
           run.detail() == null ? "qits-maintenance refused to run " + kind + " again." : run.detail());
+    }
+    if (run.wasUnknown()) {
+      String named = row.qualifiedId == null ? id : row.qualifiedId;
+      LOG.warnf(
+          "Release request %s: %s was asked to run again and qits-maintenance did not answer (%s);"
+              + " whether it runs is unknown",
+          named, kind, run.detail());
+      // Best effort and self-guarding: it re-reads the automations, so a run that was opened is
+      // learned now rather than on the next sweep.
+      reopenAfterRerun(id);
+      throw new DomainException(
+          504,
+          "qits-maintenance did not answer in time, so whether "
+              + kind.trim()
+              + " was started on "
+              + named
+              + " is unknown: it may have been opened. `qits maintenance automations --request "
+              + named
+              + "` shows it; a second press answers 409 if it was.");
     }
     throw new DomainException(
         503,
@@ -3405,6 +3762,12 @@ public class ReleaseRequests {
                 if (row == null || !foldInFlight(row)) {
                   return false;
                 }
+                if (awaitingPush(row)) {
+                  // A FRESH SOURCE IS AWAITED (qits-1751): the fold in flight is replaced the
+                  // moment its push lands anyway, and coalescing would overwrite the marker that
+                  // lets the sweep knock for it. Re-fold now, as before qits-1570.
+                  return false;
+                }
                 boolean first = row.refoldOwedAt == null;
                 if (first) {
                   row.refoldOwedAt = Instant.now();
@@ -3479,7 +3842,9 @@ public class ReleaseRequests {
                         || row.refoldOwedAt == null
                         || row.state == ReleaseRequest.State.READY
                         || !ReleaseRequestRepository.UNRELEASED.contains(row.state)
-                        || foldInFlight(row)) {
+                        // A fresh source awaited (qits-1751) is knocked for over a fold in
+                        // flight: the fold that pays it is the one that carries the new source.
+                        || (!awaitingPush(row) && foldInFlight(row))) {
                       return null;
                     }
                     return row.refoldOwedReason == null
@@ -4238,6 +4603,10 @@ public class ReleaseRequests {
    * things that change it are all triggers of their own. A request the <b>fold</b> REJECTED — a
    * source the git host does not have (qits-1221, {@code rejecting_gate = fold}) — is left alone for
    * the same reason: neither re-folded nor re-read, and answered by the push that re-creates it.
+   * A source missing inside its grace is not rejected at all (qits-1751): the request stays where it
+   * was, owing a re-fold ({@link #AWAITING_PUSH}), and this pass knocks for it — as the first fold
+   * where none was made yet, else as the owed re-fold — until the push lands or the grace runs out
+   * and the knock rejects.
    *
    * <p><b>A queued request is skipped, and a stale queue is activated first</b> (epic qits-1580): a
    * request queued behind the active one is neither folded nor evaluated while that one is
@@ -4822,8 +5191,33 @@ public class ReleaseRequests {
                   // of the missing branch re-folds it through onBranchMoved and the fold that lands
                   // lifts the rejection (above); the sweep does not knock again. No unattended-gate
                   // ticket: the sentence names the ref, and only a push or a person can answer it.
+                  // (That is the rejection past the grace; a fresh source is waited for, below.)
                   // Every branch it carries is FAILED with failure FOLD, keyed by the missing ref
                   // (qits-1725): the agent waiting on its branch hears it, once per missing ref.
+                  //
+                  // EXCEPT A SOURCE ADDED MOMENTS AGO (qits-1751): an agent commits, its daemon
+                  // pushes seconds later, and a create made in between folded before the ref
+                  // existed — rejected, a FOLD notice owed, then lifted by the push while the
+                  // outbox still told the agent its branch was missing. Inside missingSourceGrace
+                  // of the source's addedAt the missing ref is a push on its way: no move, no FAILED
+                  // step, no rejecting gate — only the sentence, and a re-fold owed under
+                  // AWAITING_PUSH that the sweep pays even over a fold in flight. The push folds it
+                  // through onBranchMoved; a knock past the grace rejects as below. (Owed here,
+                  // after the top of apply cleared any marker: this fold paid the old one.)
+                  ReleaseRequestSource fresh = freshSourceNamed(row.id, outcome.detail(), now);
+                  if (fresh != null) {
+                    LOG.infof(
+                        "Release request %s: %s is not on the git host yet; %s was added at %s,"
+                            + " so its push is waited for (%s)",
+                        row.qualifiedId, outcome.detail(), fresh.name, fresh.addedAt, why);
+                    row.detail =
+                        "The sources could not be folded yet: "
+                            + outcome.detail()
+                            + " is not on the git host; waiting for its push";
+                    row.refoldOwedAt = now;
+                    row.refoldOwedReason = AWAITING_PUSH + outcome.detail();
+                    return null;
+                  }
                   states.move(row, ReleaseRequest.State.REJECTED);
                   deliveries.failed(
                       row,
@@ -6897,7 +7291,8 @@ public class ReleaseRequests {
       Map<String, String> queuedBehind,
       Map<String, ReleaseRequest> queuedNext,
       Map<String, FeatureFreezeThreshold> featureFreezes,
-      Map<String, List<String>> participants) {}
+      Map<String, List<String>> participants,
+      Map<String, List<ReleaseRequestSourceMoveDto>> moves) {}
 
   /**
    * Names a list of rows without a query per row: one read of every named source in the page, one
@@ -6995,7 +7390,10 @@ public class ReleaseRequests {
         queuedNextOf(ids),
         featureFreezes(repoIds),
         // Who took part (qits-1673): one query for the page.
-        participants.principalsOfEach(ids));
+        participants.principalsOfEach(ids),
+        // The sources moved into or out of each request (qits-1665): one query for the page, and
+        // one for the qualified ids they name.
+        movesOf(sourceMoves.listOfEach(Set.copyOf(ids))));
   }
 
   /**
@@ -7051,7 +7449,45 @@ public class ReleaseRequests {
         queuedBehindOf(List.of(row)),
         queuedNextOf(List.of(row.id)),
         featureFreezes(repoIds),
-        Map.of(row.id, participants.principalsOf(row.id)));
+        Map.of(row.id, participants.principalsOf(row.id)),
+        movesOf(Map.of(row.id, sourceMoves.listOf(row.id))));
+  }
+
+  /**
+   * The moves of a page as the API answers them (qits-1665), each request's oldest first, with the
+   * qualified ids of the requests they name read in one query. Inside the caller's transaction.
+   */
+  private Map<String, List<ReleaseRequestSourceMoveDto>> movesOf(
+      Map<String, List<ReleaseRequestSourceMove>> moves) {
+    if (moves.values().stream().allMatch(List::isEmpty)) {
+      return Map.of();
+    }
+    Set<String> named = new LinkedHashSet<>();
+    moves.values().stream()
+        .flatMap(List::stream)
+        .forEach(
+            move -> {
+              named.add(move.fromRequestId);
+              named.add(move.toRequestId);
+            });
+    Map<String, String> qualified = requests.qualifiedIdsOf(named);
+    Map<String, List<ReleaseRequestSourceMoveDto>> answer = new HashMap<>();
+    moves.forEach(
+        (requestId, rows) ->
+            answer.put(
+                requestId,
+                rows.stream()
+                    .map(
+                        move ->
+                            new ReleaseRequestSourceMoveDto(
+                                move.branch,
+                                qualified.get(move.fromRequestId),
+                                qualified.get(move.toRequestId),
+                                move.movedBy,
+                                move.reason,
+                                move.movedAt))
+                    .toList()));
+    return answer;
   }
 
   /** Each queued row's active request's qualified id, keyed by its uuid (epic qits-1580). */
@@ -7198,7 +7634,8 @@ public class ReleaseRequests {
                   items.items(
                       page.named().getOrDefault(row.id, List.of()),
                       page.mainBranchByRepo().getOrDefault(row.repoId, DEFAULT_MAIN),
-                      workItemsSeen));
+                      workItemsSeen),
+                  page.moves().getOrDefault(row.id, List.of()));
             })
         .toList();
   }
@@ -7778,6 +8215,7 @@ public class ReleaseRequests {
    * @param featureFreeze the threshold in force for this request's repository, and its level
    * @param participants who took part, sorted (qits-1673)
    * @param requestItems what the request is about, read for this answer (qits-1673)
+   * @param moves the sources moved into or out of this request, oldest first (qits-1665)
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
@@ -7792,7 +8230,8 @@ public class ReleaseRequests {
       ReleaseRequest queuedNext,
       FeatureFreezeThreshold featureFreeze,
       List<String> participants,
-      List<ReleaseRequestItemDto> requestItems) {
+      List<ReleaseRequestItemDto> requestItems,
+      List<ReleaseRequestSourceMoveDto> moves) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -7862,7 +8301,8 @@ public class ReleaseRequests {
         queuedNext == null ? null : queuedNext.qualifiedId,
         featureFreezeOf(row, named, featureFreeze),
         participants,
-        requestItems);
+        requestItems,
+        List.copyOf(moves));
   }
 
   /**

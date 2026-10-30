@@ -38,7 +38,11 @@ import org.hibernate.annotations.DynamicUpdate;
  * fold with none still in flight (qits-1199, {@link #rejectingGate}); {@code → REJECTED} from any
  * unreleased state when a source does not exist on the git host and so cannot be folded (qits-1221,
  * {@code rejectingGate = fold}), lifted by the next fold that succeeds — at the same sha a reopen,
- * at a new one a re-arm; {@code READY → FAILED → READY} around a mechanical execution failure
+ * at a new one a re-arm — except while the missing source was added less than a grace ago
+ * (qits-1751, {@code qits.projects.release-requests.missing-source-grace}, 2 minutes): its push is
+ * on its way, so the state is left where it was, the detail says the push is waited for, a re-fold
+ * is owed ({@link #refoldOwedAt}) and the sweep knocks until the ref lands or the grace runs out;
+ * {@code READY → FAILED → READY} around a mechanical execution failure
  * — retried by the sweep only while {@link #retryable} says asking again can change the answer;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to
@@ -277,6 +281,10 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    * by {@code ReleaseRequests} once the fold is no longer in flight, and cleared by every fold that
    * lands (a fold reads every source's head, so it carries the moved branch whatever caused it).
    * Never paid on a READY or RELEASED request: the release ships the fold that was gated.
+   *
+   * <p>Also owed (qits-1751) by a fold that found a freshly added source not yet on the git host,
+   * its reason prefixed {@code "a source is not on the git host yet: "}: that one is paid by the
+   * sweep even over a fold in flight, since the fold that pays it is the one carrying the source.
    */
   @Column(name = "refold_owed_at")
   public Instant refoldOwedAt;
