@@ -1697,6 +1697,197 @@ components:
         probeDetail:
           type: string
           description: Why it fell back. Empty when it did not.
+    Idea:
+      type: object
+      description: "An idea of a project. Its status is derived, never written."
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+          description: "One line: no line break, at most one '.', fewer than 20 whitespace\
+            \ characters."
+        description:
+          type:
+          - string
+          - "null"
+          description: At most 3 paragraphs and 600 characters.
+        enabledBy:
+          type:
+          - string
+          - "null"
+          description: The one idea of the same project enabling this one.
+        status:
+          type: string
+          enum:
+          - PLANNED
+          - QUEUED
+          - DONE
+          description: "PLANNED (no counted work names it), QUEUED (some does, not\
+            \ all DONE) or DONE (every counted item DONE). DROPPED work is not counted."
+        archived:
+          type: boolean
+        archiveReason:
+          type:
+          - string
+          - "null"
+        archivedAt:
+          type:
+          - string
+          - "null"
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+    IdeaArchive:
+      type: object
+      required:
+      - reason
+      description: Why the idea is archived.
+      properties:
+        reason:
+          type: string
+    IdeaCreate:
+      type: object
+      required:
+      - title
+      description: A new idea.
+      properties:
+        project:
+          type: string
+          description: "The project: its id or its slug. Or name it as projectId."
+        projectId:
+          type: string
+          description: "The project's id, when project is not given."
+        title:
+          type: string
+          description: "One line: no line break, at most one '.', fewer than 20 whitespace\
+            \ characters."
+        description:
+          type: string
+          description: At most 3 paragraphs (blocks between blank lines) and 600 characters.
+        enabledBy:
+          type: string
+          description: The one idea of the same project enabling this one; it must
+            not itself be enabled by another.
+    IdeaDetail:
+      type: object
+      description: "One idea, with the work it inspired, the ideas it enables, and\
+        \ the idea enabling it."
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+        description:
+          type:
+          - string
+          - "null"
+        enabledBy:
+          type:
+          - string
+          - "null"
+        enabledByIdea:
+          type:
+          - object
+          - "null"
+          description: "The enabling idea in brief, so a client can say when it is\
+            \ archived; null when enabledBy is."
+          anyOf:
+          - $ref: "#/components/schemas/IdeaRef"
+          - type: "null"
+        status:
+          type: string
+          enum:
+          - PLANNED
+          - QUEUED
+          - DONE
+        archived:
+          type: boolean
+        archiveReason:
+          type:
+          - string
+          - "null"
+        archivedAt:
+          type:
+          - string
+          - "null"
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+        inspired:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdeaInspiredWork"
+          description: "Every work item naming this idea as inspiredBy, oldest first."
+        enables:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdeaRef"
+          description: "The ideas naming this one as their enabledBy, oldest first."
+    IdeaInspiredWork:
+      type: object
+      description: A work item naming the idea as its inspiration. DROPPED items are
+        listed and are not counted by the idea's status.
+      properties:
+        id:
+          type: string
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+    IdeaList:
+      type: object
+      description: "A project's ideas, oldest first."
+      properties:
+        ideas:
+          type: array
+          items:
+            $ref: "#/components/schemas/Idea"
+    IdeaPatch:
+      type: object
+      description: "A JSON merge patch (RFC 7396) of one idea: title, description,\
+        \ enabledBy. An absent property is left alone; null clears description or\
+        \ enabledBy. The status is derived and the archive has its own doors."
+      properties:
+        title:
+          type: string
+          description: Cannot be cleared.
+        description:
+          type:
+          - string
+          - "null"
+        enabledBy:
+          type:
+          - string
+          - "null"
+    IdeaRef:
+      type: object
+      description: "Another idea, in brief."
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        archived:
+          type: boolean
     Instant:
       type: string
       format: date-time
@@ -2994,6 +3185,8 @@ components:
           type: string
         waitingOn:
           type: string
+        inspiredBy:
+          type: string
     UUID:
       type: string
       format: uuid
@@ -3240,6 +3433,11 @@ components:
           items:
             type: string
           description: "An epic's or a ticket's acceptance criteria, in order."
+        inspiredBy:
+          type: string
+          description: "An epic's, a ticket's or a campaign's inspiration: the id\
+            \ of an idea of the same project (GET /projects/api/ideas). Refused on\
+            \ a feature or a task."
     WorkCriterionApproval:
       type: object
       description: A person's yes on an APPROVAL criterion.
@@ -3537,6 +3735,14 @@ components:
             \ 20 whitespace characters. Editable at REFINED (outside an epic's scope\
             \ freeze); from READY_FOR_DEV on a changed list is a 409, and restating\
             \ the same list passes."
+        inspiredBy:
+          type:
+          - string
+          - "null"
+          description: "An epic's, a ticket's or a campaign's inspiration: the id\
+            \ of an idea of the same project; null clears it. Editable at every status.\
+            \ Refused on a feature or a task. Setting, changing or clearing it re-derives\
+            \ the ideas' status."
     WorkProgressAnswer:
       type: object
       description: "A campaign's progress, derived on the read."
@@ -4048,6 +4254,256 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
+        - qits:agent
+  /projects/api/ideas:
+    get:
+      summary: List a project's ideas
+      description: "The project's ideas, oldest first. The archived ones are left\
+        \ out unless archived=true, which INCLUDES them beside the rest (it does not\
+        \ narrow to them); status narrows to one derived status. The project is its\
+        \ id or its slug."
+      operationId: listIdeas
+      parameters:
+      - description: true includes the archived ideas beside the others.
+        name: archived
+        in: query
+        schema:
+          type: boolean
+      - description: "The project: its id or its slug."
+        required: true
+        name: project
+        in: query
+        schema:
+          type: string
+      - description: Only the ideas at this status.
+        schema:
+          enum:
+          - PLANNED
+          - QUEUED
+          - DONE
+        name: status
+        in: query
+      responses:
+        "200":
+          description: The ideas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeaList"
+        "400":
+          description: "No project named, or a status naming none"
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+        - qits:system
+    post:
+      summary: Create an idea
+      description: "A new idea of the project (id or slug, as project or projectId),\
+        \ PLANNED. The title is one line (no line break, at most one '.', fewer than\
+        \ 20 whitespace characters); the description at most 3 paragraphs and 600\
+        \ characters; enabledBy one idea of the same project that is not itself enabled\
+        \ by another."
+      operationId: createIdea
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeaCreate"
+        required: true
+      responses:
+        "201":
+          description: The idea as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+        "400":
+          description: "No project, a title, description or enabledBy breaking its\
+            \ rule"
+        "403":
+          description: An agent creating in a project other than its own; nothing
+            is written
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/ideas/{id}:
+    patch:
+      summary: Edit an idea (JSON merge patch)
+      description: "Partial update of title, description and enabledBy. An absent\
+        \ property is left alone; null clears description or enabledBy. The rules\
+        \ are the create's; setting enabledBy on an idea that already enables others\
+        \ is refused."
+      operationId: patchIdea
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/IdeaPatch"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeaPatch"
+        required: true
+      responses:
+        "200":
+          description: The idea after the edit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+        "400":
+          description: "Not an object, empty, an unknown or server-owned property,\
+            \ a null title, or a value breaking its rule"
+        "403":
+          description: An agent editing an idea outside its own project; nothing is
+            written
+        "404":
+          description: No idea with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+    get:
+      summary: Read one idea
+      description: "The idea, the work items naming it as inspiredBy (DROPPED ones\
+        \ included, with their status), the ideas it enables, and the idea enabling\
+        \ it in brief."
+      operationId: getIdea
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The idea
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeaDetail"
+        "404":
+          description: No idea with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+        - qits:system
+  /projects/api/ideas/{id}/archive:
+    post:
+      summary: Archive an idea
+      description: "Hides the idea from the default listing, with the reason. Allowed\
+        \ at every status, and the status does not change. Archiving an archived idea\
+        \ restates the reason."
+      operationId: archiveIdea
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeaArchive"
+        required: true
+      responses:
+        "200":
+          description: "The idea, archived"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+        "400":
+          description: No reason
+        "403":
+          description: An agent archiving an idea outside its own project; nothing
+            is written
+        "404":
+          description: No idea with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/ideas/{id}/unarchive:
+    post:
+      summary: Take an idea out of the archive
+      description: "Clears archived, archiveReason and archivedAt. An idea that is\
+        \ not archived is answered as it is."
+      operationId: unarchiveIdea
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The idea, not archived"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+        "403":
+          description: An agent unarchiving an idea outside its own project; nothing
+            is written
+        "404":
+          description: No idea with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
         - qits:agent
   /projects/api/pins:
     get:
