@@ -1892,7 +1892,10 @@ public class ReleaseRequests {
                               other ->
                                   other.kind == ReleaseRequestSource.Kind.BRANCH
                                       && !other.name.equals(main)
-                                      && !other.name.equals(named));
+                                      && !other.name.equals(named)
+                                      // An automation's branch regenerates what this request
+                                      // releases; left alone it releases nothing of anybody's.
+                                      && !isAutomationBranch(other.name));
                   if (!others) {
                     throw new DomainException(
                         409,
@@ -2003,6 +2006,15 @@ public class ReleaseRequests {
    * no request after it, and the default branch and the released tags are on every request.
    */
   private void requireMovable(ReleaseRequest row, String named, String main) {
+    if (isAutomationBranch(named)) {
+      throw new DomainException(
+          409,
+          named
+              + " is an automation's branch of release request "
+              + row.qualifiedId
+              + ": it regenerates what this request releases and goes with it, so it cannot be"
+              + " moved");
+    }
     if (row.queuedBehind != null) {
       throw new DomainException(
           409,
