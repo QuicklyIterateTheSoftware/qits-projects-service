@@ -147,6 +147,13 @@ navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-config
 # Ticket qits-162, epic qits-540 contract C3.
 resources: postgresql:db, postgresql:epics:qits_epics, postgresql:eventstream:qits_projects_eventstream, idp:client
 
+# THE STORAGE THIS SERVICE NEEDS: its own volume, mounted at /data. The NAME IS DERIVED —
+# `<application>-<name>`, so this is `qits-projects-data`, the very volume the deployer extra
+# `mounts[0] volume:qits-projects-data:/data` attached until qits-1391 moved it here. It holds the
+# repository mirrors (qits.projects.data-dir, /data/mirrors in the prod profile) and the git
+# credential store (QITS_REPOSITORIES_CREDENTIALS_FILE=/data/git-credentials, set in the image).
+volumes: private:data:/data
+
 # Where the browsable API document lives: swagger-ui under this service's non-application
 # root, which sits under the primary route above. The shell's Api Docs viewer reads it off
 # /main-navigation and frames it for this repository.

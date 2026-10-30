@@ -99,7 +99,11 @@ public class PackagedSurfaceIT {
 
     @Override
     public Map<String, String> getConfigOverrides() {
+      // The launched artifact runs the prod profile, where the machine gate now ships ON
+      // (qits-1391). This class asks about the packaged surface, not about the gate —
+      // TokenValidationBootstrapIT does that — so it keeps the gate off as it always ran.
       return Map.of(
+          "qits.auth.machine.required", "false",
           "QITS_RESOURCE_DB_URL", databaseUrl("qp_it_projects"),
           "QITS_RESOURCE_DB_USERNAME", EmbeddedPg.USER,
           "QITS_RESOURCE_DB_PASSWORD", EmbeddedPg.PASSWORD,
