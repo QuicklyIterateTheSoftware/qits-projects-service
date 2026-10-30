@@ -233,7 +233,7 @@
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1028.163502</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1030.103852</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1030.103709</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1030.105550</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1030.112950</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1028.235307</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
