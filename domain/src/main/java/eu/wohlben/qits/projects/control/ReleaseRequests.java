@@ -292,7 +292,7 @@ import org.jboss.logging.Logger;
  * CI gate reaches it with nothing in front of it, which is exactly what "stands alone" means. A
  * <b>decline is not an unattended-gate ticket</b> for the mirror-image reason: a person just said
  * no, so by definition somebody is watching, and {@link UnattendedGateTickets} stays wired to red
- * builds alone.
+ * builds and failed automations alone (qits-1561).
  *
  * <h2>The release</h2>
  *
@@ -5665,7 +5665,8 @@ public class ReleaseRequests {
                   // still in flight REJECTS (qits-1199), like a red CI run: a push re-arms it, a
                   // re-run that comes back fresh or a waiver reopens it at this fold. The note is
                   // NOT forgotten — the gate and the automations rows read their FAILED off it — and
-                  // no unattended-gate ticket is filed: the automation's own run is the record.
+                  // the unattended-gate ticket is filed as for a red CI run (qits-1561): a robot's
+                  // request a failed automation stopped has nobody watching it either.
                   if (automationsApply(row.repoId) && !automationsPassed(row)) {
                     if (automationsFailedAndSettled(row)) {
                       states.move(row, ReleaseRequest.State.REJECTED);
@@ -5673,6 +5674,23 @@ public class ReleaseRequests {
                       row.rejectingGate = AutomationsGate.KIND;
                       row.rejectingRunId = null;
                       row.detail = automationDetail(row);
+                      if (isUnattended(row) && row.projectId != null) {
+                        unattended.set(
+                            new UnattendedGateTickets.Rejection(
+                                row.id,
+                                row.qualifiedId,
+                                row.projectId,
+                                row.repoId,
+                                row.repoName,
+                                sources.listByRequest(row.id).stream().map(s -> s.name).toList(),
+                                row.mergedSha,
+                                newestAutomationRun(row),
+                                "FAILED",
+                                row.detail,
+                                AutomationsGate.KIND,
+                                participants.principalsOf(row.id),
+                                row.gateTicketId));
+                      }
                       row.updatedAt = Instant.now();
                       deliveries.failed(
                           row, BranchDeliveries.Failure.AUTOMATION, newestAutomationRun(row));
@@ -5871,6 +5889,7 @@ public class ReleaseRequests {
                               red.runId(),
                               red.status(),
                               row.detail,
+                              null,
                               participants.principalsOf(row.id),
                               row.gateTicketId));
                     }
