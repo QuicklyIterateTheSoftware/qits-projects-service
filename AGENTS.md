@@ -678,8 +678,10 @@ merely its only occupant. Six things about it are rules:
     (`repositoryId`) is a repository of the request's project; the longest wrapper branch wins; none
     is `NO_AGENT` and nothing is said. The agents are listed by `HttpWorkspaceAgentLookup.active()`
     — `GET /workspaces/api/agents?state=ACTIVE`, reading `repositoryId` and `wrapperBranch` beside
-    `agentId`/`workId` — and narrowed by project on this side, so the consumer pact's request is
-    unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
+    `agentId`/`workId` (and, since qits-1756, `activity`, `lastActivityAt` and `waits[]`, which
+    `desktriggers/AgentIdleSource` reads; a second consumer row pins those under the provider state
+    `a project with agents needing attention`) — and narrowed by project on this side, so the
+    consumer pact's request is unchanged. **Outbox** `branch_delivery_notice` (V69): `onStep` inserts one row per notice in the
     step's transaction, `on conflict do nothing` on `notice_key` — `FAILED:<requestId>:<foldSha>:
     <repoId>:<branch>` (once per fold and branch), `MOVED:<repoId>:<branch>:<from>:<to>`,
     `CONFLICTED:<requestId>:<foldAttempt>:<repoId>:<branch>` or (a missing source)
@@ -2958,7 +2960,7 @@ subject, and the short constructor sets `principal` to `cause`), run inside the 
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
 `requestedByDesk()` (false: news; true: an answer to the desk's own request, see above), and the
 default `scan(now)` (qits-1689: triggers found by reading rows on each sweep pass, admitted under the
-listener's drops; the source makes them idempotent itself). Seven ship:
+listener's drops; the source makes them idempotent itself). Eight ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
@@ -2968,6 +2970,7 @@ listener's drops; the source makes them idempotent itself). Seven ship:
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
 | `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1722 branch notice (`branch_delivery_notice`, step `FAILED`) for the fold, or all of its notices settled with none told to a still-ACTIVE agent. **CONFLICTED, and REJECTED with `rejectingGate` `fold` (a missing source), are read by fold attempt, not by sha** (qits-1725): the request's current attempt is the `fold_attempt` of its newest `branch_delivery` row at that step, its notices those whose key starts `attemptPrefix(step, request, attempt)` — so a build's notice at the same `mergedSha` never silences a later conflict — and the why is `no agent owns <branch>` (the heads or the missing branch whose notice settled `NO_AGENT`, comma-joined; the missing branch, else `it`, with no notice at all). Owed notices are decided by `scan` once settled (an attempt only while the request still stands at it). Event id: the bus event's, or `foldKey(request, sha)` — `foldKey(request, attempt)` for an attempt — when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
+| `AgentIdleSource` (qits-1756) | `agent-idle`, 55 | no signature; `scan` reads the ACTIVE agents (`WorkspaceAgentLookup.active()`, now also `activity`, `lastActivityAt` and `waits[]`) and raises each whose `activity` is not `BUSY` (null counts) and whose `lastActivityAt` is at least `THRESHOLD` (2h, a constant, not a setting) old, measured from the later of `lastActivityAt` and `delivery_enabled_at`, younger than `MAX_AGE` (7d). The item is this service's `WorkEntity` by `workId` (unknown: skipped); `item_id` is the agent id. Event id `idleKey(agent, lastActivityAt)`, skipped when a row holds it: once per idle stretch, and a new turn (a new `lastActivityAt`) is a new stretch. No migration: V65's one-per-agent index is `capacity-opened`'s only | `- <qualifiedId> (<title>; <STATUS>; idle 2h 19m since 2026-10-30T07:03Z; waits on: <label> (<subjectState or state>, expires <instant or never>)[; …] or no open wait[; blocked: <reason>])`, section `Agents idle for 2h or more:`, cause `agent <id8>`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 
 `EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
@@ -2986,7 +2989,8 @@ constructed with the list rather than registered as a bean, so it cannot leak in
 
 **Config** (`application.properties`): `qits.projects.desk-triggers.window` (PT15M),
 `…sweep-interval` (30s, `off` in `%test`; the suite calls `sweep()`), `…give-up` (PT4H), and the
-stall thresholds `…stall.released` (PT1H), `…stall.pending` (PT2H) and `…stall.max-age` (P7D). The
+stall thresholds `…stall.released` (PT1H), `…stall.pending` (PT2H) and `…stall.max-age` (P7D).
+`AgentIdleSource`'s 2h and 7d are constants, deliberately not settings (qits-1756). The
 prompt hop's bound is the door's `qits.projects.front-desk.relay-timeout-ms`.
 
 **The read door** (qits-1612) is `GET /projects/api/projects/{projectId}/desk-triggers`
@@ -3135,6 +3139,14 @@ address, and the disagreement surfaces a long way from the rewrite. A **WebSocke
 go through `vertx-http-proxy` at all** — `proxyUpgrade` does it by hand, because the library skips
 its whole interceptor chain on an upgrade (so the bearer never arrives) and pipes with no
 `writeQueueFull`/`pause`/`drainHandler` at all.
+
+**The proxy admits few callers** (qits-1575). The daemon behind it is the delivery desk's, and the
+owner ruled that agents do not reach it. `ContainerProxyRoute.admit` decides before the tunnel lookup
+and before any byte or upgrade is forwarded. `qits:system`, `qits:admin` and `qits:admin-agent`
+reach any project; `qits:desk-admin` reaches only its token's `project`; anonymous is 401 (also the
+`container-proxy` auth permission); everyone else, `qits:agent` included, is 403.
+`ContainerProxyAuthorizationTest` pins each row. An agent that needs another agent's transcript reads
+it through qits-workspaces, never through this proxy.
 
 **The env contract is the front desk's**, in the table under "Front desks": a desk dials home through
 the edge (`wss://projects.qits.<d>/…`) with its own `qits_tok_`, and git reads go through the image's

@@ -48,6 +48,9 @@ final class WorkspacesContract {
   /** Agents in every state, each bound to a work item of one project. */
   static final String AGENTS_BOUND_TO_WORK_ITEMS = "a project with agents bound to work items";
 
+  /** ACTIVE agents with a last turn, one of them on an OPEN wait (qits-1756). */
+  static final String AGENTS_NEEDING_ATTENTION = "a project with agents needing attention";
+
   /** One ACTIVE agent working on a ticket. */
   static final String AN_AGENT_ON_A_TICKET = "an agent working on a ticket";
 
@@ -385,5 +388,38 @@ final class WorkspacesContract {
                               agent ->
                                   agent.repositoryId() != null && agent.wrapperBranch() != null)),
               "GET /workspaces/api/agents?state=ACTIVE answering 200 with agents[].agentId,"
-                  + " workId, repositoryId and wrapperBranch"));
+                  + " workId, repositoryId and wrapperBranch"),
+          // qits-1756: the same request, read by the desk trigger sweep for each agent's last turn
+          // and its waits (AgentIdleSource). `activity` is read as optional and not pinned: it
+          // lives in qits-workspaces' daemon cache and is null in every provider state.
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listAgents",
+              AGENTS_NEEDING_ATTENTION,
+              "GET",
+              "/workspaces/api/agents",
+              Map.of("state", "ACTIVE"),
+              null,
+              List.of(
+                  "$.agents[*].agentId",
+                  "$.agents[*].workId",
+                  "$.agents[*].lastActivityAt",
+                  "$.agents[*].waits[*].label",
+                  "$.agents[*].waits[*].state"),
+              200,
+              Trigger.schedule("DeskTriggerSweep.sweep"),
+              (base, p) -> {
+                List<eu.wohlben.qits.projects.control.WorkspaceAgentLookup.ActiveAgent> agents =
+                    workspaces(new HttpWorkspaceAgentLookup(RowClients.clients()), base)
+                        .active()
+                        .orElseThrow();
+                assertTrue(agents.stream().allMatch(agent -> agent.lastActivityAt() != null));
+                assertTrue(
+                    agents.stream()
+                        .flatMap(agent -> agent.waits().stream())
+                        .anyMatch(wait -> !wait.label().isBlank() && wait.state() != null));
+              },
+              "GET /workspaces/api/agents?state=ACTIVE answering 200 with agents[].lastActivityAt"
+                  + " and agents[].waits[].label and state"));
 }
