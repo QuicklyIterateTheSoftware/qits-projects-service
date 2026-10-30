@@ -14,8 +14,10 @@ import jakarta.inject.Inject;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -78,9 +80,17 @@ import org.jboss.logging.Logger;
  * positive, see {@code control/AutomationLedger}), and the next sweep asks again.
  *
  * <p>The re-run is a person's press, so its answer keeps the distinction the person needs: a 2xx
- * with an id is accepted, a 4xx is a refusal whose status and {@code message} are passed through, and
- * everything else — no address, unreachable, 5xx, unparseable — is "could not ask", which the door
- * turns into a 503.
+ * with an id is accepted, a 4xx is a refusal whose status and {@code message} are passed through, a
+ * request that was <b>sent and not answered within {@link #POST_TIMEOUT}</b> is unknown, and
+ * everything else — no address, a connect that failed or timed out, 5xx, 401/403, unparseable — is
+ * "could not ask", which the door turns into a 503.
+ *
+ * <p>The unknown outcome exists because the request timeout fires <em>after</em> the POST was
+ * written (qits-1625): qits-maintenance may well have opened the run and simply been slow to say
+ * so, and reporting that as "could not be asked" told the person nothing ran when it had. So an
+ * {@link HttpTimeoutException} is {@link Run#unknown}, and the door answers 504 with a sentence
+ * saying where to look — while its subclass {@link HttpConnectTimeoutException} stays unreachable,
+ * because a connect that never completed carried nothing to the far side.
  *
  * <p>Nothing here throws, and an {@link InterruptedException} re-interrupts the thread rather than
  * being swallowed. {@code readTree}, never a bound record, so this class adds zero native-image
@@ -118,6 +128,13 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
    * applicability and plan inside it, which is a handful of git-host reads; still one exchange.
    */
   private static final Duration POST_TIMEOUT = Duration.ofSeconds(10);
+
+  /**
+   * The bound the re-run actually waits — {@link #POST_TIMEOUT}, and a field only so the test of the
+   * unknown outcome (qits-1625) can wait a second rather than ten. Nothing in the application writes
+   * it.
+   */
+  Duration rerunTimeout = POST_TIMEOUT;
 
   /** The bound on a read, which touches nothing but the far side's own rows. */
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
@@ -270,7 +287,7 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       HttpResponse<String> response =
           send(
               url,
-              POST_TIMEOUT,
+              rerunTimeout,
               HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
       int status = response.statusCode();
       if (status / 100 == 2) {
@@ -296,6 +313,20 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
           "Could not ask qits-maintenance to re-run %s on %s: it answered %d: %s",
           kind, requestId, status, message(response.body()));
       return Run.unreachable("qits-maintenance answered " + status);
+    } catch (HttpConnectTimeoutException e) {
+      // Before the general timeout below, which is its superclass: a connect that never completed
+      // carried nothing to the far side, so nothing ran and this is "could not ask".
+      LOG.warnf("Could not ask qits-maintenance to re-run %s on %s: %s", kind, requestId, e);
+      return Run.unreachable(e.getClass().getSimpleName());
+    } catch (HttpTimeoutException e) {
+      // The request was written and the answer did not come in time (qits-1625): the far side may
+      // have opened the run, so this is neither accepted nor "could not ask".
+      long seconds = Math.max(1, rerunTimeout.toSeconds());
+      LOG.warnf(
+          "qits-maintenance did not answer a re-run of %s on %s within %d s; the outcome is unknown"
+              + " — the run may have been opened",
+          kind, requestId, seconds);
+      return Run.unknown("qits-maintenance did not answer within " + seconds + " s");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return Run.unreachable("interrupted");

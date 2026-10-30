@@ -10,7 +10,9 @@ import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -61,6 +63,9 @@ class HttpReleaseRequestAutomationsTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>(ANSWER);
 
+  /** How long the stub sits on a request before it answers; zero answers at once. */
+  private final AtomicReference<Duration> answerAfter = new AtomicReference<>(Duration.ZERO);
+
   /** Every port a test built, shut down after it so the fork keeps no idle client threads. */
   private final List<HttpReleaseRequestAutomations> ports = new CopyOnWriteArrayList<>();
 
@@ -91,6 +96,13 @@ class HttpReleaseRequestAutomationsTest {
                   exchange.getRequestHeaders().getFirst("X-Qits-User"),
                   exchange.getRequestHeaders().getFirst("X-Qits-Roles"),
                   body));
+          if (!answerAfter.get().isZero()) {
+            try {
+              Thread.sleep(answerAfter.get().toMillis());
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+          }
           byte[] responseBytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(
@@ -382,6 +394,49 @@ class HttpReleaseRequestAutomationsTest {
     assertTrue(run.wasRefused());
     assertEquals(409, run.refusal());
     assertEquals("screenshot-baselines is already running", run.detail());
+  }
+
+  /**
+   * qits-1625: the request timeout fires after the POST was written, so the far side received the
+   * ask and may have opened the run. That is the unknown outcome — not accepted, not refused, and
+   * not "could not ask" either.
+   */
+  @Test
+  void aRerunSentAndNotAnsweredInTimeIsUnknown() throws Exception {
+    String base = startServer();
+    status.set(202);
+    responseBody.set("{\"id\":\"bump-late\"}");
+    answerAfter.set(Duration.ofMillis(2500));
+    HttpReleaseRequestAutomations port = against(base);
+    port.rerunTimeout = Duration.ofSeconds(1);
+
+    ReleaseRequestAutomations.Run run = port.rerun("qits-landing-app", "rr-1", "screenshot-baselines");
+
+    assertTrue(run.wasUnknown(), "sent and unanswered: " + run);
+    assertFalse(run.wasAccepted());
+    assertFalse(run.wasRefused());
+    assertEquals("qits-maintenance did not answer within 1 s", run.detail());
+    assertEquals(1, received.size(), "the far side did receive the ask");
+    assertEquals(
+        "/maintenance/api/release-requests/rr-1/automations/screenshot-baselines/runs",
+        received.get(0).path());
+  }
+
+  /** A connection refused carried nothing to the far side: unreachable, never unknown. */
+  @Test
+  void aRerunWhoseConnectionIsRefusedIsUnreachableAndNotUnknown() throws Exception {
+    int closed;
+    try (ServerSocket socket = new ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+      closed = socket.getLocalPort();
+    }
+    HttpReleaseRequestAutomations port = against("http://127.0.0.1:" + closed);
+    port.rerunTimeout = Duration.ofSeconds(1);
+
+    ReleaseRequestAutomations.Run run = port.rerun("qits-landing-app", "rr-1", "x");
+
+    assertFalse(run.wasUnknown(), "nothing was sent: " + run);
+    assertFalse(run.wasAccepted());
+    assertFalse(run.wasRefused());
   }
 
   @Test

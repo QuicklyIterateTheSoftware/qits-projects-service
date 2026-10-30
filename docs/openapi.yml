@@ -6528,7 +6528,10 @@ paths:
         \ active for this request and kind, the request is RELEASED, FINALIZED, OBSOLETE\
         \ or WITHDRAWN, the request has no fold, or bumping is off; 404 for an unknown\
         \ kind. 404 also for an unknown request or one that is not this repository's,\
-        \ and 503 where qits-maintenance is not configured or cannot be reached."
+        \ and 503 where qits-maintenance is not configured or cannot be reached —\
+        \ nothing ran. 504 where the ask was sent and qits-maintenance did not answer\
+        \ in time: whether the run was opened is unknown, the sentence names where\
+        \ to look, and a second press answers 409 if it was."
       operationId: rerunReleaseRequestAutomation
       parameters:
       - name: kind

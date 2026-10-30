@@ -29,7 +29,7 @@ import java.util.Optional;
  *
  * <p><b>Nothing here may throw.</b> This is asked on the arming path, after a fold has already
  * landed, and an arming must never fail over an enrichment — an implementation turns every failure
- * into {@link Optional#empty()} (or {@link Run#unreachable}) itself rather than leaving the caller to
+ * into {@link Optional#empty()} (or a {@link Run} that says what came of it) itself rather than leaving the caller to
  * catch it, exactly as {@link DownstreamComponents} does.
  *
  * <p><b>It must be bounded</b> — one short request, never a retry loop. The caller is a fold, and a
@@ -106,28 +106,53 @@ public interface ReleaseRequestAutomations {
   }
 
   /**
-   * What a re-run ask came to. Three outcomes and the caller acts on each differently, which is why
-   * this is not an {@code Optional}: an accepted run answers 202 with its id, a far side that refused
-   * (a run already active, the request not open, bumping off, an unknown kind) has a sentence the
-   * person pressing the button has not got and that is passed through with its status, and a far side
-   * that could not be asked at all is a 503.
+   * What a re-run ask came to. Four outcomes and the caller acts on each differently, which is why
+   * this is not an {@code Optional}:
+   *
+   * <ul>
+   *   <li><b>accepted</b> — the far side answered 2xx with its run's id, and the door answers 202
+   *       with it;
+   *   <li><b>refused</b> — the far side said no (a run already active, the request not open, bumping
+   *       off, an unknown kind), and that sentence is one the person pressing the button has not got,
+   *       so it is passed through with its status;
+   *   <li><b>unreachable</b> — the ask never reached the far side, or reached it and was not served
+   *       (no address, a connect that failed, a 5xx, this hop's credential refused, an answer that
+   *       does not parse): nothing ran, and the door answers 503;
+   *   <li><b>unknown</b> (qits-1625) — the ask was <em>sent</em> and no answer came back in time.
+   *       The far side may well have opened the run before the bound ran out, so this is neither "it
+   *       ran" nor "nothing ran", and the door must say exactly that rather than round it to either:
+   *       it answers 504 with a sentence naming where to look. It is kept apart from unreachable
+   *       because the caller's next move differs — after an unreachable a second press is the remedy,
+   *       after an unknown a second press is answered 409 if the first one did open the run.
+   * </ul>
    *
    * @param id the far side's row id; set only when accepted
    * @param refusal the far side's status (a 4xx) when it refused; null otherwise
-   * @param detail the far side's sentence on a refusal, or why it could not be asked
+   * @param detail the far side's sentence on a refusal, why it could not be asked, or how long it
+   *     was waited for when the outcome is unknown
+   * @param unknown true only on the fourth outcome: sent, and no answer within the bound
    */
-  record Run(String id, Integer refusal, String detail) {
+  record Run(String id, Integer refusal, String detail, boolean unknown) {
 
     public static Run accepted(String id) {
-      return new Run(id, null, null);
+      return new Run(id, null, null, false);
     }
 
     public static Run refused(int status, String detail) {
-      return new Run(null, status, detail);
+      return new Run(null, status, detail, false);
     }
 
     public static Run unreachable(String detail) {
-      return new Run(null, null, detail);
+      return new Run(null, null, detail, false);
+    }
+
+    /**
+     * The ask was sent and the far side did not answer within the bound (qits-1625): whether it
+     * opened the run is not known here. Never use it for a connect that failed — then nothing
+     * reached the far side and the outcome is {@link #unreachable}.
+     */
+    public static Run unknown(String detail) {
+      return new Run(null, null, detail, true);
     }
 
     public boolean wasAccepted() {
@@ -136,6 +161,11 @@ public interface ReleaseRequestAutomations {
 
     public boolean wasRefused() {
       return refusal != null;
+    }
+
+    /** Whether the ask was sent and never answered, so the run may or may not exist (qits-1625). */
+    public boolean wasUnknown() {
+      return unknown;
     }
   }
 

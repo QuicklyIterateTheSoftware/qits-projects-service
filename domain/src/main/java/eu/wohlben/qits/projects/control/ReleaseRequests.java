@@ -2363,6 +2363,13 @@ public class ReleaseRequests {
    * off, an unknown kind — because that sentence is the fact the person pressing the button has not
    * got. No port, or a port with nowhere to ask, or one that could not be reached, is a 503.
    *
+   * <p><b>A port that sent the ask and got no answer in time is a 504, and never a 503</b>
+   * (qits-1625). The far side may have opened the run before the bound ran out, so "could not be
+   * asked" would tell the person nothing ran when it may have; the sentence says the outcome is
+   * unknown and names where to look instead, and a second press settles it — 409 if the first one
+   * did open the run. The same best-effort reconsideration an accepted run gets is made first,
+   * because it re-reads the truth from the far side rather than assuming either answer.
+   *
    * @return the far side's id for the run it accepted
    */
   public String rerunAutomation(String repoId, String id, String kind) {
@@ -2403,6 +2410,25 @@ public class ReleaseRequests {
       throw new DomainException(
           run.refusal(),
           run.detail() == null ? "qits-maintenance refused to run " + kind + " again." : run.detail());
+    }
+    if (run.wasUnknown()) {
+      String named = row.qualifiedId == null ? id : row.qualifiedId;
+      LOG.warnf(
+          "Release request %s: %s was asked to run again and qits-maintenance did not answer (%s);"
+              + " whether it runs is unknown",
+          named, kind, run.detail());
+      // Best effort and self-guarding: it re-reads the automations, so a run that was opened is
+      // learned now rather than on the next sweep.
+      reopenAfterRerun(id);
+      throw new DomainException(
+          504,
+          "qits-maintenance did not answer in time, so whether "
+              + kind.trim()
+              + " was started on "
+              + named
+              + " is unknown: it may have been opened. `qits maintenance automations --request "
+              + named
+              + "` shows it; a second press answers 409 if it was.");
     }
     throw new DomainException(
         503,

@@ -832,6 +832,10 @@ public class ReleaseRequestController {
    * settled, bumping turned off and an unknown kind come back as that service's own status and
    * sentence. A REJECTED request is not settled (qits-1178): a rerun is how a stale output that
    * failed QA is regenerated, and its commit re-folds the request and makes it PENDING again.
+   *
+   * <p>A 503 means the ask never reached qits-maintenance and nothing ran; a 504 means it was sent
+   * and not answered in time, so the run may exist (qits-1625) — the two are kept apart because a
+   * caller's next move differs.
    */
   @POST
   @Path("/{requestId}/automations/{kind}/runs")
@@ -853,7 +857,9 @@ public class ReleaseRequestController {
               + " has no fold, or bumping is off; 404"
               + " for an unknown kind. 404 also for an unknown request or one that is not this"
               + " repository's, and 503 where qits-maintenance is not configured or cannot be"
-              + " reached.")
+              + " reached — nothing ran. 504 where the ask was sent and qits-maintenance did not"
+              + " answer in time: whether the run was opened is unknown, the sentence names where"
+              + " to look, and a second press answers 409 if it was.")
   public jakarta.ws.rs.core.Response rerunAutomation(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
