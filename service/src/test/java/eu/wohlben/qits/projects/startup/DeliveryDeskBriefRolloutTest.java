@@ -545,6 +545,38 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
+  /**
+   * qits-1759: an unedited qits-1759 brief — the one whose answer wait fired on any comment —
+   * rolls to the current one, which wakes on an @desk comment or one no agent wrote.
+   */
+  @Test
+  public void anUneditedQits1759BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_1759_DELIVERY_DESK_PROMPT.contains("mentions[]=desk"),
+        "the qits-1759 text is the one before the answer wait had two groups");
+    stage(AgentSurfaceDefaults.QITS_1759_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-1759 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("--when 'projectId=<project id> number=<n> mentions[]=desk'"), after);
+    assertTrue(after.contains("--when 'projectId=<project id> number=<n> !authorAgentOf'"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1759: an edit of the qits-1759 brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1759BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1759_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
   /** The boot after the rewrite finds the new text and writes nothing. */
   @Test
   public void aSecondBootIsANoOp() {
