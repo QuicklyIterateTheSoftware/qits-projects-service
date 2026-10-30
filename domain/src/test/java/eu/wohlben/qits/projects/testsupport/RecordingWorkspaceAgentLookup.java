@@ -73,6 +73,15 @@ public class RecordingWorkspaceAgentLookup implements WorkspaceAgentLookup {
     placed.put(agentId, new ActiveAgent(agentId, workId, repositoryId, wrapperBranch));
   }
 
+  /**
+   * {@code agent} is ACTIVE exactly as given — its activity, last turn and waits too (qits-1756);
+   * staging the same agent id again replaces it.
+   */
+  public synchronized void stage(ActiveAgent agent) {
+    works.put(agent.agentId(), agent.workId());
+    placed.put(agent.agentId(), agent);
+  }
+
   /** {@code agentId} is no longer ACTIVE: it is not listed. */
   public synchronized void unstage(String agentId) {
     works.remove(agentId);

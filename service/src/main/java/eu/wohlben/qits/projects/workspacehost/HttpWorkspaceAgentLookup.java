@@ -14,6 +14,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -140,7 +142,9 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
   /**
    * {@code GET /workspaces/api/agents?state=ACTIVE} (qits-1672), read as a {@code Map} for each
    * entry's {@code agentId}, {@code workId}, {@code repositoryId} and {@code wrapperBranch}
-   * (qits-1722). Same contract as {@link #workOf}: never throws, one WARN and empty on every
+   * (qits-1722), and its {@code activity}, {@code lastActivityAt} and {@code waits[]} (qits-1756).
+   * A member that is absent, null or unreadable reads as null — an entry with no {@code agentId}
+   * or {@code workId} is left out — so a far side older than a field still lists. Same contract as {@link #workOf}: never throws, one WARN and empty on every
    * failure.
    *
    * <p>Every project's agents: the caller narrows by repository ({@code BranchDeliveryNotices}),
@@ -188,8 +192,11 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
               new ActiveAgent(
                   agentId,
                   workId,
-                  agent.get("repositoryId") instanceof String repositoryId ? repositoryId : null,
-                  agent.get("wrapperBranch") instanceof String wrapper ? wrapper : null));
+                  string(agent, "repositoryId"),
+                  string(agent, "wrapperBranch"),
+                  string(agent, "activity"),
+                  instant(agent, "lastActivityAt"),
+                  waits(agent.get("waits"))));
         }
       }
       return Optional.of(List.copyOf(agents));
@@ -198,6 +205,50 @@ public class HttpWorkspaceAgentLookup implements WorkspaceAgentLookup {
       return couldNotList("interrupted");
     } catch (Exception e) {
       return couldNotList(e.toString());
+    }
+  }
+
+  /**
+   * An agent's {@code waits[]}; an entry without a {@code label} and a {@code state} is left out,
+   * and anything that is not a list reads as none.
+   */
+  private static List<AgentWait> waits(Object value) {
+    if (!(value instanceof List<?> entries)) {
+      return List.of();
+    }
+    List<AgentWait> waits = new ArrayList<>();
+    for (Object entry : entries) {
+      if (entry instanceof Map<?, ?> wait
+          && wait.get("label") instanceof String label
+          && wait.get("state") instanceof String state) {
+        waits.add(
+            new AgentWait(
+                label,
+                state,
+                string(wait, "subjectKind"),
+                string(wait, "subjectRef"),
+                string(wait, "subjectQualifiedId"),
+                string(wait, "subjectState"),
+                instant(wait, "expiresAt")));
+      }
+    }
+    return waits;
+  }
+
+  /** A string member, or null when it is absent, null or not a string. */
+  private static String string(Map<?, ?> object, String name) {
+    return object.get(name) instanceof String value ? value : null;
+  }
+
+  /** An ISO-8601 instant member, or null when it is absent, null or not one. */
+  private static Instant instant(Map<?, ?> object, String name) {
+    if (!(object.get(name) instanceof String value) || value.isBlank()) {
+      return null;
+    }
+    try {
+      return Instant.parse(value);
+    } catch (DateTimeParseException e) {
+      return null;
     }
   }
 
