@@ -248,7 +248,8 @@ public class DevelopmentGuideControllerTest {
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
@@ -268,6 +269,32 @@ public class DevelopmentGuideControllerTest {
     assertTrue(guide.rollForward() >= 1);
 
     assertTrue(read("agent").getString("markdown").contains("qits wait branch"));
+  }
+
+  /**
+   * qits-1665: the flow says to move a source that alone blocks a shared request to the next one,
+   * never to force-push it out; an unedited row of the text before rolls forward. The desk's own
+   * brief is left to a follow-up, for the owner to approve on its own.
+   */
+  @Test
+  public void theFlowMovesABlockingSourceToTheNextRequest() {
+    String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
+    assertTrue(flow.contains("`qits release-request move --project <project> --repository <repository>"));
+    assertTrue(flow.contains("Never force-push a branch to take it out of a request"));
+    assertTrue(flow.contains("If your own branch blocks a shared request,\nmove it yourself"));
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW.contains("release-request move"),
+        "the qits-1665 text is the one before the move existed");
+
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    surfaces.save(
+        key,
+        withText(surfaces.get(key), DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW),
+        null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
   }
 
   /** qits-1724: the workstation guide waits on the branch too. */

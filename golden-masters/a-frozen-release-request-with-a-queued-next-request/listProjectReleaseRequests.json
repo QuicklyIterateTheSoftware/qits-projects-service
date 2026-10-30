@@ -107,7 +107,8 @@
           "label": "ticket/contract-14",
           "workItem": null
         }
-      ]
+      ],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -246,7 +247,8 @@
           "label": "epic/contract-13",
           "workItem": null
         }
-      ]
+      ],
+      "sourceMoves": []
     }
   ]
 }

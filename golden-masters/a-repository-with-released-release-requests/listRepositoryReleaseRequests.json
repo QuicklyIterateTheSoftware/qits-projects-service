@@ -106,7 +106,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     }
   ]
 }

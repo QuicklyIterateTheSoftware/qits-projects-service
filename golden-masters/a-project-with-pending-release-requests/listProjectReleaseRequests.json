@@ -80,7 +80,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -162,7 +163,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -251,7 +253,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -340,7 +343,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000a",
@@ -422,7 +426,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -504,7 +509,8 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": []
+      "items": [],
+      "sourceMoves": []
     }
   ]
 }
