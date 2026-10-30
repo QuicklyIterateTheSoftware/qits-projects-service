@@ -292,6 +292,42 @@ class ScheduleNeedsAPersonDoorTest {
     stillRefined(id);
   }
 
+  // --- the close is not a scheduling (qits-1757) ---------------------------------------------------
+
+  /**
+   * CLOSE straight to DONE is no scheduling: PERSON_APPROVAL never judges it. An agent's bearer is
+   * refused by CHILDREN_CLOSED alone, naming no scheduling gate, and a person closes the REFINED
+   * campaign whose one member is DONE under the session's name.
+   */
+  @Test
+  void aCloseIsNotJudgedByPersonApproval() {
+    String projectId = project("Close is no scheduling");
+    String memberId = refined(projectId, "TICKET");
+    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      status(session("ada", "ada"), memberId, target).statusCode(200);
+    }
+    String campaignId = refinedCampaign(projectId);
+    session("ada", "ada")
+        .body(Map.of("entityId", memberId))
+        .when()
+        .post("/projects/api/work/" + campaignId + "/members")
+        .then()
+        .statusCode(201);
+
+    status(bearer(agent(projectId)), campaignId, "DONE")
+        .statusCode(409)
+        .body("message", containsString("CHILDREN_CLOSED: closing to DONE needs a person or the delivery desk"))
+        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
+        .body("message", org.hamcrest.Matchers.not(containsString("MEMBERS_SCHEDULED")));
+    stillRefined(campaignId);
+
+    status(session("mallory", "ada"), campaignId, "DONE")
+        .statusCode(200)
+        .body("status", equalTo("DONE"))
+        .body("statusBefore", equalTo("REFINED"))
+        .body("changedBy", equalTo("ada"));
+  }
+
   // --- the dispatch door's scheduling (qits-1075) -------------------------------------------------
 
   private static ValidatableResponse dispatch(RequestSpecification caller, String id) {

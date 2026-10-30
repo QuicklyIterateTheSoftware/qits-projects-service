@@ -55,8 +55,8 @@ class EntityStateMachineTest {
         assertTrue(reason.startsWith("cannot move from " + from + " to " + to), reason);
       }
     }
-    // 81 ordered pairs, 22 declared moves.
-    assertEquals(81 - 22, refused);
+    // 81 ordered pairs, 28 declared moves (22, and qits-1757's six CLOSEs).
+    assertEquals(81 - 28, refused);
   }
 
   @Test
@@ -64,27 +64,33 @@ class EntityStateMachineTest {
     assertEquals(
         List.of(
             new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REPORTED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
             new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
+            new Transition(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(
                 EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
             new Transition(
                 EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(
                 EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(
                 EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP),
             new Transition(
                 EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
+            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
             new Transition(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
+            new Transition(EntityStatus.VERIFYING, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
             new Transition(EntityStatus.VERIFIED, EntityStatus.VERIFYING, TransitionKind.BACK),
@@ -107,7 +113,9 @@ class EntityStateMachineTest {
             .toList());
     // No other step can be jumped.
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
-    assertFalse(EntityStateMachine.allows(EntityStatus.VERIFYING, EntityStatus.DONE));
+    // VERIFYING -> DONE is no SKIP: it is a CLOSE (qits-1757), and a ticket has none.
+    assertFalse(
+        EntityStateMachine.allows(Archetype.TICKET, EntityStatus.VERIFYING, EntityStatus.DONE));
     assertFalse(EntityStateMachine.allows(EntityStatus.REPORTED, EntityStatus.IMPLEMENTING));
     // qits-887: the skip cannot bypass the person's scheduling.
     assertFalse(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.IMPLEMENTED));
@@ -156,7 +164,7 @@ class EntityStateMachineTest {
             new Transition(
                 EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
             new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(EntityStatus.IMPLEMENTING));
+        EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.IMPLEMENTING));
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.REFINED));
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.READY_FOR_DEV));
     // IMPLEMENTED -> REFINED was replaced by IMPLEMENTED -> IMPLEMENTING.
@@ -171,7 +179,7 @@ class EntityStateMachineTest {
             new Transition(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
             new Transition(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
             new Transition(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(EntityStatus.VERIFYING));
+        EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.VERIFYING));
     // VERIFIED -> IMPLEMENTED was replaced by VERIFIED -> VERIFYING.
     assertFalse(EntityStateMachine.allows(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED));
     assertTrue(EntityStateMachine.allows(EntityStatus.VERIFIED, EntityStatus.VERIFYING));
@@ -215,12 +223,14 @@ class EntityStateMachineTest {
     assertEquals(
         List.of(
             new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REPORTED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REPORTED));
     assertEquals(
         List.of(
             new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
             new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
+            new Transition(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
     assertEquals(
@@ -228,6 +238,7 @@ class EntityStateMachineTest {
             new Transition(
                 EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV));
     assertEquals(
@@ -235,6 +246,7 @@ class EntityStateMachineTest {
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
             new Transition(
                 EntityStatus.IMPLEMENTED, EntityStatus.READY_FOR_DEV, TransitionKind.BACK),
+            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED));
     assertEquals(
@@ -263,14 +275,117 @@ class EntityStateMachineTest {
         EntityStateMachine.refusal(
                 Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED)
             .isPresent());
-    // Every other archetype reads the machine unchanged.
+    // Every other archetype reads the machine unchanged: an epic or a feature the whole of it, a
+    // ticket or a task all of it but the CLOSE moves (qits-1757).
     for (Archetype archetype :
         List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
+      boolean closes = archetype == Archetype.EPIC || archetype == Archetype.FEATURE;
       for (EntityStatus state : EntityStatus.values()) {
         assertEquals(
-            EntityStateMachine.transitionsFrom(state),
+            EntityStateMachine.transitionsFrom(state).stream()
+                .filter(move -> closes || move.kind() != TransitionKind.CLOSE)
+                .toList(),
             EntityStateMachine.transitionsFrom(archetype, state));
+      }
+    }
+  }
+
+  // ---- CLOSE (qits-1757) -----------------------------------------------------------------------
+
+  @Test
+  void closeLeadsStraightToDoneFromEveryOpenStatusButVerified() {
+    List<EntityStatus> closing =
+        List.of(
+            EntityStatus.REPORTED,
+            EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
+            EntityStatus.IMPLEMENTING,
+            EntityStatus.IMPLEMENTED,
+            EntityStatus.VERIFYING);
+    assertEquals(
+        closing.stream()
+            .map(from -> new Transition(from, EntityStatus.DONE, TransitionKind.CLOSE))
+            .toList(),
+        EntityStateMachine.transitions().stream()
+            .filter(move -> move.kind() == TransitionKind.CLOSE)
+            .toList());
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
+      for (EntityStatus from : closing) {
+        assertTrue(
+            EntityStateMachine.isClose(archetype, from, EntityStatus.DONE), archetype + " " + from);
+      }
+    }
+    // A campaign closes from the statuses it holds; its "-ING" ones are elided.
+    for (EntityStatus from : closing) {
+      boolean held = from != EntityStatus.IMPLEMENTING && from != EntityStatus.VERIFYING;
+      assertEquals(
+          held, EntityStateMachine.isClose(Archetype.CAMPAIGN, from, EntityStatus.DONE), from.name());
+    }
+  }
+
+  @Test
+  void verifiedToDoneStaysTheForwardMoveAndIsNoClose() {
+    for (Archetype archetype : Archetype.values()) {
+      List<Transition> intoDone =
+          EntityStateMachine.transitionsFrom(archetype, EntityStatus.VERIFIED).stream()
+              .filter(move -> move.to() == EntityStatus.DONE)
+              .toList();
+      assertEquals(
+          List.of(new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD)),
+          intoDone,
+          archetype.name());
+      assertFalse(
+          EntityStateMachine.isClose(archetype, EntityStatus.VERIFIED, EntityStatus.DONE),
+          archetype.name());
+    }
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.CLOSE)));
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.DROPPED, EntityStatus.DONE, TransitionKind.CLOSE)));
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.VERIFIED, TransitionKind.CLOSE)));
+    assertTrue(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE)));
+  }
+
+  @Test
+  void aTicketAndATaskServeNoClose() {
+    for (Archetype archetype : List.of(Archetype.TICKET, Archetype.TASK)) {
+      assertFalse(EntityStateMachine.closes(archetype), archetype.name());
+      for (EntityStatus from : EntityStatus.values()) {
+        assertTrue(
+            EntityStateMachine.transitionsFrom(archetype, from).stream()
+                .noneMatch(move -> move.kind() == TransitionKind.CLOSE),
+            archetype + " " + from);
+        if (from != EntityStatus.VERIFIED) {
+          assertFalse(
+              EntityStateMachine.allows(archetype, from, EntityStatus.DONE),
+              archetype + " " + from);
+          assertTrue(
+              EntityStateMachine.refusal(archetype, from, EntityStatus.DONE).isPresent(),
+              archetype + " " + from);
+        }
+      }
+    }
+    for (Archetype archetype : List.of(Archetype.CAMPAIGN, Archetype.EPIC, Archetype.FEATURE)) {
+      assertTrue(EntityStateMachine.closes(archetype), archetype.name());
+    }
+  }
+
+  @Test
+  void noTwoMovesOutOfAStateShareATarget() {
+    for (Archetype archetype : Archetype.values()) {
+      for (EntityStatus from : EntityStateMachine.states(archetype)) {
+        List<EntityStatus> targets =
+            EntityStateMachine.transitionsFrom(archetype, from).stream()
+                .map(Transition::to)
+                .toList();
+        assertEquals(targets.stream().distinct().toList(), targets, archetype + " " + from);
       }
     }
   }
@@ -287,7 +402,7 @@ class EntityStateMachineTest {
                 EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(EntityStatus.READY_FOR_DEV));
+        EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.READY_FOR_DEV));
     assertTrue(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     // Decision 6: once scheduled it is not sent back to REPORTED.
     assertFalse(EntityStateMachine.allows(EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED));
@@ -350,7 +465,8 @@ class EntityStateMachineTest {
     }
     // A refusal out of any other state carries no finality clause.
     String ordinary =
-        EntityStateMachine.refusal(EntityStatus.REPORTED, EntityStatus.DONE).orElseThrow();
+        EntityStateMachine.refusal(Archetype.TICKET, EntityStatus.REPORTED, EntityStatus.DONE)
+            .orElseThrow();
     assertEquals("cannot move from REPORTED to DONE", ordinary);
   }
 
@@ -381,20 +497,28 @@ class EntityStateMachineTest {
   }
 
   @Test
-  void theMovesOutOfEachStateAreForwardThenSkipThenBackThenDropOrReopen() {
+  void theMovesOutOfEachStateAreForwardThenSkipThenBackThenCloseThenDropOrReopen() {
     for (EntityStatus status : EntityStatus.values()) {
-      List<TransitionKind> kinds =
-          EntityStateMachine.transitionsFrom(status).stream().map(Transition::kind).toList();
-      List<TransitionKind> sorted =
-          kinds.stream()
-              .sorted(
-                  (a, b) ->
-                      Integer.compare(
-                          a == TransitionKind.REOPEN ? TransitionKind.DROP.ordinal() : a.ordinal(),
-                          b == TransitionKind.REOPEN ? TransitionKind.DROP.ordinal() : b.ordinal()))
-              .toList();
-      assertEquals(sorted, kinds, status.name());
+      assertOrdered(EntityStateMachine.transitionsFrom(status), status.name());
+      for (Archetype archetype : Archetype.values()) {
+        assertOrdered(
+            EntityStateMachine.transitionsFrom(archetype, status), archetype + " " + status);
+      }
     }
+  }
+
+  /** FORWARD, SKIP, BACK, CLOSE, then DROP or REOPEN — the enum's order, DROP and REOPEN one rank. */
+  private static void assertOrdered(List<Transition> moves, String what) {
+    List<TransitionKind> kinds = moves.stream().map(Transition::kind).toList();
+    List<TransitionKind> sorted =
+        kinds.stream()
+            .sorted(
+                (a, b) ->
+                    Integer.compare(
+                        a == TransitionKind.REOPEN ? TransitionKind.DROP.ordinal() : a.ordinal(),
+                        b == TransitionKind.REOPEN ? TransitionKind.DROP.ordinal() : b.ordinal()))
+            .toList();
+    assertEquals(sorted, kinds, what);
   }
 
   @Test

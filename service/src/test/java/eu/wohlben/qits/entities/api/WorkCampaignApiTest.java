@@ -479,6 +479,61 @@ class WorkCampaignApiTest {
         .body("member.joinedRunning", equalTo(false));
   }
 
+  /**
+   * qits-1757: a REFINED campaign whose members are all DONE or DROPPED closes straight to DONE
+   * through its status door — a person's move, no scheduling on the way — while an open member is a
+   * 409 naming it by qualified id, and a machine (the %test dev user's headers alone) is refused.
+   */
+  @Test
+  void aCampaignWhoseMembersAreAllClosedIsClosedStraightToDone() {
+    WorkEntity shipped = ticket("Shipped member");
+    for (String status : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      workEntities.transition(Archetype.TICKET, shipped.id, status, Mover.person("dev"));
+    }
+    WorkEntity open = ticket("Open member");
+    workEntities.transition(Archetype.TICKET, open.id, "REFINED", Mover.person("dev"));
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Finished already", null, "t");
+    campaigns.addMember(campaign.id, shipped.id, null, false, "t");
+    campaigns.addMember(campaign.id, open.id, null, false, "t");
+    String base = WORK + PROJECT + "-" + campaign.number;
+    move(base, "REFINED").statusCode(200);
+
+    move(base, "DONE")
+        .statusCode(409)
+        .body(
+            "message",
+            containsString(
+                "CHILDREN_CLOSED: a child is not closed yet: "
+                    + PROJECT
+                    + "-"
+                    + open.number
+                    + " (REFINED)"))
+        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
+        .body("message", org.hamcrest.Matchers.not(containsString("MEMBERS_SCHEDULED")));
+    workEntities.transition(
+        Archetype.TICKET,
+        open.id,
+        "DROPPED",
+        Mover.person("dev"),
+        eu.wohlben.qits.entities.control.DropOutcome.of(
+            eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO, null));
+    given()
+        .contentType(ContentType.JSON)
+        .body(WorkRequests.statusBody("DONE"))
+        .post(base + "/status")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("closing to DONE needs a person or the delivery desk"));
+    given().get(base).then().statusCode(200).body("status", equalTo("REFINED"));
+
+    move(base, "DONE")
+        .statusCode(200)
+        .body("status", equalTo("DONE"))
+        .body("statusBefore", equalTo("REFINED"))
+        .body("changedBy", equalTo("dev"));
+    given().get(base + "/progress").then().statusCode(200).body("progress.campaign.start", nullValue());
+  }
+
   // --- fixtures ------------------------------------------------------------------------------------
 
   private WorkEntity ticket(String title) {

@@ -114,18 +114,21 @@ class ArchetypeRegistryDocumentTest {
         List.of(
             move("READY_FOR_DEV", EntityStateMachine.TransitionKind.FORWARD),
             move("REPORTED", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         campaign.transitions().get("REFINED"));
     assertEquals(
         List.of(
             move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
             move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         campaign.transitions().get("READY_FOR_DEV"));
     assertEquals(
         List.of(
             move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
             move("READY_FOR_DEV", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         campaign.transitions().get("IMPLEMENTED"));
     assertEquals(false, campaign.transitions().containsKey("IMPLEMENTING"));
@@ -297,6 +300,8 @@ class ArchetypeRegistryDocumentTest {
   void theServedMovesAreTheMachinesDeclarationExactly() {
     // Rebuilt from EntityStateMachine.transitions() — the declaration itself, not transitionsFrom —
     // so a served move the machine does not declare, or a declared move the document drops, fails.
+    // A ticket is served every declared move but the CLOSEs, which only a kind with children has
+    // (qits-1757).
     for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       Map<String, List<ArchetypeRegistryDocument.LegalMove>> expected = new LinkedHashMap<>();
@@ -304,6 +309,10 @@ class ArchetypeRegistryDocumentTest {
         expected.put(state.name(), new ArrayList<>());
       }
       for (EntityStateMachine.Transition move : EntityStateMachine.transitions()) {
+        if (move.kind() == EntityStateMachine.TransitionKind.CLOSE
+            && !EntityStateMachine.closes(archetype)) {
+          continue;
+        }
         expected
             .get(move.from().name())
             .add(
@@ -389,12 +398,37 @@ class ArchetypeRegistryDocumentTest {
   @Test
   void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
     // One graph, both skips included (qits-763): what a client draws for a task is an epic's walk.
+    // A feature has children and closes as an epic does; a task has none and closes as a ticket
+    // does, by the walk alone (qits-1757).
+    assertEquals(declared(Archetype.EPIC).transitions(), declared(Archetype.FEATURE).transitions());
+    assertEquals(declared(Archetype.TICKET).transitions(), declared(Archetype.TASK).transitions());
     for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK)) {
-      assertEquals(
-          declared(Archetype.EPIC).transitions(), declared(archetype).transitions(), archetype.name());
       assertEquals(
           declared(Archetype.EPIC).lifecycle(), declared(archetype).lifecycle(), archetype.name());
     }
+  }
+
+  @Test
+  void anEpicServesACloseFromEveryOpenStatusButVerified() {
+    Map<String, List<ArchetypeRegistryDocument.LegalMove>> moves =
+        declared(Archetype.EPIC).transitions();
+    for (String from :
+        List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING")) {
+      assertTrue(
+          moves.get(from).contains(move("DONE", EntityStateMachine.TransitionKind.CLOSE)), from);
+    }
+    assertEquals(
+        List.of(
+            move("DONE", EntityStateMachine.TransitionKind.FORWARD),
+            move("VERIFYING", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("VERIFIED"));
+    assertEquals(
+        List.of(
+            move("REFINED", EntityStateMachine.TransitionKind.FORWARD),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("REPORTED"));
   }
 
   private static ArchetypeRegistryDocument.LegalMove move(
@@ -463,6 +497,39 @@ class ArchetypeRegistryDocumentTest {
     assertEquals(List.of(), gatesOf(all, Archetype.CAMPAIGN, "READY_FOR_DEV", "REFINED"));
     // With no gate handed in, nothing is named.
     assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
+  }
+
+  /**
+   * qits-1757: every CLOSE move names CHILDREN_CLOSED and nothing else of the shipped gates;
+   * VERIFIED → DONE, the walk's FORWARD, names none.
+   */
+  @Test
+  void everyCloseMoveNamesChildrenClosedAndVerifiedToDoneNamesNone() {
+    List<TransitionGate> shipped =
+        List.of(
+            new PersonApprovalGate(),
+            new AcceptanceCriteriaGate(),
+            new eu.wohlben.qits.entities.campaign.MembersScheduledGate(),
+            new eu.wohlben.qits.entities.campaign.ChildrenClosedGate());
+    int closes = 0;
+    for (ArchetypeRegistryDocument.DeclaredArchetype declared :
+        ArchetypeRegistryDocument.describe(shipped).archetypes()) {
+      for (Map.Entry<String, List<ArchetypeRegistryDocument.LegalMove>> entry :
+          declared.transitions().entrySet()) {
+        for (ArchetypeRegistryDocument.LegalMove legal : entry.getValue()) {
+          if (legal.kind() == EntityStateMachine.TransitionKind.CLOSE) {
+            closes++;
+            assertEquals(
+                List.of("CHILDREN_CLOSED"),
+                legal.gates(),
+                declared.archetype() + " " + entry.getKey());
+          }
+        }
+      }
+      assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
+    }
+    // An epic's and a feature's six, a campaign's four.
+    assertEquals(16, closes);
   }
 
   @Test

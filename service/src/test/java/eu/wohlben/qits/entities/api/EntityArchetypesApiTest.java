@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -92,13 +93,13 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "gathers", equalTo(false))
         .body(at("TASK") + "gathers", equalTo(false))
         .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
-        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("READY_FOR_DEV", "REPORTED", "DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("READY_FOR_DEV", "REPORTED", "DONE", "DROPPED"))
         .body(
             at("CAMPAIGN") + "transitions.READY_FOR_DEV.to",
-            contains("IMPLEMENTED", "REFINED", "DROPPED"))
+            contains("IMPLEMENTED", "REFINED", "DONE", "DROPPED"))
         .body(
             at("CAMPAIGN") + "transitions.IMPLEMENTED.to",
-            contains("VERIFIED", "READY_FOR_DEV", "DROPPED"))
+            contains("VERIFIED", "READY_FOR_DEV", "DONE", "DROPPED"))
         .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DONE", "IMPLEMENTED", "DROPPED"))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
@@ -217,8 +218,8 @@ class EntityArchetypesApiTest {
 
   /**
    * The ticket's whole served map of legal moves, asserted exactly — keys in lifecycle order, each
-   * value FORWARD, then SKIP, then BACK, then DROP/REOPEN — and DONE answering no move at all, because DONE is
-   * final. Parsed with Jackson rather than read through a GPath so the key order is what arrived.
+   * value FORWARD, then SKIP, then BACK, then DROP/REOPEN (a ticket has no CLOSE, qits-1757) — and
+   * DONE answering no move at all, because DONE is final. Parsed with Jackson rather than read through a GPath so the key order is what arrived.
    */
   @Test
   void aTicketServesItsLegalMovesAndItsOrderedLifecycle() throws Exception {
@@ -314,20 +315,66 @@ class EntityArchetypesApiTest {
 
   /**
    * qits-763: a feature and a task serve the epic's moves and walk, both skips included — though
-   * not its acceptance-criteria gate (qits-887), which judges an epic and a ticket alone.
+   * not its acceptance-criteria gate (qits-887), which judges an epic and a ticket alone. A task
+   * has no children, so it serves the ticket's moves without the CLOSEs (qits-1757).
    */
   @Test
   void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
     Map<String, Object> epicMoves = document().extract().path(at("EPIC") + "transitions");
+    Map<String, Object> ticketMoves = document().extract().path(at("TICKET") + "transitions");
     List<String> epicWalk = document().extract().path(at("EPIC") + "lifecycle");
     for (String archetype : List.of("FEATURE", "TASK")) {
       Map<String, Object> moves = document().extract().path(at(archetype) + "transitions");
-      assertEquals(withoutGates(epicMoves), withoutGates(moves), archetype);
+      assertEquals(
+          withoutGates(archetype.equals("FEATURE") ? epicMoves : ticketMoves),
+          withoutGates(moves),
+          archetype);
       document()
           .body(at(archetype) + "lifecycle", equalTo(epicWalk))
           .body(
               at(archetype) + "transitions.REPORTED.find { it.to == 'REFINED' }.gates",
               nullValue());
+    }
+  }
+
+  /**
+   * qits-1757: a campaign, an epic and a feature serve a CLOSE to DONE from every open status they
+   * hold but VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and
+   * a ticket and a task serve no CLOSE.
+   */
+  @Test
+  void theGatheringKindsServeACloseToDoneGatedByChildrenClosed() {
+    Map<String, List<String>> closing =
+        Map.of(
+            "EPIC",
+                List.of(
+                    "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
+            "FEATURE",
+                List.of(
+                    "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
+            "CAMPAIGN", List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED"));
+    closing.forEach(
+        (archetype, statuses) -> {
+          for (String from : statuses) {
+            document()
+                .body(
+                    at(archetype) + "transitions." + from + ".find { it.kind == 'CLOSE' }.to",
+                    equalTo("DONE"))
+                .body(
+                    at(archetype) + "transitions." + from + ".find { it.kind == 'CLOSE' }.gates",
+                    contains("CHILDREN_CLOSED"));
+          }
+          document()
+              .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.kind", equalTo("FORWARD"))
+              .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.gates", nullValue());
+        });
+    for (String archetype : List.of("TICKET", "TASK")) {
+      Map<String, List<Map<String, Object>>> moves =
+          document().extract().path(at(archetype) + "transitions");
+      moves.forEach(
+          (from, list) ->
+              list.forEach(
+                  move -> assertNotEquals("CLOSE", move.get("kind"), archetype + " " + from)));
     }
   }
 

@@ -156,6 +156,81 @@ class DeskCoordinatorRightsDoorTest {
     org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(ticket));
   }
 
+  // --- closing finished work (qits-1757) -------------------------------------------------------
+
+  private static String campaign(String projectId) {
+    return person()
+        .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "Finished already"))
+        .when()
+        .post("/projects/api/work")
+        .then()
+        .statusCode(201)
+        .extract()
+        .path("id");
+  }
+
+  private static String qualifiedIdOf(String id) {
+    return person().when().get("/projects/api/work/" + id).then().statusCode(200).extract().path("qualifiedId");
+  }
+
+  /**
+   * The desk closes a REFINED campaign whose members are all DONE straight to DONE — the CLOSE
+   * move, which neither PERSON_APPROVAL nor MEMBERS_SCHEDULED judges, so no start-refined stamp is
+   * needed — while an open member is a 409 naming it, and a plain agent of the same project is
+   * refused.
+   */
+  @Test
+  void theDeskClosesACampaignWhoseMembersAreAllDone() {
+    String projectId = project("Desk closes");
+    String shipped = ticket(projectId);
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      status(person(), shipped, target).statusCode(200);
+    }
+    String open = ticket(projectId);
+    String campaign = campaign(projectId);
+    for (String member : List.of(shipped, open)) {
+      person()
+          .body(Map.of("entityId", member))
+          .when()
+          .post("/projects/api/work/" + campaign + "/members")
+          .then()
+          .statusCode(201);
+    }
+    status(person(), campaign, "REFINED").statusCode(200);
+
+    status(desk(projectId), campaign, "DONE")
+        .statusCode(409)
+        .body("message", containsString("CHILDREN_CLOSED: a child is not closed yet: " + qualifiedIdOf(open) + " (REPORTED)"))
+        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
+        .body("message", org.hamcrest.Matchers.not(containsString("needs a person or the delivery desk")));
+    status(person(), open, "DROPPED").statusCode(200);
+    status(agent(projectId), campaign, "DONE")
+        .statusCode(409)
+        .body("message", containsString("closing to DONE needs a person or the delivery desk"));
+    org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(campaign));
+
+    status(desk(projectId), campaign, "DONE")
+        .statusCode(200)
+        .body("status", equalTo("DONE"))
+        .body("statusBefore", equalTo("REFINED"))
+        .body("changedBy", equalTo(deskSubject(projectId)));
+  }
+
+  /** A plain agent of the project: {@code qits:agent} and no desk role. */
+  private static RequestSpecification agent(String projectId) {
+    String token =
+        MockIdp.attach()
+            .token()
+            .subject("dev-qits-projects-agent-7")
+            .audience("qits-platform")
+            .groups("qits:agent")
+            .claim("credential_type", "cli")
+            .claim("context_kind", "agent-container")
+            .claim("project", projectId)
+            .mint();
+    return given().header("Authorization", "Bearer " + token).contentType(ContentType.JSON);
+  }
+
   // --- the deletes ----------------------------------------------------------------------------
 
   /**

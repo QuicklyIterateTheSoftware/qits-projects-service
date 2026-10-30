@@ -357,6 +357,45 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertEquals(EntityStatus.VERIFIED.name(), after.get(epic.id).status());
   }
 
+  /**
+   * qits-1757: VERIFIED → DONE is the walk's FORWARD, which no gate judges — so this door still
+   * restates it for an epic with no children, which CHILDREN_CLOSED would refuse were it a CLOSE.
+   */
+  @Test
+  void verifiedToDoneIsStillAcceptedForAnItemWithNoChildren() {
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Verified", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
+      workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person(WHO));
+    }
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(epic.id, epicEntry("Verified", null, null, EntityStatus.DONE, CRITERIA)), WHO);
+    assertEquals(EntityStatus.DONE.name(), after.get(epic.id).status());
+  }
+
+  /**
+   * qits-1757: a CLOSE straight to DONE is a gated move, so this door refuses to state it and
+   * names the gate — the status door judges it.
+   */
+  @Test
+  void aCloseIsNotStatedThroughThisDoor() {
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Started", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", WHO);
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person(WHO));
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", WHO);
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(epic.id, epicEntry("Started", null, null, EntityStatus.DONE, CRITERIA)),
+                    WHO));
+    assertTrue(refusal.getMessage().contains("CHILDREN_CLOSED"), refusal.getMessage());
+    inFreshTx(() -> assertEquals("IMPLEMENTING", entities.findById(epic.id).status));
+  }
+
   // --- the statuses this door may not state (qits-887) --------------------
 
   /**

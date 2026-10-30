@@ -178,8 +178,9 @@ class WorkEpicLifecycleApiTest {
 
     // A draft has no scope to supersede.
     move(epic, "SUPERSEDED").statusCode(409).body("message", notNullValue());
-    // DONE is a word of the lifecycle, but nothing is skipped: a draft is not closed in one move.
-    move(epic, "DONE").statusCode(409);
+    // DONE is a word of the lifecycle, but a draft with nothing under it is not closed in one move:
+    // the CLOSE straight to DONE needs at least one closed child (qits-1757).
+    move(epic, "DONE").statusCode(409).body("message", containsString("CHILDREN_CLOSED"));
     // A retired epic word names no status at all.
     move(epic, "REFINING").statusCode(409);
     // Freezing is reversible, one step at a time — and never to where the epic already is.
@@ -196,6 +197,34 @@ class WorkEpicLifecycleApiTest {
       move(epic, target).statusCode(200).body("status", equalTo(target));
     }
     given().when().get(WORK + epic).then().statusCode(200).body("status", equalTo("DONE"));
+  }
+
+  /**
+   * qits-1757: an epic whose features are all closed closes straight to DONE by a person — the
+   * CLOSE move — while an open feature is a 409 naming it, and a caller that is no person nor the
+   * project's desk (the %test dev user, qits:admin by header alone) is refused.
+   */
+  @Test
+  void anEpicWhoseFeaturesAreClosedIsClosedStraightToDone() {
+    String epic = epic(project(), "Finished already");
+    String feature = addFeature(epic, "Feature A").statusCode(201).extract().path("qualifiedId");
+    move(epic, "REFINED").statusCode(200);
+
+    move(epic, "DONE")
+        .statusCode(409)
+        .body("message", containsString("CHILDREN_CLOSED: a child is not closed yet: " + feature + " (REFINED)"));
+    move(feature, "DROPPED").statusCode(200);
+    WorkRequests.status(epic, "DONE")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("closing to DONE needs a person or the delivery desk"));
+
+    move(epic, "DONE")
+        .statusCode(200)
+        .body("status", equalTo("DONE"))
+        .body("statusBefore", equalTo("REFINED"))
+        .body("changedBy", equalTo("dev"));
+    given().when().get(WORK + feature).then().statusCode(200).body("status", equalTo("DROPPED"));
   }
 
   /**
