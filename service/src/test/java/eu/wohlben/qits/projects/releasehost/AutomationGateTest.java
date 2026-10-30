@@ -428,7 +428,9 @@ public class AutomationGateTest {
     assertEquals("FAILED", gateState(rejected, "AUTOMATIONS"));
     assertEquals(List.of(SCREENSHOTS), rejected.getList("automations.kind"), "the rows survive");
     assertEquals(List.of("FAILED"), rejected.getList("automations.state"));
-    assertNull(rejected.getString("gateTicketId"), "no unattended-gate ticket for it");
+    assertNull(
+        rejected.getString("gateTicketId"),
+        "a person's request files no ticket; a robot's does (UnattendedGateTicketTest)");
     assertEquals(0, executor.calls().size());
 
     releaseRequests.sweep(); // re-read, still failed: the rejection stands

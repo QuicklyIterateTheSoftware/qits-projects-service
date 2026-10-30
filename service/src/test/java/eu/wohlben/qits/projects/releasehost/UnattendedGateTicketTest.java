@@ -14,16 +14,19 @@ import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.WorkEntityDoors;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.BuildStatusLedger;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
 import eu.wohlben.qits.projects.control.ReleaseGates;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver;
 import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryName;
+import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -99,6 +102,19 @@ public class UnattendedGateTicketTest {
    */
   @Inject RecordingWorkspaceAgentDispatch agents;
 
+  /**
+   * The release-request automations (qits-1561). Its default is configured with no kind applying,
+   * so every CI-path case below passes the pre-run on the spot exactly as before; an automation
+   * case scripts a FAILED kind for {@link #REPO_NAME}. Reset on both sides of each test, because the
+   * fake is scripted by repository name and that name is the same in every test here.
+   */
+  @Inject FakeReleaseRequestAutomations automations;
+
+  @Inject AutomationLedger automationLedger;
+
+  /** The kind the automation cases fail; its fake run id is {@code run-<kind>}. */
+  private static final String SCREENSHOTS = "screenshot-baselines";
+
   private String repoId;
   private String projectId;
 
@@ -109,6 +125,7 @@ public class UnattendedGateTicketTest {
     gitHost.reset();
     merger.reset();
     agents.reset();
+    automations.reset();
     repoId = "gate-ticket-repo-" + UUID.randomUUID();
     projectId = "gate-ticket-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -138,9 +155,21 @@ public class UnattendedGateTicketTest {
   @AfterEach
   void dropTheFixturesRequests() {
     agents.reset();
+    automations.reset();
+    List<String> ids =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    ReleaseRequest.<ReleaseRequest>list("projectId", projectId).stream()
+                        .map(row -> row.id)
+                        .toList());
+    ids.forEach(automationLedger::forget);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
+              if (!ids.isEmpty()) {
+                ReleaseRequestAutomationWaiver.delete("requestId in ?1", ids);
+              }
               ReleaseRequest.delete("projectId = ?1", projectId);
               ReleasedTagPendingMerge.delete("repoId = ?1", repoId);
             });
@@ -730,6 +759,120 @@ public class UnattendedGateTicketTest {
     assertEquals(1, ticketsOnProject().size(), "one red verdict, one ticket: " + ticketsOnProject());
   }
 
+
+  // ---- a failed release-request automation is a red gate too (qits-1561) ---------------------
+
+  /**
+   * <b>qits-1561.</b> The automations gate rejects a robot's request exactly as a red build does,
+   * and nobody is watching that either — so it files the same MAINTENANCE ticket, naming the
+   * automation's run and the gate's own sentence.
+   */
+  @Test
+  public void aFailedAutomationOnTheRobotsRequestFilesOneMaintenanceTicketNamingTheRun() {
+    automations.answer(REPO_NAME, SCREENSHOTS, "FAILED");
+    String id = create("maintenance/dependencies", ROBOT);
+    awaitState(id, "REJECTED");
+    String merged = mergedShaOf(id);
+
+    String ticketId = awaitTicketOn(id);
+    assertEquals(ticketId, request(id).getString("gateTicketId"), "the request names its ticket");
+    assertEquals(List.of(ticketId), ticketsOnProject(), "exactly one ticket was filed");
+    var ticket = given().get("/projects/api/work/" + ticketId).then().statusCode(200).extract();
+    assertEquals("MAINTENANCE", ticket.path("ticketType"));
+    assertEquals("REPORTED", ticket.path("status"));
+
+    String body = ticket.path("description");
+    assertTrue(body.contains("a release-request automation failed"), body);
+    assertFalse(body.contains("its build came back red"), "no build went red: " + body);
+    assertTrue(body.contains("`run-" + SCREENSHOTS + "` (FAILED)"), "names the run: " + body);
+    assertTrue(
+        body.contains(
+            "Screenshot baselines failed at "
+                + merged.substring(0, 10)
+                + "; push, re-run, or waive this fold"),
+        "the gate's own sentence, verbatim: " + body);
+    assertTrue(body.contains("qits maintenance automation run"), "and the ways out: " + body);
+    assertTrue(body.contains(BackingBranches.qualifiedIdOf(id)), body);
+    assertEquals(0, executor.calls().size());
+  }
+
+  /** The dedupe holds for automations too: the same request failing again is a comment. */
+  @Test
+  public void aSecondAutomationRejectionCommentsOnTheOpenTicketRatherThanFilingAnother() {
+    automations.answer(REPO_NAME, SCREENSHOTS, "FAILED");
+    String id = create("maintenance/dependencies", ROBOT);
+    awaitState(id, "REJECTED");
+    String first = mergedShaOf(id);
+    String ticketId = awaitTicketOn(id);
+
+    // A push re-arms the request onto a fresh fold, and the automation fails there too.
+    headMoved("maintenance/dependencies");
+    String refolded =
+        await(
+            () -> {
+              String now = mergedShaOf(id);
+              return now != null && !now.equals(first) ? now : null;
+            },
+            "request " + id + " never re-folded past " + first);
+    releaseRequests.sweep(); // whichever pass gates the new fold first, it rejects it once
+    awaitState(id, "REJECTED");
+
+    String said = awaitComment(ticketId, refolded);
+    assertEquals(ticketId, request(id).getString("gateTicketId"), "the same ticket, still");
+    assertEquals(1, ticketsOnProject().size(), "and it is the only one on the project");
+    assertTrue(
+        said.startsWith("The gate is still red. Automation run `run-" + SCREENSHOTS + "` FAILED"),
+        said);
+    assertTrue(said.contains("push, re-run, or waive this fold"), said);
+  }
+
+  /** A person's request a failed automation rejects is that person's to answer: nothing filed. */
+  @Test
+  public void aFailedAutomationOnAPersonsRequestFilesNothing() {
+    automations.answer(REPO_NAME, SCREENSHOTS, "FAILED");
+    String id = create("work", "wohlben");
+    awaitState(id, "REJECTED");
+
+    assertEquals(false, request(id).getBoolean("unattended"), "a person asked for this one");
+    assertNull(request(id).getString("gateTicketId"));
+    assertEquals(List.of(), ticketsOnProject(), "and nothing was filed");
+  }
+
+  /**
+   * The automation-filed ticket ends like any other: a waiver of the fold reopens the rejection,
+   * the request releases, its tag reaches main and the ticket is dropped naming the version.
+   */
+  @Test
+  public void aWaivedAutomationRejectionThatFinalizesDropsItsTicket() {
+    String version = uniqueVersion();
+    String releasedSha = RecordingBackingBranchMerger.freshSha();
+    activeBuilds.answer(Optional.of(0));
+    executor.answer(ReleaseExecutor.Outcome.released(version, releasedSha));
+    automations.answer(REPO_NAME, SCREENSHOTS, "FAILED");
+    String id = create("maintenance/dependencies", ROBOT);
+    String merged = mergedShaOf(id);
+    verdict("BuildSuccessful", merged, "");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+
+    waive(id, merged);
+    releaseRequests.sweep();
+    awaitState(id, "RELEASED");
+    awaitComment(ticketId, "released as");
+    assertEquals("REPORTED", statusOf(ticketId), "open while the request is");
+
+    String mainSha = RecordingBackingBranchMerger.freshSha();
+    gitHost.containsCommit(repoId, releasedSha, mainSha);
+    headMovedTo("main", mainSha);
+
+    awaitState(id, "FINALIZED");
+    awaitStatus(ticketId, "DROPPED");
+    assertEquals("OBSOLETE", given().get("/projects/api/work/" + ticketId).path("outcome"));
+    String said = awaitComment(ticketId, "FINALIZED");
+    assertTrue(said.contains(version), said);
+    assertTrue(awaitClosedAt(id) != null);
+  }
+
   // ---- the harness -----------------------------------------------------------------------------
 
   /** A request and its ticket, carried out of a staging helper. */
@@ -767,6 +910,22 @@ public class UnattendedGateTicketTest {
   /** A calver no other test in the suite releases, so no staged tag tree of theirs can match it. */
   private static String uniqueVersion() {
     return "2026.929." + (100000 + (int) (Math.random() * 800000));
+  }
+
+  /** One waiver of the automations at {@code mergedSha}, straight into the table. */
+  private void waive(String requestId, String mergedSha) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequestAutomationWaiver waiver = new ReleaseRequestAutomationWaiver();
+              waiver.id = UUID.randomUUID().toString();
+              waiver.requestId = requestId;
+              waiver.mergedSha = mergedSha;
+              waiver.actor = "ada";
+              waiver.reason = "the screenshots differ on purpose";
+              waiver.waivedAt = Instant.now();
+              waiver.persist();
+            });
   }
 
   private void withdraw(String id, String reason) {
