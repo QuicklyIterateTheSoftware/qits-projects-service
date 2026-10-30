@@ -36,9 +36,7 @@ import org.jboss.logging.Logger;
  * holds qits-1618's ({@link AgentSurfaceDefaults#QITS_1618_DELIVERY_DESK_PROMPT}), and one the
  * qits-1621 rollout reached holds qits-1621's ({@link
  * AgentSurfaceDefaults#QITS_1621_DELIVERY_DESK_PROMPT}), and one the qits-1679 rollout reached
- * holds qits-1679's ({@link AgentSurfaceDefaults#QITS_1679_DELIVERY_DESK_PROMPT}), and one
- * the qits-1724 rollout reached holds qits-1724's ({@link
- * AgentSurfaceDefaults#QITS_1665_DELIVERY_DESK_PROMPT}, the text qits-1665 replaced).
+ * holds qits-1679's ({@link AgentSurfaceDefaults#QITS_1679_DELIVERY_DESK_PROMPT}).
  * Each is compared in turn, and the first that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
@@ -72,8 +70,7 @@ public class DeliveryDeskBriefRollout {
           AgentSurfaceDefaults.QITS_1618_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1621_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_1679_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_1665_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_1724_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 

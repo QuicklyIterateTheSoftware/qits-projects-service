@@ -457,26 +457,6 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
-  /**
-   * qits-1665: an unedited qits-1665 brief — the one with no move — rolls to the current one, which
-   * moves a source that alone blocks a request to the next one.
-   */
-  @Test
-  public void anUneditedQits1665BriefIsMigrated() {
-    assertFalse(
-        AgentSurfaceDefaults.QITS_1665_DELIVERY_DESK_PROMPT.contains("qits release-request move"),
-        "the qits-1665 text is the one before the move existed");
-    stage(AgentSurfaceDefaults.QITS_1665_DELIVERY_DESK_PROMPT);
-    int revisionsBefore = surfaces.history(SURFACE).size();
-
-    assertTrue(rollout.rollOut(), "the qits-1665 brief is rewritten");
-
-    String after = surfaces.get(SURFACE).systemPrompt();
-    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
-    assertTrue(after.contains("qits release-request move --project <this project>"), after);
-    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
-  }
-
   /** The boot after the rewrite finds the new text and writes nothing. */
   @Test
   public void aSecondBootIsANoOp() {
