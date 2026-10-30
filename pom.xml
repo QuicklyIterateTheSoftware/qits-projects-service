@@ -30,7 +30,7 @@
          the mandatory -Dqits.variant=oauth|forwardauth|local auth profiles. -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-projects</artifactId>
-    <version>2026.1029.164837</version>
+    <version>2026.1029.181355</version>
     <packaging>pom</packaging>
     <name>qits-projects</name>
 
@@ -116,7 +116,7 @@
 
              Do not hand-edit it to chase a release you just made. The train owns it, the release
              request is where it is reviewed, and a hand-written pin asserts a pair nobody gated. -->
-        <qits.projects-daemon-protocol.version>2026.1029.151942</qits.projects-daemon-protocol.version>
+        <qits.projects-daemon-protocol.version>2026.1030.11605</qits.projects-daemon-protocol.version>
 
         <!-- The platform event bus: the outbox, the idempotent PUT, the durable listener and
              CausationScope. Published by libs/qits-eventstream into the platform Maven repository,
@@ -165,7 +165,7 @@
              qits-platform-maintenance moves it on `maintenance/dependencies` like any other internal
              pin, and it is gated here. Do not hand-edit it to chase a release you just cut — the
              next bump overwrites the edit, and in between it asserts a pairing nobody proved. -->
-        <qits.workspace-daemon-protocol.version>2026.1029.145825</qits.workspace-daemon-protocol.version>
+        <qits.workspace-daemon-protocol.version>2026.1029.203738</qits.workspace-daemon-protocol.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
@@ -186,7 +186,7 @@
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1026.133840</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1030.30851</qits.arch-rules.version>
         <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
              and published no db-core. -->
         <qits.db-core.version>2026.1002.70617</qits.db-core.version>
@@ -233,7 +233,7 @@
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1028.163502</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1029.153204</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1026.32335</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1029.100520</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1029.192805</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1028.235307</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
@@ -262,7 +262,7 @@
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1020.204038</qits.githost-golden-masters.version>
-        <qits.workspaces-golden-masters.version>2026.1028.163502</qits.workspaces-golden-masters.version>
+        <qits.workspaces-golden-masters.version>2026.1029.225748</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1023.5649</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1023.82831</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1026.163551</qits.ci-golden-masters.version>
