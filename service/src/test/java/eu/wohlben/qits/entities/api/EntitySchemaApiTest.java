@@ -268,7 +268,8 @@ class EntitySchemaApiTest {
       String task,
       String siblingTask,
       String ticket,
-      String campaign) {
+      String campaign,
+      String idea) {
 
     static Rows seed(String name) {
       EntityFixtures.Project project = EntityFixtures.project(name);
@@ -287,7 +288,15 @@ class EntitySchemaApiTest {
           task,
           siblingTask,
           EntityFixtures.ticket(project.id()),
-          EntityFixtures.campaign(project.id()));
+          EntityFixtures.campaign(project.id()),
+          given()
+              .contentType(ContentType.JSON)
+              .body(map("project", project.id(), "title", "An idea"))
+              .post("/projects/api/ideas")
+              .then()
+              .statusCode(201)
+              .extract()
+              .path("id"));
     }
 
     String rowOf(Archetype archetype) {
@@ -318,6 +327,8 @@ class EntitySchemaApiTest {
           return archetype == Archetype.TASK ? siblingTask : siblingFeature;
         case "membership":
           return map("parent", parentOf(archetype));
+        case "inspiredBy":
+          return idea;
         default:
           break;
       }
@@ -381,6 +392,11 @@ class EntitySchemaApiTest {
             "type" : "string",
             "pattern" : "\\\\S",
             "description" : "The project the new TICKET goes in: its id or its slug."
+          },
+          "inspiredBy" : {
+            "type" : "string",
+            "pattern" : "\\\\S",
+            "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
           }
         },
         "required" : [ "title", "ticketType", "impetus", "project" ],
@@ -427,6 +443,11 @@ class EntitySchemaApiTest {
               "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
               "pattern" : "^(?=.*\\\\S)(?![^.]*\\\\.[^.]*\\\\.)(?!(?:\\\\S*\\\\s){20})[^\\\\n\\\\r]*$"
             }
+          },
+          "inspiredBy" : {
+            "type" : [ "string", "null" ],
+            "pattern" : "\\\\S",
+            "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
           }
         },
         "required" : [ ],

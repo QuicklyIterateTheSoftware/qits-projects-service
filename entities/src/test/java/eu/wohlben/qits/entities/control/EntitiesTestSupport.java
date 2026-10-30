@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.persistence.DossierPageAssetRepository;
 import eu.wohlben.qits.entities.persistence.DossierPageRepository;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.EntityCommentRepository;
+import eu.wohlben.qits.entities.persistence.IdeaRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.hibernate.orm.PersistenceUnit;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -47,6 +48,7 @@ public abstract class EntitiesTestSupport {
   @Inject DossierPageAssetRepository dossierPageAssetRepository;
   @Inject EntityMembershipRepository entityMembershipRepository;
   @Inject WorkEntityRepository workEntityRepository;
+  @Inject IdeaRepository ideaRepository;
 
   /** For {@code entity_number_sequence}, which has no entity class and so no repository. */
   @Inject
@@ -65,6 +67,8 @@ public abstract class EntitiesTestSupport {
               dossierPageRepository.deleteAll();
               entityMembershipRepository.deleteAll();
               workEntityRepository.deleteAll();
+              // After the work naming them (qits-1387); enabled_by is set null by its own FK.
+              ideaRepository.deleteAll();
               // The allocator's counters go with the rows they numbered. In production a number is
               // NEVER reused, which is exactly why this line is needed here: without it the counter
               // survives the wipe and the next test's first epic is numbered by however many rows

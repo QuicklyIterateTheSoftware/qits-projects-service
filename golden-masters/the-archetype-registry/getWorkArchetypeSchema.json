@@ -44,6 +44,11 @@
       "type": "string",
       "pattern": "\\S",
       "description": "The project the new TICKET goes in: its id or its slug."
+    },
+    "inspiredBy": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
     }
   },
   "required": [

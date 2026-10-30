@@ -1807,6 +1807,148 @@
       ]
     },
     {
+      "name": "a project with ideas",
+      "slug": "a-project-with-ideas",
+      "params": {
+        "archivedIdeaId": "00000000-0000-4000-8000-000000000001",
+        "enabledIdeaId": "00000000-0000-4000-8000-000000000002",
+        "ideaId": "00000000-0000-4000-8000-000000000003",
+        "projectId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "archiveIdea",
+          "method": "POST",
+          "path": "/projects/api/ideas/{enabledIdeaId}/archive",
+          "body": {
+            "reason": "Folded into the cache epic."
+          },
+          "status": 200,
+          "file": "a-project-with-ideas/archiveIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.enabledBy"
+            ],
+            "instants": [
+              "$.archivedAt",
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "createIdea",
+          "method": "POST",
+          "path": "/projects/api/ideas",
+          "body": {
+            "project": "{projectId}",
+            "title": "Faster builds. Fewer waits. Less cost"
+          },
+          "status": 400,
+          "file": "a-project-with-ideas/createIdea.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getIdea",
+          "method": "GET",
+          "path": "/projects/api/ideas/{ideaId}",
+          "status": 200,
+          "file": "a-project-with-ideas/getIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.inspired[*].id",
+              "$.enables[*].id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.inspired[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listIdeas",
+          "method": "GET",
+          "path": "/projects/api/ideas",
+          "query": {
+            "project": "{projectId}"
+          },
+          "status": 200,
+          "file": "a-project-with-ideas/listIdeas.json",
+          "frozen": {
+            "ids": [
+              "$.ideas[*].id",
+              "$.ideas[*].projectId",
+              "$.ideas[*].enabledBy"
+            ],
+            "instants": [
+              "$.ideas[*].createdAt",
+              "$.ideas[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "patchIdea",
+          "method": "PATCH",
+          "path": "/projects/api/ideas/{enabledIdeaId}",
+          "body": {
+            "title": "Share the build cache across runners"
+          },
+          "status": 200,
+          "file": "a-project-with-ideas/patchIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.enabledBy"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "unarchiveIdea",
+          "method": "POST",
+          "path": "/projects/api/ideas/{archivedIdeaId}/unarchive",
+          "status": 200,
+          "file": "a-project-with-ideas/unarchiveIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with no release requests",
       "slug": "a-project-with-no-release-requests",
       "params": {
@@ -1837,6 +1979,30 @@
       },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "createIdea",
+          "method": "POST",
+          "path": "/projects/api/ideas",
+          "body": {
+            "project": "{projectId}",
+            "title": "Faster builds",
+            "description": "Cache the dependencies between runs."
+          },
+          "status": 201,
+          "file": "a-project-with-no-work/createIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "createWork",
           "method": "POST",

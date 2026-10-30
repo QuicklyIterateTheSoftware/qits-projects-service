@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.eventstream.CausationStamp;
 import eu.wohlben.qits.eventstream.CausedRow;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
@@ -439,6 +440,20 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "depends_on_entity_id")
   public String dependsOnEntityId;
+
+  /**
+   * <b>The idea this work was inspired by</b> (qits-1387, epics V33): an {@link Idea} of the same
+   * project, or null. Only an {@link Archetype#EPIC}, a {@link Archetype#TICKET} and a {@link
+   * Archetype#CAMPAIGN} carry one ({@code control/IdeaService#CARRIERS}); it is deliberately <em>not</em>
+   * a registry property, because the registry document's {@code permitted} lists are pinned by
+   * consumers. Every write of it and every status move of a row carrying it recomputes the idea's
+   * status in the same transaction ({@code control/IdeaStatusRecompute}).
+   *
+   * <p>Left out of the audit snapshot while null, so the rows that name no idea snapshot as before.
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Column(name = "inspired_by")
+  public String inspiredByIdeaId;
 
   /**
    * <b>The acceptance criteria</b> (qits-887, qits-934, epics V26): short Markdown statements the
