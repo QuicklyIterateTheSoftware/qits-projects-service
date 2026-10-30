@@ -65,6 +65,13 @@
             ]
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -81,6 +88,13 @@
           {
             "to": "REPORTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -101,6 +115,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -109,6 +130,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -129,6 +157,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -141,6 +176,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -662,6 +704,13 @@
             "kind": "FORWARD"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -677,6 +726,13 @@
           {
             "to": "REPORTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -697,6 +753,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -705,6 +768,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -725,6 +795,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -737,6 +814,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
@@ -977,6 +1061,13 @@
             "kind": "FORWARD"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -995,6 +1086,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -1009,6 +1107,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -1021,6 +1126,13 @@
           {
             "to": "READY_FOR_DEV",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CHILDREN_CLOSED"
+            ]
           },
           {
             "to": "DROPPED",
