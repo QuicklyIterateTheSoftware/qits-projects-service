@@ -20,6 +20,7 @@ import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,8 @@ public class EventWireReflectionTest {
   /** And the sixth, which says a comment was written (qits-1660). */
   @Inject Instance<EntityCommentAnnouncer> shippedCommentAnnouncer;
 
+  @Inject Instance<IdeaEventAnnouncer> shippedIdeaAnnouncer;
+
   /** The typed live listener of qits-system's lease event (epic qits-1481). */
   @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
 
@@ -126,6 +129,10 @@ public class EventWireReflectionTest {
             EntityTransitioned.class,
             EntityTransitioned.Entity.class,
             EntityCommented.class,
+            IdeaCreated.class,
+            IdeaUpdated.class,
+            IdeaArchived.class,
+            IdeaUnarchived.class,
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
@@ -138,7 +145,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR and EntityCommented out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented and the four idea events out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -206,6 +213,17 @@ public class EventWireReflectionTest {
         targets.contains(EntityCommented.class),
         "EntityCommentAnnouncer publishes this (qits-1660); unregistered, an @desk comment never"
             + " wakes the desk");
+    for (Class<?> idea :
+        List.of(IdeaCreated.class, IdeaUpdated.class, IdeaArchived.class, IdeaUnarchived.class)) {
+      assertTrue(
+          targets.contains(idea),
+          "IdeaEventAnnouncer publishes " + idea.getSimpleName() + " (qits-1387)");
+    }
+  }
+
+  @Test
+  public void theIdeaEventAnnouncerShipsAsABean() {
+    assertTrue(!shippedIdeaAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   /**
