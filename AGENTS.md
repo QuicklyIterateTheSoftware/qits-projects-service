@@ -3126,6 +3126,14 @@ go through `vertx-http-proxy` at all** — `proxyUpgrade` does it by hand, becau
 its whole interceptor chain on an upgrade (so the bearer never arrives) and pipes with no
 `writeQueueFull`/`pause`/`drainHandler` at all.
 
+**The proxy admits few callers** (qits-1575). The daemon behind it is the delivery desk's, and the
+owner ruled that agents do not reach it. `ContainerProxyRoute.admit` decides before the tunnel lookup
+and before any byte or upgrade is forwarded. `qits:system`, `qits:admin` and `qits:admin-agent`
+reach any project; `qits:desk-admin` reaches only its token's `project`; anonymous is 401 (also the
+`container-proxy` auth permission); everyone else, `qits:agent` included, is 403.
+`ContainerProxyAuthorizationTest` pins each row. An agent that needs another agent's transcript reads
+it through qits-workspaces, never through this proxy.
+
 **The env contract is the front desk's**, in the table under "Front desks": a desk dials home through
 the edge (`wss://projects.qits.<d>/…`) with its own `qits_tok_`, and git reads go through the image's
 credential helper against `githost.qits.<d>` (`GIT_CONFIG_GLOBAL`, `QITS_GIT_AUTH_HOST`). It grants
