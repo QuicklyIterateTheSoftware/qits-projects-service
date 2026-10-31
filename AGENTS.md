@@ -1085,6 +1085,29 @@ neither the request nor the name says anything — a guessed kind is the one thi
 could correct. An explicit archetype is obeyed unchanged, which is what keeps the SPA's create form
 working.
 
+## Archiving a repository (qits-1784)
+
+`POST /projects/api/repositories/{repoId}/archive` and `…/unarchive` (`archiveRepository`,
+`unarchiveRepository`; `qits:admin`, `qits:admin-agent`, `qits:desk-admin`, and `qits:desk` bound
+to its project by `requireDeskProject`; `qits:agent` 403). The archived state is
+`repository.archived: true` in the repository's own `.config/qits/repository.yml`, which
+qits-maintenance reads (no dependency bumps unless `maintenance.yml` sets `dependency-bumps: true`).
+**The action never pushes to main**: `control/RepositoryArchive` reads the file at main
+(`ReleaseGitHost.tree` + `file`), answers **200** `{"outcome":"unchanged"}` and opens nothing when
+main already says it, otherwise edits the text (`control/RepositoryArchivedEdit`: one line replaced,
+inserted or removed, comments kept, re-parsed with SnakeYAML and refused **422**
+`ARCHIVE_EDIT_REFUSED` when anything but `repository.archived` would change or the shape — a
+flow-style `repository: {…}` — cannot be edited safely), creates `archive/<name>` (`unarchive/<name>`)
+at main through the merge door (`BackingBranchMerger`, the fast-forward that creates an absent
+target) or brings an existing one up to date, commits `chore(platform): archive <name>` onto its tip
+(`ReleaseGitHost.commit`, `expectedOld` the tip; nothing when the branch already carries the edit),
+and asks for the branch through `ReleaseRequests.ask` — the create door's call, so it creates or
+joins the open request. **202** `RepositoryArchiveDto` `{outcome: requested, archived, branch,
+commit, releaseRequestId, qualifiedId, detail}`. A conflicting branch or a moved ref is a 409, a
+repository with no name a 409, the git host 502 (503 with no address or bearer). No new githost
+interaction: every call is one the consumer pact already records. `RepositoryArchivedEditTest`,
+`RepositoryArchiveTest`.
+
 ## Project slugs
 
 `Project.slug` is **unique** (V6) and immutable (`@Column(updatable = false)`). Each project has its
