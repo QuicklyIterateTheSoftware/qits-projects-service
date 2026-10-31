@@ -182,6 +182,85 @@ public class BranchDeliveryChangedContractTest {
     assertFalse(payload.has("foldSha"), "nothing was ever folded");
   }
 
+  /**
+   * qits-1796: the tag's publish run went red after the release. FAILED with failure PUBLISH, the
+   * red run and the tag; the request stays RELEASED, so the step's everywhere is JOINED's rank.
+   */
+  @Test
+  public void aRedPublishAfterTheTagNamesItsRunAndItsVersion() throws Exception {
+    JsonNode payload =
+        payload(
+            BranchDeliveryChangedAnnouncer.event(
+                new BranchDeliveryStep(
+                    "p-1",
+                    "r-1",
+                    "qits-ci-daemon",
+                    "ticket/qits-1615",
+                    "rr-27",
+                    "qits-ci-daemon-rr-27",
+                    "def456",
+                    null,
+                    "FAILED",
+                    null,
+                    null,
+                    "PUBLISH",
+                    "274fa800",
+                    "2026.1031.194300",
+                    "JOINED",
+                    AT)));
+
+    assertEquals(
+        List.of(
+            "branch",
+            "changedAt",
+            "everywhere",
+            "failure",
+            "foldSha",
+            "projectId",
+            "qualifiedId",
+            "repoId",
+            "repository",
+            "requestId",
+            "runId",
+            "step",
+            "version"),
+        sortedFieldNames(payload));
+    assertEquals("FAILED", payload.get("step").asText());
+    assertEquals("PUBLISH", payload.get("failure").asText());
+    assertEquals("274fa800", payload.get("runId").asText());
+    assertEquals("2026.1031.194300", payload.get("version").asText());
+  }
+
+  /** qits-1796: the version's deployment failed or rolled back: FAILED, DEPLOYMENT, no run. */
+  @Test
+  public void aFailedDeploymentAfterTheTagNamesNoRun() throws Exception {
+    JsonNode payload =
+        payload(
+            BranchDeliveryChangedAnnouncer.event(
+                new BranchDeliveryStep(
+                    "p-1",
+                    "r-1",
+                    "qits-ci-service",
+                    "ticket/qits-1615",
+                    "rr-40",
+                    "qits-ci-service-rr-40",
+                    "def456",
+                    null,
+                    "FAILED",
+                    null,
+                    null,
+                    "DEPLOYMENT",
+                    null,
+                    "2026.1031.194300",
+                    "JOINED",
+                    AT)));
+
+    assertEquals("FAILED", payload.get("step").asText());
+    assertEquals("DEPLOYMENT", payload.get("failure").asText());
+    assertFalse(payload.has("runId"), "a deployment is no run");
+    assertEquals("2026.1031.194300", payload.get("version").asText());
+  }
+
   /** A release carries its tag; a request with no fold yet carries no foldSha. */
   @Test
   public void aReleaseCarriesItsVersion() throws Exception {

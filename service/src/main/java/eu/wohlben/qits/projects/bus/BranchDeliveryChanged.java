@@ -41,10 +41,14 @@ import java.util.UUID;
  *       WITHDRAWN}, {@code RELEASED} or {@code LIVE}.
  *   <li>{@code previousRequestId}, {@code previousQualifiedId} — {@code MOVED} only: the request
  *       the branch left.
- *   <li>{@code failure} — {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE} or
- *       {@code FOLD} (a source ref missing on the git host, qits-1725); {@code runId} — the red CI
- *       run or the newest automation run, absent for {@code RELEASE} and {@code FOLD}.
- *   <li>{@code version} — {@code RELEASED} and {@code LIVE}: the tag.
+ *   <li>{@code failure} — {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE},
+ *       {@code FOLD} (a source ref missing on the git host, qits-1725), or after the tag
+ *       (qits-1796) {@code PUBLISH} (the tag's publish run went red) or {@code DEPLOYMENT} (its
+ *       deployment failed or rolled back); {@code runId} — the red CI run, the newest automation
+ *       run or the red publish run, absent for {@code RELEASE}, {@code FOLD} and {@code
+ *       DEPLOYMENT}. A post-release FAILED goes back to {@code RELEASED} when its gate is retried.
+ *   <li>{@code version} — {@code RELEASED} and {@code LIVE}, and {@code FAILED} with {@code
+ *       PUBLISH} or {@code DEPLOYMENT}: the tag.
  *   <li>{@code everywhere} — the branch's least advanced step across the repositories of the
  *       project it still ships to, after this one: {@code PUSHED}, {@code JOINED}, {@code
  *       RELEASED} or {@code LIVE}. The agent configuration (qits-1736) and a WITHDRAWN row

@@ -26,11 +26,12 @@ import java.util.List;
  *     WITHDRAWN}, {@code RELEASED} or {@code LIVE} — never {@code PUSHED}, which is ledger-only
  * @param previousRequestId {@code MOVED} only: the request the branch left
  * @param previousQualifiedId {@code MOVED} only: that request's qualified id
- * @param failure {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE} or {@code
- *     FOLD}
- * @param runId {@code FAILED} only: the red CI run, or the newest automation run; null for {@code
- *     RELEASE} and {@code FOLD}
- * @param version {@code RELEASED} and {@code LIVE}: the tag
+ * @param failure {@code FAILED} only: {@code CI}, {@code AUTOMATION}, {@code RELEASE}, {@code
+ *     FOLD}, or after the tag (qits-1796) {@code PUBLISH} or {@code DEPLOYMENT}
+ * @param runId {@code FAILED} only: the red CI run, the newest automation run, or the tag's red
+ *     publish run ({@code PUBLISH}); null for {@code RELEASE}, {@code FOLD} and {@code DEPLOYMENT}
+ * @param version {@code RELEASED} and {@code LIVE}, and {@code FAILED} with {@code PUBLISH} or
+ *     {@code DEPLOYMENT} (qits-1796): the tag
  * @param everywhere the branch's least advanced step across the repositories of the project it still
  *     ships to, after this one: {@code PUSHED}, {@code JOINED}, {@code RELEASED} or {@code LIVE};
  *     never counting the agent configuration (qits-1736) or a WITHDRAWN row (qits-1737), and null

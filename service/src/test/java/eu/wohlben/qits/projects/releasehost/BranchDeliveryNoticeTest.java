@@ -86,6 +86,8 @@ public class BranchDeliveryNoticeTest {
 
   @Inject BranchDeliveryNotices notices;
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
+
   private String projectId;
   private String otherProjectId;
 
@@ -564,6 +566,39 @@ public class BranchDeliveryNoticeTest {
 
     notices.deliverOwed();
     assertEquals(1, turns.calls().size(), "a settled move is not said again");
+  }
+
+  /**
+   * qits-1796: a red publish run and a failed deployment after the tag fail the branch in the
+   * ledger and tell its owner nothing: neither is a build of the branch.
+   */
+  @Test
+  public void aFailedGateAfterTheTagFailsTheBranchAndTellsNobody() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    activeBuilds.answer(Optional.of(0));
+    String tag = stageRelease();
+    String id = create(a, PERSON);
+    verdict("BuildSuccessful", mergedShaOf(id), run(), null);
+    awaitState(id, "RELEASED");
+
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "BuildFailed",
+            Instant.now(),
+            "{\"branch\":\"" + tag + "\",\"commitSha\":\""
+                + RecordingBackingBranchMerger.freshSha() + "\",\"repoId\":\"" + repoId
+                + "\",\"runId\":\"" + run() + "\",\"outcome\":\"FAILED\"}",
+            null,
+            null,
+            null));
+    assertEquals("FAILED", ledgerRow(a).step, "the red publish failed the branch");
+    assertTrue(finalization.onDeploymentFailed("notice", tag, "ROLLED_BACK", null));
+
+    notices.deliverOwed();
+    assertEquals(List.of(), recordedOf(id), "no notice is owed for PUBLISH or DEPLOYMENT");
+    assertEquals(List.of(), turns.calls());
   }
 
   // ---- helpers ---------------------------------------------------------------------------------

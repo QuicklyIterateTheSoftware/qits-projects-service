@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.bus;
 import eu.wohlben.qits.eventstream.QitsDurableEventListener;
 import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventFrame;
+import eu.wohlben.qits.projects.control.ReleaseFinalization;
 import eu.wohlben.qits.projects.control.ReleasePipelineRuns;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -36,6 +37,13 @@ import org.jboss.logging.Logger;
  * on the service datasource, never this claim's ({@code BuildStatusListener}'s arrangement), and a
  * redelivered frame finds the request PENDING and does nothing. Every other frame — a terminal
  * one, a publish-phase one — is mirrored and nothing more; the verdict listener still decides.
+ *
+ * <p><b>And it moves the branch ledger, in exactly one more (qits-1796).</b> A {@code
+ * RELEASE}-phase frame in {@code QUEUED} or {@code RUNNING} — a publish run of a tag, whose {@code
+ * branch} is the version — is handed to {@code ReleaseFinalization.onPublishRunStarted} after the
+ * mirror write. Where that tag's publish gate stands FAILED this is its retry, and the branches the
+ * red run failed go back to RELEASED, so the retry's verdict is news to a {@code --until live}
+ * wait. No request state moves; a first run finds the gate PENDING and changes nothing.
  *
  * <p><b>{@link #CONSUMER_ID} is a NEW storage key and {@code BuildStatusListener}'s is untouched.</b>
  * A consumer id names every {@code consumed_event} row and the watermark, so the two consumptions
@@ -125,6 +133,8 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
 
   @Inject ReleaseRequests releaseRequests;
 
+  @Inject ReleaseFinalization finalization;
+
   @Override
   public String consumerId() {
     return CONSUMER_ID;
@@ -170,6 +180,12 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
       // A run of a request's own was queued or started: a CI rejection it is building the fold of
       // again is reopened (qits-1731). After the mirror write, which it reads — see the javadoc.
       releaseRequests.onOwnRunStarted(run.repoId(), run.runId());
+    } else if (ReleasePipelineRuns.PHASE_RELEASE.equals(run.phase())
+        && ReleasePipelineRuns.BUILDING.contains(run.status())
+        && !isBlank(run.branch())) {
+      // A publish run of a tag was queued or started: a red publish gate is being retried, so its
+      // branches go back from FAILED to RELEASED (qits-1796). Its own transaction; never throws.
+      finalization.onPublishRunStarted(run.repoId(), run.branch());
     }
   }
 

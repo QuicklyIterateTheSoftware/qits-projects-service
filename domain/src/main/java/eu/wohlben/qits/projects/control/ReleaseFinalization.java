@@ -150,6 +150,9 @@ public class ReleaseFinalization {
 
   @Inject ReleaseRequestRepository requests;
 
+  /** The branch-delivery ledger: a failed gate after the tag fails its branches (qits-1796). */
+  @Inject BranchDeliveries deliveries;
+
   /**
    * How long a PENDING publish gate is ordinary before it is worth saying out loud — see {@link
    * PublishGatePatience}. It changes who is told and never whether a gate passes.
@@ -212,6 +215,13 @@ public class ReleaseFinalization {
                                     row.tagName, row.repoId, row.deploymentFailedDetail);
                                 row.deploymentFailedAt = null;
                                 row.deploymentFailedDetail = null;
+                                // A redeploy no rerun of ours asked for still puts the
+                                // branches back to RELEASED, for the finalization to make LIVE
+                                // (qits-1796).
+                                if (row.publishState
+                                    != ReleasedTagPendingMerge.PublishState.FAILED) {
+                                  retried(row);
+                                }
                               }
                               return true;
                             })
@@ -256,7 +266,13 @@ public class ReleaseFinalization {
     return recordDeploymentFailure(owed, status, detail);
   }
 
-  /** Writes the failure onto {@code owed}'s row, if it is still waiting to go live. */
+  /**
+   * Writes the failure onto {@code owed}'s row, if it is still waiting to go live — and, in the
+   * same transaction, FAILED with failure {@code DEPLOYMENT} onto the branches its request released
+   * (qits-1796). The ledger step is taken even when the sentence is the one already recorded: a
+   * DEPLOY rerun put the branches back to RELEASED ({@link #onDeploymentRerun}) without clearing
+   * the record, so the same rollback again is a new position for them and no news for the row.
+   */
   private boolean recordDeploymentFailure(Owed owed, String status, String detail) {
     String sentence = ReleasedTagPendingMerge.deploymentFailure(status, detail);
     boolean recorded =
@@ -269,10 +285,17 @@ public class ReleaseFinalization {
                             row ->
                                 row.mergedAt == null
                                     && row.abandonedAt == null
-                                    && row.deploymentActiveAt == null
-                                    && !sentence.equals(row.deploymentFailedDetail))
+                                    && row.deploymentActiveAt == null)
                         .map(
                             row -> {
+                              releasedRequestOf(row)
+                                  .ifPresent(
+                                      request ->
+                                          deliveries.gateFailed(
+                                              request, BranchDeliveries.Failure.DEPLOYMENT, null));
+                              if (sentence.equals(row.deploymentFailedDetail)) {
+                                return false;
+                              }
                               row.deploymentFailedAt = Instant.now();
                               row.deploymentFailedDetail = sentence;
                               return true;
@@ -369,7 +392,9 @@ public class ReleaseFinalization {
    * of the ticket this method belongs to. The tag is cut; it cannot be un-cut. What a failure means
    * is that a gate on an <em>open</em> request went red — the request keeps saying so, the run id is
    * on the row for {@code qits ci retry} to address, and the retry's green verdict arrives here and
-   * finalizes. Nothing is rolled back and nothing is rejected.
+   * finalizes. Nothing is rolled back and nothing is rejected. The branches the tag released do
+   * move (qits-1796): FAILED with failure {@code PUBLISH} and this run, in the verdict's
+   * transaction, and back to RELEASED when the retry is queued ({@link #onPublishRunStarted}).
    *
    * <p><b>What selects this arm is the branch</b>, naming a released version of the same repository
    * with a finalization still owed. A run for anything else — a QA run on {@code release/<id>}, a
@@ -412,6 +437,19 @@ public class ReleaseFinalization {
                                       : ReleasedTagPendingMerge.PublishState.FAILED;
                               row.publishDetail = said;
                               row.publishRunId = runId;
+                              if (!green) {
+                                // The branches the tag released failed with it (qits-1796), in
+                                // this transaction: the ledger announces after the commit.
+                                releasedRequestOf(row)
+                                    .ifPresent(
+                                        request ->
+                                            deliveries.gateFailed(
+                                                request, BranchDeliveries.Failure.PUBLISH, runId));
+                              } else if (row.deploymentFailedAt == null) {
+                                // A green run whose start was never heard: the branches a red one
+                                // failed are RELEASED again, for the finalization to make LIVE.
+                                retried(row);
+                              }
                               return owedOf(row);
                             })
                         .orElse(null));
@@ -431,6 +469,95 @@ public class ReleaseFinalization {
     LOG.warnf(
         "The publish gate FAILED for %s of %s and the release request stays open: %s",
         version, repoId, said);
+  }
+
+  /**
+   * <b>A publish run of {@code version} was queued or started</b> (qits-1796): qits-ci's {@code
+   * BuildStatusChanged} of phase {@code RELEASE} in {@code QUEUED} or {@code RUNNING}, whose branch
+   * is the version. Where that version's tag is still owed {@code main} and its publish gate stands
+   * FAILED — this is the retry — the branches its request released are put back from FAILED to
+   * RELEASED ({@link BranchDeliveries#gateRetried}), so the retry's verdict is news to a {@code
+   * --until live} wait: LIVE through the finalization, or FAILED again. The first run of a tag
+   * finds the gate PENDING and moves nothing, and neither does a retry while the deployment is
+   * recorded failed too: the branches are still failed by that gate.
+   *
+   * <p>Its own transaction; it never throws — the caller is a durable consumption.
+   */
+  public void onPublishRunStarted(String repoId, String version) {
+    if (repoId == null || repoId.isBlank() || version == null || version.isBlank()) {
+      return;
+    }
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () ->
+                  pendingTags
+                      .find(repoId, version.trim())
+                      .filter(
+                          row ->
+                              row.mergedAt == null
+                                  && row.abandonedAt == null
+                                  && row.publishState
+                                      == ReleasedTagPendingMerge.PublishState.FAILED
+                                  && row.deploymentFailedAt == null)
+                      .ifPresent(this::retried));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not put the branches of %s of %s back to RELEASED on its retry",
+          version,
+          repoId);
+    }
+  }
+
+  /**
+   * <b>The DEPLOY phase of {@code requestId} was asked again and the far side accepted it</b>
+   * (qits-1796): {@code ReleaseRequests.rerunPhase}. Where the request is RELEASED and its tag
+   * still owed {@code main}, the branches a failed deployment failed go back to RELEASED ({@link
+   * BranchDeliveries#gateRetried}) — unless its publish gate stands FAILED, which still fails
+   * them. Its own transaction; it never throws, because the rerun has already been accepted.
+   */
+  public void onDeploymentRerun(String requestId) {
+    if (requestId == null || requestId.isBlank()) {
+      return;
+    }
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () ->
+                  pendingTags
+                      .findByRequest(requestId)
+                      .filter(
+                          row ->
+                              row.mergedAt == null
+                                  && row.abandonedAt == null
+                                  && row.publishState
+                                      != ReleasedTagPendingMerge.PublishState.FAILED)
+                      .ifPresent(this::retried));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not put the branches of release request %s back to RELEASED on its redeploy",
+          requestId);
+    }
+  }
+
+  /** A gate of {@code row}'s tag is retried: its request's FAILED branches are RELEASED again. */
+  private void retried(ReleasedTagPendingMerge row) {
+    releasedRequestOf(row).ifPresent(request -> deliveries.gateRetried(request, row.tagName));
+  }
+
+  /**
+   * The request that released {@code row}, while it is still RELEASED — the only state a gate after
+   * the tag can fail or be retried in (qits-1796).
+   */
+  private Optional<ReleaseRequest> releasedRequestOf(ReleasedTagPendingMerge row) {
+    if (row.releaseRequestId == null) {
+      return Optional.empty();
+    }
+    return requests
+        .findByIdOptional(row.releaseRequestId)
+        .filter(request -> request.state == ReleaseRequest.State.RELEASED);
   }
 
   /**

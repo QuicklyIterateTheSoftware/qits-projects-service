@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,6 +14,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.bus.DeploymentActiveListener;
+import eu.wohlben.qits.projects.bus.ReleasePipelineRunListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
@@ -90,6 +92,12 @@ public class BranchDeliveryTest {
 
   @Inject RecordingBranchDeliveryAnnouncer announced;
 
+  @Inject ReleasePipelineRunListener pipelineRunListener;
+
+  @Inject FakePublishRuns publishRuns;
+
+  @Inject eu.wohlben.qits.projects.deploymenthost.RecordingDeploymentRedeploys redeploys;
+
   private String projectId;
   private String repoA;
   private String repoB;
@@ -107,6 +115,8 @@ public class BranchDeliveryTest {
     automations.reset();
     deploymentRequests.reset();
     announced.reset();
+    publishRuns.reset();
+    redeploys.reset();
     requestIds.clear();
     // Held: nothing settles a request mid-test unless a test lets it.
     activeBuilds.answer(Optional.of(1));
@@ -160,6 +170,8 @@ public class BranchDeliveryTest {
     requestIds.forEach(automationLedger::forget);
     automations.reset();
     deploymentRequests.reset();
+    publishRuns.reset();
+    redeploys.reset();
   }
 
   // ---- joining ---------------------------------------------------------------------------------
@@ -607,8 +619,13 @@ public class BranchDeliveryTest {
     assertEquals("OBSOLETE", stateOf(repoA, earlier), "the premise: superseded");
     String successorQid = qualifiedIdOf(repoA, successor);
     assertEquals(
-        List.of("JOINED@" + earlierQid, "RELEASED@" + earlierQid, "MOVED@" + successorQid),
-        announced.movesOf(branch));
+        List.of(
+            "JOINED@" + earlierQid,
+            "RELEASED@" + earlierQid,
+            "FAILED@" + earlierQid,
+            "MOVED@" + successorQid),
+        announced.movesOf(branch),
+        "the red publish failed the branch (qits-1796) before the successor carried it");
     BranchDeliveryStep moved = last(branch);
     assertEquals(earlier, moved.previousRequestId());
     assertEquals(successor, moved.requestId());
@@ -699,6 +716,164 @@ public class BranchDeliveryTest {
             door.getString("deliveries.find { it.repoId == '" + agentConfig + "' }.step"),
             door.getString("deliveries.find { it.repoId == '" + repoA + "' }.step")),
         "the agent config's row is still listed");
+  }
+
+  // ---- after the tag (qits-1796) ---------------------------------------------------------------
+
+  /**
+   * qits-1796: a red publish run of the tag fails the branch — FAILED, failure PUBLISH, the run —
+   * though the request stays RELEASED; the retry's start puts it back to RELEASED once (QUEUED then
+   * RUNNING is one position), a second red is announced again, and a green retry ends at LIVE.
+   */
+  @Test
+  public void aRedPublishFailsTheBranchAndEachRetryReArmsItUntilAGreenOneIsLive() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch, stagePublishedRelease());
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+
+    String red = run("publish-red");
+    publishVerdict("BuildFailed", repoA, tag, red);
+
+    BranchDeliveryStep failed = awaitLastStep(branch, "FAILED");
+    assertEquals("PUBLISH", failed.failure());
+    assertEquals(red, failed.runId());
+    assertEquals(tag, failed.version());
+    assertEquals("JOINED", failed.everywhere(), "a failed branch ranks as on a request");
+    assertEquals("RELEASED", stateOf(repoA, id), "the tag is cut: the request stays RELEASED");
+    assertEquals("FAILED", ledgerStep(repoA, branch));
+
+    String retry = run("publish-retry");
+    publishRunTransition(repoA, tag, retry, "QUEUED");
+    publishRunTransition(repoA, tag, retry, "RUNNING");
+
+    BranchDeliveryStep rearmed = awaitLastStep(branch, "RELEASED");
+    assertEquals(tag, rearmed.version());
+    assertEquals(
+        List.of("JOINED@" + qid, "RELEASED@" + qid, "FAILED@" + qid, "RELEASED@" + qid),
+        announced.movesOf(branch),
+        "QUEUED and RUNNING of one retry are one position");
+
+    publishVerdict("BuildFailed", repoA, tag, retry);
+    BranchDeliveryStep again = awaitLastStep(branch, "FAILED");
+    assertEquals(retry, again.runId(), "the second red is news and names its own run");
+
+    String green = run("publish-green");
+    publishRunTransition(repoA, tag, green, "QUEUED");
+    awaitLastStep(branch, "RELEASED");
+    publishVerdict("BuildSuccessful", repoA, tag, green);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+
+    awaitMoves(
+        branch,
+        List.of(
+            "JOINED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "LIVE@" + qid));
+    assertEquals(tag, last(branch).version());
+    assertEquals("LIVE", last(branch).everywhere());
+  }
+
+  /**
+   * qits-1796: a failed deployment fails the branch — FAILED, failure DEPLOYMENT, no run — and an
+   * accepted DEPLOY rerun of the RELEASED request puts it back to RELEASED, so the same rollback
+   * again is announced again; the redeploy going live ends at LIVE.
+   */
+  @Test
+  public void aFailedDeploymentFailsTheBranchAndAnAcceptedRedeployReArmsIt() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    gitHost.tree(
+        "refs/heads/main",
+        Map.of(
+            RecordingReleaseGitHost.RELEASE_CONFIG,
+            RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
+            ".config/qits/deployments.yml",
+            "resources: []\n"));
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+
+    assertTrue(finalization.onDeploymentFailed("delivery", tag, "ROLLED_BACK", "probe failed"));
+
+    BranchDeliveryStep failed = awaitLastStep(branch, "FAILED");
+    assertEquals("DEPLOYMENT", failed.failure());
+    assertNull(failed.runId(), "a deployment is no run");
+    assertEquals(tag, failed.version());
+    assertEquals("RELEASED", stateOf(repoA, id));
+
+    given()
+        .contentType(ContentType.JSON)
+        .post(base(repoA) + "/" + id + "/pipeline/DEPLOY/rerun")
+        .then()
+        .statusCode(200);
+    assertEquals(1, redeploys.asks().size(), "the far side accepted it");
+
+    BranchDeliveryStep rearmed = awaitLastStep(branch, "RELEASED");
+    assertEquals(tag, rearmed.version());
+
+    assertFalse(
+        finalization.onDeploymentFailed("delivery", tag, "ROLLED_BACK", "probe failed"),
+        "the row already says so");
+    awaitLastStep(branch, "FAILED");
+    assertEquals(
+        List.of(
+            "JOINED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid),
+        announced.movesOf(branch),
+        "the same rollback after a redeploy is a new position for the branch");
+
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitLastStep(branch, "LIVE");
+    assertEquals(
+        List.of(
+            "JOINED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "LIVE@" + qid),
+        announced.movesOf(branch),
+        "a redeploy that went live re-arms the branch, and the finalization makes it LIVE");
+  }
+
+  /**
+   * qits-1796: only an owed tag moves a branch. A red verdict naming no released version, a
+   * publish run started for an unknown one, and the first publish run of a tag whose gate is still
+   * PENDING write no step; neither does a rerun of a phase on an unreleased request.
+   */
+  @Test
+  public void aVerdictOrARunStartForNoOwedTagWritesNoStep() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch, stagePublishedRelease());
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+
+    publishRunTransition(repoA, tag, run("first"), "QUEUED");
+    publishVerdict("BuildFailed", repoA, "2026.0101.1", run("elsewhere"));
+    publishVerdict("BuildFailed", repoB, tag, run("other-repo"));
+    publishRunTransition(repoA, "2026.0101.1", run("elsewhere"), "RUNNING");
+    finalization.onPublishVerdict(repoA, branch, run("a-branch"), false);
+    pause(300);
+
+    assertEquals(List.of("JOINED@" + qid, "RELEASED@" + qid), announced.movesOf(branch));
+    assertEquals("RELEASED", ledgerStep(repoA, branch));
   }
 
   // ---- helpers ---------------------------------------------------------------------------------
@@ -806,6 +981,66 @@ public class BranchDeliveryTest {
     verdict("BuildSuccessful", repoId, mergedShaOf(repoId, id), run("green"), null);
     awaitState(repoId, id, "RELEASED");
     return tag;
+  }
+
+  /** A release of {@code branch} in {@code repoId} under the staged {@code tag}. */
+  private String releaseOf(String repoId, String branch, String tag) {
+    String id = create(repoId, branch);
+    verdict("BuildSuccessful", repoId, mergedShaOf(repoId, id), run("green"), null);
+    awaitState(repoId, id, "RELEASED");
+    return tag;
+  }
+
+  /**
+   * The next release's version, whose tree declares a release pipeline qits-ci runs and no
+   * deployment: the publish gate alone stands between its tag and main.
+   */
+  private String stagePublishedRelease() {
+    String tag = "2026.1031." + (100000 + (int) (Math.random() * 800000));
+    executor.answer(ReleaseExecutor.Outcome.released(tag, RecordingBackingBranchMerger.freshSha()));
+    gitHost.tree(
+        "refs/tags/" + tag,
+        Map.of(
+            "pom.xml",
+            "irrelevant",
+            RecordingReleaseGitHost.RELEASE_CONFIG,
+            RecordingReleaseGitHost.GATING_RELEASE_CONFIG));
+    publishRuns.answer(Optional.of(true));
+    return tag;
+  }
+
+  /** A publish run's verdict: the branch is the version. */
+  private void publishVerdict(String name, String repoId, String version, String runId) {
+    buildListener.onFrame(
+        frame(
+            name,
+            "{\"branch\":\""
+                + version
+                + "\",\"commitSha\":\""
+                + RecordingBackingBranchMerger.freshSha()
+                + "\",\"repoId\":\""
+                + repoId
+                + "\",\"runId\":\""
+                + runId
+                + "\""
+                + ("BuildFailed".equals(name) ? ",\"outcome\":\"FAILED\"" : "")
+                + "}"));
+  }
+
+  /** qits-ci's {@code BuildStatusChanged} for a publish run of {@code version}. */
+  private void publishRunTransition(String repoId, String version, String runId, String status) {
+    pipelineRunListener.onFrame(
+        frame(
+            "BuildStatusChanged",
+            "{\"branch\":\""
+                + version
+                + "\",\"phase\":\"RELEASE\",\"repoId\":\""
+                + repoId
+                + "\",\"runId\":\""
+                + runId
+                + "\",\"status\":\""
+                + status
+                + "\"}"));
   }
 
   /** The next release's version, whose tree declares a deployment and no release pipeline. */

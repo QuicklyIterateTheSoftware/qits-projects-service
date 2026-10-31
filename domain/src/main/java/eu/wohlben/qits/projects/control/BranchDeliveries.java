@@ -71,6 +71,15 @@ import org.jboss.logging.Logger;
  * JOINED then FAILED again at the same fold — two steps where there used to be none — while its
  * agent is told once, the notice's key being per fold ({@link BranchDeliveryNotices}).
  *
+ * <p><b>A gate after the tag fails a branch too</b> (qits-1796). The request stays RELEASED when
+ * its tag's publish run goes red or its deployment fails — the tag cannot be un-cut — so nothing
+ * above ever moved the row, and it read RELEASED until somebody retried: a {@code --until live}
+ * wait neither fired nor failed. {@code ReleaseFinalization} now writes FAILED ({@link
+ * Failure#PUBLISH} or {@link Failure#DEPLOYMENT}) over the request's RELEASED rows through {@link
+ * #gateFailed}, and {@link #gateRetried} puts them back to RELEASED when the gate is retried — a
+ * new publish run queued, a DEPLOY rerun accepted — so a second red verdict is a new position and
+ * announced, and a green one ends at LIVE through the finalization as before.
+ *
  * <p>After the row is written, in the same transaction, the branch's rows in every repository of
  * the project are ranked ({@link Step#rank}) and the least advanced is the step's {@code
  * everywhere}: a branch is LIVE everywhere only when every repository it was pushed to has it live.
@@ -125,7 +134,10 @@ public class BranchDeliveries {
   /** The fallback default branch, for a repository row that names none. */
   private static final String DEFAULT_MAIN = "main";
 
-  /** Why a fold FAILED, as {@code BranchDeliveryChanged.failure} spells it. */
+  /**
+   * Why a fold FAILED — or, after the tag, a post-release gate (qits-1796) — as {@code
+   * BranchDeliveryChanged.failure} spells it.
+   */
   public enum Failure {
     /** The request's own CI run at the fold finished red. */
     CI,
@@ -138,7 +150,17 @@ public class BranchDeliveries {
      * (qits-1725): the fold's {@code MISSING_SOURCE}, which REJECTS the request. No run; the step's
      * fold attempt is {@code missing:<ref>}.
      */
-    FOLD
+    FOLD,
+    /**
+     * After the tag (qits-1796): the tag's own RELEASE-phase publish run finished red. The run is
+     * that run; the request stays RELEASED, and a retry of the run puts the row back to RELEASED.
+     */
+    PUBLISH,
+    /**
+     * After the tag (qits-1796): the version's deployment failed or rolled back without going
+     * live. No run; a DEPLOY rerun puts the row back to RELEASED.
+     */
+    DEPLOYMENT
   }
 
   /** Set while {@link #handingOn} runs: an add there is a MOVED its caller writes, not a JOINED. */
@@ -318,30 +340,100 @@ public class BranchDeliveries {
   public void live(ReleaseRequest row) {
     try {
       for (BranchDeliveryRepository.Released released : ledger.releasedBy(row.id)) {
-        write(
-            new BranchDeliveryStep(
-                released.projectId(),
-                released.repoId(),
-                released.repoName(),
-                released.branch(),
-                row.id,
-                row.qualifiedId,
-                row.mergedSha,
-                null,
-                Step.LIVE.name(),
-                null,
-                null,
-                null,
-                null,
-                released.version() != null ? released.version() : row.version,
-                null,
-                Instant.now()),
-            false,
-            null);
+        stepReleased(row, released, Step.LIVE, null, null, null);
       }
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not record the branches of release request %s as LIVE", row.qualifiedId);
     }
+  }
+
+  /**
+   * <b>FAILED after the tag</b> (qits-1796): a post-release gate of the RELEASED {@code row} went
+   * red — {@link Failure#PUBLISH}, its tag's publish run {@code runId}, or {@link
+   * Failure#DEPLOYMENT}, with no run. Every ledger row it RELEASED and no later position has
+   * overwritten takes FAILED at the tag's version, so {@code qits wait branch --until live} fails
+   * fast instead of reading RELEASED for good. A branch pushed again since and carried by another
+   * request is that request's, and is left alone — which is why this walks the ledger rather than
+   * the request's sources, as {@link #failed} does. A row already FAILED holds the position.
+   */
+  public void gateFailed(ReleaseRequest row, Failure failure, String runId) {
+    if (row == null || row.id == null || failure == null) {
+      return;
+    }
+    try {
+      for (BranchDeliveryRepository.Released released : ledger.releasedBy(row.id)) {
+        stepReleased(row, released, Step.FAILED, failure.name(), runId, null);
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not record the branches of release request %s as FAILED (%s)",
+          row.qualifiedId,
+          failure);
+    }
+  }
+
+  /**
+   * <b>RELEASED again</b> (qits-1796): a failed post-release gate of the RELEASED {@code row} is
+   * being retried — a new publish run of the tag was queued, or its DEPLOY phase was rerun — so
+   * every ledger row still naming it at FAILED is back at RELEASED, at {@code version}: written,
+   * heard and announced like any step, and the next verdict (LIVE, or FAILED again) is a new
+   * position. {@link #resumed}'s counterpart after the tag. The ledger keeps no failure column, so
+   * the caller checks the request is RELEASED: a FAILED row naming a RELEASED request can only be a
+   * post-release one.
+   */
+  public void gateRetried(ReleaseRequest row, String version) {
+    if (row == null || row.id == null) {
+      return;
+    }
+    try {
+      for (BranchDeliveryRepository.Released failed : ledger.failedBy(row.id)) {
+        stepReleased(
+            row,
+            failed,
+            Step.RELEASED,
+            null,
+            null,
+            version != null ? version : failed.version());
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "Could not record the branches of release request %s as RELEASED", row.qualifiedId);
+    }
+  }
+
+  /**
+   * One step of a ledger row {@code row} already holds a position for — the walks after the tag.
+   * The version is {@code version}, else the row's own, else the request's.
+   */
+  private void stepReleased(
+      ReleaseRequest row,
+      BranchDeliveryRepository.Released held,
+      Step step,
+      String failure,
+      String runId,
+      String version) {
+    String tag = version != null ? version : held.version() != null ? held.version() : row.version;
+    write(
+        new BranchDeliveryStep(
+            held.projectId(),
+            held.repoId(),
+            held.repoName(),
+            held.branch(),
+            row.id,
+            row.qualifiedId,
+            row.mergedSha,
+            null,
+            step.name(),
+            null,
+            null,
+            failure,
+            runId,
+            tag,
+            null,
+            Instant.now()),
+        false,
+        null);
   }
 
   /**

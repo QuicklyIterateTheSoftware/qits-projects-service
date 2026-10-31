@@ -593,8 +593,10 @@ merely its only occupant. Six things about it are rules:
   because wait selections read top-level paths: `{projectId, repoId, repository, branch, requestId,
   qualifiedId, foldSha?, foldAttempt?, step, previousRequestId?, previousQualifiedId?, failure?, runId?,
   version?, everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure`
-  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, `runId` the red run or the newest automation run, absent for
-  `RELEASE` and `FOLD`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag).
+  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, or after the tag `PUBLISH`/`DEPLOYMENT` (qits-1796), `runId`
+  the red run, the newest automation run or the red publish run, absent for `RELEASE`, `FOLD` and
+  `DEPLOYMENT`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag, and on a
+  `PUBLISH`/`DEPLOYMENT` FAILED).
   `foldAttempt` (qits-1725) is set on `CONFLICTED` and on `FAILED`/`FOLD` only: a conflict or a
   missing source lands no fold, so `foldSha` stays at the last fold that landed and cannot tell two
   failed attempts apart. `control/FoldAttempt` is the key — for a conflict the first 16 hex chars of
@@ -652,6 +654,21 @@ merely its only occupant. Six things about it are rules:
     build. The move reads `mergedSha` at the call, so a path moving onto a new fold sets the sha
     first (`apply`'s UNCHANGED arm does now). A retried run that is red again reads JOINED then
     FAILED at the same fold; its agent's notice is still once per fold.
+    **A gate after the tag fails the branch too, and its retry re-arms it (qits-1796).** The request
+    stays RELEASED when its tag's publish run goes red or its deployment fails, so the row used to
+    read RELEASED until somebody retried and `--until live` neither fired nor failed.
+    `ReleaseFinalization` now writes FAILED over the request's RELEASED rows
+    (`BranchDeliveries.gateFailed`, in the verdict's transaction): failure `PUBLISH` with the red
+    run in `onPublishVerdict`, `DEPLOYMENT` with no run in `recordDeploymentFailure` (the event and
+    the reconcile, and again for the same sentence). `BranchDeliveries.gateRetried` puts every row
+    naming a RELEASED request at FAILED back to RELEASED at the tag's version — the ledger has no
+    failure column, so the request's state is what tells a post-release failure apart: on a
+    `BuildStatusChanged` of phase `RELEASE` QUEUED/RUNNING for a tag whose `publish_state` is
+    FAILED (`ReleasePipelineRunListener` → `ReleaseFinalization.onPublishRunStarted`), on an
+    accepted DEPLOY rerun (`rerunPhase` → `onDeploymentRerun`), and as a belt on a green verdict
+    or a `DeploymentActive` clearing a failure; never while the other gate is still recorded failed.
+    A second red is then a new position and announced; a green one ends at LIVE as before.
+    `BranchDeliveryNotices` says nothing for either failure.
   - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
     the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter
@@ -1084,6 +1101,29 @@ name's role suffix when none is stated (the url's basename for the attach arm), 
 neither the request nor the name says anything — a guessed kind is the one thing nothing downstream
 could correct. An explicit archetype is obeyed unchanged, which is what keeps the SPA's create form
 working.
+
+## Archiving a repository (qits-1784)
+
+`POST /projects/api/repositories/{repoId}/archive` and `…/unarchive` (`archiveRepository`,
+`unarchiveRepository`; `qits:admin`, `qits:admin-agent`, `qits:desk-admin`, and `qits:desk` bound
+to its project by `requireDeskProject`; `qits:agent` 403). The archived state is
+`repository.archived: true` in the repository's own `.config/qits/repository.yml`, which
+qits-maintenance reads (no dependency bumps unless `maintenance.yml` sets `dependency-bumps: true`).
+**The action never pushes to main**: `control/RepositoryArchive` reads the file at main
+(`ReleaseGitHost.tree` + `file`), answers **200** `{"outcome":"unchanged"}` and opens nothing when
+main already says it, otherwise edits the text (`control/RepositoryArchivedEdit`: one line replaced,
+inserted or removed, comments kept, re-parsed with SnakeYAML and refused **422**
+`ARCHIVE_EDIT_REFUSED` when anything but `repository.archived` would change or the shape — a
+flow-style `repository: {…}` — cannot be edited safely), creates `archive/<name>` (`unarchive/<name>`)
+at main through the merge door (`BackingBranchMerger`, the fast-forward that creates an absent
+target) or brings an existing one up to date, commits `chore(platform): archive <name>` onto its tip
+(`ReleaseGitHost.commit`, `expectedOld` the tip; nothing when the branch already carries the edit),
+and asks for the branch through `ReleaseRequests.ask` — the create door's call, so it creates or
+joins the open request. **202** `RepositoryArchiveDto` `{outcome: requested, archived, branch,
+commit, releaseRequestId, qualifiedId, detail}`. A conflicting branch or a moved ref is a 409, a
+repository with no name a 409, the git host 502 (503 with no address or bearer). No new githost
+interaction: every call is one the consumer pact already records. `RepositoryArchivedEditTest`,
+`RepositoryArchiveTest`.
 
 ## Project slugs
 

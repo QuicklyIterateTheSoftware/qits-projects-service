@@ -4,6 +4,7 @@ import eu.wohlben.qits.projects.control.BackupPushService;
 import eu.wohlben.qits.projects.control.BuildStatusLedger;
 import eu.wohlben.qits.projects.control.CommitService;
 import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
+import eu.wohlben.qits.projects.control.RepositoryArchive;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WrapperReconcileService;
 import eu.wohlben.qits.projects.dto.BranchDto;
@@ -11,6 +12,7 @@ import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitChangesDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.CommitLogDto;
+import eu.wohlben.qits.projects.dto.RepositoryArchiveDto;
 import eu.wohlben.qits.projects.dto.RepositoryCoordinatesDto;
 import eu.wohlben.qits.projects.dto.RepositoryDto;
 import eu.wohlben.qits.projects.dto.SyncStatusDto;
@@ -63,6 +65,9 @@ public class RepositoryController {
   @Inject BuildStatusLedger buildStatusLedger;
 
   @Inject RepositoryMapper repositoryMapper;
+
+  /** The archive action (qits-1784) — see {@link #archive}. */
+  @Inject RepositoryArchive repositoryArchive;
 
   @Inject SecurityIdentity identity;
 
@@ -495,5 +500,123 @@ public class RepositoryController {
     requireDeskProject(repoId);
     var repo = repositoryService.setMainBranch(repoId, request.branch());
     return new SetMainBranchRequest.Response(repositoryMapper.toDto(repo));
+  }
+
+  private static final String ARCHIVE_DESCRIPTION =
+      " Never a push to main: the edit is committed onto a branch and released through the"
+          + " repository's release request. Reads .config/qits/repository.yml at main; when it"
+          + " already says what was asked the answer is 200 with outcome unchanged and nothing is"
+          + " opened. Otherwise the file is edited as text, comments and every other key kept, and"
+          + " the edit is refused with 422 (error ARCHIVE_EDIT_REFUSED, nothing written) when the"
+          + " result would change anything but repository.archived or the file cannot be edited"
+          + " safely (a flow-style repository: {...}, a document that does not parse). The branch is"
+          + " created at main (or an existing one brought up to date with it), the edit committed"
+          + " onto it as chore(platform): <verb> <repository name>, and the branch asked for"
+          + " exactly as POST .../release-requests asks: it creates or JOINS the repository's open"
+          + " request. 202 with outcome requested, the branch, the commit and the release request's"
+          + " id and qualifiedId. The delivery desk (qits:desk) acts in its own project only.";
+
+  /**
+   * <b>Archive a repository</b> (qits-1784): ask for {@code repository.archived: true} in its {@code
+   * .config/qits/repository.yml}, as a commit on {@code archive/<name>} released through the
+   * repository's release request — the normal flow, never a push to main. qits-maintenance then
+   * gives the repository no dependency bumps unless its {@code maintenance.yml} asks for them.
+   * {@code RepositoryArchive} is the whole of it.
+   *
+   * <p>The desk holds it in its own project, as it holds the rename: the action writes no ref of
+   * its own making outside the normal flow, and the release it asks for is gated like any other.
+   */
+  @POST
+  @Path("/{repoId}/archive")
+  // No body: a bodiless POST carries no Content-Type, which the class-level JSON would 415.
+  @Consumes(MediaType.WILDCARD)
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
+  @Operation(
+      operationId = "archiveRepository",
+      summary = "Archive a repository through its release request",
+      description =
+          "Asks for repository.archived: true in the repository's .config/qits/repository.yml,"
+              + " on the branch archive/<repository name>; an absent file is created."
+              + ARCHIVE_DESCRIPTION)
+  @APIResponse(
+      responseCode = "202",
+      description = "The edit is committed on the branch and the branch is on a release request",
+      content = @Content(schema = @Schema(implementation = RepositoryArchiveDto.class)))
+  @APIResponse(
+      responseCode = "200",
+      description = "main already says repository.archived: true; nothing was opened",
+      content = @Content(schema = @Schema(implementation = RepositoryArchiveDto.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "The delivery desk naming another project's repository")
+  @APIResponse(responseCode = "404", description = "No such repository")
+  @APIResponse(
+      responseCode = "409",
+      description =
+          "The repository has no name, the existing branch conflicts with main, or the branch"
+              + " moved during the write")
+  @APIResponse(
+      responseCode = "422",
+      description = "The file cannot be edited safely; nothing was written")
+  @APIResponse(responseCode = "502", description = "The git host could not be asked")
+  @APIResponse(responseCode = "503", description = "No git host address or credential")
+  public jakarta.ws.rs.core.Response archive(@PathParam("repoId") String repoId) {
+    return archived(repoId, true);
+  }
+
+  /**
+   * <b>Unarchive a repository</b> (qits-1784): {@link #archive}'s mirror — removes {@code
+   * repository.archived} on {@code unarchive/<name>}. A file that does not say {@code archived: true}
+   * is already unarchived and answers 200 unchanged.
+   */
+  @POST
+  @Path("/{repoId}/unarchive")
+  // No body: a bodiless POST carries no Content-Type, which the class-level JSON would 415.
+  @Consumes(MediaType.WILDCARD)
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
+  @Operation(
+      operationId = "unarchiveRepository",
+      summary = "Unarchive a repository through its release request",
+      description =
+          "Asks for repository.archived to be removed from the repository's"
+              + " .config/qits/repository.yml, on the branch unarchive/<repository name>; a file"
+              + " that is absent or does not say archived: true is already unarchived."
+              + ARCHIVE_DESCRIPTION)
+  @APIResponse(
+      responseCode = "202",
+      description = "The edit is committed on the branch and the branch is on a release request",
+      content = @Content(schema = @Schema(implementation = RepositoryArchiveDto.class)))
+  @APIResponse(
+      responseCode = "200",
+      description = "main does not say repository.archived: true; nothing was opened",
+      content = @Content(schema = @Schema(implementation = RepositoryArchiveDto.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "The delivery desk naming another project's repository")
+  @APIResponse(responseCode = "404", description = "No such repository")
+  @APIResponse(
+      responseCode = "409",
+      description =
+          "The repository has no name, the existing branch conflicts with main, or the branch"
+              + " moved during the write")
+  @APIResponse(
+      responseCode = "422",
+      description = "The file cannot be edited safely; nothing was written")
+  @APIResponse(responseCode = "502", description = "The git host could not be asked")
+  @APIResponse(responseCode = "503", description = "No git host address or credential")
+  public jakarta.ws.rs.core.Response unarchive(@PathParam("repoId") String repoId) {
+    return archived(repoId, false);
+  }
+
+  private jakarta.ws.rs.core.Response archived(String repoId, boolean archive) {
+    requireDeskProject(repoId);
+    RepositoryArchiveDto answer =
+        repositoryArchive.apply(
+            repoId, archive, identity.isAnonymous() ? null : identity.getPrincipal().getName());
+    int status = RepositoryArchiveDto.UNCHANGED.equals(answer.outcome()) ? 200 : 202;
+    return jakarta.ws.rs.core.Response.status(status)
+        .entity(answer)
+        .type(MediaType.APPLICATION_JSON)
+        .build();
   }
 }

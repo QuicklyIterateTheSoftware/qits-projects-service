@@ -2650,6 +2650,23 @@ components:
       - SERVICE_TEMPLATE
       - FORK
       - AGENT_CONFIG
+    RepositoryArchiveDto:
+      type: object
+      properties:
+        outcome:
+          type: string
+        archived:
+          type: boolean
+        branch:
+          type: string
+        commit:
+          type: string
+        releaseRequestId:
+          type: string
+        qualifiedId:
+          type: string
+        detail:
+          type: string
     RepositoryCoordinatesDto:
       type: object
       properties:
@@ -6499,6 +6516,68 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
+  /projects/api/repositories/{repoId}/archive:
+    post:
+      summary: Archive a repository through its release request
+      description: "Asks for repository.archived: true in the repository's .config/qits/repository.yml,\
+        \ on the branch archive/<repository name>; an absent file is created. Never\
+        \ a push to main: the edit is committed onto a branch and released through\
+        \ the repository's release request. Reads .config/qits/repository.yml at main;\
+        \ when it already says what was asked the answer is 200 with outcome unchanged\
+        \ and nothing is opened. Otherwise the file is edited as text, comments and\
+        \ every other key kept, and the edit is refused with 422 (error ARCHIVE_EDIT_REFUSED,\
+        \ nothing written) when the result would change anything but repository.archived\
+        \ or the file cannot be edited safely (a flow-style repository: {...}, a document\
+        \ that does not parse). The branch is created at main (or an existing one\
+        \ brought up to date with it), the edit committed onto it as chore(platform):\
+        \ <verb> <repository name>, and the branch asked for exactly as POST .../release-requests\
+        \ asks: it creates or JOINS the repository's open request. 202 with outcome\
+        \ requested, the branch, the commit and the release request's id and qualifiedId.\
+        \ The delivery desk (qits:desk) acts in its own project only."
+      operationId: archiveRepository
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: The edit is committed on the branch and the branch is on a
+            release request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryArchiveDto"
+        "200":
+          description: "main already says repository.archived: true; nothing was opened"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryArchiveDto"
+        "403":
+          description: The delivery desk naming another project's repository
+        "404":
+          description: No such repository
+        "409":
+          description: "The repository has no name, the existing branch conflicts\
+            \ with main, or the branch moved during the write"
+        "422":
+          description: The file cannot be edited safely; nothing was written
+        "502":
+          description: The git host could not be asked
+        "503":
+          description: No git host address or credential
+        "401":
+          description: Not Authorized
+      tags:
+      - Repository Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
   /projects/api/repositories/{repoId}/backup-sync:
     post:
       summary: Back this repository up to its forge twin now
@@ -7998,6 +8077,69 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
+  /projects/api/repositories/{repoId}/unarchive:
+    post:
+      summary: Unarchive a repository through its release request
+      description: "Asks for repository.archived to be removed from the repository's\
+        \ .config/qits/repository.yml, on the branch unarchive/<repository name>;\
+        \ a file that is absent or does not say archived: true is already unarchived.\
+        \ Never a push to main: the edit is committed onto a branch and released through\
+        \ the repository's release request. Reads .config/qits/repository.yml at main;\
+        \ when it already says what was asked the answer is 200 with outcome unchanged\
+        \ and nothing is opened. Otherwise the file is edited as text, comments and\
+        \ every other key kept, and the edit is refused with 422 (error ARCHIVE_EDIT_REFUSED,\
+        \ nothing written) when the result would change anything but repository.archived\
+        \ or the file cannot be edited safely (a flow-style repository: {...}, a document\
+        \ that does not parse). The branch is created at main (or an existing one\
+        \ brought up to date with it), the edit committed onto it as chore(platform):\
+        \ <verb> <repository name>, and the branch asked for exactly as POST .../release-requests\
+        \ asks: it creates or JOINS the repository's open request. 202 with outcome\
+        \ requested, the branch, the commit and the release request's id and qualifiedId.\
+        \ The delivery desk (qits:desk) acts in its own project only."
+      operationId: unarchiveRepository
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: The edit is committed on the branch and the branch is on a
+            release request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryArchiveDto"
+        "200":
+          description: "main does not say repository.archived: true; nothing was opened"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryArchiveDto"
+        "403":
+          description: The delivery desk naming another project's repository
+        "404":
+          description: No such repository
+        "409":
+          description: "The repository has no name, the existing branch conflicts\
+            \ with main, or the branch moved during the write"
+        "422":
+          description: The file cannot be edited safely; nothing was written
+        "502":
+          description: The git host could not be asked
+        "503":
+          description: No git host address or credential
+        "401":
+          description: Not Authorized
+      tags:
+      - Repository Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
   /projects/api/technical-processes/{id}/events:
     get:
       parameters:

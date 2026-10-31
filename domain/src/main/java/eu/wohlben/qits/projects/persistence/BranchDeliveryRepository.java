@@ -31,7 +31,10 @@ public class BranchDeliveryRepository
   public record Position(
       String step, String requestId, String foldSha, String foldAttempt, String version) {}
 
-  /** One row's key and version, for the LIVE step's walk over a request's RELEASED rows. */
+  /**
+   * One row's key and version, for the walks over a request's RELEASED rows (LIVE, and a failed
+   * post-release gate) and its FAILED ones (a retried gate, qits-1796).
+   */
   public record Released(
       String projectId, String repoId, String repoName, String branch, String version) {}
 
@@ -156,11 +159,26 @@ public class BranchDeliveryRepository
 
   /** The rows a request released and that still name it: what its finalization makes LIVE. */
   public List<Released> releasedBy(String requestId) {
+    return atStep(requestId, "RELEASED");
+  }
+
+  /**
+   * The rows that still name {@code requestId} at FAILED (qits-1796): for a RELEASED request, the
+   * branches a red publish run or a failed deployment of its tag failed, which a retry of that gate
+   * puts back to RELEASED. The ledger keeps no failure column, so the request's state is what tells
+   * a post-release failure from any other — the caller's to check.
+   */
+  public List<Released> failedBy(String requestId) {
+    return atStep(requestId, "FAILED");
+  }
+
+  private List<Released> atStep(String requestId, String step) {
     List<?> rows =
         em().createNativeQuery(
                 "select project_id, repo_id, repo_name, branch, version from branch_delivery"
-                    + " where request_id = ?1 and step = 'RELEASED' order by repo_id, branch")
+                    + " where request_id = ?1 and step = ?2 order by repo_id, branch")
             .setParameter(1, requestId)
+            .setParameter(2, step)
             .getResultList();
     return rows.stream()
         .map(Object[].class::cast)
