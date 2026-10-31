@@ -1,7 +1,9 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import eu.wohlben.qits.entities.control.IdeaPriorityService;
 import eu.wohlben.qits.entities.control.IdeaService;
+import eu.wohlben.qits.entities.control.SiblingPriorities;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.Idea;
 import eu.wohlben.qits.entities.entity.IdeaStatus;
@@ -17,6 +19,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -52,6 +55,11 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * mirror {@link WorkController}'s</b>: the writes admit {@code qits:admin}, {@code
  * qits:admin-agent}, {@code qits:desk-admin} and {@code qits:agent} (bound to its project); the
  * reads admit those and {@code qits:system}.
+ *
+ * <p><b>The ranking</b> (qits-1791): every idea carries a {@code priority}, the listing answers in
+ * the order rule ({@link IdeaPriorityService#ORDER}), a patch writes the number outright, and the
+ * drop door {@code PUT /ideas/{id}/priority} places an idea directly above or below another of its
+ * project, under the patch's roles.
  */
 @Path("/ideas")
 @Produces(MediaType.APPLICATION_JSON)
@@ -59,7 +67,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 public class IdeaController {
 
   /** What a patch may name. */
-  private static final Set<String> PATCHABLE = Set.of("title", "description", "enabledBy");
+  private static final Set<String> PATCHABLE =
+      Set.of("title", "description", "enabledBy", "priority");
 
   /** What the server writes on an idea, refused by a patch with the door that moves it. */
   private static final Map<String, String> NOT_PATCHED =
@@ -74,6 +83,8 @@ public class IdeaController {
           "updatedAt", "server-owned");
 
   @Inject IdeaService ideas;
+
+  @Inject IdeaPriorityService priorities;
 
   @Inject EntityIdResolver ids;
 
@@ -101,6 +112,13 @@ public class IdeaController {
       boolean archived,
       @Schema(nullable = true) String archiveReason,
       @Schema(nullable = true) Instant archivedAt,
+      @Schema(
+              nullable = true,
+              description =
+                  "The ranking among the project's rankable ideas (not archived, not DONE): higher"
+                      + " sorts first, null after every number. Null until ranked; the archive"
+                      + " clears it.")
+          Integer priority,
       Instant createdAt,
       Instant updatedAt) {
 
@@ -115,12 +133,15 @@ public class IdeaController {
           idea.archived,
           idea.archiveReason,
           idea.archivedAt,
+          idea.priority,
           idea.createdAt,
           idea.updatedAt);
     }
   }
 
-  @Schema(name = "IdeaList", description = "A project's ideas, oldest first.")
+  @Schema(
+      name = "IdeaList",
+      description = "A project's ideas: priority descending, null last, then oldest first.")
   public record IdeaList(List<IdeaDto> ideas) {}
 
   @Schema(name = "IdeaRef", description = "Another idea, in brief.")
@@ -160,6 +181,7 @@ public class IdeaController {
       boolean archived,
       @Schema(nullable = true) String archiveReason,
       @Schema(nullable = true) Instant archivedAt,
+      @Schema(nullable = true, description = "The ranking; null until ranked.") Integer priority,
       Instant createdAt,
       Instant updatedAt,
       @Schema(description = "Every work item naming this idea as inspiredBy, oldest first.")
@@ -185,13 +207,46 @@ public class IdeaController {
   @Schema(
       name = "IdeaPatch",
       description =
-          "A JSON merge patch (RFC 7396) of one idea: title, description, enabledBy. An absent"
-              + " property is left alone; null clears description or enabledBy. The status is"
-              + " derived and the archive has its own doors.")
+          "A JSON merge patch (RFC 7396) of one idea: title, description, enabledBy, priority."
+              + " An absent property is left alone; null clears description, enabledBy or"
+              + " priority. The status is derived and the archive has its own doors.")
   public record IdeaPatch(
       @Schema(description = "Cannot be cleared.") String title,
       @Schema(nullable = true) String description,
-      @Schema(nullable = true) String enabledBy) {}
+      @Schema(nullable = true) String enabledBy,
+      @Schema(
+              nullable = true,
+              description =
+                  "The ranking: an integer, or null to clear it. Written only on an idea that is"
+                      + " neither archived nor DONE (else 409). PUT"
+                      + " /projects/api/ideas/{id}/priority ranks by drop instead.")
+          Integer priority) {}
+
+  /**
+   * The drop door's body (qits-1791): exactly one anchor. Read as a record because neither member
+   * may be cleared — absent and null are the same "not this one".
+   */
+  @Schema(
+      name = "IdeaReprioritize",
+      description =
+          "Where a dropped idea now sits among its project's rankable ideas: directly above or"
+              + " directly below one of them. Exactly one of above and below.")
+  public record IdeaReprioritize(
+      @Schema(description = "The idea this one now sits directly above, by id.") String above,
+      @Schema(description = "The idea this one now sits directly below, by id.") String below) {}
+
+  /** The drop door's answer (qits-1791): every idea the drop renumbered, in its new order. */
+  @Schema(
+      name = "IdeaPriorities",
+      description =
+          "The ideas a drop renumbered — the moved idea and every rankable idea above it — in their"
+              + " new order, highest first.")
+  public record IdeaPriorities(List<IdeaPriority> items) {
+
+    /** One renumbered idea. */
+    @Schema(name = "IdeaPriority", description = "One idea and the priority it now holds.")
+    public record IdeaPriority(String id, int priority) {}
+  }
 
   @Schema(name = "IdeaArchive", description = "Why the idea is archived.")
   public record IdeaArchive(@Schema(required = true) String reason) {}
@@ -204,7 +259,8 @@ public class IdeaController {
       operationId = "listIdeas",
       summary = "List a project's ideas",
       description =
-          "The project's ideas, oldest first. The archived ones are left out unless archived=true,"
+          "The project's ideas in rank order: priority descending, null after every number, then"
+              + " oldest first. The archived ones are left out unless archived=true,"
               + " which INCLUDES them beside the rest (it does not narrow to them); status narrows"
               + " to one derived status. The project is its id or its slug.")
   @APIResponse(
@@ -280,6 +336,7 @@ public class IdeaController {
         idea.archived,
         idea.archiveReason,
         idea.archivedAt,
+        idea.priority,
         idea.createdAt,
         idea.updatedAt,
         List.copyOf(inspired),
@@ -339,9 +396,10 @@ public class IdeaController {
       operationId = "patchIdea",
       summary = "Edit an idea (JSON merge patch)",
       description =
-          "Partial update of title, description and enabledBy. An absent property is left alone;"
-              + " null clears description or enabledBy. The rules are the create's; setting"
-              + " enabledBy on an idea that already enables others is refused.")
+          "Partial update of title, description, enabledBy and priority. An absent property is left"
+              + " alone; null clears description, enabledBy or priority. The rules are the"
+              + " create's; setting enabledBy on an idea that already enables others is refused,"
+              + " and a priority is written only on an idea neither archived nor DONE.")
   @APIResponse(
       responseCode = "200",
       description = "The idea after the edit",
@@ -358,6 +416,9 @@ public class IdeaController {
       responseCode = "403",
       description = "An agent editing an idea outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No idea with this id")
+  @APIResponse(
+      responseCode = "409",
+      description = "A priority written on an archived or DONE idea; nothing is written")
   public IdeaDto patch(
       @PathParam("id") String id,
       @RequestBody(
@@ -377,6 +438,59 @@ public class IdeaController {
     return IdeaDto.of(ideas.update(id, edit, EntitiesPrincipal.changedBy(identity)));
   }
 
+  @PUT
+  @Path("/{id}/priority")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Operation(
+      operationId = "reprioritizeIdea",
+      summary = "Drop an idea above or below another",
+      description =
+          "Ranks the idea among its project's rankable ideas (neither archived nor DONE) by where it"
+              + " was dropped: directly above or directly below one named idea. The idea and every"
+              + " rankable idea above it are renumbered, strictly descending and above every ranked"
+              + " idea below, so the order reads as dropped; nothing below the drop is written."
+              + " Every idea whose priority moved is announced as IdeaUpdated. Answers the"
+              + " renumbered ideas in order.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The ideas the drop renumbered, highest first",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = IdeaPriorities.class)))
+  @APIResponse(
+      responseCode = "400",
+      description =
+          "Both anchors or neither; an anchor naming no idea, naming the idea itself, naming"
+              + " another project's idea, or naming an archived or DONE idea")
+  @APIResponse(
+      responseCode = "403",
+      description = "An agent ranking outside its own project; nothing is written")
+  @APIResponse(responseCode = "404", description = "No idea with this id")
+  @APIResponse(responseCode = "409", description = "The idea is archived or DONE")
+  public IdeaPriorities reprioritize(@PathParam("id") String id, IdeaReprioritize body) {
+    Idea current = ideas.get(id);
+    EntitiesAgentAccess.requireProject(identity, current.projectId);
+    String above = body == null ? null : body.above();
+    String below = body == null ? null : body.below();
+    boolean hasAbove = above != null && !above.isBlank();
+    boolean hasBelow = below != null && !below.isBlank();
+    if (hasAbove == hasBelow) {
+      throw new BadRequestException(
+          "a reprioritize names exactly one anchor: {\"above\": <id>} or {\"below\": <id>}");
+    }
+    List<IdeaPriorityService.Ranked> ranked =
+        priorities.reprioritize(
+            current.id,
+            hasAbove ? above.trim() : below.trim(),
+            hasAbove ? SiblingPriorities.Placement.ABOVE : SiblingPriorities.Placement.BELOW,
+            EntitiesPrincipal.changedBy(identity));
+    return new IdeaPriorities(
+        ranked.stream()
+            .map(entry -> new IdeaPriorities.IdeaPriority(entry.id(), entry.priority()))
+            .toList());
+  }
+
   @POST
   @Path("/{id}/archive")
   @Consumes(MediaType.APPLICATION_JSON)
@@ -384,8 +498,9 @@ public class IdeaController {
       operationId = "archiveIdea",
       summary = "Archive an idea",
       description =
-          "Hides the idea from the default listing, with the reason. Allowed at every status, and"
-              + " the status does not change. Archiving an archived idea restates the reason.")
+          "Hides the idea from the default listing, with the reason, and clears its priority."
+              + " Allowed at every status, and the status does not change. Archiving an archived"
+              + " idea restates the reason.")
   @APIResponse(
       responseCode = "200",
       description = "The idea, archived",
@@ -447,6 +562,13 @@ public class IdeaController {
       JsonNode value = body.get(name);
       if (NOT_PATCHED.containsKey(name)) {
         refused.add(name + " is not written by a patch: it is " + NOT_PATCHED.get(name));
+      } else if (name.equals("priority")) {
+        // The ranking (qits-1791): an integer, or null to clear it.
+        if (value.isNull() || (value.isIntegralNumber() && value.canConvertToInt())) {
+          values.put(name, value);
+        } else {
+          refused.add("priority must be an integer, or null to clear it");
+        }
       } else if (!PATCHABLE.contains(name)) {
         refused.add("unknown property: " + name);
       } else if (value.isNull()) {
@@ -463,12 +585,15 @@ public class IdeaController {
     if (!refused.isEmpty()) {
       throw new BadRequestException(String.join("; ", refused));
     }
+    JsonNode priority = values.get("priority");
     return new IdeaService.IdeaEdit(
-        text(values.get("title")),
-        text(values.get("description")),
-        isNull(values.get("description")),
-        text(values.get("enabledBy")),
-        isNull(values.get("enabledBy")));
+            text(values.get("title")),
+            text(values.get("description")),
+            isNull(values.get("description")),
+            text(values.get("enabledBy")),
+            isNull(values.get("enabledBy")))
+        .withPriority(
+            priority == null || priority.isNull() ? null : priority.intValue(), isNull(priority));
   }
 
   private static String text(JsonNode value) {

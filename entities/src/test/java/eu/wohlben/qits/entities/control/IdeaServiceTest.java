@@ -12,7 +12,9 @@ import eu.wohlben.qits.entities.entity.Idea;
 import eu.wohlben.qits.entities.entity.IdeaStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.util.List;
@@ -22,7 +24,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The idea rules (qits-1387): the title held to the acceptance-criterion item rules, the
  * description's three paragraphs and 600 characters, {@code enabledBy} one layer deep inside one
- * project, the archive's reason, and which work may name an idea.
+ * project, the archive's reason, and which work may name an idea — and the ranking (qits-1791): the
+ * patch's priority, the listing's order rule, and the drop.
  */
 @QuarkusTest
 class IdeaServiceTest extends EntitiesTestSupport {
@@ -35,6 +38,8 @@ class IdeaServiceTest extends EntitiesTestSupport {
   @Inject WorkEntityService work;
 
   @Inject RecordingIdeaAnnouncer announced;
+
+  @Inject IdeaPriorityService priorities;
 
   @BeforeEach
   void quiet() {
@@ -274,5 +279,132 @@ class IdeaServiceTest extends EntitiesTestSupport {
                     EntityWrite.epic("Epic", null).withInspiredBy("missing", false),
                     "t"));
     assertTrue(unknown.getMessage().contains("names no idea"), unknown.getMessage());
+  }
+
+  // --- the ranking (qits-1791) -----------------------------------------------------------------
+
+  private static IdeaService.IdeaEdit priority(Integer value) {
+    return new IdeaService.IdeaEdit(null, null, false, null, false)
+        .withPriority(value, value == null);
+  }
+
+  private void markDone(Idea idea) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                epicsEntityManager
+                    .createNativeQuery("update idea set status = 'DONE' where id = ?1")
+                    .setParameter(1, idea.id)
+                    .executeUpdate());
+  }
+
+  /** Read in a transaction of its own: a read outside one would answer the test's cached rows. */
+  private List<String> listed() {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> ideas.list(PROJECT, false, null).stream().map(i -> i.title).toList());
+  }
+
+  private Integer priorityOf(Idea idea) {
+    return QuarkusTransaction.requiringNew().call(() -> ideaRepository.findById(idea.id).priority);
+  }
+
+  @Test
+  void anEditSetsAndClearsThePriorityAndAnnouncesIt() {
+    Idea idea = idea("Ranked");
+    announced.clear();
+
+    assertEquals(4, ideas.update(idea.id, priority(4), "t").priority);
+    assertEquals(4, priorityOf(idea));
+    assertNull(ideas.update(idea.id, priority(null), "t").priority);
+    assertEquals(
+        List.of(IdeaChange.Kind.UPDATED, IdeaChange.Kind.UPDATED),
+        announced.changes().stream().map(IdeaChange::kind).toList());
+  }
+
+  @Test
+  void aPriorityOnAnArchivedOrDoneIdeaIsA409AndArchivingClearsIt() {
+    Idea archived = idea("Parked");
+    ideas.update(archived.id, priority(3), "t");
+    assertNull(ideas.archive(archived.id, "not now", "t").priority, "the archive clears it");
+    assertNull(ideas.unarchive(archived.id, "t").priority, "unarchived, it comes back unranked");
+    ideas.archive(archived.id, "not now", "t");
+    ConflictException onArchived =
+        assertThrows(ConflictException.class, () -> ideas.update(archived.id, priority(1), "t"));
+    assertTrue(onArchived.getMessage().contains("archived"), onArchived.getMessage());
+
+    Idea done = idea("Finished");
+    markDone(done);
+    ConflictException onDone =
+        assertThrows(ConflictException.class, () -> ideas.update(done.id, priority(1), "t"));
+    assertTrue(onDone.getMessage().contains("DONE"), onDone.getMessage());
+    assertThrows(ConflictException.class, () -> ideas.update(done.id, priority(null), "t"));
+  }
+
+  @Test
+  void theListingAnswersInTheOrderRule() {
+    Idea first = idea("First");
+    Idea second = idea("Second");
+    Idea third = idea("Third");
+    assertEquals(List.of("First", "Second", "Third"), listed(), "unranked is oldest first");
+
+    ideas.update(third.id, priority(2), "t");
+    ideas.update(second.id, priority(5), "t");
+    assertEquals(List.of("Second", "Third", "First"), listed(), "ranked first, nulls last");
+
+    ideas.update(first.id, priority(2), "t");
+    assertEquals(List.of("Second", "First", "Third"), listed(), "a tie is broken oldest first");
+  }
+
+  @Test
+  void aDropRanksTheIdeaAndThoseAboveItAndAnnouncesWhatMoved() {
+    Idea a = idea("A");
+    Idea b = idea("B");
+    Idea c = idea("C");
+    Idea d = idea("D");
+    ideas.update(a.id, priority(2), "t");
+    announced.clear();
+
+    // d directly below a: a keeps 2, d takes 1, b and c are left alone.
+    assertEquals(
+        List.of(new IdeaPriorityService.Ranked(a.id, 2), new IdeaPriorityService.Ranked(d.id, 1)),
+        priorities.reprioritize(d.id, a.id, SiblingPriorities.Placement.BELOW, "alice"));
+    assertEquals(List.of("A", "D", "B", "C"), listed());
+    assertEquals(
+        List.of(d.id),
+        announced.changes().stream().map(IdeaChange::ideaId).toList(),
+        "only the idea whose priority moved is announced");
+    assertEquals(IdeaChange.Kind.UPDATED, announced.changes().get(0).kind());
+    assertEquals("alice", announced.changes().get(0).changedBy());
+    assertNull(priorityOf(b));
+
+    announced.clear();
+    priorities.reprioritize(c.id, a.id, SiblingPriorities.Placement.ABOVE, "t");
+    assertEquals(List.of("C", "A", "D", "B"), listed());
+    assertEquals(List.of(c.id), announced.changes().stream().map(IdeaChange::ideaId).toList());
+  }
+
+  @Test
+  void aDropRefusesWhatIsNotRankable() {
+    Idea idea = idea("Mover");
+    Idea anchor = idea("Anchor");
+    Idea parked = idea("Parked");
+    ideas.archive(parked.id, "not now", "t");
+    Idea done = idea("Done");
+    markDone(done);
+    Idea foreign = ideas.create(ELSEWHERE, "Foreign", null, null, "t");
+    SiblingPriorities.Placement above = SiblingPriorities.Placement.ABOVE;
+
+    assertThrows(NotFoundException.class, () -> priorities.reprioritize("missing", anchor.id, above, "t"));
+    assertThrows(ConflictException.class, () -> priorities.reprioritize(parked.id, anchor.id, above, "t"));
+    assertThrows(ConflictException.class, () -> priorities.reprioritize(done.id, anchor.id, above, "t"));
+    assertTrue(refused(() -> priorities.reprioritize(idea.id, idea.id, above, "t")).getMessage().contains("itself"));
+    assertTrue(refused(() -> priorities.reprioritize(idea.id, "missing", above, "t")).getMessage().contains("names no idea"));
+    for (Idea notRankable : List.of(parked, done, foreign)) {
+      assertTrue(
+          refused(() -> priorities.reprioritize(idea.id, notRankable.id, above, "t"))
+              .getMessage()
+              .contains("not a rankable idea"));
+    }
+    assertNull(priorityOf(idea), "a refused drop writes nothing");
   }
 }

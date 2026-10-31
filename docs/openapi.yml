@@ -1762,6 +1762,14 @@ components:
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
+        priority:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "The ranking among the project's rankable ideas (not archived,\
+            \ not DONE): higher sorts first, null after every number. Null until ranked;\
+            \ the archive clears it."
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -1844,6 +1852,12 @@ components:
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
+        priority:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: The ranking; null until ranked.
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -1875,7 +1889,8 @@ components:
           $ref: "#/components/schemas/Archetype"
     IdeaList:
       type: object
-      description: "A project's ideas, oldest first."
+      description: "A project's ideas: priority descending, null last, then oldest\
+        \ first."
       properties:
         ideas:
           type: array
@@ -1884,8 +1899,9 @@ components:
     IdeaPatch:
       type: object
       description: "A JSON merge patch (RFC 7396) of one idea: title, description,\
-        \ enabledBy. An absent property is left alone; null clears description or\
-        \ enabledBy. The status is derived and the archive has its own doors."
+        \ enabledBy, priority. An absent property is left alone; null clears description,\
+        \ enabledBy or priority. The status is derived and the archive has its own\
+        \ doors."
       properties:
         title:
           type: string
@@ -1898,6 +1914,32 @@ components:
           type:
           - string
           - "null"
+        priority:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "The ranking: an integer, or null to clear it. Written only\
+            \ on an idea that is neither archived nor DONE (else 409). PUT /projects/api/ideas/{id}/priority\
+            \ ranks by drop instead."
+    IdeaPriorities:
+      type: object
+      description: "The ideas a drop renumbered — the moved idea and every rankable\
+        \ idea above it — in their new order, highest first."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdeaPriority"
+    IdeaPriority:
+      type: object
+      description: One idea and the priority it now holds.
+      properties:
+        id:
+          type: string
+        priority:
+          type: integer
+          format: int32
     IdeaRef:
       type: object
       description: "Another idea, in brief."
@@ -1910,6 +1952,17 @@ components:
           type: string
         archived:
           type: boolean
+    IdeaReprioritize:
+      type: object
+      description: "Where a dropped idea now sits among its project's rankable ideas:\
+        \ directly above or directly below one of them. Exactly one of above and below."
+      properties:
+        above:
+          type: string
+          description: "The idea this one now sits directly above, by id."
+        below:
+          type: string
+          description: "The idea this one now sits directly below, by id."
     Instant:
       type: string
       format: date-time
@@ -4401,10 +4454,10 @@ paths:
   /projects/api/ideas:
     get:
       summary: List a project's ideas
-      description: "The project's ideas, oldest first. The archived ones are left\
-        \ out unless archived=true, which INCLUDES them beside the rest (it does not\
-        \ narrow to them); status narrows to one derived status. The project is its\
-        \ id or its slug."
+      description: "The project's ideas in rank order: priority descending, null after\
+        \ every number, then oldest first. The archived ones are left out unless archived=true,\
+        \ which INCLUDES them beside the rest (it does not narrow to them); status\
+        \ narrows to one derived status. The project is its id or its slug."
       operationId: listIdeas
       parameters:
       - description: true includes the archived ideas beside the others.
@@ -4492,10 +4545,11 @@ paths:
   /projects/api/ideas/{id}:
     patch:
       summary: Edit an idea (JSON merge patch)
-      description: "Partial update of title, description and enabledBy. An absent\
-        \ property is left alone; null clears description or enabledBy. The rules\
-        \ are the create's; setting enabledBy on an idea that already enables others\
-        \ is refused."
+      description: "Partial update of title, description, enabledBy and priority.\
+        \ An absent property is left alone; null clears description, enabledBy or\
+        \ priority. The rules are the create's; setting enabledBy on an idea that\
+        \ already enables others is refused, and a priority is written only on an\
+        \ idea neither archived nor DONE."
       operationId: patchIdea
       parameters:
       - name: id
@@ -4527,6 +4581,9 @@ paths:
             written
         "404":
           description: No idea with this id
+        "409":
+          description: A priority written on an archived or DONE idea; nothing is
+            written
         "401":
           description: Not Authorized
       tags:
@@ -4574,9 +4631,9 @@ paths:
   /projects/api/ideas/{id}/archive:
     post:
       summary: Archive an idea
-      description: "Hides the idea from the default listing, with the reason. Allowed\
-        \ at every status, and the status does not change. Archiving an archived idea\
-        \ restates the reason."
+      description: "Hides the idea from the default listing, with the reason, and\
+        \ clears its priority. Allowed at every status, and the status does not change.\
+        \ Archiving an archived idea restates the reason."
       operationId: archiveIdea
       parameters:
       - name: id
@@ -4604,6 +4661,55 @@ paths:
             is written
         "404":
           description: No idea with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Idea Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/ideas/{id}/priority:
+    put:
+      summary: Drop an idea above or below another
+      description: "Ranks the idea among its project's rankable ideas (neither archived\
+        \ nor DONE) by where it was dropped: directly above or directly below one\
+        \ named idea. The idea and every rankable idea above it are renumbered, strictly\
+        \ descending and above every ranked idea below, so the order reads as dropped;\
+        \ nothing below the drop is written. Every idea whose priority moved is announced\
+        \ as IdeaUpdated. Answers the renumbered ideas in order."
+      operationId: reprioritizeIdea
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeaReprioritize"
+        required: true
+      responses:
+        "200":
+          description: "The ideas the drop renumbered, highest first"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeaPriorities"
+        "400":
+          description: "Both anchors or neither; an anchor naming no idea, naming\
+            \ the idea itself, naming another project's idea, or naming an archived\
+            \ or DONE idea"
+        "403":
+          description: An agent ranking outside its own project; nothing is written
+        "404":
+          description: No idea with this id
+        "409":
+          description: The idea is archived or DONE
         "401":
           description: Not Authorized
       tags:
