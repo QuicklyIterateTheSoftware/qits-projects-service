@@ -127,6 +127,7 @@ class EntityAgentBoundsTest {
   private static final String REFUSAL = "An agent may write only the entities of its own project.";
 
   @Inject WorkEntityService workEntities;
+  @Inject eu.wohlben.qits.entities.control.IdeaService ideaService;
   @Inject EntityCommentService ticketComments;
   @Inject DossierService dossierService;
 
@@ -489,6 +490,106 @@ class EntityAgentBoundsTest {
         "Restated in place",
         work(AGENT).put(rows.epicQualifiedId(), epicRenamedTo("Restated in place")).title());
     assertEquals("Patched by the agent", work(AGENT).patch(ticket, retitle("Patched by the agent")).title());
+  }
+
+  // ---- inspiredBy is an idea write (qits-1790) ---------------------------------------------------
+
+  /** The delivery desk's token: the agent role beside both desk roles, bound to the own project. */
+  private static final SecurityIdentity DESK =
+      AgentTokens.token(Map.of("project", OWN_PROJECT), "qits:agent", "qits:desk", "qits:desk-admin");
+
+  private static final String IDEA_REFUSAL =
+      "An agent may not link work to an idea (inspiredBy): file the work without it and ask the"
+          + " delivery desk (@desk) to link the idea. Only the delivery desk and admins write ideas.";
+
+  private static void refusedTheIdea(Executable call) {
+    ForbiddenException refusal = assertThrows(ForbiddenException.class, call);
+    assertEquals(403, refusal.statusCode());
+    assertEquals(IDEA_REFUSAL, refusal.getMessage());
+  }
+
+  private static long titled(String title) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> eu.wohlben.qits.entities.entity.WorkEntity.count("title", title));
+  }
+
+  /**
+   * qits-1790: a plain agent may not link work to an idea — a create naming {@code inspiredBy}, at
+   * the generic door or the children door, and a patch naming it at all (null included) answer 403
+   * with nothing written. The same bodies without it go through as before.
+   */
+  @Test
+  void aPlainAgentMayNotLinkWorkToAnIdea() {
+    String idea = ideaService.create(OWN_PROJECT, "Not the agent's to link", null, null, "seed").id;
+    String ticket = qualified(OWN_PROJECT, rows.ticketId());
+
+    var linkedTicket =
+        ((com.fasterxml.jackson.databind.node.ObjectNode) filedTicket(OWN_PROJECT, "A linked ticket"))
+            .put("inspiredBy", idea);
+    refusedTheIdea(() -> work(AGENT).create(linkedTicket));
+    assertEquals(0, titled("A linked ticket"), "nothing is created");
+    refusedTheIdea(
+        () ->
+            children(AGENT)
+                .create(
+                    rows.epicQualifiedId(),
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) child("A linked part"))
+                        .put("inspiredBy", idea)));
+    assertEquals(0, titled("A linked part"), "nothing is created");
+
+    refusedTheIdea(
+        () ->
+            work(AGENT)
+                .patch(
+                    ticket,
+                    JsonNodeFactory.instance
+                        .objectNode()
+                        .put("title", "Linked by the agent")
+                        .put("inspiredBy", idea)));
+    refusedTheIdea(
+        () ->
+            work(AGENT)
+                .patch(
+                    ticket,
+                    JsonNodeFactory.instance
+                        .objectNode()
+                        .put("title", "Unlinked by the agent")
+                        .putNull("inspiredBy")));
+    TransitionedEntity unchanged = work(OPERATOR).get(ticket);
+    assertEquals("The own ticket", unchanged.title(), "nothing is written");
+    assertEquals(null, unchanged.inspiredBy());
+    assertEquals(
+        eu.wohlben.qits.entities.entity.IdeaStatus.PLANNED,
+        ideaService.get(idea).status,
+        "the idea inspired nothing");
+
+    // Without inspiredBy, as before.
+    assertEquals(
+        "TICKET",
+        created(work(AGENT).create(filedTicket(OWN_PROJECT, "An unlinked ticket"))).archetype().name());
+    assertEquals("Patched plainly", work(AGENT).patch(ticket, retitle("Patched plainly")).title());
+  }
+
+  /** qits-1790: the delivery desk links work to an idea of its own project, at create and patch. */
+  @Test
+  void theDeskLinksWorkToAnIdea() {
+    String idea = ideaService.create(OWN_PROJECT, "The desk's to link", null, null, "seed").id;
+    String ticket = qualified(OWN_PROJECT, rows.ticketId());
+
+    var linkedTicket =
+        ((com.fasterxml.jackson.databind.node.ObjectNode) filedTicket(OWN_PROJECT, "A desk ticket"))
+            .put("inspiredBy", idea);
+    assertEquals(idea, created(work(DESK).create(linkedTicket)).inspiredBy());
+    assertEquals(
+        idea,
+        work(DESK)
+            .patch(ticket, JsonNodeFactory.instance.objectNode().put("inspiredBy", idea))
+            .inspiredBy());
+    assertEquals(
+        null,
+        work(DESK)
+            .patch(ticket, JsonNodeFactory.instance.objectNode().putNull("inspiredBy"))
+            .inspiredBy());
   }
 
   /**

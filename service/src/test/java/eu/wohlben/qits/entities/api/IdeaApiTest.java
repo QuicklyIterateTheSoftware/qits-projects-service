@@ -6,11 +6,11 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.control.IdeaService;
 import eu.wohlben.qits.entities.error.ForbiddenException;
@@ -21,16 +21,21 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
  * The REST round trip for {@code /projects/api/ideas} (qits-1387), and {@code inspiredBy} on {@code
  * /work}. The rules behind each write are {@code IdeaService}'s and asserted in its own test; this
  * class pins what the doors add: the body reading, the project by id or slug, the default listing
- * hiding the archived, the detail's {@code inspired}/{@code enables}, the roles (an agent writes in
- * its own project only, a platform service only reads) and the absence of a delete.
+ * hiding the archived, the detail's {@code inspired}/{@code enables}, the roles (the desk writes in
+ * its own project only, an admin anywhere; a plain agent and a platform service only read —
+ * qits-1790) and the absence of a delete.
  */
 @QuarkusTest
 class IdeaApiTest {
@@ -377,45 +382,156 @@ class IdeaApiTest {
         .statusCode(403);
   }
 
+  /**
+   * qits-1790: only the delivery desk and admins write ideas. A plain agent ({@code qits:agent}
+   * without the desk roles) is refused every write door by the class roles, and still reads.
+   */
   @Test
-  void anAgentWritesTheIdeasOfItsOwnProjectOnly() {
-    EntityFixtures.Project own = EntityFixtures.project("Ideas Agent Own");
-    EntityFixtures.Project foreign = EntityFixtures.project("Ideas Agent Foreign");
-    SecurityIdentity agent = AgentTokens.token(Map.of("project", own.id()), "qits:agent");
+  void aPlainAgentIsRefusedEveryIdeaWriteAndStillReads() {
+    EntityFixtures.Project project = EntityFixtures.project("Ideas Plain Agent");
+    String id = idea(project.id(), "Not the agent's");
+    String other = idea(project.id(), "Another");
+
+    asForwarded("qits:agent")
+        .body(map("project", project.id(), "title", "An agent's idea"))
+        .post("/projects/api/ideas")
+        .then()
+        .statusCode(403);
+    asForwarded("qits:agent")
+        .body(map("title", "Renamed by the agent"))
+        .patch("/projects/api/ideas/" + id)
+        .then()
+        .statusCode(403);
+    asForwarded("qits:agent")
+        .body(map("above", other))
+        .put("/projects/api/ideas/" + id + "/priority")
+        .then()
+        .statusCode(403);
+    asForwarded("qits:agent")
+        .body(map("reason", "not mine"))
+        .post("/projects/api/ideas/" + id + "/archive")
+        .then()
+        .statusCode(403);
+    asForwarded("qits:agent")
+        .post("/projects/api/ideas/" + id + "/unarchive")
+        .then()
+        .statusCode(403);
+
+    asForwarded("qits:agent")
+        .queryParam("project", project.id())
+        .get("/projects/api/ideas")
+        .then()
+        .statusCode(200)
+        .body("ideas", hasSize(2));
+    asForwarded("qits:agent")
+        .get("/projects/api/ideas/" + id)
+        .then()
+        .statusCode(200)
+        .body("title", equalTo("Not the agent's"))
+        .body("archived", equalTo(false));
+  }
+
+  /** qits-1790: the class roles are the desk's and the admins', the reads still admit the agent. */
+  @Test
+  void theWritesAdmitTheDeskAndTheAdminsAndTheReadsTheAgent() throws NoSuchMethodException {
+    RolesAllowed writes = IdeaController.class.getAnnotation(RolesAllowed.class);
+    assertEquals(
+        Set.of("qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"),
+        Set.of(writes.value()));
+    assertEquals(4, writes.value().length);
+    for (Method read :
+        List.of(
+            IdeaController.class.getMethod("get", String.class),
+            listMethod())) {
+      Set<String> roles = Set.of(read.getAnnotation(RolesAllowed.class).value());
+      assertTrue(roles.contains("qits:agent"), read.getName() + " still admits qits:agent");
+      assertTrue(roles.contains("qits:system"), read.getName() + " still admits qits:system");
+    }
+  }
+
+  private static Method listMethod() {
+    return java.util.Arrays.stream(IdeaController.class.getMethods())
+        .filter(m -> m.isAnnotationPresent(jakarta.ws.rs.GET.class))
+        .filter(m -> !m.isAnnotationPresent(jakarta.ws.rs.Path.class))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  /** qits-1790: the delivery desk writes the ideas of its own project, and only those. */
+  @Test
+  void theDeskWritesTheIdeasOfItsOwnProjectOnly() {
+    EntityFixtures.Project own = EntityFixtures.project("Ideas Desk Own");
+    EntityFixtures.Project foreign = EntityFixtures.project("Ideas Desk Foreign");
+    SecurityIdentity desk =
+        AgentTokens.token(Map.of("project", own.id()), "qits:agent", "qits:desk", "qits:desk-admin");
 
     String id =
         ((IdeaController.IdeaDto)
-                door(agent)
-                    .create(new IdeaController.IdeaCreate(own.id(), null, "An agent's idea", null, null))
+                door(desk)
+                    .create(new IdeaController.IdeaCreate(own.id(), null, "The desk's idea", null, null))
                     .getEntity())
             .id();
     assertEquals(
-        "Renamed by the agent",
-        door(agent)
+        "Renamed by the desk",
+        door(desk)
             .patch(
                 id,
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
                     .objectNode()
-                    .put("title", "Renamed by the agent"))
+                    .put("title", "Renamed by the desk"))
             .title());
-    assertEquals(true, door(agent).archive(id, new IdeaController.IdeaArchive("done with it")).archived());
-    assertEquals(false, door(agent).unarchive(id).archived());
+    assertEquals(true, door(desk).archive(id, new IdeaController.IdeaArchive("done with it")).archived());
+    assertEquals(false, door(desk).unarchive(id).archived());
 
     String theirs = idea(foreign.id(), "Theirs");
     assertThrows(
         ForbiddenException.class,
-        () -> door(agent).create(new IdeaController.IdeaCreate(foreign.id(), null, "Not mine", null, null)));
+        () -> door(desk).create(new IdeaController.IdeaCreate(foreign.id(), null, "Not mine", null, null)));
     assertThrows(
         ForbiddenException.class,
-        () -> door(agent).archive(theirs, new IdeaController.IdeaArchive("not mine")));
-    assertEquals(theirs, door(agent).get(theirs).id(), "an agent reads every idea");
+        () ->
+            door(desk)
+                .patch(
+                    theirs,
+                    com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
+                        .objectNode()
+                        .put("title", "Not mine")));
+    assertThrows(
+        ForbiddenException.class,
+        () -> door(desk).archive(theirs, new IdeaController.IdeaArchive("not mine")));
+    assertThrows(ForbiddenException.class, () -> door(desk).unarchive(theirs));
+    assertEquals("Theirs", door(desk).get(theirs).title(), "nothing is written");
+  }
 
-    // A forwarded agent carries no token to bind, so it is refused every write.
-    asForwarded("qits:agent")
-        .body(map("project", own.id(), "title", "No token"))
-        .post("/projects/api/ideas")
+  /** qits-1790: an admin writes ideas over the wire. */
+  @Test
+  void anAdminWritesIdeas() {
+    EntityFixtures.Project project = EntityFixtures.project("Ideas Admin");
+    String id =
+        asForwarded("qits:admin")
+            .body(map("project", project.id(), "title", "An admin's idea"))
+            .post("/projects/api/ideas")
+            .then()
+            .statusCode(201)
+            .extract()
+            .path("id");
+    asForwarded("qits:admin")
+        .body(map("title", "Renamed by an admin"))
+        .patch("/projects/api/ideas/" + id)
         .then()
-        .statusCode(not(equalTo(201)));
+        .statusCode(200)
+        .body("title", equalTo("Renamed by an admin"));
+    asForwarded("qits:admin")
+        .body(map("reason", "done"))
+        .post("/projects/api/ideas/" + id + "/archive")
+        .then()
+        .statusCode(200)
+        .body("archived", equalTo(true));
+    asForwarded("qits:admin")
+        .post("/projects/api/ideas/" + id + "/unarchive")
+        .then()
+        .statusCode(200)
+        .body("archived", equalTo(false));
   }
 
   private static RequestSpecification asForwarded(String role) {

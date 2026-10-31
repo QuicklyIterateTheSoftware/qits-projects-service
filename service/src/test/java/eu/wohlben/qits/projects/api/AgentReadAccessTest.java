@@ -210,20 +210,10 @@ class AgentReadAccessTest {
   private static final Set<String> DESIGN_AGENT_WRITES =
       Set.of("RefinementDesignController.add", "RefinementDesignController.update");
 
-  /**
-   * <b>The idea writes an agent reaches</b> (qits-1387): a project's ideas are planning notes beside
-   * its work, and an agent filing or archiving one makes the same claim its work writes make. Bound
-   * to the idea's project by {@code EntitiesAgentAccess}. There is no delete to keep off the list.
-   * The drop door (qits-1791) ranks an idea under the patch's roles.
-   */
-  private static final Set<String> IDEA_AGENT_WRITES =
-      Set.of(
-          "IdeaController.create",
-          "IdeaController.patch",
-          "IdeaController.archive",
-          "IdeaController.unarchive",
-          // The drop door (qits-1791), under the patch's roles.
-          "IdeaController.reprioritize");
+  // No idea write is an agent's (qits-1790): ideas are broad, high-level notes the delivery desk and
+  // admins keep, so IdeaController's writes name qits:desk and the admin roles, never qits:agent,
+  // and the per-class rule below refuses them the agent like any undeclared write. Its reads still
+  // admit the agent.
 
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
@@ -231,7 +221,7 @@ class AgentReadAccessTest {
           union(
               union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
               CAMPAIGN_AGENT_WRITES),
-          union(DESIGN_AGENT_WRITES, IDEA_AGENT_WRITES));
+          DESIGN_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a

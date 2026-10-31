@@ -305,7 +305,8 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1679_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
@@ -346,6 +347,32 @@ public class DevelopmentGuideControllerTest {
     surfaces.save(
         key,
         withText(surfaces.get(key), DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW),
+        null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains(DevelopmentGuideDefaults.DEVELOPMENT_FLOW));
+  }
+
+  /**
+   * qits-1790: the flow tells an agent to file tickets and epics, not ideas, which only the desk and
+   * admins write; an unedited row of the text before rolls forward.
+   */
+  @Test
+  public void theFlowFilesWorkNotIdeas() {
+    String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
+    assertTrue(flow.contains("## File work, not ideas"));
+    assertTrue(flow.contains("`qits work create`"));
+    assertTrue(flow.contains("only the delivery desk and admins write"));
+    assertTrue(flow.contains("`@desk` comment"));
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW.contains("File work, not ideas"),
+        "the qits-1790 text is the one before the section existed");
+
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    surfaces.save(
+        key,
+        withText(surfaces.get(key), DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW),
         null);
 
     assertTrue(guide.rollForward() >= 1);
