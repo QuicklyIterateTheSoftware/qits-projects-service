@@ -106,6 +106,7 @@ erDiagram
     long number "not null"
     enum outcome
     string pre_approved_by
+    int priority
     string project_id "not null"
     string repository_id
     string slug "not null"
