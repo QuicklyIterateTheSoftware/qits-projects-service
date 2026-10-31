@@ -8,7 +8,6 @@ import eu.wohlben.qits.entities.control.ArchetypeViolation;
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
-import eu.wohlben.qits.entities.control.IdeaService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import java.time.Instant;
@@ -94,10 +93,10 @@ public final class EntitySchemas {
   public static final String MEMBERSHIP = "membership";
 
   /**
-   * The idea the work was inspired by (qits-1387): an EPIC's, a TICKET's or a CAMPAIGN's, on the
-   * create and the update schemas only. Not a registry property — the registry document's {@code
-   * permitted} lists are pinned by consumers — so it is added here per {@link
-   * IdeaService#CARRIERS}, and the whole-state transition neither states nor clears it.
+   * The idea the work was inspired by (qits-1387): any archetype's (qits-1792), on the create and
+   * the update schemas only. Not a registry property — the registry document's {@code permitted}
+   * lists are pinned by consumers — so it is added here for every archetype, and the whole-state
+   * transition neither states nor clears it.
    */
   public static final String INSPIRED_BY = "inspiredBy";
 
@@ -158,9 +157,7 @@ public final class EntitySchemas {
       properties.put(PARENT, reference(parentDescription(archetype)));
       required.add(PARENT);
     }
-    if (IdeaService.CARRIERS.contains(archetype)) {
-      properties.put(INSPIRED_BY, inspiredBy());
-    }
+    properties.put(INSPIRED_BY, inspiredBy());
     return document(
         archetype,
         Door.CREATE,
@@ -181,9 +178,7 @@ public final class EntitySchemas {
       }
       properties.put(slot.wire(), slot.clearable() ? nullable(slot.schema()) : slot.schema());
     }
-    if (IdeaService.CARRIERS.contains(archetype)) {
-      properties.put(INSPIRED_BY, nullable(inspiredBy()));
-    }
+    properties.put(INSPIRED_BY, nullable(inspiredBy()));
     // The ranking among siblings (qits-753): every archetype, and no registry property.
     properties.put(EntityWireProperties.PRIORITY, nullable(EntityWireProperties.prioritySchema()));
     return document(
@@ -350,9 +345,6 @@ public final class EntitySchemas {
     if (name.equals(PARENT)) {
       return "parent is not taken: a " + archetype + " is a root — name its project";
     }
-    if (name.equals(INSPIRED_BY)) {
-      return notACarrier(archetype);
-    }
     for (EntityProperty owned : EntityTransitionService.SERVER_OWNED) {
       if (EntityWireProperties.wire(owned).equals(name)) {
         return name + " is server-owned and never written";
@@ -474,14 +466,6 @@ public final class EntitySchemas {
             + " /projects/api/ideas). An archived idea may be named.");
   }
 
-  /** Why {@code archetype} takes no {@code inspiredBy}. */
-  static String notACarrier(Archetype archetype) {
-    return INSPIRED_BY
-        + " is not written on a "
-        + archetype
-        + ": only an EPIC, a TICKET or a CAMPAIGN is inspired by an idea";
-  }
-
   /**
    * The complaint about a patch's {@code priority} (qits-753), or none: an integer, or null to clear
    * it. A fraction or a number past an {@code int} is no ranking.
@@ -494,13 +478,10 @@ public final class EntitySchemas {
   }
 
   /**
-   * The complaint about a patch's {@code inspiredBy}, or none: a kind that carries none, or a value
-   * that is neither an idea id nor null (which clears it).
+   * The complaint about a patch's {@code inspiredBy}, or none: a value that is neither an idea id
+   * nor null (which clears it). Every archetype carries one (qits-1792).
    */
-  static Optional<String> inspiredByRefusal(Archetype archetype, JsonNode value) {
-    if (!IdeaService.CARRIERS.contains(archetype)) {
-      return Optional.of(notACarrier(archetype));
-    }
+  static Optional<String> inspiredByRefusal(JsonNode value) {
     if (value == null || value.isNull()) {
       return Optional.empty();
     }

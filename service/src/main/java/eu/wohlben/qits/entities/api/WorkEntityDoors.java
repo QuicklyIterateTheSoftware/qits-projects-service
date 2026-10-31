@@ -404,7 +404,7 @@ public class WorkEntityDoors {
       JsonNode value = body.get(name);
       if (name.equals(EntitySchemas.INSPIRED_BY)) {
         // The idea the work was inspired by (qits-1387): no registry property, so judged here.
-        EntitySchemas.inspiredByRefusal(archetype, value).ifPresent(refused::add);
+        EntitySchemas.inspiredByRefusal(value).ifPresent(refused::add);
       } else if (name.equals(EntityWireProperties.PRIORITY)) {
         // The ranking among siblings (qits-753): every archetype, no registry property.
         EntitySchemas.priorityRefusal(value).ifPresent(refused::add);

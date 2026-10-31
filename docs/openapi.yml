@@ -3460,9 +3460,8 @@ components:
           description: "An epic's or a ticket's acceptance criteria, in order."
         inspiredBy:
           type: string
-          description: "An epic's, a ticket's or a campaign's inspiration: the id\
-            \ of an idea of the same project (GET /projects/api/ideas). Refused on\
-            \ a feature or a task."
+          description: "The work's inspiration, on every archetype: the id of an idea\
+            \ of the same project (GET /projects/api/ideas)."
     WorkCriterionApproval:
       type: object
       description: A person's yes on an APPROVAL criterion.
@@ -3764,10 +3763,9 @@ components:
           type:
           - string
           - "null"
-          description: "An epic's, a ticket's or a campaign's inspiration: the id\
-            \ of an idea of the same project; null clears it. Editable at every status.\
-            \ Refused on a feature or a task. Setting, changing or clearing it re-derives\
-            \ the ideas' status."
+          description: "The work's inspiration, on every archetype: the id of an idea\
+            \ of the same project; null clears it. Editable at every status. Setting,\
+            \ changing or clearing it re-derives the ideas' status."
         priority:
           type:
           - integer
