@@ -1,19 +1,24 @@
 package eu.wohlben.qits.projects.desktriggers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.agenthost.FakeProjectDaemon;
 import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.control.DevelopmentGuideService;
+import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -22,6 +27,7 @@ import jakarta.inject.Inject;
 import java.net.URL;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -34,7 +40,9 @@ import org.junit.jupiter.api.Test;
  * daemon once, through the real reverse tunnel to a {@link FakeProjectDaemon} ({@code
  * ProjectFrontDeskTest}'s fixture); a window not yet due is left alone; a refusal stays owed and is
  * tried again with the same text; no daemon past the give-up fails it; a queued answer is recorded
- * as one; and the oldest owed window of a project goes first, one per pass.
+ * as one; and the oldest owed window of a project goes first, one per pass. A delivery project's
+ * message ends with its Slots section (qits-1778), and a reading that fails leaves it out without
+ * keeping the window from closing.
  */
 @QuarkusTest
 class DeskTriggerSweepTest {
@@ -59,6 +67,10 @@ class DeskTriggerSweepTest {
 
   @Inject DevelopmentGuideService guide;
 
+  @Inject RecordingWorkspaceAgentDispatch dispatch;
+
+  @Inject ReleaseRequestNumbers numbers;
+
   @TestHTTPResource("/")
   URL root;
 
@@ -75,6 +87,8 @@ class DeskTriggerSweepTest {
       daemon.close();
       daemon = null;
     }
+    dispatch.reset();
+    DeskTriggerFixtures.dropWork(projects);
     DeskTriggerFixtures.drop(projects);
     projects.clear();
   }
@@ -162,7 +176,8 @@ class DeskTriggerSweepTest {
             + slug
             + "-1597 (Title of 1597)\n\nNeeds your approval:\n- qits-qits-rr-201 (Release"
             + " qits-1597 wrapper; waits on manual-review: configured by manual-review), fold"
-            + " 412911eb";
+            + " 412911eb"
+            + "\n\nSlots: running 0 of 2";
     assertEquals(expected, textOf(seen));
     assertEquals(expected, window.message, "what was sent is what is stored");
     // qits-1734: the pointer is DeskBrief's, with the desk variant's guide-hash at close.
@@ -326,5 +341,79 @@ class DeskTriggerSweepTest {
     assertEquals(DeskTriggerWindowState.DELIVERED, DeskTriggerFixtures.window(newer).state);
     assertEquals(2, daemon.seen().size());
     assertTrue(textOf(daemon.seen().get(1)).contains("p-2 (newer)"));
+  }
+
+  /**
+   * qits-1778: a closing window of a delivery project ends with its slots — what runs against
+   * {@code max_running}, and each VERIFIED item, oldest first, with its open requests in scope.
+   */
+  @Test
+  void aClosingWindowEndsWithTheProjectsSlots() {
+    String projectId = project();
+    String slug = DeskTriggerFixtures.slugOf(projectId);
+    Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+    // Delivery came on five minutes ago, so verified-unshipped measures from then and says nothing
+    // about the item with no request: this window holds the one verified line and the slots.
+    DeskTriggerFixtures.delivery(projectId, 3, now.minus(Duration.ofMinutes(5)));
+    WorkEntity shipping = DeskTriggerFixtures.ticket(projectId, 1774, "VERIFIED");
+    WorkEntity unasked = DeskTriggerFixtures.ticket(projectId, 1769, "VERIFIED");
+    WorkEntity working = DeskTriggerFixtures.ticket(projectId, 1780, "IMPLEMENTING");
+    DeskTriggerFixtures.audited(shipping, "IMPLEMENTED", now.minus(Duration.ofHours(3)));
+    DeskTriggerFixtures.audited(shipping, "VERIFIED", now.minus(Duration.ofMinutes(65)));
+    DeskTriggerFixtures.audited(shipping, "VERIFIED", now.minus(Duration.ofMinutes(60)));
+    DeskTriggerFixtures.audited(unasked, "VERIFIED", now.minus(Duration.ofMinutes(43)));
+    String wrapper =
+        DeskTriggerFixtures.request(
+            numbers,
+            projectId,
+            slug + "-" + slug,
+            ReleaseRequest.State.PENDING,
+            "ticket/" + slug + "-1774");
+    DeskTriggerFixtures.request(
+        numbers,
+        projectId,
+        "some-service",
+        ReleaseRequest.State.FINALIZED,
+        "ticket/" + slug + "-1769-fix");
+    dispatch.willFind(
+        DeskTriggerFixtures.activeAgent(shipping),
+        DeskTriggerFixtures.activeAgent(unasked),
+        DeskTriggerFixtures.activeAgent(working));
+    UUID windowId = verified(projectId, "p-1", "one", now.minus(Duration.ofMinutes(20)));
+
+    sweep.sweep(now);
+
+    DeskTriggerWindow window = DeskTriggerFixtures.window(windowId);
+    assertEquals(DeskTriggerWindowState.OWED, window.state, "no daemon: closed and owed");
+    assertTrue(
+        window.message.endsWith(
+            "\n\nMoved to VERIFIED:\n- p-1 (one)"
+                + "\n\nSlots: running 3 of 3, 2 VERIFIED waiting to ship\n"
+                + "- "
+                + slug
+                + "-1774 (VERIFIED 1h 5m; "
+                + wrapper
+                + " PENDING)\n"
+                + "- "
+                + slug
+                + "-1769 (VERIFIED 43m; no open release request)"),
+        window.message);
+  }
+
+  /** qits-1778: an agent port that throws costs the section, never the close. */
+  @Test
+  void aSlotsReadingThatFailsClosesTheWindowWithoutTheSection() {
+    String projectId = project();
+    DeskTriggerFixtures.ticket(projectId, 7, "VERIFIED");
+    dispatch.willFailLookups(new IllegalStateException("qits-workspaces adapter broke"));
+    UUID windowId = verified(projectId, "p-1", "one", Instant.now().minus(Duration.ofMinutes(20)));
+
+    sweep.sweep();
+
+    DeskTriggerWindow window = DeskTriggerFixtures.window(windowId);
+    assertEquals(DeskTriggerWindowState.OWED, window.state);
+    assertNotNull(window.closedAt);
+    assertTrue(window.message.endsWith("\n\nMoved to VERIFIED:\n- p-1 (one)"), window.message);
+    assertFalse(window.message.contains("Slots:"), window.message);
   }
 }

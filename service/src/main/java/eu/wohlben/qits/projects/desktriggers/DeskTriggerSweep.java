@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -37,7 +38,12 @@ import org.jboss.logging.Logger;
  *       DeskTriggerMessage}) from its lines, grouped by the source that admitted them, and becomes
  *       OWED with its {@code message} and {@code closed_at}. One transaction per window, holding the
  *       row lock admit takes, so a line is either in the message or in the next window — never
- *       neither. A trigger arriving after the close opens a new window.
+ *       neither. A trigger arriving after the close opens a new window. The message of a project
+ *       with delivery enabled ends with its Slots section (qits-1778, {@link
+ *       VerifiedSlotHolders}), read just before that transaction: it asks qits-workspaces which
+ *       agents are ACTIVE, and that hop holds no row lock. A reading that fails — the port
+ *       unsatisfied or throwing — is a WARN and the message goes without it; it never keeps a
+ *       window from closing.
  *   <li><b>Deliver.</b> The oldest OWED window of each project — one per project per pass, so two
  *       owed windows arrive in order and never interleave — is posted to the desk's daemon through
  *       {@link FrontDeskPrompter}, the reading the person's prompt door uses, <b>outside any
@@ -85,6 +91,8 @@ public class DeskTriggerSweep {
 
   @Inject DevelopmentGuideService guide;
 
+  @Inject VerifiedSlotHolders slotHolders;
+
   /** How long a closed window may stay owed before it is given up on. */
   @ConfigProperty(name = "qits.projects.desk-triggers.give-up", defaultValue = "PT4H")
   Duration giveUp;
@@ -120,7 +128,8 @@ public class DeskTriggerSweep {
     }
     for (UUID id : due(at)) {
       try {
-        QuarkusTransaction.requiringNew().run(() -> close(id, at));
+        String slots = slots(id, at);
+        QuarkusTransaction.requiringNew().run(() -> close(id, at, slots));
       } catch (RuntimeException e) {
         LOG.warnf(e, "Desk trigger window %s could not be closed; tried again next pass", id);
       }
@@ -171,8 +180,44 @@ public class DeskTriggerSweep {
             });
   }
 
+  /**
+   * The Slots section of the window's message, or null: the project has delivery off (a window it
+   * holds is then only the desk's own waits, or was opened while the loop was on), or the reading
+   * failed. Never throws — a window closes whatever this answers.
+   */
+  private String slots(UUID windowId, Instant now) {
+    Project project = null;
+    try {
+      project =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () -> {
+                    DeskTriggerWindow window = DeskTriggerWindow.findById(windowId);
+                    return window == null ? null : Project.<Project>findById(window.projectId);
+                  });
+      if (project == null || !project.deliveryEnabled) {
+        return null;
+      }
+      Optional<VerifiedSlotHolders.Reading> reading = slotHolders.read(project);
+      if (reading.isEmpty()) {
+        LOG.warnf(
+            "Desk trigger window %s of project %s closes without its Slots section: there is no"
+                + " workspaces context to read the running agents from",
+            windowId, project.id);
+        return null;
+      }
+      return VerifiedSlotHolders.section(reading.get(), project.deliveryMaxRunning, now);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Desk trigger window %s%s closes without its Slots section: the running items could not"
+              + " be read (%s)",
+          windowId, project == null ? "" : " of project " + project.id, e.toString());
+      return null;
+    }
+  }
+
   /** Inside the window's transaction; the lock is the one admit takes on the OPEN row. */
-  private void close(UUID id, Instant now) {
+  private void close(UUID id, Instant now, String slots) {
     DeskTriggerWindow window = DeskTriggerWindow.findById(id, LockModeType.PESSIMISTIC_WRITE);
     if (window == null || window.state != DeskTriggerWindowState.OPEN) {
       return;
@@ -200,7 +245,7 @@ public class DeskTriggerSweep {
     String slug = project == null || project.slug == null ? window.projectId : project.slug;
     window.message =
         DeskTriggerMessage.render(
-            slug, guide.renderHash(DevelopmentGuideDefaults.DESK), window, grouped);
+            slug, guide.renderHash(DevelopmentGuideDefaults.DESK), window, grouped, slots);
     window.closedAt = now;
     window.state = DeskTriggerWindowState.OWED;
     LOG.infof(
