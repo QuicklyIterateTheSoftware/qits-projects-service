@@ -37,11 +37,11 @@ import org.jboss.logging.Logger;
  * switchable without touching how this service fetches git.
  *
  * <p><b>The credential is the machine bearer this service already holds for qits-githost</b> —
- * {@code wiring/IdpGitHostBearer} over the {@code GitHostBearer} port, the {@code githost} named
- * OIDC client, audience {@code qits-githost}. The far side guards these routes with {@code
- * qits:system}, which a forwarded {@code X-Qits-*} pair cannot carry, so there is deliberately
- * <b>no header fallback</b> here: with the client disabled the fold refuses rather than sending an
- * anonymous request the git host would answer 401 to.
+ * {@code wiring/IdpGitHostBearer} over the {@code GitHostBearer} port, the shared
+ * {@code qits} named OIDC client, audience {@code qits-platform}. The far side guards these routes
+ * with {@code qits:system}, which a forwarded {@code X-Qits-*} pair cannot carry, so there is
+ * deliberately <b>no header fallback</b> here: with the client disabled the fold refuses rather
+ * than sending an anonymous request the git host would answer 401 to.
  *
  * <p><b>Never throws, and every answer is classified.</b> The three success words map to the port's
  * three; a {@code 409 merge-conflict} is the conflict with its paths forwarded unchanged; a {@code

@@ -35,7 +35,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   POST {workspaces-url}/workspaces/api/agent-dispatches
- *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *   Content-Type: application/json
  *
  *   {"repositoryId": "…", "wrapperBranch": "ticket/qits-617",

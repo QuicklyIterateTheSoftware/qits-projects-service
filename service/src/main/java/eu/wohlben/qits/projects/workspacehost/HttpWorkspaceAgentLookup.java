@@ -28,7 +28,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   GET {workspaces-url}/workspaces/api/agents/{agentId}
- *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *
  *   -&gt; 200 {"agentId": "…", "workId": "…", …}
  *   -&gt; 404 no such agent
