@@ -50,7 +50,9 @@ public class BranchDelivery extends PanacheEntityBase {
     MOVED(1),
     /**
      * A fold carrying the branch failed its CI, its automations, or its release — or could not be
-     * made, because a source ref is missing on the git host (qits-1725).
+     * made, because a source ref is missing on the git host (qits-1725) — or, after the tag, the
+     * tag's publish run went red or its deployment failed (qits-1796; the request stays RELEASED,
+     * and a retry of that gate puts the row back to RELEASED).
      */
     FAILED(1),
     /** The request carrying the branch could not fold its sources. */
@@ -117,11 +119,14 @@ public class BranchDelivery extends PanacheEntityBase {
   @Column(name = "fold_attempt")
   public String foldAttempt;
 
-  /** {@code FAILED} only: the CI run or the newest automation run that failed the fold. */
+  /**
+   * {@code FAILED} only: the CI run or the newest automation run that failed the fold, or the tag's
+   * red publish run (qits-1796).
+   */
   @Column(name = "run_id")
   public String runId;
 
-  /** {@code RELEASED} and {@code LIVE}: the tag. */
+  /** {@code RELEASED} and {@code LIVE}, and a {@code FAILED} after the tag (qits-1796): the tag. */
   @Column(length = 64)
   public String version;
 

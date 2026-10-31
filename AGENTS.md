@@ -593,8 +593,10 @@ merely its only occupant. Six things about it are rules:
   because wait selections read top-level paths: `{projectId, repoId, repository, branch, requestId,
   qualifiedId, foldSha?, foldAttempt?, step, previousRequestId?, previousQualifiedId?, failure?, runId?,
   version?, everywhere, changedAt}`. `step` is `JOINED`, `MOVED`, `FAILED` (`failure`
-  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, `runId` the red run or the newest automation run, absent for
-  `RELEASE` and `FOLD`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag).
+  `CI`/`AUTOMATION`/`RELEASE`/`FOLD`, or after the tag `PUBLISH`/`DEPLOYMENT` (qits-1796), `runId`
+  the red run, the newest automation run or the red publish run, absent for `RELEASE`, `FOLD` and
+  `DEPLOYMENT`), `CONFLICTED`, `WITHDRAWN`, `RELEASED` or `LIVE` (`version` the tag, and on a
+  `PUBLISH`/`DEPLOYMENT` FAILED).
   `foldAttempt` (qits-1725) is set on `CONFLICTED` and on `FAILED`/`FOLD` only: a conflict or a
   missing source lands no fold, so `foldSha` stays at the last fold that landed and cannot tell two
   failed attempts apart. `control/FoldAttempt` is the key — for a conflict the first 16 hex chars of
@@ -652,6 +654,21 @@ merely its only occupant. Six things about it are rules:
     build. The move reads `mergedSha` at the call, so a path moving onto a new fold sets the sha
     first (`apply`'s UNCHANGED arm does now). A retried run that is red again reads JOINED then
     FAILED at the same fold; its agent's notice is still once per fold.
+    **A gate after the tag fails the branch too, and its retry re-arms it (qits-1796).** The request
+    stays RELEASED when its tag's publish run goes red or its deployment fails, so the row used to
+    read RELEASED until somebody retried and `--until live` neither fired nor failed.
+    `ReleaseFinalization` now writes FAILED over the request's RELEASED rows
+    (`BranchDeliveries.gateFailed`, in the verdict's transaction): failure `PUBLISH` with the red
+    run in `onPublishVerdict`, `DEPLOYMENT` with no run in `recordDeploymentFailure` (the event and
+    the reconcile, and again for the same sentence). `BranchDeliveries.gateRetried` puts every row
+    naming a RELEASED request at FAILED back to RELEASED at the tag's version — the ledger has no
+    failure column, so the request's state is what tells a post-release failure apart: on a
+    `BuildStatusChanged` of phase `RELEASE` QUEUED/RUNNING for a tag whose `publish_state` is
+    FAILED (`ReleasePipelineRunListener` → `ReleaseFinalization.onPublishRunStarted`), on an
+    accepted DEPLOY rerun (`rerunPhase` → `onDeploymentRerun`), and as a belt on a green verdict
+    or a `DeploymentActive` clearing a failure; never while the other gate is still recorded failed.
+    A second red is then a new position and announced; a green one ends at LIVE as before.
+    `BranchDeliveryNotices` says nothing for either failure.
   - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
     the seam for a consumer whose own row must commit with the step (qits-1722's branch-keyed
     notices). The port is `control/BranchDeliveryAnnouncer`, the adapter

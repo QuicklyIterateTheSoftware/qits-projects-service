@@ -2970,11 +2970,14 @@ public class ReleaseRequests {
    * neither is any other part a run is split into: each is part of a run, and re-running a run is
    * what this door does.
    *
-   * <p><b>Nothing about the request changes here.</b> No row is written, no state moves, no gate is
-   * re-decided and no event is published by this service — the new run reports on the bus exactly as
-   * the first one did, the mirror records it, and the gates are settled by whatever already settled
-   * them. That is the property to preserve: a rerun re-asks a question, and if this method ever
-   * starts deciding something it has stopped being one. The request is read back and answered whole
+   * <p><b>Nothing about the request changes here.</b> No request row is written, no state moves, no
+   * gate is re-decided and no request event is published by this service — the one write is the
+   * branch ledger's: an accepted DEPLOY rerun of a RELEASED request puts the branches a failed
+   * deployment failed back to RELEASED (qits-1796), a PUBLISH rerun the same once qits-ci reports
+   * the new run queued. The new run reports on the bus exactly as the first one did, the mirror
+   * records it, and the gates are settled by whatever already settled them. That is the property
+   * to preserve: a rerun re-asks a question, and if this method ever starts deciding something it
+   * has stopped being one. The request is read back and answered whole
    * so the caller replaces its row rather than guessing what moved.
    *
    * <p><b>The refusals are the far side's wherever the far side has one.</b> qits-ci answers 409
@@ -3050,6 +3053,11 @@ public class ReleaseRequests {
         .deployAgain(
             new DeploymentRedeploys.Redeploy(
                 row.repoId, row.projectId, row.repoName, null, released.tagName));
+    // Accepted: a failed deployment's branches are RELEASED again, so the redeploy's outcome is
+    // news to a --until live wait (qits-1796). The ledger is a record beside the rerun.
+    if (row.state == ReleaseRequest.State.RELEASED) {
+      finalization.onDeploymentRerun(row.id);
+    }
   }
 
   /**
