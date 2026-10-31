@@ -70,6 +70,9 @@ import java.util.List;
  * @param dependsOn the sibling ordering edge, or null. Never nesting
  * @param parent what it is part of now, or null for a root
  * @param position where among its siblings it sits, or null for a root. Dense and zero-based
+ * @param priority the ranking among its siblings (qits-753): higher sorts first, null — nobody
+ *     ranked it — after every number, then by {@link #number}. Always on the wire, null included;
+ *     the listing's order does not read it, a client sorts by it ({@link SiblingPriorities#ORDER})
  * @param createdAt unchanged by a transition
  * @param updatedAt when the transition committed
  * @param changedBy who made the transition — the audit principal the write was recorded under.
@@ -121,6 +124,7 @@ public record TransitionedEntity(
     String dependsOn,
     String parent,
     Integer position,
+    Integer priority,
     Instant createdAt,
     Instant updatedAt,
     String changedBy,
@@ -161,6 +165,7 @@ public record TransitionedEntity(
         dependsOn,
         parent,
         position,
+        priority,
         createdAt,
         updatedAt,
         changedBy,
@@ -223,6 +228,7 @@ public record TransitionedEntity(
         row.dependsOnEntityId,
         before.parent(),
         before.position(),
+        row.priority,
         row.createdAt,
         row.updatedAt,
         null,
@@ -268,6 +274,7 @@ public record TransitionedEntity(
         read.dependsOn(),
         read.parent(),
         read.position(),
+        read.priority(),
         read.createdAt(),
         read.updatedAt(),
         changedBy,
@@ -312,6 +319,7 @@ public record TransitionedEntity(
         row.dependsOnEntityId,
         edge == null ? null : edge.parentId,
         edge == null ? null : edge.position,
+        row.priority,
         row.createdAt,
         row.updatedAt,
         changedBy,

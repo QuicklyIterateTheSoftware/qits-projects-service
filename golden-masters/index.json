@@ -7101,6 +7101,84 @@
       ]
     },
     {
+      "name": "three reported tickets, one with a priority",
+      "slug": "three-reported-tickets-one-with-a-priority",
+      "params": {
+        "anchor": "contract-00000001-1",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-3",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "status": 200,
+          "file": "three-reported-tickets-one-with-a-priority/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "patchWork",
+          "method": "PATCH",
+          "path": "/projects/api/work/{qualifiedId}",
+          "body": {
+            "priority": 5
+          },
+          "status": 200,
+          "file": "three-reported-tickets-one-with-a-priority/patchWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "reprioritizeWork",
+          "method": "PUT",
+          "path": "/projects/api/work/{qualifiedId}/priority",
+          "body": {
+            "below": "{anchor}"
+          },
+          "status": 200,
+          "file": "three-reported-tickets-one-with-a-priority/reprioritizeWork.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.items[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "two projects exist",
       "slug": "two-projects-exist",
       "params": {

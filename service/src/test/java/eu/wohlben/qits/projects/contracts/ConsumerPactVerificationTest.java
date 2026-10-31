@@ -484,6 +484,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_REPORTED_TICKET);
   }
 
+  @State(ProviderStates.THREE_REPORTED_TICKETS)
+  Map<String, String> threeReportedTickets() {
+    return states.params(ProviderStates.THREE_REPORTED_TICKETS);
+  }
+
   @State(ProviderStates.A_REFINED_TICKET)
   Map<String, String> aRefinedTicket() {
     return states.params(ProviderStates.A_REFINED_TICKET);

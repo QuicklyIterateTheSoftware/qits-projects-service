@@ -26,6 +26,9 @@ import java.util.List;
  * a list (an empty one included) replaces them whole. A list has an empty value of its own, so the
  * clear flag's job is already done by it.
  *
+ * <p><b>The priority (qits-753) is neither scope nor a marker</b>, like the inspiration: an edit
+ * stating only it passes every freeze, and the writer refuses it on a DONE or DROPPED row instead.
+ *
  * <p>The static factories are the shapes the four surfaces speak — an epic's words, a ticket's
  * intake, a plan node's parts — so a call site reads as what it is writing. They build this record
  * and nothing else; there is no rule in any of them.
@@ -47,7 +50,53 @@ public record EntityWrite(
     Instant implementingAt,
     List<String> acceptanceCriteria,
     String inspiredBy,
-    boolean clearInspiredBy) {
+    boolean clearInspiredBy,
+    Integer priority,
+    boolean clearPriority) {
+
+  /**
+   * Every property but the priority (qits-753), which this leaves alone: the shape every surface
+   * that does not rank wrote before the priority existed. {@link #withPriority} adds it.
+   */
+  public EntityWrite(
+      String title,
+      String description,
+      boolean clearDescription,
+      String impetus,
+      boolean clearImpetus,
+      String type,
+      String assignee,
+      boolean clearAssignee,
+      String repositoryId,
+      String dependsOn,
+      boolean clearDependsOn,
+      Instant implementedAt,
+      boolean clearImplementedAt,
+      Instant implementingAt,
+      List<String> acceptanceCriteria,
+      String inspiredBy,
+      boolean clearInspiredBy) {
+    this(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        null,
+        false);
+  }
 
   /** An epic: its title and its long-form spine. */
   public static EntityWrite epic(String title, String description) {
@@ -187,7 +236,9 @@ public record EntityWrite(
         implementingAt,
         criteria,
         inspiredBy,
-        clearInspiredBy);
+        clearInspiredBy,
+        priority,
+        clearPriority);
   }
 
   /**
@@ -213,7 +264,42 @@ public record EntityWrite(
         implementingAt,
         acceptanceCriteria,
         ideaId,
+        clear,
+        priority,
+        clearPriority);
+  }
+
+  /**
+   * This write, also stating the ranking among its siblings (qits-753): {@code value} sets it,
+   * {@code clear} empties it, and neither leaves it alone. Neither scope nor a marker, so no freeze
+   * judges it; the writer refuses it on a DONE or DROPPED row.
+   */
+  public EntityWrite withPriority(Integer value, boolean clear) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        value,
         clear);
+  }
+
+  /** Whether this write sets or clears the priority (qits-753). */
+  boolean touchesPriority() {
+    return priority != null || clearPriority;
   }
 
   /** Whether this write sets or clears the idea the work was inspired by. */
@@ -257,6 +343,6 @@ public record EntityWrite(
         || repositoryId != null
         || dependsOn != null
         || clearDependsOn
-        || (!touchesMarker() && !touchesCriteria() && !touchesInspiration());
+        || (!touchesMarker() && !touchesCriteria() && !touchesInspiration() && !touchesPriority());
   }
 }

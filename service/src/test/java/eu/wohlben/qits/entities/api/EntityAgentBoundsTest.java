@@ -567,6 +567,34 @@ class EntityAgentBoundsTest {
     assertEquals("REFINED", statusOf(rows.epicId()));
   }
 
+  /**
+   * <b>The drop door binds like the patch</b> (qits-753): an agent ranks its own project's roots,
+   * and another project's are the binding's 403 before anything is read or written.
+   */
+  @Test
+  void anAgentRanksOnlyItsOwnProjectsWork() {
+    WorkPriorities ranked =
+        work(AGENT)
+            .reprioritize(
+                rows.ticketId(), new WorkController.WorkReprioritize(rows.epicQualifiedId(), null));
+    assertFalse(ranked.items().isEmpty());
+    assertTrue(
+        QuarkusTransaction.requiringNew().call(() -> workEntities.find(rows.ticketId()).priority)
+            != null);
+
+    refused(
+        () ->
+            work(AGENT)
+                .reprioritize(
+                    rows.foreignTicketId(),
+                    new WorkController.WorkReprioritize(rows.foreignEpicId(), null)));
+    refused(
+        () ->
+            work(FOREIGN_AGENT)
+                .reprioritize(
+                    rows.ticketId(), new WorkController.WorkReprioritize(rows.epicId(), null)));
+  }
+
   /** The row's status, read in a transaction of its own (see {@link #titleOf}). */
   private String statusOf(String id) {
     return QuarkusTransaction.requiringNew().call(() -> workEntities.find(id).status);

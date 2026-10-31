@@ -1458,6 +1458,9 @@ components:
         position:
           type: integer
           format: int32
+        priority:
+          type: integer
+          format: int32
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -3184,6 +3187,9 @@ components:
         position:
           type: integer
           format: int32
+        priority:
+          type: integer
+          format: int32
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -3762,6 +3768,33 @@ components:
             \ of an idea of the same project; null clears it. Editable at every status.\
             \ Refused on a feature or a task. Setting, changing or clearing it re-derives\
             \ the ideas' status."
+        priority:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "The ranking among siblings, on every archetype: higher sorts\
+            \ first, null after every number, then by number. Editable at every status\
+            \ but DONE and DROPPED (409), outside every scope freeze; null clears\
+            \ it. PUT /projects/api/work/{qualifiedId}/priority ranks by drop instead."
+    WorkPriorities:
+      type: object
+      description: "The siblings a drop renumbered — the moved item and every one\
+        \ above it — in their new order, highest first."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkPriority"
+    WorkPriority:
+      type: object
+      description: One sibling and the priority it now holds.
+      properties:
+        qualifiedId:
+          type: string
+        priority:
+          type: integer
+          format: int32
     WorkProgressAnswer:
       type: object
       description: "A campaign's progress, derived on the read."
@@ -3774,6 +3807,19 @@ components:
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
+    WorkReprioritize:
+      type: object
+      description: "Where a dropped work item now sits among its siblings: directly\
+        \ above or directly below one of them. Exactly one of above and below."
+      properties:
+        above:
+          type: string
+          description: "The sibling the item now sits directly above, by qualified\
+            \ id or UUID."
+        below:
+          type: string
+          description: "The sibling the item now sits directly below, by qualified\
+            \ id or UUID."
     WorkStatusMove:
       type: object
       required:
@@ -8131,8 +8177,9 @@ paths:
         "404":
           description: No entity with this id
         "409":
-          description: "The owning epic's status freezes what the patch touches, or\
-            \ the acceptance criteria are changed from READY_FOR_DEV on"
+          description: "The owning epic's status freezes what the patch touches, the\
+            \ acceptance criteria are changed from READY_FOR_DEV on, or a priority\
+            \ is written on a DONE or DROPPED entity"
         "401":
           description: Not Authorized
       tags:
@@ -9303,6 +9350,57 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
+  /projects/api/work/{qualifiedId}/priority:
+    put:
+      summary: Drop a work item above or below one of its siblings
+      description: "Ranks the item among its siblings — the children of its parent,\
+        \ or for a root every root of its project but the campaigns — by where it\
+        \ was dropped: directly above or directly below one named sibling (qualified\
+        \ id or UUID). DONE and DROPPED siblings take no part. The item and every\
+        \ open sibling above it are renumbered, strictly descending and above every\
+        \ ranked sibling below, so the order reads as dropped; nothing below the drop\
+        \ is written. Answers the renumbered siblings in order."
+      operationId: reprioritizeWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkReprioritize"
+        required: true
+      responses:
+        "200":
+          description: "The siblings the drop renumbered, highest first"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkPriorities"
+        "400":
+          description: "Both anchors or neither; an anchor naming no entity, naming\
+            \ the item itself, or naming no open sibling (another parent, another\
+            \ project, a campaign, a DONE or DROPPED item); or the item is a campaign"
+        "403":
+          description: An agent ranking outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: The item is DONE or DROPPED
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+        - qits:system
   /projects/api/work/{qualifiedId}/progress:
     get:
       summary: How a campaign is doing

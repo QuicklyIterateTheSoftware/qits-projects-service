@@ -23,6 +23,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -51,6 +52,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -79,6 +81,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -107,6 +110,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -135,6 +139,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000002",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -162,6 +167,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000008",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -189,6 +195,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000008",
       "position": 1,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -216,6 +223,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -244,6 +252,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000007",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -271,6 +280,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-00000000000c",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -298,6 +308,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-00000000000c",
       "position": 1,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -325,6 +336,7 @@
       "dependsOn": null,
       "parent": null,
       "position": null,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
@@ -353,6 +365,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -380,6 +393,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-00000000000f",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -407,6 +421,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 1,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -434,6 +449,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000011",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -461,6 +477,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 2,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -488,6 +505,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000013",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -515,6 +533,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 3,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -542,6 +561,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000015",
       "position": 0,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
@@ -569,6 +589,7 @@
       "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000015",
       "position": 1,
+      "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null
