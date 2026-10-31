@@ -246,7 +246,6 @@
         <qits.githost-frontend-pacts-qits-projects-service.version>2026.1021.193358</qits.githost-frontend-pacts-qits-projects-service.version>
         <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1021.193655</qits.maintenance-frontend-pacts-qits-projects-service.version>
         <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1021.193823</qits.artifacts-frontend-pacts-qits-projects-service.version>
-        <qits.configuration-frontend-pacts-qits-projects-service.version>2026.1021.193835</qits.configuration-frontend-pacts-qits-projects-service.version>
         <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1021.193850</qits.deployments-frontend-pacts-qits-projects-service.version>
         <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1021.194056</qits.mirror-frontend-pacts-qits-projects-service.version>
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1021.194102</qits.observability-frontend-pacts-qits-projects-service.version>
@@ -536,13 +535,6 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-artifacts-frontend-pacts-qits-projects-service</artifactId>
                 <version>${qits.artifacts-frontend-pacts-qits-projects-service.version}</version>
-            </dependency>
-            <dependency>
-                <!-- Test scope at every declaration site: a consumer's pact, verified by
-                     ConsumerPactVerificationTest. -->
-                <groupId>eu.wohlben.qits</groupId>
-                <artifactId>qits-configuration-frontend-pacts-qits-projects-service</artifactId>
-                <version>${qits.configuration-frontend-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site: a consumer's pact, verified by

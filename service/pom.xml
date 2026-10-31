@@ -369,11 +369,6 @@
         </dependency>
         <dependency>
             <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-configuration-frontend-pacts-qits-projects-service</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-deployments-frontend-pacts-qits-projects-service</artifactId>
             <scope>test</scope>
         </dependency>
