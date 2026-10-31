@@ -18,7 +18,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -90,7 +90,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -162,7 +162,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -234,7 +234,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -306,7 +306,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -378,7 +378,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -450,7 +450,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -522,7 +522,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -594,7 +594,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -663,7 +663,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -732,7 +732,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -801,7 +801,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -870,7 +870,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -939,7 +939,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -1008,7 +1008,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -1077,7 +1077,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -1146,7 +1146,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -1169,7 +1169,8 @@
             "name": "DeploymentActive",
             "occurredAt": "2026-01-01T00:00:00Z",
             "parentId": null,
-            "payload": "{\"application\":\"qits-eventstream-pact\"}"
+            "payload": "{\"application\":\"qits-eventstream-pact\"}",
+            "publisher": "eu.wohlben.qits:qits-eventstream-pact"
           },
           "contentType": "application/json",
           "encoded": false
@@ -1209,7 +1210,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1027.101950"
+            "version": "2026.1031.131702"
           }
         }
       },
@@ -1232,7 +1233,8 @@
             "name": "DeploymentActive",
             "occurredAt": "2026-01-01T00:00:00Z",
             "parentId": null,
-            "payload": "{\"application\":\"qits-eventstream-pact\"}"
+            "payload": "{\"application\":\"qits-eventstream-pact\"}",
+            "publisher": "eu.wohlben.qits:qits-eventstream-pact"
           },
           "contentType": "application/json",
           "encoded": false
