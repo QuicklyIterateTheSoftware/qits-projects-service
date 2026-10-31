@@ -118,11 +118,19 @@ class ConsumerPactVerificationTest {
   }
 
   /**
-   * Empty: qits-platform-access-cli's 2026.1019.65035 approve and decline rows sent no
-   * Authorization, and its 2026.1019.195617 pact sends the person's CLI bearer, so they verify for
-   * real (qits-1149).
+   * qits-landing-app's 2026.1030.201508 list-ideas row sends the golden masters' {@code
+   * {projectId}} placeholder as a literal query value, with no provider-state generator: the
+   * consumer helper generated the path but not the query (qits-1767). The release carrying the
+   * fixed pact verifies it for real, and this entry, naming that version alone, goes inert.
    */
-  static final List<KnownWrong> KNOWN_WRONG = List.of();
+  static final List<KnownWrong> KNOWN_WRONG =
+      List.of(
+          new KnownWrong(
+              "qits-landing-app",
+              "2026.1030.201508",
+              "list-ideas: listIdeas",
+              "the query sends a literal {projectId} with no provider-state generator; fixed by"
+                  + " qits-1767"));
 
   @Inject ProviderStates states;
 
