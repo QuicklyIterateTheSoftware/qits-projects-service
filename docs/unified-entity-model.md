@@ -1787,7 +1787,7 @@ is the check: a diff there would have meant something was changed that should no
 | `EpicsPrincipal`, `EpicsExceptionMapper`, `EpicsException` | `EntitiesPrincipal`, `EntitiesExceptionMapper`, `EntitiesException` | module-named infrastructure — the module's name changed, these follow (the mapper and the exception it maps are one decision) |
 | `EpicsTestSupport`, `EpicsEmbeddedPgConfigSource`, `EpicsAuditIdentityTest` | `Entities…` | same rule, test side. The config source still writes `quarkus.datasource.epics.*`; only the class is module-named |
 | `EpicChangeHints`, `TicketChangeHints` | `EpicsTopicHints`, `TicketsTopicHints` | **named for the SSE topic each fires, not for an entity kind.** `Topic.EPICS`/`Topic.TICKETS` reach the wire lowercased and the SPA subscribes to them, so the topics did not move and the beans now track them. The old singular names read as "hints about an Epic" while `EpicsTopicHints` in fact resolves EPIC, FEATURE and TASK rows of one table |
-| `qits.epics.read-deadline`, `qits.epics.write-deadline` | `qits.entities.*` | the module's own config namespace. Neither is declared in `.config/qits/configuration.yml`, so nothing on the platform injects either and both fall back to their shipped 15S default |
+| `qits.epics.read-deadline`, `qits.epics.write-deadline` | `qits.entities.*` | the module's own config namespace. The application declares neither, so nothing on the platform injects either and both fall back to their shipped 15S default |
 
 **What was checked and deliberately left, because "not mentioned" and "checked and correct" are
 indistinguishable to a later reader:**

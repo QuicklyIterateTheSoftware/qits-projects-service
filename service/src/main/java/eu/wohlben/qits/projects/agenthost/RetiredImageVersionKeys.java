@@ -24,9 +24,9 @@ import org.jboss.logging.Logger;
  * <p><b>But the entry already written is still in every deployment's environment.</b> Nothing on
  * this platform deletes a configuration entry — qits-configuration reports an orphan and never
  * cleans one up — and this service holds no credential that could. What makes it stop deciding is
- * the rename, not a deletion: a different name is read by nobody. The declaration for it is removed
- * from {@code .config/qits/configuration.yml} in the same change, which is what turns the stored
- * entry into a visible {@code orphaned} row over there.
+ * the rename, not a deletion: a different name is read by nobody. This application no longer
+ * declares the old name, which is what turns the stored entry into a visible {@code orphaned} row
+ * over there.
  *
  * <p>The refinement image's key is <b>not</b> here. {@code qits.projects.refinement-image-version}
  * is still read, still followed through qits-configuration by qits-workspace-daemon's releases, and

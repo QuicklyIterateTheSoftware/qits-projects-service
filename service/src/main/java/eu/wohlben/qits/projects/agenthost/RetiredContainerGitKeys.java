@@ -42,9 +42,9 @@ import org.jboss.logging.Logger;
  * outranks a shipped default</b>, and nothing on this platform deletes an entry — qits-configuration
  * reports an orphan and never cleans one up — while only a {@code qits:admin} caller can rewrite
  * one. So the poisoned value went on being handed to every agent container. What makes it stop
- * deciding is that the code reads a <b>different name</b>: the residue is read by nobody. The
- * declaration for it leaves {@code .config/qits/configuration.yml} in the same change, which is what
- * turns the stored entry into a visible {@code orphaned} row over there.
+ * deciding is that the code reads a <b>different name</b>: the residue is read by nobody. This
+ * application no longer declares the old name, which is what turns the stored entry into a visible
+ * {@code orphaned} row over there.
  *
  * <p>{@code qits.projects.refinement-git-url} is named here for completeness rather than because it
  * ever hurt: no deployment carries an entry for it, it was declared nowhere, and the refinement
