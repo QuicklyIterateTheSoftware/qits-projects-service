@@ -118,19 +118,11 @@ class ConsumerPactVerificationTest {
   }
 
   /**
-   * qits-landing-app's 2026.1030.201508 list-ideas row sends the golden masters' {@code
-   * {projectId}} placeholder as a literal query value, with no provider-state generator: the
-   * consumer helper generated the path but not the query (qits-1767). The release carrying the
-   * fixed pact verifies it for real, and this entry, naming that version alone, goes inert.
+   * Empty: qits-landing-app's 2026.1030.201508 list-ideas row sent a literal {@code {projectId}}
+   * query, and its 2026.1031.30844 pact sends a provider-state generator, so it verifies for real
+   * (qits-1767).
    */
-  static final List<KnownWrong> KNOWN_WRONG =
-      List.of(
-          new KnownWrong(
-              "qits-landing-app",
-              "2026.1030.201508",
-              "list-ideas: listIdeas",
-              "the query sends a literal {projectId} with no provider-state generator; fixed by"
-                  + " qits-1767"));
+  static final List<KnownWrong> KNOWN_WRONG = List.of();
 
   @Inject ProviderStates states;
 
