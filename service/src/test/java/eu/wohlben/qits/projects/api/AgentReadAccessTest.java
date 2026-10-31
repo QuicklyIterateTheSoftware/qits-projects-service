@@ -147,6 +147,8 @@ class AgentReadAccessTest {
           "WorkController.create",
           "WorkController.put",
           "WorkController.patch",
+          // The drop door (qits-753) takes the patch's roles: a ranking is a field edit.
+          "WorkController.reprioritize",
           "WorkController.transition",
           "WorkController.setStatus",
           "WorkController.setBlocked",
@@ -275,6 +277,7 @@ class AgentReadAccessTest {
           "WorkController.create",
           "WorkController.get",
           "WorkController.patch",
+          "WorkController.reprioritize",
           "WorkController.setStatus",
           "WorkCommentController.list",
           "WorkCommentController.add");

@@ -40,7 +40,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p>One family for every archetype, with no archetype in any path: {@code GET}, {@code PUT} and
  * {@code PATCH /work/{qualifiedId}}, the create {@code POST /work}, the bulk {@code POST
  * /work/transition}, and the lifecycle and block moves {@code POST /work/{qualifiedId}/status} and
- * {@code …/blocked}, and the delete {@code DELETE /work/{qualifiedId}} (qits-970). The thread is
+ * {@code …/blocked}, the delete {@code DELETE /work/{qualifiedId}} (qits-970), and the drop door
+ * {@code PUT /work/{qualifiedId}/priority} (qits-753), under the patch's roles. The thread is
  * {@link WorkCommentController}'s, the registry {@link WorkArchetypesController}'s and a project's
  * listing {@link ProjectWorkController}'s; the sub-resources (qits-970) each have a class of their
  * own — {@link WorkDossierController}, {@link WorkDossierAssetController}, {@link
@@ -187,7 +188,34 @@ public class WorkController {
                   "An epic's, a ticket's or a campaign's inspiration: the id of an idea of the same"
                       + " project; null clears it. Editable at every status. Refused on a feature or"
                       + " a task. Setting, changing or clearing it re-derives the ideas' status.")
-          String inspiredBy) {}
+          String inspiredBy,
+      @Schema(
+              nullable = true,
+              description =
+                  "The ranking among siblings, on every archetype: higher sorts first, null after"
+                      + " every number, then by number. Editable at every status but DONE and"
+                      + " DROPPED (409), outside every scope freeze; null clears it. PUT"
+                      + " /projects/api/work/{qualifiedId}/priority ranks by drop instead.")
+          Integer priority) {}
+
+  /**
+   * The drop door's body (qits-753): exactly one anchor. Read as a record because neither member
+   * may be cleared — absent and null are the same "not this one".
+   */
+  @Schema(
+      name = "WorkReprioritize",
+      description =
+          "Where a dropped work item now sits among its siblings: directly above or directly below"
+              + " one of them. Exactly one of above and below.")
+  public record WorkReprioritize(
+      @Schema(
+              description =
+                  "The sibling the item now sits directly above, by qualified id or UUID.")
+          String above,
+      @Schema(
+              description =
+                  "The sibling the item now sits directly below, by qualified id or UUID.")
+          String below) {}
 
   @Schema(
       name = "WorkStatusMove",
@@ -392,8 +420,9 @@ public class WorkController {
   @APIResponse(
       responseCode = "409",
       description =
-          "The owning epic's status freezes what the patch touches, or the acceptance criteria are"
-              + " changed from READY_FOR_DEV on")
+          "The owning epic's status freezes what the patch touches, the acceptance criteria are"
+              + " changed from READY_FOR_DEV on, or a priority is written on a DONE or DROPPED"
+              + " entity")
   public TransitionedEntity patch(
       @PathParam("qualifiedId") String qualifiedId,
       @RequestBody(
@@ -408,6 +437,47 @@ public class WorkController {
               })
           JsonNode body) {
     return doors.patch(identity, ids.resolve(qualifiedId).id, body);
+  }
+
+  @PUT
+  @Path("/{qualifiedId}/priority")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent", "qits:system"})
+  @Operation(
+      operationId = "reprioritizeWork",
+      summary = "Drop a work item above or below one of its siblings",
+      description =
+          "Ranks the item among its siblings — the children of its parent, or for a root every"
+              + " root of its project but the campaigns — by where it was dropped: directly above or"
+              + " directly below one named sibling (qualified id or UUID). DONE and DROPPED siblings"
+              + " take no part. The item and every open sibling above it are renumbered, strictly"
+              + " descending and above every ranked sibling below, so the order reads as dropped;"
+              + " nothing below the drop is written. Answers the renumbered siblings in order.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The siblings the drop renumbered, highest first",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = WorkPriorities.class)))
+  @APIResponse(
+      responseCode = "400",
+      description =
+          "Both anchors or neither; an anchor naming no entity, naming the item itself, or naming"
+              + " no open sibling (another parent, another project, a campaign, a DONE or DROPPED"
+              + " item); or the item is a campaign")
+  @APIResponse(
+      responseCode = "403",
+      description = "An agent ranking outside its own project; nothing is written")
+  @APIResponse(responseCode = "404", description = "No entity with this id")
+  @APIResponse(responseCode = "409", description = "The item is DONE or DROPPED")
+  public WorkPriorities reprioritize(
+      @PathParam("qualifiedId") String qualifiedId, WorkReprioritize request) {
+    return doors.reprioritize(
+        identity,
+        ids.resolve(qualifiedId),
+        request == null ? null : request.above(),
+        request == null ? null : request.below());
   }
 
   @POST

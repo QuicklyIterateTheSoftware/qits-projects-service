@@ -95,6 +95,31 @@ public final class EntityWireProperties {
         WorkOutcome.words());
   }
 
+  /**
+   * The wire name of the ranking among siblings (qits-753) — editable by a patch on every archetype,
+   * and written by the drop door {@code PUT /work/{qualifiedId}/priority}. <b>Not a registry
+   * property, so not a row of this table</b>, for {@link #OUTCOME}'s reason and one of its own: the
+   * registry document's {@code permitted} lists are pinned by consumers element for element, and the
+   * whole-state transition clears every registry property it is not restated in, so a reshape would
+   * silently unrank a row. {@code EntitySchemas} adds it to every update schema.
+   */
+  public static final String PRIORITY = "priority";
+
+  /**
+   * The JSON Schema fragment of a priority: an integer, without the nullability the update schema
+   * adds (a patch's null clears it).
+   */
+  public static Map<String, Object> prioritySchema() {
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "integer");
+    schema.put(
+        "description",
+        "The ranking among siblings (a project's roots, campaigns excluded, or the children of one"
+            + " parent): higher sorts first, null after every number, then by number. Editable at"
+            + " every status but DONE and DROPPED, which answer 409; null clears it.");
+    return Collections.unmodifiableMap(schema);
+  }
+
   private static final Map<EntityProperty, Slot> TABLE = declare();
 
   private EntityWireProperties() {}

@@ -47,6 +47,8 @@ import java.util.regex.Pattern;
  *   <li><b>update</b> — {@code PATCH /work/{qualifiedId}}, a merge patch. The same properties less the
  *       server-owned pair and the {@linkplain EntityWireProperties#MOVES moves}; a clearable one is
  *       typed {@code ["string","null"]}. Nothing is required, and at least one property must be named.
+ *       Every kind's also lists {@code priority} (qits-753), {@code ["integer","null"]}, which is no
+ *       registry property ({@link EntityWireProperties#PRIORITY}).
  *   <li><b>transition</b> — one entry of {@code POST /work/transition}, the full post-state. The
  *       kind's permitted properties less the server-owned pair and the implementing marker (which
  *       that door carries rather than states), plus {@code membership}. Required:
@@ -182,6 +184,8 @@ public final class EntitySchemas {
     if (IdeaService.CARRIERS.contains(archetype)) {
       properties.put(INSPIRED_BY, nullable(inspiredBy()));
     }
+    // The ranking among siblings (qits-753): every archetype, and no registry property.
+    properties.put(EntityWireProperties.PRIORITY, nullable(EntityWireProperties.prioritySchema()));
     return document(
         archetype,
         Door.UPDATE,
@@ -354,6 +358,11 @@ public final class EntitySchemas {
         return name + " is server-owned and never written";
       }
     }
+    if (name.equals(EntityWireProperties.PRIORITY)) {
+      return name
+          + " is not written at create: a new item is unranked; rank it through PATCH"
+          + " /projects/api/work/{qualifiedId} or PUT /projects/api/work/{qualifiedId}/priority";
+    }
     if (name.equals(EntityWireProperties.OUTCOME)) {
       return name
           + " is not written at create: it is stated with a move into DROPPED, through POST"
@@ -471,6 +480,17 @@ public final class EntitySchemas {
         + " is not written on a "
         + archetype
         + ": only an EPIC, a TICKET or a CAMPAIGN is inspired by an idea";
+  }
+
+  /**
+   * The complaint about a patch's {@code priority} (qits-753), or none: an integer, or null to clear
+   * it. A fraction or a number past an {@code int} is no ranking.
+   */
+  static Optional<String> priorityRefusal(JsonNode value) {
+    if (value == null || value.isNull() || (value.isIntegralNumber() && value.canConvertToInt())) {
+      return Optional.empty();
+    }
+    return Optional.of(EntityWireProperties.PRIORITY + " must be an integer, or null to clear it");
   }
 
   /**

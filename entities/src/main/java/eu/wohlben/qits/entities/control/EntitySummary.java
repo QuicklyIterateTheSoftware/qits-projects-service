@@ -14,7 +14,7 @@ import java.time.Instant;
  * TransitionedEntity} for each component — {@code blocked} is the effective block there and here,
  * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895), and {@code
  * waitingOn} beside it (qits-1153). {@code outcome} and {@code supersededBy} (qits-248) are on every
- * archetype and always on the wire, null included.
+ * archetype and always on the wire, null included, and so is {@code priority} (qits-753).
  */
 public record EntitySummary(
     String id,
@@ -39,6 +39,7 @@ public record EntitySummary(
     String dependsOn,
     String parent,
     Integer position,
+    Integer priority,
     Instant createdAt,
     Instant updatedAt,
     String changedBy,
@@ -72,6 +73,7 @@ public record EntitySummary(
         e.dependsOn(),
         e.parent(),
         e.position(),
+        e.priority(),
         e.createdAt(),
         e.updatedAt(),
         e.changedBy(),

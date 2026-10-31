@@ -669,6 +669,12 @@ public class WorkEntityService {
       ideaRules.requireInspirable(archetype, write.inspiredBy(), row.projectId);
       row.inspiredByIdeaId = write.inspiredBy();
     }
+    // The ranking among siblings (qits-753): neither scope nor a marker, so no owner's freeze
+    // judges it — only the row's own status does, DONE and DROPPED ranking nothing.
+    if (write.touchesPriority()) {
+      EntityPriorityService.requireRankable(kind.noun(), row);
+      row.priority = write.clearPriority() ? null : write.priority();
+    }
     String statusBefore = row.status;
     boolean piece = Archetypes.isPlanPiece(archetype);
     if (write.implementingAt() != null) {

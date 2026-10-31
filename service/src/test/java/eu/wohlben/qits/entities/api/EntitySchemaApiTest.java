@@ -329,6 +329,8 @@ class EntitySchemaApiTest {
           return map("parent", parentOf(archetype));
         case "inspiredBy":
           return idea;
+        case "priority":
+          return 1;
         default:
           break;
       }
@@ -448,6 +450,10 @@ class EntitySchemaApiTest {
             "type" : [ "string", "null" ],
             "pattern" : "\\\\S",
             "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
+          },
+          "priority" : {
+            "type" : [ "integer", "null" ],
+            "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
           }
         },
         "required" : [ ],
@@ -605,6 +611,10 @@ class EntitySchemaApiTest {
           "dependsOn" : {
             "type" : [ "string", "null" ],
             "description" : "The id of the sibling this one waits for — ordering, never nesting."
+          },
+          "priority" : {
+            "type" : [ "integer", "null" ],
+            "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
           }
         },
         "required" : [ ],

@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.persistence;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
@@ -59,7 +60,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
-                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId"
+                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -98,6 +99,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.agentWaitingOn = (String) c[25];
     row.outcome = (WorkOutcome) c[26];
     row.inspiredByIdeaId = (String) c[27];
+    row.priority = (Integer) c[28];
     return row;
   }
 
@@ -141,6 +143,22 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
       return List.of();
     }
     return find("id in ?1", OLDEST_FIRST, ids).list();
+  }
+
+  /**
+   * <b>A project's roots that take part in an order</b> (qits-753): every row with no STRUCTURAL
+   * edge above it, campaigns excluded — the epics and tickets a board draws as siblings of one
+   * another. Managed rows, for the drop door that renumbers them in the caller's transaction.
+   */
+  public List<WorkEntity> listOrderedRoots(String projectId) {
+    return find(
+            "from WorkEntity e where e.projectId = ?1 and e.archetype <> ?2 and not exists"
+                + " (select m.id from EntityMembership m where m.childId = e.id and m.kind = ?3)"
+                + " order by e.createdAt, e.id",
+            projectId,
+            Archetype.CAMPAIGN,
+            MembershipKind.STRUCTURAL)
+        .list();
   }
 
   /**

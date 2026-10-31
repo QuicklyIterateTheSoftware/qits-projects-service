@@ -789,6 +789,27 @@ class GoldenMasterRecordingTest {
             "PATCH",
             "/projects/api/work/{qualifiedId}",
             "{\"title\":\"Database refuses connections during deploys\"}"));
+    // The ranking (qits-753): a patch writing it outright, and the drop door moving the last of three
+    // tickets directly below the ranked first one.
+    all.add(
+        write(
+            ProviderStates.THREE_REPORTED_TICKETS,
+            "patchWork",
+            "PATCH",
+            "/projects/api/work/{qualifiedId}",
+            "{\"priority\":5}"));
+    all.add(
+        write(
+            ProviderStates.THREE_REPORTED_TICKETS,
+            "reprioritizeWork",
+            "PUT",
+            "/projects/api/work/{qualifiedId}/priority",
+            "{\"below\":\"{anchor}\"}"));
+    all.add(
+        read(
+            ProviderStates.THREE_REPORTED_TICKETS,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work"));
     all.add(
         write(
             ProviderStates.A_REPORTED_TICKET,

@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "qualifiedId": "contract-00000001-1",
+      "priority": 2
+    },
+    {
+      "qualifiedId": "contract-00000001-3",
+      "priority": 1
+    }
+  ]
+}

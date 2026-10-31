@@ -182,6 +182,14 @@ public class ProviderStates {
   public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
   public static final String A_TICKET_WITH_A_DESIGN = "a ticket with a design";
   public static final String A_REPORTED_TICKET = "a reported ticket";
+
+  /**
+   * Three REPORTED root tickets in one project, filed in order, the first carrying priority 2 and
+   * the other two unranked (qits-753): what a board's drag and drop reorders. {@code qualifiedId}
+   * is the last of them, the one a drop moves; {@code anchor} the first, ranked one, the sibling it
+   * is dropped against.
+   */
+  public static final String THREE_REPORTED_TICKETS = "three reported tickets, one with a priority";
   public static final String A_REFINED_TICKET = "a refined ticket";
   public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
   public static final String AN_IMPLEMENTING_TICKET = "an implementing ticket";
@@ -479,6 +487,7 @@ public class ProviderStates {
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
+    states.put(THREE_REPORTED_TICKETS, this::threeReportedTickets);
     states.put(A_PROJECT_WITH_IDEAS, this::aProjectWithIdeas);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
@@ -1503,6 +1512,23 @@ public class ProviderStates {
     if (turns.isResolvable()) {
       turns.get().reset();
     }
+  }
+
+  /** {@link #THREE_REPORTED_TICKETS}: the ranked first ticket is the anchor, the last the mover. */
+  private Setup threeReportedTickets() {
+    String token = token();
+    Project project = project(token, THREE_REPORTED_TICKETS);
+    String first = ticket(project, "Checkout times out under load");
+    ticket(project, "Invoice totals round the wrong way");
+    String third = ticket(project, "Search forgets the last filter");
+    work.update(Archetype.TICKET, first, EntityWrite.epic(null, null).withPriority(2, false), SEEDER);
+    return new Setup(
+        params(
+            "anchor", qualified(project, first),
+            "projectId", project.id,
+            "qualifiedId", qualified(project, third),
+            "ticketId", third),
+        List.of(token));
   }
 
   /** A VERIFIED ticket, ready to be moved to DONE. */

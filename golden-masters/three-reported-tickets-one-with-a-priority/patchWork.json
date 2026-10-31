@@ -1,0 +1,33 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "archetype": "TICKET",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "number": 3,
+  "qualifiedId": "contract-00000001-3",
+  "title": "Search forgets the last filter",
+  "slug": "search-forgets-the-last-filter",
+  "slugScope": "00000000-0000-4000-8000-000000000001",
+  "description": null,
+  "status": "REPORTED",
+  "statusBefore": null,
+  "ticketType": "BUG",
+  "impetus": "Seeded work.",
+  "assignee": null,
+  "createdBy": "contract-seeder",
+  "supersededBy": null,
+  "outcome": null,
+  "repositoryId": null,
+  "implementedAt": null,
+  "implementingAt": null,
+  "dependsOn": null,
+  "parent": null,
+  "position": null,
+  "priority": 5,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "changedBy": null,
+  "blocked": false,
+  "acceptanceCriteria": [
+    "It does what it says."
+  ]
+}

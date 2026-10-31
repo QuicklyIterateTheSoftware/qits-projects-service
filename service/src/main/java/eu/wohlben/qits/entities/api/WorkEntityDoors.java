@@ -8,6 +8,7 @@ import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityPriorityService;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntitySummary;
 import eu.wohlben.qits.entities.control.EntityTransition;
@@ -15,6 +16,7 @@ import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.Nested;
+import eu.wohlben.qits.entities.control.SiblingPriorities;
 import eu.wohlben.qits.entities.control.TransitionGate;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -40,6 +42,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.bus.EntityCommentAnnouncer;
+import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
@@ -150,6 +153,12 @@ public class WorkEntityDoors {
   @Inject TicketsTopicHints ticketHints;
 
   @Inject QualifiedEntityIds qualifiedIds;
+
+  /** The drop door's write (qits-753). */
+  @Inject EntityPriorityService priorities;
+
+  /** The project slug a drop's answer qualifies its ids with. */
+  @Inject ProjectService projects;
 
   /** The only way a door moves a lifecycle: discards a refinement a resolving move would strand. */
   @Inject EntityResolutions resolutions;
@@ -319,6 +328,51 @@ public class WorkEntityDoors {
     return qualifiedIds.qualify(TransitionedEntity.edited(updated.entity(), current));
   }
 
+  // --- the drop door (qits-753) -----------------------------------------------------------------
+
+  /**
+   * Moves {@code row} directly above or below one of its siblings — exactly one of {@code above} and
+   * {@code below}, each a qualified id or a UUID — and answers every sibling the drop renumbered,
+   * in order, qualified. The order is the refusal order: the binding (403), the body and the
+   * anchor (400 — both or neither named, an anchor naming nothing), then {@link
+   * EntityPriorityService}'s own (400 for a campaign or an anchor that is not an open sibling, 409
+   * for a closed item). The hints go out after the write and outside it, as the patch's do.
+   */
+  public WorkPriorities reprioritize(
+      SecurityIdentity identity, WorkEntity row, String above, String below) {
+    EntitiesAgentAccess.requireProject(identity, row.projectId);
+    boolean hasAbove = above != null && !above.isBlank();
+    boolean hasBelow = below != null && !below.isBlank();
+    if (hasAbove == hasBelow) {
+      throw new BadRequestException(
+          "a reprioritize names exactly one anchor: {\"above\": <id>} or {\"below\": <id>}");
+    }
+    String named = hasAbove ? above.trim() : below.trim();
+    WorkEntity anchor;
+    try {
+      anchor = ids.resolve(named);
+    } catch (NotFoundException e) {
+      throw new BadRequestException("The anchor names no entity: " + named);
+    }
+    List<EntityPriorityService.Ranked> ranked =
+        priorities.reprioritize(
+            row.id,
+            anchor.id,
+            hasAbove ? SiblingPriorities.Placement.ABOVE : SiblingPriorities.Placement.BELOW);
+
+    epicHints.fire(row.projectId);
+    ticketHints.fire(row.projectId);
+    String slug = projects.slugsByIds(Set.of(row.projectId)).get(row.projectId);
+    List<WorkPriorities.WorkPriority> items = new ArrayList<>(ranked.size());
+    for (EntityPriorityService.Ranked entry : ranked) {
+      items.add(
+          new WorkPriorities.WorkPriority(
+              slug == null ? entry.id() : QualifiedEntityIds.render(slug, entry.number()),
+              entry.priority()));
+    }
+    return new WorkPriorities(List.copyOf(items));
+  }
+
   /** A task's repository must be in the entity's project — a task must not bind a repository from an unrelated project. */
   private void requireRepositoryIn(String repositoryId, String projectId) {
     if (repositoryId == null) {
@@ -351,6 +405,9 @@ public class WorkEntityDoors {
       if (name.equals(EntitySchemas.INSPIRED_BY)) {
         // The idea the work was inspired by (qits-1387): no registry property, so judged here.
         EntitySchemas.inspiredByRefusal(archetype, value).ifPresent(refused::add);
+      } else if (name.equals(EntityWireProperties.PRIORITY)) {
+        // The ranking among siblings (qits-753): every archetype, no registry property.
+        EntitySchemas.priorityRefusal(value).ifPresent(refused::add);
       } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
@@ -402,7 +459,14 @@ public class WorkEntityDoors {
         implementingAt == null ? null : Instant.parse(implementingAt),
         criteria(body),
         patchText(body, EntitySchemas.INSPIRED_BY),
-        cleared(body, EntitySchemas.INSPIRED_BY));
+        cleared(body, EntitySchemas.INSPIRED_BY))
+        .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY));
+  }
+
+  /** The patch's priority (qits-753): null when absent or sent as null, else the integer. */
+  private static Integer priority(JsonNode body) {
+    JsonNode value = body.get(EntityWireProperties.PRIORITY);
+    return value == null || value.isNull() ? null : value.intValue();
   }
 
   /**
