@@ -164,6 +164,7 @@ erDiagram
     instant created_at "not null"
     string description
     string enabled_by
+    int priority
     string project_id "not null"
     enum status "not null"
     string title "not null"
