@@ -3,14 +3,28 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import eu.wohlben.qits.projects.control.GitExecutor;
+import eu.wohlben.qits.projects.control.GitHostAddress;
+import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
 public class CommitControllerTest {
+
+  @Inject GitHostAddress gitHost;
+
+  @Inject GitMirrorRegistry gitMirrors;
+
+  @Inject GitExecutor git;
 
   private final String fixtureUrl;
 
@@ -117,12 +131,13 @@ public class CommitControllerTest {
   }
 
   @Test
-  public void testCommitChangesNoParentListsFilesChangedInCommit() {
+  public void testCommitChangesNoParentListsFilesChangedInCommit() throws Exception {
     String repoId = createProjectAndRepository();
 
     // Without a parent the changes are computed against the commit's own first parent: the
-    // "Add feature.txt" commit only added feature.txt. The resolved base is null (no explicit
-    // parent was given).
+    // "Add feature.txt" commit only added feature.txt. That parent is answered resolved, as the sha
+    // of "Add hello.txt" the fixture forked feature from; the commit is echoed as given.
+    String firstParent = revParse(fixtureUrl, "feature^1");
     given()
         .contentType(ContentType.JSON)
         .when()
@@ -130,11 +145,71 @@ public class CommitControllerTest {
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("commit", equalTo("feature"))
-        .body("parent", nullValue())
+        .body("parent", equalTo(firstParent))
         .body("files.size()", equalTo(1))
         .body("files[0].path", equalTo("feature.txt"))
         .body("files[0].changeType", equalTo("ADDED"))
         .body("files[0].oldPath", nullValue());
+  }
+
+  /**
+   * <b>A merge commit read with no parent</b> (qits-1793). {@code git diff-tree --root <merge>}
+   * prints nothing, so the endpoint used to answer {@code files: []} for a merge however much it
+   * changed. It is diffed against its first parent now, and names that parent.
+   */
+  @Test
+  public void testCommitChangesNoParentOnMergeCommitDiffsAgainstFirstParent() throws Exception {
+    String repoId = createProjectAndRepository();
+    String[] mergeAndFirstParent = pushMergeOfFeatureIntoMaster(repoId);
+
+    given()
+        .contentType(ContentType.JSON)
+        .when()
+        .get("/projects/api/repositories/" + repoId + "/commits/merged/changes")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("commit", equalTo("merged"))
+        .body("parent", equalTo(mergeAndFirstParent[1]))
+        .body("files.size()", equalTo(1))
+        .body("files[0].path", equalTo("feature.txt"))
+        .body("files[0].changeType", equalTo("ADDED"));
+  }
+
+  /** The same merge's patch, against the same first parent rather than an empty {@code diff}. */
+  @Test
+  public void testCommitFileDiffNoParentOnMergeCommitDiffsAgainstFirstParent() throws Exception {
+    String repoId = createProjectAndRepository();
+    pushMergeOfFeatureIntoMaster(repoId);
+
+    given()
+        .contentType(ContentType.JSON)
+        .queryParam("path", "feature.txt")
+        .when()
+        .get("/projects/api/repositories/" + repoId + "/commits/merged/diff")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("path", equalTo("feature.txt"))
+        .body("changeType", equalTo("ADDED"))
+        .body("diff", containsString("+feature work"));
+  }
+
+  /** A root commit has no first parent: the empty tree is the base and {@code parent} is null. */
+  @Test
+  public void testCommitChangesNoParentOnRootCommitListsAddedFilesAndNullParent() throws Exception {
+    String repoId = createProjectAndRepository();
+    String root = revParse(fixtureUrl, "master~2");
+
+    given()
+        .contentType(ContentType.JSON)
+        .when()
+        .get("/projects/api/repositories/" + repoId + "/commits/" + root + "/changes")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("commit", equalTo(root))
+        .body("parent", nullValue())
+        .body("files.size()", equalTo(1))
+        .body("files[0].path", equalTo("README.md"))
+        .body("files[0].changeType", equalTo("ADDED"));
   }
 
   @Test
@@ -217,5 +292,41 @@ public class CommitControllerTest {
         .get("/projects/api/repositories/does-not-exist/commits/feature/changes")
         .then()
         .statusCode(Response.Status.NOT_FOUND.getStatusCode());
+  }
+
+  /** {@code rev} resolved to a full sha in the git directory {@code gitDir}. */
+  private String revParse(String gitDir, String rev) throws Exception {
+    return git.exec(new File(gitDir), "git", "rev-parse", "--verify", rev + "^{commit}").trim();
+  }
+
+  /**
+   * Pushes a branch {@code merged} to the repository's bare on the git host: a {@code --no-ff}
+   * merge of {@code feature} into {@code master}, whose first parent is master's head and which
+   * therefore adds {@code feature.txt} against it. Drops the mirror so the read re-clones it — a
+   * mirror fetched inside the freshness window is trusted rather than refreshed. Answers {@code
+   * [merge, first parent]}.
+   */
+  private String[] pushMergeOfFeatureIntoMaster(String repoId) throws Exception {
+    Path parent = Files.createTempDirectory("commit-merge");
+    parent.toFile().deleteOnExit();
+    git.exec(parent.toFile(), "git", "clone", "-q", gitHost.fetchUrl(repoId), "work");
+    File work = parent.resolve("work").toFile();
+    git.exec(work, "git", "config", "user.email", "fixtures@qits.local");
+    git.exec(work, "git", "config", "user.name", "qits fixtures");
+    git.exec(work, "git", "checkout", "-q", "-b", "merged", "origin/master");
+    git.exec(work, "git", "merge", "-q", "--no-ff", "-m", "Merge feature", "origin/feature");
+    git.exec(work, "git", "push", "-q", "origin", "merged");
+    String merge = git.exec(work, "git", "rev-parse", "HEAD").trim();
+    String firstParent = git.exec(work, "git", "rev-parse", "HEAD^1").trim();
+
+    Path mirror = gitMirrors.of(repoId).gitDir();
+    if (Files.exists(mirror)) {
+      try (var paths = Files.walk(mirror)) {
+        for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+          Files.deleteIfExists(path);
+        }
+      }
+    }
+    return new String[] {merge, firstParent};
   }
 }

@@ -194,7 +194,7 @@ public class RepositoryController {
       @PathParam("repoId") String repoId,
       @PathParam("commitHash") String commitHash,
       @QueryParam("parent") String parent) {
-    return commitService.listChanges(repoId, commitHash, parent);
+    return commitService.listCommitChanges(repoId, commitHash, parent);
   }
 
   @GET
@@ -206,7 +206,7 @@ public class RepositoryController {
       @PathParam("commitHash") String commitHash,
       @QueryParam("parent") String parent,
       @QueryParam("path") @NotBlank String path) {
-    return commitService.getFileDiff(repoId, commitHash, parent, path);
+    return commitService.commitFileDiff(repoId, commitHash, parent, path);
   }
 
   /**
