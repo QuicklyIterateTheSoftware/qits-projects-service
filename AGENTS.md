@@ -2933,8 +2933,14 @@ is the whole of it:
   decides that session's rights.
 - **The message** (`DeskTriggerMessage`): one preamble line — `You are the delivery desk of
   project <slug>.`, then `DeskBrief.pointer(hash)`, then `Then act on what happened below.` — the
-  window id and its bounds, then each source's section in `order()`, a blank line between, nothing
-  after. `DeskBrief` is qits-projects-daemon's `projects-daemon-protocol` class and the **only**
+  window id and its bounds, then each source's section in `order()`, a blank line between, and
+  last (qits-1778), for a delivery-enabled project under the delivery preamble only, the Slots
+  section `DeskTriggerSweep` reads just before the close (`VerifiedSlotHolders`): `Slots: running
+  <N> of <max_running>[, <K> VERIFIED waiting to ship]`, then one line per VERIFIED running item,
+  oldest first, `- <qid> (VERIFIED 1h 5m; <request qid> <STATE>, … | no open release request)`
+  (open = PENDING, READY, RELEASED, REJECTED, CONFLICTED; a source on the item's wrapper branch or
+  `<branch>-*`, the wrapper's request last). An unsatisfied or throwing agent port is a WARN and no
+  section, never a failed close. `DeskBrief` is qits-projects-daemon's `projects-daemon-protocol` class and the **only**
   owner of the pointer sentence (qits-1734): it sends the desk to `qits help guide` and states the
   **desk variant's guide-hash at the close** (`DevelopmentGuideService.renderHash("desk")`, supplied
   by `DeskTriggerSweep`), so the desk re-reads its guide only when that hash differs from the one it
@@ -2960,7 +2966,7 @@ subject, and the short constructor sets `principal` to `cause`), run inside the 
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
 `requestedByDesk()` (false: news; true: an answer to the desk's own request, see above), and the
 default `scan(now)` (qits-1689: triggers found by reading rows on each sweep pass, admitted under the
-listener's drops; the source makes them idempotent itself). Eight ship:
+listener's drops; the source makes them idempotent itself). Nine ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
@@ -2972,6 +2978,7 @@ listener's drops; the source makes them idempotent itself). Eight ship:
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
 | `AgentIdleSource` (qits-1756) | `agent-idle`, 55 | no signature; `scan` reads the ACTIVE agents (`WorkspaceAgentLookup.active()`, now also `activity`, `lastActivityAt` and `waits[]`) and raises each whose `activity` is not `BUSY` (null counts) and whose `lastActivityAt` is at least `THRESHOLD` (2h, a constant, not a setting) old, measured from the later of `lastActivityAt` and `delivery_enabled_at`, younger than `MAX_AGE` (7d). The item is this service's `WorkEntity` by `workId` (unknown: skipped); `item_id` is the agent id. Event id `idleKey(agent, lastActivityAt)`, skipped when a row holds it: once per idle stretch, and a new turn (a new `lastActivityAt`) is a new stretch. No migration: V65's one-per-agent index is `capacity-opened`'s only | `- <qualifiedId> (<title>; <STATUS>; idle 2h 19m since 2026-10-30T07:03Z; waits on: <label> (<subjectState or state>, expires <instant or never>)[; …] or no open wait[; blocked: <reason>])`, section `Agents idle for 2h or more:`, cause `agent <id8>`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
+| `ShipMissingSource` (qits-1778) | `verified-unshipped`, 55 | no signature; `scan` reads each delivery-enabled project's running items (`VerifiedSlotHolders`, over `api/RunningItems`) and raises each VERIFIED one, VERIFIED for at least `THRESHOLD` (30m, a constant) from the later of its move into VERIFIED (the newest audit run whose snapshot says VERIFIED, else `updated_at`) and `delivery_enabled_at`, younger than `MAX_AGE` (7d), that no open request (as in the Slots section) carries. Event id `shipKey(item, VERIFIED-since)`, skipped when a row holds it: once per move into VERIFIED | `- <qid> (VERIFIED 43m; no open release request carries ticket/<qid>)`, section `VERIFIED work with no open release request:`, cause `verified <instant to the minute>`, no principal |
 
 `EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
 (`WorkEntityDoors.addComment`) after the write: the item, its author, `changedBy` and the body's

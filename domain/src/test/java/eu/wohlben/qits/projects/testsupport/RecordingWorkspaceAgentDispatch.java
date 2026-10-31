@@ -71,10 +71,24 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
 
   private List<Agent> agents = List.of();
 
+  /** What {@link #agentsFor} throws until {@link #reset}; null answers {@link #agents}. */
+  private RuntimeException lookupFailure;
+
   @Override
   public synchronized List<Agent> agentsFor(Collection<String> workIds) {
     lookups.add(new Looked(List.copyOf(workIds)));
+    if (lookupFailure != null) {
+      throw lookupFailure;
+    }
     return agents;
+  }
+
+  /**
+   * Every later listing throws {@code failure} — a broken adapter, which the shipped one never is
+   * (it answers empty), but which a reader that must never fail has to survive (qits-1778).
+   */
+  public synchronized void willFailLookups(RuntimeException failure) {
+    this.lookupFailure = failure;
   }
 
   /**
@@ -205,6 +219,7 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     calls.clear();
     lookups.clear();
     agents = List.of();
+    lookupFailure = null;
     agentsByWork.clear();
     activeLookupFails = false;
     activeLookups.clear();

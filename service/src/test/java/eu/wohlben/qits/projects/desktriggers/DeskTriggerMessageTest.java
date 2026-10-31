@@ -1,9 +1,14 @@
 package eu.wohlben.qits.projects.desktriggers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.desktriggers.VerifiedSlotHolders.Holder;
+import eu.wohlben.qits.projects.desktriggers.VerifiedSlotHolders.OpenRequest;
+import eu.wohlben.qits.projects.desktriggers.VerifiedSlotHolders.Reading;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -194,5 +199,93 @@ class DeskTriggerMessageTest {
             + "\n\nA slot opened; dispatch the next item:\n"
             + "- qits-9 (its agent is done; running 1 of 2)",
         DeskTriggerMessage.render("qits", HASH, window(), events));
+  }
+
+  private static final String SLOTS =
+      "Slots: running 5 of 5, 2 VERIFIED waiting to ship\n"
+          + "- qits-1774 (VERIFIED 1h 5m; qits-qits-rr-264 PENDING)\n"
+          + "- qits-1769 (VERIFIED 43m; no open release request)";
+
+  /** qits-1778: the Slots section is last, one blank line after the last source's section. */
+  @Test
+  void theSlotsSectionIsLastAfterTheSourceSections() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events = new LinkedHashMap<>();
+    events.put(
+        new RequestStalledSource(),
+        List.of(row("request-stalled", "p-rr-1", "READY for 2h 1m, not RELEASED", "fold a")));
+    events.put(new WorkVerifiedSource(), List.of(row("work-verified", "qits-7", "T", "dana")));
+
+    assertEquals(
+        PREAMBLE
+            + "\n\nMoved to VERIFIED:\n- qits-7 (T)"
+            + "\n\nRelease requests that stopped moving:\n- p-rr-1 (READY for 2h 1m, not RELEASED)"
+            + "\n\n"
+            + SLOTS,
+        DeskTriggerMessage.render("qits", HASH, window(), events, SLOTS));
+  }
+
+  /** qits-1778: no reading, no section; the message is exactly the one without the argument. */
+  @Test
+  void noSlotsLeavesTheSectionOut() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events =
+        Map.of(new WorkVerifiedSource(), List.of(row("work-verified", "qits-7", null, "dana")));
+
+    String message = DeskTriggerMessage.render("qits", HASH, window(), events, null);
+
+    assertEquals(PREAMBLE + "\n\nMoved to VERIFIED:\n- qits-7", message);
+    assertEquals(DeskTriggerMessage.render("qits", HASH, window(), events), message);
+  }
+
+  /** qits-1778: a window of the desk's own waits is not delivery news and shows no slots. */
+  @Test
+  void aWindowOfWaitsOnlyHasNoSlotsSection() {
+    Map<DeskTriggerSource, List<DeskTriggerEventRow>> events =
+        Map.of(new WaitClosedSource(), List.of(row("wait", "w-1", TURN_B, "x")));
+
+    String message = DeskTriggerMessage.render("qits", HASH, window(), events, SLOTS);
+
+    assertTrue(message.startsWith("A wait you declared has closed. "), message);
+    assertFalse(message.contains("Slots:"), message);
+    assertTrue(message.endsWith(TURN_B), message);
+  }
+
+  /** qits-1778: with nothing VERIFIED the heading is the whole section, with no VERIFIED clause. */
+  @Test
+  void theSectionHasNoVerifiedClauseWhenNothingIsVerified() {
+    assertEquals(
+        "Slots: running 3 of 5",
+        VerifiedSlotHolders.section(new Reading(3, List.of()), 5, Instant.now()));
+  }
+
+  /** qits-1778: one line per VERIFIED item as handed in, its open requests comma-joined. */
+  @Test
+  void theSectionNamesEachVerifiedItemAndItsOpenRequests() {
+    Instant now = Instant.parse("2026-10-31T14:09:00Z");
+    Reading reading =
+        new Reading(
+            5,
+            List.of(
+                new Holder(
+                    "i-1774",
+                    "qits-1774",
+                    "ticket/qits-1774",
+                    now.minusSeconds(65 * 60),
+                    List.of(
+                        new OpenRequest(
+                            "qits-projects-service-rr-9", ReleaseRequest.State.REJECTED, false),
+                        new OpenRequest("qits-qits-rr-264", ReleaseRequest.State.PENDING, true))),
+                new Holder(
+                    "i-1769",
+                    "qits-1769",
+                    "ticket/qits-1769",
+                    now.minusSeconds(43 * 60 + 30),
+                    List.of())));
+
+    assertEquals(
+        "Slots: running 5 of 5, 2 VERIFIED waiting to ship\n"
+            + "- qits-1774 (VERIFIED 1h 5m; qits-projects-service-rr-9 REJECTED,"
+            + " qits-qits-rr-264 PENDING)\n"
+            + "- qits-1769 (VERIFIED 43m; no open release request)",
+        VerifiedSlotHolders.section(reading, 5, now));
   }
 }

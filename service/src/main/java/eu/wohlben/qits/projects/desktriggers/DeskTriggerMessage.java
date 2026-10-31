@@ -21,12 +21,25 @@ import java.util.Map;
  *
  * Needs your approval:
  * - qits-qits-rr-201 (Release qits-1597 wrapper; waits on manual-review: …), fold 412911eb
+ *
+ * Slots: running 5 of 5, 2 VERIFIED waiting to ship
+ * - qits-1774 (VERIFIED 1h 5m; qits-qits-rr-264 PENDING)
+ * - qits-1769 (VERIFIED 43m; no open release request)
  * </pre>
  *
  * <p>The preamble is one line. Then each source with events in the window renders its own section
  * ({@link DeskTriggerSource#render}), in {@link DeskTriggerSource#order()}, one blank line between
- * sections; a source with nothing in the window has no section, and nothing follows the last. The
- * bounds are ISO-8601 instants to the second.
+ * sections; a source with nothing in the window has no section. The bounds are ISO-8601 instants
+ * to the second.
+ *
+ * <p><b>The Slots section is last</b> (qits-1778), after one more blank line, and nothing follows
+ * it. It is not a source's: {@link DeskTriggerSweep} reads it when the window closes ({@link
+ * VerifiedSlotHolders#section}), so it is current when it is sent rather than when the first line
+ * was admitted, and hands it in. It says how many items run against {@code max_running} and which
+ * of them are finished work waiting for a release — without it the desk could not tell "full of
+ * work in progress" from "full of VERIFIED work waiting for one build". It is added only under the
+ * delivery preamble: the sweep hands in none for a project with delivery off or a reading that
+ * failed, and a window of waits only (below) never shows one.
  *
  * <p><b>The pointer</b> (qits-1734) is {@link DeskBrief#pointer}, composed from the protocol jar
  * rather than written out here: it sends the desk to {@code qits help guide} and states the desk
@@ -68,14 +81,29 @@ public final class DeskTriggerMessage {
       String guideHash,
       DeskTriggerWindow window,
       Map<DeskTriggerSource, List<DeskTriggerEventRow>> eventsBySource) {
+    return render(projectSlug, guideHash, window, eventsBySource, null);
+  }
+
+  /**
+   * {@link #render(String, String, DeskTriggerWindow, Map)} ending with {@code slots}, the Slots
+   * section ({@link VerifiedSlotHolders#section}), when the message has the delivery preamble.
+   * Null leaves it out.
+   */
+  public static String render(
+      String projectSlug,
+      String guideHash,
+      DeskTriggerWindow window,
+      Map<DeskTriggerSource, List<DeskTriggerEventRow>> eventsBySource,
+      String slots) {
     boolean onlyRequested =
         eventsBySource.entrySet().stream()
             .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
             .allMatch(entry -> entry.getKey().requestedByDesk());
     boolean anyLine =
         eventsBySource.values().stream().anyMatch(events -> events != null && !events.isEmpty());
+    boolean waitsOnly = anyLine && onlyRequested;
     StringBuilder message = new StringBuilder();
-    if (anyLine && onlyRequested) {
+    if (waitsOnly) {
       message.append("A wait you declared has closed. ").append(DeskBrief.pointer(guideHash));
     } else {
       message
@@ -102,6 +130,9 @@ public final class DeskTriggerMessage {
         continue;
       }
       message.append("\n\n").append(source.render(projectSlug, events));
+    }
+    if (!waitsOnly && slots != null && !slots.isBlank()) {
+      message.append("\n\n").append(slots);
     }
     return message.toString();
   }

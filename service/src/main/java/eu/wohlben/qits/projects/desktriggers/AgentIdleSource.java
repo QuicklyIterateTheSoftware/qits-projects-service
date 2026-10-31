@@ -76,8 +76,8 @@ public class AgentIdleSource implements DeskTriggerSource {
   /** The activity of an agent whose turn runs. */
   static final String BUSY = "BUSY";
 
-  /** {@code 2026-10-30T07:03Z}: an instant to the minute. */
-  private static final DateTimeFormatter MINUTES =
+  /** {@code 2026-10-30T07:03Z}: an instant to the minute; {@link ShipMissingSource}'s cause too. */
+  static final DateTimeFormatter MINUTES =
       DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm'Z'").withZone(ZoneOffset.UTC);
 
   /** The agent's item as this source reads it, out of the epics transaction. */
