@@ -11,7 +11,7 @@ Code agent of this project inherits:
 ## How it changes
 
 The workspace daemon writes it: each agent gets one branch, named after its wrapper branch
-(`ticket/<slug>` or `epic/<slug>`). When the work item reaches VERIFIED, that branch is merged into
+(`ticket/<qualified id>` or `epic/<qualified id>`). When the work item reaches VERIFIED, that branch is merged into
 `main` by a release request, and `.config/qits/release-requests.yml` makes every such request wait
 for a person's approval. **Nobody edits `main` by hand.**
 

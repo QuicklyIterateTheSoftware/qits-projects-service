@@ -141,7 +141,7 @@ public class EntityMembership extends PanacheEntityBase implements CausedRow {
   @Column(name = "dispatch_workspace_id")
   public String dispatchWorkspaceId;
 
-  /** The branch the dispatch ran on — {@code ticket/<slug>} or {@code epic/<slug>}. */
+  /** The branch the dispatch ran on — {@code <qualified id>}. */
   @Column(name = "dispatch_branch")
   public String dispatchBranch;
 

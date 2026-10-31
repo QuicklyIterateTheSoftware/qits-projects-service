@@ -77,8 +77,8 @@ import java.util.Optional;
  * tree and dossier — a dossier page only for what prose cannot hold on a ticket. Implement: comment
  * as the work goes; a contradiction goes on the thread, not into the brief it contradicts; done is
  * released and deployed, not merged and not green; and <em>do not integrate the workspace</em>,
- * because all three phases run in the same workspace on {@code ticket/<slug>} or {@code
- * epic/<slug>}, separated by a context reset, and integrating it destroys the ground the verify
+ * because all three phases run in the same workspace on {@code <qualified id>}, separated by a
+ * context reset, and integrating it destroys the ground the verify
  * phase needs. Verify: on the live platform first, reading the change only when the situation cannot
  * be reproduced on demand — that order is the design, since the code-reading arm is always the one
  * an agent can finish in one turn — and the thread says which was done. It also checks each
@@ -130,8 +130,8 @@ final class PhasePrompts {
   /** The pointer every dispatched agent's first turn opens with; see the class javadoc. */
   static final String FLOW_BRIEF_POINTER =
       "Run `qits help guide` first: the platform's brief on how work moves through it — branch per"
-          + " slug, release request per repository, the quality gates, the transitions, and when the"
-          + " workspace is resolved.";
+          + " work item, release request per repository, the quality gates, the transitions, and when"
+          + " the workspace is resolved.";
 
   /**
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
@@ -447,7 +447,7 @@ final class PhasePrompts {
    * promised holds, feature by feature. What was confirmed, and how, goes on the epic's thread. A
    * failing feature is fixed on the epic's branch, released and checked again live rather than
    * blocked, the status left where it stands (qits-1154); only what the agent cannot resolve blocks
-   * it. Reaching VERIFIED asks for the release of {@code epic/<slug>} ({@link PhaseAdvance}); closing
+   * it. Reaching VERIFIED asks for the release of {@code <qualified id>} ({@link PhaseAdvance}); closing
    * stays a person's move.
    */
   private static String verifyEpic(WorkEntity epic, String q) {

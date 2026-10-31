@@ -304,7 +304,8 @@ public class DevelopmentGuideControllerTest {
         List.of(
             DevelopmentGuideDefaults.QITS_1679_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
