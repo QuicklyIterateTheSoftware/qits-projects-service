@@ -69,6 +69,26 @@ public final class EntitiesAgentAccess {
   }
 
   /**
+   * Refuses a plain agent — a bound agent ({@link AgentAccess#isBoundAgent}) holding neither {@link
+   * AgentAccess#DESK_ROLE} nor {@link AgentAccess#DESK_ADMIN_ROLE} — a write of ideas (qits-1790).
+   * Ideas are broad, high-level notes the delivery desk and admins keep; an agent files tickets and
+   * epics. {@code IdeaController}'s class roles are the gate on {@code /ideas}; this is the one on
+   * {@code /work}, where linking work to an idea ({@code inspiredBy}) is an idea write too. The desk
+   * passes here and stays bound to its own project by {@link #requireProject}; an admin, the
+   * coordinator and a platform service pass untouched.
+   */
+  public static void requireIdeaWriter(SecurityIdentity identity) {
+    if (AgentAccess.isBoundAgent(identity, WIDER)
+        && !identity.hasRole(AgentAccess.DESK_ROLE)
+        && !identity.hasRole(AgentAccess.DESK_ADMIN_ROLE)) {
+      throw new ForbiddenException(
+          "An agent may not link work to an idea (inspiredBy): file the work without it and ask"
+              + " the delivery desk (@desk) to link the idea. Only the delivery desk and admins"
+              + " write ideas.");
+    }
+  }
+
+  /**
    * Refuses a bearer bound to one entity — its token carries an {@link EntitiesPrincipal#ENTITY_CLAIM}
    * claim, as a refinement room's own token does (qits-1482) — when that entity is not {@code
    * entityId}. A bearer with no such claim (a person, a platform service, a workspace agent, the

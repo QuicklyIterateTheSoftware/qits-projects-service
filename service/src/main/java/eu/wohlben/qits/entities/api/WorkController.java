@@ -324,7 +324,10 @@ public class WorkController {
               + " project")
   @APIResponse(
       responseCode = "403",
-      description = "An agent creating in a project other than its own; nothing is written")
+      description =
+          "An agent creating in a project other than its own, or a plain agent (qits:agent without"
+              + " the desk roles) naming inspiredBy — only the delivery desk and admins link work to"
+              + " an idea; nothing is written")
   @APIResponse(
       responseCode = "404",
       description = "The project, the parent or the repository names nothing")
@@ -415,7 +418,10 @@ public class WorkController {
               + " where the property cannot be cleared, or a value of the wrong shape")
   @APIResponse(
       responseCode = "403",
-      description = "An agent writing an entity outside its own project; nothing is written")
+      description =
+          "An agent writing an entity outside its own project, or a plain agent (qits:agent"
+              + " without the desk roles) naming inspiredBy, null included — only the delivery desk"
+              + " and admins link work to an idea; nothing is written")
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(
       responseCode = "409",

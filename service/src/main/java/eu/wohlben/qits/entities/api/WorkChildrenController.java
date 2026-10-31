@@ -103,7 +103,11 @@ public class WorkChildrenController {
       responseCode = "400",
       description =
           "A body the child's create schema refuses, or one naming archetype, parent or project")
-  @APIResponse(responseCode = "403", description = "An agent outside its own project")
+  @APIResponse(
+      responseCode = "403",
+      description =
+          "An agent outside its own project, or a plain agent (qits:agent without the desk roles)"
+              + " naming inspiredBy; nothing is written")
   @APIResponse(responseCode = "404", description = "No entity, repository or dependency")
   @APIResponse(
       responseCode = "409",

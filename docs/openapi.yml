@@ -4528,8 +4528,9 @@ paths:
           description: "No project, a title, description or enabledBy breaking its\
             \ rule"
         "403":
-          description: An agent creating in a project other than its own; nothing
-            is written
+          description: "A plain agent (qits:agent without the desk roles) is refused\
+            \ every idea write, and the delivery desk is refused outside its own project;\
+            \ nothing is written"
         "404":
           description: No such project
         "401":
@@ -4541,7 +4542,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
-        - qits:agent
+        - qits:desk
   /projects/api/ideas/{id}:
     patch:
       summary: Edit an idea (JSON merge patch)
@@ -4577,8 +4578,9 @@ paths:
           description: "Not an object, empty, an unknown or server-owned property,\
             \ a null title, or a value breaking its rule"
         "403":
-          description: An agent editing an idea outside its own project; nothing is
-            written
+          description: "A plain agent (qits:agent without the desk roles) is refused\
+            \ every idea write, and the delivery desk is refused outside its own project;\
+            \ nothing is written"
         "404":
           description: No idea with this id
         "409":
@@ -4593,7 +4595,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
-        - qits:agent
+        - qits:desk
     get:
       summary: Read one idea
       description: "The idea, the work items naming it as inspiredBy (DROPPED ones\
@@ -4657,8 +4659,9 @@ paths:
         "400":
           description: No reason
         "403":
-          description: An agent archiving an idea outside its own project; nothing
-            is written
+          description: "A plain agent (qits:agent without the desk roles) is refused\
+            \ every idea write, and the delivery desk is refused outside its own project;\
+            \ nothing is written"
         "404":
           description: No idea with this id
         "401":
@@ -4670,7 +4673,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
-        - qits:agent
+        - qits:desk
   /projects/api/ideas/{id}/priority:
     put:
       summary: Drop an idea above or below another
@@ -4705,7 +4708,9 @@ paths:
             \ the idea itself, naming another project's idea, or naming an archived\
             \ or DONE idea"
         "403":
-          description: An agent ranking outside its own project; nothing is written
+          description: "A plain agent (qits:agent without the desk roles) is refused\
+            \ every idea write, and the delivery desk is refused outside its own project;\
+            \ nothing is written"
         "404":
           description: No idea with this id
         "409":
@@ -4719,7 +4724,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
-        - qits:agent
+        - qits:desk
   /projects/api/ideas/{id}/unarchive:
     post:
       summary: Take an idea out of the archive
@@ -4740,8 +4745,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Idea"
         "403":
-          description: An agent unarchiving an idea outside its own project; nothing
-            is written
+          description: "A plain agent (qits:agent without the desk roles) is refused\
+            \ every idea write, and the delivery desk is refused outside its own project;\
+            \ nothing is written"
         "404":
           description: No idea with this id
         "401":
@@ -4753,7 +4759,7 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
-        - qits:agent
+        - qits:desk
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
@@ -8051,8 +8057,9 @@ paths:
             \ a missing required one, a value of the wrong shape, a parent of the\
             \ wrong kind, or a repository outside the project"
         "403":
-          description: An agent creating in a project other than its own; nothing
-            is written
+          description: "An agent creating in a project other than its own, or a plain\
+            \ agent (qits:agent without the desk roles) naming inspiredBy — only the\
+            \ delivery desk and admins link work to an idea; nothing is written"
         "404":
           description: "The project, the parent or the repository names nothing"
         "409":
@@ -8276,8 +8283,10 @@ paths:
             \ archetype has no slot for, a null where the property cannot be cleared,\
             \ or a value of the wrong shape"
         "403":
-          description: An agent writing an entity outside its own project; nothing
-            is written
+          description: "An agent writing an entity outside its own project, or a plain\
+            \ agent (qits:agent without the desk roles) naming inspiredBy, null included\
+            \ — only the delivery desk and admins link work to an idea; nothing is\
+            \ written"
         "404":
           description: No entity with this id
         "409":
@@ -8557,7 +8566,8 @@ paths:
           description: "A body the child's create schema refuses, or one naming archetype,\
             \ parent or project"
         "403":
-          description: An agent outside its own project
+          description: "An agent outside its own project, or a plain agent (qits:agent\
+            \ without the desk roles) naming inspiredBy; nothing is written"
         "404":
           description: "No entity, repository or dependency"
         "409":

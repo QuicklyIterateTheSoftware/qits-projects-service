@@ -230,6 +230,11 @@ public class WorkEntityDoors {
     if (projectId != null) {
       EntitiesAgentAccess.requireProject(identity, projectId);
     }
+    // Linking work to an idea is an idea write (qits-1790): a plain agent is refused, before any
+    // complaint about the body and before anything is written.
+    if (namesIdea(body.get(EntitySchemas.INSPIRED_BY))) {
+      EntitiesAgentAccess.requireIdeaWriter(identity);
+    }
 
     List<String> refused = new ArrayList<>(EntitySchemas.createRefusals(archetype, body));
     Archetype parentKind = WorkEntityService.parentKindOf(archetype);
@@ -289,6 +294,13 @@ public class WorkEntityDoors {
     }
   }
 
+  /** True when a create's {@code inspiredBy} names something: present, not null, not blank text. */
+  private static boolean namesIdea(JsonNode value) {
+    return value != null
+        && !value.isNull()
+        && !(value.isTextual() && value.textValue().isBlank());
+  }
+
   /** The property's value when it was sent as text; null when absent, null or not text. */
   private static String text(JsonNode body, String name) {
     JsonNode value = body.get(name);
@@ -307,6 +319,11 @@ public class WorkEntityDoors {
       throw new NotFoundException("Entity not found: " + id);
     }
     EntitiesAgentAccess.requireProject(identity, current.projectId());
+    // A patch naming inspiredBy at all — a value or null — writes the work's idea link, an idea
+    // write (qits-1790): a plain agent is refused before the body is judged or anything written.
+    if (body != null && body.isObject() && body.has(EntitySchemas.INSPIRED_BY)) {
+      EntitiesAgentAccess.requireIdeaWriter(identity);
+    }
 
     // A dependency may be named by its qualified id as well as its UUID.
     EntityWrite write = readPatch(current, body, this::entityId);

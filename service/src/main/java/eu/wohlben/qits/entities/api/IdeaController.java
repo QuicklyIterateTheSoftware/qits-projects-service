@@ -51,10 +51,14 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * archived with a reason and can be unarchived.
  *
  * <p>Every rule is {@link IdeaService}'s; this class reads bodies, resolves the project (its id or
- * its slug), binds an agent to its own project before a write, and shapes the answer. <b>The roles
- * mirror {@link WorkController}'s</b>: the writes admit {@code qits:admin}, {@code
- * qits:admin-agent}, {@code qits:desk-admin} and {@code qits:agent} (bound to its project); the
- * reads admit those and {@code qits:system}.
+ * its slug), binds the delivery desk to its own project before a write, and shapes the answer.
+ * <b>Only the delivery desk and admins write ideas</b> (qits-1790): an idea is a broad, high-level
+ * note the desk and admins keep, while an agent files tickets and epics. The writes admit {@code
+ * qits:admin}, {@code qits:admin-agent}, {@code qits:desk-admin} and {@code qits:desk} — the desk
+ * bound to its own project — and refuse a plain {@code qits:agent} with 403, as {@code
+ * RefinementController} does; the reads still admit {@code qits:agent} and {@code qits:system}.
+ * Linking work to an idea ({@code inspiredBy} on {@code /work}) is held to the same rule by {@link
+ * EntitiesAgentAccess#requireIdeaWriter}.
  *
  * <p><b>The ranking</b> (qits-1791): every idea carries a {@code priority}, the listing answers in
  * the order rule ({@link IdeaPriorityService#ORDER}), a patch writes the number outright, and the
@@ -63,7 +67,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/ideas")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
 public class IdeaController {
 
   /** What a patch may name. */
@@ -367,7 +371,9 @@ public class IdeaController {
       description = "No project, a title, description or enabledBy breaking its rule")
   @APIResponse(
       responseCode = "403",
-      description = "An agent creating in a project other than its own; nothing is written")
+      description =
+          "A plain agent (qits:agent without the desk roles) is refused every idea write, and the"
+              + " delivery desk is refused outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No such project")
   public Response create(IdeaCreate body) {
     if (body == null) {
@@ -414,7 +420,9 @@ public class IdeaController {
               + " breaking its rule")
   @APIResponse(
       responseCode = "403",
-      description = "An agent editing an idea outside its own project; nothing is written")
+      description =
+          "A plain agent (qits:agent without the desk roles) is refused every idea write, and the"
+              + " delivery desk is refused outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No idea with this id")
   @APIResponse(
       responseCode = "409",
@@ -465,7 +473,9 @@ public class IdeaController {
               + " another project's idea, or naming an archived or DONE idea")
   @APIResponse(
       responseCode = "403",
-      description = "An agent ranking outside its own project; nothing is written")
+      description =
+          "A plain agent (qits:agent without the desk roles) is refused every idea write, and the"
+              + " delivery desk is refused outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No idea with this id")
   @APIResponse(responseCode = "409", description = "The idea is archived or DONE")
   public IdeaPriorities reprioritize(@PathParam("id") String id, IdeaReprioritize body) {
@@ -511,7 +521,9 @@ public class IdeaController {
   @APIResponse(responseCode = "400", description = "No reason")
   @APIResponse(
       responseCode = "403",
-      description = "An agent archiving an idea outside its own project; nothing is written")
+      description =
+          "A plain agent (qits:agent without the desk roles) is refused every idea write, and the"
+              + " delivery desk is refused outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No idea with this id")
   public IdeaDto archive(@PathParam("id") String id, IdeaArchive body) {
     Idea current = ideas.get(id);
@@ -537,7 +549,9 @@ public class IdeaController {
               schema = @Schema(implementation = IdeaDto.class)))
   @APIResponse(
       responseCode = "403",
-      description = "An agent unarchiving an idea outside its own project; nothing is written")
+      description =
+          "A plain agent (qits:agent without the desk roles) is refused every idea write, and the"
+              + " delivery desk is refused outside its own project; nothing is written")
   @APIResponse(responseCode = "404", description = "No idea with this id")
   public IdeaDto unarchive(@PathParam("id") String id) {
     Idea current = ideas.get(id);
