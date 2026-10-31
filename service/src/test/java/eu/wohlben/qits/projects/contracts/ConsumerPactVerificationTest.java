@@ -120,8 +120,10 @@ class ConsumerPactVerificationTest {
   /**
    * qits-landing-app's 2026.1030.201508 list-ideas row sends the golden masters' {@code
    * {projectId}} placeholder as a literal query value, with no provider-state generator: the
-   * consumer helper generated the path but not the query (qits-1767). The release carrying the
-   * fixed pact verifies it for real, and this entry, naming that version alone, goes inert.
+   * consumer helper generated the path but not the query (qits-1767). Its 2026.1031.30844 pact is
+   * fixed and verifies for real. The gate also verifies every deployed and rollback consumer
+   * version ({@link ClasspathPactLoader}), so this entry stays until 2026.1030.201508 is neither
+   * deployed nor a rollback target of qits-landing-app; only then may it go.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
