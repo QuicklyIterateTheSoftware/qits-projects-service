@@ -79,6 +79,14 @@ public class Idea extends PanacheEntityBase implements CausedRow {
   @Column(name = "archived_at")
   public Instant archivedAt;
 
+  /**
+   * <b>The ranking among the project's rankable ideas</b> (qits-1791, epics V35): higher sorts
+   * first, null after every number, then {@link #createdAt} and the id. Only a rankable idea — not
+   * archived, not DONE — is written one; the archive clears it.
+   */
+  @Column(name = "priority")
+  public Integer priority;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   public Instant createdAt;

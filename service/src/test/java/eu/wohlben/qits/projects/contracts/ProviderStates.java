@@ -73,6 +73,13 @@ public class ProviderStates {
    * archivedIdeaId}.
    */
   public static final String A_PROJECT_WITH_IDEAS = "a project with ideas";
+  /**
+   * Three PLANNED ideas in one project, written in order, the first carrying priority 2 and the
+   * other two unranked (qits-1791): what the Ideas page's drag and drop reorders. {@code ideaId} is
+   * the last of them, the one a drop moves; {@code anchor} the first, ranked one, the idea it is
+   * dropped against. Params {@code projectId}, {@code ideaId}, {@code anchor}.
+   */
+  public static final String THREE_IDEAS = "a project with three ideas, one with a priority";
   public static final String A_PROJECT_WITH_PENDING_RELEASE_REQUESTS =
       "a project with pending release requests";
   public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
@@ -489,6 +496,7 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(THREE_REPORTED_TICKETS, this::threeReportedTickets);
     states.put(A_PROJECT_WITH_IDEAS, this::aProjectWithIdeas);
+    states.put(THREE_IDEAS, this::threeIdeas);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
     RELEASE_REQUEST_DETAILS.forEach(name -> states.put(name, () -> releaseRequestInDetail(name)));
@@ -2271,6 +2279,22 @@ public class ProviderStates {
   /** Marks a feature or task implemented now, as an edit of its marker. */
   private void implemented(String id) {
     work.update(work.find(id).archetype, id, EntityWrite.implementedAt(Instant.now()), SEEDER);
+  }
+
+  /** {@link #THREE_IDEAS}: the ranked first idea is the anchor, the last the mover. */
+  private Setup threeIdeas() {
+    String token = token();
+    Project project = project(token, THREE_IDEAS);
+    String first = ideas.create(project.id, "Faster builds", null, null, SEEDER).id;
+    ideas.create(project.id, "Fewer flaky tests", null, null, SEEDER);
+    String third = ideas.create(project.id, "Smaller images", null, null, SEEDER).id;
+    ideas.update(
+        first,
+        new eu.wohlben.qits.entities.control.IdeaService.IdeaEdit(null, null, false, null, false)
+            .withPriority(2, false),
+        SEEDER);
+    return new Setup(
+        params("anchor", first, "ideaId", third, "projectId", project.id), List.of(token));
   }
 
   private Setup aProjectWithIdeas() {

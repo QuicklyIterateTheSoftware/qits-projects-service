@@ -41,8 +41,12 @@ import java.util.regex.Pattern;
  *   <li><b>enabledBy</b>: one idea of the same project, one layer deep — not the idea itself, not
  *       an idea that is itself enabled by another, and never set on an idea that already enables
  *       others. An archived target is allowed;
- *   <li><b>archive</b>: a reason is required. It does not change the status.
+ *   <li><b>archive</b>: a reason is required. It does not change the status, and it clears the
+ *       priority.
  * </ul>
+ *
+ * <p>A <b>priority</b> write (qits-1791) on an archived or DONE idea is a 409 ({@link
+ * IdeaPriorityService#requireRankable}).
  */
 @ApplicationScoped
 public class IdeaService {
@@ -70,16 +74,47 @@ public class IdeaService {
 
   @Inject IdeaAnnouncements announcements;
 
-  /** What an edit changes: a null leaves a field alone, a {@code clear*} flag empties it. */
+  /**
+   * What an edit changes: a null leaves a field alone, a {@code clear*} flag empties it. The
+   * {@code priority} (qits-1791) is written only on a rankable idea ({@link
+   * IdeaPriorityService#isRankable}); setting or clearing it on any other is a 409.
+   */
   public record IdeaEdit(
-      String title, String description, boolean clearDescription, String enabledBy, boolean clearEnabledBy) {
+      String title,
+      String description,
+      boolean clearDescription,
+      String enabledBy,
+      boolean clearEnabledBy,
+      Integer priority,
+      boolean clearPriority) {
+
+    /** An edit that leaves the priority alone. */
+    public IdeaEdit(
+        String title,
+        String description,
+        boolean clearDescription,
+        String enabledBy,
+        boolean clearEnabledBy) {
+      this(title, description, clearDescription, enabledBy, clearEnabledBy, null, false);
+    }
+
+    /** This edit, also setting the priority to {@code priority} or clearing it. */
+    public IdeaEdit withPriority(Integer priority, boolean clearPriority) {
+      return new IdeaEdit(
+          title, description, clearDescription, enabledBy, clearEnabledBy, priority, clearPriority);
+    }
+
+    boolean writesPriority() {
+      return priority != null || clearPriority;
+    }
 
     boolean isEmpty() {
       return title == null
           && description == null
           && !clearDescription
           && enabledBy == null
-          && !clearEnabledBy;
+          && !clearEnabledBy
+          && !writesPriority();
     }
   }
 
@@ -91,12 +126,13 @@ public class IdeaService {
   }
 
   /**
-   * A project's ideas, oldest first. {@code includeArchived} false leaves the archived out; {@code
+   * A project's ideas in the order rule ({@link IdeaPriorityService#ORDER}): priority descending,
+   * null last, then oldest first. {@code includeArchived} false leaves the archived out; {@code
    * status} null means every status.
    */
   public List<Idea> list(String projectId, boolean includeArchived, IdeaStatus status) {
-    return reads.hold(
-        "idea list", () -> ideas.listByProject(projectId, includeArchived, status));
+    return IdeaPriorityService.sorted(
+        reads.hold("idea list", () -> ideas.listByProject(projectId, includeArchived, status)));
   }
 
   /** The work naming {@code ideaId} as its inspiration, every status, oldest first. */
@@ -167,6 +203,10 @@ public class IdeaService {
             () -> {
               changes.clear();
               Idea idea = find(id);
+              if (edit.writesPriority()) {
+                IdeaPriorityService.requireRankable(idea);
+                idea.priority = edit.clearPriority() ? null : edit.priority();
+              }
               if (edit.title() != null) {
                 idea.title = edit.title();
               }
@@ -204,6 +244,8 @@ public class IdeaService {
               idea.archived = true;
               idea.archiveReason = reason.strip();
               idea.archivedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
+              // An archived idea is not ranked; unarchived, it comes back unranked (qits-1791).
+              idea.priority = null;
               ideas.getEntityManager().flush();
               changes.add(IdeaChange.of(IdeaChange.Kind.ARCHIVED, idea, null, changedBy));
               return idea;

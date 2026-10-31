@@ -214,13 +214,16 @@ class AgentReadAccessTest {
    * <b>The idea writes an agent reaches</b> (qits-1387): a project's ideas are planning notes beside
    * its work, and an agent filing or archiving one makes the same claim its work writes make. Bound
    * to the idea's project by {@code EntitiesAgentAccess}. There is no delete to keep off the list.
+   * The drop door (qits-1791) ranks an idea under the patch's roles.
    */
   private static final Set<String> IDEA_AGENT_WRITES =
       Set.of(
           "IdeaController.create",
           "IdeaController.patch",
           "IdeaController.archive",
-          "IdeaController.unarchive");
+          "IdeaController.unarchive",
+          // The drop door (qits-1791), under the patch's roles.
+          "IdeaController.reprioritize");
 
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =

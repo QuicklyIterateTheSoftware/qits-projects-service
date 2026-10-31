@@ -2291,6 +2291,58 @@
       ]
     },
     {
+      "name": "a project with three ideas, one with a priority",
+      "slug": "a-project-with-three-ideas-one-with-a-priority",
+      "params": {
+        "anchor": "00000000-0000-4000-8000-000000000001",
+        "ideaId": "00000000-0000-4000-8000-000000000002",
+        "projectId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "patchIdea",
+          "method": "PATCH",
+          "path": "/projects/api/ideas/{ideaId}",
+          "body": {
+            "priority": 5
+          },
+          "status": 200,
+          "file": "a-project-with-three-ideas-one-with-a-priority/patchIdea.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "reprioritizeIdea",
+          "method": "PUT",
+          "path": "/projects/api/ideas/{ideaId}/priority",
+          "body": {
+            "below": "{anchor}"
+          },
+          "status": 200,
+          "file": "a-project-with-three-ideas-one-with-a-priority/reprioritizeIdea.json",
+          "frozen": {
+            "ids": [
+              "$.items[*].id"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with work in every status",
       "slug": "a-project-with-work-in-every-status",
       "params": {

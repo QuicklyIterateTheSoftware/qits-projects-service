@@ -764,6 +764,22 @@ class GoldenMasterRecordingTest {
             "POST",
             "/projects/api/ideas/{archivedIdeaId}/unarchive",
             null));
+    // The ranking of ideas (qits-1791): a patch writing it outright, and the drop door moving the
+    // last of three ideas directly below the ranked first one.
+    all.add(
+        write(
+            ProviderStates.THREE_IDEAS,
+            "patchIdea",
+            "PATCH",
+            "/projects/api/ideas/{ideaId}",
+            "{\"priority\":5}"));
+    all.add(
+        write(
+            ProviderStates.THREE_IDEAS,
+            "reprioritizeIdea",
+            "PUT",
+            "/projects/api/ideas/{ideaId}/priority",
+            "{\"below\":\"{anchor}\"}"));
     all.add(
         read(
             ProviderStates.THE_ARCHETYPE_REGISTRY,
