@@ -210,27 +210,116 @@ class IdeaApiTest {
     given().get("/projects/api/ideas/missing").then().statusCode(404);
   }
 
+  /** Every archetype carries an idea (qits-1792): a feature at its create, a task by a patch. */
   @Test
-  void aFeatureOrATaskNamingAnIdeaIsA400() {
+  void aFeatureAndATaskNameAnIdeaToo() {
     EntityFixtures.Project project = EntityFixtures.project("Ideas Feature");
-    String idea = idea(project.id(), "Not for features");
+    String idea = idea(project.id(), "For features too");
     String epic = EntityFixtures.epic(project.id());
 
-    given()
-        .contentType(ContentType.JSON)
-        .body(map("archetype", "FEATURE", "parent", epic, "title", "A part", "inspiredBy", idea))
-        .post("/projects/api/work")
-        .then()
-        .statusCode(400)
-        .body("message", containsString("only an EPIC, a TICKET or a CAMPAIGN"));
-    String feature = EntityFixtures.feature(epic);
+    String feature =
+        given()
+            .contentType(ContentType.JSON)
+            .body(map("archetype", "FEATURE", "parent", epic, "title", "A part", "inspiredBy", idea))
+            .post("/projects/api/work")
+            .then()
+            .statusCode(201)
+            .body("inspiredBy", equalTo(idea))
+            .extract()
+            .path("id");
+    given().get("/projects/api/work/" + feature).then().statusCode(200).body("inspiredBy", equalTo(idea));
+
+    String task = EntityFixtures.task(feature, EntityFixtures.repository(project.id()));
     given()
         .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
         .body(map("inspiredBy", idea))
-        .patch("/projects/api/work/" + feature)
+        .patch("/projects/api/work/" + task)
         .then()
-        .statusCode(400)
-        .body("message", containsString("only an EPIC, a TICKET or a CAMPAIGN"));
+        .statusCode(200)
+        .body("inspiredBy", equalTo(idea));
+
+    given()
+        .get("/projects/api/ideas/" + idea)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("QUEUED"))
+        .body("inspired", hasSize(2))
+        .body("inspired.id", hasItem(feature))
+        .body("inspired.id", hasItem(task))
+        .body("inspired.archetype", hasItem("FEATURE"))
+        .body("inspired.archetype", hasItem("TASK"));
+
+    // A merge patch's null clears the task's idea; the feature still holds it.
+    given()
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
+        .body(map("inspiredBy", null))
+        .patch("/projects/api/work/" + task)
+        .then()
+        .statusCode(200)
+        .body("inspiredBy", nullValue());
+    given()
+        .get("/projects/api/ideas/" + idea)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("QUEUED"))
+        .body("inspired", hasSize(1))
+        .body("inspired[0].id", equalTo(feature));
+  }
+
+  /**
+   * A reshape keeps the idea (qits-1792): a ticket naming one, made a feature through the
+   * whole-state door, still names it — carried like the slug, never stated by the transition.
+   */
+  @Test
+  void aReshapeIntoAFeatureKeepsTheIdea() {
+    EntityFixtures.Project project = EntityFixtures.project("Ideas Reshape");
+    String idea = idea(project.id(), "Survives a reshape");
+    String epic = EntityFixtures.epic(project.id());
+    String ticket =
+        given()
+            .contentType(ContentType.JSON)
+            .body(
+                map(
+                    "archetype", "TICKET",
+                    "project", project.id(),
+                    "title", "Turns out to be scope",
+                    "ticketType", "BUG",
+                    "impetus", "it occurs",
+                    "inspiredBy", idea))
+            .post("/projects/api/work")
+            .then()
+            .statusCode(201)
+            .extract()
+            .path("id");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(
+            map(
+                ticket,
+                map(
+                    "archetype", "FEATURE",
+                    "title", "Turns out to be scope",
+                    "status", "REPORTED",
+                    "membership", map("parent", epic, "position", null))))
+        .post("/projects/api/work/transition")
+        .then()
+        .statusCode(200)
+        .body("'" + ticket + "'.archetype", equalTo("FEATURE"));
+
+    given()
+        .get("/projects/api/work/" + ticket)
+        .then()
+        .statusCode(200)
+        .body("archetype", equalTo("FEATURE"))
+        .body("inspiredBy", equalTo(idea));
+    given()
+        .get("/projects/api/ideas/" + idea)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("QUEUED"))
+        .body("inspired", hasSize(1))
+        .body("inspired[0].archetype", equalTo("FEATURE"));
   }
 
   @Test
