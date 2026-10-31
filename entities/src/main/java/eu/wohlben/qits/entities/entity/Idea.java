@@ -17,7 +17,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 /**
  * <b>An idea</b> (qits-1387, epic qits-888, epics V33): a short, titled note owned by a project, which
- * an epic, a ticket or a campaign can name as what inspired it ({@link WorkEntity#inspiredByIdeaId}).
+ * work of any archetype can name as what inspired it ({@link WorkEntity#inspiredByIdeaId}, every
+ * archetype since qits-1792).
  *
  * <p><b>Not a work archetype, deliberately.</b> It has no lifecycle the caller moves, no dispatch,
  * no thread, no assignee, no children and no acceptance criteria. Its {@link #status} is derived

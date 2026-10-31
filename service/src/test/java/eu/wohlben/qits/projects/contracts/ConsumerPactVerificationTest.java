@@ -124,6 +124,14 @@ class ConsumerPactVerificationTest {
    * fixed and verifies for real. The gate also verifies every deployed and rollback consumer
    * version ({@link ClasspathPactLoader}), so this entry stays until 2026.1030.201508 is neither
    * deployed nor a rollback target of qits-landing-app; only then may it go.
+   *
+   * <p>qits-landing-app's 2026.1031.30844 (pinned) and 2026.1031.174516 (deployed and the
+   * rollback target) show-commit-changes rows pin {@code "parent": null} exactly, recorded when the
+   * endpoint answered null for an omitted parent. Since qits-1793 it answers the first parent it
+   * resolved — the DTO's documented contract, and the golden masters record it — and {@code null}
+   * only for a root commit, which the state's commit is not. Each entry stays until its version is
+   * neither pinned, deployed nor a rollback target of qits-landing-app, i.e. until the consumer
+   * re-records against the new golden masters and that release replaces both.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -132,7 +140,19 @@ class ConsumerPactVerificationTest {
               "2026.1030.201508",
               "list-ideas: listIdeas",
               "the query sends a literal {projectId} with no provider-state generator; fixed by"
-                  + " qits-1767"));
+                  + " qits-1767"),
+          new KnownWrong(
+              "qits-landing-app",
+              "2026.1031.30844",
+              "show-commit-changes: listCommitChanges",
+              "pins \"parent\": null exactly; since qits-1793 an omitted parent answers the"
+                  + " resolved first parent"),
+          new KnownWrong(
+              "qits-landing-app",
+              "2026.1031.174516",
+              "show-commit-changes: listCommitChanges",
+              "pins \"parent\": null exactly; since qits-1793 an omitted parent answers the"
+                  + " resolved first parent"));
 
   @Inject ProviderStates states;
 

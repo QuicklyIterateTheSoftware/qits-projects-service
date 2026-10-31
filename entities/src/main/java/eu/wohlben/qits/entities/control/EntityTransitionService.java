@@ -848,11 +848,8 @@ public class EntityTransitionService {
       row.createdBy = null;
     }
     row.slugScope = slugScope;
-    if (!IdeaService.CARRIERS.contains(target.archetype())) {
-      // The idea it was inspired by is not stated here and is carried like the slug (qits-1387),
-      // except onto a kind that cannot carry one: a reshape into a FEATURE or a TASK drops it.
-      row.inspiredByIdeaId = null;
-    }
+    // The idea it was inspired by is not stated here and is carried like the slug (qits-1387), onto
+    // any kind: every archetype may carry one (qits-1792), so a reshape never drops it.
   }
 
   /**

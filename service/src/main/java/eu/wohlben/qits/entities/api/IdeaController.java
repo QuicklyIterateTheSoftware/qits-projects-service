@@ -41,8 +41,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 /**
  * <b>Ideas: {@code /projects/api/ideas}</b> (qits-1387, epic qits-888).
  *
- * <p>An idea is a short, titled note a project keeps, which an epic, a ticket or a campaign can
- * name as its inspiration ({@code inspiredBy} on {@code /work}). It is <b>not a work archetype</b>:
+ * <p>An idea is a short, titled note a project keeps, which work of any archetype can name as its
+ * inspiration ({@code inspiredBy} on {@code /work}). It is <b>not a work archetype</b>:
  * no lifecycle a caller moves, no dispatch, no thread, no children. Its {@code status} — PLANNED,
  * QUEUED, DONE — is derived from the work naming it and stored. There is <b>no delete</b>: an idea is
  * archived with a reason and can be unarchived.

@@ -442,9 +442,6 @@ public class WorkEntityService {
     }
     requireIntake(archetype, write);
     TicketType type = parseType(write.type());
-    if (write.touchesInspiration()) {
-      IdeaService.requireCarrier(archetype);
-    }
     List<IdeaChange> ideaChanges = new ArrayList<>(1);
     Nested made =
         writes.hold(
@@ -469,7 +466,7 @@ public class WorkEntityService {
           row.createdBy =
               Archetypes.spec(archetype).permits(EntityProperty.CREATED_BY) ? changedBy : null;
           if (write.inspiredBy() != null) {
-            ideaRules.requireInspirable(archetype, write.inspiredBy(), projectId);
+            ideaRules.requireInspirable(write.inspiredBy(), projectId);
             row.inspiredByIdeaId = write.inspiredBy();
           }
           requireArchetypeValid(row, Demand.AT_CREATE);
@@ -566,9 +563,6 @@ public class WorkEntityService {
     boolean[] retitled = {false};
     List<TransitionedEntity> moved = new ArrayList<>(1);
     List<IdeaChange> ideaChanges = new ArrayList<>(2);
-    if (write.touchesInspiration()) {
-      IdeaService.requireCarrier(archetype);
-    }
     Nested updated =
         writes.hold(
             kind.label("update"),
@@ -666,7 +660,7 @@ public class WorkEntityService {
     if (write.clearInspiredBy()) {
       row.inspiredByIdeaId = null;
     } else if (write.inspiredBy() != null) {
-      ideaRules.requireInspirable(archetype, write.inspiredBy(), row.projectId);
+      ideaRules.requireInspirable(write.inspiredBy(), row.projectId);
       row.inspiredByIdeaId = write.inspiredBy();
     }
     // The ranking among siblings (qits-753): neither scope nor a marker, so no owner's freeze

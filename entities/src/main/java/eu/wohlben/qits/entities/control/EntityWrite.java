@@ -243,8 +243,8 @@ public record EntityWrite(
 
   /**
    * This write, also stating the idea the work was inspired by (qits-1387): {@code ideaId} sets it,
-   * {@code clear} empties it, and neither leaves it alone. Only an EPIC, a TICKET or a CAMPAIGN
-   * carries one ({@link IdeaService#CARRIERS}); the writer refuses it on any other kind.
+   * {@code clear} empties it, and neither leaves it alone. Every archetype may carry one
+   * (qits-1792); {@link IdeaService#requireInspirable} judges the idea it names.
    */
   public EntityWrite withInspiredBy(String ideaId, boolean clear) {
     return new EntityWrite(

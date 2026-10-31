@@ -569,6 +569,11 @@ class EntitySchemaApiTest {
             "type" : "string",
             "pattern" : "\\\\S",
             "description" : "The id of a FEATURE — its UUID or its qualified id (<projectSlug>-<n>)."
+          },
+          "inspiredBy" : {
+            "type" : "string",
+            "pattern" : "\\\\S",
+            "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
           }
         },
         "required" : [ "title", "repositoryId", "parent" ],
@@ -611,6 +616,11 @@ class EntitySchemaApiTest {
           "dependsOn" : {
             "type" : [ "string", "null" ],
             "description" : "The id of the sibling this one waits for — ordering, never nesting."
+          },
+          "inspiredBy" : {
+            "type" : [ "string", "null" ],
+            "pattern" : "\\\\S",
+            "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
           },
           "priority" : {
             "type" : [ "integer", "null" ],

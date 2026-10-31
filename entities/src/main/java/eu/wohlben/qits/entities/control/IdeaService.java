@@ -1,6 +1,5 @@
 package eu.wohlben.qits.entities.control;
 
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.Idea;
 import eu.wohlben.qits.entities.entity.IdeaStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -13,11 +12,9 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -46,10 +43,6 @@ import java.util.regex.Pattern;
  */
 @ApplicationScoped
 public class IdeaService {
-
-  /** The archetypes that may name an idea as their {@code inspiredBy}. */
-  public static final Set<Archetype> CARRIERS =
-      EnumSet.of(Archetype.EPIC, Archetype.TICKET, Archetype.CAMPAIGN);
 
   /** At most this many paragraphs in a description. */
   public static final int MAX_PARAGRAPHS = 3;
@@ -238,12 +231,11 @@ public class IdeaService {
   // --- the work side --------------------------------------------------------------------------
 
   /**
-   * <b>Whether a row of {@code archetype} in {@code projectId} may name {@code ideaId}</b>, or a
-   * 400: the archetype must be one of {@link #CARRIERS}, and the idea must exist and be of the same
-   * project. An archived idea may be named. Called inside the work write's transaction.
+   * <b>Whether a row in {@code projectId} may name {@code ideaId}</b>, or a 400: the idea must
+   * exist and be of the same project. Every archetype may carry one (qits-1792). An archived idea
+   * may be named. Called inside the work write's transaction.
    */
-  public void requireInspirable(Archetype archetype, String ideaId, String projectId) {
-    requireCarrier(archetype);
+  public void requireInspirable(String ideaId, String projectId) {
     Idea idea = ideaId == null ? null : ideas.findById(ideaId);
     if (idea == null) {
       throw new BadRequestException("inspiredBy names no idea: " + ideaId);
@@ -251,16 +243,6 @@ public class IdeaService {
     if (!Objects.equals(idea.projectId, projectId)) {
       throw new BadRequestException(
           "inspiredBy must name an idea of the same project: " + ideaId + " is another project's");
-    }
-  }
-
-  /** A 400 unless {@code archetype} may carry an {@code inspiredBy}. */
-  public static void requireCarrier(Archetype archetype) {
-    if (!CARRIERS.contains(archetype)) {
-      throw new BadRequestException(
-          "inspiredBy is not written on a "
-              + archetype
-              + ": only an EPIC, a TICKET or a CAMPAIGN is inspired by an idea");
     }
   }
 

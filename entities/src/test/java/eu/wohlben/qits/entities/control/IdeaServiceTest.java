@@ -229,8 +229,9 @@ class IdeaServiceTest extends EntitiesTestSupport {
 
   // --- the work that names an idea -------------------------------------------------------------
 
+  /** Every archetype carries an idea (qits-1792): a feature under an epic too. */
   @Test
-  void onlyAnEpicATicketOrACampaignIsInspired() {
+  void everyArchetypeIsInspired() {
     Idea idea = idea("Inspiring");
     WorkEntity epic =
         work.create(
@@ -241,15 +242,14 @@ class IdeaServiceTest extends EntitiesTestSupport {
             .entity();
     assertEquals(idea.id, epic.inspiredByIdeaId);
 
-    BadRequestException feature =
-        refused(
-            () ->
-                work.create(
-                    Archetype.FEATURE,
-                    epic.id,
-                    EntityWrite.feature("A feature", null, null).withInspiredBy(idea.id, false),
-                    "t"));
-    assertTrue(feature.getMessage().contains("FEATURE"), feature.getMessage());
+    WorkEntity feature =
+        work.create(
+                Archetype.FEATURE,
+                epic.id,
+                EntityWrite.feature("A feature", null, null).withInspiredBy(idea.id, false),
+                "t")
+            .entity();
+    assertEquals(idea.id, feature.inspiredByIdeaId);
   }
 
   @Test

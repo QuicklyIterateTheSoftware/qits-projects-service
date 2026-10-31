@@ -452,10 +452,68 @@ public class CommitService {
   }
 
   /**
+   * The files one commit changed, as the {@code listCommitChanges} endpoint answers them: against
+   * the explicit {@code parent} when given (echoed as given), otherwise against the commit's first
+   * parent, <b>resolved here</b> to a sha and answered as {@code parent} — {@code null} only for a
+   * root commit, which is diffed against the empty tree.
+   *
+   * <p>The resolution is not cosmetic. {@code git diff-tree --root <merge>} with no base prints
+   * nothing at all, so a merge commit read without one answered {@code files: []} however much it
+   * changed (qits-1793). {@link #listChanges(String, String, String)} keeps its own meaning of a
+   * null base — "never released, the empty tree" for {@link ReleaseRequests} and {@link
+   * MirrorFoldChanges} — which is why the endpoint resolves here rather than there.
+   */
+  public CommitChangesDto listCommitChanges(String repoId, String commit, String parent) {
+    return listChanges(repoId, commit, givenOrFirstParent(repoId, commit, parent));
+  }
+
+  /**
+   * The patch of one file in one commit, as the {@code getCommitFileDiff} endpoint answers it:
+   * against the same base {@link #listCommitChanges} resolves, so a merge commit's file has a patch
+   * rather than an empty {@code diff}.
+   */
+  public CommitFileDiffDto commitFileDiff(
+      String repoId, String commit, String parent, String path) {
+    return getFileDiff(repoId, commit, givenOrFirstParent(repoId, commit, parent), path);
+  }
+
+  /**
+   * The explicit {@code parent} as given, or {@code commit}'s first parent resolved in the mirror
+   * ({@code rev-parse --verify -q <commit>^1^{commit}}); {@code null} when there is none, i.e. a
+   * root commit. A commit that names nothing also answers {@code null}, and the diff that follows
+   * fails it as it always has.
+   */
+  private String givenOrFirstParent(String repoId, String commit, String parent) {
+    requireRef(commit, "commit");
+    String given = normalizeParent(parent);
+    if (given != null) {
+      return given;
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      GitExecutor.ExecResult firstParent =
+          git.execAllowNonZero(
+              mirror.gitDir().toFile(),
+              "git",
+              "rev-parse",
+              "--verify",
+              "-q",
+              commit + "^1^{commit}");
+      return firstParent.exitCode() == 0 && !firstParent.output().isBlank()
+          ? firstParent.output().trim()
+          : null;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git rev-parse failed: " + e.getMessage());
+    }
+  }
+
+  /**
    * Lists the files a commit changed relative to its diff base. The base is the explicit {@code
-   * parent} when given, otherwise the commit's own first parent ({@code --root} so a root commit
-   * still reports its added files). {@code parent} in the result is the resolved base ({@code null}
-   * for a root commit).
+   * parent} when given, otherwise {@code --root} with no base: the commit's own first parent for an
+   * ordinary commit, the empty tree for a root commit — and <b>nothing at all</b> for a merge. That
+   * is the internal callers' contract, where a null base means "never released"; {@code parent} in
+   * the result is the base as passed, so {@code null} here. The endpoint resolves the first parent
+   * first, through {@link #listCommitChanges}.
    */
   public CommitChangesDto listChanges(String repoId, String commit, String parent) {
     return listChanges(repoId, commit, parent, null);
@@ -842,8 +900,9 @@ public class CommitService {
 
   /**
    * The unified diff of a single {@code path} in {@code commit}, relative to the same base as
-   * {@link #listChanges}. The diff text is empty when the file has no textual change (binary or
-   * pure rename).
+   * {@link #listChanges} — a null base included, which is {@code --root} and so empty for a merge.
+   * The endpoint resolves the first parent first, through {@link #commitFileDiff}. The diff text is
+   * empty when the file has no textual change (binary or pure rename).
    */
   public CommitFileDiffDto getFileDiff(String repoId, String commit, String parent, String path) {
     requireRef(commit, "commit");
@@ -880,7 +939,7 @@ public class CommitService {
     }
   }
 
-  /** Null/blank parent means "diff against the commit's first parent"; otherwise validate it. */
+  /** Null/blank parent means "no explicit base" ({@code --root}); otherwise validate it. */
   private String normalizeParent(String parent) {
     if (parent == null || parent.isBlank()) {
       return null;

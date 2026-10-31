@@ -443,10 +443,9 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>The idea this work was inspired by</b> (qits-1387, epics V33): an {@link Idea} of the same
-   * project, or null. Only an {@link Archetype#EPIC}, a {@link Archetype#TICKET} and a {@link
-   * Archetype#CAMPAIGN} carry one ({@code control/IdeaService#CARRIERS}); it is deliberately <em>not</em>
-   * a registry property, because the registry document's {@code permitted} lists are pinned by
-   * consumers. Every write of it and every status move of a row carrying it recomputes the idea's
+   * project, or null. Every archetype may carry one (qits-1792), and a reshape carries it onto the
+   * new kind like the slug; it is deliberately <em>not</em> a registry property, because the
+   * registry document's {@code permitted} lists are pinned by consumers. Every write of it and every status move of a row carrying it recomputes the idea's
    * status in the same transaction ({@code control/IdeaStatusRecompute}).
    *
    * <p>Left out of the audit snapshot while null, so the rows that name no idea snapshot as before.

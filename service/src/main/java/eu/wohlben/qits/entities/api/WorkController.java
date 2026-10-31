@@ -117,8 +117,8 @@ public class WorkController {
           List<String> acceptanceCriteria,
       @Schema(
               description =
-                  "An epic's, a ticket's or a campaign's inspiration: the id of an idea of the same"
-                      + " project (GET /projects/api/ideas). Refused on a feature or a task.")
+                  "The work's inspiration, on every archetype: the id of an idea of the same"
+                      + " project (GET /projects/api/ideas).")
           String inspiredBy) {}
 
   /**
@@ -185,9 +185,9 @@ public class WorkController {
       @Schema(
               nullable = true,
               description =
-                  "An epic's, a ticket's or a campaign's inspiration: the id of an idea of the same"
-                      + " project; null clears it. Editable at every status. Refused on a feature or"
-                      + " a task. Setting, changing or clearing it re-derives the ideas' status.")
+                  "The work's inspiration, on every archetype: the id of an idea of the same"
+                      + " project; null clears it. Editable at every status. Setting, changing or"
+                      + " clearing it re-derives the ideas' status.")
           String inspiredBy,
       @Schema(
               nullable = true,
