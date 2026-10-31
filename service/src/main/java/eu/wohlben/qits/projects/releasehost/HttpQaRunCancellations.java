@@ -25,7 +25,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   POST {qits.projects.release-requests.ci-url}/ci/api/runs/cancellations
- *   Authorization: Bearer &lt;machine token, audience qits-ci&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *   Content-Type: application/json
  *
  *   {"repoId": "&lt;uuid&gt;", "releaseRequestId": "&lt;id&gt;"}

@@ -25,7 +25,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   POST {workspaces-url}/workspaces/api/agent-dispatches/delivery
- *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *   Content-Type: application/json
  *
  *   {"workId": "…", "text": "…", "compactFirst": false}

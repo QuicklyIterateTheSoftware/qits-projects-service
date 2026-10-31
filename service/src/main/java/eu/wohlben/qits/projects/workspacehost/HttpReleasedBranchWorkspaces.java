@@ -27,7 +27,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   POST {qits.projects.release-requests.workspaces-url}/workspaces/api/branches/resolution?repositoryId=&lt;repoId&gt;
- *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *   Content-Type: application/json
  *
  *   {"branch": "…", "target": "&lt;version&gt;", "commit": "&lt;released sha&gt;",

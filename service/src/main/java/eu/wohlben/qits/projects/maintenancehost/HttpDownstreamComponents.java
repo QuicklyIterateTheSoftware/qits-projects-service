@@ -28,7 +28,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *   GET {qits.projects.release-requests.maintenance-url}/maintenance/api/repositories/&lt;repoId&gt;/downstream
- *   Authorization: Bearer &lt;machine token, audience qits-platform-maintenance&gt;
+ *   Authorization: Bearer &lt;machine token, audience qits-platform&gt;
  *
  *   -&gt; 200 {
  *        "repository": "qits-ui-components-jslib",
