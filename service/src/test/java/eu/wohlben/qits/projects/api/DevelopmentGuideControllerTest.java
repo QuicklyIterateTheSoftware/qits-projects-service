@@ -307,13 +307,38 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
         DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW.contains(
             "qits wait release-request <request id>"),
         "the qits-1724 text is the one before qits wait branch existed");
+  }
+
+  /**
+   * qits-1816: the flow sends a red automation to regenerate, not to ci retry, and an unedited flow
+   * row holding the text before rolls forward on boot. The earlier texts in PREVIOUS keep their
+   * exact shipped wording, or the rows still holding them would never match.
+   */
+  @Test
+  public void anUneditedFlowPartRollsForwardFromQits1816() {
+    assertTrue(
+        DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
+            "`qits release-request regenerate --kind <kind>`"));
+    for (String previous : DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY)) {
+      assertFalse(previous.contains("A red automation"), "a previous text was rewritten");
+    }
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    AgentSurfaceConfigurationDto flow = surfaces.get(key);
+    surfaces.save(
+        key, withText(flow, DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(
+        read("agent").getString("markdown").contains("qits release-request regenerate --kind"));
   }
 
   /** qits-1724: an unedited flow row holding the qits-1724 text rolls forward on boot. */
