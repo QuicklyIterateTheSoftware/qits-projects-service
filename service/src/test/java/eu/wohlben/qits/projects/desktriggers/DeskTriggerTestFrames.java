@@ -109,6 +109,44 @@ final class DeskTriggerTestFrames {
         null);
   }
 
+  /**
+   * qits-system's {@code TargetOomKilled} as it arrives: that service's event type is not on this
+   * classpath, so the payload is written as the wire carries it ({@code NON_NULL}: an absent
+   * counter is an absent key).
+   */
+  static EventFrame oomKilled(
+      String targetId,
+      String targetName,
+      Long nodeOomKills,
+      Long kernelOomKills,
+      long delta,
+      String... projectIds) {
+    com.fasterxml.jackson.databind.node.ObjectNode payload =
+        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+    payload.put("targetId", targetId);
+    payload.put("targetName", targetName);
+    if (nodeOomKills != null) {
+      payload.put("nodeOomKills", nodeOomKills);
+    }
+    if (kernelOomKills != null) {
+      payload.put("kernelOomKills", kernelOomKills);
+    }
+    payload.put("delta", delta);
+    com.fasterxml.jackson.databind.node.ArrayNode projects = payload.putArray("projectIds");
+    for (String projectId : projectIds) {
+      projects.add(projectId);
+    }
+    payload.put("occurredAt", "2026-11-02T09:00:00Z");
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        "TargetOomKilled",
+        Instant.now(),
+        payload.toString(),
+        null,
+        null,
+        null);
+  }
+
   static EventFrame commented(
       String projectId,
       long number,
