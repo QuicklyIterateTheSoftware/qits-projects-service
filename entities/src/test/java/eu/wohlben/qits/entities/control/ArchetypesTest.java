@@ -84,7 +84,7 @@ class ArchetypesTest {
 
   @Test
   void epicTicketAndCampaignDeclareTheOneLifecycleAndNothingElseHasOne() {
-    var six = EnumSet.allOf(EntityStatus.class).stream().map(Enum::name).collect(Collectors.toSet());
+    var six = EntityStateMachine.states().stream().map(Enum::name).collect(Collectors.toSet());
     assertEquals(
         Set.of(
             "REPORTED",
@@ -321,7 +321,7 @@ class ArchetypesTest {
   void anEpicMayCarryEveryWordOfTheOneLifecycle() {
     // Until qits-392 an epic carrying REPORTED was refused as a ticket word; there is one
     // vocabulary now, and VERIFIED and DONE are exactly what an epic could not reach before.
-    for (EntityStatus status : EntityStatus.values()) {
+    for (EntityStatus status : EntityStateMachine.states()) {
       assertEquals(
           List.of(),
           Archetypes.validate(epic(status.name()), Demand.ON_UPDATE),
@@ -355,7 +355,7 @@ class ArchetypesTest {
   void aFeatureAndATaskTakeEveryWordOfTheLifecycleAndRefuseAWordItDoesNotSpell() {
     // qits-763: a status on a feature or a task is no longer a foreign property but its own
     // lifecycle's word — legal when the lifecycle spells it, an ILLEGAL_STATUS when it does not.
-    for (EntityStatus status : EntityStatus.values()) {
+    for (EntityStatus status : EntityStateMachine.states()) {
       assertEquals(
           List.of(),
           Archetypes.validate(

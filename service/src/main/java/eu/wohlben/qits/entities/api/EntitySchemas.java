@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
 import eu.wohlben.qits.entities.control.ArchetypeSpec;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
 import eu.wohlben.qits.entities.control.Archetypes;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -161,7 +162,10 @@ public final class EntitySchemas {
       properties.put(PARENT, reference(parentDescription(archetype)));
       required.add(PARENT);
     }
-    properties.put(INSPIRED_BY, inspiredBy());
+    // An issue names no idea (qits-1819).
+    if (archetype != Archetype.ISSUE) {
+      properties.put(INSPIRED_BY, inspiredBy());
+    }
     // The tags (qits-634): every archetype, and no registry property.
     properties.put(EntityWireProperties.TAGS, EntityWireProperties.tagsSchema());
     return document(
@@ -169,7 +173,9 @@ public final class EntitySchemas {
         Door.CREATE,
         "The body of POST /projects/api/work, less its archetype (\"archetype\": \""
             + archetype
-            + "\" is added beside these). The status is minted REPORTED by the writer.",
+            + "\" is added beside these). The status is minted "
+            + EntityStateMachine.initial(archetype)
+            + " by the writer.",
         properties,
         required,
         null);
@@ -184,9 +190,13 @@ public final class EntitySchemas {
       }
       properties.put(slot.wire(), slot.clearable() ? nullable(slot.schema()) : slot.schema());
     }
-    properties.put(INSPIRED_BY, nullable(inspiredBy()));
-    // The ranking among siblings (qits-753): every archetype, and no registry property.
-    properties.put(EntityWireProperties.PRIORITY, nullable(EntityWireProperties.prioritySchema()));
+    // An issue names no idea and takes no part in an order (qits-1819).
+    if (archetype != Archetype.ISSUE) {
+      properties.put(INSPIRED_BY, nullable(inspiredBy()));
+      // The ranking among siblings (qits-753): every other archetype, and no registry property.
+      properties.put(
+          EntityWireProperties.PRIORITY, nullable(EntityWireProperties.prioritySchema()));
+    }
     // The tags (qits-634): every archetype, every status, and no registry property.
     properties.put(EntityWireProperties.TAGS, nullable(EntityWireProperties.tagsSchema()));
     return document(

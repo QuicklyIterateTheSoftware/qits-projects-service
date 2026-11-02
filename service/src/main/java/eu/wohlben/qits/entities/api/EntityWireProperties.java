@@ -221,6 +221,11 @@ public final class EntityWireProperties {
                 + " READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
             AcceptanceCriteria.RULES,
             AcceptanceCriteria.PATTERN));
+    row(
+        table,
+        EntityProperty.RELATED_TO,
+        true,
+        text("The one work item of the same project an issue relates to, by qualified id or id."));
     return Collections.unmodifiableMap(table);
   }
 

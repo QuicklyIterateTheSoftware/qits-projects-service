@@ -123,7 +123,8 @@ public final class Archetypes {
    * an epic and a ticket declared the same set from then on, a feature and a task joined them at
    * qits-763, and the served registry document carries it.
    */
-  private static final Set<String> STATUSES = names(EntityStatus.values());
+  private static final Set<String> STATUSES =
+      names(EntityStateMachine.states(Archetype.EPIC).toArray(EntityStatus[]::new));
 
   /**
    * A campaign's words: the one vocabulary less IMPLEMENTING and VERIFYING, which a campaign never enters
@@ -131,6 +132,13 @@ public final class Archetypes {
    */
   private static final Set<String> CAMPAIGN_STATUSES =
       names(EntityStateMachine.states(Archetype.CAMPAIGN).toArray(EntityStatus[]::new));
+
+  /** An issue's own words, read off the state machine (qits-1819). */
+  private static final Set<String> ISSUE_STATUSES =
+      names(EntityStateMachine.states(Archetype.ISSUE).toArray(EntityStatus[]::new));
+
+  /** The most characters an issue's description may hold (qits-1819). */
+  public static final int ISSUE_DESCRIPTION_LIMIT = 280;
 
   /** The kinds that hold a status and run no phase — see {@link #isPlanPiece}. */
   private static final Set<Archetype> PLAN_PIECES = EnumSet.of(Archetype.FEATURE, Archetype.TASK);
@@ -284,6 +292,26 @@ public final class Archetypes {
             CAMPAIGN_STATUSES,
             true));
 
+    // One thing the desk cannot resolve (qits-1819). A root that stands alone: Nesting refuses it
+    // as a parent and as a child, so its depth decides nothing. No branch, no phase, no dispatch.
+    registry.put(
+        Archetype.ISSUE,
+        new ArchetypeSpec(
+            Archetype.ISSUE,
+            0,
+            true,
+            EnumSet.of(EntityProperty.TITLE, EntityProperty.DESCRIPTION),
+            EnumSet.of(EntityProperty.TITLE, EntityProperty.DESCRIPTION),
+            EnumSet.of(
+                EntityProperty.TITLE,
+                EntityProperty.SLUG,
+                EntityProperty.DESCRIPTION,
+                EntityProperty.STATUS,
+                EntityProperty.CREATED_BY,
+                EntityProperty.RELATED_TO),
+            ISSUE_STATUSES,
+            false));
+
     verify(registry);
     return Map.copyOf(registry);
   }
@@ -383,6 +411,20 @@ public final class Archetypes {
    */
   public static boolean isPlanPiece(Archetype archetype) {
     return PLAN_PIECES.contains(archetype);
+  }
+
+  /**
+   * <b>Whether this kind runs no phase</b>: a plan piece, or an {@link Archetype#ISSUE}. No agent is
+   * dispatched onto it, no block is raised on it and no phase turn follows its moves. {@link
+   * #isPlanPiece} also says its work is its epic's; this does not.
+   */
+  public static boolean runsNoPhase(Archetype archetype) {
+    return isPlanPiece(archetype) || archetype == Archetype.ISSUE;
+  }
+
+  /** Whether this kind stands alone: it holds nothing and nothing holds it (qits-1819). */
+  public static boolean standsAlone(Archetype archetype) {
+    return archetype == Archetype.ISSUE;
   }
 
   /**

@@ -145,7 +145,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
     @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
     List<WorkTag> tags,
-    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo) {
 
   /** The tags never null: an entity without any answers {@code []}, in declaration order. */
   public TransitionedEntity {
@@ -190,7 +191,8 @@ public record TransitionedEntity(
         waitingOn,
         inspiredBy,
         tags,
-        members == null ? null : List.copyOf(members));
+        members == null ? null : List.copyOf(members),
+        relatedTo);
   }
 
   /**
@@ -234,7 +236,8 @@ public record TransitionedEntity(
         waitingOn,
         inspiredBy,
         tags,
-        heldBy);
+        heldBy,
+        relatedTo);
   }
 
   /**
@@ -299,7 +302,8 @@ public record TransitionedEntity(
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
-        null);
+        null,
+        row.relatedEntityId);
   }
 
   /**
@@ -347,7 +351,8 @@ public record TransitionedEntity(
         read.waitingOn(),
         read.inspiredBy(),
         read.tags(),
-        null);
+        null,
+        read.relatedTo());
   }
 
   /**
@@ -394,7 +399,8 @@ public record TransitionedEntity(
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
-        null);
+        null,
+        row.relatedEntityId);
   }
 
   /**
@@ -413,6 +419,6 @@ public record TransitionedEntity(
    * a feature and a task, which hold a status but no phase. See {@link #blocked}.
    */
   private static EntityBlockState blockOf(WorkEntity row) {
-    return Archetypes.isPlanPiece(row.archetype) ? null : EntityBlockState.of(row);
+    return Archetypes.runsNoPhase(row.archetype) ? null : EntityBlockState.of(row);
   }
 }

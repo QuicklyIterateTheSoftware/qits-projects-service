@@ -157,7 +157,7 @@ class EntityWorkspaces {
     return switch (entity.archetype) {
       case TICKET -> WorkspaceAgentDispatch.Subject.ticket(entity.id);
       case EPIC -> WorkspaceAgentDispatch.Subject.epic(entity.id);
-      case FEATURE, TASK, CAMPAIGN ->
+      case FEATURE, TASK, CAMPAIGN, ISSUE ->
           throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
     };
   }

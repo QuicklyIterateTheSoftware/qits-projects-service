@@ -136,6 +136,18 @@ class ConsumerPactVerificationTest {
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
           new KnownWrong(
+              "qits-platform-access-cli",
+              "2026.1102.114317",
+              "qits work status: listWorkArchetypes",
+              "pins the registry at five archetypes; qits-1819 adds ISSUE. Its next golden-master"
+                  + " bump records the sixth"),
+          new KnownWrong(
+              "qits-projects-frontend",
+              "2026.1102.105803",
+              "show-work-item-actions: listWorkArchetypes",
+              "pins the registry at fourteen properties; qits-1819 adds RELATED_TO. Its next"
+                  + " golden-master bump records the fifteenth"),
+          new KnownWrong(
               "qits-landing-app",
               "2026.1030.201508",
               "list-ideas: listIdeas",

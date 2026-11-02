@@ -264,6 +264,8 @@ public class WorkEntityService {
     // A root with no freeze owner — its title and description stay editable at every status, as a
     // ticket's do — and no sibling dependency. It is the fifth kind (qits-411).
     kinds.put(Archetype.CAMPAIGN, new Kind(Archetype.CAMPAIGN, "Campaign", null, null, null));
+    // A root with no freeze owner and no sibling dependency, as a campaign is (qits-1819).
+    kinds.put(Archetype.ISSUE, new Kind(Archetype.ISSUE, "Issue", null, null, null));
     kinds.put(
         Archetype.FEATURE,
         new Kind(
@@ -386,6 +388,7 @@ public class WorkEntityService {
     }
     EntityStatus filter =
         EntityLifecycle.parse(status)
+            .filter(word -> Archetypes.legalStatuses(archetype).contains(word.name()))
             .orElseThrow(
                 () -> new BadRequestException("Unknown " + kind.word() + " status: " + status));
     return patience.hold(
@@ -475,6 +478,11 @@ public class WorkEntityService {
             ideaRules.requireInspirable(write.inspiredBy(), projectId);
             row.inspiredByIdeaId = write.inspiredBy();
           }
+          if (write.relatedTo() != null) {
+            requireRelatable(row, write.relatedTo());
+            row.relatedEntityId = write.relatedTo();
+          }
+          requireShortIssue(row);
           requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
           if (!kind.isRoot()) {
@@ -534,7 +542,7 @@ public class WorkEntityService {
             Slugs.slugify(write.title(), row.id, kind.word() + "-"),
             entities.slugsInScope(slugScope));
     row.description = write.description();
-    row.status = kind.hasLifecycle() ? EntityStatus.REPORTED.name() : null;
+    row.status = kind.hasLifecycle() ? EntityStateMachine.initial(kind.archetype()).name() : null;
     row.ticketType = type;
     row.impetus = write.impetus();
     row.assignee = blankToNull(write.assignee());
@@ -704,6 +712,13 @@ public class WorkEntityService {
         advanceTo(row, EntityStatus.IMPLEMENTED);
       }
     }
+    if (write.clearRelatedTo()) {
+      row.relatedEntityId = null;
+    } else if (write.relatedTo() != null) {
+      requireRelatable(row, write.relatedTo());
+      row.relatedEntityId = write.relatedTo();
+    }
+    requireShortIssue(row);
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity updated = settled(row);
     audit(updated, rootOf(kind, updated, owner), AuditOperation.UPDATE, changedBy);
@@ -712,6 +727,30 @@ public class WorkEntityService {
     }
     ideaChanges.addAll(ideaStatus.recompute(ideaBefore, updated.inspiredByIdeaId, changedBy));
     return new Nested(updated, parentId);
+  }
+
+  /** An issue's description is short (qits-1819): a 400 past the limit. Other kinds pass. */
+  private static void requireShortIssue(WorkEntity row) {
+    if (row.archetype == Archetype.ISSUE
+        && row.description != null
+        && row.description.codePointCount(0, row.description.length())
+            > Archetypes.ISSUE_DESCRIPTION_LIMIT) {
+      throw new BadRequestException(
+          "An issue's description holds at most "
+              + Archetypes.ISSUE_DESCRIPTION_LIMIT
+              + " characters. Put the analysis on the related work item.");
+    }
+  }
+
+  /** An issue's related item is another row of its project (qits-1819), else a 400. */
+  private void requireRelatable(WorkEntity row, String relatedTo) {
+    WorkEntity related = entities.findById(relatedTo);
+    if (related == null
+        || !java.util.Objects.equals(related.projectId, row.projectId)
+        || related.id.equals(row.id)) {
+      throw new BadRequestException(
+          "relatedTo must name another work item of the same project: " + relatedTo);
+    }
   }
 
   /**

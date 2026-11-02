@@ -91,9 +91,9 @@ public class WorkController {
       description =
           "A new work entity of any archetype: the archetype, plus exactly the body GET"
               + " /projects/api/work/archetypes/{archetype}/schemas/create describes for it. A root"
-              + " (EPIC, TICKET, CAMPAIGN) names its project, a node (FEATURE, TASK) its parent.")
+              + " (EPIC, TICKET, CAMPAIGN, ISSUE) names its project, a node (FEATURE, TASK) its parent.")
   public record WorkCreate(
-      @Schema(required = true, description = "EPIC, TICKET, FEATURE, TASK or CAMPAIGN")
+      @Schema(required = true, description = "EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE")
           Archetype archetype,
       @Schema(description = "A root's project: its id or its slug.") String project,
       @Schema(
@@ -125,7 +125,11 @@ public class WorkController {
               description =
                   "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks work an agent"
                       + " cannot complete — a person does it, and no agent is dispatched onto it.")
-          List<WorkTag> tags) {}
+          List<WorkTag> tags,
+      @Schema(
+              description =
+                  "An issue's one related work item of the same project, by qualified id or UUID.")
+          String relatedTo) {}
 
   /**
    * The documentation of the patch's body, and only that: the body itself is read as a {@link
@@ -268,7 +272,13 @@ public class WorkController {
                       + " refused with OBSOLETE, INVALID or WONT_DO and with any move not into"
                       + " DROPPED. It must name an item of the same project, never the item itself."
                       + " Reopening clears it.")
-          String supersededBy) {}
+          String supersededBy,
+      @Schema(
+              nullable = true,
+              description =
+                  "An issue's move only, written on its thread: required and one line with OBSOLETE,"
+                      + " optional with RESOLVED (the answer). Refused on every other archetype.")
+          String reason) {}
 
   /** {@code reason} is required when blocking and optional when unblocking. */
   @Schema(name = "WorkBlockRequest", description = "What the block flag should become, and why.")
@@ -313,7 +323,7 @@ public class WorkController {
 
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent", "qits:system", "qits:desk"})
   @Operation(
       operationId = "createWork",
       summary = "Create a work entity of any archetype",
@@ -605,7 +615,13 @@ public class WorkController {
     if (request == null) {
       return doors.move(identity, row, null, null, null);
     }
-    return doors.move(identity, row, request.target(), request.outcome(), request.supersededBy());
+    return doors.move(
+        identity,
+        row,
+        request.target(),
+        request.outcome(),
+        request.supersededBy(),
+        request.reason());
   }
 
   @POST

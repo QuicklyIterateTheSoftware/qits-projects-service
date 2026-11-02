@@ -61,7 +61,7 @@ public record ArchetypeViolation(
               + " has no status "
               + detail
               + " — it is not a word of the entity lifecycle ("
-              + java.util.Arrays.stream(EntityStatus.values())
+              + eu.wohlben.qits.entities.control.EntityStateMachine.states(archetype).stream()
                   .map(Enum::name)
                   .collect(java.util.stream.Collectors.joining(", "))
               + ")";

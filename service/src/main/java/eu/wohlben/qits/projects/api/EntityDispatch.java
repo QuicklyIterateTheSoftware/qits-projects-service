@@ -186,6 +186,9 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class EntityDispatch {
 
+  /** An issue is for a person to read, and no agent ever works on one (qits-1819). */
+  private static final String ISSUE_NOT_DISPATCHED = "An issue is never dispatched: ";
+
   private static final Logger LOG = Logger.getLogger(EntityDispatch.class);
 
   @Inject EntityDispatchService entities;
@@ -690,6 +693,9 @@ public class EntityDispatch {
    * this refusal is what keeps an in-process caller from ever cutting a workspace for one.
    */
   private static void refuseCampaign(WorkEntity entity) {
+    if (entity.archetype == Archetype.ISSUE) {
+      throw new DispatchRefused(409, ISSUE_NOT_DISPATCHED + entity.id);
+    }
     if (entity.archetype == Archetype.CAMPAIGN) {
       throw new DispatchRefused(
           409,
@@ -841,6 +847,9 @@ public class EntityDispatch {
     DeliverySettings delivery = deliveryOf(entity.projectId);
     if (!delivery.enabled()) {
       throw new DispatchRefused(409, DESK_LOOP_OFF);
+    }
+    if (entity.archetype == Archetype.ISSUE) {
+      throw new DispatchRefused(409, ISSUE_NOT_DISPATCHED + entity.id);
     }
     if (entity.archetype == Archetype.CAMPAIGN) {
       throw new DispatchRefused(

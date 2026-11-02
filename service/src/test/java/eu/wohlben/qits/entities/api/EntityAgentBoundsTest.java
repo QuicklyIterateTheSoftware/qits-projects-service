@@ -348,6 +348,7 @@ class EntityAgentBoundsTest {
     return new WorkController.WorkStatusMove(
         target,
         "DROPPED".equals(target) ? eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO : null,
+        null,
         null);
   }
 

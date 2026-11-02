@@ -270,6 +270,7 @@ public class EntityTransitionService {
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
     refuseLeavingCampaigns(stated, rows);
     refuseCampaignLifecycle(stated, rows);
+    refuseIssues(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
     List<String> violations = validate(stated, rows, statedParents);
@@ -458,6 +459,30 @@ public class EntityTransitionService {
           String.join("; ", refused)
               + " — move a campaign through POST /projects/api/work/{qualifiedId}/status; create"
               + " one through POST /projects/api/work");
+    }
+  }
+
+  /**
+   * <b>This door neither makes an issue nor changes one</b> (qits-1819), a 409 naming every such
+   * entry. Only the desk creates an issue and only a person resolves one, and both rules live on
+   * {@code POST /work} and {@code POST /work/{qualifiedId}/status}; a reshape would walk round them.
+   */
+  private static void refuseIssues(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      WorkEntity row = rows.get(entry.getKey());
+      if (entry.getValue().archetype() == Archetype.ISSUE
+          || (row != null && row.archetype == Archetype.ISSUE)) {
+        refused.add(entry.getKey());
+      }
+    }
+    if (!refused.isEmpty()) {
+      throw new ConflictException(
+          String.join(", ", refused)
+              + ": an issue is not reshaped. The desk creates one through POST"
+              + " /projects/api/work, and it moves through POST"
+              + " /projects/api/work/{qualifiedId}/status (qits work status).");
     }
   }
 

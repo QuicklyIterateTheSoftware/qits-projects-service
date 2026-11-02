@@ -585,7 +585,7 @@ public class ReleaseRequestDeskApprovalTest {
         .statusCode(403)
         .body(
             "message",
-            equalTo("The delivery desk does not decline; it asks the owner on the item's thread."));
+            equalTo("The delivery desk does not decline; it files an issue for the owner."));
   }
 
   /** A person approves a listed manual-review exactly as before: {@code person}, the note as said. */

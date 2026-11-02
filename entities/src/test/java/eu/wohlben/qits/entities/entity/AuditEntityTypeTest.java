@@ -64,10 +64,10 @@ class AuditEntityTypeTest {
   void theEnumIsExactlyWhatTheCheckConstraintPermits() {
     assertEquals(
         Set.of(
-            "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "COMMENT", "DOSSIER_PAGE"),
+            "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "COMMENT", "DOSSIER_PAGE", "ISSUE"),
         Arrays.stream(AuditEntityType.values()).map(Enum::name).collect(Collectors.toSet()));
     assertTrue(
-        Archetype.values().length == 5,
+        Archetype.values().length == 6,
         "a sixth archetype needs a migration widening ck_entity_archetype and ck_audit_entity_type"
             + " as well as a constant");
   }

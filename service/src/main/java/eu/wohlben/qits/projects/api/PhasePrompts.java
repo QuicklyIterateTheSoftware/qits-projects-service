@@ -145,7 +145,7 @@ final class PhasePrompts {
    * was decided against. This method only reads the stored word back into the enum first.
    */
   static Optional<Phase> phaseOf(WorkEntity entity) {
-    if (entity.status == null || Archetypes.isPlanPiece(entity.archetype)) {
+    if (entity.status == null || Archetypes.runsNoPhase(entity.archetype)) {
       return Optional.empty();
     }
     return EntityStateMachine.phaseStartedBy(EntityStatus.valueOf(entity.status));
@@ -213,7 +213,7 @@ final class PhasePrompts {
                 case IMPLEMENT -> implementEpic(entity, q);
                 case VERIFY -> verifyEpic(entity, q);
               };
-          case FEATURE, TASK ->
+          case FEATURE, TASK, ISSUE ->
               throw new IllegalStateException(
                   "A " + archetype + " runs no phase of its own, so it has no phase prompts");
           case CAMPAIGN ->

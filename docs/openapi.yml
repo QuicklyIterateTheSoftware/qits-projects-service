@@ -275,6 +275,7 @@ components:
       - FEATURE
       - TASK
       - CAMPAIGN
+      - ISSUE
     ArchetypeRegistryDocument:
       type: object
       properties:
@@ -315,6 +316,7 @@ components:
       - TASK
       - TICKET
       - CAMPAIGN
+      - ISSUE
       - COMMENT
       - DOSSIER_PAGE
     AuditEntryDto:
@@ -1419,6 +1421,7 @@ components:
       - IMPLEMENTING_AT
       - DEPENDS_ON
       - ACCEPTANCE_CRITERIA
+      - RELATED_TO
     EntitySummary:
       type: object
       properties:
@@ -3220,6 +3223,7 @@ components:
       - CLOSE
       - DROP
       - REOPEN
+      - SETTLE
     TransitionedEntity:
       type: object
       properties:
@@ -3304,6 +3308,8 @@ components:
           type: array
           items:
             type: string
+        relatedTo:
+          type: string
     UUID:
       type: string
       format: uuid
@@ -3507,13 +3513,13 @@ components:
       - archetype
       description: "A new work entity of any archetype: the archetype, plus exactly\
         \ the body GET /projects/api/work/archetypes/{archetype}/schemas/create describes\
-        \ for it. A root (EPIC, TICKET, CAMPAIGN) names its project, a node (FEATURE,\
-        \ TASK) its parent."
+        \ for it. A root (EPIC, TICKET, CAMPAIGN, ISSUE) names its project, a node\
+        \ (FEATURE, TASK) its parent."
       properties:
         archetype:
           $ref: "#/components/schemas/Archetype"
           type: string
-          description: "EPIC, TICKET, FEATURE, TASK or CAMPAIGN"
+          description: "EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE"
         project:
           type: string
           description: "A root's project: its id or its slug."
@@ -3561,6 +3567,10 @@ components:
           description: "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks\
             \ work an agent cannot complete — a person does it, and no agent is dispatched\
             \ onto it."
+        relatedTo:
+          type: string
+          description: "An issue's one related work item of the same project, by qualified\
+            \ id or UUID."
     WorkCriterionApproval:
       type: object
       description: A person's yes on an APPROVAL criterion.
@@ -3967,6 +3977,13 @@ components:
             \ refused with OBSOLETE, INVALID or WONT_DO and with any move not into\
             \ DROPPED. It must name an item of the same project, never the item itself.\
             \ Reopening clears it."
+        reason:
+          type:
+          - string
+          - "null"
+          description: "An issue's move only, written on its thread: required and\
+            \ one line with OBSOLETE, optional with RESOLVED (the answer). Refused\
+            \ on every other archetype."
     WorkTag:
       type: string
       enum:
@@ -8270,6 +8287,7 @@ paths:
         - qits:desk-admin
         - qits:agent
         - qits:system
+        - qits:desk
   /projects/api/work/archetypes:
     get:
       summary: "The archetype registry: properties, lifecycles, legal moves and dispatch\
@@ -9919,4 +9937,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1030.153006
+  version: 2026.1102.154652

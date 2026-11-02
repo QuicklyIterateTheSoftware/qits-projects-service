@@ -56,6 +56,9 @@ public final class WorkBranches {
                   "campaign "
                       + entity.id
                       + " has no branch — a campaign orders work, it is not worked on");
+          case ISSUE ->
+              throw new IllegalArgumentException(
+                  "issue " + entity.id + " has no branch: nobody works on an issue");
           case FEATURE, TASK ->
               throw new IllegalArgumentException(
                   entity.archetype + " " + entity.id + " has no branch of its own — its epic's agent"

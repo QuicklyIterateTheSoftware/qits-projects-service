@@ -457,6 +457,14 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String inspiredByIdeaId;
 
   /**
+   * The one work item of the same project an {@link Archetype#ISSUE} relates to (qits-1819, epics
+   * V37), or null. Left out of the audit snapshot while null.
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Column(name = "related_to")
+  public String relatedEntityId;
+
+  /**
    * <b>The ranking among its siblings</b> (qits-753, epics V34): higher sorts first, and a null —
    * "nobody ranked it", what every older row holds — after every number. The siblings are a
    * project's roots (epics and tickets together, campaigns excluded) or the children of one

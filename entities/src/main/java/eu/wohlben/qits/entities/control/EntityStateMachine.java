@@ -129,7 +129,9 @@ public final class EntityStateMachine {
     /** From an open state on the walk to {@link EntityStatus#DROPPED}. */
     DROP,
     /** From {@link EntityStatus#DROPPED} back into the walk. */
-    REOPEN
+    REOPEN,
+    /** An issue's one move: from OPEN to RESOLVED or OBSOLETE (qits-1819). */
+    SETTLE
   }
 
   /**
@@ -172,10 +174,19 @@ public final class EntityStateMachine {
   private static final EntityStatus OFF_WALK = EntityStatus.DROPPED;
 
   /** The states with no exits. Declared, and checked against {@link #TRANSITIONS} at load. */
-  private static final Set<EntityStatus> TERMINAL = EnumSet.of(EntityStatus.DONE);
+  private static final Set<EntityStatus> TERMINAL =
+      EnumSet.of(EntityStatus.DONE, EntityStatus.RESOLVED, EntityStatus.OBSOLETE);
 
-  /** Every state, in lifecycle order: the walk, then the one state off it. */
-  private static final List<EntityStatus> STATES = concat(WALK, OFF_WALK);
+  /** The walk, then the one state off it: the lifecycle of every kind but the issue. */
+  private static final List<EntityStatus> LIFECYCLE = concat(WALK, OFF_WALK);
+
+  /** An issue's whole lifecycle (qits-1819). It shares no word with {@link #LIFECYCLE}. */
+  private static final List<EntityStatus> ISSUE_STATES =
+      List.of(EntityStatus.OPEN, EntityStatus.RESOLVED, EntityStatus.OBSOLETE);
+
+  /** Every state, in lifecycle order: the lifecycle, then an issue's. */
+  private static final List<EntityStatus> STATES =
+      java.util.stream.Stream.concat(LIFECYCLE.stream(), ISSUE_STATES.stream()).toList();
 
   /**
    * <b>Every legal move, and the one place they are written.</b> Grouped by source state in
@@ -212,7 +223,9 @@ public final class EntityStateMachine {
           t(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
           t(EntityStatus.VERIFIED, EntityStatus.VERIFYING, TransitionKind.BACK),
           t(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP),
-          t(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN));
+          t(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN),
+          t(EntityStatus.OPEN, EntityStatus.RESOLVED, TransitionKind.SETTLE),
+          t(EntityStatus.OPEN, EntityStatus.OBSOLETE, TransitionKind.SETTLE));
 
   /**
    * The phase each state starts; a state absent here starts none. REFINED is absent on purpose
@@ -289,7 +302,7 @@ public final class EntityStateMachine {
    * VERIFYING, VERIFIED, DONE, DROPPED.
    */
   public static List<EntityStatus> states() {
-    return STATES;
+    return LIFECYCLE;
   }
 
   /**
@@ -340,8 +353,16 @@ public final class EntityStateMachine {
 
   /** The states {@code archetype}'s lifecycle holds, in lifecycle order. */
   public static List<EntityStatus> states(Archetype archetype) {
+    if (archetype == Archetype.ISSUE) {
+      return ISSUE_STATES;
+    }
     Set<EntityStatus> elided = elided(archetype);
-    return STATES.stream().filter(state -> !elided.contains(state)).toList();
+    return LIFECYCLE.stream().filter(state -> !elided.contains(state)).toList();
+  }
+
+  /** The status a new row of {@code archetype} starts at. */
+  public static EntityStatus initial(Archetype archetype) {
+    return states(archetype).get(0);
   }
 
   /**
@@ -356,6 +377,9 @@ public final class EntityStateMachine {
    * derived} keeps its DROP and REOPEN alone (qits-650).
    */
   public static List<Transition> transitionsFrom(Archetype archetype, EntityStatus from) {
+    if ((archetype == Archetype.ISSUE) != ISSUE_STATES.contains(from)) {
+      return List.of();
+    }
     if (isDerived(archetype)) {
       return walkedFrom(archetype, from).stream()
           .filter(
@@ -396,7 +420,7 @@ public final class EntityStateMachine {
             case BACK ->
                 previous == null ? null : new Transition(from, previous, TransitionKind.BACK);
             case CLOSE -> closes(archetype) && !elided.contains(move.to()) ? move : null;
-            case DROP, REOPEN -> elided.contains(move.to()) ? null : move;
+            case DROP, REOPEN, SETTLE -> elided.contains(move.to()) ? null : move;
           };
       if (collapsed != null && !moves.contains(collapsed)) {
         moves.add(collapsed);
@@ -758,6 +782,7 @@ public final class EntityStateMachine {
               && from < WALK.indexOf(EntityStatus.VERIFIED);
       case DROP -> from >= 0 && move.to() == OFF_WALK;
       case REOPEN -> move.from() == OFF_WALK && to >= 0;
+      case SETTLE -> move.from() == EntityStatus.OPEN && TERMINAL.contains(move.to()) && to < 0;
     };
   }
 
@@ -767,7 +792,7 @@ public final class EntityStateMachine {
       case SKIP -> 1;
       case BACK -> 2;
       case CLOSE -> 3;
-      case DROP, REOPEN -> 4;
+      case DROP, REOPEN, SETTLE -> 4;
     };
   }
 }

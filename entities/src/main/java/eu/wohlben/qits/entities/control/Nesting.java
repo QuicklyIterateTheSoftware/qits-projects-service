@@ -286,6 +286,9 @@ public final class Nesting {
    * this one in a loop has written the row-by-row validator this class exists to replace.
    */
   public static boolean mayContain(Archetype parent, Archetype child) {
+    if (Archetypes.standsAlone(parent) || Archetypes.standsAlone(child)) {
+      return false;
+    }
     return Archetypes.depth(parent) < Archetypes.depth(child);
   }
 }

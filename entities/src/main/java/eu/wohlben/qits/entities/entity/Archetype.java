@@ -56,5 +56,13 @@ public enum Archetype {
    * transition door. Appended last because order here means nothing (see above): inserting it
    * before {@link #EPIC} would reorder the served registry for no reason.
    */
-  CAMPAIGN
+  CAMPAIGN,
+
+  /**
+   * One thing the delivery desk cannot resolve on its own, for a person to review (qits-1819). A
+   * root that stands alone: it holds no children, nothing holds it, and it has no branch, workspace
+   * or phase. It is never dispatched and is not backlog. Only the desk creates one, and its
+   * statuses are its own: OPEN, then RESOLVED or OBSOLETE.
+   */
+  ISSUE
 }
