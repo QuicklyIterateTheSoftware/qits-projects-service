@@ -9415,7 +9415,7 @@ paths:
           description: "No campaign, or no entity, with this id"
         "409":
           description: "The entity cannot join: already a member, a feature or a task,\
-            \ a closed campaign"
+            \ a DROPPED campaign"
         "401":
           description: Not Authorized
       tags:

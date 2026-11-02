@@ -227,8 +227,9 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
-   * Every campaign whose status is still derived — neither DONE nor DROPPED — in id order: what the
-   * boot reconcile walks (qits-650).
+   * Every campaign whose status is still derived — every one but a DROPPED campaign, a DONE one
+   * included (qits-1805: its DONE follows its members) — in id order: what the boot reconcile walks
+   * (qits-650).
    */
   public List<String> campaignIdsStillDerived() {
     return getEntityManager()
@@ -237,7 +238,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " and (e.status is null or e.status not in ?2) order by e.id",
             String.class)
         .setParameter(1, Archetype.CAMPAIGN)
-        .setParameter(2, List.of("DONE", "DROPPED"))
+        .setParameter(2, List.of("DROPPED"))
         .getResultList();
   }
 

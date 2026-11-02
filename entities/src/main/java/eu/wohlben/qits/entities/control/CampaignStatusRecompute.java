@@ -35,9 +35,12 @@ import java.util.TreeSet;
  *   <li>no members at all → REPORTED; every member DROPPED → DROPPED.
  * </ul>
  *
- * <p><b>DONE and DROPPED are never recomputed.</b> DONE is final; DROPPED — set by a person or
- * derived — stays until a person reopens it, and the reopen (DROPPED → REPORTED, one of the two
- * manual campaign moves) recomputes at once, because the campaign is then at REPORTED again.
+ * <p><b>DROPPED alone is never recomputed</b>: DROPPED — set by a person or derived — stays until a
+ * person reopens it, and the reopen (DROPPED → REPORTED, one of the two manual campaign moves)
+ * recomputes at once, because the campaign is then at REPORTED again. <b>A campaign's DONE is
+ * derived too, and follows its members</b> (qits-1805): an add of an open member, a remove, or a
+ * dropped member's reopen that lowers the floor moves a DONE campaign to the new floor as an
+ * ordinary derived change. No person moves it out of DONE — the registry still serves no exit.
  *
  * <h2>Called in the writer's transaction</h2>
  *
@@ -53,7 +56,8 @@ import java.util.TreeSet;
  * EntityTransitioned} — and it <b>leaves the campaign's blocks alone</b> (a block is a person's
  * statement about the campaign, not about a phase the word starts) and <b>runs no pause hook</b>,
  * except that a derived move into DONE or DROPPED pauses the start: a finished or dropped campaign
- * runs nothing, and a reopen must not quietly resume a run nobody pressed.
+ * runs nothing, and a reopen must not quietly resume a run nobody pressed. A derived move out of
+ * DONE resumes nothing either: the start stays paused until a person presses it again.
  *
  * <h2>Locks</h2>
  *
@@ -115,20 +119,30 @@ public class CampaignStatusRecompute {
     return lowest == null ? EntityStatus.DROPPED : lowest;
   }
 
-  /** Whether a campaign at {@code campaignStatus} is still derived: it is neither DONE nor DROPPED. */
-  public static boolean isDerivedAt(String campaignStatus) {
-    return campaignStatus != null
-        && !EntityStatus.DONE.name().equals(campaignStatus)
-        && !EntityStatus.DROPPED.name().equals(campaignStatus);
+  /**
+   * Whether a campaign at {@code campaignStatus} is recomputed from its members: it is not DROPPED
+   * (qits-1805 — a DONE campaign follows its members too).
+   */
+  public static boolean isRecomputedAt(String campaignStatus) {
+    return campaignStatus != null && !EntityStatus.DROPPED.name().equals(campaignStatus);
+  }
+
+  /**
+   * Whether a campaign at {@code campaignStatus} is still open: neither DONE nor DROPPED. Only an
+   * open campaign names who holds its floor ({@link #holds}).
+   */
+  public static boolean isOpenAt(String campaignStatus) {
+    return isRecomputedAt(campaignStatus) && !EntityStatus.DONE.name().equals(campaignStatus);
   }
 
   /**
    * <b>Whether a member at {@code memberStatus} sets the floor of a campaign at {@code
-   * campaignStatus}</b> — the {@code heldBy} rule: the member is not DROPPED, the campaign is still
-   * derived, and the member's word on the campaign walk is the campaign's.
+   * campaignStatus}</b> — the {@code heldBy} rule: the member is not DROPPED, the campaign is
+   * neither DONE nor DROPPED (a finished campaign names no holder, though its DONE is recomputed),
+   * and the member's word on the campaign walk is the campaign's.
    */
   public static boolean holds(String campaignStatus, String memberStatus) {
-    if (!isDerivedAt(campaignStatus)) {
+    if (!isOpenAt(campaignStatus)) {
       return false;
     }
     return parse(memberStatus)
@@ -196,7 +210,8 @@ public class CampaignStatusRecompute {
    * <b>Inside a write's transaction</b>: each named campaign (nulls and repeats ignored) locked in
    * id order, re-derived from its members as they now stand, and written where the stored status
    * differs — see the class javadoc for what a derived change does and does not do. An id naming
-   * no campaign is skipped; a campaign at DONE or DROPPED is left as it is.
+   * no campaign is skipped; a campaign at DROPPED is left as it is, and one at DONE whose floor
+   * dropped moves to it (qits-1805).
    */
   public Recomputed recompute(Collection<String> campaignIds) {
     TreeSet<String> ordered = new TreeSet<>();
@@ -219,7 +234,7 @@ public class CampaignStatusRecompute {
         continue;
       }
       em().refresh(campaign, LockModeType.PESSIMISTIC_WRITE);
-      if (!isDerivedAt(campaign.status)) {
+      if (!isRecomputedAt(campaign.status)) {
         continue;
       }
       EntityStatus derived = derive(entities.campaignMemberStatuses(id));
@@ -291,7 +306,7 @@ public class CampaignStatusRecompute {
   public record Reconciled(List<Drift> drifts, Recomputed changes) {}
 
   /**
-   * <b>The boot reconcile</b>: every campaign that is neither DONE nor DROPPED re-derived in one
+   * <b>The boot reconcile</b>: every campaign that is not DROPPED re-derived in one
    * write, each whose stored status differs fixed as a derived change. Answers the drifts (for the
    * caller's WARNs) and the changes (for its announcement, {@link #announce}).
    */

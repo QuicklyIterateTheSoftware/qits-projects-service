@@ -52,11 +52,11 @@ import java.util.stream.Collectors;
  *       have a lifecycle ({@link Archetypes#legalStatuses}) and must be one a campaign may hold
  *       ({@link Nesting#mayContain}, which refuses a campaign inside a campaign). A campaign edge is
  *       not a tree edge and never goes through {@link Nesting#check}.
- *   <li><b>Membership edits are allowed while the campaign is neither DONE nor DROPPED</b>
- *       (qits-650), running or not, and refused with a 409 at those two. Its status is derived from
- *       its members, so an add or a remove re-derives it in the same write ({@link
- *       CampaignStatusRecompute}): adding a REPORTED member to an IMPLEMENTED campaign is how it
- *       drops back to REPORTED.
+ *   <li><b>Membership edits are allowed while the campaign is not DROPPED</b> (qits-650,
+ *       qits-1805), running or not, DONE included, and refused with a 409 at DROPPED. Its status is
+ *       derived from its members, so an add or a remove re-derives it in the same write ({@link
+ *       CampaignStatusRecompute}): adding a REPORTED member to an IMPLEMENTED — or a DONE —
+ *       campaign is how it drops back to REPORTED. Starting and approving stay refused at DONE.
  *   <li><b>Positions are dense and zero-based</b>; an insert shifts the tail and a move renumbers the
  *       affected span, {@code DossierService.move}'s idiom.
  *   <li><b>The seed.</b> A member added at position p when a member stands at p−1 that is neither
@@ -112,8 +112,8 @@ public class CampaignService {
       "A campaign is started while it is neither DONE nor DROPPED; campaign %s is %s.";
 
   /**
-   * Where a campaign is over (qits-650): its members are no longer edited, nothing in it is
-   * approved, and it is not started.
+   * Where a campaign is over (qits-650): nothing in it is approved, and it is not started. Its
+   * members are still edited at DONE (qits-1805, {@link #requireEditable}).
    */
   private static final Set<String> FINISHED =
       Set.of(EntityStatus.DONE.name(), EntityStatus.DROPPED.name());
@@ -881,18 +881,18 @@ public class CampaignService {
   }
 
   /**
-   * A membership may be edited while its campaign is neither DONE nor DROPPED (qits-650), and never
-   * then.
+   * A membership may be edited while its campaign is not DROPPED (qits-650, qits-1805: a DONE
+   * campaign's DONE is derived and follows its members, so its membership stays editable), and
+   * never then.
    */
   private void requireEditable(WorkEntity campaign) {
-    if (FINISHED.contains(campaign.status)) {
+    if (EntityStatus.DROPPED.name().equals(campaign.status)) {
       throw new ConflictException(
           "Campaign "
               + qid(campaign)
               + " is "
               + campaign.status
-              + ": its members and their conditions are edited only while it is neither DONE nor"
-              + " DROPPED.");
+              + ": its members and their conditions are edited only while it is not DROPPED.");
     }
   }
 

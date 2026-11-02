@@ -11,7 +11,8 @@ import org.jboss.logging.Logger;
  * <b>Every campaign's derived status re-derived at boot</b> (qits-650). The status is recomputed in
  * the transaction of every write that can move it; this pass repairs whatever moved it some other
  * way — every campaign set by hand before qits-650, a migration, a manual fix. Each campaign that is
- * neither DONE nor DROPPED and whose stored status differs from its members' floor is fixed as a
+ * not DROPPED (a DONE one included, qits-1805) and whose stored status differs from its members'
+ * floor is fixed as a
  * derived change ({@link CampaignStatusRecompute}: audited as the system, announced as an {@code
  * EntityTransitioned}) and named in one WARN with both statuses.
  *

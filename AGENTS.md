@@ -1941,19 +1941,20 @@ status is read on.
 status is read on the campaign walk `REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTED < VERIFIED <
 DONE` (`EntityStateMachine.onCampaignWalk`: IMPLEMENTING counts as READY_FOR_DEV, VERIFYING as
 IMPLEMENTED — the last word achieved), DROPPED members are not counted, and the lowest is the
-campaign's; no members is REPORTED, every member DROPPED is DROPPED. **A campaign at DONE or DROPPED is
-never recomputed** — DONE is final, DROPPED (a person's or derived) is sticky — and the reopen
-recomputes at once. So a campaign whose first member added is DONE is DONE for good: add the open
-work first. It is recomputed **in the writer's transaction** by every writer: a member's move on
+campaign's; no members is REPORTED, every member DROPPED is DROPPED. **A campaign at DROPPED is
+never recomputed** — DROPPED (a person's or derived) is sticky — and the reopen recomputes at once.
+**A campaign's DONE is derived and follows its members (qits-1805)**: an add of an open member, a
+remove, or a dropped member's reopen that lowers the floor moves a DONE campaign to the new floor as
+an ordinary derived change (no manual exit from DONE is served). It is recomputed **in the writer's transaction** by every writer: a member's move on
 the status door (`WorkEntityService.move`, every cascade included) and on the bulk door
 (`EntityTransitionService`, a status or an EPIC ↔ TICKET re-archetype), `CampaignService.addMember`
 and `removeMember`, and a member's delete (`WorkEntityService.leaveCampaigns`); and at boot by
-`startup/CampaignStatusReconcile`, every campaign not DONE or DROPPED, each drift one WARN. A derived
+`startup/CampaignStatusReconcile`, every campaign not DROPPED (DONE included), each drift one WARN. A derived
 change writes `statusBefore`, is audited as `CampaignStatusRecompute.CHANGED_BY` (`system`), is
 announced as an `EntityTransitioned` (joining the move's one batch on the two status doors), **keeps
 the campaign's blocks**, and runs **no pause hook — except a derived move into DONE or DROPPED, which
 pauses the start** (a finished or dropped campaign runs nothing, and a reopen must not resume a run
-nobody pressed). The lock is the campaign row, `PESSIMISTIC_WRITE`, every campaign of a write in id
+nobody pressed; a derived move out of DONE resumes nothing). The lock is the campaign row, `PESSIMISTIC_WRITE`, every campaign of a write in id
 order: `CampaignService` takes the campaign row and then membership rows, a member's move holds the
 member's row and then asks for the campaign row, the recompute locks no member and no membership,
 and a delete takes its campaigns' rows **before** it removes their edges — so nothing waits in a
@@ -1970,8 +1971,8 @@ DONE nor DROPPED (`EntityStateMachine.campaignRuns`) — the start press (`Campa
 `CampaignStarter`), the dispatch read (`EntityDispatch.campaignState`), the executor's claim and
 sweep, and the block door all read it. The pause hook fires on the manual drop and on a derived DONE
 or DROPPED; every other derived move leaves the start as it is. Membership is editable while the
-campaign is neither DONE nor DROPPED — adding a REPORTED member to an IMPLEMENTED campaign is how it
-drops back to REPORTED. **Who sets the floor is read, never stored**: `heldBy` — the qualified ids of
+campaign is not DROPPED, DONE included (qits-1805) — adding a REPORTED member to an IMPLEMENTED or a
+DONE campaign is how it drops back to REPORTED; the start press and an approval stay refused at DONE. **Who sets the floor is read, never stored**: `heldBy` — the qualified ids of
 the non-DROPPED members whose mapped status is the campaign's, empty while it is DONE or DROPPED or
 empty — on the campaign's entity read (`GET /work/{q}`, a campaign only; the field is absent on every
 other archetype) and on its progress read (`CampaignProgressCampaignDto`), and `holdsStatus` on each

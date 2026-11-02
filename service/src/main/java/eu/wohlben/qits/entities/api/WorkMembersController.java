@@ -159,7 +159,7 @@ public class WorkMembersController {
   @APIResponse(responseCode = "404", description = "No campaign, or no entity, with this id")
   @APIResponse(
       responseCode = "409",
-      description = "The entity cannot join: already a member, a feature or a task, a closed campaign")
+      description = "The entity cannot join: already a member, a feature or a task, a DROPPED campaign")
   public Response add(
       @PathParam("qualifiedId") String qualifiedId, @Valid WorkMemberAdd request) {
     String campaignId = campaignId(qualifiedId);

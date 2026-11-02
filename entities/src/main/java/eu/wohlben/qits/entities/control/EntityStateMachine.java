@@ -65,7 +65,10 @@ import java.util.Set;
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to
  * support; a done development that later turns out wrong is a <em>new</em> ticket or epic, which may
- * refer to the done one. Below DONE the walk stays reversible.
+ * refer to the done one. Below DONE the walk stays reversible. A campaign's DONE is the one
+ * exception in effect, not in this registry: it is derived and follows its members (qits-1805,
+ * {@code CampaignStatusRecompute}), while the manual transitions are unchanged — no exit from DONE
+ * is served, to a campaign or to anything else.
  *
  * <p><b>DROPPED is off the walk.</b> It is reachable (DROP) from every state that is still open —
  * REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED — because a decision not to do the work can
