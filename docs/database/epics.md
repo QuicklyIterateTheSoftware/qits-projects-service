@@ -154,6 +154,11 @@ erDiagram
     int position "not null"
     instant updated_at "not null"
   }
+  %% entity_tag: eu.wohlben.qits.entities.entity.WorkEntity.tags (entities)
+  entity_tag {
+    string entity_id PK, FK "not null"
+    enum tag PK "not null"
+  }
   %% idea: eu.wohlben.qits.entities.entity.Idea (entities)
   idea {
     string id PK "not null"
@@ -171,4 +176,5 @@ erDiagram
     instant updated_at "not null"
   }
   entity_acceptance_criterion }o--|| entity : "entity_id"
+  entity_tag }o--|| entity : "entity_id"
 ```
