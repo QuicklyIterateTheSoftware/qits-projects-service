@@ -108,6 +108,7 @@ erDiagram
     string pre_approved_by
     int priority
     string project_id "not null"
+    string related_to
     string repository_id
     string slug "not null"
     string slug_scope "not null"
