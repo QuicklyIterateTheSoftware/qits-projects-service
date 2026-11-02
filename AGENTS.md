@@ -4172,15 +4172,21 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
 - **`TokenValidationBootstrapIT` is the second, and it is the only place the OIDC tenant is ever
   ON.** The shipped tenant is gated —
   `quarkus.oidc.tenant-enabled=${qits.auth.machine.required:false}` — and every suite here leaves the
-  gate shut, so the block this service deploys with (auth-server-url + `jwks-path` against a real
-  listener, audience enforcement, the `groups` claim becoming roles) is exercised nowhere else. Its
+  gate shut, so the block this service deploys with (auth-server-url, the discovery document read
+  from it and the JWKS it names, against a real listener; audience enforcement; the `groups` claim
+  becoming roles) is exercised on the artifact nowhere else. In-JVM, `security/BearerJwksTest` and
+  `security/BearerIssuerTest` turn the same discovery-on tenant on against `MockIdp`, and the latter
+  holds the issuer pin: a bearer whose `iss` is not the issuer qits-idp's discovery document
+  publishes is a 401 however well it is signed (qits-708; with discovery off and no `token.issuer`,
+  as shipped before, quarkus-oidc checks no `iss` at all). No issuer is configured anywhere, and
+  `ConsumerCallCoverageTest` refuses one. Its
   `@TestProfile` **extends `PackagedSurfaceIT.PackagedResources`** rather than copying it — what a
   launched qits-projects needs in order to boot is one answer — and adds only the gate, the mock
   idp's address, and the three darkening keys (otel, the eventstream bus, the self-seed). The far
   side is qits-service-mock's `MockIdp`, which serves a real JWKS for a generated keypair, mints
-  tokens against it and **records what it answered**, so "the service reached the idp for nothing
-  while it was starting, and fetched the keys when the first bearer arrived" is an assertion on both
-  halves and not an inference. **The story used to claim the opposite** — a boot-time fetch — and
+  tokens against it and **records what it answered**, so "the service read only the idp's discovery
+  document while it was starting, and fetched the keys when the first bearer arrived" is an
+  assertion on both halves and not an inference. **The story used to claim the opposite** — a boot-time fetch — and
   `quarkus.oidc.jwks.resolve-early=false` (2026-09-14, after a rollback) is what made it false; see
   the block in `application.properties` and `security/BearerJwksTest`.
   <br>It is also this repo's **first userflow**, and the one every other story class is ordered
@@ -4301,7 +4307,7 @@ hand. Three taps feed `NetworkCapture` and there is no fourth:
 | tap | what it draws | where it lives |
 | --- | --- | --- |
 | `NetworkTaps.restAssured("qits-projects")` | `<actor> -> qits-projects`, one edge per request a story makes, labelled `METHOD <scrubbed path> -> <status>` | the framework ships it; installed from each story class's `@BeforeAll`, idempotent per service |
-| `MockIdp.recordedRequests()` | `qits-projects -> qits-platform-idp` — the JWKS fetch the first bearer drives | registered as a cumulative `NetworkCapture.source` in `TokenValidationBootstrapIT` |
+| `MockIdp.recordedRequests()` | `qits-projects -> qits-platform-idp` — the boot's discovery read and the JWKS fetch the first bearer drives | registered as a cumulative `NetworkCapture.source` in `TokenValidationBootstrapIT` |
 | `GitHostFixture`'s access log | `qits-projects -> qits-githost` — the lifecycle `PUT`/`GET`, the smart-HTTP advertisement and pack, and the mirror fetches | `stories/support/StoryGitHost` |
 
 The local `StoryNetworkFilter` this repo carried beside the IT is **deleted**: the framework ships
@@ -4357,7 +4363,7 @@ else happened", which is most of what is worth knowing about this service:
 
 | category | story | the claim only a negative can make |
 | --- | --- | --- |
-| `authentication` | boot reaches the idp for nothing and the first bearer fetches the keys; a stranger's token refused | the ready probe is answered with **no** `/idp/jwks` request recorded — the listener does not wait on another service |
+| `authentication` | boot reads only the idp's discovery document and the first bearer fetches the keys; a stranger's token refused | the ready probe is answered with **no** `/idp/jwks` request recorded — the listener does not wait on another service |
 | `authorization` | a browser session at the two `qits:system` doors; a machine bearer at the planning surface; an anonymous caller | `assertNoEdgesTo(qits-githost)` — a refusal is decided at the door, so no work is done for a caller about to be refused |
 | `catalogue` | a project created and its wrapper published; a component joined; the bootstrap's adoption | `assertEdgeCount(3)` on the adoption — it asks the git host **once** and clones, pushes and mirrors nothing |
 | `planning` | a plan proposed and frozen; a task marked implemented | `assertOnlyEdgesFrom(<one person>)` — the whole planning surface is rows in this service's own `epics` database |

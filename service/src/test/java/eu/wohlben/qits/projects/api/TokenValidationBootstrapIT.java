@@ -30,8 +30,10 @@ import org.junit.jupiter.api.TestMethodOrder;
  * the OIDC tenant <b>on</b>, which no {@code @QuarkusTest} here can prove: the shipped tenant is
  * gated behind {@code qits.auth.machine.required} and every suite in this repository leaves that
  * gate shut, so the {@code quarkus.oidc.*} block this service actually deploys with
- * (auth-server-url + jwks-path against a real listener, audience enforcement, the {@code groups}
- * claim becoming roles) is exercised nowhere else. The far side is {@link MockIdp}, whose
+ * (auth-server-url, the discovery document read from it and the JWKS it names, against a real
+ * listener; audience enforcement; the {@code groups} claim becoming roles) is exercised on the
+ * packaged artifact nowhere else — {@code security/BearerIssuerTest} holds the issuer pin in-JVM
+ * (qits-708). The far side is {@link MockIdp}, whose
  * recordings make the interaction assertable on <b>both ends</b>.
  *
  * <p>It is also this repo's <b>first userflow</b>, and the one every other story class in
@@ -118,7 +120,8 @@ public class TokenValidationBootstrapIT {
       // this story is where it is documented.
       overrides.put("qits.auth.machine.required", "true");
       // The one seam this test moves: where the idp is. Runtime key, so the packaged artifact is
-      // otherwise exactly what ships — discovery stays off and jwks-path stays `jwks`.
+      // otherwise exactly what ships — discovery on, the issuer and the JWKS address taken from the
+      // mock's discovery document (qits-708).
       overrides.put("quarkus.oidc.auth-server-url", idp.baseUrl());
       // Dark outside a deployment, like %dev/%test — both are runtime keys. The eventstream
       // DATASOURCE is still opened and migrated (dark stops publishing, sweeping and dialling,
@@ -262,11 +265,13 @@ public class TokenValidationBootstrapIT {
       category = "authentication")
   @UserStoryDescription(
       """
-      A freshly deployed qits-projects reaches qits-idp for nothing at all while it is
-      starting: the HTTP listener opens and /projects/q/health/ready answers whether the idp is up
-      or not. The signing keys (JWKS) are fetched when the first bearer arrives — looked up by that
-      token's own `kid`, discovery stays off and the path is configured — and then cached, so the
-      very first machine request is still accepted. qits-ci reads the repository catalogue with
+      A freshly deployed qits-projects asks qits-idp for one thing while it is starting: the
+      discovery document, once and never retried, which names the issuer every bearer's `iss` must
+      carry and where the keys are. The HTTP listener opens and /projects/q/health/ready answers
+      whether the idp is up or not; an idp that is not answering yet is read again when a bearer
+      needs it. The signing keys (JWKS) are fetched when the first bearer arrives — looked up by
+      that token's own `kid` — and then cached, so the very first machine request is still
+      accepted. qits-ci reads the repository catalogue with
       exactly this credential.
 
       The reason is a deployment rule rather than a preference: a listener must not wait on another
@@ -283,14 +288,21 @@ public class TokenValidationBootstrapIT {
     given().get("/projects/q/health/ready").then().statusCode(200);
 
     // End (a), the idp side, and it is a NEGATIVE: the packaged process is up and answering its
-    // readiness probe having asked the idp for nothing. That is the whole deployment property —
-    // the listener does not wait on another service — and only a check made before any token is
-    // presented can state it, which is why the two stories are ordered.
+    // readiness probe having fetched no key. That is the whole deployment property — the listener
+    // does not wait on another service — and only a check made before any token is presented can
+    // state it, which is why the two stories are ordered. The one boot call is the discovery
+    // document (qits-708), tried once: the issuer the tenant holds every `iss` to comes from it.
     assertTrue(
         idp.recordedRequests().stream().noneMatch(r -> "/idp/jwks".equals(r.path())),
         "the packaged service fetched /idp/jwks before any bearer had arrived");
+    assertTrue(
+        idp.recordedRequests().stream()
+            .anyMatch(r -> "/idp/.well-known/openid-configuration".equals(r.path())),
+        "the packaged service never read the idp's discovery document at startup");
     story
-        .note("the service is up and ready having asked qits-idp for nothing at all")
+        .note(
+            "the service is up and ready having read qits-idp's discovery document and fetched no"
+                + " key")
         .as("no-jwks-at-boot");
 
     // End (b), the projects side: those keys are what token validation now runs on. A platform
@@ -389,6 +401,14 @@ public class TokenValidationBootstrapIT {
     // javadoc on ordering).
     ReportAssertions.assertEdge(
         CATEGORY, ACCEPTED_SLUG, "http", SERVICE, MockIdp.SERVICE_NAME, "GET /idp/jwks -> 200");
+    // The boot's one read (qits-708), recorded before the first story and drained by it.
+    ReportAssertions.assertEdge(
+        CATEGORY,
+        ACCEPTED_SLUG,
+        "http",
+        SERVICE,
+        MockIdp.SERVICE_NAME,
+        "GET /idp/.well-known/openid-configuration -> 200");
     // Observed on the near side, by the filter, with the actor this story set.
     ReportAssertions.assertEdge(
         CATEGORY,

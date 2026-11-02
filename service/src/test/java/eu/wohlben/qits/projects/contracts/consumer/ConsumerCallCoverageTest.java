@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.contracts.consumer;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
@@ -49,6 +50,11 @@ import org.junit.jupiter.api.Test;
  *       qits-containers-client-contracts kit's own scan, per feature (qits-1163).
  *   <li><b>A quarkus-oidc-client</b> switched on in {@code application.properties} (its unprofiled
  *       {@code client-enabled=true}): the client-credentials token mint at qits-idp.
+ *   <li><b>The quarkus-oidc tenant</b> configured in {@code application.properties} (qits-708): its
+ *       JWKS read, and with discovery on — the default, and what ships — its discovery document
+ *       read too. So turning discovery off again leaves the discovery row a stand-in for a call
+ *       the code no longer makes, and a red build; and {@link #theTenantPinsNoIssuerOfItsOwn}
+ *       refuses an issuer written into configuration beside it.
  * </ul>
  *
  * <p>The set of rows is {@link ConsumerContracts#all()}, pending rows included: a row waiting on a
@@ -63,6 +69,12 @@ import org.junit.jupiter.api.Test;
  * with its reason, so excluding a call is a visible decision.
  */
 class ConsumerCallCoverageTest {
+
+  /** The quarkus-oidc tenant's discovery read, as a derived call (qits-708). */
+  static final String OIDC_TENANT_DISCOVERY = "quarkus-oidc:discovery";
+
+  /** The quarkus-oidc tenant's key read, as a derived call. */
+  static final String OIDC_TENANT_JWKS = "quarkus-oidc:jwks";
 
   /**
    * Calls the code makes that are not REST contracts, each with the reason it has no row. Empty
@@ -97,7 +109,12 @@ class ConsumerCallCoverageTest {
           "getFrontDeskLastAnswer: getFrontDeskLastAnswer",
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
           IdpContract.TOKEN_MINT_TRIGGER + ": issueToken",
-          Set.of("quarkus-oidc-client:qits"));
+          Set.of("quarkus-oidc-client:qits"),
+          // The tenant's two reads (qits-708): quarkus-oidc makes them, the rows stand in.
+          IdpContract.DISCOVERY_TRIGGER + ": getOpenIdConfiguration",
+          Set.of(OIDC_TENANT_DISCOVERY),
+          IdpContract.JWKS_TRIGGER + ": getJwks",
+          Set.of(OIDC_TENANT_JWKS));
 
   private static final String CONTAINERS_CLIENT = "eu.wohlben.qits.containers.client.ContainersClient";
 
@@ -157,6 +174,21 @@ class ConsumerCallCoverageTest {
     assertTrue(unknown.isEmpty(), "STANDS_IN_FOR names rows that do not exist: " + unknown);
   }
 
+  /**
+   * The tenant reads qits-idp, and the issuer it checks every bearer's {@code iss} against is the
+   * one the idp's discovery document publishes: never configuration (owner decision, qits-730).
+   */
+  @Test
+  void theTenantPinsNoIssuerOfItsOwn() {
+    Properties properties = IdpContract.shippedProperties();
+    String server = properties.getProperty("quarkus.oidc.auth-server-url", "");
+    assertTrue(server.contains("qits-idp"), "the tenant reads qits-idp: " + server);
+    assertNull(
+        properties.getProperty("quarkus.oidc.token.issuer"),
+        "the issuer is never configuration: discovery publishes it (qits-730)");
+    assertTrue(calls.contains(OIDC_TENANT_DISCOVERY), "the tenant's discovery is on");
+  }
+
   // --- the calls, from the code ---------------------------------------------------------------
 
   static Set<String> derivedCalls() throws IOException {
@@ -188,6 +220,26 @@ class ConsumerCallCoverageTest {
       }
     }
     out.addAll(oidcClients());
+    out.addAll(oidcTenant());
+    return out;
+  }
+
+  /**
+   * The quarkus-oidc tenant's reads of qits-idp, as the shipped profile configures them: the JWKS
+   * always, and the discovery document unless {@code discovery-enabled} is {@code false}.
+   */
+  private static Set<String> oidcTenant() {
+    Properties properties = IdpContract.shippedProperties();
+    Set<String> out = new TreeSet<>();
+    String server = properties.getProperty("quarkus.oidc.auth-server-url", "").trim();
+    if (server.isEmpty()) {
+      return out;
+    }
+    out.add(OIDC_TENANT_JWKS);
+    if (Boolean.parseBoolean(
+        properties.getProperty("quarkus.oidc.discovery-enabled", "true").trim())) {
+      out.add(OIDC_TENANT_DISCOVERY);
+    }
     return out;
   }
 
