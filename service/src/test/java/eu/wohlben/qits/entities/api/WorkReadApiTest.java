@@ -5,6 +5,8 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -121,6 +123,52 @@ class WorkReadApiTest {
         .get("/projects/api/projects/" + project.id() + "/work")
         .then()
         .body("entities.id", contains(epic, feature, task, ticket, campaign));
+  }
+
+  /**
+   * qits-1821: a ticket's and an epic's entry leads with an {@code excerpt} of the description, a
+   * feature's, a task's and a campaign's answers it null even with a body — and no entry carries
+   * the {@code description} itself, which the listing never answers.
+   */
+  @Test
+  void aTicketAndAnEpicAnswerAnExcerptAndNoEntryItsDescription() {
+    describe(ticket, "## Root cause\n\nThe **listing** drops the `description` column.\n\nMore.");
+    describe(feature, "The part's own body.");
+    describe(task, "The step's own body.");
+    describe(campaign, "The order's own body.");
+
+    String path = "/projects/api/projects/" + project.slug() + "/work";
+    given()
+        .get(path)
+        .then()
+        .statusCode(200)
+        .body("entities.id", contains(epic, feature, task, ticket, campaign))
+        .body(
+            "entities.excerpt",
+            contains(null, null, null, "The listing drops the description column.", null))
+        .body("entities", everyItem(hasKey("excerpt")))
+        .body("entities", everyItem(not(hasKey("description"))));
+
+    describe(epic, "Accounting copies every invoice by hand.");
+    given()
+        .get(path + "?archetype=EPIC")
+        .then()
+        .body("entities.excerpt", contains("Accounting copies every invoice by hand."));
+    // The detail answers the description and keeps its shape: no excerpt beside it.
+    given()
+        .get("/projects/api/work/" + ticket)
+        .then()
+        .body("description", containsString("## Root cause"))
+        .body("$", not(hasKey("excerpt")));
+  }
+
+  private static void describe(String id, String markdown) {
+    given()
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
+        .body(map("description", markdown))
+        .patch("/projects/api/work/" + id)
+        .then()
+        .statusCode(200);
   }
 
   @Test
