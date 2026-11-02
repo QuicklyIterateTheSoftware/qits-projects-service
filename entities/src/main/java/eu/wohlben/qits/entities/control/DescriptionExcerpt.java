@@ -51,6 +51,12 @@ public final class DescriptionExcerpt {
       Pattern.compile("(?U)(?<=[^\\s*_])(\\*{1,3}|_{1,3})(?![\\w*_])");
   private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
+  /** A code span parked while the prose rules run: private-use characters no body holds. */
+  private static final char PARK_OPEN = '\uE000';
+
+  private static final char PARK_CLOSE = '\uE001';
+  private static final Pattern PARKED = Pattern.compile(PARK_OPEN + "(\\d+)" + PARK_CLOSE);
+
   private DescriptionExcerpt() {}
 
   /** The lead of {@code markdown} by the class rule, or null when nothing is left to show. */
@@ -100,16 +106,32 @@ public final class DescriptionExcerpt {
     return String.join(" ", paragraph);
   }
 
-  /** The text with its inline Markdown stripped; a code span's content is kept as written. */
+  /**
+   * The text with its inline Markdown stripped; a code span's content is kept as written.
+   *
+   * <p>Each code span is parked behind a placeholder while the prose rules run over the whole line,
+   * then put back. The emphasis rules have to see the span as a word, or a bold span around code
+   * ({@code **`tags.sweep`**}) leaves its delimiters behind (qits-1821, found live).
+   */
   private static String inline(String text) {
-    StringBuilder out = new StringBuilder(text.length());
+    List<String> spans = new ArrayList<>();
+    StringBuilder parked = new StringBuilder(text.length());
     Matcher code = CODE_SPAN.matcher(text);
     int at = 0;
     while (code.find()) {
-      out.append(prose(text.substring(at, code.start()))).append(code.group(2));
+      parked.append(text, at, code.start());
+      parked.append(PARK_OPEN).append(spans.size()).append(PARK_CLOSE);
+      spans.add(code.group(2));
       at = code.end();
     }
-    return out.append(prose(text.substring(at))).toString();
+    String prose = prose(parked.append(text.substring(at)).toString());
+    Matcher back = PARKED.matcher(prose);
+    StringBuilder out = new StringBuilder(prose.length());
+    while (back.find()) {
+      String span = spans.get(Integer.parseInt(back.group(1)));
+      back.appendReplacement(out, Matcher.quoteReplacement(span));
+    }
+    return back.appendTail(out).toString();
   }
 
   /** Images dropped, links answered by their text, emphasis delimiters dropped. */

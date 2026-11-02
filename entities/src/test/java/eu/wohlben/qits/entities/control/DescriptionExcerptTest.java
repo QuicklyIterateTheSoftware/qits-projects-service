@@ -118,4 +118,18 @@ class DescriptionExcerptTest {
   void aBodyOfOnlyHeadingsAndCodeAnswersNull() {
     assertNull(DescriptionExcerpt.of("# Title\n\n```\ncode\n```\n## Another\n"));
   }
+
+  /** Found live (qits-369, qits-591): bold around a code span left its delimiters behind. */
+  @Test
+  void emphasisAroundACodeSpanIsStrippedToo() {
+    assertEquals(
+        "a DROPPED status (the impetus) and one more step, tags.sweep. It is ng test --watch=false,"
+            + " truncated.",
+        DescriptionExcerpt.of(
+            "a **`DROPPED` status** (the impetus) and one more step, **`tags.sweep`**. It is"
+                + " **`ng test --watch=false`, truncated**."));
+    assertEquals(
+        "keep **bold** and __init__ inside code",
+        DescriptionExcerpt.of("keep `**bold**` and `__init__` inside code"));
+  }
 }
