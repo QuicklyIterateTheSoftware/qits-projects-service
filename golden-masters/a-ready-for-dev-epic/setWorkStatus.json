@@ -29,5 +29,6 @@
   "blocked": false,
   "acceptanceCriteria": [
     "It does what it says."
-  ]
+  ],
+  "tags": []
 }
