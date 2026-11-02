@@ -677,9 +677,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       ## Waiting for a request or a run: declare it and end your turn
 
@@ -901,9 +903,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       ## Waiting for a request or a run: declare it and end your turn
 
@@ -1125,9 +1129,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       ## Waiting for your branch or a run: declare it and end your turn
 
@@ -1354,9 +1360,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       When one source alone holds a shared request back (it conflicts, its check is
       red, or it is not ready), move it out to the request queued after it, so the
@@ -1603,9 +1611,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       When one source alone holds a shared request back (it conflicts, its check is
       red, or it is not ready), move it out to the request queued after it, so the
@@ -1861,9 +1871,11 @@ public final class DevelopmentGuideDefaults {
       When a build was red through the platform's fault rather than the code's — a
       flaked container, a registry that was down — retry that run with
       `qits ci retry <run id>`, and find the runs with
-      `qits ci runs --release-request <id>`. `withdraw` is only for a request that
-      must not ship, because the change is wrong or nobody wants it any more:
-      WITHDRAWN is final.
+      `qits ci runs --release-request <id>`. A red automation — a dependency
+      bump, golden recordings — is not a run to retry: re-run it with
+      `qits release-request regenerate --kind <kind>`. `withdraw` is only for
+      a request that must not ship, because the change is wrong or nobody wants
+      it any more: WITHDRAWN is final.
 
       When one source alone holds a shared request back (it conflicts, its check is
       red, or it is not ready), move it out to the request queued after it, so the
