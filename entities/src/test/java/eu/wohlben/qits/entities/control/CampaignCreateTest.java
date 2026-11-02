@@ -33,6 +33,7 @@ class CampaignCreateTest extends EntitiesTestSupport {
 
   @Inject WorkEntityService workEntities;
   @Inject AuditService auditService;
+  @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
 
   @Test
   void aCampaignIsBornReportedWithASlugANumberAndAnAuditRow() {
@@ -78,8 +79,18 @@ class CampaignCreateTest extends EntitiesTestSupport {
   @Test
   void aCampaignHasNoFreezeOwnerSoItsTitleIsEditableOnceRefined() {
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "Summer", null, "alice");
-    workEntities.transition(
-        Archetype.CAMPAIGN, campaign.id, EntityStatus.REFINED.name(), "alice");
+    // Its status is derived from its members (qits-650): one REFINED member makes it REFINED.
+    WorkEntity member =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                PROJECT,
+                EntityWrite.ticket("Member", "it occurs", null, "BUG", null)
+                    .withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
+                "alice")
+            .entity();
+    workEntities.transition(Archetype.TICKET, member.id, EntityStatus.REFINED.name(), "alice");
+    campaigns.addMember(campaign.id, member.id, null, false, "alice");
 
     WorkEntity edited =
         workEntities

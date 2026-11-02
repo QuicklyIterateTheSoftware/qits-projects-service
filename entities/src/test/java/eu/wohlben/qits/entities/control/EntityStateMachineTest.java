@@ -61,200 +61,20 @@ class EntityStateMachineTest {
 
   @Test
   void theDeclarationIsExactlyTheSpecifiedGraph() {
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.REPORTED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
-            new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
-            new Transition(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(
-                EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(
-                EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP),
-            new Transition(
-                EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
-            new Transition(EntityStatus.VERIFIED, EntityStatus.VERIFYING, TransitionKind.BACK),
-            new Transition(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN)),
-        EntityStateMachine.transitions());
-  }
-
-  // ---- the skip (qits-749) ---------------------------------------------------------------------
-
-  @Test
-  void theTwoSkipsJumpExactlyTheTwoIngStatuses() {
-    assertEquals(
-        List.of(
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP)),
-        EntityStateMachine.transitions().stream()
-            .filter(move -> move.kind() == TransitionKind.SKIP)
-            .toList());
-    // No other step can be jumped.
-    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
-    // VERIFYING -> DONE is no SKIP: it is a CLOSE (qits-1757), and a ticket has none.
-    assertFalse(
-        EntityStateMachine.allows(Archetype.TICKET, EntityStatus.VERIFYING, EntityStatus.DONE));
-    assertFalse(EntityStateMachine.allows(EntityStatus.REPORTED, EntityStatus.IMPLEMENTING));
-    // qits-887: the skip cannot bypass the person's scheduling.
-    assertFalse(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.IMPLEMENTED));
-    assertFalse(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.IMPLEMENTING));
-  }
-
-  @Test
-  void theSelfCheckAcceptsTheSkipOnlyAsTwoStepsFromReadyForDevOrImplemented() {
-    assertTrue(
-        EntityStateMachine.kindMatches(
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)));
-    assertTrue(
-        EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP)));
-    // Two steps, but not from READY_FOR_DEV or IMPLEMENTED.
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING, TransitionKind.SKIP)));
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.VERIFYING, EntityStatus.DONE, TransitionKind.SKIP)));
-    // From READY_FOR_DEV, but one step or three.
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.VERIFYING, TransitionKind.SKIP)));
-    // FORWARD was not loosened to make room for it.
-    assertFalse(
-        EntityStateMachine.kindMatches(
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD)));
-  }
-
-  @Test
-  void implementingIsLeftForwardOrDroppedOnlyAndEnteredBackFromImplemented() {
-    // qits-887 (decision 11): IMPLEMENTING has no BACK move; the way out of started work is DROP.
-    assertEquals(
-        List.of(
-            new Transition(
-                EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.IMPLEMENTING));
-    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.REFINED));
-    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.READY_FOR_DEV));
-    // IMPLEMENTED -> REFINED was replaced by IMPLEMENTED -> IMPLEMENTING.
-    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.REFINED));
-    assertTrue(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING));
-  }
-
-  @Test
-  void verifyingIsTheMirrorOfImplementingOnePhaseLater() {
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
-            new Transition(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.VERIFYING));
-    // VERIFIED -> IMPLEMENTED was replaced by VERIFIED -> VERIFYING.
-    assertFalse(EntityStateMachine.allows(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED));
-    assertTrue(EntityStateMachine.allows(EntityStatus.VERIFIED, EntityStatus.VERIFYING));
-    // The platform's "phase started" moves, one per "-ING" status.
-    assertEquals(
-        Optional.of(EntityStatus.IMPLEMENTING),
-        EntityStateMachine.startedStatusOf(EntityStatus.READY_FOR_DEV));
-    assertEquals(
-        Optional.of(EntityStatus.VERIFYING),
-        EntityStateMachine.startedStatusOf(EntityStatus.IMPLEMENTED));
-    for (EntityStatus none :
-        List.of(
-            EntityStatus.REPORTED,
-            EntityStatus.REFINED,
-            EntityStatus.IMPLEMENTING,
-            EntityStatus.VERIFYING,
-            EntityStatus.VERIFIED)) {
-      assertEquals(Optional.empty(), EntityStateMachine.startedStatusOf(none), none.name());
-    }
-    assertTrue(
-        EntityStateMachine.isStartedMove(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING));
-    assertFalse(EntityStateMachine.isStartedMove(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
-    assertTrue(EntityStateMachine.isStartedMove(EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING));
-    assertFalse(EntityStateMachine.isStartedMove(EntityStatus.VERIFIED, EntityStatus.VERIFYING));
-  }
-
-  @Test
-  void aCampaignWalksTheMachineWithBothIngStatusesElided() {
-    // qits-749 elides IMPLEMENTING and VERIFYING; qits-887 (decision 19) keeps READY_FOR_DEV. The
-    // lifecycle is the walk with the elided states removed, and this is its whole table.
-    assertEquals(
+    // qits-650: its status is derived from its members, so every open state serves the DROP alone,
+    // DROPPED the REOPEN alone and DONE nothing.
+    for (EntityStatus open :
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
             EntityStatus.READY_FOR_DEV,
             EntityStatus.IMPLEMENTED,
-            EntityStatus.VERIFIED,
-            EntityStatus.DONE,
-            EntityStatus.DROPPED),
-        EntityStateMachine.states(Archetype.CAMPAIGN));
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.REPORTED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REPORTED));
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
-            new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
-            new Transition(EntityStatus.REFINED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
-    assertEquals(
-        List.of(
-            new Transition(
-                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV));
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-            new Transition(
-                EntityStatus.IMPLEMENTED, EntityStatus.READY_FOR_DEV, TransitionKind.BACK),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DONE, TransitionKind.CLOSE),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED));
-    assertEquals(
-        List.of(
-            new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
-            new Transition(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
-            new Transition(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.VERIFIED));
+            EntityStatus.VERIFIED)) {
+      assertEquals(
+          List.of(new Transition(open, EntityStatus.DROPPED, TransitionKind.DROP)),
+          EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, open),
+          open.name());
+    }
     assertEquals(List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.DONE));
     assertEquals(
         List.of(new Transition(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN)),
@@ -265,20 +85,41 @@ class EntityStateMachineTest {
     assertEquals(
         List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.VERIFYING));
     assertTrue(
-        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.IMPLEMENTED)
+        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV)
             .isPresent());
-    assertTrue(
-        EntityStateMachine.refusal(
-                Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING)
-            .isPresent());
-    assertTrue(
-        EntityStateMachine.refusal(
-                Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED)
-            .isPresent());
+    assertTrue(EntityStateMachine.isDerived(Archetype.CAMPAIGN));
+    // The walk the derived status is read on, and a member's status read on it.
+    assertEquals(
+        List.of(
+            EntityStatus.REPORTED,
+            EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
+            EntityStatus.IMPLEMENTED,
+            EntityStatus.VERIFIED,
+            EntityStatus.DONE),
+        EntityStateMachine.campaignWalk());
+    assertEquals(
+        Optional.of(EntityStatus.READY_FOR_DEV),
+        EntityStateMachine.onCampaignWalk(EntityStatus.IMPLEMENTING));
+    assertEquals(
+        Optional.of(EntityStatus.IMPLEMENTED),
+        EntityStateMachine.onCampaignWalk(EntityStatus.VERIFYING));
+    assertEquals(
+        Optional.of(EntityStatus.VERIFIED), EntityStateMachine.onCampaignWalk(EntityStatus.VERIFIED));
+    assertEquals(Optional.empty(), EntityStateMachine.onCampaignWalk(EntityStatus.DROPPED));
+    // A campaign runs wherever it is neither DONE nor DROPPED.
+    for (EntityStatus state : EntityStateMachine.states(Archetype.CAMPAIGN)) {
+      assertEquals(
+          state != EntityStatus.DONE && state != EntityStatus.DROPPED,
+          EntityStateMachine.campaignRuns(state.name()),
+          state.name());
+    }
+    assertFalse(EntityStateMachine.campaignRuns(null));
     // Every other archetype reads the machine unchanged: an epic or a feature the whole of it, a
     // ticket or a task all of it but the CLOSE moves (qits-1757).
     for (Archetype archetype :
         List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
+      assertFalse(EntityStateMachine.isDerived(archetype), archetype.name());
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
       boolean closes = archetype == Archetype.EPIC || archetype == Archetype.FEATURE;
       for (EntityStatus state : EntityStatus.values()) {
@@ -316,17 +157,19 @@ class EntityStateMachineTest {
             EntityStateMachine.isClose(archetype, from, EntityStatus.DONE), archetype + " " + from);
       }
     }
-    // A campaign closes from the statuses it holds; its "-ING" ones are elided.
+    // A campaign closes from nowhere (qits-650): its DONE is derived from its members.
     for (EntityStatus from : closing) {
-      boolean held = from != EntityStatus.IMPLEMENTING && from != EntityStatus.VERIFYING;
-      assertEquals(
-          held, EntityStateMachine.isClose(Archetype.CAMPAIGN, from, EntityStatus.DONE), from.name());
+      assertFalse(
+          EntityStateMachine.isClose(Archetype.CAMPAIGN, from, EntityStatus.DONE), from.name());
     }
   }
 
   @Test
   void verifiedToDoneStaysTheForwardMoveAndIsNoClose() {
     for (Archetype archetype : Archetype.values()) {
+      if (EntityStateMachine.isDerived(archetype)) {
+        continue; // a campaign reaches DONE by derivation alone (qits-650)
+      }
       List<Transition> intoDone =
           EntityStateMachine.transitionsFrom(archetype, EntityStatus.VERIFIED).stream()
               .filter(move -> move.to() == EntityStatus.DONE)
@@ -372,9 +215,10 @@ class EntityStateMachineTest {
         }
       }
     }
-    for (Archetype archetype : List.of(Archetype.CAMPAIGN, Archetype.EPIC, Archetype.FEATURE)) {
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
       assertTrue(EntityStateMachine.closes(archetype), archetype.name());
     }
+    assertFalse(EntityStateMachine.closes(Archetype.CAMPAIGN), "a campaign's DONE is derived");
   }
 
   @Test

@@ -69,12 +69,12 @@ class CampaignStartAndHandOverTest extends EntitiesTestSupport {
 
   @Test
   void theFirstPressInsertsTheStartAndALaterOneNeverMovesItsFloor() throws Exception {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+    WorkEntity campaign = campaign();
 
     CampaignStartRecord first = campaigns.start(campaign.id, "dana");
     Thread.sleep(5);
-    walk(campaign, "REPORTED", "REFINED");
-    assertFalse(inTx(() -> starts.isActive(campaign.id)), "paused by the move");
+    walk(campaign, "DROPPED", "REPORTED");
+    assertFalse(inTx(() -> starts.isActive(campaign.id)), "paused by the drop");
     CampaignStartRecord second = campaigns.start(campaign.id, "erin");
 
     CampaignStartRecord stored = inTx(() -> starts.startOf(campaign.id).orElseThrow());
@@ -86,12 +86,13 @@ class CampaignStartAndHandOverTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aCampaignThatIsNotRefinedIsNotStarted() {
-    WorkEntity campaign = campaign();
+  void aDroppedCampaignIsNotStarted() {
+    WorkEntity campaign = walk(campaign(), "DROPPED");
 
     ConflictException refused =
         assertThrows(ConflictException.class, () -> campaigns.start(campaign.id, "dana"));
-    assertTrue(refused.getMessage().contains("Start a campaign from REFINED"), refused.getMessage());
+    assertTrue(
+        refused.getMessage().contains("neither DONE nor DROPPED; campaign"), refused.getMessage());
     assertTrue(inTx(() -> starts.startOf(campaign.id).isEmpty()), "nothing written");
   }
 
@@ -122,7 +123,7 @@ class CampaignStartAndHandOverTest extends EntitiesTestSupport {
 
   @Test
   void anActiveCampaignHandsOverAMemberAddedWithNothingToWaitOnAndAnEditThatFreesOne() {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+    WorkEntity campaign = campaign();
     campaigns.start(campaign.id, "dana");
 
     CampaignService.Member first =
@@ -155,7 +156,15 @@ class CampaignStartAndHandOverTest extends EntitiesTestSupport {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, WHO).entity();
+      moved =
+          workEntities
+              .transition(
+                  row.archetype,
+                  row.id,
+                  status,
+                  WHO,
+                  eu.wohlben.qits.entities.control.TestDrops.of(status))
+              .entity();
     }
     return moved;
   }

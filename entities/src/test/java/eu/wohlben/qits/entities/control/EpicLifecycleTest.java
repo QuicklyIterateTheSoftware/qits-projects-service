@@ -883,48 +883,29 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(EntityStatus.IMPLEMENTED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
   }
 
+  /**
+   * qits-650: a campaign's status is derived from its members, so no word of its walk is a manual
+   * move — IMPLEMENTING and VERIFYING included — and only its drop and its reopen are.
+   */
   @Test
-  void aCampaignNeverMovesToImplementing() {
-    WorkEntity campaign =
-        workEntities.createCampaign("proj-1", "Ordering", null, "t");
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t");
+  void aCampaignIsMovedByHandOnlyByItsDropAndReopen() {
+    WorkEntity campaign = workEntities.createCampaign("proj-1", "Ordering", null, "t");
 
-    ConflictException refused =
-        assertThrows(
-            ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTING", "t"));
-    assertTrue(refused.getMessage().contains("never moves to IMPLEMENTING"), refused.getMessage());
+    for (String target :
+        List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED")) {
+      ConflictException refused =
+          assertThrows(
+              ConflictException.class,
+              () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, target, Mover.person("t")),
+              target);
+      assertTrue(refused.getMessage().contains("derived from its members"), refused.getMessage());
+    }
     assertEquals(
-        EntityStatus.REFINED.name(), workEntities.get(Archetype.CAMPAIGN, campaign.id).status);
-    // qits-887: it walks READY_FOR_DEV, then reaches IMPLEMENTED in one step, and IMPLEMENTED ->
-    // READY_FOR_DEV is its BACK move (the walk with the elided states removed).
-    assertThrows(
-        ConflictException.class,
-        () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t"));
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", Mover.person("t"));
+        EntityStatus.REPORTED.name(), workEntities.get(Archetype.CAMPAIGN, campaign.id).status);
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DROPPED", "t", TestDrops.WONT_DO);
     assertEquals(
-        EntityStatus.IMPLEMENTED.name(),
-        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
-    assertThrows(
-        ConflictException.class,
-        () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTING", "t"));
-    assertEquals(
-        EntityStatus.READY_FOR_DEV.name(),
-        workEntities
-            .transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", Mover.person("t"))
-            .entity()
-            .status);
-    // VERIFYING the same (qits-749), and VERIFIED -> IMPLEMENTED stays its BACK move.
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t");
-    ConflictException verifying =
-        assertThrows(
-            ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFYING", "t"));
-    assertTrue(verifying.getMessage().contains("never moves to VERIFYING"), verifying.getMessage());
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFIED", "t");
-    assertEquals(
-        EntityStatus.IMPLEMENTED.name(),
-        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
+        EntityStatus.REPORTED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REPORTED", "t").entity().status);
   }
 
   @Test

@@ -58,7 +58,6 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
     WorkEntity a = ticket("A");
     campaigns.addMember(campaign.id, a.id, null, false, WHO);
     String waiting = campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO).membership().id;
-    walk(campaign, "REFINED");
     start(campaign.id, Instant.now().minus(HOUR), true);
     UUID eventId = UUID.randomUUID();
 
@@ -207,7 +206,7 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
 
   @Test
   void aMemberIsAnsweredOnlyOnceEveryCriterionOfSomeGroupHasLatched() {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+    WorkEntity campaign = campaign();
     String member = campaigns.addMember(campaign.id, ticket("W").id, null, false, WHO).membership().id;
     String app = unique("app");
     String repo = unique("repo");
@@ -231,16 +230,16 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
   @Test
   void theSatisfiedUnclaimedMembershipsOfAMemberAreThoseOfStartedLiveCampaigns() {
     WorkEntity a = ticket("A");
-    WorkEntity started = walk(campaign(), "REFINED");
+    WorkEntity started = campaign();
     String inStarted = campaigns.addMember(started.id, a.id, null, false, WHO).membership().id;
     start(started.id, Instant.now().minus(HOUR), true);
     WorkEntity notStarted = campaign();
     campaigns.addMember(notStarted.id, a.id, null, false, WHO);
-    WorkEntity dropped = walk(campaign(), "REFINED");
+    WorkEntity dropped = campaign();
     campaigns.addMember(dropped.id, a.id, null, false, WHO);
     start(dropped.id, Instant.now().minus(HOUR), true);
     walk(dropped, "DROPPED");
-    WorkEntity claimed = walk(campaign(), "REFINED");
+    WorkEntity claimed = campaign();
     String inClaimed = campaigns.addMember(claimed.id, a.id, null, false, WHO).membership().id;
     start(claimed.id, Instant.now().minus(HOUR), true);
     QuarkusTransaction.requiringNew()
@@ -275,11 +274,11 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
   }
 
   /**
-   * A REFINED campaign whose one waiting member has one criterion of {@code kind}, started at
+   * A campaign whose one waiting member has one criterion of {@code kind}, started at
    * {@code firstStartedAt} ({@code null}: never started) — and the observation that satisfies it.
    */
   private Fixture fixture(CriterionKind kind, Instant firstStartedAt, boolean active) {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+    WorkEntity campaign = campaign();
     Fixture fixture =
         switch (kind) {
           case ENTITY_STATUS -> {

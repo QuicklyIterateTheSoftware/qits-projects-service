@@ -23,11 +23,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code CHILDREN_CLOSED} (qits-1757): a campaign, an epic or a feature closes straight to DONE —
- * the CLOSE move — from every open status it holds but VERIFIED, when every direct child is DONE or
- * DROPPED and a person or the project's delivery desk makes the move. An open child is named in the
- * 409, an item with no children is refused, VERIFIED is not closed, and VERIFIED → DONE stays the
- * walk's ungated FORWARD.
+ * {@code CHILDREN_CLOSED} (qits-1757): an epic or a feature closes straight to DONE — the CLOSE move
+ * — from every open status it holds but VERIFIED, when every direct child is DONE or DROPPED and a
+ * person or the project's delivery desk makes the move. An open child is named in the 409, an item
+ * with no children is refused, VERIFIED is not closed, and VERIFIED → DONE stays the walk's ungated
+ * FORWARD. A campaign is served no CLOSE since qits-650: its DONE is derived from its members.
  */
 @QuarkusTest
 class ChildrenClosedGateTest extends EntitiesTestSupport {
@@ -43,23 +43,23 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
 
   // --- every open status ---------------------------------------------------------------------------
 
+  /** A campaign's DONE is derived from its members (qits-650): it has no CLOSE to judge. */
   @Test
-  void aCampaignClosesFromEveryOpenStatusItHolds() {
-    for (List<String> walk :
-        List.of(
-            List.<String>of(),
-            List.of("REFINED"),
-            List.of("REFINED", "READY_FOR_DEV"),
-            List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED"))) {
-      WorkEntity done = done(ticket("Done member"));
-      WorkEntity dropped = walk(ticket("Dropped member"), "DROPPED");
-      WorkEntity campaign = campaignOf(done, dropped);
-      campaign = walk(campaign, walk.toArray(String[]::new));
-      String from = campaign.status;
+  void aCampaignIsNeverClosedByHand() {
+    WorkEntity done = done(ticket("Done member"));
+    WorkEntity campaign = campaignOf(done);
+    assertEquals("DONE", status(campaign), "an all-DONE membership derives DONE on its own");
 
-      workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DONE", PERSON);
-
-      assertEquals("DONE", status(campaign), "from " + from);
+    WorkEntity open = workEntities.createCampaign(PROJECT, "Still open", null, WHO);
+    campaigns.addMember(open.id, ticket("Open member").id, null, false, WHO);
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.CAMPAIGN, open.id, "DONE", PERSON));
+    assertTrue(refusal.getMessage().contains("derived from its members"), refusal.getMessage());
+    assertFalse(refusal.getMessage().contains(ChildrenClosedGate.NAME), refusal.getMessage());
+    for (EntityStatus from : EntityStatus.values()) {
+      assertFalse(gate.appliesTo(Archetype.CAMPAIGN, from, EntityStatus.DONE), "from " + from);
     }
   }
 
@@ -158,15 +158,19 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
 
   @Test
   void everyOpenChildIsNamedWithItsStatus() {
-    WorkEntity done = done(ticket("Done"));
-    WorkEntity implemented = walk(ticket("Implemented"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
-    WorkEntity reported = ticket("Reported");
-    WorkEntity campaign = walk(campaignOf(done, implemented, reported), "REFINED");
+    WorkEntity epic = epic("Planned");
+    WorkEntity closed = feature(epic, "Closed part");
+    WorkEntity implemented = feature(epic, "Implemented part");
+    WorkEntity scheduled = feature(epic, "Scheduled part");
+    walk(epic, "REFINED");
+    walk(closed, "DROPPED");
+    walk(epic, "READY_FOR_DEV");
+    walk(implemented, "IMPLEMENTED");
 
     ConflictException refusal =
         assertThrows(
             ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DONE", PERSON));
+            () -> workEntities.transition(Archetype.EPIC, epic.id, "DONE", PERSON));
 
     String message = refusal.getMessage();
     assertTrue(
@@ -174,36 +178,36 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
             "2 children are not closed yet: #"
                 + implemented.number
                 + " (IMPLEMENTED), #"
-                + reported.number
-                + " (REPORTED) — close or drop them first"),
+                + scheduled.number
+                + " (READY_FOR_DEV) — close or drop them first"),
         message);
-    assertFalse(message.contains("#" + done.number + " "), message);
+    assertFalse(message.contains("#" + closed.number + " "), message);
     assertFalse(message.contains(PersonApprovalGate.NAME), message);
-    assertFalse(message.contains(MembersScheduledGate.NAME), message);
-    assertEquals("REFINED", status(campaign));
+    assertEquals("READY_FOR_DEV", status(epic));
   }
 
   @Test
   void aVerifiedChildIsNotClosed() {
-    WorkEntity verified = walk(ticket("Verified"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
-    WorkEntity campaign = walk(campaignOf(verified), "REFINED");
+    WorkEntity epic = epic("Planned");
+    WorkEntity verified = feature(epic, "Verified part");
+    walk(epic, "REFINED", "READY_FOR_DEV");
+    walk(verified, "IMPLEMENTED", "VERIFIED");
 
     ConflictException refusal =
         assertThrows(
             ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DONE", PERSON));
+            () -> workEntities.transition(Archetype.EPIC, epic.id, "DONE", PERSON));
 
     assertTrue(
         refusal.getMessage().contains("#" + verified.number + " (VERIFIED)"), refusal.getMessage());
-    assertEquals("REFINED", status(campaign));
+    assertEquals("READY_FOR_DEV", status(epic));
   }
 
   @Test
   void anItemWithNoChildrenIsRefused() {
-    WorkEntity campaign = walk(workEntities.createCampaign(PROJECT, "Empty", null, WHO), "REFINED");
     WorkEntity epic = walk(epic("Bare"), "REFINED");
 
-    for (WorkEntity row : List.of(campaign, epic)) {
+    for (WorkEntity row : List.of(epic)) {
       ConflictException refusal =
           assertThrows(
               ConflictException.class,
@@ -221,39 +225,43 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
   }
 
   /**
-   * Only the direct child's own status is read: a campaign holding an epic whose feature is still
-   * open is refused, naming the epic, because the epic is not DONE.
+   * Only the direct child's own status is read: an epic holding a feature whose task is still open
+   * is refused naming the feature, because the feature is not DONE.
    */
   @Test
-  void aCampaignHoldingAnEpicWithAnOpenFeatureIsRefusedNamingTheEpic() {
+  void anEpicHoldingAFeatureWithAnOpenTaskIsRefusedNamingTheFeature() {
     WorkEntity epic = epic("Nested");
     WorkEntity feature = feature(epic, "Still open");
+    WorkEntity task = task(feature, "Open piece");
     walk(epic, "REFINED");
-    WorkEntity campaign = walk(campaignOf(epic), "REFINED");
 
     ConflictException refusal =
         assertThrows(
             ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DONE", PERSON));
+            () -> workEntities.transition(Archetype.EPIC, epic.id, "DONE", PERSON));
 
     String message = refusal.getMessage();
-    assertTrue(message.contains("a child is not closed yet: #" + epic.number + " (REFINED)"), message);
-    assertFalse(message.contains("#" + feature.number + " "), "nothing deeper is read: " + message);
-    assertEquals("REFINED", status(campaign));
+    assertTrue(
+        message.contains("a child is not closed yet: #" + feature.number + " (REFINED)"), message);
+    assertFalse(message.contains("#" + task.number + " "), "nothing deeper is read: " + message);
+    assertEquals("REFINED", status(epic));
   }
 
   // --- who may close ------------------------------------------------------------------------------
 
   @Test
   void aMachineIsRefusedAndTheProjectsDeskMayClose() {
-    WorkEntity campaign = walk(campaignOf(done(ticket("Done"))), "REFINED");
+    WorkEntity epic = epic("Planned");
+    WorkEntity part = feature(epic, "Dropped part");
+    walk(epic, "REFINED");
+    walk(part, "DROPPED");
 
     ConflictException byAgent =
         assertThrows(
             ConflictException.class,
             () ->
                 workEntities.transition(
-                    Archetype.CAMPAIGN, campaign.id, "DONE", Mover.machine("agent-7")));
+                    Archetype.EPIC, epic.id, "DONE", Mover.machine("agent-7")));
     assertTrue(
         byAgent
             .getMessage()
@@ -264,19 +272,19 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
             ConflictException.class,
             () ->
                 workEntities.transition(
-                    Archetype.CAMPAIGN,
-                    campaign.id,
+                    Archetype.EPIC,
+                    epic.id,
                     "DONE",
                     Mover.desk("desk-elsewhere", "another-project")));
     assertTrue(
         byAnotherDesk.getMessage().contains("needs a person or the delivery desk"),
         byAnotherDesk.getMessage());
-    assertEquals("REFINED", status(campaign));
+    assertEquals("REFINED", status(epic));
 
     workEntities.transition(
-        Archetype.CAMPAIGN, campaign.id, "DONE", Mover.desk("desk-of-" + PROJECT, PROJECT));
+        Archetype.EPIC, epic.id, "DONE", Mover.desk("desk-of-" + PROJECT, PROJECT));
 
-    assertEquals("DONE", status(campaign));
+    assertEquals("DONE", status(epic));
   }
 
   // --- what it judges -----------------------------------------------------------------------------
@@ -300,16 +308,14 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
     }
   }
 
-  /** PERSON_APPROVAL and MEMBERS_SCHEDULED judge the scheduling only, never a CLOSE. */
+  /** PERSON_APPROVAL judges the scheduling only, never a CLOSE. */
   @Test
   void noSchedulingGateJudgesAClose() {
     PersonApprovalGate person = new PersonApprovalGate();
-    MembersScheduledGate members = new MembersScheduledGate();
     for (Archetype archetype : Archetype.values()) {
       for (EntityStatus from : EntityStatus.values()) {
         if (EntityStateMachine.isClose(archetype, from, EntityStatus.DONE)) {
           assertFalse(person.appliesTo(archetype, from, EntityStatus.DONE), archetype + " " + from);
-          assertFalse(members.appliesTo(archetype, from, EntityStatus.DONE), archetype + " " + from);
         }
       }
     }

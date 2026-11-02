@@ -129,20 +129,26 @@ class PersonApprovalGateTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aCampaignsSchedulingIsAPersonsToo() {
+  void aCampaignIsNotScheduledAtAll() {
+    // qits-650: its status is derived from its members, each of which a person scheduled.
+    assertFalse(gate.appliesTo(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     eu.wohlben.qits.entities.entity.WorkEntity campaign = workEntities.createCampaign("proj-1", "Order", null, "t");
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t");
-    assertThrows(
-        ConflictException.class,
-        () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", "t"));
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", Mover.person("ada"));
-    assertEquals("READY_FOR_DEV", status(Archetype.CAMPAIGN, campaign.id));
+    ConflictException refused =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", Mover.person("ada")));
+    assertTrue(refused.getMessage().contains("derived from its members"), refused.getMessage());
+    assertFalse(refused.getMessage().contains(PersonApprovalGate.NAME), refused.getMessage());
+    assertEquals("REPORTED", status(Archetype.CAMPAIGN, campaign.id));
   }
 
   @Test
   void itJudgesRefinedToReadyForDevOfEveryKindAndNothingElse() {
     for (Archetype archetype : Archetype.values()) {
-      assertTrue(gate.appliesTo(archetype, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
+      assertEquals(
+          archetype != Archetype.CAMPAIGN,
+          gate.appliesTo(archetype, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV),
+          archetype + " (a campaign's status is derived, qits-650)");
       assertFalse(gate.appliesTo(archetype, EntityStatus.READY_FOR_DEV, EntityStatus.REFINED));
       assertFalse(gate.appliesTo(archetype, EntityStatus.REPORTED, EntityStatus.REFINED));
       assertFalse(gate.appliesTo(archetype, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING));

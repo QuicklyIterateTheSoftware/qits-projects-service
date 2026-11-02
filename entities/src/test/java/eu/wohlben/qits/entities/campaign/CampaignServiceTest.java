@@ -174,26 +174,42 @@ class CampaignServiceTest extends EntitiesTestSupport {
     assertEquals(1, campaigns.get(campaign.id).members().size());
   }
 
+  /**
+   * qits-650: the plan stays editable while the campaign is neither DONE nor DROPPED — adding a
+   * REPORTED member to an IMPLEMENTED campaign is how it drops back to REPORTED.
+   */
   @Test
-  void membershipIsFrozenOnceTheCampaignIsImplemented() {
+  void membershipIsEditableUntilTheCampaignIsDoneOrDropped() {
     WorkEntity campaign = campaign();
-    CampaignService.Member member =
-        campaigns.addMember(campaign.id, scheduled("A").id, null, false, WHO);
-    walk(campaign, "REFINED");
-    // Running or not, REFINED is still editable.
-    campaigns.addMember(campaign.id, scheduled("B").id, null, false, WHO);
-    walk(campaign, "READY_FOR_DEV");
-    // And READY_FOR_DEV (qits-887): ready for development, not frozen.
-    CampaignService.Member late = campaigns.addMember(campaign.id, scheduled("D").id, null, false, WHO);
-    campaigns.moveMember(campaign.id, late.membership().id, 0, WHO);
-    walk(campaign, "IMPLEMENTED");
+    WorkEntity a = scheduled("A");
+    CampaignService.Member member = campaigns.addMember(campaign.id, a.id, null, false, WHO);
+    assertEquals("READY_FOR_DEV", status(campaign));
+    walk(a, "IMPLEMENTED");
+    assertEquals("IMPLEMENTED", status(campaign));
 
-    conflict(() -> campaigns.addMember(campaign.id, ticket("C").id, null, false, WHO), "IMPLEMENTED");
-    conflict(() -> campaigns.moveMember(campaign.id, member.membership().id, 1, WHO), "IMPLEMENTED");
-    conflict(() -> campaigns.removeMember(campaign.id, member.membership().id, WHO), "IMPLEMENTED");
+    CampaignService.Member late = campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO);
+    assertEquals("REPORTED", status(campaign), "a REPORTED member drops it back");
+    campaigns.moveMember(campaign.id, late.membership().id, 0, WHO);
+    campaigns.removeMember(campaign.id, late.membership().id, WHO);
+    assertEquals("IMPLEMENTED", status(campaign));
+
+    walk(campaign, "DROPPED");
+    conflict(() -> campaigns.addMember(campaign.id, ticket("C").id, null, false, WHO), "DROPPED");
+    conflict(() -> campaigns.moveMember(campaign.id, member.membership().id, 1, WHO), "DROPPED");
+    conflict(() -> campaigns.removeMember(campaign.id, member.membership().id, WHO), "DROPPED");
     conflict(
         () -> campaigns.setCondition(campaign.id, member.membership().id, List.of(), WHO),
-        "IMPLEMENTED");
+        "neither DONE nor DROPPED");
+
+    WorkEntity finished = campaign();
+    campaigns.addMember(
+        finished.id,
+        walk(ticket("Done"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE").id,
+        null,
+        false,
+        WHO);
+    assertEquals("DONE", status(finished));
+    conflict(() -> campaigns.addMember(finished.id, ticket("D").id, null, false, WHO), "is DONE");
   }
 
   // --- removal -------------------------------------------------------------------------------------
@@ -409,7 +425,6 @@ class CampaignServiceTest extends EntitiesTestSupport {
     WorkEntity campaign = campaign();
     WorkEntity a = walk(ticket("A"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
     campaigns.addMember(campaign.id, a.id, null, false, WHO);
-    walk(campaign, "REFINED");
     start(campaign.id);
     walk(a, "VERIFIED");
     // B goes in front, so it gets no seed; its condition is stated by hand, on a member that is
@@ -427,55 +442,64 @@ class CampaignServiceTest extends EntitiesTestSupport {
 
   // --- the pause hook ------------------------------------------------------------------------------
 
+  /** A manual drop pauses the start in the same move; the reopen does not resume it. */
   @Test
-  void leavingRefinedPausesTheStartInTheSameMove() {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+  void aDropPausesTheStartInTheSameMove() {
+    WorkEntity campaign = campaign();
     start(campaign.id);
     assertTrue(active(campaign.id));
 
-    walk(campaign, "REPORTED");
+    walk(campaign, "DROPPED");
     assertFalse(active(campaign.id), "paused with the move");
 
-    walk(campaign, "REFINED");
-    assertFalse(active(campaign.id), "moving back is not a resume; a new press is");
+    walk(campaign, "REPORTED");
+    assertFalse(active(campaign.id), "reopening is not a resume; a new press is");
 
-    WorkEntity neverStarted = walk(campaign(), "REFINED", "REPORTED");
+    WorkEntity neverStarted = walk(campaign(), "DROPPED", "REPORTED");
     assertTrue(inTx(() -> starts.startOf(neverStarted.id).isEmpty()), "no row, nothing to do");
   }
 
   /**
-   * qits-887, decision 19: REFINED <-> READY_FOR_DEV neither pauses nor starts — a started campaign
-   * runs at both — and leaving both pauses as leaving REFINED always did.
+   * qits-650: a derived move between open statuses neither pauses nor starts a campaign; a derived
+   * move into DONE pauses it.
    */
   @Test
-  void schedulingACampaignNeitherPausesNorStartsItAndLeavingBothPauses() {
-    WorkEntity campaign = walk(campaign(), "REFINED");
+  void aDerivedMoveNeitherPausesNorStartsItAndADerivedDonePauses() {
+    WorkEntity a = scheduled("A");
+    WorkEntity campaign = campaign();
+    campaigns.addMember(campaign.id, a.id, null, false, WHO);
     start(campaign.id);
 
-    walk(campaign, "READY_FOR_DEV");
-    assertTrue(active(campaign.id), "scheduling is not a pause");
-    walk(campaign, "REFINED");
-    assertTrue(active(campaign.id), "unscheduling is not a pause either");
-    walk(campaign, "READY_FOR_DEV", "IMPLEMENTED");
-    assertFalse(active(campaign.id), "moving on past READY_FOR_DEV pauses it");
+    walk(a, "IMPLEMENTED", "VERIFIED");
+    assertEquals("VERIFIED", status(campaign));
+    assertTrue(active(campaign.id), "a derived move is not a pause");
+    walk(a, "DONE");
+    assertEquals("DONE", status(campaign));
+    assertFalse(active(campaign.id), "a derived DONE pauses it");
 
-    WorkEntity unstarted = walk(campaign(), "REFINED", "READY_FOR_DEV");
-    assertTrue(inTx(() -> starts.startOf(unstarted.id).isEmpty()), "READY_FOR_DEV starts nothing");
+    WorkEntity unstarted = campaign();
+    campaigns.addMember(unstarted.id, scheduled("B").id, null, false, WHO);
+    assertEquals("READY_FOR_DEV", status(unstarted));
+    assertTrue(inTx(() -> starts.startOf(unstarted.id).isEmpty()), "a derived move starts nothing");
   }
 
-  /** The start press is accepted at REFINED and at READY_FOR_DEV (qits-887), and nowhere else. */
+  /** The start press is accepted while the campaign is neither DONE nor DROPPED (qits-650). */
   @Test
-  void aStartIsAcceptedAtRefinedAndAtReadyForDev() {
+  void aStartIsAcceptedWhileTheCampaignIsNeitherDoneNorDropped() {
     WorkEntity reported = campaign();
-    conflict(() -> campaigns.start(reported.id, WHO), "Start a campaign from REFINED or READY_FOR_DEV");
+    assertTrue(campaigns.start(reported.id, WHO).active, "an empty campaign is REPORTED and starts");
 
-    WorkEntity refined = walk(campaign(), "REFINED");
-    assertTrue(campaigns.start(refined.id, WHO).active);
-    WorkEntity scheduled = walk(campaign(), "REFINED", "READY_FOR_DEV");
-    assertTrue(campaigns.start(scheduled.id, WHO).active);
+    WorkEntity a = scheduled("A");
+    WorkEntity implemented = campaign();
+    campaigns.addMember(implemented.id, walk(a, "IMPLEMENTED").id, null, false, WHO);
+    assertEquals("IMPLEMENTED", status(implemented));
+    assertTrue(campaigns.start(implemented.id, WHO).active);
 
-    walk(scheduled, "IMPLEMENTED");
-    conflict(() -> campaigns.start(scheduled.id, WHO), "is IMPLEMENTED");
+    walk(reported, "DROPPED");
+    conflict(() -> campaigns.start(reported.id, WHO), "neither DONE nor DROPPED");
+    conflict(() -> campaigns.start(reported.id, WHO), "is DROPPED");
+    walk(a, "VERIFIED", "DONE");
+    conflict(() -> campaigns.start(implemented.id, WHO), "is DONE");
   }
 
   // --- the audit -----------------------------------------------------------------------------------
@@ -504,6 +528,10 @@ class CampaignServiceTest extends EntitiesTestSupport {
 
   private WorkEntity campaign() {
     return workEntities.createCampaign(PROJECT, "The order", null, WHO);
+  }
+
+  private String status(WorkEntity row) {
+    return inTx(() -> workEntities.get(row.archetype, row.id).status);
   }
 
   private WorkEntity ticket(String title) {

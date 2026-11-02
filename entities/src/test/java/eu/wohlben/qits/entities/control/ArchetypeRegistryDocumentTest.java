@@ -104,41 +104,25 @@ class ArchetypeRegistryDocumentTest {
             "DONE", "DROPPED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED", "REPORTED", "VERIFIED"),
         campaign.legalStatuses());
     // Its lifecycle elides IMPLEMENTING and VERIFYING (qits-749) and keeps READY_FOR_DEV (qits-887):
-    // the walk with the elided states removed, so IMPLEMENTED -> READY_FOR_DEV and VERIFIED ->
-    // IMPLEMENTED are its BACK moves.
+    // the campaign walk its derived status is read on (qits-650).
     assertEquals(
         List.of(
             "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
         campaign.lifecycle());
+    // Its status is derived from its members (qits-650): every open status serves the DROP alone,
+    // DROPPED the REOPEN alone, DONE nothing — and no move names a gate.
+    for (String open : List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
+      assertEquals(
+          List.of(move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+          campaign.transitions().get(open),
+          open);
+    }
     assertEquals(
-        List.of(
-            move("READY_FOR_DEV", EntityStateMachine.TransitionKind.FORWARD),
-            move("REPORTED", EntityStateMachine.TransitionKind.BACK),
-            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
-            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
-        campaign.transitions().get("REFINED"));
-    assertEquals(
-        List.of(
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
-            move("REFINED", EntityStateMachine.TransitionKind.BACK),
-            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
-            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
-        campaign.transitions().get("READY_FOR_DEV"));
-    assertEquals(
-        List.of(
-            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
-            move("READY_FOR_DEV", EntityStateMachine.TransitionKind.BACK),
-            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
-            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
-        campaign.transitions().get("IMPLEMENTED"));
+        List.of(move("REPORTED", EntityStateMachine.TransitionKind.REOPEN)),
+        campaign.transitions().get("DROPPED"));
+    assertEquals(List.of(), campaign.transitions().get("DONE"));
     assertEquals(false, campaign.transitions().containsKey("IMPLEMENTING"));
     assertEquals(false, campaign.transitions().containsKey("VERIFYING"));
-    assertEquals(
-        List.of(
-            move("DONE", EntityStateMachine.TransitionKind.FORWARD),
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.BACK),
-            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
-        campaign.transitions().get("VERIFIED"));
     for (Archetype other : List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(false, declared(other).gathers(), other + " gathers");
     }
@@ -479,22 +463,13 @@ class ArchetypeRegistryDocumentTest {
         List.of("ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
         gatesOf(both, Archetype.TICKET, "REFINED", "READY_FOR_DEV"));
     assertEquals(List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.TASK, "REFINED", "READY_FOR_DEV"));
-    assertEquals(
-        List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.CAMPAIGN, "REFINED", "READY_FOR_DEV"));
     assertEquals(List.of(), gatesOf(both, Archetype.EPIC, "READY_FOR_DEV", "REFINED"));
-    // And a campaign's own (qits-942): its members are scheduled, beside the person.
-    List<TransitionGate> all =
-        List.of(
-            new PersonApprovalGate(),
-            new AcceptanceCriteriaGate(),
-            new eu.wohlben.qits.entities.campaign.MembersScheduledGate());
-    assertEquals(
-        List.of("MEMBERS_SCHEDULED", "PERSON_APPROVAL"),
-        gatesOf(all, Archetype.CAMPAIGN, "REFINED", "READY_FOR_DEV"));
-    assertEquals(
-        List.of("ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
-        gatesOf(all, Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
-    assertEquals(List.of(), gatesOf(all, Archetype.CAMPAIGN, "READY_FOR_DEV", "REFINED"));
+    // A campaign is served no scheduling (qits-650): its drop names no gate, and the person gate
+    // does not apply to its REFINED -> READY_FOR_DEV at all.
+    assertEquals(List.of(), gatesOf(both, Archetype.CAMPAIGN, "REFINED", "DROPPED"));
+    assertFalse(
+        new PersonApprovalGate()
+            .appliesTo(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     // With no gate handed in, nothing is named.
     assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
   }
@@ -509,7 +484,6 @@ class ArchetypeRegistryDocumentTest {
         List.of(
             new PersonApprovalGate(),
             new AcceptanceCriteriaGate(),
-            new eu.wohlben.qits.entities.campaign.MembersScheduledGate(),
             new eu.wohlben.qits.entities.campaign.ChildrenClosedGate());
     int closes = 0;
     for (ArchetypeRegistryDocument.DeclaredArchetype declared :
@@ -526,10 +500,12 @@ class ArchetypeRegistryDocumentTest {
           }
         }
       }
-      assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
+      if (declared.archetype() != Archetype.CAMPAIGN) {
+        assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
+      }
     }
-    // An epic's and a feature's six, a campaign's four.
-    assertEquals(16, closes);
+    // An epic's and a feature's six; a campaign is served none (qits-650).
+    assertEquals(12, closes);
   }
 
   @Test
