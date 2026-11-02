@@ -11,6 +11,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchListing;
@@ -71,7 +72,8 @@ import org.jboss.logging.Logger;
  * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
  * it is looked up at the workspaces port by epic id, and its release request is titled "Epic
  * &lt;slug&gt;: …". An epic is blocked as a ticket is (qits-592, {@link EntityBlocks}), and a
- * blocked one is delivered no turn either. <b>It has a thread</b> since qits-551, so every
+ * blocked one is delivered no turn either — nor is an epic or a ticket tagged {@code
+ * RESERVED_FOR_HUMAN} (qits-634), whose moves a person makes by hand. <b>It has a thread</b> since qits-551, so every
  * sentence below lands on the epic's thread exactly as on a ticket's, with the {@code EPICS} hint
  * where a ticket's fires {@code TICKETS} — until then an epic had none and each sentence was a log
  * line nobody reading the board would ever see.
@@ -453,6 +455,16 @@ public class PhaseAdvance {
       LOG.debugf(
           "%s %s is blocked, so no turn is delivered for the phase its status (%s) starts",
           entity.archetype, entity.id, entity.status);
+      return;
+    }
+    if (EntityDispatch.isReservedForHuman(entity)) {
+      // A person does this work (qits-634): no agent is dispatched onto it, so none is handed the
+      // phase its new status starts either. Unlike the block, the tag survives every transition, so
+      // this arm fires on the moves the person makes by hand — each one delivers nothing. Before the
+      // REFINED arm below too, so a pre-approval left on the row schedules nothing.
+      LOG.debugf(
+          "%s %s is tagged %s, so no turn is delivered for the phase its status (%s) starts",
+          entity.archetype, entity.id, WorkTag.RESERVED_FOR_HUMAN.display(), entity.status);
       return;
     }
     if (EntityStateMachine.isStartedMove(statusOf(statusBefore), statusOf(entity.status))) {
