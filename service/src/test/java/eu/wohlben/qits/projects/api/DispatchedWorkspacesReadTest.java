@@ -1,12 +1,15 @@
 package eu.wohlben.qits.projects.api;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.aMapWithSize;
+import static org.hamcrest.Matchers.anEmptyMap;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.projects.contracts.ProviderStates;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
@@ -14,8 +17,10 @@ import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,11 +35,18 @@ import org.junit.jupiter.api.Test;
  * qits-workspaces' answer and is scripted rather than simulated; {@code HttpWorkspaceAgentDispatchTest}
  * is where the wire is under test. The listings no longer carry workspaces at all, so the old
  * once-per-listing batching has nothing left to pin.
+ *
+ * <p>Since qits-1815 the board asks for a whole project at once instead — {@code GET
+ * /projects/{project}/work/workspaces} ({@link ProjectWorkWorkspacesController}) — and that read
+ * pins the batching again: one lookup for the project's tickets and epics, each answer on its own
+ * row's key.
  */
 @QuarkusTest
 public class DispatchedWorkspacesReadTest {
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
+
+  @Inject ProviderStates states;
 
   @BeforeEach
   void resetThePort() {
@@ -192,5 +204,182 @@ public class DispatchedWorkspacesReadTest {
         .then()
         .statusCode(200)
         .body("workspaces", hasSize(0));
+  }
+
+  // --- a whole project at once (qits-1815) -------------------------------------------------------
+
+  private String slugOf(String projectId) {
+    return asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId)
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("project.slug");
+  }
+
+  /**
+   * <b>One read, one lookup, each row's agents on its own key.</b> The ticket and the epic carry
+   * theirs, the ticket nobody works on has no key at all, and the other project's row — asked about
+   * by nobody here — is never drawn on this one, though the far side (scripted to answer every
+   * lookup with everything) names it.
+   */
+  @Test
+  public void aProjectsTicketsAndEpicsAreAnsweredInOneLookupKeyedByTheirIds() {
+    String projectId = createProject("Referenced board");
+    String ticketId = createTicket(projectId, "Somebody is on this");
+    String idleTicket = createTicket(projectId, "Nobody is on this");
+    String epicId = createEpic(projectId, "Somebody is implementing this");
+    String featureId = WorkRequests.feature(this::asAdmin, epicId, "A feature");
+    String otherProject = createProject("Referenced elsewhere board");
+    String otherTicket = createTicket(otherProject, "Somebody else's");
+    dispatch.willFind(
+        onTicket(41L, ticketId),
+        obsoleteOnTicket(42L, ticketId),
+        RecordingWorkspaceAgentDispatch.active("agent-77", 77L, "repo-1", epicId, "epic/contract-3"),
+        onTicket(99L, otherTicket));
+
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces", aMapWithSize(2))
+        .body("workspaces.'" + ticketId + "'", hasSize(2))
+        .body("workspaces.'" + ticketId + "'[0].agentId", equalTo("agent-41"))
+        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(41))
+        .body("workspaces.'" + ticketId + "'[0].repositoryId", equalTo("repo-1"))
+        .body("workspaces.'" + ticketId + "'[0].branch", equalTo("ticket/contract-1"))
+        .body("workspaces.'" + ticketId + "'[0].status", equalTo("ACTIVE"))
+        .body("workspaces.'" + ticketId + "'[1].status", equalTo("OBSOLETE"))
+        .body("workspaces.'" + epicId + "'", hasSize(1))
+        .body("workspaces.'" + epicId + "'[0].workspaceRowId", equalTo(77))
+        .body("workspaces.'" + idleTicket + "'", equalTo(null))
+        .body("workspaces.'" + otherTicket + "'", equalTo(null));
+
+    // Once for the project, about its tickets and epics alone — never its feature, never the
+    // other project's rows.
+    assertEquals(1, dispatch.lookups().size(), "a board read asked once per row");
+    Set<String> asked = new HashSet<>(dispatch.lookups().get(0).workIds());
+    assertEquals(Set.of(ticketId, idleTicket, epicId), asked);
+    assertTrue(!asked.contains(featureId) && !asked.contains(otherTicket));
+  }
+
+  /** The project is its slug as well as its id, as on the listing beside it. */
+  @Test
+  public void theProjectIsNamedBySlugToo() {
+    String projectId = createProject("Referenced by slug");
+    String ticketId = createTicket(projectId, "On it");
+    dispatch.willFind(onTicket(43L, ticketId));
+
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + slugOf(projectId) + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(43));
+  }
+
+  /** Nobody working on anything is an empty map, not an absent member. */
+  @Test
+  public void aProjectNobodyWorksOnAnswersAnEmptyMap() {
+    String projectId = createProject("Referenced idle board");
+    createTicket(projectId, "Waiting");
+
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces", anEmptyMap());
+  }
+
+  /** A project with no tickets or epics asks nobody at all. */
+  @Test
+  public void aProjectWithNoWorkAsksNobody() {
+    String projectId = createProject("Referenced empty board");
+
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces", anEmptyMap());
+    assertTrue(dispatch.lookups().isEmpty(), "a project with no work asked qits-workspaces");
+  }
+
+  @Test
+  public void anUnknownProjectIs404() {
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/no-such-project/work/workspaces")
+        .then()
+        .statusCode(404);
+    assertTrue(dispatch.lookups().isEmpty());
+  }
+
+  /** A read, so an agent may make it — the listing beside it admits {@code qits:agent} too. */
+  @Test
+  public void anAgentMayReadTheBoardsWorkspaces() {
+    String projectId = createProject("Referenced for an agent");
+    String ticketId = createTicket(projectId, "Read by an agent");
+    dispatch.willFind(onTicket(44L, ticketId));
+
+    given()
+        .header("X-Qits-User", "agent-test")
+        .header("X-Qits-Roles", "qits:agent")
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(44));
+  }
+
+  /** The longer template does not take the listing's route: {@code /work} still lists. */
+  @Test
+  public void theProjectsWorkListingStillAnswersBesideIt() {
+    String projectId = createProject("Referenced listing");
+    createTicket(projectId, "Listed");
+
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work")
+        .then()
+        .statusCode(200)
+        .body("entities", hasSize(1));
+  }
+
+  /**
+   * The provider state a consumer's pact of this door names ({@link
+   * ProviderStates#A_PROJECT_WHOSE_WORK_HAS_WORKSPACES}) serves what its javadoc promises: two
+   * keys, the ticket's two agents and the epic's one, and the idle ticket left out. Its script is
+   * gone again after {@link ProviderStates#cleanUp()}.
+   */
+  @Test
+  public void theProviderStateForThisDoorServesTwoKeysAndLeavesTheIdleRowOut() {
+    Map<String, String> params;
+    try {
+      params = states.params(ProviderStates.A_PROJECT_WHOSE_WORK_HAS_WORKSPACES);
+      asAdmin()
+          .when()
+          .get("/projects/api/projects/" + params.get("projectId") + "/work/workspaces")
+          .then()
+          .statusCode(200)
+          .body("workspaces", aMapWithSize(2))
+          .body("workspaces.'" + params.get("ticketId") + "'", hasSize(2))
+          .body("workspaces.'" + params.get("ticketId") + "'[0].status", equalTo("ACTIVE"))
+          .body("workspaces.'" + params.get("ticketId") + "'[1].status", equalTo("OBSOLETE"))
+          .body("workspaces.'" + params.get("epicId") + "'", hasSize(1))
+          .body("workspaces.'" + params.get("epicId") + "'[0].agentId", equalTo("agent-42"))
+          .body("workspaces.'" + params.get("idleTicketId") + "'", equalTo(null));
+    } finally {
+      states.cleanUp();
+    }
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + params.get("projectId") + "/work/workspaces")
+        .then()
+        .statusCode(200)
+        .body("workspaces", anEmptyMap());
   }
 }

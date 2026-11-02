@@ -7,7 +7,13 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Which agents work on a ticket or an epic, and in which workspace — {@code GET
@@ -42,9 +48,7 @@ public class DispatchedWorkspaces {
    * ticket and an epic are dispatched onto a branch, so every other archetype has none.
    */
   public List<WorkspaceReferenceDto> referencing(WorkEntity entity) {
-    boolean dispatched =
-        entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;
-    if (!dispatched || dispatch.isUnsatisfied()) {
+    if (!dispatched(entity) || dispatch.isUnsatisfied()) {
       return List.of();
     }
     return dispatch.get().agentsFor(List.of(entity.id)).stream()
@@ -52,6 +56,48 @@ public class DispatchedWorkspaces {
         .filter(agent -> entity.id.equals(agent.workId()))
         .map(DispatchedWorkspaces::reference)
         .toList();
+  }
+
+  /**
+   * <b>The workspaces naming each of many work entities, in one lookup</b> (qits-1815) — what
+   * {@link #referencing} answers for one row, for a whole project's tickets and epics at once, so
+   * the SPA's board asks once instead of once per root ({@code GET
+   * /projects/{project}/work/workspaces}, {@link ProjectWorkWorkspacesController}).
+   *
+   * <p>Only the tickets and epics among {@code entities} are asked about, as {@link #referencing}
+   * would; the port is asked <b>once</b> with all of their ids — chunking a long list into requests
+   * the far side's request line can take is the adapter's business, not this one's. An agent lands
+   * under its own {@link WorkspaceAgentDispatch.Agent#workId()} and only when that id was asked
+   * about: an agent of some other row never becomes a link on this page. A row with no agents has
+   * no key at all.
+   *
+   * @return work entity id → its workspaces, in the order the port answered them; never null, and
+   *     empty when the port is absent or nothing was asked about
+   */
+  public Map<String, List<WorkspaceReferenceDto>> referencingAll(Collection<WorkEntity> entities) {
+    if (dispatch.isUnsatisfied() || entities == null) {
+      return Map.of();
+    }
+    Set<String> asked =
+        entities.stream()
+            .filter(DispatchedWorkspaces::dispatched)
+            .map(entity -> entity.id)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+    if (asked.isEmpty()) {
+      return Map.of();
+    }
+    return dispatch.get().agentsFor(asked).stream()
+        .filter(agent -> agent.workId() != null && asked.contains(agent.workId()))
+        .collect(
+            Collectors.groupingBy(
+                WorkspaceAgentDispatch.Agent::workId,
+                LinkedHashMap::new,
+                Collectors.mapping(DispatchedWorkspaces::reference, Collectors.toList())));
+  }
+
+  /** Only a ticket and an epic are ever dispatched onto a branch. */
+  private static boolean dispatched(WorkEntity entity) {
+    return entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;
   }
 
   /**

@@ -123,6 +123,16 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    */
   private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(3);
 
+  /**
+   * The most work ids one reference lookup carries (qits-1815). Every id rides the query string as
+   * {@code workId=<uuid>&}, some 44 bytes, and the far side's request line is capped — Quarkus'
+   * default {@code max-initial-line-length} is 4096 bytes — so a whole project's tickets and epics
+   * in one GET is a request qits-workspaces refuses before it reads it. Fifty ids is about 2.2 kB,
+   * well inside the cap with the path and the protocol beside it; a longer list is asked in
+   * sequence, fifty at a time.
+   */
+  static final int LOOKUP_CHUNK = 50;
+
   private final HttpClient client;
 
   /** This service's address for qits-workspaces. Unset falls back to the key below. */
@@ -243,11 +253,17 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    * <p><b>Nothing here throws, and that is the port's contract.</b> A missing address, a missing
    * credential, a far side that is away, a non-200 and an answer that will not parse all come out
    * the same way: one WARN and an empty list.
+   *
+   * <p><b>At most {@link #LOOKUP_CHUNK} ids a request</b> (qits-1815): a whole project's tickets
+   * and epics would overflow the far side's request line, so a longer list is split into lookups of
+   * that many, made one after another and concatenated. Each chunk keeps the contract on its own —
+   * one that fails is one WARN and contributes nothing, and the others still count. Up to {@link
+   * #LOOKUP_CHUNK} ids is one call, exactly as before.
    */
   @Override
   public List<Agent> agentsFor(Collection<String> workIds) {
-    String query = query(workIds);
-    if (query.isEmpty()) {
+    List<String> ids = distinct(workIds);
+    if (ids.isEmpty()) {
       return List.of(); // asked about no rows — no call to make
     }
     Optional<String> base = address();
@@ -258,12 +274,32 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
           base.isEmpty() ? "address" : "machine credential");
       return List.of();
     }
+    // Up to LOOKUP_CHUNK ids is the one call it always was; more is several, in sequence, each
+    // failing on its own: a chunk that cannot be read costs its own rows' links and no other's.
+    List<Agent> found = new ArrayList<>();
+    for (int from = 0; from < ids.size(); from += LOOKUP_CHUNK) {
+      List<String> chunk = ids.subList(from, Math.min(from + LOOKUP_CHUNK, ids.size()));
+      found.addAll(lookup(base.get(), authorization.get(), chunk));
+      if (Thread.currentThread().isInterrupted()) {
+        break; // the interrupt was reported once; the chunks after it are not asked
+      }
+    }
+    return found;
+  }
+
+  /**
+   * One reference lookup of at most {@link #LOOKUP_CHUNK} ids, under {@link #agentsFor}'
+   * never-throw contract: every way it can fail is one WARN and no agents, and the interrupt flag
+   * is kept for the caller to see.
+   */
+  private List<Agent> lookup(String base, String authorization, List<String> chunk) {
     try {
-      HttpResponse<String> response = references(base.get(), authorization.get(), query);
+      HttpResponse<String> response = references(base, authorization, query(chunk));
       if (response.statusCode() != 200) {
         LOG.warnf(
-            "qits-workspaces answered %s to an agent lookup; reporting none: %s",
-            response.statusCode(), response.body());
+            "qits-workspaces answered %s to an agent lookup of %d work items; reporting none for"
+                + " them: %s",
+            response.statusCode(), chunk.size(), response.body());
         return List.of();
       }
       return agents(response.body());
@@ -272,7 +308,9 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       LOG.warn("Interrupted while reading agents; reporting none");
       return List.of();
     } catch (Exception e) {
-      LOG.warnf("Could not read agents, so none are reported: %s", e.toString());
+      LOG.warnf(
+          "Could not read the agents of %d work items, so none are reported for them: %s",
+          chunk.size(), e.toString());
       return List.of();
     }
   }
@@ -361,17 +399,17 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     return client.send(request, HttpResponse.BodyHandlers.ofString());
   }
 
-  /**
-   * The query string, with every blank and duplicate id dropped. Empty means there is nothing to
-   * ask.
-   */
-  private static String query(Collection<String> workIds) {
+  /** The ids worth asking about, in the order given: every blank and duplicate dropped. */
+  private static List<String> distinct(Collection<String> workIds) {
     if (workIds == null) {
-      return "";
+      return List.of();
     }
+    return workIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
+  }
+
+  /** The query string naming these ids, each as one repeated {@code workId} parameter. */
+  private static String query(List<String> workIds) {
     return workIds.stream()
-        .filter(id -> id != null && !id.isBlank())
-        .distinct()
         .map(id -> "workId=" + URLEncoder.encode(id, StandardCharsets.UTF_8))
         .collect(Collectors.joining("&"));
   }

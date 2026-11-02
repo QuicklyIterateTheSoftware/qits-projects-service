@@ -2256,6 +2256,17 @@ components:
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
+    ProjectWorkWorkspaces:
+      type: object
+      description: "The workspaces a dispatch stood on each of a project's tickets\
+        \ and epics, keyed by the work entity's id; an entity with none has no key."
+      properties:
+        workspaces:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/WorkspaceReferenceDto"
     RefinementDto:
       type: object
       properties:
@@ -5751,6 +5762,42 @@ paths:
           description: Not Allowed
       tags:
       - Project Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/projects/{project}/work/workspaces:
+    get:
+      summary: The workspaces naming every ticket and epic of a project
+      description: "For each of the project's tickets and epics, in every status,\
+        \ every workspace a dispatch stood on its branch, live and resolved alike,\
+        \ each with its status — keyed by the work entity's id (UUID). An entity with\
+        \ no workspaces has no key; the map is empty when qits-workspaces cannot be\
+        \ asked. The project is its id or its slug."
+      operationId: listProjectWorkWorkspaces
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The workspaces, by work entity id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectWorkWorkspaces"
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Work Workspaces Controller
       security:
       - SecurityScheme:
         - qits:admin
