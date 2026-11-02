@@ -37,6 +37,9 @@ import java.util.Optional;
  *     recording happens to hold a value in every element — the provider legitimately answers null
  *     there for an entry its state did not record ({@link #withNullable}); each must be one of
  *     {@code consumes}
+ * @param exact consumed response paths bound BY VALUE rather than by type: the provider must answer
+ *     the recorded value itself, because this service compares it ({@link #withExact}); each must
+ *     be one of {@code consumes} and name a leaf
  */
 public record ConsumerRow(
     String provider,
@@ -54,7 +57,8 @@ public record ConsumerRow(
     String needs,
     Map<String, String> headers,
     String formBody,
-    List<String> nullable) {
+    List<String> nullable,
+    List<String> exact) {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -64,6 +68,13 @@ public record ConsumerRow(
     consumes = consumes == null ? List.of() : List.copyOf(consumes);
     headers = headers == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(headers));
     nullable = nullable == null ? List.of() : List.copyOf(nullable);
+    exact = exact == null ? List.of() : List.copyOf(exact);
+    for (String declared : exact) {
+      if (!consumes.contains(declared)) {
+        throw new IllegalArgumentException(
+            operationId + ": " + declared + " is bound by value but not consumed");
+      }
+    }
     for (String declared : nullable) {
       if (!consumes.contains(declared)) {
         throw new IllegalArgumentException(
@@ -92,28 +103,35 @@ public record ConsumerRow(
       String needs) {
     this(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, Map.of(), null, List.of());
+        status, trigger, call, needs, Map.of(), null, List.of(), List.of());
   }
 
   /** This row, sending {@code headers} too. */
   public ConsumerRow withHeaders(Map<String, String> headers) {
     return new ConsumerRow(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, headers, formBody, nullable);
+        status, trigger, call, needs, headers, formBody, nullable, exact);
   }
 
   /** This row, sending {@code body} as a form instead of a JSON body. */
   public ConsumerRow withFormBody(String body) {
     return new ConsumerRow(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, headers, body, nullable);
+        status, trigger, call, needs, headers, body, nullable, exact);
   }
 
   /** This row, reading each of {@code paths} as a value or null (see {@code nullable} above). */
   public ConsumerRow withNullable(String... paths) {
     return new ConsumerRow(
         provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
-        status, trigger, call, needs, headers, formBody, List.of(paths));
+        status, trigger, call, needs, headers, formBody, List.of(paths), exact);
+  }
+
+  /** This row, binding each of {@code paths} by its recorded value (see {@code exact} above). */
+  public ConsumerRow withExact(String... paths) {
+    return new ConsumerRow(
+        provider, providerApp, operationId, state, method, path, query, requestBody, consumes,
+        status, trigger, call, needs, headers, formBody, nullable, List.of(paths));
   }
 
   /** What the row does with the real client, given the mock server and the state's params. */

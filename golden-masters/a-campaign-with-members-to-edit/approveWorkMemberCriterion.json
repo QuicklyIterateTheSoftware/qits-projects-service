@@ -8,7 +8,8 @@
       "qualifiedId": "contract-00000001-4",
       "title": "Credit notes show the wrong sign",
       "status": "REPORTED",
-      "blocked": false
+      "blocked": false,
+      "tags": []
     },
     "claimedAt": null,
     "joinedRunning": false,

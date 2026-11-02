@@ -540,6 +540,10 @@ components:
           type: string
         blockedBy:
           type: string
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkTag"
     CampaignMemberProgressDto:
       type: object
       properties:
@@ -1483,6 +1487,10 @@ components:
           type: string
         waitingOn:
           type: string
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkTag"
     EntityTransition:
       type: object
       properties:
@@ -3288,6 +3296,10 @@ components:
           type: string
         inspiredBy:
           type: string
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkTag"
         heldBy:
           type: array
           items:
@@ -3542,6 +3554,13 @@ components:
           type: string
           description: "The work's inspiration, on every archetype: the id of an idea\
             \ of the same project (GET /projects/api/ideas)."
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkTag"
+          description: "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks\
+            \ work an agent cannot complete — a person does it, and no agent is dispatched\
+            \ onto it."
     WorkCriterionApproval:
       type: object
       description: A person's yes on an APPROVAL criterion.
@@ -3855,6 +3874,18 @@ components:
             \ first, null after every number, then by number. Editable at every status\
             \ but DONE and DROPPED (409), outside every scope freeze; null clears\
             \ it. PUT /projects/api/work/{qualifiedId}/priority ranks by drop instead."
+        tags:
+          type:
+          - array
+          - "null"
+          items:
+            $ref: "#/components/schemas/WorkTag"
+          description: "The work's tags, on every archetype, the whole set: RESERVED_FOR_HUMAN\
+            \ marks work an agent cannot complete — a person does it and moves its\
+            \ status by hand, and no agent is dispatched onto it (say why in the description).\
+            \ Editable at every status, outside every scope freeze; an empty array\
+            \ or null clears them. An unknown tag is a 400 naming the legal ones.\
+            \ A transition never changes them."
     WorkPriorities:
       type: object
       description: "The siblings a drop renumbered — the moved item and every one\
@@ -3936,6 +3967,10 @@ components:
             \ refused with OBSOLETE, INVALID or WONT_DO and with any move not into\
             \ DROPPED. It must name an item of the same project, never the item itself.\
             \ Reopening clears it."
+    WorkTag:
+      type: string
+      enum:
+      - RESERVED_FOR_HUMAN
     WorkWorkspaces:
       type: object
       description: The workspaces a dispatch stood on a work entity's branch.
@@ -5660,7 +5695,8 @@ paths:
         \ archetype, one status, the direct children of one parent (qualified id or\
         \ UUID), one drop outcome, and the items naming one entity (qualified id or\
         \ UUID) as their supersededBy — what that entity closed as a duplicate, resolved\
-        \ elsewhere or superseded. The project is its id or its slug."
+        \ elsewhere or superseded, and the items carrying one tag. The project is\
+        \ its id or its slug."
       operationId: listProjectWork
       parameters:
       - name: project
@@ -5692,6 +5728,12 @@ paths:
         in: query
         schema:
           type: string
+      - description: "Only the items carrying this tag: RESERVED_FOR_HUMAN (any case,\
+          \ or its kebab form reserved-for-human)."
+        name: tag
+        in: query
+        schema:
+          type: string
       responses:
         "200":
           description: The work entities
@@ -5700,7 +5742,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkList"
         "400":
-          description: "An archetype, a status or an outcome naming none"
+          description: "An archetype, a status, an outcome or a tag naming none"
         "404":
           description: "No such project, no such parent, or no such supersededBy entity"
         "401":
@@ -8405,7 +8447,8 @@ paths:
         \ edits need the epic REPORTED, the markers need it READY_FOR_DEV or IMPLEMENTING,\
         \ and a marker moves the item's status with it. An epic's or a ticket's acceptance\
         \ criteria are frozen from READY_FOR_DEV on, where a changed list is refused\
-        \ and the same list restated passes. Answers the entity in the merged shape."
+        \ and the same list restated passes. The tags are editable at every status,\
+        \ outside every freeze. Answers the entity in the merged shape."
       operationId: patchWork
       parameters:
       - name: qualifiedId

@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,10 @@ public final class CampaignDtos {
       List<CriterionGroupDto> groups,
       boolean holdsStatus) {}
 
-  /** The gathered entity, as a member row draws it. */
+  /**
+   * The gathered entity, as a member row draws it. {@code tags} (qits-634) is always present, {@code
+   * []} when it has none — a member tagged RESERVED_FOR_HUMAN is one the executor will not dispatch.
+   */
   public record CampaignMemberEntityDto(
       String id,
       String archetype,
@@ -88,7 +92,8 @@ public final class CampaignDtos {
       boolean blocked,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
-      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
+      List<WorkTag> tags) {}
 
   /** Where the campaign's dispatch of a member landed; every field null until it has. */
   public record CampaignDispatchDto(String workspaceId, String branch, String agentLaunch) {}

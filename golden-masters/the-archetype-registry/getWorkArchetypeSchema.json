@@ -49,6 +49,16 @@
       "type": "string",
       "pattern": "\\S",
       "description": "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "RESERVED_FOR_HUMAN"
+        ]
+      },
+      "description": "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
     }
   },
   "required": [

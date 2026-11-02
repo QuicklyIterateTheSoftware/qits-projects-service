@@ -826,6 +826,14 @@ class GoldenMasterRecordingTest {
             ProviderStates.THREE_REPORTED_TICKETS,
             "listProjectWork",
             "/projects/api/projects/{projectId}/work"));
+    // The tags (qits-634): a scheduled ticket reserved for a person by a patch, past every freeze.
+    all.add(
+        write(
+            ProviderStates.A_READY_FOR_DEV_TICKET,
+            "patchWork",
+            "PATCH",
+            "/projects/api/work/{qualifiedId}",
+            "{\"tags\":[\"RESERVED_FOR_HUMAN\"]}"));
     all.add(
         write(
             ProviderStates.A_REPORTED_TICKET,

@@ -27,6 +27,7 @@
   "updatedAt": "2026-01-01T00:00:00Z",
   "changedBy": null,
   "blocked": false,
+  "tags": [],
   "heldBy": [
     "contract-00000001-5"
   ]

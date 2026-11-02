@@ -22,9 +22,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import org.jose4j.jwk.JsonWebKey;
+import org.jose4j.jwk.JsonWebKeySet;
+import org.jose4j.jwk.RsaJsonWebKey;
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -47,6 +51,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * only inside Quarkus. Its row makes the same request with the JDK client, built from the client's
  * own configuration in {@code application.properties} (grant {@code client}, its audience, the
  * secret as HTTP Basic), and reads what {@code TokensHelper} reads.
+ *
+ * <p><b>And the two reads the quarkus-oidc TENANT makes</b> (qits-708, the qits-1149 pattern), which
+ * no class of this source tree makes either: the discovery document read from {@code
+ * quarkus.oidc.auth-server-url} once at startup, whose {@code issuer} is what every bearer's {@code
+ * iss} is checked against and is therefore bound BY VALUE ({@link ConsumerRow#exact}), and the JWKS
+ * at the {@code jwks_uri} it names, fetched when a bearer arrives whose {@code kid} is not cached
+ * ({@code jwks.resolve-early=false}). Both rows make the request with the JDK client and read the
+ * answer as quarkus-oidc does; {@code ConsumerCallCoverageTest} derives the two calls from the
+ * shipped tenant configuration and holds these rows to it.
  */
 final class IdpContract {
 
@@ -56,6 +69,15 @@ final class IdpContract {
   /** The token mint's trigger: every bearer this service presents to a peer is minted here. */
   static final String TOKEN_MINT_TRIGGER =
       "quarkus-oidc-client qits (before the peer bearer expires)";
+
+  /** The tenant's discovery read: once, while the application starts. */
+  static final String DISCOVERY_TRIGGER = "StartupEvent";
+
+  /** The tenant's key read: deferred to the bearer that needs a key ({@code resolve-early=false}). */
+  static final String JWKS_TRIGGER = "quarkus-oidc tenant (a bearer whose kid is not cached)";
+
+  /** The qits-idp state that records the discovery document and the JWKS. */
+  static final String A_PUBLISHED_SIGNING_KEY = "a published signing key";
 
   private static final Map<String, String> AUTH = Map.of("Authorization", "{authorization}");
 
@@ -166,8 +188,78 @@ final class IdpContract {
     assertTrue(token.path("expires_in").isNumber());
   }
 
+  // --- the tenant's reads, as quarkus-oidc makes them -----------------------------------------
+
+  /** A plain GET, as quarkus-oidc's own reads are: 200 and the body. */
+  private static String get(String url) throws Exception {
+    HttpResponse<String> answer =
+        RowClients.HTTP.send(
+            HttpRequest.newBuilder(URI.create(url)).header("Accept", "application/json").build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, answer.statusCode(), answer.body());
+    return answer.body();
+  }
+
+  private static void discover(String base, Map<String, String> p) throws Exception {
+    JsonNode document =
+        new ObjectMapper().readTree(get(base + "/idp/.well-known/openid-configuration"));
+    String published =
+        ConsumerGoldenMasters.classpath()
+            .find(APP, A_PUBLISHED_SIGNING_KEY, "getOpenIdConfiguration")
+            .orElseThrow()
+            .body()
+            .path("issuer")
+            .asText();
+    assertEquals(published, document.path("issuer").asText(), "the issuer every iss is checked against");
+    URI.create(document.path("jwks_uri").asText());
+    URI.create(document.path("token_endpoint").asText());
+  }
+
+  private static void keys(String base, Map<String, String> p) throws Exception {
+    JsonWebKeySet keys = new JsonWebKeySet(get(base + "/idp/jwks"));
+    JsonWebKey key = keys.findJsonWebKey(p.get("kid"), RsaJsonWebKey.KEY_TYPE, "sig", "RS256");
+    assertNotNull(key, () -> "an RSA RS256 signing key named by the state's kid in " + keys.getJsonWebKeys());
+    assertNotNull(((RsaJsonWebKey) key).getRsaPublicKey().getModulus());
+  }
+
   static final List<ConsumerRow> ROWS =
       List.of(
+          new ConsumerRow(
+                  PROVIDER,
+                  APP,
+                  "getOpenIdConfiguration",
+                  A_PUBLISHED_SIGNING_KEY,
+                  "GET",
+                  "/idp/.well-known/openid-configuration",
+                  Map.of(),
+                  null,
+                  List.of("$.issuer", "$.jwks_uri", "$.token_endpoint"),
+                  200,
+                  Trigger.event(DISCOVERY_TRIGGER),
+                  IdpContract::discover,
+                  "GET /idp/.well-known/openid-configuration answering 200 with issuer, jwks_uri"
+                      + " and token_endpoint")
+              .withExact("$.issuer"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getJwks",
+              A_PUBLISHED_SIGNING_KEY,
+              "GET",
+              "/idp/jwks",
+              Map.of(),
+              null,
+              List.of(
+                  "$.keys[*].kid",
+                  "$.keys[*].kty",
+                  "$.keys[*].n",
+                  "$.keys[*].e",
+                  "$.keys[*].alg",
+                  "$.keys[*].use"),
+              200,
+              Trigger.schedule(JWKS_TRIGGER),
+              IdpContract::keys,
+              "GET /idp/jwks answering 200 with keys[] of kid, kty, n, e, alg and use"),
           new ConsumerRow(
                   PROVIDER,
                   APP,

@@ -18,14 +18,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 /**
- * The shipped key path with the tenant on and {@link MockIdp} in place of qits-platform-idp — and
+ * The shipped key path with the tenant on and {@link MockIdp} in place of qits-idp — and
  * the pin on {@code quarkus.oidc.jwks.resolve-early=false}, which is the line that keeps the idp
  * off this process's startup path.
  *
- * <p>What it pins is a behaviour rather than a property value: <b>nothing but a bearer ever reaches
- * the idp</b>. Boot makes no call, so the HTTP listener opens whether the idp is answering or not;
- * a request carrying no token makes no call either; the first bearer fetches the key by its {@code
- * kid} and is accepted; later bearers are served from the cache. Re-adding {@code
+ * <p>What it pins is a behaviour rather than a property value: <b>nothing but a bearer ever fetches
+ * a key</b>. Boot makes one call, the discovery document (qits-708: the issuer every {@code iss} is
+ * checked against comes from it), tried once and never retried, so the HTTP listener opens whether
+ * the idp is answering or not; a request carrying no token makes no call; the first bearer fetches
+ * the key by its {@code kid} and is accepted; later bearers are served from the cache. Re-adding {@code
  * resolve-early=true} — or dropping the line, since {@code true} is the default — fails the first
  * method with a fetch the boot made.
  *
@@ -43,6 +44,9 @@ class BearerJwksTest {
 
   /** Unguarded on purpose: what is under test is who the request became, never a status code. */
   private static final String IDENTITY = "/projects/api/test-identity";
+
+  /** The discovery document the tenant reads at boot (qits-708). */
+  private static final String DISCOVERY = "/idp/.well-known/openid-configuration";
 
   /** A platform service's subject, as the idp writes it into {@code sub}. */
   private static final String SUBJECT = "qits-ci";
@@ -63,7 +67,21 @@ class BearerJwksTest {
         .body("principal", equalTo("alice"));
     given().when().get(IDENTITY).then().statusCode(200).body("anonymous", equalTo(true));
 
-    assertEquals(0, jwksFetches(), "only a bearer may reach the idp");
+    assertEquals(0, jwksFetches(), "only a bearer may fetch the keys");
+    // The one boot call (qits-708): discovery is on, so the tenant has read the document whose
+    // issuer it holds every bearer's `iss` to — once, and nothing else.
+    assertEquals(
+        1,
+        MockIdp.attach().recordedRequests().stream()
+            .filter(request -> DISCOVERY.equals(request.path()))
+            .count(),
+        "the tenant reads the idp's discovery document once, at boot");
+    assertEquals(
+        java.util.Set.of(DISCOVERY),
+        MockIdp.attach().recordedRequests().stream()
+            .map(request -> request.path())
+            .collect(java.util.stream.Collectors.toSet()),
+        "the boot asks the idp for its discovery document and for nothing else");
   }
 
   @Test

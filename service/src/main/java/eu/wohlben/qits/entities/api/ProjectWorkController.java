@@ -26,7 +26,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * optional {@code archetype}, {@code status} and {@code parent} (qualified id or UUID; the direct
  * children of one entity), and since qits-248 by {@code outcome} (why a DROPPED item was closed)
  * and {@code supersededBy} (qualified id or UUID; the items naming that entity as what answers for
- * them — the reverse link). The answer is {@code {"entities": [...]}}, each a qualified {@link
+ * them — the reverse link), and since qits-634 by {@code tag} (the items carrying it). The answer is {@code {"entities": [...]}}, each a qualified {@link
  * EntitySummary} without its description. {@link WorkEntityDoors#list} is the implementation,
  * shared with {@code GET /projects/{projectId}/entities}. A read: {@code qits:agent}, unbound.
  */
@@ -49,8 +49,8 @@ public class ProjectWorkController {
               + " depth-first in position order. Optionally narrowed to one archetype, one status,"
               + " the direct children of one parent (qualified id or UUID), one drop outcome, and"
               + " the items naming one entity (qualified id or UUID) as their supersededBy — what"
-              + " that entity closed as a duplicate, resolved elsewhere or superseded. The project is"
-              + " its id or its slug.")
+              + " that entity closed as a duplicate, resolved elsewhere or superseded, and the items"
+              + " carrying one tag. The project is its id or its slug.")
   @APIResponse(
       responseCode = "200",
       description = "The work entities",
@@ -60,7 +60,7 @@ public class ProjectWorkController {
               schema = @Schema(implementation = WorkList.class)))
   @APIResponse(
       responseCode = "400",
-      description = "An archetype, a status or an outcome naming none")
+      description = "An archetype, a status, an outcome or a tag naming none")
   @APIResponse(
       responseCode = "404",
       description = "No such project, no such parent, or no such supersededBy entity")
@@ -80,7 +80,14 @@ public class ProjectWorkController {
               description =
                   "Only the items naming this entity (qualified id or UUID) as their supersededBy.")
           @QueryParam("supersededBy")
-          String supersededBy) {
-    return new WorkList(doors.list(project, archetype, status, parent, outcome, supersededBy));
+          String supersededBy,
+      @Parameter(
+              description =
+                  "Only the items carrying this tag: RESERVED_FOR_HUMAN (any case, or its kebab"
+                      + " form reserved-for-human).")
+          @QueryParam("tag")
+          String tag) {
+    return new WorkList(
+        doors.list(project, archetype, status, parent, outcome, supersededBy, tag));
   }
 }

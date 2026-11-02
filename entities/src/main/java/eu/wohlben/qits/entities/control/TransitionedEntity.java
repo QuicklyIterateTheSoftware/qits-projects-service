@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.time.Instant;
 import java.util.List;
 
@@ -99,6 +100,9 @@ import java.util.List;
  * @param waitingOn the label of the declared wait the agent session is waiting on (qits-1153): the
  *     entity reads "waiting on" it, and it derives no block. Null and left off the wire otherwise,
  *     and on a feature and a task
+ * @param inspiredBy the idea the work was inspired by, or null and left off the wire
+ * @param tags the tags (qits-634), in declaration order — {@code []} when it has none, on every
+ *     archetype and always on the wire. A transition never changes them
  * @param heldBy a campaign's members that set its derived status (qits-650) — the qualified ids of
  *     the members not DROPPED whose status, read on the campaign walk, is the campaign's. Computed
  *     at read time and filled only on a campaign's entity read ({@link #withHeldBy}); empty while
@@ -140,7 +144,13 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
     @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
+    List<WorkTag> tags,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy) {
+
+  /** The tags never null: an entity without any answers {@code []}, in declaration order. */
+  public TransitionedEntity {
+    tags = WorkTag.ordered(tags);
+  }
 
   /** The same entity carrying {@code members}, a campaign's {@link #heldBy} (qits-650). */
   public TransitionedEntity withHeldBy(List<String> members) {
@@ -179,6 +189,7 @@ public record TransitionedEntity(
         blockedBy,
         waitingOn,
         inspiredBy,
+        tags,
         members == null ? null : List.copyOf(members));
   }
 
@@ -222,6 +233,7 @@ public record TransitionedEntity(
         blockedBy,
         waitingOn,
         inspiredBy,
+        tags,
         heldBy);
   }
 
@@ -286,6 +298,7 @@ public record TransitionedEntity(
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
+        WorkTag.ordered(row.tags),
         null);
   }
 
@@ -333,6 +346,7 @@ public record TransitionedEntity(
         read.blockedBy(),
         read.waitingOn(),
         read.inspiredBy(),
+        read.tags(),
         null);
   }
 
@@ -379,6 +393,7 @@ public record TransitionedEntity(
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
+        WorkTag.ordered(row.tags),
         null);
   }
 

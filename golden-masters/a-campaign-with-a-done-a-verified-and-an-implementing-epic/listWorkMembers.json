@@ -9,7 +9,8 @@
         "qualifiedId": "contract-00000001-2",
         "title": "Done ticket",
         "status": "DONE",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -34,7 +35,8 @@
         "qualifiedId": "contract-00000001-4",
         "title": "Done epic",
         "status": "DONE",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -59,7 +61,8 @@
         "qualifiedId": "contract-00000001-8",
         "title": "Verified epic",
         "status": "VERIFIED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -84,7 +87,8 @@
         "qualifiedId": "contract-00000001-12",
         "title": "Epic with mixed features",
         "status": "IMPLEMENTING",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -109,7 +113,8 @@
         "qualifiedId": "contract-00000001-3",
         "title": "Refined ticket",
         "status": "REFINED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
