@@ -178,32 +178,47 @@ class WorkCampaignApiTest {
         .statusCode(200)
         .body("members[0].membershipId", equalTo(second));
 
-    move(base, "REFINED").statusCode(200).body("status", equalTo("REFINED"));
-    // A campaign never enters IMPLEMENTING (qits-749): a 409, and it stays REFINED.
-    move(base, "IMPLEMENTING")
-        .statusCode(409)
-        .body("message", containsString("never moves to IMPLEMENTING"));
-    // ... it is READY_FOR_DEV only once its members are (qits-942, MEMBERS_SCHEDULED) ...
-    move(base, "READY_FOR_DEV")
-        .statusCode(409)
-        .body("message", containsString("MEMBERS_SCHEDULED: 2 members are not READY_FOR_DEV yet"));
-    given().get(base).then().statusCode(200).body("status", equalTo("REFINED"));
+    // Its status is derived from its members (qits-650): no word of its walk is a move of its own.
+    String qa = PROJECT + "-" + a.number;
+    String qb = PROJECT + "-" + b.number;
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "DONE")) {
+      move(base, target)
+          .statusCode(409)
+          .body("message", containsString("derived from its members"));
+    }
+    given()
+        .get(base)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("REPORTED"))
+        .body("heldBy", equalTo(List.of(qb, qa)));
     for (WorkEntity member : List.of(a, b)) {
       for (String status : List.of("REFINED", "READY_FOR_DEV")) {
         workEntities.transition(Archetype.TICKET, member.id, status, Mover.person("dev"));
       }
     }
-    // ... it walks READY_FOR_DEV (qits-887), and its BACK moves are IMPLEMENTED -> READY_FOR_DEV and
-    // VERIFIED -> IMPLEMENTED, with VERIFYING refused the same way (qits-749), through the same door.
-    for (String target :
-        List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED")) {
-      if (target.equals("VERIFIED")) {
-        move(base, "VERIFYING")
-            .statusCode(409)
-            .body("message", containsString("never moves to VERIFYING"));
-      }
-      move(base, target).statusCode(200).body("status", equalTo(target));
-    }
+    given().get(base).then().statusCode(200).body("status", equalTo("READY_FOR_DEV"));
+    // A started member counts as READY_FOR_DEV, one further on lifts it no higher than the other.
+    workEntities.transition(Archetype.TICKET, a.id, "IMPLEMENTING", "dev");
+    workEntities.transition(Archetype.TICKET, b.id, "IMPLEMENTED", "dev");
+    given()
+        .get(base)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("READY_FOR_DEV"))
+        .body("heldBy", equalTo(List.of(qa)));
+    given()
+        .get(members)
+        .then()
+        .statusCode(200)
+        .body("members.find { it.entity.id == '" + a.id + "' }.holdsStatus", equalTo(true))
+        .body("members.find { it.entity.id == '" + b.id + "' }.holdsStatus", equalTo(false));
+    given()
+        .get(base + "/progress")
+        .then()
+        .statusCode(200)
+        .body("progress.campaign.status", equalTo("READY_FOR_DEV"))
+        .body("progress.campaign.heldBy", equalTo(List.of(qa)));
 
     // The listing names it among the project's campaigns; its members and its unstarted state are
     // the members' and the progress' reads (the listing is the work summary, archetype-free).
@@ -212,7 +227,7 @@ class WorkCampaignApiTest {
         .then()
         .statusCode(200)
         .body("entities.id", hasItem(campaignId))
-        .body("entities.find { it.id == '" + campaignId + "' }.status", equalTo("REFINED"))
+        .body("entities.find { it.id == '" + campaignId + "' }.status", equalTo("READY_FOR_DEV"))
         .body("entities.archetype.unique()", equalTo(List.of("CAMPAIGN")));
     given().get(members).then().body("members.size()", equalTo(2));
     given().get(base + "/progress").then().body("progress.campaign.start", nullValue());
@@ -223,6 +238,13 @@ class WorkCampaignApiTest {
         .statusCode(200)
         .body("members.size()", equalTo(1));
     given().get(members).then().body("members.size()", equalTo(1));
+    // The remove re-derives it from the member left (qits-650): A, IMPLEMENTING, still holds it.
+    given()
+        .get(base)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("READY_FOR_DEV"))
+        .body("heldBy", equalTo(List.of(qa)));
   }
 
   @Test
@@ -480,36 +502,32 @@ class WorkCampaignApiTest {
   }
 
   /**
-   * qits-1757: a REFINED campaign whose members are all DONE or DROPPED closes straight to DONE
-   * through its status door — a person's move, no scheduling on the way — while an open member is a
-   * 409 naming it by qualified id, and a machine (the %test dev user's headers alone) is refused.
+   * qits-650: a campaign is never closed by hand — the door answers 409 — and it is DONE, by the
+   * system, the moment its last open member is closed or dropped; a DONE campaign holds nothing.
    */
   @Test
-  void aCampaignWhoseMembersAreAllClosedIsClosedStraightToDone() {
+  void aCampaignWhoseMembersAreAllClosedIsDerivedDone() {
+    WorkEntity open = ticket("Open member");
+    workEntities.transition(Archetype.TICKET, open.id, "REFINED", Mover.person("dev"));
     WorkEntity shipped = ticket("Shipped member");
     for (String status : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       workEntities.transition(Archetype.TICKET, shipped.id, status, Mover.person("dev"));
     }
-    WorkEntity open = ticket("Open member");
-    workEntities.transition(Archetype.TICKET, open.id, "REFINED", Mover.person("dev"));
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "Finished already", null, "t");
-    campaigns.addMember(campaign.id, shipped.id, null, false, "t");
     campaigns.addMember(campaign.id, open.id, null, false, "t");
+    campaigns.addMember(campaign.id, shipped.id, null, false, "t");
     String base = WORK + PROJECT + "-" + campaign.number;
-    move(base, "REFINED").statusCode(200);
+    given()
+        .get(base)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("REFINED"))
+        .body("heldBy", equalTo(List.of(PROJECT + "-" + open.number)));
 
     move(base, "DONE")
         .statusCode(409)
-        .body(
-            "message",
-            containsString(
-                "CHILDREN_CLOSED: a child is not closed yet: "
-                    + PROJECT
-                    + "-"
-                    + open.number
-                    + " (REFINED)"))
-        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
-        .body("message", org.hamcrest.Matchers.not(containsString("MEMBERS_SCHEDULED")));
+        .body("message", containsString("derived from its members"))
+        .body("message", org.hamcrest.Matchers.not(containsString("CHILDREN_CLOSED")));
     workEntities.transition(
         Archetype.TICKET,
         open.id,
@@ -517,21 +535,24 @@ class WorkCampaignApiTest {
         Mover.person("dev"),
         eu.wohlben.qits.entities.control.DropOutcome.of(
             eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO, null));
-    given()
-        .contentType(ContentType.JSON)
-        .body(WorkRequests.statusBody("DONE"))
-        .post(base + "/status")
-        .then()
-        .statusCode(409)
-        .body("message", containsString("closing to DONE needs a person or the delivery desk"));
-    given().get(base).then().statusCode(200).body("status", equalTo("REFINED"));
 
-    move(base, "DONE")
+    given()
+        .get(base)
+        .then()
         .statusCode(200)
         .body("status", equalTo("DONE"))
-        .body("statusBefore", equalTo("REFINED"))
-        .body("changedBy", equalTo("dev"));
-    given().get(base + "/progress").then().statusCode(200).body("progress.campaign.start", nullValue());
+        .body("heldBy", equalTo(List.of()));
+    given()
+        .get(base + "/members")
+        .then()
+        .statusCode(200)
+        .body("members.holdsStatus", equalTo(List.of(false, false)));
+    given()
+        .get(base + "/progress")
+        .then()
+        .statusCode(200)
+        .body("progress.campaign.start", nullValue())
+        .body("progress.campaign.heldBy", equalTo(List.of()));
   }
 
   // --- fixtures ------------------------------------------------------------------------------------

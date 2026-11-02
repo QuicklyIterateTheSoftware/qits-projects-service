@@ -219,13 +219,16 @@ class CampaignCriteriaClaimSeamTest {
     }
   }
 
-  /** A REFINED campaign over {@code members}, in order, each waiting on the previous one. */
+  /**
+   * A campaign over {@code members}, in order, each waiting on the previous one — its status
+   * derived from theirs (qits-650).
+   */
   private WorkEntity campaignOf(WorkEntity... members) {
     WorkEntity campaign = workEntities.createCampaign(projectId, "The order", null, "setup");
     for (WorkEntity member : members) {
       campaigns.addMember(campaign.id, member.id, null, false, "setup");
     }
-    return walk(campaign, "REFINED");
+    return workEntities.get(Archetype.CAMPAIGN, campaign.id);
   }
 
   private CampaignCriterion criterionOf(WorkEntity campaign, WorkEntity member) {

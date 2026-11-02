@@ -118,7 +118,6 @@ class EntityBlockApiTest {
   void aCampaignIsBlockedAndUnblocked() {
     EntityFixtures.Project project = EntityFixtures.project("Block Campaign");
     String campaign = EntityFixtures.campaign(project.id());
-    walk(campaign, "REFINED");
 
     setBlocked(campaign, true, "an operator has to widen the runner pool first")
         .statusCode(200)
@@ -226,7 +225,6 @@ class EntityBlockApiTest {
   void aBlockedCampaignIsNotStarted() {
     EntityFixtures.Project project = EntityFixtures.project("Block Dispatch Campaign");
     String campaign = EntityFixtures.campaign(project.id());
-    walk(campaign, "REFINED");
     setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
 
     given()
@@ -306,7 +304,6 @@ class EntityBlockApiTest {
   void aCampaignsBlockTellsNoAgent() {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Campaign");
     String campaign = EntityFixtures.campaign(project.id());
-    walk(campaign, "REFINED");
 
     setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
     setBlocked(campaign, false, null).statusCode(200);

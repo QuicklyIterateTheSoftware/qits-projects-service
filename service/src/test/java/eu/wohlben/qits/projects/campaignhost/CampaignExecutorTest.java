@@ -12,11 +12,13 @@ import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.api.DispatchMode;
@@ -339,20 +341,19 @@ class CampaignExecutorTest {
     assertNull(untouched.dispatchRefusal, "started by hand is not something wrong with it");
   }
 
-  // --- 5c. a campaign runs at REFINED and at READY_FOR_DEV (qits-942) -----------------------------
+  // --- 5c. a campaign runs while it is neither DONE nor DROPPED (qits-650) ------------------------
 
   /**
-   * A started campaign scheduled (REFINED → READY_FOR_DEV) keeps running: the move pauses nothing,
-   * and the executor claims the next member while the campaign is READY_FOR_DEV.
+   * A started campaign keeps running while its derived status moves with its members: no derived
+   * move pauses anything, and the executor claims the next member as the first is verified.
    */
   @Test
-  void aStartedCampaignKeepsRunningAcrossItsScheduling() {
+  void aStartedCampaignKeepsRunningAsItsDerivedStatusMoves() {
     WorkEntity first = scheduled("First");
     Fixture f = campaignOf(List.of(first, scheduled("Second")), List.of(false, false));
     press(f.campaign.id);
     assertEquals(1, port.calls().size(), "the first starts at the press");
 
-    walk(f.campaign, "READY_FOR_DEV");
     asAdmin("dana")
         .get("/projects/api/work/" + f.campaign.id + "/dispatch")
         .then()
@@ -371,13 +372,13 @@ class CampaignExecutorTest {
   }
 
   /**
-   * An unstarted campaign moved to READY_FOR_DEV stays unstarted — READY_FOR_DEV means "ready for
-   * development", not "start it" — until a person presses, which is accepted there.
+   * An unstarted campaign whose members are scheduled is READY_FOR_DEV (derived, qits-650) and stays
+   * unstarted until a person presses, which is accepted there.
    */
   @Test
-  void anUnstartedCampaignScheduledStartsNothingUntilItIsPressed() {
+  void anUnstartedCampaignOfScheduledMembersStartsNothingUntilItIsPressed() {
     Fixture f = campaignOf(scheduled("Ready"));
-    walk(f.campaign, "READY_FOR_DEV");
+    assertEquals("READY_FOR_DEV", workEntities.get(Archetype.CAMPAIGN, f.campaign.id).status);
 
     assertEquals(0, executor.sweep(f.campaign.id));
     assertEquals(0, executor.sweep());
@@ -444,19 +445,19 @@ class CampaignExecutorTest {
   // --- 8. paused until pressed; an approval does not wait for the sweep -------------------------
 
   @Test
-  void aCampaignMovedToReportedDispatchesNothingUntilPressedAgain() {
+  void aDroppedCampaignDispatchesNothingUntilReopenedAndPressedAgain() {
     Fixture f = campaignOf(scheduled("Gated"));
     String criterionId = gate(f, 0);
     press(f.campaign.id);
     assertEquals(0, port.calls().size(), "waits for the approval");
 
-    workEntities.transition(Archetype.CAMPAIGN, f.campaign.id, "REPORTED", "dana");
+    walk(f.campaign, "DROPPED");
+    walk(f.campaign, "REPORTED");
     campaigns.approve(f.campaign.id, f.membershipIds.get(0), criterionId, null, "dana");
     awaitQuiet();
-    workEntities.transition(Archetype.CAMPAIGN, f.campaign.id, "REFINED", "dana");
     assertEquals(0, executor.sweep(f.campaign.id));
     assertEquals(0, executor.sweep());
-    assertEquals(0, port.calls().size(), "moving back to REFINED is not a resume");
+    assertEquals(0, port.calls().size(), "reopening is not a resume");
 
     press(f.campaign.id);
     assertEquals(1, port.calls().size());
@@ -582,7 +583,7 @@ class CampaignExecutorTest {
   // --- 10. the door ------------------------------------------------------------------------------
 
   @Test
-  void thePressRefusesPhaseAndAnUnrefinedCampaignAndAnAgentAndTheReadSaysStartThenRecheck() {
+  void thePressRefusesPhaseAndADroppedCampaignAndAnAgentAndTheReadSaysStartThenRecheck() {
     Fixture f = campaignOf(scheduled("Door"), false);
     String path = "/projects/api/work/" + f.campaign.id + "/dispatch";
 
@@ -598,9 +599,9 @@ class CampaignExecutorTest {
         .post(path)
         .then()
         .statusCode(409)
-        .body("message", containsString("Start a campaign from REFINED"));
+        .body("message", containsString("neither DONE nor DROPPED"));
 
-    walk(f.campaign, "REFINED");
+    walk(f.campaign, "REPORTED");
     asAdmin("dana")
         .body(Map.of("mode", "PHASE"))
         .post(path)
@@ -656,22 +657,25 @@ class CampaignExecutorTest {
 
   // --- fixtures ---------------------------------------------------------------------------------
 
-  /** A campaign, REFINED unless told otherwise, and its members in order. */
+  /**
+   * A campaign and its members in order, its status derived from them (qits-650) — DROPPED by hand
+   * when told it is not to be open.
+   */
   private record Fixture(WorkEntity campaign, List<WorkEntity> members, List<String> membershipIds) {}
 
   private Fixture campaignOf(WorkEntity member) {
     return campaignOf(member, true);
   }
 
-  private Fixture campaignOf(WorkEntity member, boolean refined) {
-    return campaignOf(List.of(member), List.of(false), refined);
+  private Fixture campaignOf(WorkEntity member, boolean open) {
+    return campaignOf(List.of(member), List.of(false), open);
   }
 
   private Fixture campaignOf(List<WorkEntity> members, List<Boolean> inFlight) {
     return campaignOf(members, inFlight, true);
   }
 
-  private Fixture campaignOf(List<WorkEntity> members, List<Boolean> inFlight, boolean refined) {
+  private Fixture campaignOf(List<WorkEntity> members, List<Boolean> inFlight, boolean open) {
     WorkEntity campaign = workEntities.createCampaign(projectId, "The order", null, "setup");
     List<String> ids = new ArrayList<>();
     for (int i = 0; i < members.size(); i++) {
@@ -681,8 +685,8 @@ class CampaignExecutorTest {
               .membership()
               .id);
     }
-    if (refined) {
-      campaign = walk(campaign, "REFINED");
+    if (!open) {
+      campaign = walk(campaign, "DROPPED");
     }
     return new Fixture(campaign, members, ids);
   }
@@ -722,7 +726,17 @@ class CampaignExecutorTest {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, Mover.person("setup")).entity();
+      moved =
+          workEntities
+              .transition(
+                  row.archetype,
+                  row.id,
+                  status,
+                  Mover.person("setup"),
+                  "DROPPED".equals(status)
+                      ? DropOutcome.of(WorkOutcome.WONT_DO, null)
+                      : DropOutcome.NONE)
+              .entity();
     }
     return moved;
   }

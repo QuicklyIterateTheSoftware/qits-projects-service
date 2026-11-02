@@ -174,46 +174,47 @@ class DeskCoordinatorRightsDoorTest {
   }
 
   /**
-   * The desk closes a REFINED campaign whose members are all DONE straight to DONE — the CLOSE
-   * move, which neither PERSON_APPROVAL nor MEMBERS_SCHEDULED judges, so no start-refined stamp is
-   * needed — while an open member is a 409 naming it, and a plain agent of the same project is
-   * refused.
+   * The desk closes a REFINED epic whose children are all closed straight to DONE — the CLOSE move,
+   * which PERSON_APPROVAL does not judge, so no start-refined stamp is needed — while an open child
+   * is a 409 naming it, and a plain agent of the same project is refused. A campaign is closed by
+   * nobody (qits-650): its DONE is derived from its members.
    */
   @Test
-  void theDeskClosesACampaignWhoseMembersAreAllDone() {
+  void theDeskClosesAnEpicWhoseChildrenAreAllClosed() {
     String projectId = project("Desk closes");
-    String shipped = ticket(projectId);
-    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      status(person(), shipped, target).statusCode(200);
-    }
-    String open = ticket(projectId);
-    String campaign = campaign(projectId);
-    for (String member : List.of(shipped, open)) {
-      person()
-          .body(Map.of("entityId", member))
-          .when()
-          .post("/projects/api/work/" + campaign + "/members")
-          .then()
-          .statusCode(201);
-    }
-    status(person(), campaign, "REFINED").statusCode(200);
+    String epic = epic(projectId);
+    String open =
+        person()
+            .body(Map.of("archetype", "FEATURE", "parent", epic, "title", "Part"))
+            .when()
+            .post("/projects/api/work")
+            .then()
+            .statusCode(201)
+            .extract()
+            .path("id");
+    status(person(), epic, "REFINED").statusCode(200);
 
-    status(desk(projectId), campaign, "DONE")
+    status(desk(projectId), epic, "DONE")
         .statusCode(409)
-        .body("message", containsString("CHILDREN_CLOSED: a child is not closed yet: " + qualifiedIdOf(open) + " (REPORTED)"))
+        .body("message", containsString("CHILDREN_CLOSED: a child is not closed yet: " + qualifiedIdOf(open) + " (REFINED)"))
         .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
         .body("message", org.hamcrest.Matchers.not(containsString("needs a person or the delivery desk")));
     status(person(), open, "DROPPED").statusCode(200);
-    status(agent(projectId), campaign, "DONE")
+    status(agent(projectId), epic, "DONE")
         .statusCode(409)
         .body("message", containsString("closing to DONE needs a person or the delivery desk"));
-    org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(campaign));
+    org.junit.jupiter.api.Assertions.assertEquals("REFINED", statusOf(epic));
 
-    status(desk(projectId), campaign, "DONE")
+    status(desk(projectId), epic, "DONE")
         .statusCode(200)
         .body("status", equalTo("DONE"))
         .body("statusBefore", equalTo("REFINED"))
         .body("changedBy", equalTo(deskSubject(projectId)));
+
+    String campaign = campaign(projectId);
+    status(desk(projectId), campaign, "DONE")
+        .statusCode(409)
+        .body("message", containsString("derived from its members"));
   }
 
   /** A plain agent of the project: {@code qits:agent} and no desk role. */

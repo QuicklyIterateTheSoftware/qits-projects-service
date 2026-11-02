@@ -128,7 +128,8 @@ class ScheduleNeedsAPersonDoorTest {
     return id;
   }
 
-  private static String refinedCampaign(String projectId) {
+  /** A campaign gathering {@code memberId}: its status is derived from the member's (qits-650). */
+  private static String campaignOf(String projectId, String memberId) {
     String id =
         session("ada", "ada")
             .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "The order"))
@@ -138,9 +139,16 @@ class ScheduleNeedsAPersonDoorTest {
             .statusCode(201)
             .extract()
             .path("id");
-    status(session("ada", "ada"), id, "REFINED").statusCode(200);
+    session("ada", "ada")
+        .body(Map.of("entityId", memberId))
+        .when()
+        .post("/projects/api/work/" + id + "/members")
+        .then()
+        .statusCode(201);
     return id;
   }
+
+  private static final String DERIVED = "derived from its members";
 
   private static ValidatableResponse status(RequestSpecification caller, String id, String target) {
     return caller
@@ -175,40 +183,40 @@ class ScheduleNeedsAPersonDoorTest {
         .statusCode(200)
         .body("status", equalTo("READY_FOR_DEV"))
         .body("changedBy", equalTo("ada"));
-    status(session("mallory", "ada"), refinedCampaign(projectId), "READY_FOR_DEV")
-        .statusCode(200)
-        .body("status", equalTo("READY_FOR_DEV"))
-        .body("changedBy", equalTo("ada"));
+    // A campaign is scheduled by nobody (qits-650): its status is derived from its members.
+    String campaignId = campaignOf(projectId, refined(projectId, "TICKET"));
+    stillRefined(campaignId);
+    status(session("mallory", "ada"), campaignId, "READY_FOR_DEV")
+        .statusCode(409)
+        .body("message", containsString(DERIVED))
+        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")));
   }
 
   /**
-   * A campaign is ready for dev when its members are (qits-942): a person's move of the campaign is
-   * refused while a member is still REFINED, naming it, and goes through once it is scheduled. A
-   * machine is refused by both gates at once.
+   * A campaign is READY_FOR_DEV when its members are (qits-942), and since qits-650 it gets there by
+   * itself: its own move is a 409 for anybody, and a person's scheduling of its last REFINED member
+   * moves it.
    */
   @Test
-  void aCampaignIsScheduledByAPersonOnceItsMembersAre() {
+  void aCampaignIsReadyForDevOnceItsMembersAre() {
     String projectId = project("Campaign members scheduled");
-    String campaignId = refinedCampaign(projectId);
     String memberId = refined(projectId, "TICKET");
-    session("ada", "ada")
-        .body(Map.of("entityId", memberId))
-        .when()
-        .post("/projects/api/work/" + campaignId + "/members")
-        .then()
-        .statusCode(201);
+    String campaignId = campaignOf(projectId, memberId);
 
     status(session("ada", "ada"), campaignId, "READY_FOR_DEV")
         .statusCode(409)
-        .body("message", containsString("MEMBERS_SCHEDULED: a member is not READY_FOR_DEV yet: "))
-        .body("message", containsString(" (REFINED)"));
+        .body("message", containsString(DERIVED));
     status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
         .statusCode(409)
-        .body("message", containsString("MEMBERS_SCHEDULED: "))
-        .body("message", containsString(REFUSAL));
+        .body("message", containsString(DERIVED))
+        .body("message", org.hamcrest.Matchers.not(containsString(REFUSAL)));
+    stillRefined(campaignId);
 
     status(session("ada", "ada"), memberId, "READY_FOR_DEV").statusCode(200);
-    status(session("ada", "ada"), campaignId, "READY_FOR_DEV")
+    session("ada", "ada")
+        .when()
+        .get("/projects/api/work/" + campaignId)
+        .then()
         .statusCode(200)
         .body("status", equalTo("READY_FOR_DEV"));
   }
@@ -254,10 +262,10 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(agent(projectId)), id, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
-    String campaignId = refinedCampaign(projectId);
+    String campaignId = campaignOf(projectId, refined(projectId, "TICKET"));
     status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
         .statusCode(409)
-        .body("message", containsString(REFUSAL));
+        .body("message", containsString(DERIVED));
     // An agent reaches an epic's status door of its own project since qits-1174, and meets the
     // same gate there.
     status(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV")
@@ -296,37 +304,67 @@ class ScheduleNeedsAPersonDoorTest {
 
   /**
    * CLOSE straight to DONE is no scheduling: PERSON_APPROVAL never judges it. An agent's bearer is
-   * refused by CHILDREN_CLOSED alone, naming no scheduling gate, and a person closes the REFINED
-   * campaign whose one member is DONE under the session's name.
+   * refused by CHILDREN_CLOSED alone, naming no scheduling gate, and a person closes the REFINED epic
+   * whose one feature is dropped under the session's name. A campaign closes by nobody's hand
+   * (qits-650): it is DONE once its members are.
    */
   @Test
   void aCloseIsNotJudgedByPersonApproval() {
     String projectId = project("Close is no scheduling");
-    String memberId = refined(projectId, "TICKET");
-    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      status(session("ada", "ada"), memberId, target).statusCode(200);
-    }
-    String campaignId = refinedCampaign(projectId);
-    session("ada", "ada")
-        .body(Map.of("entityId", memberId))
-        .when()
-        .post("/projects/api/work/" + campaignId + "/members")
-        .then()
-        .statusCode(201);
+    String epicId =
+        session("ada", "ada")
+            .body(
+                Map.of(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", "Planned",
+                    "acceptanceCriteria", List.of("It is planned.")))
+            .when()
+            .post("/projects/api/work")
+            .then()
+            .statusCode(201)
+            .extract()
+            .path("id");
+    String featureId =
+        session("ada", "ada")
+            .body(Map.of("archetype", "FEATURE", "parent", epicId, "title", "Part"))
+            .when()
+            .post("/projects/api/work")
+            .then()
+            .statusCode(201)
+            .extract()
+            .path("id");
+    status(session("ada", "ada"), epicId, "REFINED").statusCode(200);
+    status(session("ada", "ada"), featureId, "DROPPED").statusCode(200);
 
-    status(bearer(agent(projectId)), campaignId, "DONE")
+    status(bearer(agent(projectId)), epicId, "DONE")
         .statusCode(409)
         .body("message", containsString("CHILDREN_CLOSED: closing to DONE needs a person or the delivery desk"))
-        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")))
-        .body("message", org.hamcrest.Matchers.not(containsString("MEMBERS_SCHEDULED")));
-    stillRefined(campaignId);
+        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")));
+    stillRefined(epicId);
 
-    status(session("mallory", "ada"), campaignId, "DONE")
+    status(session("mallory", "ada"), epicId, "DONE")
         .statusCode(200)
         .body("status", equalTo("DONE"))
         .body("statusBefore", equalTo("REFINED"))
         .body("changedBy", equalTo("ada"));
+
+    String memberId = refined(projectId, "TICKET");
+    String campaignId = campaignOf(projectId, memberId);
+    status(session("ada", "ada"), campaignId, "DONE")
+        .statusCode(409)
+        .body("message", containsString(DERIVED));
+    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      status(session("ada", "ada"), memberId, target).statusCode(200);
+    }
+    session("ada", "ada")
+        .when()
+        .get("/projects/api/work/" + campaignId)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("DONE"));
   }
+
 
   // --- the dispatch door's scheduling (qits-1075) -------------------------------------------------
 

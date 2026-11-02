@@ -200,7 +200,15 @@ public class WorkRefinementControllerTest {
         .body("refinements.size()", equalTo(1));
 
     String frozen = campaigns.createCampaign(projectId, "Summer cleaning", null, "dana").id;
-    transition(frozen, "REFINED");
+    // Its status is derived from its members (qits-650): one REFINED member makes it REFINED.
+    String member = createTicket(projectId, "Decided already");
+    transition(member, "REFINED");
+    asAdmin()
+        .body(java.util.Map.of("entityId", member))
+        .when()
+        .post("/projects/api/work/" + frozen + "/members")
+        .then()
+        .statusCode(201);
     open(frozen)
         .then()
         .statusCode(409)

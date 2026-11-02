@@ -1211,9 +1211,10 @@ public class ProviderStates {
   }
 
   /**
-   * A REFINED campaign ordering three developments: a VERIFIED epic, a REFINED epic with an open
-   * feature, and a REPORTED ticket; plus one IMPLEMENTED ticket outside any campaign. Recorded for
-   * the entity list and for the campaign itself (its members, in order).
+   * A campaign ordering three developments: a VERIFIED epic, a REFINED epic with an open feature,
+   * and a REPORTED ticket — so it is REPORTED, its status derived from its members (qits-650); plus
+   * one IMPLEMENTED ticket outside any campaign. Recorded for the entity list and for the campaign
+   * itself (its members, in order).
    */
   private Setup aCampaignWithOrderedDevelopments() {
     String token = token();
@@ -1231,7 +1232,6 @@ public class ProviderStates {
     for (String member : List.of(shipped, running, waiting)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
-    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
     return new Setup(
         params(
             "campaignId",
@@ -1356,10 +1356,13 @@ public class ProviderStates {
   }
 
   /**
-   * A REFINED (running) campaign for the landing app's campaign views, with five members in this
-   * order: a DONE ticket; a DONE epic whose feature and two tasks are DONE; a VERIFIED epic whose
-   * feature and two tasks are VERIFIED; the IMPLEMENTING epic of {@link
-   * #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. Recorded for the
+   * A REFINED campaign — derived from its REFINED ticket (qits-650) — for the landing app's campaign
+   * views, with five members in this order: a DONE ticket; a DONE epic whose feature and two tasks
+   * are DONE; a VERIFIED epic whose feature and two tasks are VERIFIED; the IMPLEMENTING epic of
+   * {@link #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. The open
+   * two are added first and the finished three put in front of them, because a campaign whose only
+   * member is DONE is DONE, and DONE is final. The seeds are the same as an add in order makes: a
+   * finished predecessor seeds nothing. Recorded for the
    * entity list, for the campaign, and for the detail page's reads of the campaign item (its
    * {@code qualifiedId} param); the params name every member, so all answers give each member the
    * same frozen id.
@@ -1385,11 +1388,12 @@ public class ProviderStates {
     String implementingEpic = epicWithFeaturesInMixedStatuses(project, repositoryId);
     walk(Archetype.TICKET, doneTicket, EntityStatus.DONE);
     work.transition(Archetype.TICKET, refinedTicket, "REFINED", SEEDER);
-    for (String member :
-        List.of(doneTicket, doneEpic, verifiedEpic, implementingEpic, refinedTicket)) {
+    for (String member : List.of(implementingEpic, refinedTicket)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
-    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    for (String member : List.of(verifiedEpic, doneEpic, doneTicket)) {
+      campaigns.addMember(campaign, member, 0, false, SEEDER);
+    }
     return new Setup(
         params(
             "campaignId", campaign,
@@ -1815,9 +1819,10 @@ public class ProviderStates {
   }
 
   /**
-   * A REFINED campaign whose members sit in every phase: a REFINED epic and a REFINED ticket (the
-   * board), a REPORTED ticket (the backlog) and a DONE ticket (the archive), plus one REFINED ticket
-   * outside the campaign. Recorded for the entity list and for the campaign.
+   * A campaign whose members sit in every phase: a REFINED epic and a REFINED ticket (the board), a
+   * REPORTED ticket (the backlog) and a DONE ticket (the archive) — so it is REPORTED, derived from
+   * them (qits-650) — plus one REFINED ticket outside the campaign. Recorded for the entity list and
+   * for the campaign.
    *
    * <p>The params name every member, so both answers number the same entity with the same frozen
    * id: the freezer numbers the params first, and a consumer can join the campaign's members to the
@@ -1839,7 +1844,6 @@ public class ProviderStates {
     for (String member : List.of(epic, refined, reported, done)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
-    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
     return new Setup(
         params(
             "campaignId", campaign,
@@ -1854,7 +1858,8 @@ public class ProviderStates {
   }
 
   /**
-   * A REFINED epic that is a member of two REFINED campaigns, and nothing else. Recorded as two
+   * A REFINED epic that is a member of two campaigns — REFINED, both derived from it (qits-650) — and
+   * nothing else. Recorded as two
    * states with the same seed: {@link #AN_EPIC_IN_TWO_CAMPAIGNS} for the entity list and the first
    * campaign, {@link #THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS} for the second campaign (a
    * state records one answer per operation).
@@ -1872,7 +1877,6 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     for (String campaign : List.of(first, second)) {
       campaigns.addMember(campaign, epic, null, false, SEEDER);
-      work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
     }
     return new Setup(
         params(
@@ -2184,7 +2188,6 @@ public class ProviderStates {
                     new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
                         null, "APPROVAL", null)))),
         PERSON);
-    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
 
     // Threads, oldest first. The block's reason lands on the bug's thread as the last remark.
     comments.addComment(

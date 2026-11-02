@@ -93,14 +93,15 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "gathers", equalTo(false))
         .body(at("TASK") + "gathers", equalTo(false))
         .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
-        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("READY_FOR_DEV", "REPORTED", "DONE", "DROPPED"))
-        .body(
-            at("CAMPAIGN") + "transitions.READY_FOR_DEV.to",
-            contains("IMPLEMENTED", "REFINED", "DONE", "DROPPED"))
-        .body(
-            at("CAMPAIGN") + "transitions.IMPLEMENTED.to",
-            contains("VERIFIED", "READY_FOR_DEV", "DONE", "DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DONE", "IMPLEMENTED", "DROPPED"))
+        // Its status is derived from its members (qits-650): the drop and the reopen alone.
+        .body(at("CAMPAIGN") + "transitions.REPORTED.to", contains("DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.READY_FOR_DEV.to", contains("DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.IMPLEMENTED.to", contains("DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.DONE.size()", equalTo(0))
+        .body(at("CAMPAIGN") + "transitions.DROPPED.to", contains("REPORTED"))
+        .body(at("CAMPAIGN") + "transitions.DROPPED.kind", contains("REOPEN"))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
 
@@ -338,9 +339,9 @@ class EntityArchetypesApiTest {
   }
 
   /**
-   * qits-1757: a campaign, an epic and a feature serve a CLOSE to DONE from every open status they
-   * hold but VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and
-   * a ticket and a task serve no CLOSE.
+   * qits-1757: an epic and a feature serve a CLOSE to DONE from every open status they hold but
+   * VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and a ticket,
+   * a task and (qits-650, its DONE is derived) a campaign serve no CLOSE.
    */
   @Test
   void theGatheringKindsServeACloseToDoneGatedByChildrenClosed() {
@@ -351,8 +352,7 @@ class EntityArchetypesApiTest {
                     "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
             "FEATURE",
                 List.of(
-                    "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
-            "CAMPAIGN", List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED"));
+                    "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
     closing.forEach(
         (archetype, statuses) -> {
           for (String from : statuses) {
@@ -368,7 +368,7 @@ class EntityArchetypesApiTest {
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.kind", equalTo("FORWARD"))
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.gates", nullValue());
         });
-    for (String archetype : List.of("TICKET", "TASK")) {
+    for (String archetype : List.of("TICKET", "TASK", "CAMPAIGN")) {
       Map<String, List<Map<String, Object>>> moves =
           document().extract().path(at(archetype) + "transitions");
       moves.forEach(

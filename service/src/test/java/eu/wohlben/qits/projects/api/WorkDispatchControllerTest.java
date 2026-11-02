@@ -92,14 +92,21 @@ public class WorkDispatchControllerTest {
   // ---- a campaign's press is its start (qits-417) ----------------------------------------------
 
   /**
-   * A campaign is never dispatched onto a workspace: its press is its start, which a REPORTED
-   * campaign refuses, and its read answers the campaign's own state. The start itself is {@code
-   * campaignhost/CampaignExecutorTest}'s.
+   * A campaign is never dispatched onto a workspace: its press is its start, which a DROPPED
+   * campaign refuses (qits-650: it runs at every other status), and its read answers the campaign's
+   * own state. The start itself is {@code campaignhost/CampaignExecutorTest}'s.
    */
   @Test
   void aCampaignsPressIsItsStartAndItsReadSaysSo() {
     String projectId = createProject("Dispatch Campaign");
     String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
+    workEntities.transition(
+        eu.wohlben.qits.entities.entity.Archetype.CAMPAIGN,
+        campaignId,
+        "DROPPED",
+        "setup",
+        eu.wohlben.qits.entities.control.DropOutcome.of(
+            eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO, null));
 
     asAdmin("dana")
         .body(Map.of("mode", "FLOW"))
@@ -107,14 +114,14 @@ public class WorkDispatchControllerTest {
         .post("/projects/api/work/" + campaignId + "/dispatch")
         .then()
         .statusCode(409)
-        .body("message", containsString("Start a campaign from REFINED"));
+        .body("message", containsString("neither DONE nor DROPPED"));
     asAdmin("dana")
         .when()
         .get("/projects/api/work/" + campaignId + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.archetype", equalTo("CAMPAIGN"))
-        .body("state.status", equalTo("REPORTED"))
+        .body("state.status", equalTo("DROPPED"))
         .body("state.nextPhase", equalTo("start"))
         .body("state.dispatchable", equalTo(false))
         .body("state.mode", nullValue());
