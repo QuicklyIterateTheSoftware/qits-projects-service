@@ -1,8 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.aMapWithSize;
-import static org.hamcrest.Matchers.anEmptyMap;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,7 +37,7 @@ import org.junit.jupiter.api.Test;
  * <p>Since qits-1815 the board asks for a whole project at once instead — {@code GET
  * /projects/{project}/work/workspaces} ({@link ProjectWorkWorkspacesController}) — and that read
  * pins the batching again: one lookup for the project's tickets and epics, each answer on its own
- * row's key.
+ * row's entry.
  */
 @QuarkusTest
 public class DispatchedWorkspacesReadTest {
@@ -208,6 +206,11 @@ public class DispatchedWorkspacesReadTest {
 
   // --- a whole project at once (qits-1815) -------------------------------------------------------
 
+  /** The GPath naming the one entry of {@code workId} in the answer's list. */
+  private static String entry(String workId) {
+    return "workspaces.find { it.workId == '" + workId + "' }";
+  }
+
   private String slugOf(String projectId) {
     return asAdmin()
         .when()
@@ -219,8 +222,8 @@ public class DispatchedWorkspacesReadTest {
   }
 
   /**
-   * <b>One read, one lookup, each row's agents on its own key.</b> The ticket and the epic carry
-   * theirs, the ticket nobody works on has no key at all, and the other project's row — asked about
+   * <b>One read, one lookup, each row's agents in its own entry.</b> The ticket and the epic carry
+   * theirs, in tree order and named both ways, the ticket nobody works on has no entry at all, and the other project's row — asked about
    * by nobody here — is never drawn on this one, though the far side (scripted to answer every
    * lookup with everything) names it.
    */
@@ -244,18 +247,23 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + projectId + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces", aMapWithSize(2))
-        .body("workspaces.'" + ticketId + "'", hasSize(2))
-        .body("workspaces.'" + ticketId + "'[0].agentId", equalTo("agent-41"))
-        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(41))
-        .body("workspaces.'" + ticketId + "'[0].repositoryId", equalTo("repo-1"))
-        .body("workspaces.'" + ticketId + "'[0].branch", equalTo("ticket/contract-1"))
-        .body("workspaces.'" + ticketId + "'[0].status", equalTo("ACTIVE"))
-        .body("workspaces.'" + ticketId + "'[1].status", equalTo("OBSOLETE"))
-        .body("workspaces.'" + epicId + "'", hasSize(1))
-        .body("workspaces.'" + epicId + "'[0].workspaceRowId", equalTo(77))
-        .body("workspaces.'" + idleTicket + "'", equalTo(null))
-        .body("workspaces.'" + otherTicket + "'", equalTo(null));
+        .body("workspaces", hasSize(2))
+        // The listing's tree order: the ticket was filed before the epic.
+        .body("workspaces[0].workId", equalTo(ticketId))
+        .body("workspaces[0].qualifiedId", equalTo(WorkRequests.qualifiedId(ticketId)))
+        .body("workspaces[1].workId", equalTo(epicId))
+        .body("workspaces[1].qualifiedId", equalTo(WorkRequests.qualifiedId(epicId)))
+        .body(entry(ticketId) + ".workspaces", hasSize(2))
+        .body(entry(ticketId) + ".workspaces[0].agentId", equalTo("agent-41"))
+        .body(entry(ticketId) + ".workspaces[0].workspaceRowId", equalTo(41))
+        .body(entry(ticketId) + ".workspaces[0].repositoryId", equalTo("repo-1"))
+        .body(entry(ticketId) + ".workspaces[0].branch", equalTo("ticket/contract-1"))
+        .body(entry(ticketId) + ".workspaces[0].status", equalTo("ACTIVE"))
+        .body(entry(ticketId) + ".workspaces[1].status", equalTo("OBSOLETE"))
+        .body(entry(epicId) + ".workspaces", hasSize(1))
+        .body(entry(epicId) + ".workspaces[0].workspaceRowId", equalTo(77))
+        .body(entry(idleTicket), equalTo(null))
+        .body(entry(otherTicket), equalTo(null));
 
     // Once for the project, about its tickets and epics alone — never its feature, never the
     // other project's rows.
@@ -277,10 +285,10 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + slugOf(projectId) + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(43));
+        .body(entry(ticketId) + ".workspaces[0].workspaceRowId", equalTo(43));
   }
 
-  /** Nobody working on anything is an empty map, not an absent member. */
+  /** Nobody working on anything is an empty list, not an absent member. */
   @Test
   public void aProjectNobodyWorksOnAnswersAnEmptyMap() {
     String projectId = createProject("Referenced idle board");
@@ -291,7 +299,7 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + projectId + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces", anEmptyMap());
+        .body("workspaces", hasSize(0));
   }
 
   /** A project with no tickets or epics asks nobody at all. */
@@ -304,7 +312,7 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + projectId + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces", anEmptyMap());
+        .body("workspaces", hasSize(0));
     assertTrue(dispatch.lookups().isEmpty(), "a project with no work asked qits-workspaces");
   }
 
@@ -332,7 +340,7 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + projectId + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces.'" + ticketId + "'[0].workspaceRowId", equalTo(44));
+        .body(entry(ticketId) + ".workspaces[0].workspaceRowId", equalTo(44));
   }
 
   /** The longer template does not take the listing's route: {@code /work} still lists. */
@@ -352,7 +360,7 @@ public class DispatchedWorkspacesReadTest {
   /**
    * The provider state a consumer's pact of this door names ({@link
    * ProviderStates#A_PROJECT_WHOSE_WORK_HAS_WORKSPACES}) serves what its javadoc promises: two
-   * keys, the ticket's two agents and the epic's one, and the idle ticket left out. Its script is
+   * entries, the ticket's two agents and the epic's one, and the idle ticket left out. Its script is
    * gone again after {@link ProviderStates#cleanUp()}.
    */
   @Test
@@ -365,13 +373,13 @@ public class DispatchedWorkspacesReadTest {
           .get("/projects/api/projects/" + params.get("projectId") + "/work/workspaces")
           .then()
           .statusCode(200)
-          .body("workspaces", aMapWithSize(2))
-          .body("workspaces.'" + params.get("ticketId") + "'", hasSize(2))
-          .body("workspaces.'" + params.get("ticketId") + "'[0].status", equalTo("ACTIVE"))
-          .body("workspaces.'" + params.get("ticketId") + "'[1].status", equalTo("OBSOLETE"))
-          .body("workspaces.'" + params.get("epicId") + "'", hasSize(1))
-          .body("workspaces.'" + params.get("epicId") + "'[0].agentId", equalTo("agent-42"))
-          .body("workspaces.'" + params.get("idleTicketId") + "'", equalTo(null));
+          .body("workspaces", hasSize(2))
+          .body(entry(params.get("ticketId")) + ".workspaces", hasSize(2))
+          .body(entry(params.get("ticketId")) + ".workspaces[0].status", equalTo("ACTIVE"))
+          .body(entry(params.get("ticketId")) + ".workspaces[1].status", equalTo("OBSOLETE"))
+          .body(entry(params.get("epicId")) + ".workspaces", hasSize(1))
+          .body(entry(params.get("epicId")) + ".workspaces[0].agentId", equalTo("agent-42"))
+          .body(entry(params.get("idleTicketId")), equalTo(null));
     } finally {
       states.cleanUp();
     }
@@ -380,6 +388,6 @@ public class DispatchedWorkspacesReadTest {
         .get("/projects/api/projects/" + params.get("projectId") + "/work/workspaces")
         .then()
         .statusCode(200)
-        .body("workspaces", anEmptyMap());
+        .body("workspaces", hasSize(0));
   }
 }

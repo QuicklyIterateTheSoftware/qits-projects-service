@@ -193,10 +193,10 @@ public class ProviderStates {
   /**
    * A project whose board has agents on it (qits-1815): a REPORTED ticket with two agents — one
    * ACTIVE, one OBSOLETE — a REPORTED epic with one ACTIVE agent, and a REPORTED ticket nobody
-   * works on, so {@code GET /projects/{projectId}/work/workspaces} answers two keys and leaves one
-   * row out. Params: {@code projectId}, {@code ticketId}, {@code epicId}, {@code idleTicketId} (the
-   * work entities' UUIDs, which are the answer's keys) and {@code ticketQualifiedId}, {@code
-   * epicQualifiedId}. The agents are the dispatch port's script, cleared by {@link #cleanUp()}.
+   * works on, so {@code GET /projects/{projectId}/work/workspaces} answers two entries — the
+   * ticket's, then the epic's, in tree order — and leaves one row out. Params: {@code projectId},
+   * {@code ticketId}, {@code epicId}, {@code idleTicketId} (the work entities' UUIDs, each entry's
+   * {@code workId}) and {@code ticketQualifiedId}, {@code epicQualifiedId}. The agents are the dispatch port's script, cleared by {@link #cleanUp()}.
    */
   public static final String A_PROJECT_WHOSE_WORK_HAS_WORKSPACES =
       "a project whose work has workspaces";

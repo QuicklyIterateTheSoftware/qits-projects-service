@@ -1068,6 +1068,12 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_REPORTED_TICKET,
             "listWorkWorkspaces",
             "/projects/api/work/{qualifiedId}/workspaces"));
+    // The board's one read for a whole project (qits-1815): two entries, the idle ticket left out.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WHOSE_WORK_HAS_WORKSPACES,
+            "listProjectWorkWorkspaces",
+            "/projects/api/projects/{projectId}/work/workspaces"));
     all.add(
         read(
             ProviderStates.A_REPORTED_TICKET,

@@ -2259,14 +2259,13 @@ components:
     ProjectWorkWorkspaces:
       type: object
       description: "The workspaces a dispatch stood on each of a project's tickets\
-        \ and epics, keyed by the work entity's id; an entity with none has no key."
+        \ and epics: one entry per entity that has any, in the project listing's tree\
+        \ order."
       properties:
         workspaces:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              $ref: "#/components/schemas/WorkspaceReferenceDto"
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkEntityWorkspaces"
     RefinementDto:
       type: object
       properties:
@@ -3727,6 +3726,21 @@ components:
           type: integer
           format: int64
           description: The version read before the write; a stale one is a 409.
+    WorkEntityWorkspaces:
+      type: object
+      description: The workspaces a dispatch stood on one ticket's or epic's branch.
+      properties:
+        workId:
+          type: string
+          description: The work entity's id (UUID).
+        qualifiedId:
+          type: string
+          description: "The work entity's qualified id, <projectSlug>-<n>."
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceReferenceDto"
+          description: "Its workspaces, live and resolved alike; never empty."
     WorkList:
       type: object
       description: "A project's work entities, in tree order."
@@ -5773,8 +5787,9 @@ paths:
       summary: The workspaces naming every ticket and epic of a project
       description: "For each of the project's tickets and epics, in every status,\
         \ every workspace a dispatch stood on its branch, live and resolved alike,\
-        \ each with its status — keyed by the work entity's id (UUID). An entity with\
-        \ no workspaces has no key; the map is empty when qits-workspaces cannot be\
+        \ each with its status: one entry per entity that has any, naming it by id\
+        \ and qualified id, in the project listing's tree order. An entity with no\
+        \ workspaces has no entry; the list is empty when qits-workspaces cannot be\
         \ asked. The project is its id or its slug."
       operationId: listProjectWorkWorkspaces
       parameters:
@@ -5785,7 +5800,7 @@ paths:
           type: string
       responses:
         "200":
-          description: "The workspaces, by work entity id"
+          description: "The workspaces, one entry per work entity"
           content:
             application/json:
               schema:

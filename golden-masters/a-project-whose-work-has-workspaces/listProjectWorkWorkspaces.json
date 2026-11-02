@@ -1,0 +1,40 @@
+{
+  "workspaces": [
+    {
+      "workId": "00000000-0000-4000-8000-000000000004",
+      "qualifiedId": "contract-00000001-1",
+      "workspaces": [
+        {
+          "agentId": "agent-41",
+          "workspaceRowId": 41,
+          "repositoryId": "repo-1",
+          "workspaceId": null,
+          "branch": "ticket/contract-00000001-1",
+          "status": "ACTIVE"
+        },
+        {
+          "agentId": "agent-40",
+          "workspaceRowId": 40,
+          "repositoryId": "repo-1",
+          "workspaceId": null,
+          "branch": "ticket/contract-00000001-1",
+          "status": "OBSOLETE"
+        }
+      ]
+    },
+    {
+      "workId": "00000000-0000-4000-8000-000000000001",
+      "qualifiedId": "contract-00000001-2",
+      "workspaces": [
+        {
+          "agentId": "agent-42",
+          "workspaceRowId": 42,
+          "repositoryId": "repo-1",
+          "workspaceId": null,
+          "branch": "epic/contract-00000001-2",
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  ]
+}

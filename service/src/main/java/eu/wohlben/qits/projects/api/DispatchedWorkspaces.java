@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.control.EntitySummary;
 import eu.wohlben.qits.entities.dto.WorkspaceReferenceDto;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -48,7 +49,7 @@ public class DispatchedWorkspaces {
    * ticket and an epic are dispatched onto a branch, so every other archetype has none.
    */
   public List<WorkspaceReferenceDto> referencing(WorkEntity entity) {
-    if (!dispatched(entity) || dispatch.isUnsatisfied()) {
+    if (!dispatched(entity.archetype) || dispatch.isUnsatisfied()) {
       return List.of();
     }
     return dispatch.get().agentsFor(List.of(entity.id)).stream()
@@ -71,17 +72,19 @@ public class DispatchedWorkspaces {
    * about: an agent of some other row never becomes a link on this page. A row with no agents has
    * no key at all.
    *
+   * @param entities a project's listing — the rows' ids and archetypes are all that is read
    * @return work entity id → its workspaces, in the order the port answered them; never null, and
-   *     empty when the port is absent or nothing was asked about
+   *     empty when the port is absent or nothing was asked about. The caller orders the rows
    */
-  public Map<String, List<WorkspaceReferenceDto>> referencingAll(Collection<WorkEntity> entities) {
+  public Map<String, List<WorkspaceReferenceDto>> referencingAll(
+      Collection<EntitySummary> entities) {
     if (dispatch.isUnsatisfied() || entities == null) {
       return Map.of();
     }
     Set<String> asked =
         entities.stream()
-            .filter(DispatchedWorkspaces::dispatched)
-            .map(entity -> entity.id)
+            .filter(entity -> dispatched(entity.archetype()))
+            .map(EntitySummary::id)
             .collect(Collectors.toCollection(LinkedHashSet::new));
     if (asked.isEmpty()) {
       return Map.of();
@@ -96,8 +99,8 @@ public class DispatchedWorkspaces {
   }
 
   /** Only a ticket and an epic are ever dispatched onto a branch. */
-  private static boolean dispatched(WorkEntity entity) {
-    return entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;
+  private static boolean dispatched(Archetype archetype) {
+    return archetype == Archetype.TICKET || archetype == Archetype.EPIC;
   }
 
   /**
