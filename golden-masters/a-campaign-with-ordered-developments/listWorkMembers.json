@@ -9,7 +9,8 @@
         "qualifiedId": "contract-00000001-2",
         "title": "Verified epic",
         "status": "VERIFIED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -33,7 +34,8 @@
         "qualifiedId": "contract-00000001-3",
         "title": "Running epic",
         "status": "REFINED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -57,7 +59,8 @@
         "qualifiedId": "contract-00000001-5",
         "title": "Waiting ticket",
         "status": "REPORTED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,

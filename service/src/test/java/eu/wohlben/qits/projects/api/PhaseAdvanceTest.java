@@ -548,6 +548,57 @@ public class PhaseAdvanceTest {
   }
 
   /**
+   * <b>A ticket reserved for a person delivers no turn</b> (qits-634) — the row handed straight to
+   * the bean, at READY_FOR_DEV, so the empty list is the tag and nothing about the status.
+   */
+  @Test
+  public void aTicketReservedForHumanDeliversNoTurn() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    WorkEntity reserved = new WorkEntity();
+    reserved.id = "tkt-reserved";
+    reserved.projectId = "prj-reserved";
+    reserved.archetype = Archetype.TICKET;
+    reserved.title = "A person's work";
+    reserved.slug = "a-persons-work";
+    reserved.ticketType = TicketType.BUG;
+    reserved.status = EntityStatus.READY_FOR_DEV.name();
+    reserved.dispatchContinues = true;
+    reserved.tags.add(eu.wohlben.qits.entities.entity.WorkTag.RESERVED_FOR_HUMAN);
+
+    advance.afterTransition(reserved, null, "dana");
+
+    assertEquals(List.of(), turns.calls(), "the tag, not the status, delivered nothing");
+    assertEquals(List.of(), workspaces.lookups(), "and nothing was asked about its branch");
+  }
+
+  /**
+   * Unlike the block, the tag survives the transition (qits-634), so this arm fires on the moves a
+   * person makes through the door: the move back to IMPLEMENTING that starts implementation again
+   * for an untagged ticket ({@link #aMoveBackToImplementingStartsTheImplementPhase}) starts nothing
+   * for a reserved one.
+   */
+  @Test
+  public void aStatusMoveOfATicketReservedForHumanDeliversNoTurn() {
+    String projectId = createProject("Advance Reserved");
+    String ticketId = createTicket(projectId, "A person fixes this");
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED"); // the skip
+    asAdmin("dana")
+        .contentType("application/merge-patch+json")
+        .body(Map.of("tags", List.of("RESERVED_FOR_HUMAN")))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "IMPLEMENTING");
+
+    assertEquals(List.of(), turns.calls(), "a reserved ticket is handed no phase");
+  }
+
+  /**
    * REPORTED is reached by <b>moving back</b> into it, since a ticket is created there rather than
    * transitioned into it — and the refine phase is what runs while it holds, whichever way the
    * ticket arrived.

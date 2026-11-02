@@ -19,7 +19,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.Fetch;
@@ -498,6 +500,30 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   @OrderColumn(name = "position")
   @Column(name = "text", nullable = false)
   public List<String> acceptanceCriteria = new ArrayList<>();
+
+  /**
+   * <b>The tags</b> (qits-634, epics V36): facts from the closed vocabulary {@link WorkTag} — today
+   * {@link WorkTag#RESERVED_FOR_HUMAN} alone, which the dispatch refuses and the phase advance skips.
+   * Any archetype may carry them, at every status: a tag says who may do the work, never what the
+   * work is, so no scope freeze judges it.
+   *
+   * <p><b>Not an {@code EntityProperty}</b>, for {@link #blocked}'s reason: the whole-state
+   * transition would clear a registry property it was not restated in, and a tag must outlive every
+   * reshape and every status move. Nothing but a patch (or a create) writes it.
+   *
+   * <p>Loaded with the row like {@link #acceptanceCriteria}, and written in place ({@code clear()}
+   * then {@code addAll}). A set has no order, so every answer lists it in declaration order ({@link
+   * WorkTag#ordered}). A row built by hand from a projection carries an empty set unless its reader
+   * filled it ({@code WorkEntityRepository.listByProjectWithoutDescription} does, in one query).
+   * Left out of the audit snapshot while empty, so the rows nobody tagged snapshot as before.
+   */
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
+  @ElementCollection(fetch = FetchType.EAGER)
+  @Fetch(FetchMode.SUBSELECT)
+  @CollectionTable(name = "entity_tag", joinColumns = @JoinColumn(name = "entity_id"))
+  @Enumerated(EnumType.STRING)
+  @Column(name = "tag", nullable = false, length = 32)
+  public Set<WorkTag> tags = new HashSet<>();
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

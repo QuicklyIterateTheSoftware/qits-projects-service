@@ -29,6 +29,7 @@ import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
@@ -272,7 +273,8 @@ public class WorkEntityDoors {
             null,
             EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null),
             text(body, EntitySchemas.INSPIRED_BY),
-            false);
+            false)
+            .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)));
     requireRepositoryIn(write.repositoryId(), projectId);
 
     Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
@@ -425,6 +427,9 @@ public class WorkEntityDoors {
       } else if (name.equals(EntityWireProperties.PRIORITY)) {
         // The ranking among siblings (qits-753): every archetype, no registry property.
         EntitySchemas.priorityRefusal(value).ifPresent(refused::add);
+      } else if (name.equals(EntityWireProperties.TAGS)) {
+        // The tags (qits-634): every archetype, every status, no registry property.
+        EntitySchemas.tagsRefusal(value).ifPresent(refused::add);
       } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
@@ -477,7 +482,8 @@ public class WorkEntityDoors {
         criteria(body),
         patchText(body, EntitySchemas.INSPIRED_BY),
         cleared(body, EntitySchemas.INSPIRED_BY))
-        .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY));
+        .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY))
+        .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)));
   }
 
   /** The patch's priority (qits-753): null when absent or sent as null, else the integer. */
@@ -1162,6 +1168,23 @@ public class WorkEntityDoors {
       String parent,
       String outcome,
       String supersededBy) {
+    return list(projectIdOrSlug, archetype, status, parent, outcome, supersededBy, null);
+  }
+
+  /**
+   * {@link #list(String, String, String, String, String, String)}, also narrowed to the items
+   * carrying one tag (qits-634) — its name or its kebab form ({@code reserved-for-human}), any case;
+   * a 400 for a word naming none.
+   */
+  public List<EntitySummary> list(
+      String projectIdOrSlug,
+      String archetype,
+      String status,
+      String parent,
+      String outcome,
+      String supersededBy,
+      String tag) {
+    WorkTag tagged = blank(tag) ? null : listTag(tag);
     Archetype kind = blank(archetype) ? null : listArchetype(archetype);
     String word = blank(status) ? null : listStatus(status);
     WorkOutcome closedAs = blank(outcome) ? null : listOutcome(outcome);
@@ -1175,6 +1198,7 @@ public class WorkEntityDoors {
             .filter(entity -> parentId == null || parentId.equals(entity.parent()))
             .filter(entity -> closedAs == null || closedAs == entity.outcome())
             .filter(entity -> successorId == null || successorId.equals(entity.supersededBy()))
+            .filter(entity -> tagged == null || entity.tags().contains(tagged))
             .toList();
     return qualifiedIds.qualifyEntities(found).stream().map(EntitySummary::of).toList();
   }
@@ -1204,6 +1228,14 @@ public class WorkEntityDoors {
                         + word
                         + " — one of "
                         + String.join(", ", WorkOutcome.words())));
+  }
+
+  private static WorkTag listTag(String word) {
+    return WorkTag.parse(word)
+        .orElseThrow(
+            () ->
+                new BadRequestException(
+                    "Unknown tag: " + word + " — one of " + String.join(", ", WorkTag.words())));
   }
 
   private static String blankToNull(String value) {

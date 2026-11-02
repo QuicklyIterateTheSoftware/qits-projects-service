@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.control.AcceptanceCriteria;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.projects.api.EntityBlocks;
@@ -119,7 +120,12 @@ public class WorkController {
               description =
                   "The work's inspiration, on every archetype: the id of an idea of the same"
                       + " project (GET /projects/api/ideas).")
-          String inspiredBy) {}
+          String inspiredBy,
+      @Schema(
+              description =
+                  "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks work an agent"
+                      + " cannot complete — a person does it, and no agent is dispatched onto it.")
+          List<WorkTag> tags) {}
 
   /**
    * The documentation of the patch's body, and only that: the body itself is read as a {@link
@@ -196,7 +202,17 @@ public class WorkController {
                       + " every number, then by number. Editable at every status but DONE and"
                       + " DROPPED (409), outside every scope freeze; null clears it. PUT"
                       + " /projects/api/work/{qualifiedId}/priority ranks by drop instead.")
-          Integer priority) {}
+          Integer priority,
+      @Schema(
+              nullable = true,
+              description =
+                  "The work's tags, on every archetype, the whole set: RESERVED_FOR_HUMAN marks"
+                      + " work an agent cannot complete — a person does it and moves its status by"
+                      + " hand, and no agent is dispatched onto it (say why in the description)."
+                      + " Editable at every status, outside every scope freeze; an empty array or"
+                      + " null clears them. An unknown tag is a 400 naming the legal ones. A"
+                      + " transition never changes them.")
+          List<WorkTag> tags) {}
 
   /**
    * The drop door's body (qits-753): exactly one anchor. Read as a record because neither member
@@ -402,7 +418,8 @@ public class WorkController {
               + " REPORTED, the markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves"
               + " the item's status with it. An epic's or a ticket's acceptance criteria are frozen"
               + " from READY_FOR_DEV on, where a changed list is refused and the same list restated"
-              + " passes. Answers the entity in the merged shape.")
+              + " passes. The tags are editable at every status, outside every freeze. Answers the"
+              + " entity in the merged shape.")
   @APIResponse(
       responseCode = "200",
       description = "The entity as it stands after the edit",

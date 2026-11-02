@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.time.Instant;
 import java.util.List;
 
@@ -99,6 +100,9 @@ import java.util.List;
  * @param waitingOn the label of the declared wait the agent session is waiting on (qits-1153): the
  *     entity reads "waiting on" it, and it derives no block. Null and left off the wire otherwise,
  *     and on a feature and a task
+ * @param inspiredBy the idea the work was inspired by, or null and left off the wire
+ * @param tags the tags (qits-634), in declaration order — {@code []} when it has none, on every
+ *     archetype and always on the wire. A transition never changes them
  */
 public record TransitionedEntity(
     String id,
@@ -134,7 +138,13 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
+    List<WorkTag> tags) {
+
+  /** The tags never null: an entity without any answers {@code []}, in declaration order. */
+  public TransitionedEntity {
+    tags = WorkTag.ordered(tags);
+  }
 
   /**
    * The same entity, told what it is called in a commit subject: the value is resolved in {@code
@@ -175,7 +185,8 @@ public record TransitionedEntity(
         blockReason,
         blockedBy,
         waitingOn,
-        inspiredBy);
+        inspiredBy,
+        tags);
   }
 
   /**
@@ -238,7 +249,8 @@ public record TransitionedEntity(
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
-        row.inspiredByIdeaId);
+        row.inspiredByIdeaId,
+        WorkTag.ordered(row.tags));
   }
 
   /**
@@ -284,7 +296,8 @@ public record TransitionedEntity(
         read.blockReason(),
         read.blockedBy(),
         read.waitingOn(),
-        read.inspiredBy());
+        read.inspiredBy(),
+        read.tags());
   }
 
   /**
@@ -329,7 +342,8 @@ public record TransitionedEntity(
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
-        row.inspiredByIdeaId);
+        row.inspiredByIdeaId,
+        WorkTag.ordered(row.tags));
   }
 
   /**

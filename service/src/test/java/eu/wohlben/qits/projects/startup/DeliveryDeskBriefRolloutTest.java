@@ -577,6 +577,26 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
   }
 
+  /**
+   * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
+   * a person — rolls to the current one, which skips them.
+   */
+  @Test
+  public void anUneditedQits634BriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_634_DELIVERY_DESK_PROMPT.contains("reserved for human"),
+        "the qits-634 text is the one before the tag existed");
+    stage(AgentSurfaceDefaults.QITS_634_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the qits-634 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("--tag reserved-for-human"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
   /** The boot after the rewrite finds the new text and writes nothing. */
   @Test
   public void aSecondBootIsANoOp() {
