@@ -165,7 +165,7 @@
              qits-platform-maintenance moves it on `maintenance/dependencies` like any other internal
              pin, and it is gated here. Do not hand-edit it to chase a release you just cut — the
              next bump overwrites the edit, and in between it asserts a pairing nobody proved. -->
-        <qits.workspace-daemon-protocol.version>2026.1031.171854</qits.workspace-daemon-protocol.version>
+        <qits.workspace-daemon-protocol.version>2026.1101.225744</qits.workspace-daemon-protocol.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
@@ -231,9 +231,9 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1028.163502</qits.workspaces-service-pacts-qits-projects-service.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1031.221107</qits.landing-app-pacts-qits-projects-service.version>
-        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1030.161119</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1031.231711</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1102.13824</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1102.13115</qits.projects-frontend-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1101.200319</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1028.235307</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
