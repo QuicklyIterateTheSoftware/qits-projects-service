@@ -98,14 +98,15 @@ import org.jboss.logging.Logger;
  * property, so a block racing a claim either wins or lands one claim late, and taking the campaign
  * row here would break the lock order below. Claiming resumes after an unblock ({@code
  * EntityBlocks} runs {@link #sweep(String)} straight after, and the periodic sweep is the belt) or
- * after the next transition clears the flag — a move off REFINED and READY_FOR_DEV pauses the
- * start, so that one resumes at the next start press.
+ * after the next manual transition clears the flag — a drop pauses the start, so that one resumes
+ * at the next start press after the reopen. A derived status change (qits-650) clears no block.
  *
- * <h2>A campaign runs at REFINED and at READY_FOR_DEV (qits-887)</h2>
+ * <h2>A campaign runs while it is neither DONE nor DROPPED (qits-650)</h2>
  *
- * <p>Steps 1 and 3 and the sweep claim while the campaign is started and at either status ({@link
- * EntityStateMachine#campaignRunsAt}). The move between the two starts nothing and pauses nothing:
- * READY_FOR_DEV means "ready for development", and only a start press starts a campaign.
+ * <p>Steps 1 and 3 and the sweep claim while the campaign is started, unblocked and at any status
+ * but DONE and DROPPED ({@link EntityStateMachine#campaignRuns}). The status is derived from the
+ * members and moves under the run as they move; none of those moves starts or pauses anything, and
+ * only a start press starts a campaign. A derived move into DONE pauses it.
  *
  * <h2>Locks, and why they cannot deadlock with {@code CampaignService}</h2>
  *
@@ -116,8 +117,9 @@ import org.jboss.logging.Logger;
  * <ul>
  *   <li>{@code CampaignService}'s membership writes: campaign row, then membership rows. They never
  *       lock {@code campaign_start} (they read it, unlocked, under MVCC).
- *   <li>The start press ({@code CampaignService.start}) and the pause hook ({@code
- *       WorkEntityService.transition}): campaign row, then {@code campaign_start}. They lock no
+ *   <li>The start press ({@code CampaignService.start}), the pause hook ({@code
+ *       WorkEntityService.transition}) and a derived move into DONE or DROPPED ({@code
+ *       CampaignStatusRecompute}): campaign row, then {@code campaign_start}. They lock no
  *       membership.
  * </ul>
  *
@@ -150,7 +152,7 @@ public class CampaignExecutor {
   /** What one {@link #tryDispatch} came to — for the sweep's count, the log and the tests. */
   public enum Attempt {
     /**
-     * Nothing to do: not a campaign member, claimed, not started, not REFINED or READY_FOR_DEV,
+     * Nothing to do: not a campaign member, claimed, not started, DONE or DROPPED,
      * blocked, not satisfied — or the member is not scheduled (REFINED, its waiting written once)
      * or was started by hand (an unclaimed IMPLEMENTING member, qits-887).
      */
@@ -394,7 +396,7 @@ public class CampaignExecutor {
       return Look.stop(Attempt.NOT_READY);
     }
     WorkEntity campaign = em.find(WorkEntity.class, edge.parentId);
-    if (campaign == null || !EntityStateMachine.campaignRunsAt(campaign.status) || campaign.blocked) {
+    if (campaign == null || !EntityStateMachine.campaignRuns(campaign.status) || campaign.blocked) {
       return Look.stop(Attempt.NOT_READY);
     }
     if (!startActive(edge.parentId, false).active()) {
@@ -439,7 +441,7 @@ public class CampaignExecutor {
       return new Claim(Attempt.LOST, null, null, false);
     }
     if (campaign == null
-        || !EntityStateMachine.campaignRunsAt(campaign.status)
+        || !EntityStateMachine.campaignRuns(campaign.status)
         || campaign.blocked
         || !start.active()
         || !satisfied(edge.id)) {
@@ -657,7 +659,7 @@ public class CampaignExecutor {
   }
 
   /**
-   * Every active, unblocked campaign at a status it runs at (REFINED or READY_FOR_DEV, qits-887);
+   * Every active, unblocked campaign at a status it runs at (neither DONE nor DROPPED, qits-650);
    * answers how many members it dispatched.
    */
   @ActivateRequestContext

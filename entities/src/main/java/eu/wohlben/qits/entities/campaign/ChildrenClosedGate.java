@@ -21,19 +21,19 @@ import java.util.stream.Collectors;
 
 /**
  * <b>{@code CHILDREN_CLOSED}: finished work closes straight to DONE when every child is closed</b>
- * (qits-1757). It judges the {@link EntityStateMachine.TransitionKind#CLOSE} moves alone — a
- * campaign's, an epic's or a feature's {@code X → DONE} from an open status short of VERIFIED — and
+ * (qits-1757). It judges the {@link EntityStateMachine.TransitionKind#CLOSE} moves alone — an
+ * epic's or a feature's {@code X → DONE} from an open status short of VERIFIED — and
  * never VERIFIED → DONE, which is the walk's FORWARD and stays ungated. That matters beyond the move
  * door: the bulk door ({@code EntityTransitionService.refuseGatedStatus}) refuses any status change
  * a gate {@link #appliesTo}, so matching VERIFIED → DONE here would shut the ordinary close there.
  *
- * <p><b>Which children count</b>: a campaign's CAMPAIGN-kind members; an epic's or a feature's
- * STRUCTURAL children (its features, its tasks). <b>Only the direct child's own status is read</b>,
- * and it must be DONE or DROPPED — VERIFIED is not closed, whatever {@code CampaignProgress} draws.
- * Nothing deeper is read, and nothing needs to be: a DONE child has no open descendant (qits-1685's
- * downward cascade closed them), and a campaign holding an epic whose feature is open is refused
- * anyway, because that epic is not DONE. <b>An item with no children is refused</b>: "every child is
- * closed" says nothing of an empty one, and its close is the walk.
+ * <p><b>Which children count</b>: an epic's or a feature's STRUCTURAL children (its features, its
+ * tasks). <b>Only the direct child's own status is read</b>, and it must be DONE or DROPPED —
+ * VERIFIED is not closed. Nothing deeper is read, and nothing needs to be: a DONE child has no open
+ * descendant (qits-1685's downward cascade closed them). <b>An item with no children is
+ * refused</b>: "every child is closed" says nothing of an empty one, and its close is the walk. A
+ * campaign is not judged here at all since qits-650: its DONE is derived from its members ({@code
+ * control/CampaignStatusRecompute}) and it is served no CLOSE.
  *
  * <p><b>Who may close</b>: a person a door verified, or the project's own delivery desk ({@link
  * Mover#isDesk}, bound to the row's project). Every other machine — an agent's {@code qits:agent},
@@ -41,8 +41,8 @@ import java.util.stream.Collectors;
  * door that asks the gates enforces it. Both refusals are reported together in the one 409 {@code
  * TransitionGates.require} raises.
  *
- * <p>Nothing is derived: no move of a child ever closes its parent. This gate only says whether a
- * close somebody asked for is true.
+ * <p>Nothing is derived here: no move of a child ever closes its epic or feature. This gate only
+ * says whether a close somebody asked for is true.
  */
 @ApplicationScoped
 public class ChildrenClosedGate implements TransitionGate {
@@ -90,10 +90,7 @@ public class ChildrenClosedGate implements TransitionGate {
   }
 
   private Optional<String> childrenRefusal(WorkEntity row) {
-    List<EntityMembership> edges =
-        row.archetype == Archetype.CAMPAIGN
-            ? memberships.campaignMembers(row.id)
-            : memberships.childrenOf(row.id);
+    List<EntityMembership> edges = memberships.childrenOf(row.id);
     if (edges.isEmpty()) {
       return Optional.of(
           EntityQualifier.render(qualifier, row)

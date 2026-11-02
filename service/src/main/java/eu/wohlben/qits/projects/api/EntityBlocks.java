@@ -7,7 +7,6 @@ import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -250,30 +249,20 @@ public class EntityBlocks {
       return false;
     }
     // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by
-    // status rather than through phaseOf, because since qits-887 REFINED starts no phase, and a
-    // REFINED campaign is exactly the one that runs.
+    // status rather than through phaseOf: a campaign runs at every status but DONE and DROPPED
+    // (qits-650), and those are where a block can stand.
     return entity.archetype == Archetype.CAMPAIGN
         ? campaignBlockable(entity.status)
         : PhasePrompts.phaseOf(entity).isPresent();
   }
 
   /**
-   * Whether a campaign at {@code status} may be blocked: on the walk and short of VERIFIED — the
-   * statuses a campaign could be blocked at before qits-887 (REPORTED, REFINED, IMPLEMENTED), plus
-   * READY_FOR_DEV, the one it gained.
+   * Whether a campaign at {@code status} may be blocked: wherever it runs, which since qits-650 is
+   * every status but DONE and DROPPED ({@link EntityStateMachine#campaignRuns}) — its status is
+   * derived from its members, so a VERIFIED campaign is one whose members are still to be closed.
    */
   private static boolean campaignBlockable(String status) {
-    if (status == null) {
-      return false;
-    }
-    EntityStatus word;
-    try {
-      word = EntityStatus.valueOf(status);
-    } catch (IllegalArgumentException unknown) {
-      return false;
-    }
-    return !EntityStateMachine.isOffWalk(word)
-        && !EntityStateMachine.isAtOrPast(word, EntityStatus.VERIFIED);
+    return EntityStateMachine.campaignRuns(status);
   }
 
   /**

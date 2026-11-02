@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.campaign;
 
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.AuditService;
+import eu.wohlben.qits.entities.control.CampaignStatusRecompute;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.Nesting;
 import eu.wohlben.qits.entities.control.ReadPatience;
@@ -51,8 +52,11 @@ import java.util.stream.Collectors;
  *       have a lifecycle ({@link Archetypes#legalStatuses}) and must be one a campaign may hold
  *       ({@link Nesting#mayContain}, which refuses a campaign inside a campaign). A campaign edge is
  *       not a tree edge and never goes through {@link Nesting#check}.
- *   <li><b>Membership edits are allowed while the campaign is REPORTED, REFINED or READY_FOR_DEV</b>,
- *       running or not, and refused with a 409 at IMPLEMENTED, VERIFIED, DONE and DROPPED.
+ *   <li><b>Membership edits are allowed while the campaign is neither DONE nor DROPPED</b>
+ *       (qits-650), running or not, and refused with a 409 at those two. Its status is derived from
+ *       its members, so an add or a remove re-derives it in the same write ({@link
+ *       CampaignStatusRecompute}): adding a REPORTED member to an IMPLEMENTED campaign is how it
+ *       drops back to REPORTED.
  *   <li><b>Positions are dense and zero-based</b>; an insert shifts the tail and a move renumbers the
  *       affected span, {@code DossierService.move}'s idiom.
  *   <li><b>The seed.</b> A member added at position p when a member stands at p−1 that is neither
@@ -75,7 +79,10 @@ import java.util.stream.Collectors;
  * no campaign-row lock, so the two never wait on each other in a cycle. {@link #start} takes the
  * campaign row and then the {@code campaign_start} row, the pause hook's order; nothing here locks
  * {@code campaign_start} while holding a membership, which is what keeps the executor's own order
- * ({@code campaign_start FOR SHARE}, then the membership) out of any cycle as well.
+ * ({@code campaign_start FOR SHARE}, then the membership) out of any cycle as well. The add and
+ * the remove re-derive the campaign's status last ({@link CampaignStatusRecompute}), which re-takes
+ * the campaign row it already holds and locks nothing else; a member's own move takes its row and
+ * then the campaign row, and nothing here waits on a member's row, so the two only ever queue.
  *
  * <h2>Transactions and audit</h2>
  *
@@ -97,24 +104,17 @@ public class CampaignService {
   private static final List<EntityStatus> FORWARD = EntityStateMachine.walk();
 
   /**
-   * Where a campaign's membership may still be edited: before IMPLEMENTED. READY_FOR_DEV (qits-887)
-   * is "ready for development", not frozen — a person may still reorder or add to it.
-   */
-  private static final Set<String> EDITABLE =
-      Set.of(
-          EntityStatus.REPORTED.name(),
-          EntityStatus.REFINED.name(),
-          EntityStatus.READY_FOR_DEV.name());
-
-  /**
-   * Why a start press is refused (qits-887): the campaign's qualified id and its status. One
-   * sentence for {@link #start} and {@code campaignhost/CampaignStarter}, which decides it first,
-   * unlocked.
+   * Why a start press is refused (qits-650): the campaign's qualified id and its status, DONE or
+   * DROPPED. One sentence for {@link #start} and {@code campaignhost/CampaignStarter}, which decides
+   * it first, unlocked.
    */
   public static final String START_REFUSED =
-      "Start a campaign from REFINED or READY_FOR_DEV; campaign %s is %s. Move it to REFINED first.";
+      "A campaign is started while it is neither DONE nor DROPPED; campaign %s is %s.";
 
-  /** Where an approval is refused: the campaign is over. */
+  /**
+   * Where a campaign is over (qits-650): its members are no longer edited, nothing in it is
+   * approved, and it is not started.
+   */
   private static final Set<String> FINISHED =
       Set.of(EntityStatus.DONE.name(), EntityStatus.DROPPED.name());
 
@@ -135,6 +135,9 @@ public class CampaignService {
   @Inject CampaignStartRecordRepository starts;
 
   @Inject AuditService auditService;
+
+  /** Re-derives the campaign's status inside an add and a remove (qits-650). */
+  @Inject CampaignStatusRecompute campaignStatus;
 
   @Inject ReadPatience patience;
 
@@ -233,6 +236,17 @@ public class CampaignService {
                     }));
   }
 
+  /**
+   * The campaign's status as committed now (qits-650), in a fresh transaction for {@link #get}'s
+   * reason — what a door answering one member reads to say whether that member sets the floor
+   * ({@link CampaignStatusRecompute#holds}), after a write that may just have re-derived it.
+   */
+  public String status(String campaignId) {
+    return patience.hold(
+        "campaign status read",
+        () -> QuarkusTransaction.requiringNew().call(() -> campaign(campaignId).status));
+  }
+
   /** A project's campaigns, oldest first, each with its start and its member count. */
   public List<Summary> listByProject(String projectId) {
     return patience.hold(
@@ -296,61 +310,67 @@ public class CampaignService {
     if (position != null && position < 0) {
       throw new BadRequestException("A position cannot be negative: " + position);
     }
-    return writes.hold(
-        "campaign add member",
-        () -> {
-          WorkEntity campaign = lockCampaign(campaignId);
-          requireEditable(campaign);
-          WorkEntity member = entities.findById(entityId);
-          if (member == null) {
-            throw new NotFoundException("Entity not found: " + entityId);
-          }
-          requireMayJoin(campaign, member);
+    CampaignStatusRecompute.Recomputed[] derived = {CampaignStatusRecompute.Recomputed.none()};
+    Member added =
+        writes.hold(
+            "campaign add member",
+            () -> {
+              derived[0] = CampaignStatusRecompute.Recomputed.none();
+              WorkEntity campaign = lockCampaign(campaignId);
+              requireEditable(campaign);
+              WorkEntity member = entities.findById(entityId);
+              if (member == null) {
+                throw new NotFoundException("Entity not found: " + entityId);
+              }
+              requireMayJoin(campaign, member);
 
-          List<EntityMembership> current = memberships.campaignMembers(campaignId);
-          for (EntityMembership edge : current) {
-            if (edge.childId.equals(entityId)) {
-              throw new ConflictException(
-                  qid(member)
-                      + " is already a member of campaign "
-                      + qid(campaign)
-                      + ", at position "
-                      + edge.position
-                      + ". Move it instead.");
-            }
-          }
-          int at = position == null ? current.size() : Math.min(position, current.size());
-          EntityMembership predecessor = null;
-          for (EntityMembership edge : current) {
-            if (edge.position == at - 1) {
-              predecessor = edge;
-            }
-            if (edge.position >= at) {
-              edge.position = edge.position + 1;
-            }
-          }
+              List<EntityMembership> current = memberships.campaignMembers(campaignId);
+              for (EntityMembership edge : current) {
+                if (edge.childId.equals(entityId)) {
+                  throw new ConflictException(
+                      qid(member)
+                          + " is already a member of campaign "
+                          + qid(campaign)
+                          + ", at position "
+                          + edge.position
+                          + ". Move it instead.");
+                }
+              }
+              int at = position == null ? current.size() : Math.min(position, current.size());
+              EntityMembership predecessor = null;
+              for (EntityMembership edge : current) {
+                if (edge.position == at - 1) {
+                  predecessor = edge;
+                }
+                if (edge.position >= at) {
+                  edge.position = edge.position + 1;
+                }
+              }
 
-          EntityMembership edge = new EntityMembership();
-          edge.id = UUID.randomUUID().toString();
-          edge.kind = MembershipKind.CAMPAIGN;
-          edge.parentId = campaignId;
-          edge.childId = entityId;
-          edge.position = at;
-          if (inFlight) {
-            edge.claimedAt = Instant.now();
-            edge.joinedRunning = true;
-          }
-          memberships.persist(edge);
-          if (predecessor != null) {
-            seed(edge, predecessor);
-          }
-          flush();
-          audit(campaign, "MEMBER_ADDED", edge, changedBy);
-          if (starts.isActive(campaignId)) {
-            handOver(campaign, latch(campaign), edge);
-          }
-          return member(edge);
-        });
+              EntityMembership edge = new EntityMembership();
+              edge.id = UUID.randomUUID().toString();
+              edge.kind = MembershipKind.CAMPAIGN;
+              edge.parentId = campaignId;
+              edge.childId = entityId;
+              edge.position = at;
+              if (inFlight) {
+                edge.claimedAt = Instant.now();
+                edge.joinedRunning = true;
+              }
+              memberships.persist(edge);
+              if (predecessor != null) {
+                seed(edge, predecessor);
+              }
+              flush();
+              audit(campaign, "MEMBER_ADDED", edge, changedBy);
+              if (starts.isActive(campaignId)) {
+                handOver(campaign, latch(campaign), edge);
+              }
+              derived[0] = campaignStatus.recompute(List.of(campaignId));
+              return member(edge);
+            });
+    campaignStatus.announce(derived[0]);
+    return added;
   }
 
   /**
@@ -398,9 +418,11 @@ public class CampaignService {
    * progress read reports "target deleted" on whatever pointed at it.
    */
   public void removeMember(String campaignId, String membershipId, String changedBy) {
+    CampaignStatusRecompute.Recomputed[] derived = {CampaignStatusRecompute.Recomputed.none()};
     writes.run(
         "campaign remove member",
         () -> {
+          derived[0] = CampaignStatusRecompute.Recomputed.none();
           WorkEntity campaign = lockCampaign(campaignId);
           requireEditable(campaign);
           EntityMembership gone = membershipOf(campaignId, membershipId, true);
@@ -445,7 +467,9 @@ public class CampaignService {
           memberships.delete(gone);
           flush();
           memberships.campaignCloseGapAfter(campaignId, position);
+          derived[0] = campaignStatus.recompute(List.of(campaignId));
         });
+    campaignStatus.announce(derived[0]);
   }
 
   // --- the condition --------------------------------------------------------------------------------
@@ -654,9 +678,9 @@ public class CampaignService {
    * <b>A start press's row</b> (qits-417): upserts {@code campaign_start} — the first press inserts
    * it with {@code first_started_at = started_at = now}, every later one sets {@code started_at},
    * {@code started_by} and {@code active = true}, and {@code first_started_at}, the forward-only
-   * floor event criteria read, never moves. 409 unless the campaign is REFINED or READY_FOR_DEV
-   * (qits-887 — the two statuses a campaign runs at, {@link EntityStateMachine#campaignRunsAt}),
-   * decided under the campaign row's lock, so a pause that committed first is what this sees.
+   * floor event criteria read, never moves. 409 when the campaign is DONE or DROPPED (qits-650 —
+   * every other status runs, {@link EntityStateMachine#campaignRuns}), decided under the campaign
+   * row's lock, so a pause that committed first is what this sees.
    *
    * <p>Locks the campaign's entity row, then the start row — the same order the pause hook in {@code
    * WorkEntityService.transition} takes them in, so a press and a pause serialise on the first and
@@ -669,7 +693,7 @@ public class CampaignService {
         "campaign start",
         () -> {
           WorkEntity campaign = lockCampaign(campaignId);
-          if (!EntityStateMachine.campaignRunsAt(campaign.status)) {
+          if (!EntityStateMachine.campaignRuns(campaign.status)) {
             throw new ConflictException(START_REFUSED.formatted(qid(campaign), campaign.status));
           }
           // Microseconds, what the column holds, so the row answered is the row stored.
@@ -857,18 +881,18 @@ public class CampaignService {
   }
 
   /**
-   * A membership may be edited while its campaign is REPORTED, REFINED or READY_FOR_DEV, and never
-   * after.
+   * A membership may be edited while its campaign is neither DONE nor DROPPED (qits-650), and never
+   * then.
    */
   private void requireEditable(WorkEntity campaign) {
-    if (!EDITABLE.contains(campaign.status)) {
+    if (FINISHED.contains(campaign.status)) {
       throw new ConflictException(
           "Campaign "
               + qid(campaign)
               + " is "
               + campaign.status
-              + ": its members and their conditions are edited only while it is REPORTED, REFINED"
-              + " or READY_FOR_DEV.");
+              + ": its members and their conditions are edited only while it is neither DONE nor"
+              + " DROPPED.");
     }
   }
 

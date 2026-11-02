@@ -130,6 +130,12 @@ public class WorkEntityService {
   @Inject IdeaAnnouncements ideaAnnouncements;
 
   /**
+   * Re-derives every campaign a moved or deleted member has joined, inside the same write
+   * (qits-650) — and a reopened campaign itself.
+   */
+  @Inject CampaignStatusRecompute campaignStatus;
+
+  /**
    * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
    * status until qits-392 folded it into {@link EntityStatus#DROPPED}: it said two things at once —
    * this work will not be done, and here is what replaced it — and only the first is a status. The
@@ -1102,15 +1108,13 @@ public class WorkEntityService {
       row.outcome = null;
       row.supersededByEntityId = null;
     }
-    if (archetype == Archetype.CAMPAIGN
-        && EntityStateMachine.campaignRunsAt(statusBefore)
-        && !EntityStateMachine.campaignRunsAt(to.name())) {
-      // The pause hook (qits-413): a campaign that leaves the statuses it runs at — REFINED and
-      // READY_FOR_DEV since qits-887 — stops its executor, in this very transaction, so no claim can
-      // land between the move and the pause. The UPDATE takes the row lock the executor's claim waits
-      // on; a campaign never started has no row and nothing happens. REFINED <-> READY_FOR_DEV
-      // neither pauses nor starts: READY_FOR_DEV means ready for development, not "start it".
-      // Resuming is a new start press at either — moving back is not enough.
+    if (archetype == Archetype.CAMPAIGN && to == EntityStatus.DROPPED) {
+      // The pause hook (qits-413): a campaign dropped by hand — the one manual move into a status it
+      // does not run at, since qits-650 derives every other word — stops its executor, in this very
+      // transaction, so no claim can land between the move and the pause. The UPDATE takes the row
+      // lock the executor's claim waits on; a campaign never started has no row and nothing
+      // happens. Resuming is a new start press after the reopen — reopening is not enough. A
+      // derived move into DONE pauses the same way, in CampaignStatusRecompute.
       campaignStarts.pause(row.id);
     }
     requireArchetypeValid(row, Demand.ON_UPDATE);
@@ -1135,7 +1139,18 @@ public class WorkEntityService {
     for (Carried child : carried) {
       inspiring.add(child.row().inspiredByIdeaId);
     }
-    List<IdeaChange> ideas = ideaStatus.recompute(inspiring, changedBy);
+    List<IdeaChange> ideas = new ArrayList<>(ideaStatus.recompute(inspiring, changedBy));
+    // The campaigns the moved row is a member of are re-derived in this transaction (qits-650); a
+    // reopened campaign is re-derived itself, at once — its REPORTED was a person's, the floor its
+    // members set is what it then is. Each derived change joins the move's one announcement.
+    CampaignStatusRecompute.Recomputed derived =
+        archetype == Archetype.CAMPAIGN
+            ? (EntityStatus.DROPPED.name().equals(statusBefore)
+                ? campaignStatus.recompute(List.of(moved.id))
+                : CampaignStatusRecompute.Recomputed.none())
+            : campaignStatus.recomputeCampaignsOf(List.of(moved.id));
+    batch.addAll(derived.moved());
+    ideas.addAll(derived.ideas());
     return new Moved(
         new Transition(moved, successor, statusBefore), List.copyOf(batch), List.copyOf(ideas));
   }
@@ -1401,19 +1416,22 @@ public class WorkEntityService {
             : EntityLifecycle.parse(target)
                 .orElseThrow(
                     () -> new ConflictException("Unknown " + kind.word() + " status: " + target));
-    if (kind.archetype() == Archetype.CAMPAIGN
-        && !EntityStateMachine.states(Archetype.CAMPAIGN).contains(to)) {
-      // A campaign never enters IMPLEMENTING or VERIFYING (qits-749): its press starts it and
-      // REFINED or READY_FOR_DEV is what "running" means, so either status would say nothing a
-      // campaign's start does not already say. Its lifecycle elides both already; this refusal is
-      // here for the sentence.
+    EntityStatus from = EntityStatus.valueOf(row.status);
+    if (EntityStateMachine.isDerived(kind.archetype())
+        && !EntityStateMachine.isTerminal(from)
+        && !EntityStateMachine.allows(kind.archetype(), from, to)) {
+      // A campaign's status is derived from its members (qits-650): its DROP and its REOPEN are the
+      // only moves anybody makes of it. DONE keeps the machine's own finality sentence below.
       throw new ConflictException(
-          "A campaign never moves to "
-              + to
-              + ": campaign "
+          "Campaign "
               + row.id
-              + " runs while it is REFINED or READY_FOR_DEV, and its members are what is"
-              + " implemented and verified.");
+              + " cannot move from "
+              + from
+              + " to "
+              + to
+              + " by hand: a campaign's status is derived from its members — the lowest status"
+              + " among those not DROPPED. Only a drop (to DROPPED) and a reopen (DROPPED to"
+              + " REPORTED) are moved by hand; move its members instead.");
     }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;
@@ -1637,10 +1655,12 @@ public class WorkEntityService {
   public void delete(Archetype archetype, String id, String changedBy) {
     Kind kind = kind(archetype);
     List<IdeaChange> ideaChanges = new ArrayList<>(1);
+    CampaignStatusRecompute.Recomputed[] derived = {CampaignStatusRecompute.Recomputed.none()};
     writes.run(
         kind.label("delete"),
         () -> {
           ideaChanges.clear();
+          derived[0] = CampaignStatusRecompute.Recomputed.none();
           WorkEntity row = lookup(archetype, id);
           EntityMembership edge =
               kind.isRoot() ? null : memberships.structuralMembershipOf(id).orElse(null);
@@ -1662,7 +1682,7 @@ public class WorkEntityService {
           Subtree subtree = subtreeOf(id);
           // Before any row goes: a query here auto-flushes, and a row already deleted would have
           // cascaded its campaign edges away and left their gaps behind.
-          leaveCampaigns(id, subtree);
+          List<String> leftCampaigns = leaveCampaigns(id, subtree);
           List<String> threaded = new ArrayList<>();
           threaded.add(id);
           threaded.addAll(subtree.rows().keySet());
@@ -1696,8 +1716,11 @@ public class WorkEntityService {
           // The work is gone, so every idea it named is re-derived without it (qits-1387).
           entities.getEntityManager().flush();
           ideaChanges.addAll(ideaStatus.recompute(inspiring, changedBy));
+          // And every campaign it was a member of, without it (qits-650).
+          derived[0] = campaignStatus.recompute(leftCampaigns);
         });
     ideaAnnouncements.announce(ideaChanges);
+    campaignStatus.announce(derived[0]);
   }
 
   /**
@@ -1706,7 +1729,7 @@ public class WorkEntityService {
    * update the session does not see, so an edge still to be removed must never be one a previous
    * close has already shifted — and removing from the top down means no close ever touches one.
    */
-  private void leaveCampaigns(String id, Subtree subtree) {
+  private List<String> leaveCampaigns(String id, Subtree subtree) {
     List<String> gone = new ArrayList<>();
     gone.add(id);
     gone.addAll(subtree.rows().keySet());
@@ -1716,10 +1739,16 @@ public class WorkEntityService {
     }
     edges.sort(
         java.util.Comparator.comparingInt((EntityMembership edge) -> edge.position).reversed());
+    // The campaign rows before their membership rows (qits-650): CampaignService's order, so this
+    // delete and an add to the same campaign queue on the campaign row instead of deadlocking.
+    campaignStatus.lock(edges.stream().map(edge -> edge.parentId).toList());
+    List<String> campaigns = new ArrayList<>();
     for (EntityMembership edge : edges) {
       memberships.delete(edge);
       memberships.campaignCloseGapAfter(edge.parentId, edge.position);
+      campaigns.add(edge.parentId);
     }
+    return campaigns;
   }
 
   // --- the tree -------------------------------------------------------------------------------------

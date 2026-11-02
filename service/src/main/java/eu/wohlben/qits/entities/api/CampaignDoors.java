@@ -73,7 +73,7 @@ public class CampaignDoors {
         campaigns.addMember(
             campaignId, entityId, position, running, EntitiesPrincipal.changedBy(identity));
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return views.member(added);
+    return views.member(added, campaigns.status(campaignId));
   }
 
   /** A membership moved to {@code position}; answers the campaign as the move left it. */
@@ -105,7 +105,7 @@ public class CampaignDoors {
         campaigns.setCondition(
             campaignId, membershipId, groups, EntitiesPrincipal.changedBy(identity));
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return views.member(member);
+    return views.member(member, campaigns.status(campaignId));
   }
 
   /**
@@ -121,7 +121,7 @@ public class CampaignDoors {
     CampaignService.Approved approved =
         campaigns.approve(campaignId, membershipId, criterionId, note, approver);
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return views.member(approved.member());
+    return views.member(approved.member(), campaigns.status(campaignId));
   }
 
   /** The campaign's project — its 404 first — with a bound agent held to it. */

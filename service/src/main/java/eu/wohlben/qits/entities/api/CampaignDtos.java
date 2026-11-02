@@ -58,7 +58,12 @@ public final class CampaignDtos {
   public record CampaignStartDto(
       Instant firstStartedAt, Instant startedAt, String startedBy, boolean active) {}
 
-  /** One membership: the entity it gathers, its run record and its condition. */
+  /**
+   * One membership: the entity it gathers, its run record and its condition, and — {@code
+   * holdsStatus} (qits-650) — whether its member is one that sets the campaign's derived status:
+   * not DROPPED, and its status on the campaign walk is the campaign's. False on every member while
+   * the campaign is DONE or DROPPED.
+   */
   public record CampaignMemberDto(
       String membershipId,
       int position,
@@ -70,7 +75,8 @@ public final class CampaignDtos {
       String dispatchRefusal,
       Instant dispatchRefusedAt,
       String dispatchError,
-      List<CriterionGroupDto> groups) {}
+      List<CriterionGroupDto> groups,
+      boolean holdsStatus) {}
 
   /** The gathered entity, as a member row draws it. */
   public record CampaignMemberEntityDto(
@@ -118,7 +124,11 @@ public final class CampaignDtos {
       CampaignEvaluatorDto evaluator,
       List<CampaignMemberProgressDto> members) {}
 
-  /** The campaign a progress read is of. */
+  /**
+   * The campaign a progress read is of. {@code heldBy} (qits-650) is the qualified ids of the
+   * members that set its derived status, in campaign order — the members not DROPPED whose status
+   * on the campaign walk is the campaign's; empty while it is DONE or DROPPED or has no members.
+   */
   public record CampaignProgressCampaignDto(
       String id,
       String qualifiedId,
@@ -128,7 +138,8 @@ public final class CampaignDtos {
       CampaignStartDto start,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
-      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
+      List<String> heldBy) {}
 
   /**
    * The criteria evaluator's health — what tells a correct wait from nothing listening.

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import eu.wohlben.qits.entities.campaign.EntityQualifier;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -181,6 +182,15 @@ public class EntityTransitionService {
   @Inject IdeaAnnouncements ideaAnnouncements;
 
   /**
+   * Re-derives every campaign a written row is a member of (qits-650): a stated status, or an
+   * EPIC ↔ TICKET re-archetype, can move a campaign's floor.
+   */
+  @Inject CampaignStatusRecompute campaignStatus;
+
+  /** Renders the campaign a refusal names ({@code qits-412}); optional — see {@link EntityQualifier}. */
+  @Inject Instance<EntityQualifier> qualifier;
+
+  /**
    * Applies {@code requested} as one post-state and answers what was written, keyed by id in the
    * order it was stated.
    *
@@ -194,17 +204,20 @@ public class EntityTransitionService {
     Map<String, EntityTransition> stated = normalise(requested);
 
     List<IdeaChange> ideaChanges = new ArrayList<>();
+    List<TransitionedEntity> derived = new ArrayList<>();
     Map<String, TransitionedEntity> written =
         writes.hold(
             "entity transition",
             () -> {
               ideaChanges.clear();
-              return apply(stated, changedBy, ideaChanges);
+              derived.clear();
+              return apply(stated, changedBy, ideaChanges, derived);
             });
 
     // After the transaction, never inside it: the WritePatience body re-runs on a retry and an
-    // announcement in it would be made twice.
-    announce(written);
+    // announcement in it would be made twice. The campaigns the write re-derived (qits-650) join
+    // the batch's one announcement.
+    announce(written, derived);
     ideaAnnouncements.announce(ideaChanges);
     return written;
   }
@@ -249,9 +262,13 @@ public class EntityTransitionService {
 
   /** Validate the whole post-state, then write it. One transaction, so nothing moves in between. */
   private Map<String, TransitionedEntity> apply(
-      Map<String, EntityTransition> stated, String changedBy, List<IdeaChange> ideaChanges) {
+      Map<String, EntityTransition> stated,
+      String changedBy,
+      List<IdeaChange> ideaChanges,
+      List<TransitionedEntity> derived) {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
+    refuseLeavingCampaigns(stated, rows);
     refuseCampaignLifecycle(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
@@ -300,6 +317,14 @@ public class EntityTransitionService {
       written.put(id, TransitionedEntity.of(row, edges.get(id), statusBefore.get(id), changedBy));
     }
 
+    // Every campaign a written row is a member of, re-derived on what was just written (qits-650)
+    // — after the answer is read, so a campaign the batch also restates answers as it was stated
+    // and its derived move is announced beside it.
+    CampaignStatusRecompute.Recomputed recomputed =
+        campaignStatus.recomputeCampaignsOf(stated.keySet());
+    derived.addAll(recomputed.moved());
+    ideaChanges.addAll(recomputed.ideas());
+
     for (Map.Entry<String, TransitionedEntity> entry : written.entrySet()) {
       WorkEntity row = rows.get(entry.getKey());
       auditService.record(
@@ -325,6 +350,68 @@ public class EntityTransitionService {
   // --- validation -----------------------------------------------------------
 
   /**
+   * <b>A campaign member keeps an archetype a campaign may gather</b> (qits-650): an entry turning a
+   * member of a campaign into a FEATURE, a TASK or a CAMPAIGN is a 409 naming the entity and each
+   * campaign it is a member of — before any other layer is asked, so the turn into a campaign is
+   * told about the membership rather than only that this door makes no campaign. Its campaign edge
+   * is not this door's to rewrite ({@link #replaceMemberships}), and a member a campaign cannot hold
+   * would sit in it unrunnable and set its derived status. Remove it from the campaign first.
+   */
+  private void refuseLeavingCampaigns(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    List<String> turning = new ArrayList<>();
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      WorkEntity row = rows.get(entry.getKey());
+      Archetype target = entry.getValue().archetype();
+      if (row != null && target != row.archetype && !mayBeGathered(target)) {
+        turning.add(entry.getKey());
+      }
+    }
+    if (turning.isEmpty()) {
+      return;
+    }
+    Map<String, List<String>> campaignsOf = new LinkedHashMap<>();
+    for (String id : turning) {
+      for (EntityMembership edge : memberships.campaignMembershipsOf(id)) {
+        campaignsOf.computeIfAbsent(id, ignored -> new ArrayList<>()).add(edge.parentId);
+      }
+    }
+    if (campaignsOf.isEmpty()) {
+      return;
+    }
+    Map<String, WorkEntity> campaigns =
+        index(
+            entities.listByIds(
+                campaignsOf.values().stream().flatMap(List::stream).distinct().toList()));
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, List<String>> member : campaignsOf.entrySet()) {
+      List<String> named =
+          member.getValue().stream()
+              .map(
+                  id ->
+                      "campaign "
+                          + (campaigns.containsKey(id)
+                              ? EntityQualifier.render(qualifier, campaigns.get(id))
+                              : id))
+              .toList();
+      refused.add(
+          member.getKey()
+              + " is a member of "
+              + String.join(", ", named)
+              + " and would become a "
+              + stated.get(member.getKey()).archetype()
+              + ", which a campaign cannot gather");
+    }
+    throw new ConflictException(
+        String.join("; ", refused) + " — remove it from the campaign first");
+  }
+
+  /** The archetypes a campaign may gather: the work that runs a phase, an EPIC or a TICKET. */
+  private static boolean mayBeGathered(Archetype archetype) {
+    return Nesting.mayContain(Archetype.CAMPAIGN, archetype) && !Archetypes.isPlanPiece(archetype);
+  }
+
+  /**
    * <b>This door does not move a campaign through its lifecycle, change what is or is not a
    * campaign, or make one</b> — a 409 naming every such entry, before any other layer is asked.
    *
@@ -334,11 +421,11 @@ public class EntityTransitionService {
    * is told where it IS created rather than merely that it is not). A campaign's title and
    * description may still be edited here, with its status restated unchanged.
    *
-   * <p>The reason is the pause hook. A campaign's own status door ({@code POST
-   * /work/{qualifiedId}/status}) stops its executor in the same transaction as the campaign leaving
-   * REFINED; this door sets {@code row.status} directly, with no adjacency rule and no hook, so a
-   * move made here would leave the executor running a campaign that is no longer started. A 409 and
-   * not a 400: the entry is well-formed, it has merely come to the wrong door.
+   * <p>The reason is that a campaign's status is derived from its members (qits-650): its only
+   * manual moves, the drop and the reopen, are its own status door's ({@code POST
+   * /work/{qualifiedId}/status}), which also pauses the start on the drop in the same transaction;
+   * this door sets {@code row.status} directly, with no adjacency rule and no hook. A 409 and not a
+   * 400: the entry is well-formed, it has merely come to the wrong door.
    */
   private static void refuseCampaignLifecycle(
       Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
@@ -1002,11 +1089,13 @@ public class EntityTransitionService {
   }
 
   /** One call for the batch, never one per entity — see {@link TransitionAnnouncer}. */
-  private void announce(Map<String, TransitionedEntity> written) {
+  private void announce(Map<String, TransitionedEntity> written, List<TransitionedEntity> derived) {
     if (announcer.isUnsatisfied()) {
       return;
     }
-    announcer.get().onEntitiesTransitioned(List.copyOf(written.values()), Instant.now());
+    List<TransitionedEntity> batch = new ArrayList<>(written.values());
+    batch.addAll(derived);
+    announcer.get().onEntitiesTransitioned(List.copyOf(batch), Instant.now());
   }
 
   private static Map<String, WorkEntity> index(List<WorkEntity> rows) {

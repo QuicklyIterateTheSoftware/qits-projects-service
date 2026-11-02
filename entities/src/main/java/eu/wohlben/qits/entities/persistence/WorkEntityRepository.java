@@ -192,6 +192,56 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
+   * <b>The statuses of a campaign's members</b>, one per membership (qits-650) — all {@code
+   * CampaignStatusRecompute} needs, read as values rather than as managed rows, so what it sees is
+   * the database (this write's own changes included: the query auto-flushes the rows it touches)
+   * and never an older copy the session happens to hold.
+   */
+  public List<String> campaignMemberStatuses(String campaignId) {
+    return getEntityManager()
+        .createQuery(
+            "select e.status from EntityMembership m, WorkEntity e"
+                + " where m.parentId = ?1 and m.kind = ?2 and e.id = m.childId",
+            String.class)
+        .setParameter(1, campaignId)
+        .setParameter(2, MembershipKind.CAMPAIGN)
+        .getResultList();
+  }
+
+  /**
+   * The ids of the campaigns {@code memberIds} have joined, each once, in id order (qits-650) — the
+   * order {@code CampaignStatusRecompute} locks them in. The empty guard is {@link #listByIds}'.
+   */
+  public List<String> campaignIdsGathering(Collection<String> memberIds) {
+    if (memberIds == null || memberIds.isEmpty()) {
+      return List.of();
+    }
+    return getEntityManager()
+        .createQuery(
+            "select distinct m.parentId from EntityMembership m"
+                + " where m.childId in ?1 and m.kind = ?2 order by m.parentId",
+            String.class)
+        .setParameter(1, memberIds)
+        .setParameter(2, MembershipKind.CAMPAIGN)
+        .getResultList();
+  }
+
+  /**
+   * Every campaign whose status is still derived — neither DONE nor DROPPED — in id order: what the
+   * boot reconcile walks (qits-650).
+   */
+  public List<String> campaignIdsStillDerived() {
+    return getEntityManager()
+        .createQuery(
+            "select e.id from WorkEntity e where e.archetype = ?1"
+                + " and (e.status is null or e.status not in ?2) order by e.id",
+            String.class)
+        .setParameter(1, Archetype.CAMPAIGN)
+        .setParameter(2, List.of("DONE", "DROPPED"))
+        .getResultList();
+  }
+
+  /**
    * The rows whose {@code depends_on_entity_id} points at {@code entityId} — {@code
    * FeatureRepository.listDependents}' and {@code TaskRepository.listDependents}' question, asked
    * once now that the two columns are one.

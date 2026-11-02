@@ -97,7 +97,13 @@ public final class CampaignProgress {
                     start.firstStartedAt, start.startedAt, start.startedBy, start.active),
             block.source(),
             block.reason(),
-            block.blockedBy()),
+            block.blockedBy(),
+            CampaignViews.heldBy(
+                campaign,
+                member -> {
+                  String id = qualified.apply(member);
+                  return id == null ? member.id : id;
+                })),
         evaluator,
         campaign.members().stream().map(member -> member(member, context)).toList());
   }

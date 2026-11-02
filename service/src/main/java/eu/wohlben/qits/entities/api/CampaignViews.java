@@ -15,6 +15,7 @@ import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.entity.EntityMembership;
+import eu.wohlben.qits.entities.control.CampaignStatusRecompute;
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
@@ -90,18 +91,51 @@ public class CampaignViews {
             ? null
             : new CampaignStartDto(
                 start.firstStartedAt, start.startedAt, start.startedBy, start.active),
-        campaign.members().stream().map(member -> member(slug, member)).toList(),
+        campaign.members().stream().map(member -> member(slug, member, row.status)).toList(),
         block.source(),
         block.reason(),
         block.blockedBy());
   }
 
-  /** One member. */
-  public CampaignMemberDto member(CampaignService.Member member) {
-    return member(slugOf(member.entity() == null ? null : member.entity().projectId), member);
+  /**
+   * One member of a campaign at {@code campaignStatus} — which says whether the member sets its
+   * floor ({@code holdsStatus}, qits-650).
+   */
+  public CampaignMemberDto member(CampaignService.Member member, String campaignStatus) {
+    return member(
+        slugOf(member.entity() == null ? null : member.entity().projectId), member, campaignStatus);
   }
 
-  private CampaignMemberDto member(String slug, CampaignService.Member member) {
+  /**
+   * <b>The members that set a campaign's derived status</b> (qits-650), as qualified ids in
+   * campaign order — {@link CampaignStatusRecompute#holds} over every member, computed at read
+   * time. Empty while the campaign is DONE or DROPPED, or has no members. A member whose project
+   * slug cannot be read is named by its id.
+   */
+  public List<String> heldBy(CampaignService.Campaign campaign) {
+    WorkEntity row = campaign.campaign();
+    String slug = slugOf(row.projectId);
+    return heldBy(campaign, entity -> qualifiedOrId(slug, entity));
+  }
+
+  /** {@link #heldBy(CampaignService.Campaign)} with the qualifying left to the caller. */
+  static List<String> heldBy(
+      CampaignService.Campaign campaign, java.util.function.Function<WorkEntity, String> name) {
+    String status = campaign.campaign().status;
+    return campaign.members().stream()
+        .map(CampaignService.Member::entity)
+        .filter(entity -> entity != null && CampaignStatusRecompute.holds(status, entity.status))
+        .map(name)
+        .toList();
+  }
+
+  private static String qualifiedOrId(String slug, WorkEntity row) {
+    String qualified = qualified(slug, row);
+    return qualified == null ? row.id : qualified;
+  }
+
+  private CampaignMemberDto member(
+      String slug, CampaignService.Member member, String campaignStatus) {
     EntityMembership edge = member.membership();
     WorkEntity entity = member.entity();
     return new CampaignMemberDto(
@@ -122,7 +156,8 @@ public class CampaignViews {
                     new CriterionGroupDto(
                         group.group().id,
                         group.criteria().stream().map(CampaignViews::criterion).toList()))
-            .toList());
+            .toList(),
+        entity != null && CampaignStatusRecompute.holds(campaignStatus, entity.status));
   }
 
   private static CriterionDto criterion(CampaignCriterion criterion) {

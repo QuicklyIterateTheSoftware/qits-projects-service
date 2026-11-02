@@ -99,6 +99,11 @@ import java.util.List;
  * @param waitingOn the label of the declared wait the agent session is waiting on (qits-1153): the
  *     entity reads "waiting on" it, and it derives no block. Null and left off the wire otherwise,
  *     and on a feature and a task
+ * @param heldBy a campaign's members that set its derived status (qits-650) — the qualified ids of
+ *     the members not DROPPED whose status, read on the campaign walk, is the campaign's. Computed
+ *     at read time and filled only on a campaign's entity read ({@link #withHeldBy}); empty while
+ *     the campaign is DONE or DROPPED or has no members. Null and left off the wire everywhere
+ *     else, every other archetype included
  */
 public record TransitionedEntity(
     String id,
@@ -134,7 +139,48 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy) {
+
+  /** The same entity carrying {@code members}, a campaign's {@link #heldBy} (qits-650). */
+  public TransitionedEntity withHeldBy(List<String> members) {
+    return new TransitionedEntity(
+        id,
+        archetype,
+        projectId,
+        number,
+        qualifiedId,
+        title,
+        slug,
+        slugScope,
+        description,
+        status,
+        statusBefore,
+        ticketType,
+        impetus,
+        assignee,
+        createdBy,
+        supersededBy,
+        outcome,
+        repositoryId,
+        implementedAt,
+        implementingAt,
+        dependsOn,
+        parent,
+        position,
+        priority,
+        createdAt,
+        updatedAt,
+        changedBy,
+        blocked,
+        acceptanceCriteria,
+        blockSource,
+        blockReason,
+        blockedBy,
+        waitingOn,
+        inspiredBy,
+        members == null ? null : List.copyOf(members));
+  }
 
   /**
    * The same entity, told what it is called in a commit subject: the value is resolved in {@code
@@ -175,7 +221,8 @@ public record TransitionedEntity(
         blockReason,
         blockedBy,
         waitingOn,
-        inspiredBy);
+        inspiredBy,
+        heldBy);
   }
 
   /**
@@ -238,7 +285,8 @@ public record TransitionedEntity(
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
-        row.inspiredByIdeaId);
+        row.inspiredByIdeaId,
+        null);
   }
 
   /**
@@ -284,7 +332,8 @@ public record TransitionedEntity(
         read.blockReason(),
         read.blockedBy(),
         read.waitingOn(),
-        read.inspiredBy());
+        read.inspiredBy(),
+        null);
   }
 
   /**
@@ -329,7 +378,8 @@ public record TransitionedEntity(
         block == null ? null : block.reason(),
         block == null ? null : block.blockedBy(),
         block == null ? null : block.waitingOn(),
-        row.inspiredByIdeaId);
+        row.inspiredByIdeaId,
+        null);
   }
 
   /**

@@ -154,6 +154,11 @@ public class WorkEntityDoors {
 
   @Inject QualifiedEntityIds qualifiedIds;
 
+  /** A campaign's read gains {@code heldBy} from these two (qits-650). */
+  @Inject eu.wohlben.qits.entities.campaign.CampaignService campaignService;
+
+  @Inject CampaignViews campaignViews;
+
   /** The drop door's write (qits-753). */
   @Inject EntityPriorityService priorities;
 
@@ -194,7 +199,13 @@ public class WorkEntityDoors {
 
   /** The row in the merged shape, qualified. */
   public TransitionedEntity read(WorkEntity row) {
-    return qualifiedIds.qualify(catalog.byIds(List.of(row.id)).get(row.id));
+    TransitionedEntity read = qualifiedIds.qualify(catalog.byIds(List.of(row.id)).get(row.id));
+    if (read != null && read.archetype() == Archetype.CAMPAIGN) {
+      // The members that set a campaign's derived status (qits-650), computed at read time; every
+      // other archetype leaves the field off the wire.
+      return read.withHeldBy(campaignViews.heldBy(campaignService.get(row.id)));
+    }
+    return read;
   }
 
   // --- create ----------------------------------------------------------------------------------
