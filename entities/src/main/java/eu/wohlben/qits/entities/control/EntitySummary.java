@@ -18,6 +18,15 @@ import java.util.List;
  * waitingOn} beside it (qits-1153). {@code outcome} and {@code supersededBy} (qits-248) are on every
  * archetype and always on the wire, null included, and so is {@code priority} (qits-753); {@code
  * tags} (qits-634) is always on the wire too, {@code []} when there are none.
+ *
+ * <p><b>{@code excerpt} is what a list says about the body instead</b> (qits-1821): a short
+ * plain-text lead of the description — its first prose paragraph, inline Markdown stripped, cut at
+ * a word past 240 characters ({@link DescriptionExcerpt}) — for the desk's cards. It is derived from
+ * the description's first 2000 characters, which is all the listing reads of that column, so the
+ * entry is still one <em>without its description</em>. Filled for a ticket and an epic only; null
+ * on a feature, a task and a campaign, and on a ticket or an epic with no prose to lead with.
+ * Always on the wire, null included, like {@code outcome}. Only the listing answers it: {@link
+ * TransitionedEntity} carries it unserialised, so the detail's shape does not change.
  */
 public record EntitySummary(
     String id,
@@ -26,6 +35,7 @@ public record EntitySummary(
     long number,
     String qualifiedId,
     String title,
+    String excerpt,
     String slug,
     String slugScope,
     String status,
@@ -61,6 +71,7 @@ public record EntitySummary(
         e.number(),
         e.qualifiedId(),
         e.title(),
+        e.excerpt(),
         e.slug(),
         e.slugScope(),
         e.status(),

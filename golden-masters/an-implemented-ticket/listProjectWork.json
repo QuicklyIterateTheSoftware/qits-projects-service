@@ -7,6 +7,7 @@
       "number": 1,
       "qualifiedId": "contract-00000001-1",
       "title": "Database runs out of connection slots during deploys",
+      "excerpt": "Raise the database's connection limit, so two pools fit during a rolling deploy. Verify by deploying again.",
       "slug": "database-runs-out-of-connection-slots-during-deploys",
       "slugScope": "00000000-0000-4000-8000-000000000001",
       "status": "IMPLEMENTED",

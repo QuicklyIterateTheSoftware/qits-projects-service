@@ -17,6 +17,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -172,6 +173,18 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /** The long-form Markdown body. */
   public String description;
+
+  /**
+   * <b>The head of {@link #description}, on a listing's row alone</b> (qits-1821): its first 2000
+   * characters, which {@code WorkEntityRepository.listByProjectWithoutDescription} selects so the
+   * listing can answer an excerpt ({@code DescriptionExcerpt}) without reading the whole column.
+   * <b>Only ever set on an unmanaged projection row</b>, and null on every row Hibernate loaded.
+   *
+   * <p>A field of its own rather than a partial {@link #description}, so that no row ever looks as
+   * if it carried a body it does not: a projection row's {@code description} stays null. Not a
+   * column, and {@code @JsonIgnore}d out of the audit snapshot, which is this row serialised.
+   */
+  @Transient @JsonIgnore public String descriptionLead;
 
   /**
    * <b>One column for one lifecycle</b>: every archetype holds one of {@link EntityStatus}' eight

@@ -55,6 +55,11 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    * {@code EntityBlockState} derives from all of them. {@code agentActivityAt} is not carried: only
    * the session door reads it, and it reads a managed row. The tags (qits-634) are filled by one
    * more query for the whole project.
+   *
+   * <p><b>The description's first 2000 characters are read, onto {@code descriptionLead}</b>
+   * (qits-1821): enough for the listing's excerpt ({@code DescriptionExcerpt}, at most 240
+   * characters of the first paragraph), never the whole column. They go on a field of their own,
+   * not on {@code description}, so a listing row still carries no body.
    */
   public List<WorkEntity> listByProjectWithoutDescription(String projectId) {
     List<WorkEntity> rows =
@@ -65,7 +70,8 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
-                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority"
+                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority,"
+                + " substring(e.description, 1, 2000)"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
             .setParameter(1, projectId)
@@ -134,6 +140,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.outcome = (WorkOutcome) c[26];
     row.inspiredByIdeaId = (String) c[27];
     row.priority = (Integer) c[28];
+    row.descriptionLead = (String) c[29];
     return row;
   }
 
