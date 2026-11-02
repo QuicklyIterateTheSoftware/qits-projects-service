@@ -68,8 +68,9 @@ public class EntityCatalogService {
   }
 
   /**
-   * {@link #listByProject} with {@code description} null on every entry: the column is not read.
-   * For a list that shows no description; a detail view reads the entity on its own.
+   * {@link #listByProject} with {@code description} null on every entry: the column is not read,
+   * beyond the first 2000 characters a ticket's or an epic's {@code excerpt} is derived from
+   * (qits-1821). For a list that shows no description; a detail view reads the entity on its own.
    */
   public List<TransitionedEntity> listByProjectWithoutDescription(String projectId) {
     return reads.hold(

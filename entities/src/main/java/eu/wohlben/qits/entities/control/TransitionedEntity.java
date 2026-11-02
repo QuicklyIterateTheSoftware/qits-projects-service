@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
@@ -108,6 +109,11 @@ import java.util.List;
  *     at read time and filled only on a campaign's entity read ({@link #withHeldBy}); empty while
  *     the campaign is DONE or DROPPED or has no members. Null and left off the wire everywhere
  *     else, every other archetype included
+ * @param excerpt the listing's plain-text lead of {@link #description} (qits-1821, {@link
+ *     DescriptionExcerpt}) — <b>never on the wire here</b>: only {@link EntitySummary} answers it,
+ *     so a detail, a write's answer and an announcement keep the shape they had. Filled only by
+ *     {@link #of} on a ticket or an epic read off a listing row, whose {@code descriptionLead} the
+ *     listing's projection set; null on every other read and every write
  */
 public record TransitionedEntity(
     String id,
@@ -146,7 +152,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
     List<WorkTag> tags,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo,
+    @JsonIgnore String excerpt) {
 
   /** The tags never null: an entity without any answers {@code []}, in declaration order. */
   public TransitionedEntity {
@@ -192,7 +199,8 @@ public record TransitionedEntity(
         inspiredBy,
         tags,
         members == null ? null : List.copyOf(members),
-        relatedTo);
+        relatedTo,
+        excerpt);
   }
 
   /**
@@ -237,7 +245,8 @@ public record TransitionedEntity(
         inspiredBy,
         tags,
         heldBy,
-        relatedTo);
+        relatedTo,
+        excerpt);
   }
 
   /**
@@ -303,7 +312,8 @@ public record TransitionedEntity(
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
         null,
-        row.relatedEntityId);
+        row.relatedEntityId,
+        null);
   }
 
   /**
@@ -352,7 +362,8 @@ public record TransitionedEntity(
         read.inspiredBy(),
         read.tags(),
         null,
-        read.relatedTo());
+        read.relatedTo(),
+        null);
   }
 
   /**
@@ -400,7 +411,8 @@ public record TransitionedEntity(
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
         null,
-        row.relatedEntityId);
+        row.relatedEntityId,
+        excerptOf(row));
   }
 
   /**
@@ -411,6 +423,17 @@ public record TransitionedEntity(
   private static List<String> criteriaOf(WorkEntity row) {
     return Archetypes.spec(row.archetype).permits(EntityProperty.ACCEPTANCE_CRITERIA)
         ? List.copyOf(row.acceptanceCriteria)
+        : null;
+  }
+
+  /**
+   * The excerpt of a ticket or an epic read off a listing row ({@link WorkEntity#descriptionLead}),
+   * and null for every other kind — a card shows a lead for the work a person files and refines, not
+   * for the pieces of a plan or a campaign — and for every managed row, which carries no lead.
+   */
+  private static String excerptOf(WorkEntity row) {
+    return row.archetype == Archetype.TICKET || row.archetype == Archetype.EPIC
+        ? DescriptionExcerpt.of(row.descriptionLead)
         : null;
   }
 

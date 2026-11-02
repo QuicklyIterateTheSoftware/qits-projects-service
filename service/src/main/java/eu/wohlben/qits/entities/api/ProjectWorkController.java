@@ -27,7 +27,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * children of one entity), and since qits-248 by {@code outcome} (why a DROPPED item was closed)
  * and {@code supersededBy} (qualified id or UUID; the items naming that entity as what answers for
  * them — the reverse link), and since qits-634 by {@code tag} (the items carrying it). The answer is {@code {"entities": [...]}}, each a qualified {@link
- * EntitySummary} without its description. {@link WorkEntityDoors#list} is the implementation,
+ * EntitySummary} without its description — a ticket and an epic carry its {@code excerpt} instead
+ * (qits-1821), a short plain-text lead for the desk's cards, null on every other archetype. {@link
+ * WorkEntityDoors#list} is the implementation,
  * shared with {@code GET /projects/{projectId}/entities}. A read: {@code qits:agent}, unbound.
  */
 @Path("/projects/{project}/work")
@@ -50,7 +52,9 @@ public class ProjectWorkController {
               + " the direct children of one parent (qualified id or UUID), one drop outcome, and"
               + " the items naming one entity (qualified id or UUID) as their supersededBy — what"
               + " that entity closed as a duplicate, resolved elsewhere or superseded, and the items"
-              + " carrying one tag. The project is its id or its slug.")
+              + " carrying one tag. The project is its id or its slug. No entry carries its"
+              + " description: a ticket or an epic answers an excerpt instead, a short plain-text"
+              + " lead of it, and every other archetype answers null.")
   @APIResponse(
       responseCode = "200",
       description = "The work entities",

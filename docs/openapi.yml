@@ -1438,6 +1438,8 @@ components:
           type: string
         title:
           type: string
+        excerpt:
+          type: string
         slug:
           type: string
         slugScope:
@@ -5738,7 +5740,9 @@ paths:
         \ UUID), one drop outcome, and the items naming one entity (qualified id or\
         \ UUID) as their supersededBy — what that entity closed as a duplicate, resolved\
         \ elsewhere or superseded, and the items carrying one tag. The project is\
-        \ its id or its slug."
+        \ its id or its slug. No entry carries its description: a ticket or an epic\
+        \ answers an excerpt instead, a short plain-text lead of it, and every other\
+        \ archetype answers null."
       operationId: listProjectWork
       parameters:
       - name: project
