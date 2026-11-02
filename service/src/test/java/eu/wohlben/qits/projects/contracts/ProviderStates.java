@@ -1360,9 +1360,10 @@ public class ProviderStates {
    * views, with five members in this order: a DONE ticket; a DONE epic whose feature and two tasks
    * are DONE; a VERIFIED epic whose feature and two tasks are VERIFIED; the IMPLEMENTING epic of
    * {@link #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. The open
-   * two are added first and the finished three put in front of them, because a campaign whose only
-   * member is DONE is DONE, and DONE is final. The seeds are the same as an add in order makes: a
-   * finished predecessor seeds nothing. Recorded for the
+   * two are added first and the finished three put in front of them — the order this state was
+   * recorded with (before qits-1805 a campaign whose only member was DONE stayed DONE; its DONE
+   * now follows its members, and the order is kept). The seeds are the same as an add in order
+   * makes: a finished predecessor seeds nothing. Recorded for the
    * entity list, for the campaign, and for the detail page's reads of the campaign item (its
    * {@code qualifiedId} param); the params name every member, so all answers give each member the
    * same frozen id.

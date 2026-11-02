@@ -175,11 +175,12 @@ class CampaignServiceTest extends EntitiesTestSupport {
   }
 
   /**
-   * qits-650: the plan stays editable while the campaign is neither DONE nor DROPPED — adding a
-   * REPORTED member to an IMPLEMENTED campaign is how it drops back to REPORTED.
+   * qits-650, qits-1805: the plan stays editable while the campaign is not DROPPED — adding a
+   * REPORTED member to an IMPLEMENTED campaign is how it drops back to REPORTED, and a DONE one
+   * follows its members the same way.
    */
   @Test
-  void membershipIsEditableUntilTheCampaignIsDoneOrDropped() {
+  void membershipIsEditableUntilTheCampaignIsDropped() {
     WorkEntity campaign = campaign();
     WorkEntity a = scheduled("A");
     CampaignService.Member member = campaigns.addMember(campaign.id, a.id, null, false, WHO);
@@ -199,17 +200,71 @@ class CampaignServiceTest extends EntitiesTestSupport {
     conflict(() -> campaigns.removeMember(campaign.id, member.membership().id, WHO), "DROPPED");
     conflict(
         () -> campaigns.setCondition(campaign.id, member.membership().id, List.of(), WHO),
-        "neither DONE nor DROPPED");
+        "edited only while it is not DROPPED");
+    assertEquals("DROPPED", status(campaign), "a refused edit recomputes nothing");
+  }
 
-    WorkEntity finished = campaign();
-    campaigns.addMember(
-        finished.id,
-        walk(ticket("Done"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE").id,
-        null,
-        false,
-        WHO);
-    assertEquals("DONE", status(finished));
-    conflict(() -> campaigns.addMember(finished.id, ticket("D").id, null, false, WHO), "is DONE");
+  /**
+   * qits-1805: an empty campaign whose first member is already DONE is DONE at once — and a later
+   * add of open work is accepted and lowers it, where it used to be refused for good.
+   */
+  @Test
+  void aDoneCampaignAcceptsAnAddAndDropsToItsNewFloor() {
+    WorkEntity campaign = campaign();
+    WorkEntity first = done("First");
+    campaigns.addMember(campaign.id, first.id, null, false, WHO);
+    assertEquals("DONE", status(campaign));
+    WorkEntity second = done("Second");
+    CampaignService.Member behind = campaigns.addMember(campaign.id, second.id, null, false, WHO);
+    campaigns.moveMember(campaign.id, behind.membership().id, 0, WHO);
+    assertEquals(List.of(second.id, first.id), memberIds(campaigns.get(campaign.id)));
+    assertEquals("DONE", status(campaign), "a move changes no floor");
+
+    CampaignService.Member open = campaigns.addMember(campaign.id, ticket("Open").id, null, false, WHO);
+    assertEquals(2, open.membership().position);
+    assertEquals("REPORTED", status(campaign), "the open member is the new floor");
+  }
+
+  /**
+   * qits-1805: removing a campaign's only open member makes it DONE, and that DONE does not freeze
+   * it — the member is re-added, and the campaign is lowered again.
+   */
+  @Test
+  void aCampaignMadeDoneByARemoveStaysEditable() {
+    WorkEntity campaign = campaign();
+    campaigns.addMember(campaign.id, done("Done").id, null, false, WHO);
+    WorkEntity open = walk(ticket("Open"), "REFINED");
+    CampaignService.Member member = campaigns.addMember(campaign.id, open.id, null, false, WHO);
+    assertEquals("REFINED", status(campaign));
+
+    campaigns.removeMember(campaign.id, member.membership().id, WHO);
+    assertEquals("DONE", status(campaign), "only the DONE member is left");
+
+    campaigns.addMember(campaign.id, open.id, null, false, WHO);
+    assertEquals("REFINED", status(campaign), "re-adding it lowers the campaign again");
+  }
+
+  /**
+   * qits-1805: a DONE campaign's condition is still edited, but nothing in it is approved and it is
+   * not started — the start press and the approval keep refusing at DONE.
+   */
+  @Test
+  void aDoneCampaignIsNeitherStartedNorApprovedInto() {
+    WorkEntity campaign = campaign();
+    CampaignService.Member member =
+        campaigns.addMember(campaign.id, done("Done").id, null, false, WHO);
+    assertEquals("DONE", status(campaign));
+
+    CampaignService.Member gated =
+        campaigns.setCondition(
+            campaign.id, member.membership().id, List.of(group(approval(null))), WHO);
+    String approvalId = gated.groups().get(0).criteria().get(0).id;
+
+    conflict(
+        () -> campaigns.approve(campaign.id, member.membership().id, approvalId, null, "xion"),
+        "DONE");
+    conflict(() -> campaigns.start(campaign.id, WHO), "is DONE");
+    assertEquals("DONE", status(campaign));
   }
 
   // --- removal -------------------------------------------------------------------------------------
@@ -461,7 +516,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
 
   /**
    * qits-650: a derived move between open statuses neither pauses nor starts a campaign; a derived
-   * move into DONE pauses it.
+   * move into DONE pauses it, and a derived move out of DONE (qits-1805) does not resume it.
    */
   @Test
   void aDerivedMoveNeitherPausesNorStartsItAndADerivedDonePauses() {
@@ -476,6 +531,11 @@ class CampaignServiceTest extends EntitiesTestSupport {
     walk(a, "DONE");
     assertEquals("DONE", status(campaign));
     assertFalse(active(campaign.id), "a derived DONE pauses it");
+
+    // qits-1805: a derived move out of DONE resumes nothing — a new press is.
+    campaigns.addMember(campaign.id, ticket("Late").id, null, false, WHO);
+    assertEquals("REPORTED", status(campaign));
+    assertFalse(active(campaign.id), "leaving DONE leaves the start paused");
 
     WorkEntity unstarted = campaign();
     campaigns.addMember(unstarted.id, scheduled("B").id, null, false, WHO);
@@ -539,6 +599,11 @@ class CampaignServiceTest extends EntitiesTestSupport {
         .create(
             Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
         .entity();
+  }
+
+  /** A ticket walked all the way to DONE. */
+  private WorkEntity done(String title) {
+    return walk(ticket(title), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
   }
 
   /** A ticket a person scheduled: READY_FOR_DEV, so a campaign holding it may be too (qits-887). */

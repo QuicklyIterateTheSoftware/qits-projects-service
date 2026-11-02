@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
  * A campaign's derived status (qits-650): the lowest status of its members that are not DROPPED, on
  * the campaign walk, with IMPLEMENTING read as READY_FOR_DEV and VERIFYING as IMPLEMENTED; REPORTED
  * when it has none, DROPPED when all are. Re-derived in the transaction of every writer — a member's
- * move on either door, an add, a remove, a member's delete — and at boot; never out of DONE or
- * DROPPED, and at once on the reopen.
+ * move on either door, an add, a remove, a member's delete — and at boot; out of DONE too when the
+ * floor drops (qits-1805), never out of DROPPED, and at once on the reopen.
  */
 @QuarkusTest
 class CampaignStatusRecomputeTest extends EntitiesTestSupport {
@@ -248,9 +248,12 @@ class CampaignStatusRecomputeTest extends EntitiesTestSupport {
     assertEquals("REFINED", status(campaign), "the reopen recomputes at once");
   }
 
-  /** A manual drop of a campaign with open members stays; DONE is final. */
+  /**
+   * A manual drop of a campaign with open members stays; a derived DONE whose members are all DONE
+   * is no drift.
+   */
   @Test
-  void aManualDropAndDoneAreLeftAlone() {
+  void aManualDropAndARightfulDoneAreLeftAlone() {
     WorkEntity a = ticket("A");
     WorkEntity campaign = campaignOf(a);
     work.transition(Archetype.CAMPAIGN, campaign.id, "DROPPED", PERSON, TestDrops.WONT_DO);
@@ -263,6 +266,76 @@ class CampaignStatusRecomputeTest extends EntitiesTestSupport {
     assertEquals("DONE", status(finished));
     assertEquals(0, recompute.reconcile().drifts().size());
     assertEquals("DONE", status(finished));
+  }
+
+  // --- DONE follows its members (qits-1805) ---------------------------------------------------------
+
+  /**
+   * An add of open work moves a DONE campaign to the new floor as an ordinary derived change:
+   * {@code statusBefore} DONE, audited and announced as the system.
+   */
+  @Test
+  void anAddOfOpenWorkMovesADoneCampaignAsADerivedChange() {
+    WorkEntity finished = ticket("Finished");
+    walk(finished, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
+    WorkEntity campaign = campaignOf(finished);
+    assertEquals("DONE", status(campaign));
+    announced.clear();
+
+    WorkEntity open = ticket("Open");
+    walk(open, "REFINED");
+    CampaignService.Member added = campaigns.addMember(campaign.id, open.id, null, false, WHO);
+
+    assertEquals("REFINED", status(campaign));
+    TransitionedEntity derived =
+        announced.batches().stream()
+            .flatMap(batch -> batch.entities().stream())
+            .filter(entry -> entry.id().equals(campaign.id))
+            .findFirst()
+            .orElseThrow();
+    assertEquals("DONE", derived.statusBefore());
+    assertEquals("REFINED", derived.status());
+    assertEquals(CampaignStatusRecompute.CHANGED_BY, derived.changedBy());
+    inFreshTx(
+        () ->
+            assertEquals(
+                2,
+                auditRepository.list("entityId", campaign.id).stream()
+                    .filter(row -> CampaignStatusRecompute.CHANGED_BY.equals(row.changedBy))
+                    .count(),
+                "into DONE and out of it, each audited as the system"));
+
+    campaigns.removeMember(campaign.id, added.membership().id, WHO);
+    assertEquals("DONE", status(campaign), "removing the open member makes it DONE again");
+  }
+
+  /** A dropped member's reopen lowers a DONE campaign whose other members are DONE. */
+  @Test
+  void aDroppedMembersReopenLowersADoneCampaign() {
+    WorkEntity finished = ticket("Finished");
+    walk(finished, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
+    WorkEntity other = ticket("Other");
+    WorkEntity campaign = campaignOf(finished, other);
+    walk(other, "DROPPED");
+    assertEquals("DONE", status(campaign), "a DROPPED member is not counted");
+
+    walk(other, "REPORTED");
+    assertEquals("REPORTED", status(campaign), "the reopened member is the floor again");
+  }
+
+  /** A derived move out of DONE does not resume the start the derived DONE paused. */
+  @Test
+  void leavingDoneLeavesTheStartPaused() {
+    WorkEntity a = ticket("A");
+    walk(a, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
+    WorkEntity campaign = campaignOf(a);
+    campaigns.start(campaign.id, WHO);
+    walk(a, "DONE");
+    assertFalse(isActive(campaign), "a derived DONE pauses the start");
+
+    campaigns.addMember(campaign.id, ticket("Late").id, null, false, WHO);
+    assertEquals("REPORTED", status(campaign));
+    assertFalse(isActive(campaign), "a derived move out of DONE is not a start press");
   }
 
   // --- the door ------------------------------------------------------------------------------------
@@ -315,8 +388,27 @@ class CampaignStatusRecomputeTest extends EntitiesTestSupport {
 
   // --- the boot reconcile ----------------------------------------------------------------------------
 
+  /** A stale DONE — a campaign at DONE whose members are not all DONE — is repaired at boot. */
   @Test
-  void theReconcileRepairsDriftAndLeavesDoneAndDroppedAlone() {
+  void theReconcileRepairsAStaleDone() {
+    WorkEntity a = ticket("A");
+    walk(a, "REFINED");
+    WorkEntity stale = campaignOf(a);
+    setStatus(stale, "DONE");
+    announced.clear();
+
+    CampaignStatusRecompute.Reconciled reconciled = recompute.reconcile();
+    recompute.announce(reconciled.changes());
+
+    assertEquals(
+        List.of(new CampaignStatusRecompute.Drift(stale.id, PROJECT, "DONE", "REFINED")),
+        reconciled.drifts());
+    assertEquals("REFINED", status(stale));
+    assertEquals(1, announced.batches().size());
+  }
+
+  @Test
+  void theReconcileRepairsDriftAndLeavesDroppedAlone() {
     WorkEntity a = ticket("A");
     walk(a, "REFINED");
     WorkEntity drifted = campaignOf(a);

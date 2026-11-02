@@ -504,6 +504,8 @@ class WorkCampaignApiTest {
   /**
    * qits-650: a campaign is never closed by hand — the door answers 409 — and it is DONE, by the
    * system, the moment its last open member is closed or dropped; a DONE campaign holds nothing.
+   * qits-1805: and its DONE follows its members — an add of open work at DONE is accepted and lowers
+   * it.
    */
   @Test
   void aCampaignWhoseMembersAreAllClosedIsDerivedDone() {
@@ -553,6 +555,21 @@ class WorkCampaignApiTest {
         .statusCode(200)
         .body("progress.campaign.start", nullValue())
         .body("progress.campaign.heldBy", equalTo(List.of()));
+
+    WorkEntity late = ticket("Late member");
+    given()
+        .contentType(ContentType.JSON)
+        .body(Map.of("entityId", late.id))
+        .post(base + "/members")
+        .then()
+        .statusCode(201)
+        .body("member.position", equalTo(2));
+    given()
+        .get(base)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("REPORTED"))
+        .body("heldBy", equalTo(List.of(PROJECT + "-" + late.number)));
   }
 
   // --- fixtures ------------------------------------------------------------------------------------
