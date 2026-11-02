@@ -1933,18 +1933,49 @@ more: it waits until a person schedules the entity (REFINED → READY_FOR_DEV), 
 READY_FOR_DEV. Unscheduling is READY_FOR_DEV → REFINED, until the work starts; once IMPLEMENTING the
 way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until somebody schedules it. A
 campaign keeps READY_FOR_DEV and elides only IMPLEMENTING and VERIFYING — its lifecycle is the walk with
-the elided states removed (`EntityStateMachine.transitionsFrom(Archetype, …)`).
+the elided states removed (`EntityStateMachine.states(CAMPAIGN)`), and the vocabulary its derived
+status is read on.
 
-**A campaign is READY_FOR_DEV when its members are (qits-942, decision 19).** Its REFINED →
-READY_FOR_DEV is a person's move (`PERSON_APPROVAL`) and is judged by
-`entities/campaign/MembersScheduledGate` (`MEMBERS_SCHEDULED`): refused while any member that is not
-DROPPED is still before READY_FOR_DEV, the 409 naming each with its status; an empty campaign has
-nobody behind and passes. READY_FOR_DEV means "ready for development", **not "start it"**: a started
-campaign runs at REFINED and READY_FOR_DEV alike (`EntityStateMachine.campaignRunsAt`) — the start
-press (`CampaignService.start`, `CampaignStarter`), the dispatch read (`EntityDispatch.campaignState`),
-the executor's claim and its sweep all accept both — and the move between the two neither starts nor
-pauses it. The pause hook fires when the campaign leaves both (REPORTED, IMPLEMENTED, DROPPED).
-Membership stays editable at READY_FOR_DEV (`CampaignService.EDITABLE`).
+**A campaign's status is derived from its members — the one exception to "a status is asked for"
+(qits-650).** `entities/control/CampaignStatusRecompute` is the rule and its one writer: each member's
+status is read on the campaign walk `REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTED < VERIFIED <
+DONE` (`EntityStateMachine.onCampaignWalk`: IMPLEMENTING counts as READY_FOR_DEV, VERIFYING as
+IMPLEMENTED — the last word achieved), DROPPED members are not counted, and the lowest is the
+campaign's; no members is REPORTED, every member DROPPED is DROPPED. **A campaign at DONE or DROPPED is
+never recomputed** — DONE is final, DROPPED (a person's or derived) is sticky — and the reopen
+recomputes at once. So a campaign whose first member added is DONE is DONE for good: add the open
+work first. It is recomputed **in the writer's transaction** by every writer: a member's move on
+the status door (`WorkEntityService.move`, every cascade included) and on the bulk door
+(`EntityTransitionService`, a status or an EPIC ↔ TICKET re-archetype), `CampaignService.addMember`
+and `removeMember`, and a member's delete (`WorkEntityService.leaveCampaigns`); and at boot by
+`startup/CampaignStatusReconcile`, every campaign not DONE or DROPPED, each drift one WARN. A derived
+change writes `statusBefore`, is audited as `CampaignStatusRecompute.CHANGED_BY` (`system`), is
+announced as an `EntityTransitioned` (joining the move's one batch on the two status doors), **keeps
+the campaign's blocks**, and runs **no pause hook — except a derived move into DONE or DROPPED, which
+pauses the start** (a finished or dropped campaign runs nothing, and a reopen must not resume a run
+nobody pressed). The lock is the campaign row, `PESSIMISTIC_WRITE`, every campaign of a write in id
+order: `CampaignService` takes the campaign row and then membership rows, a member's move holds the
+member's row and then asks for the campaign row, the recompute locks no member and no membership,
+and a delete takes its campaigns' rows **before** it removes their edges — so nothing waits in a
+cycle (`CampaignStatusRecomputeTest` races a member's move against an add).
+
+**The status door makes two campaign moves only: into DROPPED, and the reopen DROPPED → REPORTED.**
+Every other is a 409 saying the status is derived from its members, and the served registry lists
+only those two (`EntityStateMachine.isDerived`, which keeps a derived archetype's DROP and REOPEN
+alone). `MEMBERS_SCHEDULED` is gone; `PERSON_APPROVAL` and `CHILDREN_CLOSED` do not apply to a
+campaign; the bulk door still refuses a campaign's status change, and refuses turning a campaign
+member into a FEATURE, a TASK or a CAMPAIGN with a 409 naming the campaign. **Running no longer
+depends on the word**: a campaign runs while its start is active, it is not blocked, and it is neither
+DONE nor DROPPED (`EntityStateMachine.campaignRuns`) — the start press (`CampaignService.start`,
+`CampaignStarter`), the dispatch read (`EntityDispatch.campaignState`), the executor's claim and
+sweep, and the block door all read it. The pause hook fires on the manual drop and on a derived DONE
+or DROPPED; every other derived move leaves the start as it is. Membership is editable while the
+campaign is neither DONE nor DROPPED — adding a REPORTED member to an IMPLEMENTED campaign is how it
+drops back to REPORTED. **Who sets the floor is read, never stored**: `heldBy` — the qualified ids of
+the non-DROPPED members whose mapped status is the campaign's, empty while it is DONE or DROPPED or
+empty — on the campaign's entity read (`GET /work/{q}`, a campaign only; the field is absent on every
+other archetype) and on its progress read (`CampaignProgressCampaignDto`), and `holdsStatus` on each
+member of `GET /work/{q}/members` (`CampaignMemberDto`).
 
 **Acceptance criteria are an epic's and a ticket's ordered list of short statements (qits-934,
 epics V26).** `EntityProperty.ACCEPTANCE_CRITERIA`, `acceptanceCriteria` on the wire, permitted on
@@ -1979,18 +2010,20 @@ status that differs from the row's when either side is READY_FOR_DEV, when it en
 from before READY_FOR_DEV, or when a gate applies — after its 400s, so DONE-is-final still speaks
 first. Restating the status a row holds passes, at READY_FOR_DEV too.
 
-**Closing finished work straight to DONE (qits-1757): the CLOSE kind and `CHILDREN_CLOSED`.** A
-CAMPAIGN, EPIC or FEATURE (`EntityStateMachine.closes`) has a CLOSE move `X → DONE` from every open
+**Closing finished work straight to DONE (qits-1757): the CLOSE kind and `CHILDREN_CLOSED`.** An
+EPIC or a FEATURE (`EntityStateMachine.closes`; a CAMPAIGN no longer since qits-650, its DONE is
+derived) has a CLOSE move `X → DONE` from every open
 status it holds short of VERIFIED; VERIFIED → DONE stays the ungated FORWARD, so each target is still
 reached by exactly one move (`verify()` checks it per archetype). A TICKET or TASK serves no CLOSE —
 the archetype-less `transitionsFrom(from)` is the declaration and does list them, so a door asks the
 archetype-aware reading. `campaign/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges the CLOSE moves
 only (`EntityStateMachine.isClose`, never VERIFIED → DONE, which the PUT door would otherwise start
-refusing): every direct child — a campaign's CAMPAIGN members, an epic's or feature's STRUCTURAL
-children — must be DONE or DROPPED (VERIFIED is open), at least one child must exist, and the mover
-must be a person or the delivery desk of the row's own project; a machine (`qits:agent`,
-`qits:system`) is a 409. Nothing derives a parent from its children: the close is asked for, and the
-gate only says whether it is true. The move emits the usual one `EntityTransitioned`
+refusing): every direct child — an epic's or feature's STRUCTURAL children — must be DONE or
+DROPPED (VERIFIED is open), at least one child must exist, and the mover must be a person or the
+delivery desk of the row's own project; a machine (`qits:agent`, `qits:system`) is a 409. Nothing
+derives an epic or a feature from its children: the close is asked for, and the gate only says
+whether it is true. **The one exception is a campaign, whose status is derived from its members**
+(qits-650, above); every other status stays asked for. The move emits the usual one `EntityTransitioned`
 (`statusBefore`, DONE, `changedBy`), with no kind on the event.
 
 **Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
@@ -2030,7 +2063,7 @@ READY_FOR_DEV (qits-887 — a piece is never scheduled or unscheduled on its own
 epic), and any move to IMPLEMENTED (an epic's or a feature's own) carries everything still before
 IMPLEMENTED there.
 VERIFYING and VERIFIED leave the tasks alone — a task is verified on its own — and nothing derives a
-parent's status from its children. Each carried child joins the move's one `EntityTransitioned`. **No
+parent's status from its children (a campaign's from its members is the one exception, qits-650). Each carried child joins the move's one `EntityTransitioned`. **No
 phase machinery**: `Archetypes.isPlanPiece` is the question every phase door asks now that "has
 status words" no longer tells the kinds apart — `PhaseAdvance` returns at once, `PhasePrompts.phaseOf`
 answers empty, and dispatch, refinement rooms, blocks, campaign membership and agent signals refuse
@@ -2161,7 +2194,8 @@ starts no phase or the kind is a feature or a task, the reason on the entity's o
 `/work/{qualifiedId}/blocked` (UUID or qualified id), which the central server's `work_block` and
 `work_unblock` call (the ticket-only `POST /tickets/{id}/blocked` and `/entities/{id}/blocked`
 went with qits-976).
-Every transition clears the flag. A blocked campaign's executor claims no new member (running ones
+Every transition clears the flag — a campaign's derived status change (qits-650) excepted, which
+clears no block. A blocked campaign's executor claims no new member (running ones
 are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the merged shape for every lifecycle kind and on the campaign DTOs
 (`CampaignDtos`).
 
