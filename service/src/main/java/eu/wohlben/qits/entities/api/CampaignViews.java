@@ -17,6 +17,7 @@ import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.campaignhost.CampaignEvaluatorHealth;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -187,6 +188,7 @@ public class CampaignViews {
         block.blocked(),
         block.source(),
         block.reason(),
-        block.blockedBy());
+        block.blockedBy(),
+        WorkTag.ordered(entity.tags));
   }
 }

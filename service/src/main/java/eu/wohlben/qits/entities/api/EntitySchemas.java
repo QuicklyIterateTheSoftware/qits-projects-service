@@ -10,16 +10,19 @@ import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -47,7 +50,8 @@ import java.util.regex.Pattern;
  *       server-owned pair and the {@linkplain EntityWireProperties#MOVES moves}; a clearable one is
  *       typed {@code ["string","null"]}. Nothing is required, and at least one property must be named.
  *       Every kind's also lists {@code priority} (qits-753), {@code ["integer","null"]}, which is no
- *       registry property ({@link EntityWireProperties#PRIORITY}).
+ *       registry property ({@link EntityWireProperties#PRIORITY}), and {@code tags} (qits-634), an
+ *       array of {@code WorkTag} names typed {@code ["array","null"]} — on the create schema too.
  *   <li><b>transition</b> — one entry of {@code POST /work/transition}, the full post-state. The
  *       kind's permitted properties less the server-owned pair and the implementing marker (which
  *       that door carries rather than states), plus {@code membership}. Required:
@@ -158,6 +162,8 @@ public final class EntitySchemas {
       required.add(PARENT);
     }
     properties.put(INSPIRED_BY, inspiredBy());
+    // The tags (qits-634): every archetype, and no registry property.
+    properties.put(EntityWireProperties.TAGS, EntityWireProperties.tagsSchema());
     return document(
         archetype,
         Door.CREATE,
@@ -181,6 +187,8 @@ public final class EntitySchemas {
     properties.put(INSPIRED_BY, nullable(inspiredBy()));
     // The ranking among siblings (qits-753): every archetype, and no registry property.
     properties.put(EntityWireProperties.PRIORITY, nullable(EntityWireProperties.prioritySchema()));
+    // The tags (qits-634): every archetype, every status, and no registry property.
+    properties.put(EntityWireProperties.TAGS, nullable(EntityWireProperties.tagsSchema()));
     return document(
         archetype,
         Door.UPDATE,
@@ -279,6 +287,9 @@ public final class EntitySchemas {
   private static Optional<String> value(String name, Map<String, Object> property, JsonNode value) {
     if (value == null || value.isNull()) {
       return Optional.empty(); // absence is the required check's to judge, not the value's
+    }
+    if (name.equals(EntityWireProperties.TAGS)) {
+      return tagsRefusal(value);
     }
     if (EntityWireProperties.isList(property)) {
       return listRefusal(name, value);
@@ -475,6 +486,53 @@ public final class EntitySchemas {
       return Optional.empty();
     }
     return Optional.of(EntityWireProperties.PRIORITY + " must be an integer, or null to clear it");
+  }
+
+  /**
+   * The complaint about a body's {@code tags} (qits-634), or none: an array of {@link WorkTag}
+   * names, or null (which clears them on a patch). The refusal names every legal word.
+   */
+  static Optional<String> tagsRefusal(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    String legal = String.join(", ", WorkTag.words());
+    if (!value.isArray()) {
+      return Optional.of(
+          EntityWireProperties.TAGS + " must be an array of tags (" + legal + "), or null");
+    }
+    List<String> unknown = new ArrayList<>();
+    for (JsonNode item : value) {
+      if (!item.isTextual()) {
+        unknown.add(item.toString());
+      } else if (!WorkTag.words().contains(item.textValue())) {
+        unknown.add(item.textValue());
+      }
+    }
+    if (unknown.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "Unknown tag"
+            + (unknown.size() == 1 ? "" : "s")
+            + ": "
+            + String.join(", ", unknown)
+            + " — tags must be one of "
+            + legal);
+  }
+
+  /** The tags a body states, already judged by {@link #tagsRefusal}: null when absent. */
+  static Set<WorkTag> tags(JsonNode value) {
+    if (value == null) {
+      return null;
+    }
+    Set<WorkTag> tags = EnumSet.noneOf(WorkTag.class);
+    if (!value.isNull()) {
+      for (JsonNode item : value) {
+        tags.add(WorkTag.valueOf(item.textValue()));
+      }
+    }
+    return tags;
   }
 
   /**

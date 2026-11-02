@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -117,6 +118,35 @@ public final class EntityWireProperties {
         "The ranking among siblings (a project's roots, campaigns excluded, or the children of one"
             + " parent): higher sorts first, null after every number, then by number. Editable at"
             + " every status but DONE and DROPPED, which answer 409; null clears it.");
+    return Collections.unmodifiableMap(schema);
+  }
+
+  /**
+   * The wire name of the tags (qits-634) — written by a create and by a patch on every archetype, at
+   * every status. <b>Not a registry property, so not a row of this table</b>, for {@link #PRIORITY}'s
+   * reasons: the registry document's lists are pinned by consumers, and the whole-state transition
+   * would clear a registry property it was not restated in — a reshape must never drop a tag. {@code
+   * EntitySchemas} adds it to every create and update schema.
+   */
+  public static final String TAGS = "tags";
+
+  /**
+   * The JSON Schema fragment of the tags: an array of {@link WorkTag} names, without the nullability
+   * the update schema adds (a patch's null clears them, as an empty array does).
+   */
+  public static Map<String, Object> tagsSchema() {
+    Map<String, Object> items = new LinkedHashMap<>();
+    items.put("type", "string");
+    items.put("enum", WorkTag.words());
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "array");
+    schema.put("items", Collections.unmodifiableMap(items));
+    schema.put(
+        "description",
+        "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an"
+            + " agent and a person has to do it (say why in the description); no agent is"
+            + " dispatched onto it. Editable at every status, outside every scope freeze; an empty"
+            + " array or null clears them.");
     return Collections.unmodifiableMap(schema);
   }
 

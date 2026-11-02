@@ -538,6 +538,9 @@ public class WorkEntityService {
     if (criteria != null) {
       row.acceptanceCriteria.addAll(criteria);
     }
+    if (write.touchesTags()) {
+      row.tags.addAll(write.tags());
+    }
     return row;
   }
 
@@ -668,6 +671,13 @@ public class WorkEntityService {
     if (write.touchesPriority()) {
       EntityPriorityService.requireRankable(kind.noun(), row);
       row.priority = write.clearPriority() ? null : write.priority();
+    }
+    // The tags (qits-634): neither scope nor a marker, and no status refuses them — a person may
+    // reserve DONE work as readily as REPORTED work. Replaced whole, in place; a restated set that
+    // changes nothing writes nothing.
+    if (write.touchesTags() && !row.tags.equals(write.tags())) {
+      row.tags.clear();
+      row.tags.addAll(write.tags());
     }
     String statusBefore = row.status;
     boolean piece = Archetypes.isPlanPiece(archetype);
@@ -1535,6 +1545,8 @@ public class WorkEntityService {
             old.ticketType);
     // The successor carries the copied scope on, and with it the idea that inspired it (qits-1387).
     successorRow.inspiredByIdeaId = old.inspiredByIdeaId;
+    // And its tags (qits-634): who may do the work is a fact about the work, not about one draft.
+    successorRow.tags.addAll(old.tags);
     requireArchetypeValid(successorRow, Demand.AT_CREATE);
     entities.persist(successorRow);
 
@@ -1581,7 +1593,8 @@ public class WorkEntityService {
    * A fresh row carrying {@code source}'s content under {@code parentId} at {@code position}, and
    * the edge that puts it there. The slug is kept, both markers reset, the status is REPORTED — a
    * piece of a draft, as its new epic is (qits-763) — and {@code dependsOn} is left for the second
-   * pass. The edge's id is the child's, V10's rule.
+   * pass. The edge's id is the child's, V10's rule. The tags (qits-634) are carried, as the
+   * successor root's are.
    */
   private WorkEntity copyUnder(WorkEntity source, String parentId, int position, long number) {
     WorkEntity copy = new WorkEntity();
@@ -1595,6 +1608,7 @@ public class WorkEntityService {
     copy.description = source.description;
     copy.repositoryId = source.repositoryId;
     copy.status = EntityStatus.REPORTED.name();
+    copy.tags.addAll(source.tags);
     entities.persist(copy);
 
     EntityMembership edge = new EntityMembership();
