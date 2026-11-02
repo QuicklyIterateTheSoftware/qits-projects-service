@@ -504,6 +504,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.THE_ARCHETYPE_REGISTRY);
   }
 
+  @State(ProviderStates.A_PROJECT_WHOSE_WORK_HAS_WORKSPACES)
+  Map<String, String> aProjectWhoseWorkHasWorkspaces() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_WORK_HAS_WORKSPACES);
+  }
+
   @State(ProviderStates.A_REPORTED_TICKET)
   Map<String, String> aReportedTicket() {
     return states.params(ProviderStates.A_REPORTED_TICKET);
