@@ -22,7 +22,8 @@
       "dispatchRefusal": null,
       "dispatchRefusedAt": null,
       "dispatchError": null,
-      "groups": []
+      "groups": [],
+      "holdsStatus": true
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000004",
@@ -64,7 +65,8 @@
             }
           ]
         }
-      ]
+      ],
+      "holdsStatus": true
     }
   ]
 }

@@ -6,7 +6,10 @@
       "title": "Invoicing for the Q4 close",
       "status": "REFINED",
       "blocked": false,
-      "start": null
+      "start": null,
+      "heldBy": [
+        "contract-00000001-11"
+      ]
     },
     "evaluator": {
       "connected": false,

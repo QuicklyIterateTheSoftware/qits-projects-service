@@ -517,6 +517,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CriterionGroupDto"
+        holdsStatus:
+          type: boolean
     CampaignMemberEntityDto:
       type: object
       properties:
@@ -602,6 +604,10 @@ components:
           type: string
         blockedBy:
           type: string
+        heldBy:
+          type: array
+          items:
+            type: string
     CampaignProgressDto:
       type: object
       properties:
@@ -3282,6 +3288,10 @@ components:
           type: string
         inspiredBy:
           type: string
+        heldBy:
+          type: array
+          items:
+            type: string
     UUID:
       type: string
       format: uuid

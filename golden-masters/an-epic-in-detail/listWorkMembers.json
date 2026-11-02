@@ -22,7 +22,8 @@
       "dispatchRefusal": null,
       "dispatchRefusedAt": null,
       "dispatchError": null,
-      "groups": []
+      "groups": [],
+      "holdsStatus": false
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000014",
@@ -46,7 +47,8 @@
       "dispatchRefusal": null,
       "dispatchRefusedAt": null,
       "dispatchError": null,
-      "groups": []
+      "groups": [],
+      "holdsStatus": false
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000015",
@@ -91,7 +93,8 @@
             }
           ]
         }
-      ]
+      ],
+      "holdsStatus": false
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000018",
@@ -133,7 +136,8 @@
             }
           ]
         }
-      ]
+      ],
+      "holdsStatus": false
     },
     {
       "membershipId": "00000000-0000-4000-8000-00000000001b",
@@ -184,7 +188,8 @@
             }
           ]
         }
-      ]
+      ],
+      "holdsStatus": true
     }
   ]
 }

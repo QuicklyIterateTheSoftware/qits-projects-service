@@ -1057,41 +1057,11 @@
       "transitions": {
         "REPORTED": [
           {
-            "to": "REFINED",
-            "kind": "FORWARD"
-          },
-          {
-            "to": "DONE",
-            "kind": "CLOSE",
-            "gates": [
-              "CHILDREN_CLOSED"
-            ]
-          },
-          {
             "to": "DROPPED",
             "kind": "DROP"
           }
         ],
         "REFINED": [
-          {
-            "to": "READY_FOR_DEV",
-            "kind": "FORWARD",
-            "gates": [
-              "MEMBERS_SCHEDULED",
-              "PERSON_APPROVAL"
-            ]
-          },
-          {
-            "to": "REPORTED",
-            "kind": "BACK"
-          },
-          {
-            "to": "DONE",
-            "kind": "CLOSE",
-            "gates": [
-              "CHILDREN_CLOSED"
-            ]
-          },
           {
             "to": "DROPPED",
             "kind": "DROP"
@@ -1099,55 +1069,17 @@
         ],
         "READY_FOR_DEV": [
           {
-            "to": "IMPLEMENTED",
-            "kind": "FORWARD"
-          },
-          {
-            "to": "REFINED",
-            "kind": "BACK"
-          },
-          {
-            "to": "DONE",
-            "kind": "CLOSE",
-            "gates": [
-              "CHILDREN_CLOSED"
-            ]
-          },
-          {
             "to": "DROPPED",
             "kind": "DROP"
           }
         ],
         "IMPLEMENTED": [
           {
-            "to": "VERIFIED",
-            "kind": "FORWARD"
-          },
-          {
-            "to": "READY_FOR_DEV",
-            "kind": "BACK"
-          },
-          {
-            "to": "DONE",
-            "kind": "CLOSE",
-            "gates": [
-              "CHILDREN_CLOSED"
-            ]
-          },
-          {
             "to": "DROPPED",
             "kind": "DROP"
           }
         ],
         "VERIFIED": [
-          {
-            "to": "DONE",
-            "kind": "FORWARD"
-          },
-          {
-            "to": "IMPLEMENTED",
-            "kind": "BACK"
-          },
           {
             "to": "DROPPED",
             "kind": "DROP"

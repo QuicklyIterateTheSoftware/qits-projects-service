@@ -283,7 +283,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -306,6 +307,7 @@
             "instants": [],
             "strings": [
               "$.progress.campaign.qualifiedId",
+              "$.progress.campaign.heldBy[*]",
               "$.progress.members[*].entity.qualifiedId",
               "$.progress.members[*].groups[*].criteria[*].wouldBeSatisfiedBy"
             ],
@@ -414,7 +416,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -568,7 +571,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -704,7 +708,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -787,7 +792,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -6141,7 +6147,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }
@@ -7127,7 +7134,8 @@
               "$.updatedAt"
             ],
             "strings": [
-              "$.qualifiedId"
+              "$.qualifiedId",
+              "$.heldBy[*]"
             ],
             "listFilteredTo": null
           }

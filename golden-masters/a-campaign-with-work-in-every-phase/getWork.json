@@ -8,7 +8,7 @@
   "slug": "card-campaign",
   "slugScope": "00000000-0000-4000-8000-000000000004",
   "description": "Seeded work.",
-  "status": "REFINED",
+  "status": "REPORTED",
   "statusBefore": null,
   "ticketType": null,
   "impetus": null,
@@ -26,5 +26,8 @@
   "createdAt": "2026-01-01T00:00:00Z",
   "updatedAt": "2026-01-01T00:00:00Z",
   "changedBy": null,
-  "blocked": false
+  "blocked": false,
+  "heldBy": [
+    "contract-00000001-4"
+  ]
 }
