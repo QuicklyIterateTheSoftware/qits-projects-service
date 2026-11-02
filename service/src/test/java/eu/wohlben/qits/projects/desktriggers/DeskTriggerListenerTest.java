@@ -65,7 +65,8 @@ class DeskTriggerListenerTest {
             "EntityCommented",
             "ReleaseRequestStateChanged",
             "AgentObsolete",
-            "AgentRemoved"),
+            "AgentRemoved",
+            "TargetOomKilled"),
         listener.signatures());
     assertTrue(!listener.replayFromEpoch(), "a desk is told what happens from now on");
   }
