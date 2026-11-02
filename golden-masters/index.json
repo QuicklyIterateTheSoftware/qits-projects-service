@@ -1764,6 +1764,39 @@
       ]
     },
     {
+      "name": "a project whose work has workspaces",
+      "slug": "a-project-whose-work-has-workspaces",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "epicQualifiedId": "contract-00000001-2",
+        "idleTicketId": "00000000-0000-4000-8000-000000000002",
+        "projectId": "00000000-0000-4000-8000-000000000003",
+        "ticketId": "00000000-0000-4000-8000-000000000004",
+        "ticketQualifiedId": "contract-00000001-1"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWorkWorkspaces",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work/workspaces",
+          "status": 200,
+          "file": "a-project-whose-work-has-workspaces/listProjectWorkWorkspaces.json",
+          "frozen": {
+            "ids": [
+              "$.workspaces[*].workId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.workspaces[*].qualifiedId",
+              "$.workspaces[*].workspaces[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with 3 repositories",
       "slug": "a-project-with-3-repositories",
       "params": {

@@ -77,6 +77,7 @@ class AgentReadAccessTest {
           WorkDispatchController.class,
           WorkRefinementController.class,
           WorkWorkspacesController.class,
+          ProjectWorkWorkspacesController.class,
           AgentCapabilityController.class,
           AgentConfigurationController.class,
           AgentContainerController.class,

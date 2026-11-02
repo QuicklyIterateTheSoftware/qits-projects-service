@@ -11,12 +11,18 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +58,15 @@ class HttpWorkspaceAgentDispatchTest {
           "{\"agent\":{\"agentId\":\"agent-1\",\"workspaceRowId\":41,"
               + "\"repositoryId\":\"repo-1\"},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\"}");
 
+  /** One scripted answer: a status and a body. */
+  private record Answer(int status, String body) {}
+
+  /**
+   * Answers each request from its raw query when set — a lookup split into chunks gets one answer
+   * per chunk. Null answers every request with {@link #status} and {@link #responseBody}.
+   */
+  private final AtomicReference<Function<String, Answer>> responder = new AtomicReference<>();
+
   /** Every adapter a test built, shut down after it so the fork keeps no idle client threads. */
   private final List<HttpWorkspaceAgentDispatch> adapters = new CopyOnWriteArrayList<>();
 
@@ -80,10 +95,15 @@ class HttpWorkspaceAgentDispatchTest {
                   exchange.getRequestURI().getRawQuery(),
                   new String(requestBytes, StandardCharsets.UTF_8),
                   exchange.getRequestHeaders().getFirst("Authorization")));
-          byte[] responseBytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
+          Function<String, Answer> scripted = responder.get();
+          Answer answer =
+              scripted == null
+                  ? new Answer(status.get(), responseBody.get())
+                  : scripted.apply(exchange.getRequestURI().getRawQuery());
+          byte[] responseBytes = answer.body().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(
-              status.get(), responseBytes.length == 0 ? -1 : responseBytes.length);
+              answer.status(), responseBytes.length == 0 ? -1 : responseBytes.length);
           try (OutputStream out = exchange.getResponseBody()) {
             out.write(responseBytes);
           }
@@ -427,6 +447,101 @@ class HttpWorkspaceAgentDispatchTest {
 
     assertEquals(1, found.size());
     assertEquals("a-12", found.get(0).agentId());
+  }
+
+  // --- a long lookup is split (qits-1815) ---------------------------------------------------------
+
+  /** The work ids one request asked about, in order, read back off its query string. */
+  private static List<String> workIdsOf(String query) {
+    return Arrays.stream(query.split("&"))
+        .filter(param -> param.startsWith("workId="))
+        .map(param -> param.substring("workId=".length()))
+        .toList();
+  }
+
+  /** One ACTIVE agent per work id asked about, as the far side answers a lookup it can read. */
+  private static Answer oneAgentPerId(String query) {
+    String entries =
+        workIdsOf(query).stream()
+            .map(
+                id ->
+                    "{\"agent\":{\"agentId\":\"agent-"
+                        + id
+                        + "\",\"repositoryId\":\"repo-1\",\"workId\":\""
+                        + id
+                        + "\",\"state\":\"ACTIVE\"}}")
+            .collect(Collectors.joining(","));
+    return new Answer(200, "{\"entries\":[" + entries + "]}");
+  }
+
+  private static List<String> uuids(int count) {
+    return IntStream.range(0, count)
+        .mapToObj(i -> UUID.nameUUIDFromBytes(("work-" + i).getBytes(StandardCharsets.UTF_8)))
+        .map(UUID::toString)
+        .toList();
+  }
+
+  /**
+   * A whole project's tickets and epics overflow the far side's request line in one GET, so a long
+   * list is asked fifty at a time, in order, and every chunk's agents come back as one list.
+   */
+  @Test
+  void aLongLookupIsAskedInChunksOfAtMostFiftyAndMerged() throws Exception {
+    String base = startServer();
+    responder.set(HttpWorkspaceAgentDispatchTest::oneAgentPerId);
+    List<String> ids = uuids(120);
+
+    List<WorkspaceAgentDispatch.Agent> found = against(base).agentsFor(ids);
+
+    assertEquals(3, received.size(), "120 ids are three lookups");
+    for (Received request : received) {
+      assertEquals("GET", request.method());
+      assertEquals("/workspaces/api/agent-dispatches/references", request.path());
+      assertEquals("Bearer machine-token", request.auth());
+      assertTrue(
+          workIdsOf(request.query()).size() <= HttpWorkspaceAgentDispatch.LOOKUP_CHUNK,
+          "a lookup carried more than " + HttpWorkspaceAgentDispatch.LOOKUP_CHUNK + " ids");
+    }
+    assertEquals(
+        List.of(50, 50, 20), received.stream().map(r -> workIdsOf(r.query()).size()).toList());
+    assertEquals(
+        ids,
+        received.stream().flatMap(r -> workIdsOf(r.query()).stream()).toList(),
+        "every id asked once, in the order given");
+    assertEquals(ids, found.stream().map(WorkspaceAgentDispatch.Agent::workId).toList());
+  }
+
+  /** Exactly fifty is still the one call it always was. */
+  @Test
+  void fiftyIdsAreOneLookup() throws Exception {
+    String base = startServer();
+    responder.set(HttpWorkspaceAgentDispatchTest::oneAgentPerId);
+
+    assertEquals(50, against(base).agentsFor(uuids(50)).size());
+    assertEquals(1, received.size());
+  }
+
+  /**
+   * Each chunk keeps the never-throw contract on its own: the one the far side refuses costs its
+   * own rows' agents and nobody else's.
+   */
+  @Test
+  void aChunkThatFailsCostsOnlyItsOwnRows() throws Exception {
+    String base = startServer();
+    List<String> ids = uuids(120);
+    String inTheSecondChunk = ids.get(60);
+    responder.set(
+        query ->
+            workIdsOf(query).contains(inTheSecondChunk)
+                ? new Answer(500, "{\"error\":\"boom\"}")
+                : oneAgentPerId(query));
+
+    List<WorkspaceAgentDispatch.Agent> found = against(base).agentsFor(ids);
+
+    assertEquals(3, received.size(), "the chunk after the failure is still asked");
+    List<String> expected = new ArrayList<>(ids.subList(0, 50));
+    expected.addAll(ids.subList(100, 120));
+    assertEquals(expected, found.stream().map(WorkspaceAgentDispatch.Agent::workId).toList());
   }
 
   // --- whether an agent works on one row (qits-885) ----------------------------------------------

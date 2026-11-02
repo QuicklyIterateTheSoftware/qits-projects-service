@@ -191,6 +191,17 @@ public class ProviderStates {
   public static final String A_REPORTED_TICKET = "a reported ticket";
 
   /**
+   * A project whose board has agents on it (qits-1815): a REPORTED ticket with two agents — one
+   * ACTIVE, one OBSOLETE — a REPORTED epic with one ACTIVE agent, and a REPORTED ticket nobody
+   * works on, so {@code GET /projects/{projectId}/work/workspaces} answers two entries — the
+   * ticket's, then the epic's, in tree order — and leaves one row out. Params: {@code projectId},
+   * {@code ticketId}, {@code epicId}, {@code idleTicketId} (the work entities' UUIDs, each entry's
+   * {@code workId}) and {@code ticketQualifiedId}, {@code epicQualifiedId}. The agents are the dispatch port's script, cleared by {@link #cleanUp()}.
+   */
+  public static final String A_PROJECT_WHOSE_WORK_HAS_WORKSPACES =
+      "a project whose work has workspaces";
+
+  /**
    * Three REPORTED root tickets in one project, filed in order, the first carrying priority 2 and
    * the other two unranked (qits-753): what a board's drag and drop reorders. {@code qualifiedId}
    * is the last of them, the one a drop moves; {@code anchor} the first, ranked one, the sibling it
@@ -431,6 +442,12 @@ public class ProviderStates {
   /** Whether a state scripted {@link #downstreamComponents}; reset by {@link #cleanUp()}. */
   private boolean downstreamTouched;
 
+  /**
+   * Whether a state scripted the agents {@link #dispatches} answers; reset by {@link #cleanUp()},
+   * since that script answers every lookup whatever it asks about.
+   */
+  private boolean agentsTouched;
+
   /** Opens release requests the way the door does, for the state that adds a source to one. */
   @Inject eu.wohlben.qits.projects.control.ReleaseRequests releaseRequests;
 
@@ -494,6 +511,7 @@ public class ProviderStates {
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
+    states.put(A_PROJECT_WHOSE_WORK_HAS_WORKSPACES, this::aProjectWhoseWorkHasWorkspaces);
     states.put(THREE_REPORTED_TICKETS, this::threeReportedTickets);
     states.put(A_PROJECT_WITH_IDEAS, this::aProjectWithIdeas);
     states.put(THREE_IDEAS, this::threeIdeas);
@@ -645,6 +663,10 @@ public class ProviderStates {
     if (downstreamTouched) {
       downstreamTouched = false;
       downstreamComponents.get().reset();
+    }
+    if (agentsTouched) {
+      agentsTouched = false;
+      resetDispatchPorts();
     }
     if (!requestRepos.isEmpty()) {
       List<String> repos = List.copyOf(requestRepos);
@@ -1525,6 +1547,52 @@ public class ProviderStates {
     if (turns.isResolvable()) {
       turns.get().reset();
     }
+  }
+
+  /**
+   * {@link #A_PROJECT_WHOSE_WORK_HAS_WORKSPACES}: three REPORTED rows and the agents qits-workspaces
+   * would name on two of them, scripted on the test suite's dispatch port. Fixed agent ids and row
+   * ids, so only the work entities' UUIDs vary from run to run.
+   */
+  private Setup aProjectWhoseWorkHasWorkspaces() {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_WORK_HAS_WORKSPACES);
+    String ticket = ticket(project, "Checkout times out under load");
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Invoice exports", "Seeded work.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    String idle = ticket(project, "Search forgets the last filter");
+    if (dispatches.isResolvable()) {
+      agentsTouched = true;
+      dispatches
+          .get()
+          .willFind(
+              eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch.active(
+                  "agent-41", 41L, "repo-1", ticket, "ticket/" + qualified(project, ticket)),
+              eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch.inState(
+                  "agent-40",
+                  40L,
+                  "repo-1",
+                  ticket,
+                  "ticket/" + qualified(project, ticket),
+                  "OBSOLETE",
+                  Instant.parse("2026-01-01T00:00:00Z")),
+              eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch.active(
+                  "agent-42", 42L, "repo-1", epic, "epic/" + qualified(project, epic)));
+    }
+    return new Setup(
+        params(
+            "projectId", project.id,
+            "ticketId", ticket,
+            "epicId", epic,
+            "idleTicketId", idle,
+            "ticketQualifiedId", qualified(project, ticket),
+            "epicQualifiedId", qualified(project, epic)),
+        List.of(token));
   }
 
   /** {@link #THREE_REPORTED_TICKETS}: the ranked first ticket is the anchor, the last the mover. */
