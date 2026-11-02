@@ -46,6 +46,9 @@ public enum AuditEntityType {
    */
   CAMPAIGN,
 
+  /** An {@link Archetype#ISSUE} row of {@link WorkEntity}, a root. Permitted from V37. */
+  ISSUE,
+
   /**
    * An {@link EntityComment}, on an entity of any archetype. Its rows carry the subtree key of the
    * entity it is on: that entity's own id for a root (a ticket, an epic, a campaign), the epic's for

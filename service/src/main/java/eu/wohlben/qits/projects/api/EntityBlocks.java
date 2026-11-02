@@ -218,6 +218,10 @@ public class EntityBlocks {
    */
   static void requireBlockable(WorkEntity entity) {
     String noun = WorkEntityService.nounOf(entity.archetype);
+    if (entity.archetype == Archetype.ISSUE) {
+      throw new ConflictException(
+          noun + " " + entity.id + " runs no phase, so there is nothing to block.");
+    }
     if (Archetypes.isPlanPiece(entity.archetype)) {
       throw new ConflictException(
           noun
@@ -245,7 +249,7 @@ public class EntityBlocks {
    * derives nothing, so the two sources agree on where a block can stand.
    */
   static boolean blockable(WorkEntity entity) {
-    if (Archetypes.isPlanPiece(entity.archetype)) {
+    if (Archetypes.runsNoPhase(entity.archetype)) {
       return false;
     }
     // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by

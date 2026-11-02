@@ -7,6 +7,7 @@ import eu.wohlben.qits.githost.events.SCMDeleteTag;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
 import eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource;
+import eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource;
 import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import eu.wohlben.qits.projects.targethost.TargetLeaseChanged;
 import io.quarkus.runtime.annotations.RegisterForReflection;
@@ -92,7 +93,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * qits-workspaces' {@code DeskWaitClosed} as the desk trigger source reads it: an absent line is a
  * native binary that never wakes a desk from its {@code qits wait}. {@link
  * CapacityOpenedSource.AgentLeftPayload} (qits-1689) is the fourth: qits-workspaces' {@code
- * AgentObsolete} and {@code AgentRemoved}, read to tell the desk a slot opened.
+ * AgentObsolete} and {@code AgentRemoved}, read to tell the desk a slot opened. {@link
+ * TargetOomKilledSource.TargetOomKilledPayload} (qits-1818) is qits-system's {@code
+ * TargetOomKilled}, read to tell the desk a target's node lost processes to an OOM killer.
  *
  * <p>{@link TargetLeaseChanged} (epic qits-1481, qits-1551) is the fourth bound consumption:
  * qits-system's lease event, which {@code targethost/TargetLeaseEvents} receives bound to that local
@@ -152,6 +155,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       DeploymentFailedListener.DeploymentFailedPayload.class,
       WaitClosedSource.DeskWaitClosedPayload.class,
       CapacityOpenedSource.AgentLeftPayload.class,
+      TargetOomKilledSource.TargetOomKilledPayload.class,
       TargetLeaseChanged.class,
       EventEnvelope.class,
       EventFrame.class

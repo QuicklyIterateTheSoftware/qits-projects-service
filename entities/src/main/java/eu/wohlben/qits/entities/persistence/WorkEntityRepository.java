@@ -186,12 +186,13 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    */
   public List<WorkEntity> listOrderedRoots(String projectId) {
     return find(
-            "from WorkEntity e where e.projectId = ?1 and e.archetype <> ?2 and not exists"
+            "from WorkEntity e where e.projectId = ?1 and e.archetype not in (?2, ?4) and not exists"
                 + " (select m.id from EntityMembership m where m.childId = e.id and m.kind = ?3)"
                 + " order by e.createdAt, e.id",
             projectId,
             Archetype.CAMPAIGN,
-            MembershipKind.STRUCTURAL)
+            MembershipKind.STRUCTURAL,
+            Archetype.ISSUE)
         .list();
   }
 

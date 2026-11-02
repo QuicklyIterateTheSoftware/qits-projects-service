@@ -87,10 +87,10 @@ public class EntityPriorityService {
       throw new NotFoundException("Entity not found: " + itemId);
     }
     String noun = WorkEntityService.nounOf(item.archetype);
-    if (item.archetype == Archetype.CAMPAIGN) {
+    if (item.archetype == Archetype.CAMPAIGN || item.archetype == Archetype.ISSUE) {
       throw new BadRequestException(
-          noun + " " + item.id + " takes no part in an order: campaigns are not ranked among the"
-              + " project's roots");
+          noun + " " + item.id + " takes no part in an order: campaigns and issues are not ranked"
+              + " among the project's roots");
     }
     requireRankable(noun, item);
 
@@ -105,6 +105,7 @@ public class EntityPriorityService {
     String parentId = parentOf(item.id);
     if (!item.projectId.equals(anchor.projectId)
         || anchor.archetype == Archetype.CAMPAIGN
+        || anchor.archetype == Archetype.ISSUE
         || !Objects.equals(parentId, parentOf(anchor.id))
         || !SiblingPriorities.isRankable(anchor.status)) {
       throw new BadRequestException(

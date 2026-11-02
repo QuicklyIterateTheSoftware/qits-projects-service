@@ -41,8 +41,8 @@ class EntityStateMachineTest {
   @Test
   void everyUndeclaredPairIsRefusedWithAReason() {
     int refused = 0;
-    for (EntityStatus from : EntityStatus.values()) {
-      for (EntityStatus to : EntityStatus.values()) {
+    for (EntityStatus from : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
+      for (EntityStatus to : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
         boolean declared =
             EntityStateMachine.transitions().stream()
                 .anyMatch(move -> move.from() == from && move.to() == to);
@@ -122,7 +122,7 @@ class EntityStateMachineTest {
       assertFalse(EntityStateMachine.isDerived(archetype), archetype.name());
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
       boolean closes = archetype == Archetype.EPIC || archetype == Archetype.FEATURE;
-      for (EntityStatus state : EntityStatus.values()) {
+      for (EntityStatus state : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
         assertEquals(
             EntityStateMachine.transitionsFrom(state).stream()
                 .filter(move -> closes || move.kind() != TransitionKind.CLOSE)
@@ -167,8 +167,8 @@ class EntityStateMachineTest {
   @Test
   void verifiedToDoneStaysTheForwardMoveAndIsNoClose() {
     for (Archetype archetype : Archetype.values()) {
-      if (EntityStateMachine.isDerived(archetype)) {
-        continue; // a campaign reaches DONE by derivation alone (qits-650)
+      if (EntityStateMachine.isDerived(archetype) || archetype == Archetype.ISSUE) {
+        continue; // a campaign reaches DONE by derivation alone (qits-650); an issue never does
       }
       List<Transition> intoDone =
           EntityStateMachine.transitionsFrom(archetype, EntityStatus.VERIFIED).stream()
@@ -200,7 +200,7 @@ class EntityStateMachineTest {
   void aTicketAndATaskServeNoClose() {
     for (Archetype archetype : List.of(Archetype.TICKET, Archetype.TASK)) {
       assertFalse(EntityStateMachine.closes(archetype), archetype.name());
-      for (EntityStatus from : EntityStatus.values()) {
+      for (EntityStatus from : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
         assertTrue(
             EntityStateMachine.transitionsFrom(archetype, from).stream()
                 .noneMatch(move -> move.kind() == TransitionKind.CLOSE),
@@ -294,7 +294,7 @@ class EntityStateMachineTest {
   @Test
   void doneHasNoOutgoingTransitionsAndIsTheOnlyTerminalState() {
     assertEquals(List.of(), EntityStateMachine.transitionsFrom(EntityStatus.DONE));
-    for (EntityStatus status : EntityStatus.values()) {
+    for (EntityStatus status : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
       assertEquals(
           status == EntityStatus.DONE, EntityStateMachine.isTerminal(status), status.name());
     }
@@ -302,7 +302,7 @@ class EntityStateMachineTest {
 
   @Test
   void aMoveOutOfDoneIsRefusedAsFinalAndNamesTheWayOn() {
-    for (EntityStatus to : EntityStatus.values()) {
+    for (EntityStatus to : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
       String reason = EntityStateMachine.refusal(EntityStatus.DONE, to).orElseThrow();
       assertTrue(reason.contains("DONE is final and has no exits"), reason);
       assertTrue(reason.contains("a follow-up is a new ticket or epic"), reason);
@@ -327,12 +327,12 @@ class EntityStateMachineTest {
         }
       }
     }
-    assertEquals(EnumSet.allOf(EntityStatus.class), reached);
+    assertEquals(EnumSet.copyOf(EntityStateMachine.states()), reached);
   }
 
   @Test
   void noStateOtherThanDoneIsADeadEnd() {
-    for (EntityStatus status : EntityStatus.values()) {
+    for (EntityStatus status : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
       if (status == EntityStatus.DONE) {
         continue;
       }
@@ -342,7 +342,7 @@ class EntityStateMachineTest {
 
   @Test
   void theMovesOutOfEachStateAreForwardThenSkipThenBackThenCloseThenDropOrReopen() {
-    for (EntityStatus status : EntityStatus.values()) {
+    for (EntityStatus status : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
       assertOrdered(EntityStateMachine.transitionsFrom(status), status.name());
       for (Archetype archetype : Archetype.values()) {
         assertOrdered(
@@ -423,6 +423,37 @@ class EntityStateMachineTest {
             EntityStatus.DONE,
             EntityStatus.DROPPED),
         EnumSet.copyOf(
-            List.of(EntityStatus.values()).stream().filter(EntityLifecycle::resolves).toList()));
+            List.of(EntityStateMachine.states().toArray(EntityStatus[]::new)).stream().filter(EntityLifecycle::resolves).toList()));
+  }
+
+  // ---- an issue's lifecycle (qits-1819) ---------------------------------------------------------
+
+  @Test
+  void anIssueHasItsOwnThreeWordsAndOneSettlingMove() {
+    assertEquals(
+        List.of(EntityStatus.OPEN, EntityStatus.RESOLVED, EntityStatus.OBSOLETE),
+        EntityStateMachine.states(Archetype.ISSUE));
+    assertEquals(EntityStatus.OPEN, EntityStateMachine.initial(Archetype.ISSUE));
+    assertEquals(
+        List.of(
+            new Transition(EntityStatus.OPEN, EntityStatus.RESOLVED, TransitionKind.SETTLE),
+            new Transition(EntityStatus.OPEN, EntityStatus.OBSOLETE, TransitionKind.SETTLE)),
+        EntityStateMachine.transitionsFrom(Archetype.ISSUE, EntityStatus.OPEN));
+    assertTrue(EntityStateMachine.isTerminal(EntityStatus.RESOLVED));
+    assertTrue(EntityStateMachine.isTerminal(EntityStatus.OBSOLETE));
+    assertEquals(List.of(), EntityStateMachine.transitionsFrom(Archetype.ISSUE, EntityStatus.RESOLVED));
+  }
+
+  @Test
+  void noOtherArchetypeReachesAnIssuesWordsAndAnIssueNoneOfTheirs() {
+    for (Archetype archetype : Archetype.values()) {
+      if (archetype == Archetype.ISSUE) {
+        continue;
+      }
+      assertEquals(List.of(), EntityStateMachine.transitionsFrom(archetype, EntityStatus.OPEN));
+      assertFalse(EntityStateMachine.states(archetype).contains(EntityStatus.OPEN));
+      assertEquals(EntityStatus.REPORTED, EntityStateMachine.initial(archetype));
+    }
+    assertEquals(List.of(), EntityStateMachine.transitionsFrom(Archetype.ISSUE, EntityStatus.REPORTED));
   }
 }

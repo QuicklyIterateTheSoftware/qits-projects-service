@@ -53,7 +53,7 @@ class EntityArchetypesApiTest {
         // Three named members and no collection envelope: this answers the model itself, which is
         // one thing with named parts, rather than rows that happen to be there.
         .body("entries", nullValue())
-        .body("archetypes.size()", equalTo(5))
+        .body("archetypes.size()", equalTo(6))
         .body("serverOwned.size()", equalTo(2))
         // The vocabulary travels whole, in declaration order, because a client derives a
         // violation's spelling from it rather than keeping its own table of field names.
@@ -65,7 +65,7 @@ class EntityArchetypesApiTest {
   @Test
   void everyArchetypeAppearsWithItsDepthAndItsRootness() {
     document()
-        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN"))
+        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN", "ISSUE"))
         // The two roots share a depth — which is what makes ticket-under-epic refusable by the
         // ordinary parent.depth < child.depth rule a client applies for itself.
         .body(at("EPIC") + "depth", equalTo(0))

@@ -217,7 +217,7 @@ public class DevelopmentGuideControllerTest {
     assertTrue(markdown.contains("only when no active agent was told of it"));
     assertTrue(markdown.contains("`qits ci retry`"));
     assertTrue(markdown.contains("withdraw a dependency bump of a repository that is retired"));
-    assertTrue(markdown.contains("ask the owner on the item's thread"));
+    assertTrue(markdown.contains("When it is unclear, file an issue"));
     assertTrue(markdown.contains("you are told a slot opened"));
     assertTrue(
         markdown.contains("reaches you only when no agent owns the branch"),
@@ -250,7 +250,8 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1725_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1819_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }

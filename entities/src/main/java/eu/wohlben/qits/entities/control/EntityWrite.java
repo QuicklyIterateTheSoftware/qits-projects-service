@@ -61,7 +61,56 @@ public record EntityWrite(
     boolean clearInspiredBy,
     Integer priority,
     boolean clearPriority,
-    Set<WorkTag> tags) {
+    Set<WorkTag> tags,
+    String relatedTo,
+    boolean clearRelatedTo) {
+
+  /** Every property but an issue's related item (qits-1819): {@link #withRelatedTo} adds it. */
+  public EntityWrite(
+      String title,
+      String description,
+      boolean clearDescription,
+      String impetus,
+      boolean clearImpetus,
+      String type,
+      String assignee,
+      boolean clearAssignee,
+      String repositoryId,
+      String dependsOn,
+      boolean clearDependsOn,
+      Instant implementedAt,
+      boolean clearImplementedAt,
+      Instant implementingAt,
+      List<String> acceptanceCriteria,
+      String inspiredBy,
+      boolean clearInspiredBy,
+      Integer priority,
+      boolean clearPriority,
+      Set<WorkTag> tags) {
+    this(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        tags,
+        null,
+        false);
+  }
 
   /**
    * Every property but the tags (qits-634), which this leaves alone: the shape every surface that
@@ -295,7 +344,9 @@ public record EntityWrite(
         clearInspiredBy,
         priority,
         clearPriority,
-        tags);
+        tags,
+        relatedTo,
+        clearRelatedTo);
   }
 
   /**
@@ -324,7 +375,9 @@ public record EntityWrite(
         clear,
         priority,
         clearPriority,
-        tags);
+        tags,
+        relatedTo,
+        clearRelatedTo);
   }
 
   /**
@@ -353,7 +406,9 @@ public record EntityWrite(
         clearInspiredBy,
         value,
         clear,
-        tags);
+        tags,
+        relatedTo,
+        clearRelatedTo);
   }
 
   /**
@@ -382,11 +437,40 @@ public record EntityWrite(
         clearInspiredBy,
         priority,
         clearPriority,
-        stated == null ? null : Collections.unmodifiableSet(EnumSet.copyOf(withNone(stated))));
+        stated == null ? null : Collections.unmodifiableSet(EnumSet.copyOf(withNone(stated))),
+        relatedTo,
+        clearRelatedTo);
   }
 
   private static Set<WorkTag> withNone(Set<WorkTag> stated) {
     return stated.isEmpty() ? EnumSet.noneOf(WorkTag.class) : stated;
+  }
+
+  /** This write, also stating the one item an issue relates to (qits-1819). */
+  public EntityWrite withRelatedTo(String entityId, boolean clear) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        tags,
+        entityId,
+        clear);
   }
 
   /** Whether this write restates the tags (qits-634). */

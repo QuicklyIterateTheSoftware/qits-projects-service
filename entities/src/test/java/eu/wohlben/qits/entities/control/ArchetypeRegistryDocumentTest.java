@@ -293,8 +293,9 @@ class ArchetypeRegistryDocumentTest {
         expected.put(state.name(), new ArrayList<>());
       }
       for (EntityStateMachine.Transition move : EntityStateMachine.transitions()) {
-        if (move.kind() == EntityStateMachine.TransitionKind.CLOSE
-            && !EntityStateMachine.closes(archetype)) {
+        if (move.kind() == EntityStateMachine.TransitionKind.SETTLE
+            || (move.kind() == EntityStateMachine.TransitionKind.CLOSE
+                && !EntityStateMachine.closes(archetype))) {
           continue;
         }
         expected
@@ -500,7 +501,7 @@ class ArchetypeRegistryDocumentTest {
           }
         }
       }
-      if (declared.archetype() != Archetype.CAMPAIGN) {
+      if (declared.archetype() != Archetype.CAMPAIGN && declared.archetype() != Archetype.ISSUE) {
         assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
       }
     }

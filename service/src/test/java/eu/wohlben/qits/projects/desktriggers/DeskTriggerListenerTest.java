@@ -70,6 +70,33 @@ class DeskTriggerListenerTest {
     assertTrue(!listener.replayFromEpoch(), "a desk is told what happens from now on");
   }
 
+  // ---- issue-answered (qits-1819) ---------------------------------------------------------------
+
+  @Test
+  void aPersonResolvingAnIssueReachesTheDesk() {
+    String projectId = project(true);
+
+    listener.onFrame(
+        transitioned(entity(projectId, "ISSUE", 12, "Needs a person", "OPEN", "RESOLVED", "ada")));
+
+    DeskTriggerEvent line = DeskTriggerFixtures.eventsOf(projectId).get(0);
+    assertEquals("issue-answered", line.source);
+    assertEquals(DeskTriggerFixtures.slugOf(projectId) + "-12", line.itemRef);
+    assertEquals("Needs a person; resolved by ada", line.label);
+  }
+
+  @Test
+  void obsoleteAndOtherArchetypesAreNotAnAnswer() {
+    String projectId = project(true);
+
+    listener.onFrame(
+        transitioned(
+            entity(projectId, "ISSUE", 12, "Gone", "OPEN", "OBSOLETE", "the-desk"),
+            entity(projectId, "TICKET", 13, "A ticket", "VERIFIED", "DONE", "ada")));
+
+    assertEquals(0, DeskTriggerFixtures.eventsOf(projectId).size());
+  }
+
   // ---- work-verified ----------------------------------------------------------------------------
 
   @Test

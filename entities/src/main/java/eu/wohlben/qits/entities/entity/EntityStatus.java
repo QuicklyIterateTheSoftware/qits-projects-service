@@ -140,5 +140,14 @@ public enum EntityStatus {
    * <p>Not terminal: it moves back to {@link #REPORTED}, because reviving work that was
    * abandoned means asking again what it is for, and that is the refine phase.
    */
-  DROPPED
+  DROPPED,
+
+  /** An issue waiting for a person (qits-1819). Only an {@link Archetype#ISSUE} holds it. */
+  OPEN,
+
+  /** An issue a person answered. Final. */
+  RESOLVED,
+
+  /** An issue whose need went away before a person answered. Final. */
+  OBSOLETE
 }

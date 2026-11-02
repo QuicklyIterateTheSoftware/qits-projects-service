@@ -244,6 +244,20 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   qits-976 plus the five qits-399 removed) and asserts each answers 404 against real rows with
   nothing written; a 404 there turning into anything else is a route coming back.
 
+  **`ISSUE` is one thing the delivery desk cannot resolve on its own, for a person (qits-1819, epics
+  V37).** A root that stands alone: `Archetypes.standsAlone` keeps it out of every nesting and every
+  campaign, and `Archetypes.runsNoPhase` keeps it from dispatch, block and phase turns. It has no
+  branch, is not ranked and is not backlog (`api/RunningItems` reads epics and tickets). Its statuses
+  are its own, `OPEN`, then `RESOLVED` or `OBSOLETE`, in `EntityStateMachine` beside the one lifecycle
+  and sharing no word with it. `title` and `description` are required, the description at most
+  `Archetypes.ISSUE_DESCRIPTION_LIMIT` (280) characters on every write, a 400. `relatedTo` is one item
+  of its project, `entity.related_to`. The rights are in `WorkEntityDoors`: create is `qits:desk` or
+  `qits:desk-admin` alone (a 403 for everyone else, `qits:admin` included), bound to the desk's
+  project; RESOLVED takes a verified person (`PersonCheck`, so asserted headers and `qits:admin-agent`
+  are a 403); OBSOLETE takes the desk or a person, with a one-line `reason`. A `reason` on a move lands
+  on the thread. `POST /work/transition` refuses an issue either way (409), since a reshape would walk
+  round those rules, and no API deletes one. `WorkIssueApiTest` pins all of it.
+
   **The `/work` family (qits-969, epic qits-965) is the archetype-free surface, addressed by
   qualified id — and, since qits-976 deleted `/entities` and the per-archetype routes it was first
   served beside, it is the whole surface.** `WorkController` (`GET`/`PUT`/`PATCH`/`DELETE
@@ -1567,7 +1581,7 @@ approval's roles. The display path stores the content requirements as JSON objec
   `config-directory` (qits-1560; on the wrapper `manual-review` is always present and wins) the
   repository is not the wrapper (`PROJECT` archetype) and every such branch's item is IMPLEMENTING,
   IMPLEMENTED, VERIFYING, VERIFIED or DONE. The note is recorded as `delivery desk, rule <rule>: <note or ->`. A desk's decline is a
-  403 "The delivery desk does not decline; it asks the owner on the item's thread." Holding no
+  403 "The delivery desk does not decline; it files an issue for the owner." Holding no
   `agent` role, the desk cannot approve or decline an unlisted `artifact-declarations` as an agent.
 - **Wire**: `ReleaseRequestDto.approvalRequirements` (`{id, reason, admits, excludesAuthors,
   detail, satisfied, satisfiedBy}`), the old approval fields derived from it; `GET …/approvals` rows
@@ -3041,17 +3055,19 @@ subject, and the short constructor sets `principal` to `cause`), run inside the 
 `render(projectSlug, events)` (its own section: a heading line, one line per event) and the default
 `requestedByDesk()` (false: news; true: an answer to the desk's own request, see above), and the
 default `scan(now)` (qits-1689: triggers found by reading rows on each sweep pass, admitted under the
-listener's drops; the source makes them idempotent itself). Nine ship:
+listener's drops; the source makes them idempotent itself). Ten ship:
 
 | source | id, order | qualifies | line |
 | --- | --- | --- | --- |
 | `WorkVerifiedSource` | `work-verified`, 10 | `EntityTransitioned` entry moved to VERIFIED (`statusBefore` not VERIFIED), EPIC or TICKET | `- <slug>-<n> (<title>)`, cause `changedBy` |
 | `WaitClosedSource` (qits-1618) | `wait`, 0 | qits-workspaces' `DeskWaitClosed` (a desk's `qits wait` matched or timed out); `requestedByDesk()`; a wait id any window already holds qualifies nothing, so a wait wakes the desk once | section `Waits you declared:`, then each `turn` verbatim (stored as `label`, a blank line between), `item_ref`/`item_id` the wait id, cause `wait "<label>" <state>` |
+| `IssueAnsweredSource` (qits-1819) | `issue-answered`, 25 | `EntityTransitioned` entry, an `ISSUE` moved to RESOLVED, or `EntityCommented` on an `ISSUE` that no agent wrote; the desk's own is dropped as usual | `- <slug>-<n> (<title>; resolved by <who>)` or `(<title>; comment from <who>)`, section `Issues a person answered …` |
 | `ApprovalNeededSource` | `approval-needed`, 20 | `ApprovalRequirementChanged` `OPEN` whose `admits` names `desk` (already the project's `approves`) | `- <qualifiedId> (<summary>; waits on <requirement>: <reason>), fold <sha8>` |
 | `DeskMentionedSource` | `desk-mentioned`, 30 | `EntityCommented` whose `mentions` names `desk` (qits-1660) | `- <slug>-<n> (<title>; from <author>)`, cause `comment <id8>`, `comment_id` the full id (V63), principal `changedBy`. One row per comment, so the Desk page links each one; the message shows equal lines once |
 | `RequestFailedSource` (qits-1689) | `request-failed`, 40 | `ReleaseRequestStateChanged` to REJECTED, CONFLICTED or FAILED, only when no active agent was told: no qits-1722 branch notice (`branch_delivery_notice`, step `FAILED`) for the fold, or all of its notices settled with none told to a still-ACTIVE agent. **CONFLICTED, and REJECTED with `rejectingGate` `fold` (a missing source), are read by fold attempt, not by sha** (qits-1725): the request's current attempt is the `fold_attempt` of its newest `branch_delivery` row at that step, its notices those whose key starts `attemptPrefix(step, request, attempt)` — so a build's notice at the same `mergedSha` never silences a later conflict — and the why is `no agent owns <branch>` (the heads or the missing branch whose notice settled `NO_AGENT`, comma-joined; the missing branch, else `it`, with no notice at all). Owed notices are decided by `scan` once settled (an attempt only while the request still stands at it). Event id: the bus event's, or `foldKey(request, sha)` — `foldKey(request, attempt)` for an attempt — when decided from notices | `- <qualifiedId> (<state>: <detail>; <why no agent>)`, cause the decline's actor (its principal, so the desk's own decline drops) else `fold <sha8>` |
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
 | `AgentIdleSource` (qits-1756) | `agent-idle`, 55 | no signature; `scan` reads the ACTIVE agents (`WorkspaceAgentLookup.active()`, now also `activity`, `lastActivityAt` and `waits[]`) and raises each whose `activity` is not `BUSY` (null counts) and whose `lastActivityAt` is at least `THRESHOLD` (2h, a constant, not a setting) old, measured from the later of `lastActivityAt` and `delivery_enabled_at`, younger than `MAX_AGE` (7d). The item is this service's `WorkEntity` by `workId` (unknown: skipped); `item_id` is the agent id. Event id `idleKey(agent, lastActivityAt)`, skipped when a row holds it: once per idle stretch, and a new turn (a new `lastActivityAt`) is a new stretch. No migration: V65's one-per-agent index is `capacity-opened`'s only | `- <qualifiedId> (<title>; <STATUS>; idle 2h 19m since 2026-10-30T07:03Z; waits on: <label> (<subjectState or state>, expires <instant or never>)[; …] or no open wait[; blocked: <reason>])`, section `Agents idle for 2h or more:`, cause `agent <id8>`, no principal |
+| `TargetOomKilledSource` (qits-1818) | `target-oom-killed`, 45 | qits-system's `TargetOomKilled` (a target's node OOM counter rose: `nodeOomKills`, else `kernelOomKills`, by `delta`), one trigger per project in its `projectIds` (the projects leasing the target then); `delta` below 1 or no project qualifies nothing. `item_id` the target id. Event id `oomKey(event, project)`: V65's `(source, event_id, item_ref)` spans projects, so each project's line has its own key and a replay adds nothing | `- target <name>: the out-of-memory killer killed 3 processes (node counter 292 → 295)` (`kernel counter` when the node reports none; no bracket with neither), section `Out-of-memory kills on targets running your work:`, cause `oom <target id8>`, no principal |
 | `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
 | `ShipMissingSource` (qits-1778) | `verified-unshipped`, 55 | no signature; `scan` reads each delivery-enabled project's running items (`VerifiedSlotHolders`, over `api/RunningItems`) and raises each VERIFIED one, VERIFIED for at least `THRESHOLD` (30m, a constant) from the later of its move into VERIFIED (the newest audit run whose snapshot says VERIFIED, else `updated_at`) and `delivery_enabled_at`, younger than `MAX_AGE` (7d), that no open request (as in the Slots section) carries. Event id `shipKey(item, VERIFIED-since)`, skipped when a row holds it: once per move into VERIFIED | `- <qid> (VERIFIED 43m; no open release request carries ticket/<qid>)`, section `VERIFIED work with no open release request:`, cause `verified <instant to the minute>`, no principal |
 

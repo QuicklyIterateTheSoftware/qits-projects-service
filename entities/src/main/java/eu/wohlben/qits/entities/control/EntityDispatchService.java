@@ -70,7 +70,7 @@ public class EntityDispatchService {
         "entity dispatch mode",
         () -> {
           WorkEntity row = entity(id);
-          if (Archetypes.isPlanPiece(row.archetype)) {
+          if (Archetypes.runsNoPhase(row.archetype)) {
             throw new ConflictException(
                 "A "
                     + row.archetype
@@ -105,7 +105,7 @@ public class EntityDispatchService {
         "entity pre-approval",
         () -> {
           WorkEntity row = entity(id);
-          if (Archetypes.isPlanPiece(row.archetype)) {
+          if (Archetypes.runsNoPhase(row.archetype)) {
             throw new ConflictException(
                 "A "
                     + row.archetype

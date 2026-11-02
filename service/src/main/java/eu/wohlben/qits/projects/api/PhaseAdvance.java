@@ -428,7 +428,7 @@ public class PhaseAdvance {
       // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
       return;
     }
-    if (Archetypes.isPlanPiece(entity.archetype)) {
+    if (Archetypes.runsNoPhase(entity.archetype)) {
       // A feature or a task holds a status of its own since qits-763 but runs no phase: its moves
       // record where that piece stands, and the turn, the workspace and the release are its epic's.
       // Without this return, PhasePrompts.render and EntityWorkspaces would be asked for a phase a

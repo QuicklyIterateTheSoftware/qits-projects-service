@@ -74,7 +74,7 @@ import org.jboss.logging.Logger;
  * <p><b>A desk approval carries its rule</b>: the recorded note is {@code delivery desk, rule <rule
  * id>: <the caller's note, or ->} ({@link #note}), so the trail says which of the owner's rules let
  * it through. <b>The desk never declines</b> ({@link #refuseDecline}): a caller whose only
- * qualifying role is {@code desk} asks the owner on the item's thread instead.
+ * qualifying role is {@code desk} files an issue for the owner instead.
  *
  * <p>Domain-only: the gate answers are the request's own read, handed in by {@link
  * ReleaseRequests}, and the work items come through the {@link BranchWorkItems} port.
@@ -108,7 +108,7 @@ public class DeskApprovalPolicy {
 
   /** The decline door's refusal for the desk. */
   public static final String DOES_NOT_DECLINE =
-      "The delivery desk does not decline; it asks the owner on the item's thread.";
+      "The delivery desk does not decline; it files an issue for the owner.";
 
   /** The branches a maintenance bump pushes, which name no work item and need none. */
   static final String MAINTENANCE_PREFIX = "maintenance/";

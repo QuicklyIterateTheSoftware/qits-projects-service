@@ -111,5 +111,8 @@ public enum EntityProperty {
    * asks for criteria before a move into REFINED or READY_FOR_DEV. Present when the list is not
    * empty. The item rules are {@link AcceptanceCriteria}'.
    */
-  ACCEPTANCE_CRITERIA
+  ACCEPTANCE_CRITERIA,
+
+  /** The one work item an {@code ISSUE} relates to (qits-1819). Never required. */
+  RELATED_TO
 }

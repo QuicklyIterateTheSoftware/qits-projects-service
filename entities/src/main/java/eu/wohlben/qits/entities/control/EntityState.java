@@ -70,6 +70,7 @@ public record EntityState(Archetype archetype, String status, Set<EntityProperty
     add(present, EntityProperty.IMPLEMENTED_AT, entity.implementedAt);
     add(present, EntityProperty.IMPLEMENTING_AT, entity.implementingAt);
     add(present, EntityProperty.DEPENDS_ON, entity.dependsOnEntityId);
+    add(present, EntityProperty.RELATED_TO, entity.relatedEntityId);
     if (entity.acceptanceCriteria != null && !entity.acceptanceCriteria.isEmpty()) {
       present.add(EntityProperty.ACCEPTANCE_CRITERIA);
     }

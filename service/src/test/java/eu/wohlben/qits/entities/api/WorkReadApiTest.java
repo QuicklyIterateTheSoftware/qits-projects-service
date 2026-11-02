@@ -160,7 +160,7 @@ class WorkReadApiTest {
   void aFilterNamingNothingIsRefused() {
     String path = "/projects/api/projects/" + project.slug() + "/work";
     given().get(path + "?archetype=STORY").then().statusCode(400);
-    given().get(path + "?status=OPEN").then().statusCode(400);
+    given().get(path + "?status=REFIND").then().statusCode(400);
     given().get(path + "?parent=no-such-entity").then().statusCode(404);
     given().get("/projects/api/projects/no-such-project/work").then().statusCode(404);
   }

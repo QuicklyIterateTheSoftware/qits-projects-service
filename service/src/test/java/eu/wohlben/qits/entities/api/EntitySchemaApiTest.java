@@ -112,6 +112,8 @@ class EntitySchemaApiTest {
   @TestFactory
   Stream<DynamicTest> theCreateDoorAcceptsExactlyTheRequiredAndRefusesAnyOneLess() {
     return Stream.of(Archetype.values())
+        // An issue has its own rights and rows: WorkIssueApiTest.
+        .filter(archetype -> archetype != Archetype.ISSUE)
         .map(
             archetype ->
                 DynamicTest.dynamicTest(
@@ -145,6 +147,8 @@ class EntitySchemaApiTest {
   @TestFactory
   Stream<DynamicTest> theTransitionDoorAcceptsExactlyTheRequiredAndRefusesAnyOneLess() {
     return Stream.of(Archetype.values())
+        // An issue has its own rights and rows: WorkIssueApiTest.
+        .filter(archetype -> archetype != Archetype.ISSUE)
         .map(
             archetype ->
                 DynamicTest.dynamicTest(
@@ -188,6 +192,8 @@ class EntitySchemaApiTest {
   @TestFactory
   Stream<DynamicTest> thePatchDoorAcceptsEveryPropertyTheUpdateSchemaLists() {
     return Stream.of(Archetype.values())
+        // An issue has its own rights and rows: WorkIssueApiTest.
+        .filter(archetype -> archetype != Archetype.ISSUE)
         .map(
             archetype ->
                 DynamicTest.dynamicTest(
@@ -306,6 +312,7 @@ class EntitySchemaApiTest {
         case CAMPAIGN -> campaign;
         case FEATURE -> feature;
         case TASK -> task;
+        case ISSUE -> throw new IllegalArgumentException("an issue has no row here");
       };
     }
 

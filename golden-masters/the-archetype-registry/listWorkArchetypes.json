@@ -13,7 +13,8 @@
     "IMPLEMENTED_AT",
     "IMPLEMENTING_AT",
     "DEPENDS_ON",
-    "ACCEPTANCE_CRITERIA"
+    "ACCEPTANCE_CRITERIA",
+    "RELATED_TO"
   ],
   "serverOwned": [
     "SLUG",
@@ -1101,6 +1102,58 @@
         "VERIFIED",
         "DONE",
         "DROPPED"
+      ],
+      "phases": {}
+    },
+    {
+      "archetype": "ISSUE",
+      "depth": 0,
+      "mayBeRoot": true,
+      "gathers": false,
+      "required": [
+        "TITLE",
+        "DESCRIPTION"
+      ],
+      "requiredAtCreate": [
+        "TITLE",
+        "DESCRIPTION"
+      ],
+      "requiredOnTransition": [
+        "TITLE",
+        "DESCRIPTION",
+        "STATUS"
+      ],
+      "permitted": [
+        "TITLE",
+        "SLUG",
+        "DESCRIPTION",
+        "STATUS",
+        "CREATED_BY",
+        "RELATED_TO"
+      ],
+      "legalStatuses": [
+        "OBSOLETE",
+        "OPEN",
+        "RESOLVED"
+      ],
+      "transitions": {
+        "OPEN": [
+          {
+            "to": "RESOLVED",
+            "kind": "SETTLE"
+          },
+          {
+            "to": "OBSOLETE",
+            "kind": "SETTLE"
+          }
+        ],
+        "RESOLVED": [],
+        "OBSOLETE": []
+      },
+      "lifecycle": [
+        "OPEN",
+        "RESOLVED",
+        "OBSOLETE"
       ],
       "phases": {}
     }

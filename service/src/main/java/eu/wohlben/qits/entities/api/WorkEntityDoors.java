@@ -88,6 +88,9 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class WorkEntityDoors {
 
+  /** The wire name of an issue's related item (qits-1819). */
+  private static final String RELATED_TO = "relatedTo";
+
   private static final Logger LOG = Logger.getLogger(WorkEntityDoors.class);
 
   /** RFC 7396's media type. Plain {@code application/json} is accepted beside it. */
@@ -220,6 +223,10 @@ public class WorkEntityDoors {
       throw new BadRequestException("a create must be a JSON object");
     }
     Archetype archetype = archetypeOf(body.get("archetype"));
+    // Only the desk files an issue (qits-1819): before the placement, so no caller learns more.
+    if (archetype == Archetype.ISSUE && !isDeskCaller(identity)) {
+      throw new ForbiddenException("Only the delivery desk creates an issue.");
+    }
 
     // The placement, resolved before anything is judged: its 404, then the binding's 403.
     String projectId = null;
@@ -285,7 +292,8 @@ public class WorkEntityDoors {
             EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null),
             text(body, EntitySchemas.INSPIRED_BY),
             false)
-            .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)));
+            .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)))
+            .withRelatedTo(entityId(text(body, RELATED_TO)), false);
     requireRepositoryIn(write.repositoryId(), projectId);
 
     Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
@@ -298,7 +306,7 @@ public class WorkEntityDoors {
   private static Archetype archetypeOf(JsonNode value) {
     if (value == null || value.isNull() || !value.isTextual() || value.textValue().isBlank()) {
       throw new BadRequestException(
-          "archetype is required: EPIC, TICKET, FEATURE, TASK or CAMPAIGN");
+          "archetype is required: EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE");
     }
     try {
       return Archetype.valueOf(value.textValue().trim().toUpperCase(Locale.ROOT));
@@ -332,6 +340,11 @@ public class WorkEntityDoors {
       throw new NotFoundException("Entity not found: " + id);
     }
     EntitiesAgentAccess.requireProject(identity, current.projectId());
+    if (current.archetype() == Archetype.ISSUE
+        && !isDeskCaller(identity)
+        && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
+      throw new ForbiddenException("Only the delivery desk or a person edits an issue.");
+    }
     // A patch naming inspiredBy at all — a value or null — writes the work's idea link, an idea
     // write (qits-1790): a plain agent is refused before the body is judged or anything written.
     if (body != null && body.isObject() && body.has(EntitySchemas.INSPIRED_BY)) {
@@ -432,7 +445,12 @@ public class WorkEntityDoors {
     for (Iterator<String> names = body.fieldNames(); names.hasNext(); ) {
       String name = names.next();
       JsonNode value = body.get(name);
-      if (name.equals(EntitySchemas.INSPIRED_BY)) {
+      if (archetype == Archetype.ISSUE
+          && (name.equals(EntitySchemas.INSPIRED_BY)
+              || name.equals(EntityWireProperties.PRIORITY))) {
+        // An issue names no idea and takes no part in an order (qits-1819).
+        refused.add(name + " is not a property of an issue");
+      } else if (name.equals(EntitySchemas.INSPIRED_BY)) {
         // The idea the work was inspired by (qits-1387): no registry property, so judged here.
         EntitySchemas.inspiredByRefusal(value).ifPresent(refused::add);
       } else if (name.equals(EntityWireProperties.PRIORITY)) {
@@ -494,7 +512,8 @@ public class WorkEntityDoors {
         patchText(body, EntitySchemas.INSPIRED_BY),
         cleared(body, EntitySchemas.INSPIRED_BY))
         .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY))
-        .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)));
+        .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)))
+        .withRelatedTo(dependency.apply(patchText(body, RELATED_TO)), cleared(body, RELATED_TO));
   }
 
   /** The patch's priority (qits-753): null when absent or sent as null, else the integer. */
@@ -542,6 +561,16 @@ public class WorkEntityDoors {
     return move(identity, row, target, null, null);
   }
 
+  /** {@link #move(SecurityIdentity, WorkEntity, String, WorkOutcome, String)} without a reason. */
+  public TransitionedEntity move(
+      SecurityIdentity identity,
+      WorkEntity row,
+      String target,
+      WorkOutcome outcome,
+      String supersededBy) {
+    return move(identity, row, target, outcome, supersededBy, null);
+  }
+
   /**
    * {@link #move(SecurityIdentity, WorkEntity, String)} stating why a drop closes the work
    * (qits-248): {@code supersededBy} may be a qualified id or a UUID, resolved here; one naming
@@ -553,8 +582,12 @@ public class WorkEntityDoors {
       WorkEntity row,
       String target,
       WorkOutcome outcome,
-      String supersededBy) {
+      String supersededBy,
+      String reason) {
     Archetype archetype = row.archetype;
+    if (reason != null && archetype != Archetype.ISSUE) {
+      throw new BadRequestException("reason belongs to an issue's move; this is a " + archetype);
+    }
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
     // stay human-only. A bound agent is admitted too (qits-1174): it makes the claim the retired
     // transition_epic MCP tool made, with that tool's limits — its own project only (the binding
@@ -579,6 +612,9 @@ public class WorkEntityDoors {
           "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
               + " supersedes an epic from the board.");
     }
+    if (archetype == Archetype.ISSUE) {
+      requireIssueMove(identity, target, reason);
+    }
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).
@@ -588,6 +624,9 @@ public class WorkEntityDoors {
         resolutions.transition(archetype, row.id, target, mover, drop);
     // A supersede spawns a second row in the same project, so one hint covers both.
     publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
+    if (reason != null && !reason.isBlank()) {
+      addIssueReason(identity, moved.entity(), reason);
+    }
     try {
       phaseAdvance.afterTransition(moved.entity(), moved.statusBefore(), mover.name());
     } catch (RuntimeException e) {
@@ -600,6 +639,40 @@ public class WorkEntityDoors {
     }
     return qualifiedIds.qualify(
         TransitionedEntity.moved(moved.entity(), before, moved.statusBefore(), mover.name()));
+  }
+
+  /**
+   * Who moves an issue (qits-1819), a 403 for anyone else: a person resolves it, and a person or the
+   * desk makes it OBSOLETE, the latter with a one-line reason (a 400). A word that is no legal move
+   * is left to the move's own 409.
+   */
+  private void requireIssueMove(SecurityIdentity identity, String target, String reason) {
+    boolean person = movers.of(identity).isPerson();
+    if (EntityStatus.RESOLVED.name().equals(target) && !person) {
+      throw new ForbiddenException("Only a person resolves an issue.");
+    }
+    if (EntityStatus.OBSOLETE.name().equals(target)) {
+      if (!person && !isDeskCaller(identity)) {
+        throw new ForbiddenException("Only the delivery desk or a person makes an issue obsolete.");
+      }
+      if (reason == null || reason.isBlank() || reason.lines().count() > 1) {
+        throw new BadRequestException("Moving an issue to OBSOLETE needs a one-line reason.");
+      }
+    }
+  }
+
+  /** The move's reason, on the issue's thread. The move stands whatever happens here. */
+  private void addIssueReason(SecurityIdentity identity, WorkEntity issue, String reason) {
+    try {
+      addComment(identity, issue, reason);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not write the reason on issue %s", issue.id);
+    }
+  }
+
+  /** The project's delivery desk, by either of its roles. */
+  private static boolean isDeskCaller(SecurityIdentity identity) {
+    return identity.hasRole(AgentAccess.DESK_ROLE) || identity.hasRole(AgentAccess.DESK_ADMIN_ROLE);
   }
 
   // --- the block -------------------------------------------------------------------------------
@@ -1024,6 +1097,11 @@ public class WorkEntityDoors {
    */
   public void delete(SecurityIdentity identity, WorkEntity row) {
     Archetype archetype = row.archetype;
+    if (archetype == Archetype.ISSUE) {
+      throw new ConflictException(
+          "An issue is not deleted: move it to OBSOLETE through POST"
+              + " /projects/api/work/{qualifiedId}/status.");
+    }
     if (archetype == Archetype.CAMPAIGN) {
       throw new ConflictException(
           "A campaign is not deleted: drop it — POST /projects/api/work/{qualifiedId}/status"
@@ -1198,6 +1276,9 @@ public class WorkEntityDoors {
     WorkTag tagged = blank(tag) ? null : listTag(tag);
     Archetype kind = blank(archetype) ? null : listArchetype(archetype);
     String word = blank(status) ? null : listStatus(status);
+    if (kind != null && word != null && !Archetypes.legalStatuses(kind).contains(word)) {
+      throw new BadRequestException("Unknown status: " + status);
+    }
     WorkOutcome closedAs = blank(outcome) ? null : listOutcome(outcome);
     String project = ids.resolveProject(projectIdOrSlug).id;
     String parentId = blank(parent) ? null : ids.resolve(parent).id;
