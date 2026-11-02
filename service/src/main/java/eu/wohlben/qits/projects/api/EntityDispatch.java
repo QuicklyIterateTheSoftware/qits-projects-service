@@ -13,6 +13,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.control.DevelopmentGuideService;
@@ -46,6 +47,12 @@ import org.jboss.logging.Logger;
  *       the reason the ticket door always gave: the status there is one a phase runs under, so "no
  *       phase left" would be false, and the answer that sends a reader to the thread comes first.
  *       A campaign's block is its start's business ({@code CampaignStarter}) and its executor's.
+ *   <li><b>A tag reserving it for a person</b> (409, qits-634): an entity tagged {@link
+ *       WorkTag#RESERVED_FOR_HUMAN} is work an agent cannot complete, so no press puts one on it — a
+ *       person's, the delivery desk's or a campaign executor's (which records the sentence on the
+ *       membership). Right after the block and for the block's reason: the status is one a phase
+ *       runs under, and the answer that names the tag is the true one. The tag outlives every move,
+ *       so a person does the work and moves its status by hand; clearing the tag lets it dispatch.
  *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
  *       none and are a <b>409</b> naming the status. REFINED starts none either (qits-887) and has a
  *       409 of its own, asked before the block: it waits for a person to schedule it
@@ -431,7 +438,8 @@ public class EntityDispatch {
     // entity and starts implement, so it is dispatchable there although no phase is next.
     boolean flowRuns = nextPhase != null || (lifecycle && isRefined(entity));
     // blocked is what the entity reads as (qits-895); dispatchable reads the EXPLICIT flag alone,
-    // because a derived block — an agent waiting for a person — never refuses a press.
+    // because a derived block — an agent waiting for a person — never refuses a press. A tag
+    // reserving the work for a person refuses every press (qits-634), so it is not dispatchable.
     EntityBlockState block = EntityBlockState.of(entity);
     return new EntityDispatchStateDto(
         entity.id,
@@ -439,7 +447,7 @@ public class EntityDispatch {
         entity.status,
         nextPhase,
         block.blocked(),
-        flowRuns && !entity.blocked,
+        flowRuns && !entity.blocked && !isReservedForHuman(entity),
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
         entity.preApprovedBy,
         block.source(),
@@ -521,6 +529,7 @@ public class EntityDispatch {
     if (entity.blocked) {
       throw blockedRefusal(entity);
     }
+    refuseReserved(entity);
     return located(entity, Phase.IMPLEMENT);
   }
 
@@ -728,6 +737,7 @@ public class EntityDispatch {
     if (entity.blocked) {
       throw blockedRefusal(entity);
     }
+    refuseReserved(entity);
     return PhasePrompts.phaseOf(entity)
         .orElseThrow(
             () ->
@@ -755,6 +765,30 @@ public class EntityDispatch {
             + " phase is not started — something is in the way and the "
             + noun(entity)
             + "'s thread says what. Clear the block once that is resolved, then dispatch.");
+  }
+
+  /**
+   * The refusal a press on an entity tagged {@link WorkTag#RESERVED_FOR_HUMAN} answers (qits-634),
+   * whatever its status and whoever pressed: the work is a person's, so no agent is put on it.
+   */
+  private static void refuseReserved(WorkEntity entity) {
+    if (!isReservedForHuman(entity)) {
+      return;
+    }
+    throw new DispatchRefused(
+        409,
+        capitalised(noun(entity))
+            + " "
+            + entity.id
+            + " is tagged "
+            + WorkTag.RESERVED_FOR_HUMAN.display()
+            + ", so no agent is dispatched onto it — a person does this work and moves its status"
+            + " by hand. Clear the tag if an agent should take it after all, then dispatch.");
+  }
+
+  /** Whether {@code entity} carries {@link WorkTag#RESERVED_FOR_HUMAN} (qits-634). */
+  static boolean isReservedForHuman(WorkEntity entity) {
+    return entity.tags != null && entity.tags.contains(WorkTag.RESERVED_FOR_HUMAN);
   }
 
   /**

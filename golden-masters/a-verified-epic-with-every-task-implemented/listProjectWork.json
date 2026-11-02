@@ -27,7 +27,8 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "blocked": false
+      "blocked": false,
+      "tags": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -55,7 +56,8 @@
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "changedBy": null
+      "changedBy": null,
+      "tags": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -83,7 +85,8 @@
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "changedBy": null
+      "changedBy": null,
+      "tags": []
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -111,7 +114,8 @@
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "changedBy": null
+      "changedBy": null,
+      "tags": []
     }
   ]
 }

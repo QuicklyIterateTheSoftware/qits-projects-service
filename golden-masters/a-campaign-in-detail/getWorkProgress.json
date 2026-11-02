@@ -30,7 +30,8 @@
           "qualifiedId": "contract-00000001-9",
           "title": "Tax rates per country",
           "status": "VERIFIED",
-          "blocked": false
+          "blocked": false,
+          "tags": []
         },
         "state": "DONE",
         "waitsFor": [],
@@ -55,7 +56,8 @@
           "qualifiedId": "contract-00000001-2",
           "title": "Export invoices for the accountants",
           "status": "IMPLEMENTING",
-          "blocked": false
+          "blocked": false,
+          "tags": []
         },
         "state": "READY",
         "waitsFor": [],
@@ -83,7 +85,8 @@
           "blocked": true,
           "blockSource": "EXPLICIT",
           "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
-          "blockedBy": "qits-agent"
+          "blockedBy": "qits-agent",
+          "tags": []
         },
         "state": "WAITING",
         "waitsFor": [
@@ -129,7 +132,8 @@
           "qualifiedId": "contract-00000001-13",
           "title": "Credit notes show the wrong sign",
           "status": "DONE",
-          "blocked": false
+          "blocked": false,
+          "tags": []
         },
         "state": "DONE",
         "waitsFor": [
@@ -175,7 +179,8 @@
           "qualifiedId": "contract-00000001-11",
           "title": "Remember the last export format",
           "status": "REFINED",
-          "blocked": false
+          "blocked": false,
+          "tags": []
         },
         "state": "WAITING",
         "waitsFor": [

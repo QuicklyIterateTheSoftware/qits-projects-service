@@ -411,6 +411,80 @@ public class TicketFlowDispatchTest {
         "the block is decided before the port is asked for anything, so no workspace was stood up");
   }
 
+  /** Tags the ticket {@code RESERVED_FOR_HUMAN}, or clears its tags, through the merge patch. */
+  private void reserve(String ticketId, boolean reserved) {
+    asAdmin("setup")
+        .contentType("application/merge-patch+json")
+        .body(java.util.Map.of("tags", reserved ? java.util.List.of("RESERVED_FOR_HUMAN") : java.util.List.of()))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+  }
+
+  /**
+   * qits-634: a ticket tagged reserved for human is a person's work, so a press is refused with a
+   * 409 naming the tag — not the status — before any workspace is asked for; the dispatch read says
+   * it is not dispatchable. Clearing the tag lets the same ticket dispatch.
+   */
+  @Test
+  public void aDispatchOntoATicketReservedForHumanIsRefusedNamingTheTag() {
+    String projectId = createProject("Dispatch Reserved");
+    String ticketId = createTicket(projectId, "Needs a person", "IMPROVEMENT", "Rotate the key.");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "READY_FOR_DEV");
+    reserve(ticketId, true);
+    dispatch.reset();
+
+    asAdmin("mallory")
+        .body(FLOW)
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("reserved for human"))
+        .body("message", containsString("a person does this work"))
+        .body("message", containsString(ticketId))
+        .body("message", not(containsString("no phase left to start")));
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.dispatchable", equalTo(false));
+    assertTrue(dispatch.calls().isEmpty(), "the tag is decided before the port is asked for anything");
+    assertEquals("READY_FOR_DEV", statusOf(ticketId), "a refused press moves nothing");
+
+    reserve(ticketId, false);
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .body("state.dispatchable", equalTo(true));
+    press(asAdmin("mallory"), ticketId, "FLOW", 200);
+    assertEquals(1, dispatch.calls().size(), "untagged, the same ticket dispatches");
+  }
+
+  /** qits-634: a person's FLOW press at REFINED schedules nothing for a reserved ticket either. */
+  @Test
+  public void aSchedulingPressOntoATicketReservedForHumanIsRefusedAndSchedulesNothing() {
+    String projectId = createProject("Dispatch Reserved Refined");
+    String ticketId = createTicket(projectId, "Needs a person too", "BUG", "Only a person can.");
+    transition(ticketId, "REFINED");
+    reserve(ticketId, true);
+    dispatch.reset();
+
+    asAdmin("mallory")
+        .body(FLOW)
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("reserved for human"));
+    assertEquals("REFINED", statusOf(ticketId), "nothing was scheduled");
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
   @Test
   public void aSecondDispatchThatFoundAnAgentAlreadyWorkingSaysThatInstead() {
     String projectId = createProject("Dispatch Again");

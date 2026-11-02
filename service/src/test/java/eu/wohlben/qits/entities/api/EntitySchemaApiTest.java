@@ -331,6 +331,8 @@ class EntitySchemaApiTest {
           return idea;
         case "priority":
           return 1;
+        case "tags":
+          return List.of("RESERVED_FOR_HUMAN");
         default:
           break;
       }
@@ -399,6 +401,14 @@ class EntitySchemaApiTest {
             "type" : "string",
             "pattern" : "\\\\S",
             "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
+          },
+          "tags" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
+            },
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
           }
         },
         "required" : [ "title", "ticketType", "impetus", "project" ],
@@ -454,6 +464,14 @@ class EntitySchemaApiTest {
           "priority" : {
             "type" : [ "integer", "null" ],
             "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
+          },
+          "tags" : {
+            "type" : [ "array", "null" ],
+            "items" : {
+              "type" : "string",
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
+            },
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
           }
         },
         "required" : [ ],
@@ -574,6 +592,14 @@ class EntitySchemaApiTest {
             "type" : "string",
             "pattern" : "\\\\S",
             "description" : "The idea this work was inspired by: the id of an idea of the same project (GET /projects/api/ideas). An archived idea may be named."
+          },
+          "tags" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
+            },
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
           }
         },
         "required" : [ "title", "repositoryId", "parent" ],
@@ -625,6 +651,14 @@ class EntitySchemaApiTest {
           "priority" : {
             "type" : [ "integer", "null" ],
             "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
+          },
+          "tags" : {
+            "type" : [ "array", "null" ],
+            "items" : {
+              "type" : "string",
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
+            },
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
           }
         },
         "required" : [ ],

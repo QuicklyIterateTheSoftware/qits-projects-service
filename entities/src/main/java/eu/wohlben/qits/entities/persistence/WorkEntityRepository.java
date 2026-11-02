@@ -5,12 +5,15 @@ import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -50,11 +53,13 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    * dispatchContinues} are left at their defaults; {@code preApprovedBy} is carried (qits-1075), and
    * so are the block's source columns (qits-895) — the listing answers the effective block, which
    * {@code EntityBlockState} derives from all of them. {@code agentActivityAt} is not carried: only
-   * the session door reads it, and it reads a managed row.
+   * the session door reads it, and it reads a managed row. The tags (qits-634) are filled by one
+   * more query for the whole project.
    */
   public List<WorkEntity> listByProjectWithoutDescription(String projectId) {
-    return getEntityManager()
-        .createQuery(
+    List<WorkEntity> rows =
+        getEntityManager()
+            .createQuery(
             "select e.id, e.projectId, e.archetype, e.number, e.title, e.slug, e.slugScope,"
                 + " e.status, e.blocked, e.ticketType, e.impetus, e.assignee, e.createdBy,"
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
@@ -63,10 +68,39 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
+            .setParameter(1, projectId)
+            .getResultStream()
+            .map(WorkEntityRepository::withoutDescription)
+            .toList();
+    fillTags(projectId, rows);
+    return rows;
+  }
+
+  /**
+   * The tags (qits-634) of every row {@link #listByProjectWithoutDescription} built, read in
+   * <b>one</b> query for the whole project rather than one per row — a hand-built row has no
+   * collection to load lazily, and an N+1 here would be one per item on the board.
+   */
+  private void fillTags(String projectId, List<WorkEntity> rows) {
+    if (rows.isEmpty()) {
+      return;
+    }
+    Map<String, WorkEntity> byId = new HashMap<>(rows.size() * 2);
+    for (WorkEntity row : rows) {
+      byId.put(row.id, row);
+    }
+    getEntityManager()
+        .createQuery(
+            "select e.id, t from WorkEntity e join e.tags t where e.projectId = ?1", Object[].class)
         .setParameter(1, projectId)
         .getResultStream()
-        .map(WorkEntityRepository::withoutDescription)
-        .toList();
+        .forEach(
+            c -> {
+              WorkEntity row = byId.get((String) c[0]);
+              if (row != null) {
+                row.tags.add((WorkTag) c[1]);
+              }
+            });
   }
 
   private static WorkEntity withoutDescription(Object[] c) {

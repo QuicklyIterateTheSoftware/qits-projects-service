@@ -62,7 +62,10 @@ import java.util.regex.Pattern;
  *       sits, and each further answered element is held against the first recorded one (a {@code
  *       [*]} type rule, which is what makes pact-jvm check it at all). By index, one entry more
  *       ahead of the object one shifted it onto a null example and failed (qits-1516);
- *   <li>an empty array: empty, exactly, because there is nothing to build a template from.
+ *   <li>an empty array: empty, exactly, because there is nothing to build a template from;
+ *   <li>a leaf the row declares {@link ConsumerRow#exact}: no matcher at all, so the recorded value
+ *       itself — for a value this service compares rather than merely reads (qits-idp's discovery
+ *       {@code issuer}, qits-708).
  * </ul>
  *
  * <p>Every interaction carries {@code comments.references}: {@code qits-call} (the provider and its
@@ -121,6 +124,13 @@ public final class ConsumerInteractions {
     Map<String, String> params = op.params();
     DslPart answer =
         row.consumes().isEmpty() ? null : responseBody(op, row.consumes(), row.nullable());
+    for (String exact : row.exact()) {
+      // No matcher is equality: the provider must answer the recorded value itself. The root
+      // part keys its rules without the leading `$`, which the pact writer adds.
+      if (answer.getMatchers().getMatchingRules().remove(exact.substring(1)) == null) {
+        throw new IllegalStateException(where + ": " + exact + " is bound by value but is no leaf");
+      }
+    }
     DslPart request = row.requestBody() == null ? null : requestBody(row.requestBody(), params, where);
     Map<String, Object> references = new LinkedHashMap<>();
     Map<String, String> call = new LinkedHashMap<>();

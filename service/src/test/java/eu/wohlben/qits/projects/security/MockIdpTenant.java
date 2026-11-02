@@ -6,14 +6,15 @@ import java.util.Map;
 
 /**
  * Turns the shipped OIDC tenant <b>on</b> for one test class, with {@link MockIdp} standing in for
- * qits-platform-idp — the only {@code @QuarkusTest} posture in this repository where a machine
+ * qits-idp — the only {@code @QuarkusTest} posture in this repository where a machine
  * bearer is validated at all, and the reason {@link BearerJwksTest} can be a surefire test rather
  * than a third packaged IT.
  *
- * <p>It moves exactly three keys, and the shipped key path is untouched: discovery stays off,
- * {@code jwks-path} stays {@code jwks} (joined onto the address below, which is why the mock stubs
- * {@code /idp/jwks}), the audience stays the shipped {@code qits-platform}, and {@code
- * jwks.resolve-early} stays {@code false} — the thing under test.
+ * <p>It moves exactly three keys, and the shipped key path is untouched: discovery stays on (the
+ * mock serves {@code /idp/.well-known/openid-configuration}, whose {@code issuer} is the {@code iss}
+ * it mints and whose {@code jwks_uri} is its {@code /idp/jwks}, qits-708), no issuer is configured,
+ * the audience stays the shipped {@code qits-platform}, and {@code jwks.resolve-early} stays {@code
+ * false} — the thing under test.
  *
  * <ul>
  *   <li>{@code qits.auth.machine.required} is THE GATE: the shipped tenant is {@code

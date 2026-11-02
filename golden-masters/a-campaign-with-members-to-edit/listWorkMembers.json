@@ -9,7 +9,8 @@
         "qualifiedId": "contract-00000001-2",
         "title": "Export the quarter as CSV",
         "status": "REFINED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -34,7 +35,8 @@
         "qualifiedId": "contract-00000001-3",
         "title": "Tax rates per country",
         "status": "REFINED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,
@@ -77,7 +79,8 @@
         "qualifiedId": "contract-00000001-4",
         "title": "Credit notes show the wrong sign",
         "status": "REPORTED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,

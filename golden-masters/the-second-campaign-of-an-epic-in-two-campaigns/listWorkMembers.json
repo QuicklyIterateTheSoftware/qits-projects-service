@@ -9,7 +9,8 @@
         "qualifiedId": "contract-00000001-3",
         "title": "Epic in two campaigns",
         "status": "REFINED",
-        "blocked": false
+        "blocked": false,
+        "tags": []
       },
       "claimedAt": null,
       "joinedRunning": false,

@@ -1,7 +1,11 @@
 package eu.wohlben.qits.entities.control;
 
+import eu.wohlben.qits.entities.entity.WorkTag;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * <b>What a create or an edit writes, as data</b> — every writable property of every archetype in
@@ -29,6 +33,10 @@ import java.util.List;
  * <p><b>The priority (qits-753) is neither scope nor a marker</b>, like the inspiration: an edit
  * stating only it passes every freeze, and the writer refuses it on a DONE or DROPPED row instead.
  *
+ * <p><b>The tags (qits-634) are a set and take no flag</b>, as the criteria do: null leaves them
+ * alone, a set (an empty one included) replaces them whole. They are neither scope nor a marker, so
+ * an edit stating only them passes every freeze, at every status, DONE and DROPPED included.
+ *
  * <p>The static factories are the shapes the four surfaces speak — an epic's words, a ticket's
  * intake, a plan node's parts — so a call site reads as what it is writing. They build this record
  * and nothing else; there is no rule in any of them.
@@ -52,7 +60,55 @@ public record EntityWrite(
     String inspiredBy,
     boolean clearInspiredBy,
     Integer priority,
-    boolean clearPriority) {
+    boolean clearPriority,
+    Set<WorkTag> tags) {
+
+  /**
+   * Every property but the tags (qits-634), which this leaves alone: the shape every surface that
+   * does not tag wrote before the tags existed. {@link #withTags} adds them.
+   */
+  public EntityWrite(
+      String title,
+      String description,
+      boolean clearDescription,
+      String impetus,
+      boolean clearImpetus,
+      String type,
+      String assignee,
+      boolean clearAssignee,
+      String repositoryId,
+      String dependsOn,
+      boolean clearDependsOn,
+      Instant implementedAt,
+      boolean clearImplementedAt,
+      Instant implementingAt,
+      List<String> acceptanceCriteria,
+      String inspiredBy,
+      boolean clearInspiredBy,
+      Integer priority,
+      boolean clearPriority) {
+    this(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        null);
+  }
 
   /**
    * Every property but the priority (qits-753), which this leaves alone: the shape every surface
@@ -238,7 +294,8 @@ public record EntityWrite(
         inspiredBy,
         clearInspiredBy,
         priority,
-        clearPriority);
+        clearPriority,
+        tags);
   }
 
   /**
@@ -266,7 +323,8 @@ public record EntityWrite(
         ideaId,
         clear,
         priority,
-        clearPriority);
+        clearPriority,
+        tags);
   }
 
   /**
@@ -294,7 +352,46 @@ public record EntityWrite(
         inspiredBy,
         clearInspiredBy,
         value,
-        clear);
+        clear,
+        tags);
+  }
+
+  /**
+   * This write, also stating the tags (qits-634): {@code stated} replaces them whole — an empty set
+   * clears them — and null leaves them alone. Neither scope nor a marker, so no freeze judges it,
+   * and no status refuses it.
+   */
+  public EntityWrite withTags(Set<WorkTag> stated) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        stated == null ? null : Collections.unmodifiableSet(EnumSet.copyOf(withNone(stated))));
+  }
+
+  private static Set<WorkTag> withNone(Set<WorkTag> stated) {
+    return stated.isEmpty() ? EnumSet.noneOf(WorkTag.class) : stated;
+  }
+
+  /** Whether this write restates the tags (qits-634). */
+  boolean touchesTags() {
+    return tags != null;
   }
 
   /** Whether this write sets or clears the priority (qits-753). */
@@ -343,6 +440,7 @@ public record EntityWrite(
         || repositoryId != null
         || dependsOn != null
         || clearDependsOn
-        || (!touchesMarker() && !touchesCriteria() && !touchesInspiration() && !touchesPriority());
+        || (!touchesMarker() && !touchesCriteria() && !touchesInspiration() && !touchesPriority()
+            && !touchesTags());
   }
 }

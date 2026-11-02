@@ -15,6 +15,7 @@ import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.error.BadRequestException;
@@ -666,6 +667,28 @@ class EntityAgentBoundsTest {
     var moved = work(AGENT).setStatus(rows.epicQualifiedId(), to("REFINED"));
     assertEquals("REFINED", moved.status());
     assertEquals("REFINED", statusOf(rows.epicId()));
+  }
+
+  /**
+   * <b>An agent tags its own project's work</b> (qits-634): the tags ride the ordinary patch, so
+   * the patch's binding is the only rule — no role beyond it, and another project's row is the
+   * binding's 403 before anything is written.
+   */
+  @Test
+  void anAgentTagsOnlyItsOwnProjectsWork() {
+    JsonNode reserve =
+        JsonNodeFactory.instance
+            .objectNode()
+            .set("tags", JsonNodeFactory.instance.arrayNode().add("RESERVED_FOR_HUMAN"));
+    assertEquals(
+        List.of(WorkTag.RESERVED_FOR_HUMAN), work(AGENT).patch(rows.ticketId(), reserve).tags());
+    assertEquals(
+        java.util.Set.of(WorkTag.RESERVED_FOR_HUMAN),
+        QuarkusTransaction.requiringNew()
+            .call(() -> java.util.Set.copyOf(workEntities.find(rows.ticketId()).tags)));
+
+    refused(() -> work(AGENT).patch(rows.foreignTicketId(), reserve));
+    refused(() -> work(FOREIGN_AGENT).patch(rows.ticketId(), reserve));
   }
 
   /**

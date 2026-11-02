@@ -344,6 +344,34 @@ class ConsumerInteractionsTest {
     assertTrue(refused.getMessage().contains("not consumed"), refused.getMessage());
   }
 
+  /**
+   * qits-708: a path the row binds by value carries no matcher, so the provider must answer the
+   * recorded value itself — another value is a mismatch; a path the row does not consume is refused.
+   */
+  @Test
+  void aPathBoundByValueRefusesAnotherValue() throws Exception {
+    ConsumerRow named = GET_THING.withExact("$.name");
+    JsonNode rules =
+        pactOf(named).path("interactions").path(0).path("response").path("matchingRules").path("body");
+    assertTrue(rules.path("$.name").isMissingNode(), "no matcher on $.name: " + rules);
+    assertFalse(rules.path("$.parts").isMissingNode(), "the other paths keep theirs: " + rules);
+    String answer =
+        "{\"name\":\"%s\",\"parts\":[{\"label\":\"a\",\"note\":\"n\"}],"
+            + "\"owner\":{\"name\":\"Ada\",\"email\":\"ada@example.invalid\"},\"tags\":[]}";
+    assertTrue(
+        ConsumerPactsTest.against(FIXTURE, named, answer.formatted("Widget")).isEmpty(),
+        "the recorded value itself is accepted");
+    assertFalse(
+        ConsumerPactsTest.against(FIXTURE, named, answer.formatted("Gadget")).isEmpty(),
+        "another value is a mismatch");
+    assertTrue(
+        ConsumerPactsTest.against(FIXTURE, GET_THING, answer.formatted("Gadget")).isEmpty(),
+        "while by type it would have passed");
+    IllegalArgumentException refused =
+        assertThrows(IllegalArgumentException.class, () -> GET_THING.withExact("$.id"));
+    assertTrue(refused.getMessage().contains("not consumed"), refused.getMessage());
+  }
+
   /** The answer the published 2026.1018.195756 pact made: refused by pact-jvm, which is the bug. */
   @Test
   void anObjectExampleRefusesNullWhateverItsMatchers() {

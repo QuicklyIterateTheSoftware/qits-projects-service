@@ -19,6 +19,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.api.DispatchMode;
@@ -285,6 +286,36 @@ class CampaignExecutorTest {
     // The executor's dispatch is the press's, so the member starts IMPLEMENTING too (qits-749).
     assertEquals(
         "IMPLEMENTING", workEntities.get(Archetype.TICKET, reported.id).status);
+  }
+
+  // --- 5a. a member reserved for a person is refused by name (qits-634) -------------------------
+
+  /**
+   * A scheduled member tagged RESERVED_FOR_HUMAN is a person's work: the press claims nothing and
+   * records the dispatch's refusal, naming the tag, on the membership; once the tag is cleared the
+   * sweep claims and dispatches it.
+   */
+  @Test
+  void aMemberReservedForHumanIsRefusedNamingTheTagAndClaimedOnceTheTagIsCleared() {
+    WorkEntity reserved = scheduled("A person's work");
+    retag(reserved, java.util.Set.of(WorkTag.RESERVED_FOR_HUMAN));
+    Fixture f = campaignOf(reserved);
+
+    press(f.campaign.id);
+    assertEquals(0, port.calls().size(), "a member reserved for a person is not dispatched");
+    EntityMembership refused = membership(f, 0);
+    assertNull(refused.claimedAt);
+    assertNotNull(refused.dispatchRefusal);
+    assertTrue(refused.dispatchRefusal.contains("reserved for human"), refused.dispatchRefusal);
+    assertEquals(0, executor.sweep(f.campaign.id));
+
+    retag(reserved, java.util.Set.of());
+    assertEquals(1, executor.sweep(f.campaign.id));
+    EntityMembership dispatched = membership(f, 0);
+    assertNotNull(dispatched.claimedAt);
+    assertNotNull(dispatched.dispatchedAt);
+    assertNull(dispatched.dispatchRefusal, "the claim clears the refusal");
+    assertEquals(1, port.calls().size());
   }
 
   // --- 5b. only a scheduled member is claimed (qits-887) ------------------------------------------
@@ -721,6 +752,12 @@ class CampaignExecutorTest {
   /** A ticket a person scheduled: READY_FOR_DEV, where its implement phase runs (qits-887). */
   private WorkEntity scheduled(String title) {
     return walk(ticket(title), "REFINED", "READY_FOR_DEV");
+  }
+
+  /** Replaces the row's tags (qits-634) as a patch does. */
+  private void retag(WorkEntity row, java.util.Set<WorkTag> tags) {
+    workEntities.update(
+        row.archetype, row.id, EntityWrite.inspiration(null, false).withTags(tags), "setup");
   }
 
   private WorkEntity walk(WorkEntity row, String... statuses) {
