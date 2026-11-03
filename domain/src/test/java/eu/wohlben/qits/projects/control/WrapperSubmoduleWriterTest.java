@@ -53,6 +53,7 @@ public class WrapperSubmoduleWriterTest {
   @Inject GitExecutor git;
   @Inject GitHostAddress gitHost;
   @Inject GitMirrorRegistry gitMirrors;
+  @Inject eu.wohlben.qits.projects.persistence.RepositoryNameRepository repositoryNameRepository;
 
   /** The git host's bare — what a clone would see. */
   private Path hostOf(String repoId) {
@@ -365,34 +366,109 @@ public class WrapperSubmoduleWriterTest {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * A blank component is created on this platform's git host, so it has no upstream — but it does
-   * have a twin it should be backed up to, and the wrapper says where: the same {@code
-   * ../<name>.git} fold every other row's target comes from. The forge repository very likely does
-   * not exist yet, which is accepted; the backup fails in a log line until somebody makes it.
+   * Adopts the {@code qits-qits.git} fixture as project {@code qits} — a wrapper whose url is a
+   * forge, so a blank component under it derives a real twin: the fixture's sibling {@code
+   * ../<name>.git}. A slug is unique (V6), and this fixture can only be adopted under 'qits' — its
+   * basename has to equal <slug>-<slug>. Whoever held it before gives it up. Same idiom as
+   * SelfSeedServiceTest's clean().
    */
-  @Test
-  public void aBlankComponentIsBornBackingUpToTheTwinItsWrapperImplies() throws Exception {
-    // A slug is unique (V6), and this fixture can only be adopted under 'qits' — its basename has
-    // to equal <slug>-<slug>. Whoever held it before gives it up. Same idiom as
-    // SelfSeedServiceTest's clean().
+  private Project forgeWrappedProject(String name) {
     projectService.list().stream()
         .filter(p -> "qits".equals(p.slug))
         .toList()
         .forEach(p -> projectService.delete(p.id));
-    var project =
-        projectService.create(
-            "Blank Twin", "qits", null, eu.wohlben.qits.projects.testsupport.GitFixtures.path("qits-qits.git"));
+    return projectService.create(name, "qits", null, GitFixtures.path("qits-qits.git"));
+  }
 
-    var created =
-        projectService.createRepository(project.id, null, "brand-new", RepositoryArchetype.LIBRARY);
+  /** Where {@code ../<name>.git} folds against the fixture wrapper's url: a sibling bare. */
+  private static Path twinOf(String name) {
+    return Path.of(GitFixtures.path("qits-qits.git")).getParent().resolve(name + ".git");
+  }
 
+  private static void deleteRecursively(Path dir) throws Exception {
+    if (!Files.exists(dir)) {
+      return;
+    }
+    try (var walk = Files.walk(dir)) {
+      for (Path path : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+        Files.delete(path);
+      }
+    }
+  }
+
+  /**
+   * A blank component is created on this platform's git host, so it has no upstream — but it does
+   * have a twin it should be backed up to, and the wrapper says where: the same {@code
+   * ../<name>.git} fold every other row's target comes from. The twin here is an <b>empty</b> forge
+   * repository, created and never pushed to — the commonest twin there is, and one {@code
+   * ls-remote} answers with nothing at all and exit 0 (qits-367).
+   */
+  @Test
+  public void aBlankComponentIsBornBackingUpToTheTwinItsWrapperImplies() throws Exception {
+    var project = forgeWrappedProject("Blank Twin");
+    Path twin = twinOf("brand-new");
+    deleteRecursively(twin);
+    git.exec(twin.getParent().toFile(), "git", "init", "--bare", "--quiet", twin.toString());
+    try {
+      var created =
+          projectService.createRepository(project.id, null, "brand-new", RepositoryArchetype.LIBRARY);
+
+      assertEquals(
+          twin.toString(),
+          created.repository().url,
+          "../brand-new.git folded against the wrapper's own forge url");
+    } finally {
+      deleteRecursively(twin);
+    }
+  }
+
+  /**
+   * qits-367: a twin the forge does not hold is refused before anything is written — no row, no
+   * name, no bare on the git host, no wrapper commit — and the refusal names the twin so the person
+   * reading it knows exactly which forge repository to create.
+   */
+  @Test
+  public void aBlankComponentWhoseTwinDoesNotExistIsRefusedBeforeAnythingIsWritten()
+      throws Exception {
+    var project = forgeWrappedProject("Missing Twin");
+    var wrapper = wrapperOf(project);
+    Path twin = twinOf("never-forged");
+    deleteRecursively(twin);
+    String wrapperHead = inHost(wrapper.id, "git", "rev-parse", wrapper.mainBranch);
+    int rowsBefore = projectService.getRepositories(project.id).size();
+    java.util.Set<String> baresBefore = hostBares();
+
+    BadRequestException refused =
+        assertThrows(
+            BadRequestException.class,
+            () ->
+                projectService.createRepository(
+                    project.id, null, "never-forged", RepositoryArchetype.LIBRARY));
+
+    assertEquals(400, refused.statusCode());
+    assertTrue(refused.getMessage().contains(twin.toString()), refused.getMessage());
+    assertTrue(
+        refused.getMessage().contains("../never-forged.git"),
+        "says where the twin came from: " + refused.getMessage());
     assertEquals(
-        java.nio.file.Path.of(eu.wohlben.qits.projects.testsupport.GitFixtures.path("qits-qits.git"))
-            .getParent()
-            .resolve("brand-new.git")
-            .toString(),
-        created.repository().url,
-        "../brand-new.git folded against the wrapper's own forge url");
+        rowsBefore, projectService.getRepositories(project.id).size(), "no Repository row");
+    assertTrue(
+        repositoryNameRepository.findByProjectAndName(project.id, "never-forged").isEmpty(),
+        "no name alias");
+    assertEquals(baresBefore, hostBares(), "no bare on the git host");
+    assertEquals(
+        wrapperHead,
+        inHost(wrapper.id, "git", "rev-parse", wrapper.mainBranch),
+        "no wrapper commit");
+  }
+
+  /** Every bare the (fake) git host holds, by directory name. */
+  private java.util.Set<String> hostBares() throws Exception {
+    Path root = hostOf("probe").getParent();
+    try (var list = Files.list(root)) {
+      return list.map(p -> p.getFileName().toString())
+          .collect(java.util.stream.Collectors.toSet());
+    }
   }
 
   /** A greenfield wrapper names no forge, so there is no twin to derive — and that is not an error. */

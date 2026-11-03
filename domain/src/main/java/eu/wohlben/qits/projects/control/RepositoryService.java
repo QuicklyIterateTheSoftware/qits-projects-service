@@ -89,6 +89,9 @@ public class RepositoryService {
 
   @Inject GitRemoteAuth remoteAuth;
 
+  /** The create door's "does the twin exist" question — see {@link #createBlankRepository}. */
+  @Inject BackupTwinCheck backupTwinCheck;
+
   @Inject GitSubmoduleParser submoduleParser;
 
   @Inject RepositoryNameRepository repositoryNameRepository;
@@ -396,8 +399,11 @@ public class RepositoryService {
    * template — the greenfield half of the create flow, and the sibling of {@link #cloneOne} for a
    * component that has no upstream at all.
    *
-   * <p>{@code url} stays null: this repository <em>is</em> hosted here, and the row's url names a
-   * backup remote at some external forge, which a blank one does not have yet.
+   * <p>{@code url} is the backup twin the wrapper implies, never an upstream: this repository
+   * <em>is</em> hosted here. When the wrapper names a forge, that twin must already exist there and
+   * answer with the platform's credentials, or the create is refused before anything is written —
+   * see {@link BackupTwinCheck}. Under a greenfield wrapper there is no twin and {@code url} stays
+   * null.
    *
    * <p>The alias is {@code name} <b>exactly</b>, never a fallback: the wrapper records {@code url =
    * ../<name>.git}, and a repository served under a different name is a submodule that resolves
@@ -419,14 +425,17 @@ public class RepositoryService {
     }
 
     requireCreatableName(project, name);
+    // The backup twin, derived the same way the reconcile derives every other row's: the wrapper's
+    // own forge url folded with ../<name>.git. It has to exist before this door writes anything
+    // (qits-367) — a twin that does not is refused here, while the person who can create it is
+    // still looking, instead of failing every backup afterwards in a log line nobody reads. No
+    // twin at all (a greenfield wrapper) has nothing to check, and neither do switched-off backups.
+    String twin = derivedBackupUrl(project, name);
+    backupTwinCheck.requireExists(twin, name);
 
     Repository repo = new Repository();
     repo.id = UUID.randomUUID().toString();
-    // The backup twin, derived the same way the reconcile derives every other row's: the wrapper's
-    // own forge url folded with ../<name>.git. The forge repository very likely does not exist yet,
-    // and that is accepted — the backup push fails loudly in a log line and harmlessly everywhere
-    // else, and the day somebody creates the twin it starts working with nothing to configure.
-    repo.url = derivedBackupUrl(project, name);
+    repo.url = twin;
     repo.archetype = archetype;
     repo.project = project;
     repo.mainBranch = WRAPPER_DEFAULT_BRANCH;
