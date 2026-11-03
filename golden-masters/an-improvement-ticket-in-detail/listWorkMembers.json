@@ -24,7 +24,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000014",
@@ -50,7 +51,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000015",
@@ -97,10 +99,17 @@
           ]
         }
       ],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000018",
+          "displayName": "Before \"Invoice totals are off by one cent\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ]
     },
     {
-      "membershipId": "00000000-0000-4000-8000-000000000018",
+      "membershipId": "00000000-0000-4000-8000-000000000019",
       "position": 3,
       "entity": {
         "id": "00000000-0000-4000-8000-000000000003",
@@ -124,10 +133,10 @@
       "dispatchError": null,
       "groups": [
         {
-          "id": "00000000-0000-4000-8000-000000000019",
+          "id": "00000000-0000-4000-8000-00000000001a",
           "criteria": [
             {
-              "id": "00000000-0000-4000-8000-00000000001a",
+              "id": "00000000-0000-4000-8000-00000000001b",
               "kind": "ENTITY_STATUS",
               "predicate": {
                 "entityId": "00000000-0000-4000-8000-000000000001",
@@ -141,10 +150,17 @@
           ]
         }
       ],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-00000000001c",
+          "displayName": "Before \"Credit notes show the wrong sign\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ]
     },
     {
-      "membershipId": "00000000-0000-4000-8000-00000000001b",
+      "membershipId": "00000000-0000-4000-8000-00000000001d",
       "position": 4,
       "entity": {
         "id": "00000000-0000-4000-8000-00000000000b",
@@ -168,10 +184,10 @@
       "dispatchError": null,
       "groups": [
         {
-          "id": "00000000-0000-4000-8000-00000000001c",
+          "id": "00000000-0000-4000-8000-00000000001e",
           "criteria": [
             {
-              "id": "00000000-0000-4000-8000-00000000001d",
+              "id": "00000000-0000-4000-8000-00000000001f",
               "kind": "ENTITY_STATUS",
               "predicate": {
                 "entityId": "00000000-0000-4000-8000-000000000006",
@@ -183,7 +199,7 @@
               "approval": null
             },
             {
-              "id": "00000000-0000-4000-8000-00000000001e",
+              "id": "00000000-0000-4000-8000-000000000020",
               "kind": "APPROVAL",
               "predicate": {},
               "seeded": false,
@@ -194,7 +210,14 @@
           ]
         }
       ],
-      "holdsStatus": true
+      "holdsStatus": true,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "displayName": "Before \"Remember the last export format\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ]
     }
   ]
 }

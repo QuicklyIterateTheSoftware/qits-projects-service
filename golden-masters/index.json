@@ -75,7 +75,8 @@
             "ids": [
               "$.id",
               "$.projectId",
-              "$.slugScope"
+              "$.slugScope",
+              "$.milestones[*].id"
             ],
             "instants": [
               "$.createdAt",
@@ -100,7 +101,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -164,7 +166,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -327,7 +330,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -372,11 +376,125 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
               "$.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a campaign member waiting on a milestone",
+      "slug": "a-campaign-member-waiting-on-a-milestone",
+      "params": {
+        "membershipId": "00000000-0000-4000-8000-000000000001",
+        "milestoneId": "00000000-0000-4000-8000-000000000002",
+        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
+        "projectId": "00000000-0000-4000-8000-000000000004",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000005",
+        "ticketQualifiedId": "contract-00000001-2"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getMilestone",
+          "method": "GET",
+          "path": "/projects/api/milestones/{milestoneId}",
+          "status": 200,
+          "file": "a-campaign-member-waiting-on-a-milestone/getMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.entities[*].id",
+              "$.milestone.memberships[*].membershipId",
+              "$.milestone.memberships[*].campaignId",
+              "$.milestone.memberships[*].entityId"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].criteria[*].createdAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId",
+              "$.milestone.memberships[*].campaignQualifiedId",
+              "$.milestone.memberships[*].entityQualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{ticketQualifiedId}",
+          "status": 200,
+          "file": "a-campaign-member-waiting-on-a-milestone/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.milestones[*].id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listWorkMembers",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/members",
+          "status": 200,
+          "file": "a-campaign-member-waiting-on-a-milestone/listWorkMembers.json",
+          "frozen": {
+            "ids": [
+              "$.members[*].membershipId",
+              "$.members[*].entity.id",
+              "$.members[*].milestones[*].id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setWorkMemberMilestones",
+          "method": "PUT",
+          "path": "/projects/api/work/{qualifiedId}/members/{membershipId}/milestones",
+          "body": {
+            "milestoneIds": [
+              "{milestoneId}",
+              "{otherMilestoneId}"
+            ]
+          },
+          "status": 200,
+          "file": "a-campaign-member-waiting-on-a-milestone/setWorkMemberMilestones.json",
+          "frozen": {
+            "ids": [
+              "$.member.membershipId",
+              "$.member.entity.id",
+              "$.member.milestones[*].id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.member.entity.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -433,6 +551,7 @@
               "$.entities[*].id",
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
+              "$.entities[*].milestones[*].id",
               "$.entities[*].parent",
               "$.entities[*].repositoryId"
             ],
@@ -473,7 +592,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -519,7 +639,8 @@
               "$.member.entity.id",
               "$.member.groups[*].id",
               "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId"
+              "$.member.groups[*].criteria[*].predicate.entityId",
+              "$.member.milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -543,7 +664,8 @@
               "$.member.entity.id",
               "$.member.groups[*].id",
               "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId"
+              "$.member.groups[*].criteria[*].predicate.entityId",
+              "$.member.milestones[*].id"
             ],
             "instants": [
               "$.member.groups[*].criteria[*].satisfiedAt"
@@ -589,7 +711,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -613,7 +736,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -634,7 +758,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -670,7 +795,8 @@
               "$.member.entity.id",
               "$.member.groups[*].id",
               "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId"
+              "$.member.groups[*].criteria[*].predicate.entityId",
+              "$.member.milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -725,7 +851,8 @@
               "$.entities[*].id",
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
-              "$.entities[*].parent"
+              "$.entities[*].parent",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -749,7 +876,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -808,7 +936,8 @@
             "ids": [
               "$.entities[*].id",
               "$.entities[*].projectId",
-              "$.entities[*].slugScope"
+              "$.entities[*].slugScope",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -832,7 +961,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -1274,7 +1404,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -1524,7 +1655,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -4905,7 +5037,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -5064,6 +5197,444 @@
             ],
             "strings": [
               "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ticket waiting on a met milestone",
+      "slug": "a-ticket-waiting-on-a-met-milestone",
+      "params": {
+        "criterionId": "00000000-0000-4000-8000-000000000001",
+        "milestoneId": "00000000-0000-4000-8000-000000000002",
+        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
+        "projectId": "00000000-0000-4000-8000-000000000004",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000005"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getMilestone",
+          "method": "GET",
+          "path": "/projects/api/milestones/{milestoneId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-a-met-milestone/getMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.entities[*].id"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.satisfiedAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].satisfiedAt",
+              "$.milestone.groups[*].criteria[*].createdAt",
+              "$.milestone.groups[*].criteria[*].satisfiedAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-a-met-milestone/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.milestones[*].id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt",
+              "$.milestones[*].satisfiedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectMilestones",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/milestones",
+          "status": 200,
+          "file": "a-ticket-waiting-on-a-met-milestone/listProjectMilestones.json",
+          "frozen": {
+            "ids": [
+              "$.milestones[*].id",
+              "$.milestones[*].projectId",
+              "$.milestones[*].groups[*].id",
+              "$.milestones[*].groups[*].criteria[*].id",
+              "$.milestones[*].entities[*].id"
+            ],
+            "instants": [
+              "$.milestones[*].createdAt",
+              "$.milestones[*].satisfiedAt",
+              "$.milestones[*].groups[*].createdAt",
+              "$.milestones[*].groups[*].satisfiedAt",
+              "$.milestones[*].groups[*].criteria[*].createdAt",
+              "$.milestones[*].groups[*].criteria[*].satisfiedAt"
+            ],
+            "strings": [
+              "$.milestones[*].entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "status": 200,
+          "file": "a-ticket-waiting-on-a-met-milestone/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].milestones[*].id"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].milestones[*].satisfiedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listWorkMilestones",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/milestones",
+          "status": 200,
+          "file": "a-ticket-waiting-on-a-met-milestone/listWorkMilestones.json",
+          "frozen": {
+            "ids": [
+              "$.milestones[*].id"
+            ],
+            "instants": [
+              "$.milestones[*].satisfiedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ticket waiting on an unmet milestone",
+      "slug": "a-ticket-waiting-on-an-unmet-milestone",
+      "params": {
+        "criterionId": "00000000-0000-4000-8000-000000000001",
+        "milestoneId": "00000000-0000-4000-8000-000000000002",
+        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
+        "projectId": "00000000-0000-4000-8000-000000000004",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000005"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "approveMilestoneCriterion",
+          "method": "POST",
+          "path": "/projects/api/milestones/{milestoneId}/criteria/{criterionId}/approve",
+          "body": {
+            "note": "Node 7 is up."
+          },
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/approveMilestoneCriterion.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.entities[*].id"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.satisfiedAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].satisfiedAt",
+              "$.milestone.groups[*].criteria[*].createdAt",
+              "$.milestone.groups[*].criteria[*].satisfiedAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "attachWorkMilestone",
+          "method": "PUT",
+          "path": "/projects/api/work/{qualifiedId}/milestones/{otherMilestoneId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/attachWorkMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestones[*].id"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "createMilestone",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/milestones",
+          "body": {
+            "displayName": "bootstrap ticket done",
+            "groups": [
+              {
+                "criteria": [
+                  {
+                    "kind": "ENTITY_STATUS",
+                    "predicate": {
+                      "entityId": "{qualifiedId}",
+                      "status": "DONE"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "status": 201,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/createMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].criteria[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "detachWorkMilestone",
+          "method": "DELETE",
+          "path": "/projects/api/work/{qualifiedId}/milestones/{milestoneId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/detachWorkMilestone.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getMilestone",
+          "method": "GET",
+          "path": "/projects/api/milestones/{milestoneId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/getMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.entities[*].id"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].criteria[*].createdAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.milestones[*].id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectMilestones",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/milestones",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/listProjectMilestones.json",
+          "frozen": {
+            "ids": [
+              "$.milestones[*].id",
+              "$.milestones[*].projectId",
+              "$.milestones[*].groups[*].id",
+              "$.milestones[*].groups[*].criteria[*].id",
+              "$.milestones[*].entities[*].id"
+            ],
+            "instants": [
+              "$.milestones[*].createdAt",
+              "$.milestones[*].groups[*].createdAt",
+              "$.milestones[*].groups[*].criteria[*].createdAt"
+            ],
+            "strings": [
+              "$.milestones[*].entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].milestones[*].id"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listWorkMilestones",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/milestones",
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/listWorkMilestones.json",
+          "frozen": {
+            "ids": [
+              "$.milestones[*].id"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "renameMilestone",
+          "method": "PATCH",
+          "path": "/projects/api/milestones/{milestoneId}",
+          "body": {
+            "displayName": "bootstrap test node (arm64)"
+          },
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/renameMilestone.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.entities[*].id"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].criteria[*].createdAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setMilestoneGroups",
+          "method": "PUT",
+          "path": "/projects/api/milestones/{milestoneId}/groups",
+          "body": {
+            "groups": [
+              {
+                "criteria": [
+                  {
+                    "id": "{criterionId}",
+                    "kind": "APPROVAL",
+                    "predicate": {}
+                  }
+                ]
+              },
+              {
+                "criteria": [
+                  {
+                    "kind": "ENTITY_STATUS",
+                    "predicate": {
+                      "entityId": "{qualifiedId}",
+                      "status": "DONE"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "status": 200,
+          "file": "a-ticket-waiting-on-an-unmet-milestone/setMilestoneGroups.json",
+          "frozen": {
+            "ids": [
+              "$.milestone.id",
+              "$.milestone.projectId",
+              "$.milestone.groups[*].id",
+              "$.milestone.groups[*].criteria[*].id",
+              "$.milestone.groups[*].criteria[*].predicate.entityId",
+              "$.milestone.entities[*].id"
+            ],
+            "instants": [
+              "$.milestone.createdAt",
+              "$.milestone.groups[*].createdAt",
+              "$.milestone.groups[*].criteria[*].createdAt"
+            ],
+            "strings": [
+              "$.milestone.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -6053,7 +6624,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -6166,7 +6738,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [
@@ -6742,7 +7315,8 @@
             "ids": [
               "$.id",
               "$.projectId",
-              "$.slugScope"
+              "$.slugScope",
+              "$.milestones[*].id"
             ],
             "instants": [
               "$.createdAt",
@@ -6767,7 +7341,8 @@
               "$.entities[*].slugScope",
               "$.entities[*].parent",
               "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
+              "$.entities[*].dependsOn",
+              "$.entities[*].milestones[*].id"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -6825,7 +7400,8 @@
               "$.members[*].entity.id",
               "$.members[*].groups[*].id",
               "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId"
+              "$.members[*].groups[*].criteria[*].predicate.entityId",
+              "$.members[*].milestones[*].id"
             ],
             "instants": [],
             "strings": [

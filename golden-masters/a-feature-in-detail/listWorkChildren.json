@@ -28,7 +28,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000e",
@@ -58,7 +60,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     }
   ]
 }

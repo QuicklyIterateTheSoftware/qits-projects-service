@@ -51,7 +51,14 @@
           ]
         }
       ],
-      "holdsStatus": true
+      "holdsStatus": true,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "displayName": "Before \"Credit notes show the wrong sign\" in \"Close the quarter\"",
+          "satisfiedAt": null
+        }
+      ]
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000005",
@@ -77,7 +84,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000004",
@@ -104,10 +112,10 @@
       "dispatchError": null,
       "groups": [
         {
-          "id": "00000000-0000-4000-8000-00000000000d",
+          "id": "00000000-0000-4000-8000-00000000000e",
           "criteria": [
             {
-              "id": "00000000-0000-4000-8000-00000000000e",
+              "id": "00000000-0000-4000-8000-00000000000f",
               "kind": "ENTITY_STATUS",
               "predicate": {
                 "entityId": "00000000-0000-4000-8000-000000000006",
@@ -121,7 +129,14 @@
           ]
         }
       ],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "displayName": "Before \"Tax rates per country\" in \"Close the quarter\"",
+          "satisfiedAt": null
+        }
+      ]
     }
   ]
 }

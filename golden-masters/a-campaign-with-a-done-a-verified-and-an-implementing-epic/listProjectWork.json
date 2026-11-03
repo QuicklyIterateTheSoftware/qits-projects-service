@@ -29,7 +29,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -60,7 +62,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -91,7 +95,15 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "displayName": "Before \"Refined ticket\" in \"Campaign in flight\"",
+          "satisfiedAt": null
+        }
+      ],
+      "unmetMilestones": 1
     },
     {
       "id": "00000000-0000-4000-8000-000000000002",
@@ -122,10 +134,12 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000008",
+      "id": "00000000-0000-4000-8000-000000000009",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 5,
@@ -152,10 +166,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-00000000000a",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 6,
@@ -163,7 +179,7 @@
       "title": "First done task",
       "excerpt": null,
       "slug": "first-done-task",
-      "slugScope": "00000000-0000-4000-8000-000000000008",
+      "slugScope": "00000000-0000-4000-8000-000000000009",
       "status": "DONE",
       "statusBefore": null,
       "ticketType": null,
@@ -172,20 +188,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000008",
+      "parent": "00000000-0000-4000-8000-000000000009",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000b",
+      "id": "00000000-0000-4000-8000-00000000000c",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 7,
@@ -193,7 +211,7 @@
       "title": "Second done task",
       "excerpt": null,
       "slug": "second-done-task",
-      "slugScope": "00000000-0000-4000-8000-000000000008",
+      "slugScope": "00000000-0000-4000-8000-000000000009",
       "status": "DONE",
       "statusBefore": null,
       "ticketType": null,
@@ -202,17 +220,19 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000008",
+      "parent": "00000000-0000-4000-8000-000000000009",
       "position": 1,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000007",
@@ -243,10 +263,12 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000c",
+      "id": "00000000-0000-4000-8000-00000000000d",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 9,
@@ -273,10 +295,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000d",
+      "id": "00000000-0000-4000-8000-00000000000e",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 10,
@@ -284,7 +308,7 @@
       "title": "First verified task",
       "excerpt": null,
       "slug": "first-verified-task",
-      "slugScope": "00000000-0000-4000-8000-00000000000c",
+      "slugScope": "00000000-0000-4000-8000-00000000000d",
       "status": "VERIFIED",
       "statusBefore": null,
       "ticketType": null,
@@ -293,20 +317,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-00000000000c",
+      "parent": "00000000-0000-4000-8000-00000000000d",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000e",
+      "id": "00000000-0000-4000-8000-00000000000f",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 11,
@@ -314,7 +340,7 @@
       "title": "Second verified task",
       "excerpt": null,
       "slug": "second-verified-task",
-      "slugScope": "00000000-0000-4000-8000-00000000000c",
+      "slugScope": "00000000-0000-4000-8000-00000000000d",
       "status": "VERIFIED",
       "statusBefore": null,
       "ticketType": null,
@@ -323,17 +349,19 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-00000000000c",
+      "parent": "00000000-0000-4000-8000-00000000000d",
       "position": 1,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -364,10 +392,12 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000f",
+      "id": "00000000-0000-4000-8000-000000000010",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 13,
@@ -394,10 +424,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000010",
+      "id": "00000000-0000-4000-8000-000000000011",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 14,
@@ -405,7 +437,7 @@
       "title": "Verified task",
       "excerpt": null,
       "slug": "verified-task",
-      "slugScope": "00000000-0000-4000-8000-00000000000f",
+      "slugScope": "00000000-0000-4000-8000-000000000010",
       "status": "VERIFIED",
       "statusBefore": null,
       "ticketType": null,
@@ -414,20 +446,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-00000000000f",
+      "parent": "00000000-0000-4000-8000-000000000010",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000011",
+      "id": "00000000-0000-4000-8000-000000000012",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 15,
@@ -454,10 +488,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000012",
+      "id": "00000000-0000-4000-8000-000000000013",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 16,
@@ -465,7 +501,7 @@
       "title": "Verified task of an implemented feature",
       "excerpt": null,
       "slug": "verified-task-of-an-implemented-feature",
-      "slugScope": "00000000-0000-4000-8000-000000000011",
+      "slugScope": "00000000-0000-4000-8000-000000000012",
       "status": "VERIFIED",
       "statusBefore": null,
       "ticketType": null,
@@ -474,20 +510,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000011",
+      "parent": "00000000-0000-4000-8000-000000000012",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000013",
+      "id": "00000000-0000-4000-8000-000000000014",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 17,
@@ -514,10 +552,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000014",
+      "id": "00000000-0000-4000-8000-000000000015",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 18,
@@ -525,7 +565,7 @@
       "title": "Refined task",
       "excerpt": null,
       "slug": "refined-task",
-      "slugScope": "00000000-0000-4000-8000-000000000013",
+      "slugScope": "00000000-0000-4000-8000-000000000014",
       "status": "REFINED",
       "statusBefore": null,
       "ticketType": null,
@@ -534,20 +574,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": null,
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000013",
+      "parent": "00000000-0000-4000-8000-000000000014",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000015",
+      "id": "00000000-0000-4000-8000-000000000016",
       "archetype": "FEATURE",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 19,
@@ -574,10 +616,12 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000016",
+      "id": "00000000-0000-4000-8000-000000000017",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 20,
@@ -585,7 +629,7 @@
       "title": "Implementing task",
       "excerpt": null,
       "slug": "implementing-task",
-      "slugScope": "00000000-0000-4000-8000-000000000015",
+      "slugScope": "00000000-0000-4000-8000-000000000016",
       "status": "IMPLEMENTING",
       "statusBefore": null,
       "ticketType": null,
@@ -594,20 +638,22 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": null,
       "implementingAt": "2026-01-01T00:00:00Z",
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000015",
+      "parent": "00000000-0000-4000-8000-000000000016",
       "position": 0,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
-      "id": "00000000-0000-4000-8000-000000000017",
+      "id": "00000000-0000-4000-8000-000000000018",
       "archetype": "TASK",
       "projectId": "00000000-0000-4000-8000-000000000005",
       "number": 21,
@@ -615,7 +661,7 @@
       "title": "Verifying task",
       "excerpt": null,
       "slug": "verifying-task",
-      "slugScope": "00000000-0000-4000-8000-000000000015",
+      "slugScope": "00000000-0000-4000-8000-000000000016",
       "status": "VERIFYING",
       "statusBefore": null,
       "ticketType": null,
@@ -624,17 +670,19 @@
       "createdBy": null,
       "supersededBy": null,
       "outcome": null,
-      "repositoryId": "00000000-0000-4000-8000-00000000000a",
+      "repositoryId": "00000000-0000-4000-8000-00000000000b",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
       "dependsOn": null,
-      "parent": "00000000-0000-4000-8000-000000000015",
+      "parent": "00000000-0000-4000-8000-000000000016",
       "position": 1,
       "priority": null,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     }
   ]
 }

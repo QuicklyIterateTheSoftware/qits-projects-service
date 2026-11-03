@@ -33,5 +33,13 @@
   "blockSource": "EXPLICIT",
   "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
   "blockedBy": "qits-agent",
-  "tags": []
+  "tags": [],
+  "milestones": [
+    {
+      "id": "00000000-0000-4000-8000-000000000013",
+      "displayName": "Before \"Invoice totals are off by one cent\" in \"Invoicing for the Q4 close\"",
+      "satisfiedAt": null
+    }
+  ],
+  "unmetMilestones": 1
 }

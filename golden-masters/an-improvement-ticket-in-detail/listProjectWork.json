@@ -29,7 +29,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -60,7 +62,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -90,7 +94,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000005",
@@ -120,7 +126,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000011",
@@ -150,7 +158,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000007",
@@ -180,7 +190,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
@@ -210,7 +222,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000e",
@@ -240,7 +254,9 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000012",
@@ -271,7 +287,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000001",
@@ -305,7 +323,15 @@
       "blockSource": "EXPLICIT",
       "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
       "blockedBy": "qits-agent",
-      "tags": []
+      "tags": [],
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "displayName": "Before \"Invoice totals are off by one cent\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ],
+      "unmetMilestones": 1
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -336,7 +362,15 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "displayName": "Before \"Remember the last export format\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ],
+      "unmetMilestones": 1
     },
     {
       "id": "00000000-0000-4000-8000-00000000000c",
@@ -367,7 +401,9 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -398,7 +434,15 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "blocked": false,
-      "tags": []
+      "tags": [],
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "displayName": "Before \"Credit notes show the wrong sign\" in \"Invoicing for the Q4 close\"",
+          "satisfiedAt": null
+        }
+      ],
+      "unmetMilestones": 1
     }
   ]
 }

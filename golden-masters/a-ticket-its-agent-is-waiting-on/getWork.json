@@ -32,5 +32,7 @@
   ],
   "blockSource": "AGENT_WAITING",
   "blockReason": "The agent ended its turn with nothing in flight and is waiting for a person.",
-  "tags": []
+  "tags": [],
+  "milestones": [],
+  "unmetMilestones": 0
 }

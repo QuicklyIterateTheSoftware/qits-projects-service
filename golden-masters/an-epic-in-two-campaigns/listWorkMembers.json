@@ -24,7 +24,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": true
+      "holdsStatus": true,
+      "milestones": []
     }
   ]
 }

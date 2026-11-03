@@ -41,6 +41,13 @@
         ]
       }
     ],
-    "holdsStatus": true
+    "holdsStatus": true,
+    "milestones": [
+      {
+        "id": "00000000-0000-4000-8000-00000000000e",
+        "displayName": "Before \"Remember the last export format\" in \"Close the quarter\"",
+        "satisfiedAt": null
+      }
+    ]
   }
 }
