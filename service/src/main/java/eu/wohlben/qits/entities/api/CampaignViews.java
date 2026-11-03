@@ -11,7 +11,7 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CriterionApprovalDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CriterionDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CriterionEvidenceDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CriterionGroupDto;
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.entity.EntityMembership;
@@ -161,7 +161,7 @@ public class CampaignViews {
         entity != null && CampaignStatusRecompute.holds(campaignStatus, entity.status));
   }
 
-  private static CriterionDto criterion(CampaignCriterion criterion) {
+  private static CriterionDto criterion(MilestoneCriterion criterion) {
     return new CriterionDto(
         criterion.id,
         criterion.kind.name(),
@@ -173,7 +173,7 @@ public class CampaignViews {
   }
 
   /** What latched {@code criterion} — an event or {@code STATE_AT_START} — or null. */
-  static CriterionEvidenceDto evidence(CampaignCriterion criterion) {
+  static CriterionEvidenceDto evidence(MilestoneCriterion criterion) {
     return criterion.satisfiedAt != null && criterion.evidenceSignature != null
         ? new CriterionEvidenceDto(
             criterion.evidenceEventId == null ? null : criterion.evidenceEventId.toString(),
@@ -183,7 +183,7 @@ public class CampaignViews {
   }
 
   /** Who approved {@code criterion}, and what they said — or null. */
-  static CriterionApprovalDto approval(CampaignCriterion criterion) {
+  static CriterionApprovalDto approval(MilestoneCriterion criterion) {
     return criterion.satisfiedAt != null && criterion.approvedBy != null
         ? new CriterionApprovalDto(criterion.approvedBy, criterion.approvalNote)
         : null;

@@ -10,9 +10,9 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignEvaluatorDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberState;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
-import eu.wohlben.qits.entities.campaign.CampaignCriterionGroup;
 import eu.wohlben.qits.entities.campaign.CampaignService;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneGroup;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.campaign.CriterionPredicate;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -209,8 +209,8 @@ class CampaignProgressTest {
     EntityMembership claimedEdge = edge(claimed, 1);
     claimedEdge.claimedAt = T;
     claimedEdge.joinedRunning = true;
-    CampaignCriterion stillOpen = status(ahead, "VERIFIED");
-    CampaignCriterion satisfied = status(ahead, "VERIFIED");
+    MilestoneCriterion stillOpen = status(ahead, "VERIFIED");
+    MilestoneCriterion satisfied = status(ahead, "VERIFIED");
     satisfied.satisfiedAt = T;
     satisfied.evidenceEventId = UUID.fromString("00000000-0000-0000-0000-000000000418");
     satisfied.evidenceSignature = "EntityTransitioned";
@@ -238,24 +238,24 @@ class CampaignProgressTest {
     WorkEntity target = entity("Target", "VERIFIED");
     WorkEntity member = entity("Member", "REFINED");
 
-    CampaignCriterion byEvent = deployment("qits-projects", null, "2026.930.1");
+    MilestoneCriterion byEvent = deployment("qits-projects", null, "2026.930.1");
     byEvent.satisfiedAt = T;
     byEvent.evidenceEventId = UUID.fromString("00000000-0000-0000-0000-00000000e7e7");
     byEvent.evidenceSignature = "DeploymentActive";
     byEvent.evidenceSummary = "qits-projects 2026.930.2 went active in dev";
 
-    CampaignCriterion byPerson = approval();
+    MilestoneCriterion byPerson = approval();
     byPerson.satisfiedAt = T.plusSeconds(1);
     byPerson.approvedBy = "xion";
     byPerson.approvalNote = "go";
 
-    CampaignCriterion atStart = status(target, "VERIFIED");
+    MilestoneCriterion atStart = status(target, "VERIFIED");
     atStart.satisfiedAt = T.plusSeconds(2);
-    atStart.evidenceSignature = CampaignCriterion.STATE_AT_START;
+    atStart.evidenceSignature = MilestoneCriterion.STATE_AT_START;
     atStart.evidenceSummary =
         "qits-" + target.number + " was already VERIFIED when the campaign started";
 
-    CampaignCriterion open = release("qits-qits", "p-qits", "2026.930.1");
+    MilestoneCriterion open = release("qits-qits", "p-qits", "2026.930.1");
 
     CampaignProgressDto progress =
         derive(
@@ -281,7 +281,7 @@ class CampaignProgressTest {
 
     CampaignCriterionProgressDto state = first.get(2);
     assertNull(state.evidence().eventId());
-    assertEquals(CampaignCriterion.STATE_AT_START, state.evidence().signature());
+    assertEquals(MilestoneCriterion.STATE_AT_START, state.evidence().signature());
     assertEquals(
         "qits-" + target.number + " was already VERIFIED when the campaign started",
         state.evidence().summary());
@@ -312,9 +312,9 @@ class CampaignProgressTest {
     WorkEntity a = entity("A", "REFINED");
     WorkEntity b = entity("B", "REFINED");
     WorkEntity c = entity("C", "REFINED");
-    CampaignCriterion seed = status(a, "VERIFIED");
+    MilestoneCriterion seed = status(a, "VERIFIED");
     seed.seeded = true;
-    CampaignCriterion cSeed = status(b, "VERIFIED");
+    MilestoneCriterion cSeed = status(b, "VERIFIED");
     cSeed.seeded = true;
 
     CampaignProgressDto progress =
@@ -450,15 +450,15 @@ class CampaignProgressTest {
 
   @SafeVarargs
   private static CampaignService.Member member(
-      EntityMembership edge, WorkEntity entity, List<CampaignCriterion>... groups) {
+      EntityMembership edge, WorkEntity entity, List<MilestoneCriterion>... groups) {
     List<CampaignService.Group> built = new ArrayList<>();
     int position = 0;
-    for (List<CampaignCriterion> criteria : groups) {
-      CampaignCriterionGroup group = new CampaignCriterionGroup();
+    for (List<MilestoneCriterion> criteria : groups) {
+      MilestoneGroup group = new MilestoneGroup();
       group.id = UUID.randomUUID().toString();
-      group.membershipId = edge.id;
+      group.milestoneId = "condition-of-" + edge.id;
       group.position = position++;
-      for (CampaignCriterion criterion : criteria) {
+      for (MilestoneCriterion criterion : criteria) {
         criterion.groupId = group.id;
       }
       built.add(new CampaignService.Group(group, criteria));
@@ -466,31 +466,31 @@ class CampaignProgressTest {
     return new CampaignService.Member(edge, entity, built);
   }
 
-  private static List<CampaignCriterion> group(CampaignCriterion... criteria) {
+  private static List<MilestoneCriterion> group(MilestoneCriterion... criteria) {
     return Arrays.asList(criteria);
   }
 
-  private static CampaignCriterion criterion(CriterionPredicate predicate) {
-    CampaignCriterion criterion = new CampaignCriterion();
+  private static MilestoneCriterion criterion(CriterionPredicate predicate) {
+    MilestoneCriterion criterion = new MilestoneCriterion();
     criterion.id = UUID.randomUUID().toString();
     criterion.kind = predicate.kind();
     criterion.predicate = predicate.canonicalJson();
     return criterion;
   }
 
-  private static CampaignCriterion status(WorkEntity target, String status) {
+  private static MilestoneCriterion status(WorkEntity target, String status) {
     return criterion(new CriterionPredicate.EntityStatusIs(target.id, status));
   }
 
-  private static CampaignCriterion deployment(String application, String env, String floor) {
+  private static MilestoneCriterion deployment(String application, String env, String floor) {
     return criterion(new CriterionPredicate.DeploymentActive(application, env, floor));
   }
 
-  private static CampaignCriterion release(String repository, String projectId, String floor) {
+  private static MilestoneCriterion release(String repository, String projectId, String floor) {
     return criterion(new CriterionPredicate.ScmRelease(repository, projectId, floor));
   }
 
-  private static CampaignCriterion approval() {
+  private static MilestoneCriterion approval() {
     return criterion(new CriterionPredicate.Approval());
   }
 }

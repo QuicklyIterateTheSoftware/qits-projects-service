@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.milestone;
 import eu.wohlben.qits.eventstream.CausationStamp;
 import eu.wohlben.qits.eventstream.CausedRow;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -26,7 +27,11 @@ import org.hibernate.annotations.CreationTimestamp;
 @EntityListeners(CausationStamp.class)
 public class WorkMilestone extends PanacheEntityBase implements CausedRow {
 
-  /** The composite key, {@code (entity_id, milestone_id)}. */
+  /**
+   * The composite key, {@code (entity_id, milestone_id)}. Registered for reflection: Hibernate
+   * instantiates it by its no-argument constructor, which a native image keeps only when told to.
+   */
+  @RegisterForReflection
   public static class Key implements Serializable {
     public String entityId;
     public String milestoneId;

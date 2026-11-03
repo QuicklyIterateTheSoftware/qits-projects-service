@@ -115,6 +115,10 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * too: every field is a flat scalar, by design, since a wait selection reads top-level paths.
  * {@link ReleaseRequestSourceMoved} (qits-1665) is one line for the same reason.
  *
+ * <p>{@link MilestoneMet} and {@link MilestoneUnmet} (epic qits-615) are published by {@link
+ * MilestoneAnnouncer}, one line each: every field is a flat scalar. {@code MilestoneMet} is also
+ * bound on the way in, by {@link CampaignMilestoneListener}.
+ *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
  * @JsonIgnore}s by calling {@code getDeclaredMethods()} on it, which is reflection like any other.
@@ -145,6 +149,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       EntityTransitioned.class,
       EntityTransitioned.Entity.class,
       EntityCommented.class,
+      MilestoneMet.class,
+      MilestoneUnmet.class,
       IdeaCreated.class,
       IdeaUpdated.class,
       IdeaArchived.class,

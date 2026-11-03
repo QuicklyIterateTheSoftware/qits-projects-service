@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -20,6 +19,8 @@ import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.WorkTag;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneService;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.api.DispatchMode;
@@ -29,7 +30,10 @@ import eu.wohlben.qits.projects.api.EntityDispatch;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
+import eu.wohlben.qits.projects.bus.CampaignMilestoneListener;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.MilestoneMet;
+import eu.wohlben.qits.projects.bus.RecordingMilestoneAnnouncer;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -81,6 +85,9 @@ class CampaignExecutorTest {
   @Inject EntityDispatch entityDispatch;
   @Inject RecordingWorkspaceAgentDispatch port;
   @Inject CampaignCriteriaListener listener;
+  @Inject CampaignMilestoneListener milestoneListener;
+  @Inject RecordingMilestoneAnnouncer announcer;
+  @Inject MilestoneService milestones;
   @Inject EntityBlocks blocks;
 
   @Inject
@@ -94,6 +101,7 @@ class CampaignExecutorTest {
   @BeforeEach
   void setUp() {
     port.reset();
+    announcer.reset();
     projectId =
         asAdmin("setup")
             .body(
@@ -191,24 +199,25 @@ class CampaignExecutorTest {
     CountingDispatch counting = countingDispatch();
     String membershipId = f.membershipIds.get(0);
 
-    // setCondition's shape: the membership row locked, then an unmet criterion written under it.
+    // setCondition's shape: the membership row locked, then an unmet milestone it waits on
+    // written under it.
     holdingWhile(
         () -> {
           em.createNativeQuery("select id from entity_membership where id = :id for update")
               .setParameter("id", membershipId)
               .getResultList();
-          String groupId = UUID.randomUUID().toString();
+          String milestoneId = UUID.randomUUID().toString();
           em.createNativeQuery(
-                  "insert into campaign_criterion_group (id, membership_id, position, created_at)"
-                      + " values (:id, :m, 0, now())")
-              .setParameter("id", groupId)
-              .setParameter("m", membershipId)
+                  "insert into milestone (id, project_id, display_name, created_at)"
+                      + " values (:id, :p, 'gate', now())")
+              .setParameter("id", milestoneId)
+              .setParameter("p", projectId)
               .executeUpdate();
           em.createNativeQuery(
-                  "insert into campaign_criterion (id, group_id, position, kind, predicate,"
-                      + " created_at) values (:id, :g, 0, 'APPROVAL', '{}', now())")
-              .setParameter("id", UUID.randomUUID().toString())
-              .setParameter("g", groupId)
+                  "insert into campaign_membership_milestone (membership_id, milestone_id,"
+                      + " generated_condition, created_at) values (:m, :id, true, now())")
+              .setParameter("m", membershipId)
+              .setParameter("id", milestoneId)
               .executeUpdate();
           return 1;
         },
@@ -251,9 +260,9 @@ class CampaignExecutorTest {
 
     assertEquals(1, port.calls().size(), "the press latched the state at start and dispatched");
     assertEquals(f.members.get(1).id, port.lastCall().subject().ticketId());
-    CampaignCriterion seed =
+    MilestoneCriterion seed =
         member(f, 1).groups().get(0).criteria().get(0);
-    assertEquals(CampaignCriterion.STATE_AT_START, seed.evidenceSignature);
+    assertEquals(MilestoneCriterion.CURRENT_STATE, seed.evidenceSignature);
   }
 
   // --- 5. refused visibly, once, then dispatched -----------------------------------------------
@@ -517,6 +526,57 @@ class CampaignExecutorTest {
 
     assertEquals(1, port.calls().size());
     assertNotNull(membership(f, 0).dispatchedAt);
+  }
+
+  // --- 8a. milestones (epic qits-615) ----------------------------------------------------------
+
+  /**
+   * A member waiting on a milestone is not claimed while it is unmet; the {@code MilestoneMet} the
+   * approval publishes, consumed by the executor's own listener, dispatches it at once. An un-meet
+   * after the claim does nothing to it, and keeps a member that is not claimed yet waiting.
+   */
+  @Test
+  void aMilestoneMetOnTheBusDispatchesItsWaiterAndAnUnmeetFreezesNothingButAClaim() {
+    Fixture f = campaignOf(scheduled("Waits on a node"));
+    Fixture g = campaignOf(scheduled("Also waits on it"));
+    MilestoneService.Edited node =
+        milestones.create(
+            projectId,
+            "bootstrap test node",
+            List.of(new MilestoneService.GroupSpec(List.of(approvalSpec()))),
+            "setup");
+    String milestoneId = node.view().milestone().id;
+    milestones.setMembershipMilestones(f.membershipIds.get(0), List.of(milestoneId));
+
+    press(f.campaign.id);
+    assertEquals(0, port.calls().size(), "waits on the milestone");
+    assertEquals(CampaignExecutor.Attempt.NOT_READY, executor.tryDispatch(f.membershipIds.get(0), null));
+
+    milestones.approve(
+        milestoneId, node.view().groups().get(0).criteria().get(0).id, "the node is up", "dana");
+    assertEquals(1, announcer.met().size(), "the approval announced it after it committed");
+    assertEquals(milestoneId, announcer.met().get(0).milestoneId());
+    milestoneListener.onFrame(frameOf(announcer.met().get(0)));
+    awaitQuiet();
+    assertEquals(1, port.calls().size(), "dispatched off the MilestoneMet, without the sweep");
+    assertNotNull(membership(f, 0).dispatchedAt);
+
+    milestones.replaceGroups(
+        milestoneId, List.of(new MilestoneService.GroupSpec(List.of(approvalSpec()))), "setup");
+    assertEquals(1, announcer.unmet().size(), "the edit un-met it");
+    assertEquals(0, executor.sweep());
+    assertNotNull(membership(f, 0).claimedAt, "a claimed membership is frozen");
+
+    milestones.setMembershipMilestones(g.membershipIds.get(0), List.of(milestoneId));
+    press(g.campaign.id);
+    milestoneListener.onFrame(frameOf(announcer.met().get(0)));
+    awaitQuiet();
+    assertEquals(1, port.calls().size(), "an un-met milestone keeps its waiter waiting");
+    assertNull(membership(g, 0).claimedAt);
+  }
+
+  private static MilestoneService.CriterionSpec approvalSpec() {
+    return new MilestoneService.CriterionSpec(null, "APPROVAL", Map.of());
   }
 
   // --- 8b. a blocked campaign claims nothing new (qits-592) --------------------------------------
@@ -834,7 +894,26 @@ class CampaignExecutorTest {
    * executor's own cases, which are about what happens after a latch.
    */
   private void deliver(EventFrame frame) {
+    int before = announcer.met().size();
     QuarkusTransaction.requiringNew().run(() -> listener.onFrame(frame));
+    // The bus, standing in: every MilestoneMet the latch announced reaches the executor's consumer.
+    List<MilestoneMet> met = announcer.met();
+    for (MilestoneMet each : met.subList(before, met.size())) {
+      milestoneListener.onFrame(frameOf(each));
+    }
+  }
+
+  /** A published event as the bus would deliver it. */
+  private static EventFrame frameOf(MilestoneMet event) {
+    EventEnvelope envelope = EventEnvelope.of(event);
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        envelope.name(),
+        envelope.occurredAt(),
+        envelope.payload(),
+        null,
+        envelope.parentId(),
+        null);
   }
 
   /**

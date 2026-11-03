@@ -12,10 +12,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignEvaluatorDto;
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
-import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.campaign.Observation;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneEvaluator;
+import eu.wohlben.qits.entities.milestone.MilestonesChanged;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -27,7 +28,10 @@ import eu.wohlben.qits.eventstream.persistence.ConsumedEvents;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
+import eu.wohlben.qits.projects.bus.CampaignMilestoneListener;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.MilestoneMet;
+import eu.wohlben.qits.projects.bus.RecordingMilestoneAnnouncer;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.arc.ClientProxy;
 import io.quarkus.hibernate.orm.PersistenceUnit;
@@ -70,6 +74,8 @@ class CampaignCriteriaClaimSeamTest {
   @Inject DurableFunnel funnel;
   @Inject ConsumedEvents consumed;
   @Inject CampaignCriteriaListener listener;
+  @Inject CampaignMilestoneListener milestoneListener;
+  @Inject RecordingMilestoneAnnouncer announcer;
   @Inject CampaignCriteriaConsumerHealth consumerHealth;
   @Inject CampaignEvaluatorHealth health;
   @Inject CampaignExecutor executor;
@@ -88,6 +94,7 @@ class CampaignCriteriaClaimSeamTest {
   @BeforeEach
   void setUp() throws Exception {
     port.reset();
+    announcer.reset();
     consumerHealth.reset();
     projectId =
         given()
@@ -136,21 +143,32 @@ class CampaignCriteriaClaimSeamTest {
     assertTrue(
         consumed.isHandled(CampaignCriteriaConsumerHealth.CONSUMER_ID, verified.id()),
         "the claim row is there, so the event is settled");
-    CampaignCriterion latched = criterionOf(campaign, second);
+    MilestoneCriterion latched = criterionOf(campaign, second);
     assertNotNull(latched.satisfiedAt, "the second member's criterion latched on the frame");
     assertEquals(UUID.fromString(verified.id()), latched.evidenceEventId);
-
+    assertEquals(1, announcer.met().size(), "its milestone came to hold, and that was announced");
     awaitQuiet();
-    assertEquals(1, dispatchesOf(second), "the latch was handed on and dispatched once");
+    assertEquals(0, dispatchesOf(second), "the executor hears the milestone on the bus, not here");
+
+    // The bus delivering that MilestoneMet to the executor's own consumer, through the real claim.
+    EventFrame met = frameOf(announcer.met().get(0));
+    assertEquals(DurableFunnel.Result.HANDLED, funnel.offer(milestoneListener, met));
+    assertTrue(consumed.isHandled(CampaignMilestoneListener.CONSUMER_ID, met.id()));
+    awaitQuiet();
+    assertEquals(1, dispatchesOf(second), "the milestone was handed on and dispatched once");
 
     // The redelivery a rolled-back claim would cause, and the idempotence the split rests on: the
     // same frame again — with its claim forgotten, so the listener really runs a second time —
     // writes no second latch and dispatches nothing more.
     Instant latchedAt = latched.satisfiedAt;
-    forgetClaim(verified.id());
+    forgetClaim(CampaignCriteriaConsumerHealth.CONSUMER_ID, verified.id());
     assertEquals(DurableFunnel.Result.HANDLED, funnel.offer(listener, verified));
     awaitQuiet();
     assertEquals(latchedAt, criterionOf(campaign, second).satisfiedAt);
+    assertEquals(1, announcer.met().size(), "nothing is met twice");
+    forgetClaim(CampaignMilestoneListener.CONSUMER_ID, met.id());
+    assertEquals(DurableFunnel.Result.HANDLED, funnel.offer(milestoneListener, met));
+    awaitQuiet();
     assertEquals(1, dispatchesOf(second), "a redelivered frame dispatches nothing twice");
 
     CampaignEvaluatorDto evaluator = health.now();
@@ -164,7 +182,7 @@ class CampaignCriteriaClaimSeamTest {
     WorkEntity only = scheduled("Only");
     WorkEntity campaign = campaignOf(only);
     FlakyEvaluator flaky = new FlakyEvaluator();
-    QuarkusMock.installMockForType(flaky, CampaignEvaluator.class);
+    QuarkusMock.installMockForType(flaky, MilestoneEvaluator.class);
 
     flaky.failing = true;
     EventFrame broken = transitioned(only, "REFINED", "IMPLEMENTED");
@@ -202,20 +220,15 @@ class CampaignCriteriaClaimSeamTest {
   // --- fixtures ---------------------------------------------------------------------------------
 
   /** An evaluator that throws while told to — the shape of any failure inside the epics work. */
-  static class FlakyEvaluator extends CampaignEvaluator {
+  static class FlakyEvaluator extends MilestoneEvaluator {
     volatile boolean failing;
 
     @Override
-    public List<String> observe(Observation.Observed observed) {
+    public MilestonesChanged observe(Observation.Observed observed) {
       if (failing) {
         throw new IllegalStateException("the epics database said no");
       }
-      return List.of();
-    }
-
-    @Override
-    public List<String> satisfiedUnclaimedMembershipsOf(String entityId) {
-      return List.of();
+      return MilestonesChanged.none();
     }
   }
 
@@ -231,7 +244,7 @@ class CampaignCriteriaClaimSeamTest {
     return workEntities.get(Archetype.CAMPAIGN, campaign.id);
   }
 
-  private CampaignCriterion criterionOf(WorkEntity campaign, WorkEntity member) {
+  private MilestoneCriterion criterionOf(WorkEntity campaign, WorkEntity member) {
     return campaigns.get(campaign.id).members().stream()
         .filter(m -> m.membership().childId.equals(member.id))
         .findFirst()
@@ -261,6 +274,19 @@ class CampaignCriteriaClaimSeamTest {
       moved = workEntities.transition(row.archetype, row.id, status, Mover.person("setup")).entity();
     }
     return moved;
+  }
+
+  /** A published event as the bus would deliver it. */
+  private static EventFrame frameOf(MilestoneMet event) {
+    EventEnvelope envelope = EventEnvelope.of(event);
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        envelope.name(),
+        envelope.occurredAt(),
+        envelope.payload(),
+        null,
+        envelope.parentId(),
+        null);
   }
 
   /** The listener's own frame for {@code entity}'s move, as the bus would deliver it. */
@@ -297,14 +323,14 @@ class CampaignCriteriaClaimSeamTest {
     return port.calls().stream().filter(c -> member.id.equals(c.subject().ticketId())).count();
   }
 
-  private void forgetClaim(String eventId) {
+  private void forgetClaim(String consumerId, String eventId) {
     QuarkusTransaction.requiringNew()
         .run(
             () ->
                 eventstream
                     .createNativeQuery(
                         "delete from consumed_event where listener_id = ?1 and event_id = ?2")
-                    .setParameter(1, CampaignCriteriaConsumerHealth.CONSUMER_ID)
+                    .setParameter(1, consumerId)
                     .setParameter(2, eventId)
                     .executeUpdate());
   }

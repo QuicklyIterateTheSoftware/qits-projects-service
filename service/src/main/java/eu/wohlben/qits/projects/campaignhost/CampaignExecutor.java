@@ -1,12 +1,7 @@
 package eu.wohlben.qits.projects.campaignhost;
 
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
-import eu.wohlben.qits.entities.campaign.CampaignCriterionGroup;
-import eu.wohlben.qits.entities.campaign.CampaignCriterionGroupRepository;
-import eu.wohlben.qits.entities.campaign.CampaignCriterionRepository;
-import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
 import eu.wohlben.qits.entities.campaign.CampaignMembersSatisfied;
-import eu.wohlben.qits.entities.campaign.Conditions;
+import eu.wohlben.qits.entities.campaign.CampaignReadiness;
 import eu.wohlben.qits.entities.campaign.EntityQualifier;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.EntityMembership;
@@ -34,10 +29,8 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
@@ -48,8 +41,9 @@ import org.eclipse.microprofile.context.ThreadContext;
 import org.jboss.logging.Logger;
 
 /**
- * <b>The half of a campaign that acts</b> (epic f6c67e74, qits-417): a membership whose condition
- * holds is checked for dispatchability, claimed with one conditional UPDATE committed on its own, and
+ * <b>The half of a campaign that acts</b> (epic f6c67e74, qits-417): a membership whose milestones
+ * are all met (epic qits-615 — {@code campaign_membership_milestone}, every row's milestone with its
+ * {@code satisfied_at} set; none at all is no condition) is checked for dispatchability, claimed with one conditional UPDATE committed on its own, and
  * dispatched exactly once through {@link EntityDispatch} — FLOW, at its implement phase, never
  * anything else. The outcome is recorded on the membership. The sequence and its transaction
  * boundaries are the dossier page "Evaluator and executor: the sequence", followed step for step in
@@ -65,8 +59,11 @@ import org.jboss.logging.Logger;
  * <h2>Who calls {@link #tryDispatch}, possibly all at once</h2>
  *
  * <ul>
- *   <li>{@link CampaignMemberSatisfied} from the bus listener, and {@link CampaignMembersSatisfied}
- *       from an authoring write (an approval; an add or a condition edit while running) — both
+ *   <li>{@link CampaignMemberSatisfied} from the bus listeners — {@code CampaignMilestoneListener} on
+ *       a {@code MilestoneMet} (its own consumer, {@code projects-campaign-milestones}) and the
+ *       criteria consumer's retry arm on a member's own transition — and {@link
+ *       CampaignMembersSatisfied} from an authoring write (an approval; an add or a condition edit
+ *       while running) — both
  *       observed {@code AFTER_SUCCESS}, so only a committed latch is acted on, and handed off the
  *       committing thread to {@link #async};
  *   <li>the sweep, {@link #sweep()}, every {@code qits.projects.campaign-sweep-interval} — the belt
@@ -76,6 +73,12 @@ import org.jboss.logging.Logger;
  *
  * <p><b>Only step 3 decides.</b> Under the two row locks one caller sees {@code claimed_at is null}
  * and updates one row, and every other caller sees it claimed.
+ *
+ * <p><b>It never reads a criterion</b> (epic qits-615): whether a member may run is its milestones'
+ * {@code satisfied_at}, which the evaluator and the authoring doors keep current. A claimed
+ * membership is frozen — a milestone that is un-met later does nothing to it — and a milestone that
+ * flips back before the claim keeps its member waiting, since step 3 reads the milestones {@code
+ * FOR SHARE} under the membership's lock.
  *
  * <h2>Only a scheduled member is claimed (qits-887)</h2>
  *
@@ -110,8 +113,11 @@ import org.jboss.logging.Logger;
  *
  * <h2>Locks, and why they cannot deadlock with {@code CampaignService}</h2>
  *
- * <p>Step 3 takes {@code campaign_start FOR SHARE}, then the membership {@code FOR UPDATE}, and
- * nothing after them; it takes <b>no</b> lock on the campaign's entity row. Every other writer takes
+ * <p>Step 3 takes {@code campaign_start FOR SHARE}, then the membership {@code FOR UPDATE}, then
+ * the membership's milestones {@code FOR SHARE}, and nothing after them; it takes <b>no</b> lock on
+ * the campaign's entity row. Every milestone writer takes a milestone row and then only its groups
+ * and criteria (the evaluator, a milestone edit), or the campaign row, the membership and then the
+ * milestone (the condition doors) — never a membership after a milestone. Every other writer takes
  * the campaign's entity row first:
  *
  * <ul>
@@ -175,11 +181,7 @@ public class CampaignExecutor {
 
   @Inject EntityMembershipRepository memberships;
 
-  @Inject CampaignCriterionGroupRepository groups;
-
-  @Inject CampaignCriterionRepository criteria;
-
-  @Inject CampaignEvaluator evaluator;
+  @Inject CampaignReadiness readiness;
 
   @Inject ProjectChangePublisher publisher;
 
@@ -402,7 +404,7 @@ public class CampaignExecutor {
     if (!startActive(edge.parentId, false).active()) {
       return Look.stop(Attempt.NOT_READY);
     }
-    if (!satisfied(edge.id)) {
+    if (!satisfied(edge.id, false)) {
       return Look.stop(Attempt.NOT_READY);
     }
     WorkEntity member = em.find(WorkEntity.class, edge.childId);
@@ -444,7 +446,7 @@ public class CampaignExecutor {
         || !EntityStateMachine.campaignRuns(campaign.status)
         || campaign.blocked
         || !start.active()
-        || !satisfied(edge.id)) {
+        || !satisfied(edge.id, true)) {
       return new Claim(Attempt.NOT_READY, null, null, false);
     }
     WorkEntity member = em.find(WorkEntity.class, edge.childId);
@@ -510,17 +512,22 @@ public class CampaignExecutor {
     return new Start(Boolean.TRUE.equals(rows.get(0)[0]), (String) rows.get(0)[1]);
   }
 
-  /** The membership's DNF over its criteria as committed now. */
-  private boolean satisfied(String membershipId) {
-    List<CampaignCriterionGroup> found = groups.groupsOf(membershipId);
-    Map<String, List<CampaignCriterion>> byGroup = new LinkedHashMap<>();
-    for (CampaignCriterionGroup group : found) {
-      byGroup.put(group.id, new ArrayList<>());
-    }
-    for (CampaignCriterion criterion : criteria.criteriaOfAll(byGroup.keySet())) {
-      byGroup.get(criterion.groupId).add(criterion);
-    }
-    return Conditions.satisfied(byGroup.values());
+  /**
+   * Whether every milestone the membership waits on is met, as committed now — none is no condition.
+   * Read {@code FOR SHARE} of the milestone rows when {@code share} (step 3): a milestone edit that
+   * would un-meet one takes that row first, so the claim waits it out and reads what it left.
+   */
+  private boolean satisfied(String membershipId, boolean share) {
+    @SuppressWarnings("unchecked")
+    List<Object> dates =
+        em.createNativeQuery(
+                "select ms.satisfied_at from campaign_membership_milestone w"
+                    + " join milestone ms on ms.id = w.milestone_id"
+                    + " where w.membership_id = :id order by ms.id"
+                    + (share ? " for share of ms" : ""))
+            .setParameter("id", membershipId)
+            .getResultList();
+    return dates.stream().allMatch(Objects::nonNull);
   }
 
   private static boolean arrived(WorkEntity member) {
@@ -690,16 +697,14 @@ public class CampaignExecutor {
     return dispatched;
   }
 
-  /** One unclaimed, satisfied membership, and the evidence of its newest latch (null if none). */
-  private record Candidate(String membershipId, UUID lastEvidenceEventId) {}
-
   /**
-   * One campaign: {@link #tryDispatch} for every unclaimed membership whose condition holds, with
-   * {@link #lastEvidenceEventIdOf} as its cause. Never throws; answers how many it dispatched.
+   * One campaign: {@link #tryDispatch} for every unclaimed membership whose milestones are all met.
+   * The sweep names no cause: it reads no criterion, so no evidence event is in reach. Never throws;
+   * answers how many it dispatched.
    */
   @ActivateRequestContext
   public int sweep(String campaignId) {
-    List<Candidate> candidates;
+    List<String> candidates;
     try {
       candidates = QuarkusTransaction.requiringNew().call(() -> candidatesOf(campaignId));
     } catch (RuntimeException e) {
@@ -707,54 +712,27 @@ public class CampaignExecutor {
       return 0;
     }
     int dispatched = 0;
-    for (Candidate candidate : candidates) {
+    for (String candidate : candidates) {
       try {
-        if (tryDispatch(candidate.membershipId(), candidate.lastEvidenceEventId())
-            == Attempt.DISPATCHED) {
+        if (tryDispatch(candidate, null) == Attempt.DISPATCHED) {
           dispatched++;
         }
       } catch (RuntimeException e) {
         LOG.warnf(
             e,
             "Campaign member %s could not be tried; retried on the next sweep.",
-            candidate.membershipId());
+            candidate);
       }
     }
     return dispatched;
   }
 
-  private List<Candidate> candidatesOf(String campaignId) {
+  private List<String> candidatesOf(String campaignId) {
     List<String> unclaimed =
         memberships.campaignMembers(campaignId).stream()
             .filter(edge -> edge.claimedAt == null)
             .map(edge -> edge.id)
             .toList();
-    List<Candidate> candidates = new ArrayList<>();
-    for (String membershipId : evaluator.satisfiedUnclaimed(unclaimed)) {
-      candidates.add(new Candidate(membershipId, lastEvidenceEventIdOf(membershipId)));
-    }
-    return candidates;
-  }
-
-  /** The evidence event of the most recently satisfied criterion of the membership, or null. */
-  private UUID lastEvidenceEventIdOf(String membershipId) {
-    @SuppressWarnings("unchecked")
-    List<Object> rows =
-        em.createNativeQuery(
-                """
-                select c.evidence_event_id
-                  from campaign_criterion c
-                  join campaign_criterion_group g on g.id = c.group_id
-                 where g.membership_id = :id and c.satisfied_at is not null
-                 order by c.satisfied_at desc, c.id
-                 limit 1
-                """)
-            .setParameter("id", membershipId)
-            .getResultList();
-    if (rows.isEmpty() || rows.get(0) == null) {
-      return null;
-    }
-    Object id = rows.get(0);
-    return id instanceof UUID uuid ? uuid : UUID.fromString(id.toString());
+    return readiness.satisfiedUnclaimed(unclaimed);
   }
 }

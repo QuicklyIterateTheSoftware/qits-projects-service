@@ -82,6 +82,9 @@ public class EventWireReflectionTest {
 
   @Inject Instance<IdeaEventAnnouncer> shippedIdeaAnnouncer;
 
+  /** And the one that says a milestone came to hold or stopped holding (epic qits-615). */
+  @Inject Instance<MilestoneAnnouncer> shippedMilestoneAnnouncer;
+
   /** The typed live listener of qits-system's lease event (epic qits-1481). */
   @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
 
@@ -129,6 +132,8 @@ public class EventWireReflectionTest {
             EntityTransitioned.class,
             EntityTransitioned.Entity.class,
             EntityCommented.class,
+            MilestoneMet.class,
+            MilestoneUnmet.class,
             IdeaCreated.class,
             IdeaUpdated.class,
             IdeaArchived.class,
@@ -147,7 +152,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR, EntityCommented and the four idea events out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented, MilestoneMet, MilestoneUnmet and the four idea events out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -215,12 +220,38 @@ public class EventWireReflectionTest {
         targets.contains(EntityCommented.class),
         "EntityCommentAnnouncer publishes this (qits-1660); unregistered, an @desk comment never"
             + " wakes the desk");
+    assertTrue(
+        targets.contains(MilestoneMet.class),
+        "MilestoneAnnouncer publishes this (epic qits-615); unregistered, the campaign executor"
+            + " never hears a milestone met and its members wait for the sweep");
+    assertTrue(
+        targets.contains(MilestoneUnmet.class),
+        "and its opposite, which the landing app refreshes on");
     for (Class<?> idea :
         List.of(IdeaCreated.class, IdeaUpdated.class, IdeaArchived.class, IdeaUnarchived.class)) {
       assertTrue(
           targets.contains(idea),
           "IdeaEventAnnouncer publishes " + idea.getSimpleName() + " (qits-1387)");
     }
+  }
+
+  @Test
+  public void theMilestoneAnnouncerShipsAsABean() {
+    assertTrue(!shippedMilestoneAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  /**
+   * The executor's ear for {@link MilestoneMet} is a bean under its own consumer id, beside the
+   * criteria consumer's, which must never change (epic qits-615).
+   */
+  @Test
+  public void theMilestoneListenerIsDiscoverableBesideTheCriteriaConsumer() {
+    assertTrue(listeners.stream().anyMatch(CampaignMilestoneListener.class::isInstance));
+    assertTrue(
+        listeners.stream().anyMatch(l -> l.consumerId().equals("projects-campaign-criteria")),
+        "the criteria consumer keeps its id");
+    assertTrue(
+        listeners.stream().anyMatch(l -> l.consumerId().equals("projects-campaign-milestones")));
   }
 
   @Test
