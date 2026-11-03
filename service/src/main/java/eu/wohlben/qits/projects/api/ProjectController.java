@@ -224,6 +224,11 @@ public class ProjectController {
    *
    * <p>It used to re-assert a deployment environment against qits-cd too. qits-cd owns environments
    * now — deliberate tiers created over its REST surface, not one per project.
+   *
+   * <p>It also re-asserts the project's announced configuration (qits-386): the wrapper's {@code
+   * project.yml} is read again and {@code ProjectChanged} restates {@code supportsEnvironments} and
+   * {@code frontDeskLifecycle} as stored, so an edge that lost the frame of a move is put right. Best
+   * effort, and the answer has no field for it — the response shape is unchanged.
    */
   public static record ReconcileProjectRequest() {
     /**
@@ -253,7 +258,9 @@ public class ProjectController {
               + " idempotent, so it is safe to repeat, and it is also how a project created before"
               + " the hook existed gets its record. No registrar is wired at present, so the outcome"
               + " is FAILED saying so and dns records are configured by hand at the external"
-              + " provider.")
+              + " provider. It also re-asserts the project's announced configuration: the wrapper's"
+              + " project.yml is read again and ProjectChanged restates supportsEnvironments and"
+              + " frontDeskLifecycle as stored, best effort and absent from the answer.")
   @APIResponse(
       responseCode = "200",
       description =

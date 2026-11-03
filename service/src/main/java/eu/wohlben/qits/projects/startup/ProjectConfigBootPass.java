@@ -13,12 +13,20 @@ import org.jboss.logging.Logger;
 
 /**
  * Re-reads every project's {@code .config/qits/project.yml} once per boot (qits-767), through
- * {@link WrapperReconcileService#reconcileProjectConfig(String)}.
+ * {@link WrapperReconcileService#reassertProjectConfig(String)}.
  *
  * <p>The other trigger, a wrapper's {@code main} moving ({@code ReleaseRequests.onMainMoved}), only
  * sees moves this process was up for. A release that landed while the service was down, or one
  * whose read failed, is caught up here: boot is a deployment's one guaranteed "new code is now
  * running" moment, the reason {@link StartupSelfSeed} lives at startup too.
+ *
+ * <p><b>Each boot restates every wrapper project's {@code ProjectChanged}, moved or not
+ * (qits-386).</b> The edge learns {@code supportsEnvironments} and {@code frontDeskLifecycle} only
+ * from that event, and the reconcile announces only a move — so a frame lost between a commit and
+ * its publish used to be lost for good. The re-assert bounds that loss to the next deploy: a pass
+ * that moved a value announces it once, a pass that moved nothing restates what is stored, and a
+ * project with no wrapper is told nothing. One frame per project per boot, into a projection that
+ * is idempotent on the values.
  *
  * <p>Packaged runs only ({@link LaunchMode#NORMAL}), never under {@code quarkus:dev} or tests — the
  * suite drives {@link #reconcileAll()} directly. It runs on a virtual thread so it never blocks
@@ -56,8 +64,8 @@ public class ProjectConfigBootPass {
   }
 
   /**
-   * Reconciles the project configuration of every project, logging and skipping a project whose
-   * reconcile fails.
+   * Reconciles the project configuration of every project and re-asserts what it announces,
+   * logging and skipping a project whose reconcile fails.
    *
    * @return how many projects were reconciled without an error
    */
@@ -68,7 +76,7 @@ public class ProjectConfigBootPass {
     int reconciled = 0;
     for (String projectId : projectIds) {
       try {
-        wrapperReconcile.reconcileProjectConfig(projectId);
+        wrapperReconcile.reassertProjectConfig(projectId);
         reconciled++;
       } catch (RuntimeException e) {
         LOG.warnf(

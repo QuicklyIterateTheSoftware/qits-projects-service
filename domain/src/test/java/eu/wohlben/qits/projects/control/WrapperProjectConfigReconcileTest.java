@@ -47,6 +47,8 @@ public class WrapperProjectConfigReconcileTest {
   @Inject WrapperProjectYml projectYml;
   @Inject ReleaseRequests releaseRequests;
   @Inject jakarta.transaction.TransactionManager transactionManager;
+  @Inject ProjectReconcileService projectReconcile;
+  @Inject RepositoryService repositoryService;
 
   @BeforeEach
   void clean() {
@@ -463,5 +465,127 @@ public class WrapperProjectConfigReconcileTest {
     projectYml.commit(wrapperOf(project), "supports_environments: true\n");
     reconcileService.reconcileProjectConfig(project.id);
     assertNull(storedFeatureFreezeOf(project.id));
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // the level-triggered re-assert (qits-386)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * <b>The reproduction.</b> A move is announced once; if that one frame is lost, nothing the delta
+   * reconcile does will ever say it again — neither the config pass nor the full reconcile. The
+   * re-assert does, once, with the values as stored.
+   */
+  @Test
+  public void aLostFrameIsRestatedByTheReassertAndByNothingElse() throws Exception {
+    Project project = greenfield("projcfg-lost");
+    commitProjectYml(wrapperOf(project), "supports_environments: false\n");
+
+    reconcileService.reconcileProjectConfig(project.id);
+    assertEquals(1, announcer.changedOf(project.id).size(), "the move is announced");
+    assertFalse(announcer.changedOf(project.id).get(0).supportsEnvironments());
+
+    announcer.clear(); // the frame is lost between the commit and the publish
+
+    reconcileService.reconcileProjectConfig(project.id);
+    reconcileService.reconcile(project.id);
+    assertEquals(
+        List.of(), announcer.changedOf(project.id), "the delta reconcile has nothing left to say");
+
+    reconcileService.reassertProjectConfig(project.id);
+
+    var restated = announcer.changedOf(project.id);
+    assertEquals(1, restated.size(), "restated exactly once");
+    assertFalse(restated.get(0).supportsEnvironments(), "with the stored value");
+    assertEquals(storedLifecycleOf(project.id), restated.get(0).frontDeskLifecycle());
+    assertEquals(project.slug, restated.get(0).slug());
+  }
+
+  /** Nothing moved, so the reconcile is silent — and the re-assert says what is stored, once. */
+  @Test
+  public void theReassertRestatesAnAgreeingProjectOnce() {
+    Project project = greenfield("projcfg-reassert-agree");
+
+    reconcileService.reassertProjectConfig(project.id);
+
+    var restated = announcer.changedOf(project.id);
+    assertEquals(1, restated.size());
+    assertTrue(restated.get(0).supportsEnvironments());
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, restated.get(0).frontDeskLifecycle());
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id), "the hooks stay delta-only");
+  }
+
+  /** A pass that moved a value has announced it already: that frame is the re-assertion. */
+  @Test
+  public void aReassertThatMovesAValueAnnouncesItOnceNotTwice() throws Exception {
+    Project project = greenfield("projcfg-reassert-moved");
+    projectYml.commit(wrapperOf(project), "front_desk:\n  lifecycle: ALWAYS_ON\n");
+
+    reconcileService.reassertProjectConfig(project.id);
+
+    var announced = announcer.changedOf(project.id);
+    assertEquals(1, announced.size(), "one move, one frame — never a second restatement");
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, announced.get(0).frontDeskLifecycle());
+    assertEquals(1, lifecycleListener.callsOf(project.id).size());
+  }
+
+  /** A file that will not parse keeps the stored values, and those are what the edge is told. */
+  @Test
+  public void anUnparseableDeclarationReassertsTheStoredValues() throws Exception {
+    Project project = greenfield("projcfg-reassert-typo");
+    commitProjectYml(wrapperOf(project), "supports_environments: false\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    announcer.clear();
+
+    commitProjectYml(wrapperOf(project), "supports_environments: 'nope'\n");
+    reconcileService.reassertProjectConfig(project.id);
+
+    assertFalse(storedFlagOf(project.id), "a typo still flips nothing");
+    var restated = announcer.changedOf(project.id);
+    assertEquals(1, restated.size());
+    assertFalse(restated.get(0).supportsEnvironments(), "the stored value, not the default");
+  }
+
+  /** No wrapper, no declaration: the re-assert leaves the project alone, as the reconcile does. */
+  @Test
+  public void aProjectWithNoWrapperIsReassertedNothing() {
+    Project project = greenfield("projcfg-reassert-nowrapper");
+    repositoryService.deleteInternal(wrapperOf(project).id);
+
+    reconcileService.reassertProjectConfig(project.id);
+
+    assertEquals(List.of(), announcer.changedOf(project.id));
+  }
+
+  /**
+   * The person's door, {@code POST /projects/{projectId}/reconcile}: besides the dns outcome it
+   * restates the stored configuration, so a lost frame has a remedy short of a deploy.
+   */
+  @Test
+  public void theProjectReconcileDoorRestatesTheStoredValues() throws Exception {
+    Project project = greenfield("projcfg-door");
+    commitProjectYml(wrapperOf(project), "supports_environments: false\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    announcer.clear();
+
+    var reconciliation = projectReconcile.reconcile(project.id);
+
+    assertTrue(reconciliation.domain() != null, "the dns outcome is still the answer");
+    var restated = announcer.changedOf(project.id);
+    assertEquals(1, restated.size());
+    assertFalse(restated.get(0).supportsEnvironments());
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, restated.get(0).frontDeskLifecycle());
+  }
+
+  /** ... and a project the re-assert cannot reach still gets its dns answer. */
+  @Test
+  public void theProjectReconcileDoorAnswersForAProjectWithNoWrapper() {
+    Project project = greenfield("projcfg-door-nowrapper");
+    repositoryService.deleteInternal(wrapperOf(project).id);
+
+    var reconciliation = projectReconcile.reconcile(project.id);
+
+    assertTrue(reconciliation.domain() != null);
+    assertEquals(List.of(), announcer.changedOf(project.id));
   }
 }
