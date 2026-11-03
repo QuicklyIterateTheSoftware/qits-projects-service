@@ -8,9 +8,13 @@ import jakarta.inject.Inject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -142,12 +146,42 @@ public class GitExecutor {
   public ExecResult execAllowNonZero(
       java.io.File cwd, Map<String, String> env, Consumer<String> onLine, String... command)
       throws Exception {
+    return traced(cwd, env, onLine, null, command);
+  }
+
+  /**
+   * {@link #execAllowNonZero(java.io.File, String...)} with a deadline — for a remote verb whose
+   * caller is a person waiting on a request, where "the forge never answered" has to become an
+   * answer rather than a hung thread (qits-367). Every other overload keeps waiting for as long as
+   * git takes, which is what a backup push or a mirror fetch wants.
+   *
+   * <p>On expiry the process and everything it spawned (a {@code git-remote-https} helper holds the
+   * output pipe open too) are killed forcibly, and the call throws.
+   *
+   * @throws TimeoutException when git did not exit within {@code timeout}
+   */
+  public ExecResult execAllowNonZero(java.io.File cwd, Duration timeout, String... command)
+      throws Exception {
+    return traced(cwd, Map.of(), null, timeout, command);
+  }
+
+  /** Where every overload lands: the process span around one {@link #execute}. */
+  private ExecResult traced(
+      java.io.File cwd,
+      Map<String, String> env,
+      Consumer<String> onLine,
+      Duration timeout,
+      String... command)
+      throws Exception {
     Map<String, String> attributes =
         cwd == null ? Map.of() : Map.of(GitProcessSpans.CWD, cwd.getPath());
     try (GitTracing.Span span = GitProcessSpans.start(tracing(), command, attributes, null)) {
       ExecResult result;
       try {
-        result = execute(cwd, env, onLine, command);
+        result =
+            timeout == null
+                ? execute(cwd, env, onLine, command)
+                : executeBounded(cwd, timeout, command);
       } catch (Exception e) {
         span.error(e);
         throw e;
@@ -160,13 +194,52 @@ public class GitExecutor {
   private static ExecResult execute(
       java.io.File cwd, Map<String, String> env, Consumer<String> onLine, String... command)
       throws Exception {
+    Process p = start(cwd, env, command);
+    String output = readOutput(p, onLine);
+    int exitCode = p.waitFor();
+    return new ExecResult(exitCode, output);
+  }
+
+  /**
+   * {@link #execute} with a deadline. The output is drained on its own thread, because the plain
+   * path's read only returns once git closes its end of the pipe — a hung remote would hold the
+   * read, and so the caller, long past any {@code waitFor} deadline.
+   */
+  private static ExecResult executeBounded(java.io.File cwd, Duration timeout, String... command)
+      throws Exception {
+    Process p = start(cwd, Map.of(), command);
+    CompletableFuture<String> output =
+        CompletableFuture.supplyAsync(
+            () -> {
+              try {
+                return readOutput(p, null);
+              } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+              }
+            },
+            runnable -> Thread.ofVirtual().name("git-output").start(runnable));
+    if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+      p.descendants().forEach(ProcessHandle::destroyForcibly);
+      p.destroyForcibly();
+      throw new TimeoutException("timed out after " + describe(timeout));
+    }
+    return new ExecResult(p.exitValue(), output.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
+  }
+
+  /** {@code 30s}, or {@code 250ms} for a deadline that is not a whole number of seconds. */
+  static String describe(Duration timeout) {
+    return timeout.toMillis() % 1000 == 0 ? timeout.toSeconds() + "s" : timeout.toMillis() + "ms";
+  }
+
+  private static Process start(java.io.File cwd, Map<String, String> env, String... command)
+      throws java.io.IOException {
     ProcessBuilder pb = new ProcessBuilder(withMaintenanceGuard(command));
     if (cwd != null) {
       pb.directory(cwd);
     }
-    // Never let a transport prompt: there is no TTY here and waitFor() has no timeout, so a git
-    // that decides to ask for credentials would block forever. With the flag a missing credential
-    // is an immediate, classifiable exit 128 ("could not read Username ...") instead.
+    // Never let a transport prompt: there is no TTY here and most callers' waitFor() has no
+    // timeout, so a git that decides to ask for credentials would block forever. With the flag a
+    // missing credential is an immediate, classifiable exit 128 ("could not read Username ...") instead.
     pb.environment().put("GIT_TERMINAL_PROMPT", "0");
     // Force English output regardless of the host locale: callers classify failures (e.g.
     // non-fast-forward rejection, auth failure) by matching substrings in git's message, which
@@ -177,7 +250,10 @@ public class GitExecutor {
     // identity env inherited from the host (env outranks the -c config the caller also passes).
     env.forEach(pb.environment()::put);
     pb.redirectErrorStream(true);
-    Process p = pb.start();
+    return pb.start();
+  }
+
+  private static String readOutput(Process p, Consumer<String> onLine) throws java.io.IOException {
     String output;
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
       if (onLine == null) {
@@ -202,8 +278,7 @@ public class GitExecutor {
         output = collected.toString();
       }
     }
-    int exitCode = p.waitFor();
-    return new ExecResult(exitCode, output);
+    return output;
   }
 
   /**
