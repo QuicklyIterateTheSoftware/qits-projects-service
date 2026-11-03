@@ -22,20 +22,20 @@ class ConfiguredGitHostAddressTest {
   @Test
   void fetchUrlIsTheGitHostSegment() {
     assertEquals(
-        "http://dev-qits-githost:8080/git/repo-1",
-        address("http://dev-qits-githost:8080").fetchUrl("repo-1"));
+        "https://githost.qits.example.test/git/repo-1",
+        address("https://githost.qits.example.test").fetchUrl("repo-1"));
   }
 
   @Test
   void aTrailingSlashOnTheConfiguredBaseIsStripped() {
     assertEquals(
-        "http://dev-qits-githost:8080/git/repo-1",
-        address("http://dev-qits-githost:8080/").fetchUrl("repo-1"));
+        "https://githost.qits.example.test/git/repo-1",
+        address("https://githost.qits.example.test/").fetchUrl("repo-1"));
   }
 
   @Test
   void pushUrlIsTheSameAddressAsFetchUrl() {
-    ConfiguredGitHostAddress address = address("http://dev-qits-githost:8080");
+    ConfiguredGitHostAddress address = address("https://githost.qits.example.test");
 
     assertEquals(address.fetchUrl("repo-1"), address.pushUrl("repo-1"), "one address, not two");
   }

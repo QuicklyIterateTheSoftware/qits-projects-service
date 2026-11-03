@@ -11,8 +11,8 @@ import java.util.List;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 /**
- * What a caller that comes in as an agent may reach (plan phase 4, in the superproject's {@code
- * principal-bound-git-refs-plan.md}).
+ * What a caller that comes in as an agent may reach (plan phase 4, in epic qits-543, dossier page
+ * "Plan (as of 2026-09-13)").
  *
  * <p>An agent works on one domain object with its own token, and that token says what the object
  * is: the {@code project} claim, the {@code git_refs} claim (the refs it may push) and its {@code

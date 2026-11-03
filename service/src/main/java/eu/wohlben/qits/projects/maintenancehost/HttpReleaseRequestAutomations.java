@@ -74,7 +74,7 @@ import org.jboss.logging.Logger;
  * <h2>Two failure contracts, by verb</h2>
  *
  * <p>The trigger and the read are asked on the fold path and by the sweep, and nobody waits on them:
- * the address unset or blank, an unreachable or refusing qits-maintenance, a 400, a 404 from a
+ * the address unset or blank, no bearer, an unreachable or refusing qits-maintenance, a 400, a 404 from a
  * repository it has never catalogued, a timeout, a body that will not parse — one WARN and {@link
  * Optional#empty()}, which leaves the request holding with a sentence (the caller's record is
  * positive, see {@code control/AutomationLedger}), and the next sweep asks again.
@@ -82,7 +82,7 @@ import org.jboss.logging.Logger;
  * <p>The re-run is a person's press, so its answer keeps the distinction the person needs: a 2xx
  * with an id is accepted, a 4xx is a refusal whose status and {@code message} are passed through, a
  * request that was <b>sent and not answered within {@link #POST_TIMEOUT}</b> is unknown, and
- * everything else — no address, a connect that failed or timed out, 5xx, 401/403, unparseable — is
+ * everything else — no address, no bearer, a connect that failed or timed out, 5xx, 401/403, unparseable — is
  * "could not ask", which the door turns into a 503.
  *
  * <p>The unknown outcome exists because the request timeout fires <em>after</em> the POST was
@@ -91,6 +91,10 @@ import org.jboss.logging.Logger;
  * {@link HttpTimeoutException} is {@link Run#unknown}, and the door answers 504 with a sentence
  * saying where to look — while its subclass {@link HttpConnectTimeoutException} stays unreachable,
  * because a connect that never completed carried nothing to the far side.
+ *
+ * <p>The credential is the {@link MaintenanceBearer} and nothing else: with no bearer nothing is
+ * sent, and the answer is "could not ask" with {@link MaintenanceBearer#MISSING} as its reason — no
+ * forwarded {@code X-Qits-*} pair (owner ruling 2026-10-18, epic qits-543).
  *
  * <p>Nothing here throws, and an {@link InterruptedException} re-interrupts the thread rather than
  * being swallowed. {@code readTree}, never a bound record, so this class adds zero native-image
@@ -313,6 +317,9 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
           "Could not ask qits-maintenance to re-run %s on %s: it answered %d: %s",
           kind, requestId, status, message(response.body()));
       return Run.unreachable("qits-maintenance answered " + status);
+    } catch (NoBearer e) {
+      LOG.warnf("Not asking qits-maintenance to re-run %s on %s: %s", kind, requestId, e.getMessage());
+      return Run.unreachable(e.getMessage());
     } catch (HttpConnectTimeoutException e) {
       // Before the general timeout below, which is its superclass: a connect that never completed
       // carried nothing to the far side, so nothing ran and this is "could not ask".
@@ -352,12 +359,22 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       builder.header("Content-Type", "application/json").POST(post);
     }
     Optional<String> authorization = bearer.authorization();
-    if (authorization.isPresent()) {
-      builder.header("Authorization", authorization.get());
-    } else {
-      builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+    if (authorization.isEmpty()) {
+      throw new NoBearer();
     }
+    builder.header("Authorization", authorization.get());
     return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  /**
+   * Thrown by {@link #send} instead of sending: there is no bearer, and a hop to qits-maintenance is
+   * never sent without one. Its message is {@link MaintenanceBearer#MISSING}, so every caller's
+   * "could not ask" names the missing client.
+   */
+  static final class NoBearer extends IllegalStateException {
+    NoBearer() {
+      super(MaintenanceBearer.MISSING);
+    }
   }
 
   /** The far side's answer, as nodes — absent members read as absent, never as a failure. */

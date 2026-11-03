@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpPipelinePhaseRerunsTest {
 
-  private record Received(String method, String path, String body, String user) {}
+  private record Received(String method, String path, String body, String auth) {}
 
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -67,7 +67,7 @@ class HttpPipelinePhaseRerunsTest {
                   exchange.getRequestMethod(),
                   exchange.getRequestURI().getPath(),
                   body,
-                  exchange.getRequestHeaders().getFirst("X-Qits-User")));
+                  exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] bytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(status.get(), bytes.length == 0 ? -1 : bytes.length);
@@ -79,11 +79,14 @@ class HttpPipelinePhaseRerunsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  /** With the named client off — the shipped default — the hop presents the forwarded pair. */
   private HttpPipelinePhaseReruns against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpPipelinePhaseReruns against(String base, IdpCiBearer bearer) {
     HttpPipelinePhaseReruns reruns = new HttpPipelinePhaseReruns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     reruns.ciUrl = Optional.ofNullable(base);
-    reruns.bearer = new IdpCiBearer();
+    reruns.bearer = bearer;
     ports.add(reruns);
     return reruns;
   }
@@ -100,7 +103,7 @@ class HttpPipelinePhaseRerunsTest {
     assertEquals("/ci/api/runs/rerun", asked.path());
     assertTrue(asked.body().contains("\"phase\":\"RELEASE_REQUEST\""), asked.body());
     assertTrue(asked.body().contains("\"releaseRequestId\":\"req-1\""), asked.body());
-    assertEquals("qits-projects", asked.user(), "the forwarded pair, with no idp configured");
+    assertEquals(TestCiBearers.TOKEN, asked.auth(), "the machine bearer and nothing else");
   }
 
   @Test
@@ -180,6 +183,21 @@ class HttpPipelinePhaseRerunsTest {
                 DomainException.class,
                 () -> against("  ").rerun("repo-1", "req-1", PipelinePhaseReruns.CI_PHASE_QA))
             .statusCode());
+  }
+
+  /** No bearer is the same configuration fact (qits-1332): 503, and nothing is sent. */
+  @Test
+  void noBearerIs503AndAsksNobody() throws Exception {
+    String base = startServer();
+
+    DomainException refused =
+        assertThrows(
+            DomainException.class,
+            () ->
+                against(base, TestCiBearers.none())
+                    .rerun("repo-1", "req-1", PipelinePhaseReruns.CI_PHASE_QA));
+    assertEquals(503, refused.statusCode());
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
   }
 
   @Test

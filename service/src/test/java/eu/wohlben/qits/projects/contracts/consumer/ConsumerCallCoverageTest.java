@@ -182,7 +182,8 @@ class ConsumerCallCoverageTest {
   void theTenantPinsNoIssuerOfItsOwn() {
     Properties properties = IdpContract.shippedProperties();
     String server = properties.getProperty("quarkus.oidc.auth-server-url", "");
-    assertTrue(server.contains("qits-idp"), "the tenant reads qits-idp: " + server);
+    // qits-idp at its edge host, https://idp.qits.<domain>/idp (qits-1415).
+    assertTrue(server.startsWith("https://idp.qits."), "the tenant reads qits-idp: " + server);
     assertNull(
         properties.getProperty("quarkus.oidc.token.issuer"),
         "the issuer is never configuration: discovery publishes it (qits-730)");

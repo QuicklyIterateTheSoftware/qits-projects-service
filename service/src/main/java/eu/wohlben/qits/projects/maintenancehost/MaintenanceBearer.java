@@ -11,11 +11,17 @@ import java.util.Optional;
  * is <b>not</b> a port out of the domain — nothing in {@code domain} knows this hop exists, and a
  * bearer is infrastructure rather than a contract with another context.
  *
- * <p>Empty is a supported answer and does <b>not</b> mean "do not ask". The door at the far side is a
- * pure read that decides nothing, so the caller falls back to the forwarded {@code X-Qits-*} pair —
- * the posture the two qits-ci hops take, and what keeps a no-idp topology answering.
+ * <p><b>Empty means the hop does not call.</b> The bearer is the only credential a hop to
+ * qits-maintenance sends (owner ruling 2026-10-18, epic qits-543: no forwarded {@code X-Qits-*} pair
+ * beside it or instead of it), so with none each hop fails closed, logs {@link #MISSING} and answers
+ * its own failure contract, as {@code wiring/HttpGitHostRepositories} does.
  */
 public interface MaintenanceBearer {
+
+  /** What a hop logs when it has no bearer to present and therefore does not call. */
+  String MISSING =
+      "no machine bearer for qits-maintenance: the named OIDC client quarkus.oidc-client.qits is"
+          + " disabled or minted no token, and this call is never sent without one";
 
   /** {@code Bearer <token>}, or empty when this hop has no credential to present. */
   Optional<String> authorization();

@@ -60,10 +60,10 @@ import org.jboss.logging.Logger;
  * without this call, so nothing here may be allowed to fail a fold. What the call buys is a build
  * agent, not a decision. See {@link QaRunCancellations} for that argument in full.
  *
- * <p>The credential is the {@code ci} named OIDC client's bearer ({@link IdpCiBearer}), assumed to
- * need {@code qits:system} at the far side. While the client is off — the shipped default, and any
- * no-idp topology — the hop falls back to the forwarded {@code X-Qits-*} pair, the posture {@link
- * HttpActiveBuilds} takes on the same address for the same reason.
+ * <p>The credential is the {@code qits} named OIDC client's bearer ({@link IdpCiBearer}, {@code
+ * qits:system}) and nothing else. While the client is off — the shipped default, and any no-idp
+ * topology — the hop sends nothing and logs {@link IdpCiBearer#MISSING}; no forwarded {@code
+ * X-Qits-*} pair is sent instead (owner ruling 2026-10-18, epic qits-543).
  */
 @ApplicationScoped
 @DefaultBean
@@ -142,11 +142,12 @@ public class HttpQaRunCancellations implements QaRunCancellations {
               .header("Content-Type", "application/json")
               .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not asking qits-ci to cancel the runs of release request %s: %s",
+            releaseRequestId, IdpCiBearer.MISSING);
+        return;
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() != 202 && response.statusCode() != 200) {

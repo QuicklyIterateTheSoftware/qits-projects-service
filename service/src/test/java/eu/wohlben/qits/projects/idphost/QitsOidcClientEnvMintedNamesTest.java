@@ -48,7 +48,8 @@ class QitsOidcClientEnvMintedNamesTest {
    */
   private static Map<String, String> deployedEnv() {
     Map<String, String> env = new LinkedHashMap<>();
-    env.put("QITS_RESOURCE_IDP_URL", "http://dev-qits-idp:8080/idp");
+    env.put("QITS_DOMAIN", "wohlben.eu");
+    env.put("QITS_RESOURCE_IDP_URL", "https://idp.qits.wohlben.eu/idp");
     env.put("QITS_RESOURCE_IDP_CLIENT_ID", "dev-qits-projects");
     env.put("QITS_RESOURCE_IDP_CLIENT_SECRET", "resource-secret");
     env.put("QUARKUS_OIDC_CLIENT_AUTH_SERVER_URL", "http://qits-platform-idp:8080/idp");
@@ -154,7 +155,7 @@ class QitsOidcClientEnvMintedNamesTest {
     assertEquals(
         "resource-secret", config.getValue("quarkus.oidc-client.qits.credentials.secret", String.class));
     assertEquals(
-        "http://dev-qits-idp:8080/idp",
+        "https://idp.qits.wohlben.eu/idp",
         config.getValue("quarkus.oidc-client.qits.auth-server-url", String.class));
     // And the containers owner follows that id, as it must for OwnerGuard.
     assertEquals("dev-qits-projects", config.getValue("qits.projects.containers.owner", String.class));
@@ -163,7 +164,7 @@ class QitsOidcClientEnvMintedNamesTest {
   @Test
   void theOldExtrasAloneLeaveTheQitsClientOnItsShippedDefaults() {
     // A container carrying only the old extras — no QITS_RESOURCE_IDP_* — no longer borrows them:
-    // the qits client falls to its dev defaults and an empty secret, and is refused by the idp
+    // the qits client falls to its shipped defaults and an empty secret, and is refused by the idp
     // rather than presenting the old unnamed client's credential.
     Map<String, String> oldExtrasOnly = new LinkedHashMap<>(deployedEnv());
     oldExtrasOnly.keySet().removeIf(name -> name.startsWith("QITS_RESOURCE_IDP_"));
@@ -176,7 +177,7 @@ class QitsOidcClientEnvMintedNamesTest {
               .build();
       assertEquals("dev-qits-projects", config.getValue("quarkus.oidc-client.qits.client-id", String.class));
       assertEquals(
-          "http://dev-qits-idp:8080/idp",
+          "https://idp.qits.wohlben.eu/idp",
           config.getValue("quarkus.oidc-client.qits.auth-server-url", String.class));
       assertTrue(
           config

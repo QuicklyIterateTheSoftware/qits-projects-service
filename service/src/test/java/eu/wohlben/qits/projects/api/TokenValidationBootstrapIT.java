@@ -145,7 +145,7 @@ public class TokenValidationBootstrapIT {
       // IdpGitHostBearer for a machine token first and throws "No machine bearer is available"
       // rather than sending one unauthenticated. Outside a deployment carrying the deployer's
       // idp:client resource, quarkus.oidc-client.qits.client-enabled is true here (NORMAL mode has
-      // no %dev/%test override) but the secret is empty and the derived dev-qits-idp address
+      // no %dev/%test override) but the secret is empty and the idp edge address
       // answers nothing, so a packaged process with no idp configured still cannot create a
       // repository at all — which is correct in production and is why every story that publishes to
       // the git host needs this named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4 —

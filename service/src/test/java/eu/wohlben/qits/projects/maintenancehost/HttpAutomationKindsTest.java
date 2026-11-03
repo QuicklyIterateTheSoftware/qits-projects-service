@@ -64,6 +64,8 @@ class HttpAutomationKindsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
+  private static final Optional<String> MACHINE = Optional.of("Bearer machine-token");
+
   private HttpAutomationKinds against(String base, Optional<String> authorization) {
     HttpAutomationKinds port = new HttpAutomationKinds(QitsHttpClients.of(OpenTelemetry.noop(), null));
     port.maintenanceUrl = Optional.ofNullable(base);
@@ -101,42 +103,51 @@ class HttpAutomationKindsTest {
   }
 
   @Test
-  void withoutTheNamedClientItForwardsTheSystemPair() throws Exception {
+  void withoutTheNamedClientItAsksNobody() throws Exception {
     String base = start();
     body.set("{\"kinds\":[]}");
 
-    assertEquals(Optional.of(List.of()), against(base, Optional.empty()).kinds());
-    assertNull(received.get(0).auth());
-    assertEquals("qits:system", received.get(0).roles());
+    assertEquals(Optional.empty(), against(base, Optional.empty()).kinds());
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer (qits-1332)");
+  }
+
+  @Test
+  void theBearerTravelsWithNoForwardedPair() throws Exception {
+    String base = start();
+    body.set("{\"kinds\":[]}");
+
+    assertEquals(Optional.of(List.of()), against(base, MACHINE).kinds());
+    assertEquals("Bearer machine-token", received.get(0).auth());
+    assertNull(received.get(0).roles());
   }
 
   @Test
   void configuredIsAnAddressThatIsNotBlank() {
-    assertTrue(against("http://127.0.0.1:1", Optional.empty()).configured());
-    assertFalse(against(null, Optional.empty()).configured());
-    assertFalse(against(" ", Optional.empty()).configured());
-    assertEquals(Optional.empty(), against(null, Optional.empty()).kinds());
+    assertTrue(against("http://127.0.0.1:1", MACHINE).configured());
+    assertFalse(against(null, MACHINE).configured());
+    assertFalse(against(" ", MACHINE).configured());
+    assertEquals(Optional.empty(), against(null, MACHINE).kinds());
   }
 
   @Test
   void everyFailureIsCouldNotAsk() throws Exception {
     String base = start();
     status.set(503);
-    assertEquals(Optional.empty(), against(base, Optional.empty()).kinds());
+    assertEquals(Optional.empty(), against(base, MACHINE).kinds());
 
     status.set(200);
     body.set("not json");
-    assertEquals(Optional.empty(), against(base, Optional.empty()).kinds());
+    assertEquals(Optional.empty(), against(base, MACHINE).kinds());
     body.set("{\"kinds\":{}}");
-    assertEquals(Optional.empty(), against(base, Optional.empty()).kinds());
+    assertEquals(Optional.empty(), against(base, MACHINE).kinds());
     body.set("{\"kinds\":[{\"label\":\"no id\",\"committablePaths\":[],\"approvalRoles\":[]}]}");
-    assertEquals(Optional.empty(), against(base, Optional.empty()).kinds());
+    assertEquals(Optional.empty(), against(base, MACHINE).kinds());
     body.set("{\"kinds\":[{\"kind\":\"entity-diagram\",\"committablePaths\":[\"docs\"]}]}");
     assertEquals(
         Optional.empty(),
-        against(base, Optional.empty()).kinds(),
+        against(base, MACHINE).kinds(),
         "a missing role list is not an empty one");
 
-    assertEquals(Optional.empty(), against("http://127.0.0.1:1", Optional.empty()).kinds());
+    assertEquals(Optional.empty(), against("http://127.0.0.1:1", MACHINE).kinds());
   }
 }

@@ -15,9 +15,10 @@ import org.jboss.logging.Logger;
  * <p>Until 2026-09-18 each container harness read its own key for the same fact: {@code
  * qits.projects.agent-git-base} (the address a project agent container clones from, <em>including
  * </em> qits-githost's {@code /git} path) and {@code qits.projects.refinement-git-url} (the same
- * address for a refinement container, without the path). Both are now {@code
- * qits.projects.container-git-url} — one key for one concept, scheme, host and port, with each
- * factory appending {@code /git} itself.
+ * address for a refinement container, without the path). Both became {@code
+ * qits.projects.container-git-url} — one key for one concept — and that key went too (qits-1415):
+ * the one container this service still starts is a front desk (qits-1096), whose spec composes its
+ * git base from {@code qits.domain} at the edge, {@code https://githost.qits.<domain>/git}.
  *
  * <p>The rename is not tidying. The deployed entry {@code env.QITS_PROJECTS_AGENT_GIT_BASE} names
  * qits-githost's <b>service</b> alias, {@code http://dev-qits-githost:8080/git}, and that address
@@ -71,7 +72,7 @@ import org.jboss.logging.Logger;
  * StartupEvent} <b>forces the observing bean to be created at boot</b>. Hanging this observer on
  * {@code deskhost/FrontDeskSpecs} — the obvious place, since that is a class the key used to decide
  * for — would make every {@code @QuarkusTest} in this module satisfy that factory's required config
- * (the image repo, the idp block, the own-host pair), and the suite would go red on configuration
+ * (the image repo, the idp block), and the suite would go red on configuration
  * rather than on behaviour. A bean whose every {@code @ConfigProperty} is {@code Optional} can be
  * created anywhere, which is what this one is. Keep it that way: a required property added here is
  * the same failure again.
@@ -88,15 +89,6 @@ public class RetiredContainerGitKeys {
   /** The key that used to decide where a refinement container clones from. */
   @ConfigProperty(name = "qits.projects.refinement-git-url")
   Optional<String> retiredRefinementGitUrl;
-
-  /**
-   * The key that is read instead, quoted back so the warning says what this process actually
-   * resolved rather than what it ships. {@code Optional} like everything else on this bean — a
-   * required read here would be the boot failure the class javadoc warns about, even though the
-   * shipped configuration always answers.
-   */
-  @ConfigProperty(name = "qits.projects.container-git-url")
-  Optional<String> containerGitUrl;
 
   void onStart(@Observes StartupEvent startup) {
     warnIfSet("qits.projects.agent-git-base", retiredAgentGitBase);
@@ -115,11 +107,11 @@ public class RetiredContainerGitKeys {
         .ifPresent(
             set ->
                 LOG.warnf(
-                    "%s is set to '%s' and is NO LONGER READ: both container harnesses take the"
-                        + " address a container reaches git at from"
-                        + " qits.projects.container-git-url, which this process resolved to '%s'."
+                    "%s is set to '%s' and is NO LONGER READ: the one container this service"
+                        + " starts, a front desk, reaches git at the git host's edge host,"
+                        + " https://githost.qits.<domain>, composed from qits.domain."
                         + " A stale entry under the old name cannot decide anything any more;"
                         + " somebody holding qits:admin can delete it.",
-                    key, set, containerGitUrl.orElse("<unset>")));
+                    key, set));
   }
 }

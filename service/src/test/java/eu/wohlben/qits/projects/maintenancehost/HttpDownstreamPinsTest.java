@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.maintenancehost;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 import eu.wohlben.qits.http.QitsHttpClients;
@@ -63,6 +64,8 @@ class HttpDownstreamPinsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
+  private static final Optional<String> MACHINE = Optional.of("Bearer machine-token");
+
   private HttpDownstreamPins against(String base, Optional<String> authorization) {
     HttpDownstreamPins port = new HttpDownstreamPins(QitsHttpClients.of(OpenTelemetry.noop(), null));
     port.maintenanceUrl = Optional.ofNullable(base);
@@ -104,11 +107,11 @@ class HttpDownstreamPinsTest {
           {"ecosystem":"npm","name":"@qits/thing-golden-masters","version":"1"}]}
         """);
 
-    Optional<List<Pin>> answer = against(base, Optional.empty()).pinsOf("telemetry-service");
+    Optional<List<Pin>> answer = against(base, MACHINE).pinsOf("telemetry-service");
 
     assertEquals("/maintenance/api/repositories/telemetry-service", received.get(0).path());
-    assertNull(received.get(0).auth());
-    assertEquals("qits:system", received.get(0).roles());
+    assertEquals("Bearer machine-token", received.get(0).auth());
+    assertNull(received.get(0).roles(), "the bearer alone, never the forwarded pair (qits-1332)");
     assertEquals(
         Optional.of(
             List.of(
@@ -123,24 +126,33 @@ class HttpDownstreamPinsTest {
     status.set(404);
     body.set("{\"message\":\"no such repository\"}");
 
-    assertEquals(Optional.of(List.of()), against(base, Optional.empty()).pinsOf("unscanned"));
+    assertEquals(Optional.of(List.of()), against(base, MACHINE).pinsOf("unscanned"));
+  }
+
+  @Test
+  void withoutTheNamedClientItAsksNobody() throws Exception {
+    String base = start();
+
+    assertEquals(Optional.empty(), against(base, Optional.empty()).downstreamOf("repo-1"));
+    assertEquals(Optional.empty(), against(base, Optional.empty()).pinsOf("telemetry-service"));
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer (qits-1332)");
   }
 
   @Test
   void everyOtherFailureIsCouldNotAsk() throws Exception {
     String base = start();
     status.set(503);
-    assertEquals(Optional.empty(), against(base, Optional.empty()).downstreamOf("repo-1"));
-    assertEquals(Optional.empty(), against(base, Optional.empty()).pinsOf("telemetry-service"));
+    assertEquals(Optional.empty(), against(base, MACHINE).downstreamOf("repo-1"));
+    assertEquals(Optional.empty(), against(base, MACHINE).pinsOf("telemetry-service"));
 
     status.set(200);
     body.set("not json");
-    assertEquals(Optional.empty(), against(base, Optional.empty()).downstreamOf("repo-1"));
+    assertEquals(Optional.empty(), against(base, MACHINE).downstreamOf("repo-1"));
     body.set("{\"downstream\":{}}");
-    assertEquals(Optional.empty(), against(base, Optional.empty()).downstreamOf("repo-1"));
+    assertEquals(Optional.empty(), against(base, MACHINE).downstreamOf("repo-1"));
 
-    assertEquals(Optional.empty(), against(null, Optional.empty()).downstreamOf("repo-1"));
+    assertEquals(Optional.empty(), against(null, MACHINE).downstreamOf("repo-1"));
     assertEquals(
-        Optional.empty(), against("http://127.0.0.1:1", Optional.empty()).pinsOf("telemetry-service"));
+        Optional.empty(), against("http://127.0.0.1:1", MACHINE).pinsOf("telemetry-service"));
   }
 }
