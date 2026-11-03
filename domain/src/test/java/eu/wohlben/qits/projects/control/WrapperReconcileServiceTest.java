@@ -25,8 +25,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The wrapper-driven reconcile: the wrapper's {@code .gitmodules} decides which repositories the
- * project has and which component each one belongs to. What kind of thing a row is comes off its
- * <b>name</b> — a path states a component and never a kind.
+ * project has and which component each one belongs to. What kind of thing a row is comes off the
+ * repository's own committed {@code .config/qits/repository.yml} — never off its name, and never off
+ * the path, which states a component and never a kind.
  *
  * <p>Every case adopts the {@code qits-qits.git} fixture as its wrapper. That fixture commits a real
  * manifest — four entries under {@code components/<component>/<name>} and one under {@code vendor/},
@@ -96,7 +97,8 @@ public class WrapperReconcileServiceTest {
   }
 
   @Test
-  public void everyResolvableEntryBecomesARepositoryWhoseKindItsNameDeclares() throws Exception {
+  public void everyResolvableEntryBecomesARepositoryOfTheKindItsCommittedConfigStates()
+      throws Exception {
     Project project = projectWithManifest("Reconcile Create");
 
     var outcomes = outcomesByName(reconcileService.reconcile(project.id));
@@ -113,15 +115,19 @@ public class WrapperReconcileServiceTest {
             + " branches converge on, and the row's own id is an opaque minted key");
     assertNotNull(byName(project.id, "submodule-grandchild"));
     assertEquals(
-        RepositoryArchetype.LIBRARY,
+        RepositoryArchetype.DAEMON,
         byName(project.id, "sample-javalib").archetype,
-        "'-javalib' is the name grammar's role suffix for a library, and the name is the only"
-            + " thing that says a kind now");
+        "the minted row takes the kind its committed repository.yml states — DAEMON, whatever its"
+            + " '-javalib' name might suggest to a reader");
+    assertEquals(
+        RepositoryArchetype.DAEMON,
+        outcomes.get("sample-javalib").archetype(),
+        "and the line reports the kind the row now carries");
     assertEquals(
         null,
         byName(project.id, "submodule-shared").archetype,
-        "'submodule-shared' carries no role suffix, so nothing declares a kind — and null is what"
-            + " that is stored as, never a guess this service could not correct afterwards");
+        "'submodule-shared' states no kind anywhere, so null is what that is stored as — never a"
+            + " guess, and never one read off the name");
     assertEquals(
         "components/shared-things/submodule-shared",
         outcomes.get("submodule-shared").path(),
@@ -532,6 +538,77 @@ public class WrapperReconcileServiceTest {
         outcomes.get("submodule-cycle-a"),
         "no line at all — the same silence a row that is not a component of its project gets");
     assertEquals(1, repositoryRepository.count("id = ?1", stray.id), "and the row stays");
+  }
+
+  /**
+   * The repository's own statement wins over what the row carries: on every pass over an existing
+   * row, a committed {@code repository.archetype} that differs is applied, and the line says so. The
+   * retired "the row wins" note it used to leave in {@code config_warning} goes with it.
+   */
+  @Test
+  public void aCommittedArchetypeThatDiffersIsAppliedToTheExistingRow() throws Exception {
+    Project project = projectWithManifest("Reconcile Applies Committed Kind");
+    Repository repo =
+        projectService.createRepositoryUnderProject(
+            project.id, fixture("sample-javalib.git"), RepositoryArchetype.SERVICE);
+    io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                repositoryService.get(repo.id).configWarning =
+                    "The committed repository config declares archetype DAEMON, but this"
+                        + " repository is registered as SERVICE … The row wins.");
+
+    var outcome = outcomesByName(reconcileService.reconcile(project.id)).get("sample-javalib");
+
+    assertEquals(RepositoryArchetype.DAEMON, outcome.archetype(), "the line reports the new kind");
+    assertTrue(
+        outcome.warning() != null
+            && outcome.warning().contains("DAEMON")
+            && outcome.warning().contains("SERVICE"),
+        "and says what it changed: " + outcome.warning());
+    assertEquals(
+        1,
+        repositoryRepository.count(
+            "id = ?1 and archetype = ?2 and configWarning is null",
+            repo.id,
+            RepositoryArchetype.DAEMON),
+        "the row now carries the committed kind, and the stale disagreement note is gone");
+  }
+
+  /** A row nobody stated a kind for takes the committed one as soon as it can be read. */
+  @Test
+  public void aCommittedArchetypeFillsARowThatHadNone() throws Exception {
+    Project project = projectWithManifest("Reconcile Fills Null Kind");
+    Repository repo =
+        projectService.createRepositoryUnderProject(project.id, fixture("sample-javalib.git"), null);
+
+    reconcileService.reconcile(project.id);
+
+    assertEquals(
+        1,
+        repositoryRepository.count(
+            "id = ?1 and archetype = ?2", repo.id, RepositoryArchetype.DAEMON));
+  }
+
+  /**
+   * With no committed value the row keeps what it has — a reconcile never nulls a kind somebody
+   * stated at creation — and the line raises nothing about it.
+   */
+  @Test
+  public void noCommittedArchetypeKeepsTheRowsOwn() throws Exception {
+    Project project = projectWithManifest("Reconcile Keeps Stated Kind");
+    Repository repo =
+        projectService.createRepositoryUnderProject(
+            project.id, fixture("submodule-shared.git"), RepositoryArchetype.LIBRARY);
+
+    var outcome = outcomesByName(reconcileService.reconcile(project.id)).get("submodule-shared");
+
+    assertEquals(RepositoryArchetype.LIBRARY, outcome.archetype());
+    assertEquals(null, outcome.warning());
+    assertEquals(
+        1,
+        repositoryRepository.count(
+            "id = ?1 and archetype = ?2", repo.id, RepositoryArchetype.LIBRARY));
   }
 
   /** A throwaway copy of a bare fixture: a second url under the same basename. */

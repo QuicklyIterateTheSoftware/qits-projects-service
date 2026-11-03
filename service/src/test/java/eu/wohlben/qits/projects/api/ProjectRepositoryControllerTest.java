@@ -102,8 +102,8 @@ public class ProjectRepositoryControllerTest {
 
   /**
    * <b>{@code -app}, the tenth archetype, end to end through the door that mints one.</b> Three
-   * things in one call and each is a separate way this could be wrong: the name alone says the kind
-   * (no {@code archetype} in the body at all), {@code APP} survives the round trip through the
+   * things in one call and each is a separate way this could be wrong: the stated kind is stored
+   * (the name decides nothing, qits-1834), {@code APP} survives the round trip through the
    * column — which it only does because {@code V27__repository_archetype_app.sql} widened {@code
    * CK_repository_archetype}, so a missing migration fails right here rather than in production —
    * and the entry mounts at {@code components/<component>/<name>} like every other member.
@@ -115,10 +115,10 @@ public class ProjectRepositoryControllerTest {
    * directory anywhere. There is one grammar and an app lives in it.
    */
   @Test
-  public void anAppIsCreatedOffItsNameAloneAndMountsUnderItsComponent() {
+  public void anAppIsCreatedAsStatedAndMountsUnderItsComponent() {
     String projectId = createProject("App Create");
 
-    postRepository(projectId, null, "storefront-app", null, "storefront")
+    postRepository(projectId, null, "storefront-app", RepositoryArchetype.APP, "storefront")
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.name", equalTo("storefront-app"))
@@ -186,66 +186,44 @@ public class ProjectRepositoryControllerTest {
         .body("entries.repository.component", hasItem("payments"));
   }
 
-  // --- create: the archetype the name already states ---
+  // --- create: the kind is stated, never read off the name ---
 
   /**
-   * The rule applied at creation: the NAME says the kind, so a name carrying a role suffix needs no
-   * second statement of it. This is what lets the create form stop asking.
+   * The owner's ruling (2026-11-03): with no archetype stated the repository is created with none —
+   * not refused, and not derived from a role suffix in its name. The kind is stated later, in the
+   * repository's own committed {@code .config/qits/repository.yml}, which the reconcile applies.
    */
   @Test
-  public void anAbsentArchetypeIsReadOffTheNamesRoleSuffix() {
-    String projectId = createProject("Derived Archetype");
+  public void anAbsentArchetypeIsStoredAsNullWhateverTheNameSays() {
+    String projectId = createProject("No Archetype Stated");
 
     postRepository(projectId, null, "payments-daemon", null)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.name", equalTo("payments-daemon"))
-        .body("repository.archetype", equalTo("DAEMON"))
+        .body("repository.archetype", nullValue())
         .body("wrapperPath", equalTo("components/payments-daemon/payments-daemon"));
-
-    postRepository(projectId, null, "payments-javalib", null)
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .body("repository.archetype", equalTo("LIBRARY"));
-  }
-
-  /** The attach arm derives from the url's basename, which is the name the row will answer to. */
-  @Test
-  public void theAttachArmDerivesTheArchetypeFromTheUrlsBasename() throws Exception {
-    String projectId = createProject("Derived From Url");
-    String suffixed = GitFixtures.path("testing-repo.git");
-
-    // The fixture's basename declares no role, so this one has to say what it is...
-    postRepository(projectId, suffixed, null, null)
-        .then()
-        .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
-        .body("message", containsString("carries no role suffix"));
-    postRepository(projectId, suffixed, null, RepositoryArchetype.FRONTEND)
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .body("repository.archetype", equalTo("FRONTEND"));
-  }
-
-  /**
-   * A guessed kind is the one thing nothing downstream could correct — the same reasoning that makes
-   * the reconcile store a null archetype rather than invent one — so a request that states neither
-   * is refused, and the message says both ways out.
-   */
-  @Test
-  public void aNameWithNoRoleSuffixAndNoArchetypeIsRefused() {
-    String projectId = createProject("No Kind Stated");
 
     postRepository(projectId, null, "checkout", null)
         .then()
-        .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
-        .body("message", containsString("carries no role suffix"))
-        .body("message", containsString("-service"));
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repository.archetype", nullValue());
+  }
+
+  /** The attach arm reads nothing off the url's basename either. */
+  @Test
+  public void theAttachArmStoresNoArchetypeWhenNoneIsStated() throws Exception {
+    String projectId = createProject("Attach No Archetype");
+
+    postRepository(projectId, GitFixtures.path("testing-repo.git"), null, null)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repository.archetype", nullValue());
   }
 
   /**
-   * An explicit archetype is obeyed unchanged, suffix or no suffix — the SPA still sends one. The
-   * path is not a second opinion about it: it names the component, and the kind stored is what the
-   * caller said even where the name would have said something else.
+   * An explicit archetype is obeyed unchanged, suffix or no suffix — the SPA still sends one. Neither
+   * the path nor the name is a second opinion about it: the kind stored is what the caller said.
    */
   @Test
   public void anExplicitArchetypeOutranksWhatTheNameWouldSay() {

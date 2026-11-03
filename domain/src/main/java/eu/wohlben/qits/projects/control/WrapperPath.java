@@ -10,9 +10,10 @@ package eu.wohlben.qits.projects.control;
  * <p>The grammar is {@code components/<component>/<name>}: three segments, the first of them the
  * literal {@code components}, the second naming the technical component the entry belongs to, the
  * third the repository's addressable name. <b>The path says which component, never what kind</b> —
- * the kind is read off the name's role suffix ({@link
- * eu.wohlben.qits.projects.entity.RepositoryArchetype#fromRepositoryName}), which is why nothing
- * here derives an archetype any more.
+ * and neither does the name: the kind is stated by whoever creates the repository or in its own
+ * committed {@code .config/qits/repository.yml} (see {@link
+ * eu.wohlben.qits.projects.entity.RepositoryArchetype}), which is why nothing here derives an
+ * archetype.
  *
  * <p>Anything else is <b>not a path</b> and comes back null: {@code services/x} and {@code vendor/x}
  * (the retired archetype layout and anything shaped like it), {@code components/orphan} with nothing

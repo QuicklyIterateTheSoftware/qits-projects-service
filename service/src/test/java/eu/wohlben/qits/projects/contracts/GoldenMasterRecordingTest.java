@@ -1224,17 +1224,19 @@ class GoldenMasterRecordingTest {
             "POST",
             "/projects/api/projects/{projectId}/repositories/adopt",
             // The body the bootstrap sends (qits-bootstrap-cli ProjectsApi.adoptRepository): the
-            // forge twin's url rides along whenever the estate has one.
+            // forge twin's url rides along whenever the estate has one, and no archetype — the
+            // kind is the repository's own statement, never the caller's default (qits-1834).
             "{\"repositoryId\":\"{repositoryId}\",\"name\":\"{repoName}\","
-                + "\"url\":\"https://forge.example.test/contract/contract-events-service.git\","
-                + "\"archetype\":\"SERVICE\"}"));
+                + "\"url\":\"https://forge.example.test/contract/contract-events-service.git\"}"));
     all.add(
         write(
             ProviderStates.A_PROJECT_TO_CREATE_A_REPOSITORY_IN,
             "createProjectRepository",
             "POST",
             "/projects/api/projects/{projectId}/repositories",
-            "{\"name\":\"contract-service\",\"component\":\"contract\"}"));
+            // A stated kind: since qits-1834 the name decides nothing, so the recording states one.
+            "{\"name\":\"contract-service\",\"component\":\"contract\","
+                + "\"archetype\":\"SERVICE\"}"));
     String requests = "/projects/api/repositories/{repositoryId}/release-requests";
     all.add(
         write(

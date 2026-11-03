@@ -12,9 +12,10 @@ nothing else.
 The component directory name says what the thing *is*, never how it is built — `payments`, not
 `payments-postgres`. The implementation may change; the component does not.
 
-## Names say the role
+## Names say the role, to a reader
 
-The repository inside a component carries the role in its name:
+The repository inside a component carries the role in its name, so a person reading the tree knows
+what each one is:
 
     <component>[-<modifier>]-<role>[-<tech>]
 
@@ -31,10 +32,10 @@ The repository inside a component carries the role in its name:
 So `components/payments/payments-service` sits next to `components/payments/payments-frontend`, and
 the two things you change together are two lines apart instead of two directories apart.
 
-The **name** is what says the kind here, and qits reads it: creating a repository called
-`payments-daemon` needs no archetype stated, and renaming one to carry a role suffix restamps the
-kind. A name with no role suffix is allowed — qits simply has nothing to derive from it, so state
-the kind when you create it.
+The name decides nothing. qits never reads the kind off it: the kind is stated in the repository's
+own `.config/qits/repository.yml` (`repository: { archetype: DAEMON }`), or when the repository is
+created. A repository that states none simply has no kind recorded, and renaming one leaves its kind
+as it was.
 
 Add the tech suffix only where the role alone is ambiguous, which in practice is the library pair.
 

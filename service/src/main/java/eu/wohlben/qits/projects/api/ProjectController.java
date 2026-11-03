@@ -433,12 +433,11 @@ public class ProjectController {
    * @param name a blank repository to create on the platform's git host, seeded with the repository
    *     template. It becomes the component's addressable name, so it is what {@code ../<name>.git}
    *     resolves to.
-   * @param archetype which kind of component this is — <b>optional</b>. Absent, it is read off the
-   *     name's role suffix ({@code payments-daemon} is a {@code DAEMON}), which under the component
-   *     layout is where the kind lives; for the {@code url} arm the name read is the url's basename.
-   *     A request that states neither an archetype nor a name carrying a suffix is a 400, because a
-   *     guessed kind is the one thing nothing downstream could correct. Stating one is obeyed
-   *     unchanged, which is what the SPA's create form still does.
+   * @param archetype which kind of component this is — <b>optional</b>. Stating one is obeyed
+   *     unchanged, which is what the SPA's create form does. Absent, the repository is created with
+   *     a null archetype: the name decides nothing (owner ruling 2026-11-03), and the repository
+   *     states its kind in its own committed {@code .config/qits/repository.yml} ({@code
+   *     repository.archetype}), which the wrapper reconcile applies.
    * @param component the technical component to mount the entry under, or null to let the wrapper's
    *     own layout decide. Stating one places at {@code components/<component>/<name>}; a wrapper
    *     that has already flipped places there with or without it.
@@ -457,7 +456,7 @@ public class ProjectController {
 
   /**
    * Adds a component to the project — see {@link CreateProjectRepositoryRequest} for what the body
-   * says and how the kind is read off the name.
+   * says and where the kind comes from.
    *
    * <p><b>{@code qits:admin} and {@code qits:agent}, spelled in full.</b> A method-level {@code
    * @RolesAllowed} REPLACES the class-level {@code qits:admin} rather than adding to it, so naming
@@ -485,9 +484,8 @@ public class ProjectController {
       responseCode = "400",
       description =
           "Neither or both of url/name, an archetype that is not a component of a project"
-              + " (PROJECT, SERVICE_TEMPLATE, FORK, AGENT_CONFIG), a name that carries no role suffix"
-              + " when no archetype is stated, a name already taken in the project, or a wrapper"
-              + " commit the git host refused")
+              + " (PROJECT, SERVICE_TEMPLATE, FORK, AGENT_CONFIG), a name already taken in the"
+              + " project, or a wrapper commit the git host refused")
   public CreateProjectRepositoryRequest.Response createRepository(
       @PathParam("projectId") String projectId, @Valid CreateProjectRepositoryRequest request) {
     requireDeskProject(projectId);
@@ -566,12 +564,16 @@ public class ProjectController {
    * @param name the public coordinate, the {@code <repoName>} half of {@code
    *     /git/<projectId>/<repoName>}
    * @param url the forge this repository is backed up to, or null for none
+   * @param archetype the kind, when the caller states one — <b>optional</b>. Absent, the row is
+   *     adopted with a null archetype, never a default: the repository states its kind in its own
+   *     committed {@code .config/qits/repository.yml}, which the wrapper reconcile applies (owner
+   *     ruling 2026-11-03; the bootstrap no longer sends one)
    */
   public static record AdoptProjectRepositoryRequest(
       @NotBlank String repositoryId,
       @NotBlank String name,
       String url,
-      @NotNull eu.wohlben.qits.projects.entity.RepositoryArchetype archetype) {
+      eu.wohlben.qits.projects.entity.RepositoryArchetype archetype) {
     public record Response(RepositoryDto repository, String projectId) {}
   }
 

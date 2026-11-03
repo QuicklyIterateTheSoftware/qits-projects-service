@@ -89,8 +89,8 @@ public class ProjectRepositoryCreateDoorTest {
   }
 
   /**
-   * The grant, and it is a real create rather than a status code: the row exists, the archetype was
-   * read off the name and the wrapper declares it. A door that answered 200 and did nothing would
+   * The grant, and it is a real create rather than a status code: the row exists, the archetype is
+   * the one stated and the wrapper declares it. A door that answered 200 and did nothing would
    * satisfy a bare status assertion.
    */
   @Test
@@ -100,7 +100,10 @@ public class ProjectRepositoryCreateDoorTest {
     agent()
         .body(
             new ProjectController.CreateProjectRepositoryRequest(
-                null, "storefront-app", null, "storefront"))
+                null,
+                "storefront-app",
+                eu.wohlben.qits.projects.entity.RepositoryArchetype.APP,
+                "storefront"))
         .when()
         .post("/projects/api/projects/" + projectId + "/repositories")
         .then()

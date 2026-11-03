@@ -9,8 +9,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -23,9 +21,10 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li><b>The template seeds one directory, {@code components/}</b>. Seeding anything else would
  *       teach every new project a grammar the platform does not read, on its first clone.
- *   <li><b>The NAME is what says the kind</b>, and it is the only thing that does: every role
- *       suffix {@link RepositoryArchetype#fromRepositoryName} reads is taught by {@code
- *       components/README.md}, and every suffix that README teaches derives back to an archetype.
+ *   <li><b>The kind is stated, never read off the name</b> (owner ruling 2026-11-03): {@code
+ *       components/README.md} keeps the naming grammar as guidance for a reader and says where the
+ *       kind is stated instead — the repository's own {@code .config/qits/repository.yml} {@code
+ *       repository.archetype} — and the blank repository template shows that key.
  * </ul>
  *
  * <p>The archetype layout — a mount directory that <em>was</em> the kind — is retired, so nothing
@@ -157,46 +156,39 @@ public class RepositoryArchetypeTemplateSyncTest {
             + " the four is a member of the project");
   }
 
-  // --- the name is the kind: the two-way sync that replaced directory <-> archetype ---
+  // --- the kind is stated: what the templates teach about it ---
 
-  /** ``-service`` in the README's table, one per row. */
-  private static final Pattern SUFFIX_CELL = Pattern.compile("`(-[a-z]+)`");
+  /** The blank component skeleton, as the build copied it. */
+  private static final Path REPOSITORY_TEMPLATE = Path.of("target/classes/repository-template");
 
-  private static Set<String> suffixesTheReadmeTeaches() throws Exception {
+  /**
+   * The README keeps the role-suffix table for a reader and says the name decides nothing: the kind
+   * lives in {@code .config/qits/repository.yml}. A sentence promising that qits reads the kind off
+   * a name, or restamps it on a rename, would be a promise nothing keeps any more.
+   */
+  @Test
+  public void theComponentsReadmeSaysTheKindIsStatedAndNeverReadOffTheName() throws Exception {
     String readme = Files.readString(TEMPLATE.resolve(COMPONENTS).resolve("README.md"));
-    Matcher matcher = SUFFIX_CELL.matcher(readme);
-    Set<String> found = new TreeSet<>();
-    while (matcher.find()) {
-      found.add(matcher.group(1));
-    }
-    return found;
+    assertTrue(readme.contains("`-service`"), "the naming grammar stays, as guidance for a reader");
+    assertTrue(
+        readme.contains(".config/qits/repository.yml") && readme.contains("archetype: DAEMON"),
+        "the README has to say where the kind is stated instead");
+    assertTrue(readme.contains("The name decides nothing"));
+    assertFalse(readme.contains("restamps"), "a rename no longer restamps the kind");
+    assertFalse(readme.contains("qits reads it"), "qits no longer reads the kind off the name");
   }
 
+  /** The blank repository's own config shows the one place a repository states its kind. */
   @Test
-  public void theTemplateTeachesExactlyTheRoleSuffixesTheEnumReads() throws Exception {
-    assertEquals(
-        new TreeSet<>(RepositoryArchetype.roleSuffixes()),
-        suffixesTheReadmeTeaches(),
-        "components/README.md is what tells a person which names qits can read the kind out of, so"
-            + " a suffix in one and not the other is a promise nothing keeps");
-  }
-
-  @Test
-  public void everySuffixTheTemplateTeachesDerivesAComponentOfItsProject() throws Exception {
-    for (String suffix : suffixesTheReadmeTeaches()) {
-      RepositoryArchetype derived = RepositoryArchetype.fromRepositoryName("payments" + suffix);
-      assertTrue(
-          derived != null && derived.isComponentOfItsProject(),
-          suffix
-              + " is taught as a name a component of a project takes, so it must derive an"
-              + " archetype that is one");
-    }
-    // A name that is only the suffix declares nothing — there is no component left in it.
-    assertEquals(null, RepositoryArchetype.fromRepositoryName("-service"));
-    assertEquals(null, RepositoryArchetype.fromRepositoryName("qits-ci"));
-    assertEquals(null, RepositoryArchetype.fromRepositoryName(null));
-    // AGENT_CONFIG has no role suffix, so no name derives it — not even its own (qits-1382).
-    assertEquals(null, RepositoryArchetype.fromRepositoryName("qits-agent-config"));
+  public void theRepositoryTemplateShowsWhereTheKindIsStated() throws Exception {
+    String config =
+        Files.readString(REPOSITORY_TEMPLATE.resolve("dot-config/qits/repository.yml"));
+    assertTrue(
+        config.contains("# archetype:"),
+        "the starter repository.yml carries the archetype key as a commented example");
+    assertFalse(
+        config.contains("\n  archetype:"),
+        "only commented: a blank repository states no kind until somebody does");
   }
 
   /**

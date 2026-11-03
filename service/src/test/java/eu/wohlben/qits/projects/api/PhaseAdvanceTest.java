@@ -1312,7 +1312,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Two repositories");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-component-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-component-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active(
@@ -1480,7 +1480,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Shipped before");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-gone-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-gone-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active(
@@ -1522,7 +1522,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Released already");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-already-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-already-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active(
@@ -1681,7 +1681,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Done by the first agent");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-obsolete-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-obsolete-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     onTheGitHost(wrapperId, branch);
     goneFromTheGitHost(componentId, branch + "-a");
@@ -1731,7 +1731,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Pushed by hand");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-plain-push-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-plain-push-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branch));
@@ -1774,7 +1774,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "One host is down");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-unlisted-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-unlisted-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branch));
@@ -1802,7 +1802,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "One host hangs");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-hung-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-hung-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, branch));
@@ -1924,7 +1924,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Component only");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-created-service", null).repository().id;
+        projects.createRepository(projectId, null, "advance-created-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE).repository().id;
     String branch = branchOf(ticketId);
     workspaces.willFind(
         RecordingWorkspaceAgentDispatch.active(
@@ -2043,7 +2043,7 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Half refused");
     String wrapperId = wrapperIdOf(projectId);
     String componentId =
-        projects.createRepository(projectId, null, "advance-not-created-service", null)
+        projects.createRepository(projectId, null, "advance-not-created-service", eu.wohlben.qits.projects.entity.RepositoryArchetype.SERVICE)
             .repository()
             .id;
     String branch = branchOf(ticketId);

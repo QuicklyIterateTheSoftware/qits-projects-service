@@ -132,6 +132,14 @@ class ConsumerPactVerificationTest {
    * only for a root commit, which the state's commit is not. Each entry stays until its version is
    * neither pinned, deployed nor a rollback target of qits-landing-app, i.e. until the consumer
    * re-records against the new golden masters and that release replaces both.
+   *
+   * <p>qits-platform-access-cli's 2026.1102.235059 (pinned and deployed) {@code qits repositories
+   * create} row creates a repository with no archetype and pins the answer's {@code archetype} as a
+   * string, recorded when the kind was read off the name's role suffix. Since qits-1834 the name
+   * decides nothing and an unstated kind is stored as {@code null}; the golden master now states
+   * {@code SERVICE} in the request, and the CLI's {@code --archetype} forwards it. The entry stays
+   * until 2026.1102.235059 is neither pinned, deployed nor a rollback target of
+   * qits-platform-access-cli.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -164,7 +172,14 @@ class ConsumerPactVerificationTest {
               "2026.1031.174516",
               "show-commit-changes: listCommitChanges",
               "pins \"parent\": null exactly; since qits-1793 an omitted parent answers the"
-                  + " resolved first parent"));
+                  + " resolved first parent"),
+          new KnownWrong(
+              "qits-platform-access-cli",
+              "2026.1102.235059",
+              "qits repositories create: createProjectRepository",
+              "creates with no archetype and pins the answer's archetype as a string; since"
+                  + " qits-1834 an unstated kind is stored as null. Its next golden-master bump"
+                  + " sends the recorded archetype"));
 
   @Inject ProviderStates states;
 

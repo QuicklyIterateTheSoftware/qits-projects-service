@@ -740,13 +740,12 @@ public class ProjectService {
    * row's {@code component} is then read back off the path the wrapper commit actually used, so the
    * row and the file cannot disagree about it.
    *
-   * <p><b>{@code archetype} is optional too, and the name is what fills it in.</b> The name is what
-   * says the kind, so {@code payments-daemon} needs no second
-   * statement of it ({@link RepositoryArchetype#fromRepositoryName}) — and for the attach arm the
-   * name derived is the url's basename, which is exactly the name the repository will answer to. A
-   * caller that states one is obeyed unchanged, which is what keeps the SPA's create form working.
-   * A request that states neither an archetype nor a name carrying a role suffix is refused, because
-   * guessing a kind is the one thing nothing downstream could correct.
+   * <p><b>{@code archetype} is optional too, and nothing fills it in.</b> A caller that states one is
+   * obeyed unchanged (still refused when it is {@link RepositoryArchetype#PROJECT} or not a component
+   * of its project). A caller that states none gets a row with a null archetype: the kind is never
+   * read off the name (owner ruling 2026-11-03), and the repository states it later in its own
+   * committed {@code .config/qits/repository.yml} ({@code repository.archetype}), which the wrapper
+   * reconcile applies to the row.
    */
   public CreatedRepository createRepository(
       String projectId, String url, String name, RepositoryArchetype archetype, String component) {
@@ -758,29 +757,12 @@ public class ProjectService {
           "Give exactly one of 'url' (attach an existing repository) or 'name' (create a blank one"
               + " on the platform's git host).");
     }
-    if (archetype == null) {
-      // The name the repository will be addressable by: the stated one, or — for the attach arm —
-      // the url's basename, which is what cloneRepository registers as its alias.
-      String addressable =
-          trimmedName != null ? trimmedName : RepositoryNameRepository.basename(trimmedUrl);
-      archetype = RepositoryArchetype.fromRepositoryName(addressable);
-      if (archetype == null) {
-        throw new BadRequestException(
-            "'"
-                + addressable
-                + "' carries no role suffix, so there is nothing to read the kind of component out"
-                + " of. Either name it after one of "
-                + RepositoryArchetype.roleSuffixes()
-                + " — the component layout's grammar, <component>[-<modifier>]-<role> — or state an"
-                + " archetype outright.");
-      }
-    }
     if (archetype == RepositoryArchetype.PROJECT) {
       throw new BadRequestException(
           "A repository cannot be created with archetype PROJECT: that archetype is reserved for"
               + " the project's wrapper repository, which is created with the project.");
     }
-    if (!archetype.isComponentOfItsProject()) {
+    if (archetype != null && !archetype.isComponentOfItsProject()) {
       throw new BadRequestException(
           "Archetype "
               + archetype

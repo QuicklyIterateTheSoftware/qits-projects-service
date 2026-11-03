@@ -94,8 +94,8 @@ public class RepositoryController {
   public static record ListRepositoriesRequest() {
     /**
      * @param repositories every repository this service holds, sorted by project then name. A row
-     *     with no registered name is present with a null {@code name}, and one whose name declares
-     *     no role suffix with a null {@code archetype}; {@code declared} false is a row its
+     *     with no registered name is present with a null {@code name}, and one nobody has stated a
+     *     kind for with a null {@code archetype}; {@code declared} false is a row its
      *     project's wrapper no longer names — see {@link RepositoryCoordinatesDto}.
      */
     public record Response(List<RepositoryCoordinatesDto> repositories) {}
@@ -120,7 +120,7 @@ public class RepositoryController {
    * <p><b>The answer carries each repository's archetype</b>, which is what makes one read enough
    * for a consumer keyed on the kind — qits-maintenance's release-train reader. It is an added
    * optional field and nothing had to change to keep reading this route: an existing client ignores
-   * the key, and a null archetype is a row whose name declares no role suffix.
+   * the key, and a null archetype is a row nobody has stated a kind for.
    *
    * <p><b>And whether the project's wrapper declares it</b> (qits-1695), so qits-maintenance can
    * stop bumping a repository its wrapper dropped. It is {@code listProjectRepositories}' {@code
@@ -135,8 +135,8 @@ public class RepositoryController {
       description =
           "The machine-readable catalogue: row id, project, addressable name, main branch,"
               + " archetype and wrapper membership, sorted by project then name. A repository that"
-              + " owns no name is listed with a null name; one whose name declares no role suffix"
-              + " carries a null archetype. declared is false when no entry of the project's wrapper .gitmodules"
+              + " owns no name is listed with a null name; one nobody has stated a kind for (at"
+              + " creation or in its own .config/qits/repository.yml) carries a null archetype. declared is false when no entry of the project's wrapper .gitmodules"
               + " names this repository, so it is no longer part of its project — the same reading"
               + " as declared on listProjectRepositories, and true for the wrapper itself, for"
               + " archetypes that are not components of their project, and for a project whose"
@@ -460,9 +460,8 @@ public class RepositoryController {
       description =
           "Gives the repository a new project-scoped addressable name. Nothing moves on the git"
               + " host — a bare is keyed by the repository's id — so /git/<project>/<newName>"
-              + " serves it immediately and the old name stops resolving. The archetype is"
-              + " re-derived from the new name's role suffix (-service, -daemon, -frontend, -cli,"
-              + " -oci, -javalib, -jslib) and left as it was when the new name declares none. The"
+              + " serves it immediately and the old name stops resolving. The archetype is left"
+              + " as it was: a name decides nothing about the kind. The"
               + " project's wrapper is NOT rewritten: update the .gitmodules entry to the new name"
               + " and push, or the repository reads as UNDECLARED until you do. The backup twin"
               + " self-heals from the wrapper on the next reconcile.")

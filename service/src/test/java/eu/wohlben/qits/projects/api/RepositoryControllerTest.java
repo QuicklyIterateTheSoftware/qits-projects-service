@@ -3,9 +3,9 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
@@ -42,10 +42,11 @@ public class RepositoryControllerTest {
   }
 
   /** A blank repository on the platform's own host, taking its archetype from the name's suffix. */
-  private String createBlankRepository(String projectId, String name) {
+  private String createBlankRepository(
+      String projectId, String name, RepositoryArchetype archetype) {
     return given()
         .contentType(ContentType.JSON)
-        .body(new ProjectController.CreateProjectRepositoryRequest(null, name, null, null))
+        .body(new ProjectController.CreateProjectRepositoryRequest(null, name, archetype, null))
         .when()
         .post("/projects/api/projects/" + projectId + "/repositories")
         .then()
@@ -407,8 +408,8 @@ public class RepositoryControllerTest {
   /**
    * The catalogue carries each repository's archetype, so a consumer keyed on the kind learns every
    * repository's in ONE read. That consumer is qits-maintenance's release-train reader; before this
-   * field it would have had to ask {@code /repositories/{repoId}} once per row, or re-derive the
-   * kind from the name's role suffix in another repository, free to drift from this column.
+   * field it would have had to ask {@code /repositories/{repoId}} once per row, or keep a second
+   * reading of the kind in another repository, free to drift from this column.
    *
    * <p>The enum travels <b>by name</b> — the same string {@code RepositoryDto.archetype} has always
    * answered on the by-id read, and the same string the MCP listing answers.
@@ -416,8 +417,10 @@ public class RepositoryControllerTest {
   @Test
   public void theCatalogueCarriesEachRepositorysArchetype() {
     String projectId = createProject("Catalogue Archetype");
-    String daemonId = createBlankRepository(projectId, "catalogue-daemon");
-    String libraryId = createBlankRepository(projectId, "catalogue-javalib");
+    String daemonId =
+        createBlankRepository(projectId, "catalogue-daemon", RepositoryArchetype.DAEMON);
+    String libraryId =
+        createBlankRepository(projectId, "catalogue-javalib", RepositoryArchetype.LIBRARY);
 
     given()
         .when()
@@ -430,23 +433,17 @@ public class RepositoryControllerTest {
   }
 
   /**
-   * A row whose name declares no role suffix answers a <b>null</b> archetype rather than a guess,
-   * and is listed all the same — the same ruling the {@code name} column already carries one field
-   * over. A consumer parses the key leniently: null and absent mean the identical thing.
+   * A row nobody has stated a kind for answers a <b>null</b> archetype rather than a guess, and is
+   * listed all the same — the same ruling the {@code name} column already carries one field over. A
+   * consumer parses the key leniently: null and absent mean the identical thing.
    *
-   * <p>The row is made by nulling the column directly, because no REST path can mint one: {@code
-   * POST …/repositories} refuses a request that states neither an archetype nor a name carrying a
-   * suffix. The wrapper reconcile is what produces these in the field — a {@code
-   * components/<component>/<name>} entry whose name declares nothing ({@code
-   * WrapperReconcileService}, via {@code RepositoryArchetype.fromRepositoryName}).
+   * <p>{@code POST …/repositories} with no archetype mints exactly such a row, whatever role suffix
+   * the name carries: the kind is never read off the name (owner ruling 2026-11-03).
    */
   @Test
   public void aRepositoryWithNoArchetypeIsListedWithANullOne() {
     String projectId = createProject("Catalogue No Archetype");
-    String repoId = createBlankRepository(projectId, "catalogue-unsuffixed-service");
-
-    QuarkusTransaction.requiringNew()
-        .run(() -> repositoryRepository.findById(repoId).archetype = null);
+    String repoId = createBlankRepository(projectId, "catalogue-unsuffixed-service", null);
 
     given()
         .when()

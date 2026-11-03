@@ -35,14 +35,15 @@ import org.jboss.logging.Logger;
  *
  * <ul>
  *   <li>the second segment becomes the row's {@code component}, on every pass;
- *   <li><b>an existing row keeps the archetype it has.</b> Nothing in the path says a kind, so there
- *       is nothing to re-derive one from, and re-typing a live platform's rows off a path is exactly
- *       what this must never do;
- *   <li>a row this reconcile <em>mints</em> takes its archetype from the name's role suffix ({@link
- *       eu.wohlben.qits.projects.entity.RepositoryArchetype#fromRepositoryName}), and null when the
- *       name declares none — which is the honest answer and the least destructive one, since a null
- *       archetype is never reported undeclared and so is never offered for the delete that would
- *       destroy the repository, while a guessed one would be a wrong label nothing here can correct.
+ *   <li><b>the kind is the repository's own statement, never the path's or the name's</b> (owner
+ *       ruling 2026-11-03): its committed {@code .config/qits/repository.yml} {@code
+ *       repository.archetype}, read from the repository's mirror at its main branch. A row this
+ *       reconcile <em>mints</em> takes that value, or null when none can be read; an existing row is
+ *       brought in line with it on every pass when it states one that differs, and keeps what it has
+ *       when it states none — a reconcile never nulls a kind somebody stated. Null is the honest
+ *       answer for a repository nobody has stated a kind for, and the least destructive one, since a
+ *       null archetype is never reported undeclared and so is never offered for the delete that would
+ *       destroy the repository.
  * </ul>
  *
  * <p>It replaces the recursive submodule import, which had the relationship backwards: it walked
@@ -125,9 +126,10 @@ public class WrapperReconcileService {
    * @param path the wrapper path this is about, or null when the line is not about an entry
    * @param name the addressable name, which is what {@code ../<name>.git} resolves to
    * @param repositoryId the repository the entry now maps to, or null when there is none
-   * @param archetype the archetype the row now carries — preserved from the row for one that
-   *     already existed, read off the name for one this reconcile minted, and the row's own when
-   *     the line is about a row the wrapper does not name
+   * @param archetype the archetype the row now carries — the committed {@code repository.archetype}
+   *     when the repository states one (applied to an existing row, taken by a minted one), else the
+   *     row's own (null for a minted row nothing states a kind for), and the row's own when the line
+   *     is about a row the wrapper does not name
    * @param component the component the entry's path names, or null when the line is not about an
    *     entry
    * @param warning why an outcome is what it is, when the outcome does not say it; else null
@@ -485,11 +487,6 @@ public class WrapperReconcileService {
       return adjustExisting(project, existing, parsed, syncTarget);
     }
 
-    // A row nothing matched is one this reconcile is about to mint, and only for one of those is
-    // the name allowed to decide the kind — an existing row keeps what it carries, see the class
-    // doc. Null when the name declares no role, stored as the null it is rather than as a guess.
-    RepositoryArchetype archetype = RepositoryArchetype.fromRepositoryName(name);
-
     // The host already serves it under the entry name as its storage id — a host seeded before this
     // service existed, where the two coordinates happen to coincide (a name is a valid opaque id).
     // Adoption is what gives such a repository a row without disturbing the storage key its bare
@@ -503,27 +500,33 @@ public class WrapperReconcileService {
                   () -> {
                     // Adoption is idempotent on the storage id and answers a pre-existing row
                     // untouched, so whether the row is this call's to write has to be asked first —
-                    // otherwise a null archetype meant for a fresh row would clear a real one.
+                    // otherwise the minted row's kind would be written over a real one.
                     boolean minted = repositoryRepository.findByIdOptional(name).isEmpty();
                     // With the derived backup target, not null: an adopted row that never learns
                     // where its forge twin is is a repository nothing backs up, and the derivation
                     // is the same one every other row's target comes from.
                     Repository repo =
                         repositoryService.adoptExistingOrigin(
-                            project, name, name, syncTarget.url(), archetype);
+                            project, name, name, syncTarget.url(), null);
                     repositoryNameRepository.ensureAlias(project, name, repo);
                     repo.component = component;
                     if (minted) {
-                      // RepositoryService defaults an absent archetype to SERVICE, which is right
-                      // for a caller that simply did not say — and wrong here, where "the name
-                      // declares no role" is the answer. Write it back as the null it is.
-                      repo.archetype = archetype;
+                      // The repository's own committed statement of its kind, or null when none
+                      // can be read — an adopted row usually has no mirror yet, and the next
+                      // reconcile that can read one applies it (applyCommittedArchetype).
+                      repo.archetype = committedArchetype(repo.id, repo.mainBranch);
                     }
                     return repo;
                   });
       matchedRepoIds.add(adopted.id);
       return new EntryOutcome(
-          path, name, adopted.id, archetype, component, Outcome.ADOPTED, syncTarget.warning());
+          path,
+          name,
+          adopted.id,
+          adopted.archetype,
+          component,
+          Outcome.ADOPTED,
+          syncTarget.warning());
     }
 
     // Nothing here yet: clone the backend the entry names. This is the restore path — a wrapper url
@@ -534,7 +537,7 @@ public class WrapperReconcileService {
           path,
           name,
           null,
-          archetype,
+          null,
           component,
           Outcome.SKIPPED,
           "Nothing is served as '"
@@ -552,16 +555,18 @@ public class WrapperReconcileService {
                   // the repository as and what the deployer's image name repeats — never the url
                   // basename, which an entry is free to differ from. The row's id is minted.
                   Repository repo =
-                      repositoryService.cloneRepository(backend.get(), archetype, project, name);
+                      repositoryService.cloneRepository(backend.get(), null, project, name);
                   repositoryNameRepository.ensureAlias(project, name, repo);
                   repo.component = component;
-                  // A clone always mints its row, so the archetype is unconditionally this call's
-                  // to state — null included. See the adopt arm for why that matters.
-                  repo.archetype = archetype;
+                  // A clone always mints its row and leaves a mirror behind, so the repository's
+                  // own committed statement of its kind is readable here — null when it states
+                  // none, stored as the null it is rather than as a guess.
+                  repo.archetype = committedArchetype(repo.id, repo.mainBranch);
                   return repo;
                 });
     matchedRepoIds.add(created.id);
-    return new EntryOutcome(path, name, created.id, archetype, component, Outcome.CREATED, null);
+    return new EntryOutcome(
+        path, name, created.id, created.archetype, component, Outcome.CREATED, null);
   }
 
   /**
@@ -589,10 +594,10 @@ public class WrapperReconcileService {
    * url, folded against the wrapper's own) and on which component it belongs to. Its alias is
    * re-asserted so {@code ../<name>.git} resolves.
    *
-   * <p><b>The archetype is not touched at all.</b> A path states a component and never a kind, so
-   * there is nothing here to re-derive one from — and a live platform's rows must not be re-typed by
-   * a reconcile. A repository whose kind is wrong is corrected by renaming it, which is the one
-   * place the kind is re-read ({@code RepositoryService.rename}).
+   * <p><b>The path never touches the archetype</b> — it states a component, never a kind. The
+   * repository's own committed {@code repository.archetype} does: when it states one that differs
+   * from the row's, it is applied ({@link #applyCommittedArchetype}) and said in the line's warning;
+   * when it states none, the row keeps what it has.
    *
    * <p>A row can need both corrections at once. Both are applied; the outcome reports the bigger
    * statement about the repository, because a client shows one label per row: a component move
@@ -618,8 +623,9 @@ public class WrapperReconcileService {
                     repo.url = syncTarget.url();
                     retargeted[0] = true;
                   }
+                  String applied = applyCommittedArchetype(repo);
                   after[0] = repo.archetype;
-                  return recordConfigDisagreement(repo, parsed);
+                  return applied;
                 });
     Outcome outcome =
         !java.util.Objects.equals(beforeComponent, parsed.component())
@@ -644,54 +650,72 @@ public class WrapperReconcileService {
   }
 
   /**
-   * Records — never applies — a committed {@code repository.yml} archetype that disagrees with the
-   * archetype the row actually carries.
+   * Brings the row's archetype in line with the repository's own committed {@code
+   * .config/qits/repository.yml} {@code repository.archetype} — the one statement of a kind a
+   * reconcile listens to (owner ruling 2026-11-03).
    *
-   * <p>The wrapper is the project's configuration, so the wrapper wins; but a repository whose own
-   * committed config says something else is telling its author two different things, and that
-   * belongs in the {@code config_warning} column where every other ingestion problem already goes.
-   * Best effort: a mirror that is not there yet simply has nothing to read.
+   * <p>A readable committed value that differs from the row's — a null row included — is applied,
+   * logged, and answered as the line's warning so the reconcile says what it changed. With no
+   * committed value (no mirror yet, no file, no key, a file that will not parse) the row keeps what
+   * it has: a reconcile never nulls a kind somebody stated at creation. The wrapper row is never
+   * changed, and {@link RepositoryArchetype#PROJECT} is never applied (the parser refuses it too).
    *
-   * <p>A row with <b>no</b> archetype has nothing to disagree with, so nothing is recorded and
-   * nothing is cleared — that is a row whose name declares no role, and the committed value is the
-   * only statement anyone has made about it.
+   * <p>Either way it clears {@code config_warning}, which only the retired "the row wins" note ever
+   * wrote: that disagreement can no longer stand.
    *
-   * <p>The archetype compared against is the row's own, which is also the only one there is: the
-   * path states a component and never a kind, so it is no longer a party to this disagreement and
-   * the third parameter that used to carry it is gone.
+   * @return the sentence saying what was applied, or null when nothing changed
    */
-  private String recordConfigDisagreement(Repository repo, WrapperPath parsed) {
-    RepositoryArchetype archetype = repo.archetype;
-    if (archetype == null) {
+  private String applyCommittedArchetype(Repository repo) {
+    // The retired "the row wins" note was this column's only writer; that disagreement can no
+    // longer stand, so whatever it left is stale.
+    repo.configWarning = null;
+    if (repo.archetype == RepositoryArchetype.PROJECT) {
       return null;
     }
-    RepositoryArchetype committed;
+    RepositoryArchetype committed = committedArchetype(repo.id, repo.mainBranch);
+    if (committed == null
+        || committed == RepositoryArchetype.PROJECT
+        || committed == repo.archetype) {
+      return null;
+    }
+    RepositoryArchetype before = repo.archetype;
+    repo.archetype = committed;
+    LOG.infof(
+        "Reconcile: %s states archetype %s in its committed repository config; the row carried %s"
+            + " — applied.",
+        repo.id, committed, before);
+    return "The committed repository config declares archetype "
+        + committed
+        + "; the row carried "
+        + before
+        + " and now carries "
+        + committed
+        + ".";
+  }
+
+  /**
+   * The archetype a repository states for itself in its committed {@code .config/qits/repository.yml}
+   * at {@code branch}, read from its mirror — or null when there is nothing to read.
+   *
+   * <p>Best effort and read-only: a mirror that is not there yet, a file or key that is absent, and
+   * a file that will not parse all answer null, and nothing here fetches. The mint arms ask it right
+   * after the row exists (a clone leaves a mirror behind; an adoption usually does not), {@link
+   * #applyCommittedArchetype} on every pass over an existing row.
+   */
+  RepositoryArchetype committedArchetype(String repoId, String branch) {
     try {
-      java.nio.file.Path gitDir = gitMirrors.of(repo.id).gitDir();
+      java.nio.file.Path gitDir = gitMirrors.of(repoId).gitDir();
       if (!java.nio.file.Files.isDirectory(gitDir)) {
         return null;
       }
-      QitsConfig config = configParser.readConfig(gitDir.toFile(), repo.mainBranch);
-      committed = config.repository() == null ? null : config.repository().archetype();
+      QitsConfig config =
+          configParser.readConfig(
+              gitDir.toFile(), branch == null || branch.isBlank() ? "main" : branch);
+      return config.repository() == null ? null : config.repository().archetype();
     } catch (RuntimeException e) {
-      LOG.debugf("Could not read the committed config of %s: %s", repo.id, e.getMessage());
+      LOG.debugf("Could not read the committed config of %s: %s", repoId, e.getMessage());
       return null;
     }
-    if (committed == null || committed == archetype) {
-      repo.configWarning = null;
-      return null;
-    }
-    String warning =
-        "The committed repository config declares archetype "
-            + committed
-            + ", but this repository is registered as "
-            + archetype
-            + " and the wrapper mounts it at '"
-            + parsed.path()
-            + "', which states a component rather than a kind. The row wins; drop the committed"
-            + " value, or rename the repository to carry the role suffix it means.";
-    repo.configWarning = warning;
-    return warning;
   }
 
   /**

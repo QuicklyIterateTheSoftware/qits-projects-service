@@ -4,7 +4,7 @@
     "name": "contract-events-service",
     "backupUrl": "https://forge.example.test/contract/contract-events-service.git",
     "mainBranch": "main",
-    "archetype": "SERVICE",
+    "archetype": null,
     "component": null,
     "projectId": "00000000-0000-4000-8000-000000000001",
     "lastBackup": null,

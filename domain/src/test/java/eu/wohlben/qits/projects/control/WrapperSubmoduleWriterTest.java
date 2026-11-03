@@ -186,9 +186,9 @@ public class WrapperSubmoduleWriterTest {
   }
 
   /**
-   * Two refusals with two messages, because they are two different mistakes: a kind that is not a
-   * component of a project cannot be declared as one, and no kind at all is a caller that said
-   * nothing where it has to say something. Collapsing them would leave a caller guessing which.
+   * A stated kind that is not a component of a project cannot be declared as one. No kind at all is
+   * not that mistake: nobody has stated one yet, which the repository may do later in its own
+   * committed {@code .config/qits/repository.yml}, so a null archetype is placed like any member.
    */
   @Test
   public void anArchetypeThatIsNotAComponentOfItsProjectCannotBeAMember() {
@@ -210,14 +210,20 @@ public class WrapperSubmoduleWriterTest {
           archetype + " must be refused for what it is: " + refusal.getMessage());
     }
 
-    BadRequestException stated =
-        assertThrows(
-            BadRequestException.class,
-            () -> writer.addToWrapper(wrapper, "x", null, null, "0".repeat(40)));
+  }
+
+  @Test
+  public void aRepositoryNobodyStatedAKindForIsPlacedLikeAnyMember() throws Exception {
+    var project = projectService.create("Wrapper No Kind", "wnokind", null);
+    var wrapper = wrapperOf(project);
+    var child = child(project, "testing-repo.git");
+
+    String path = writer.addToWrapper(wrapper, "testing-repo", null, null, headOf(child));
+
+    assertEquals("components/testing-repo/testing-repo", path);
     assertTrue(
-        stated.getMessage().contains("must state an archetype"),
-        "a null archetype is the caller saying nothing, which is its own message: "
-            + stated.getMessage());
+        inHost(wrapper.id, "git", "show", "main:.gitmodules")
+            .contains("path = components/testing-repo/testing-repo"));
   }
 
   /**

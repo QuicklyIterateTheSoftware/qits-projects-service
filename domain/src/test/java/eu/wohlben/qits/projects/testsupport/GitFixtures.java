@@ -83,7 +83,7 @@ public final class GitFixtures {
    * fixture fails a test about the reconcile with a message about the reconcile. The stamp turns
    * that into a rebuild.
    */
-  private static final String STAMP = ".derived-v4";
+  private static final String STAMP = ".derived-v5";
 
   private static void buildDerived(Path dir) {
     Path work = dir.resolve(".build-testing-repo");
@@ -132,8 +132,20 @@ public final class GitFixtures {
     // a forge repository created and never pushed to. Adopting it must yield the project template
     // skeleton.
     emptyBare(dir.resolve("empty-empty.git"), "main");
-    // A backend for the name-derived archetype: the only fixture whose basename carries a role
-    // suffix of the estate's name grammar.
+    // A backend that STATES its kind in its own committed .config/qits/repository.yml — and states
+    // one its name does not suggest (DAEMON under a -javalib name), so a reconcile that read the
+    // name instead of the file could not pass. Committed last, onto master, so no other derived
+    // bare carries it.
+    try {
+      Files.createDirectories(work.resolve(".config/qits"));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    write(
+        work.resolve(".config/qits/repository.yml"),
+        "version: 1\nrepository:\n  main-branch: master\n  archetype: DAEMON\n");
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", "chore: state the repository's archetype");
     pushBare(work, dir.resolve("sample-javalib.git"), "master");
     // A WRAPPER upstream (project slug `qits`) carrying a real .gitmodules: the manifest a whole
     // project is restored from. Its entries are relative, so they fold against this very directory
@@ -151,10 +163,12 @@ public final class GitFixtures {
    * could only have restated it. Five entries, each carrying a case the reconcile has to answer:
    *
    * <ul>
-   *   <li>{@code components/shared-things/submodule-shared} — resolvable, and a NAME carrying no
-   *       role suffix, so the minted row's archetype is null rather than a guess;
-   *   <li>{@code components/samples/sample-javalib} — resolvable, and the one name whose role
-   *       suffix says what kind it is, which is the only derivation of kind there is;
+   *   <li>{@code components/shared-things/submodule-shared} — resolvable, and a repository that
+   *       states no kind in a committed {@code .config/qits/repository.yml}, so the minted row's
+   *       archetype is null rather than a guess;
+   *   <li>{@code components/samples/sample-javalib} — resolvable, and the one repository that
+   *       states its kind ({@code DAEMON}) in its committed {@code repository.yml}, which is what
+   *       the reconcile reads — never the name;
    *   <li>{@code components/grandchild/submodule-grandchild} — a second resolvable entry, so
    *       "every entry gets a row" is more than one row;
    *   <li>{@code vendor/vendored} — <b>not</b> {@code components/<component>/<name>} at all, which

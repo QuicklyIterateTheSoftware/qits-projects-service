@@ -1016,14 +1016,16 @@ names, with a relative url. Three rules follow, and every one of them is enforce
     and moving a submodule between directories is how a component changes kind. The row's
     `component` stays null.
   - `components/<component>/<name>` — the second segment is the row's `component` (V6, an **open
-    set**: no enum, no check constraint). No directory says the kind here, so **an existing row
-    keeps the archetype it has** — the flip must not re-type a live platform's rows — and a row the
-    reconcile mints takes its archetype from the name's role suffix
-    (`RepositoryArchetype.fromRepositoryName`: `-service`, `-daemon`, `-frontend`, `-app`, `-oci`,
-    `-cli`, `-javalib`/`-jslib`), or **null** when the name declares none. Null is deliberate and is the
+    set**: no enum, no check constraint). Neither the path nor the name says the kind (owner ruling
+    2026-11-03, qits-1834): the repository states it in its own committed
+    `.config/qits/repository.yml` (`repository.archetype`), read from its mirror at its main
+    branch (`WrapperReconcileService.committedArchetype`). A row the reconcile mints takes that
+    value, or **null** when none can be read (an adopted row usually has no mirror yet); an existing
+    row is brought in line with a committed value that differs on every pass (said in the line's
+    `warning`), and keeps what it has when nothing is committed — a reconcile never nulls a stated
+    kind, never applies `PROJECT` and never touches the wrapper row. Null is deliberate and is the
     least destructive answer: a null-archetype row is never reported `UNDECLARED`, so it is never
-    put in front of the delete that destroys the repository, while a guessed archetype would be a
-    wrong label nothing in this service can correct.
+    put in front of the delete that destroys the repository.
 
   A **mixed** wrapper is the ordinary state on the way, not an edge case, and both grammars are read
   in one pass. A relative url stays `../<name>.git` however deep the path is — git folds it against
@@ -1041,8 +1043,8 @@ names, with a relative url. Three rules follow, and every one of them is enforce
   `placeableDirectories` (which was called `skeletonDirectories` while that claim was true) are
   **kept in full** — legacy wrappers still mount entries under the six and the reconcile still has
   to read them. `RepositoryArchetypeTemplateSyncTest` holds both halves: the template seeds exactly
-  `components/`, and the role suffixes that README teaches are exactly the ones
-  `fromRepositoryName` reads.
+  `components/`, and that README keeps the role-suffix grammar as guidance for a reader while
+  saying the name decides nothing — the kind is stated in `.config/qits/repository.yml`.
 - **A repository the wrapper does not name is not part of the project.** Write paths refuse it
   (`requireWrapperMembership`), the reconcile reports it `UNDECLARED`, and both listings — the
   project's `GET /projects/{projectId}/repositories` and the global catalogue `GET /repositories`
@@ -1086,10 +1088,8 @@ after it. `RepositoryService.rename` is the whole of it. Five things about it:
   `/git/<project>/<oldName>` resolving, which is what a rename must stop; it would keep the old name
   taken against every other repository in the project; and `nameFor` — which *is* the DTO's `name` —
   would be free to answer either one.
-- **The archetype is re-derived from the new name** (`fromRepositoryName`), because under the
-  component layout the name is what says the kind. A suffix-less new name leaves the stored archetype
-  alone: "the new name says nothing" is not "this repository is nothing", and a nulled archetype is
-  one nothing here could correct.
+- **The archetype is never touched** (qits-1834): a name says nothing about the kind, so a rename
+  neither restamps nor clears it, stated or null.
 - **Refused:** the wrapper (its name is `<slug>-<slug>` and the slug is immutable), an illegal
   name, and a name another repository in the project answers to. Renaming to the name it already has
   is a 200 that writes nothing and announces nothing (`changed: false`).
@@ -1120,11 +1120,12 @@ deploy is the one-time backfill of the git host's index. The revision is what ma
 to repeat: the git host ignores an equal or older one. Delete is unchanged — `DELETE /git/<id>`
 drops the names on the git host too.
 
-**Archetype is optional at creation for the same reason**: `POST …/repositories` reads it off the
-name's role suffix when none is stated (the url's basename for the attach arm), and refuses when
-neither the request nor the name says anything — a guessed kind is the one thing nothing downstream
-could correct. An explicit archetype is obeyed unchanged, which is what keeps the SPA's create form
-working.
+**Archetype is optional at creation, and nothing fills it in** (qits-1834): `POST …/repositories`
+with no archetype creates the repository with a null one — never refused, never read off the name or
+the url's basename. The repository states its kind later in its own `.config/qits/repository.yml`,
+which the wrapper reconcile applies. An explicit archetype is obeyed unchanged (still refused when it
+is `PROJECT` or not a component of its project), which is what keeps the SPA's create form working.
+Clone and adopt likewise store the given archetype or null, never a `SERVICE` default.
 
 ## Archiving a repository (qits-1784)
 

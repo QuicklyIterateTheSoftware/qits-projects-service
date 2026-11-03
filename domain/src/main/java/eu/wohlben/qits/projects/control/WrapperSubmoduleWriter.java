@@ -84,6 +84,7 @@ public class WrapperSubmoduleWriter {
    * <p>Idempotent: an entry that is already exactly this one leaves the wrapper untouched and
    * returns the path, so a retry after a failed request is a no-op rather than a second commit.
    *
+   * @param archetype the stated kind, or null when nobody has stated one
    * @param component the component to mount under, or null to mount under the repository's own name
    * @return the path the entry is mounted at
    */
@@ -93,16 +94,11 @@ public class WrapperSubmoduleWriter {
       RepositoryArchetype archetype,
       String component,
       String childMainHeadSha) {
-    // Two refusals in one arm, because this is a create path and both are the caller's bug rather
-    // than a state to handle: an archetype that is not a component of a project cannot be a member
-    // of one, and a null archetype is a caller that said nothing where it has to say something.
-    // Note the placement no longer needs the archetype at all — directoryFor does not read it — so
-    // this guard is about membership and nothing else.
-    if (archetype == null) {
-      throw new BadRequestException(
-          "A repository added to the wrapper must state an archetype; this one states none.");
-    }
-    if (!archetype.isComponentOfItsProject()) {
+    // A stated archetype that is not a component of a project cannot be a member of one. A null one
+    // passes: nobody has stated the kind yet, and the repository may state it later in its own
+    // .config/qits/repository.yml. The placement does not read the archetype at all — directoryFor
+    // does not — so this guard is about membership and nothing else.
+    if (archetype != null && !archetype.isComponentOfItsProject()) {
       throw new BadRequestException(
           "Archetype "
               + archetype

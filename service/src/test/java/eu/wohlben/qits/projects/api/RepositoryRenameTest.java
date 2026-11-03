@@ -24,9 +24,9 @@ import org.junit.jupiter.api.Test;
  * changing a repository's public identity is on this platform.
  *
  * <p>What these cases are really about, in one sentence each: the new name is the coordinate and the
- * old one stops being one; the NAME is what says the kind, so a suffixed rename restamps the
- * archetype and a suffix-less one leaves it alone; a rename is announced exactly once and only when
- * something changed; and three things are refused outright.
+ * old one stops being one; a name says nothing about the kind, so a rename never touches the
+ * archetype — stated or null; a rename is announced exactly once and only when something changed;
+ * and three things are refused outright.
  *
  * <p><b>The bare is never asked to move</b>: it is keyed by the row's opaque id, so the {@code
  * by-name} resolution below proves the rename took effect for every caller that still reads it.
@@ -144,33 +144,29 @@ public class RepositoryRenameTest {
         .body("repositoryId", equalTo(vacating));
   }
 
-  // --- the name is the kind ---
+  // --- a name decides nothing about the kind ---
 
   /**
-   * The user's ruling, in one assertion: archetype is determined by name. A rename onto a name that
-   * carries a role suffix restamps the row, whatever it was registered as before.
+   * The owner's ruling (2026-11-03), in one assertion per rename: a name never says the kind, so a
+   * rename onto a name that carries a role suffix leaves the stored archetype exactly as it was.
    */
   @Test
-  public void aSuffixedNameRestampsTheArchetype() {
-    String projectId = createProject("Rename Restamps");
+  public void aRenameKeepsTheArchetypeWhateverTheNewNameSuggests() {
+    String projectId = createProject("Rename Keeps Kind");
     String repoId = createRepository(projectId, "mailer", RepositoryArchetype.SERVICE);
 
     rename(repoId, "mailer-daemon")
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("repository.archetype", equalTo("DAEMON"));
+        .body("repository.archetype", equalTo("SERVICE"));
 
     rename(repoId, "mailer-jslib")
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("repository.archetype", equalTo("LIBRARY"));
+        .body("repository.archetype", equalTo("SERVICE"));
   }
 
-  /**
-   * The other half, and the one that has to be deliberate: a name that declares no role says
-   * nothing about the kind, which is a different statement from "this repository is nothing". The
-   * stored archetype survives, because nothing here could correct a nulled one afterwards.
-   */
+  /** A suffix-less new name leaves the stored archetype alone too — the same rule, the other way. */
   @Test
   public void aSuffixLessNameLeavesTheStoredArchetypeAlone() {
     String projectId = createProject("Rename Keeps");
@@ -181,6 +177,19 @@ public class RepositoryRenameTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.name", equalTo("shipping"))
         .body("repository.archetype", equalTo("FRONTEND"));
+  }
+
+  /** And a row nobody stated a kind for stays without one, whatever the new name carries. */
+  @Test
+  public void aRenameNeverFillsInAKindNobodyStated() {
+    String projectId = createProject("Rename Keeps Null");
+    String repoId = createRepository(projectId, "courier", null);
+
+    rename(repoId, "courier-daemon")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repository.name", equalTo("courier-daemon"))
+        .body("repository.archetype", nullValue());
   }
 
   // --- the announcement ---

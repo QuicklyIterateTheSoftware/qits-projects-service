@@ -125,13 +125,13 @@ public class SelfSeedServiceTest {
             + " whose path is not components/<component>/<name>");
 
     assertEquals(
-        RepositoryArchetype.LIBRARY,
+        RepositoryArchetype.DAEMON,
         repos.get("sample-javalib").archetype,
-        "the name's role suffix is what says the kind, and it is the only thing that does");
+        "the repository's committed repository.yml is what says the kind — never its name");
     assertEquals(
         null,
         repos.get("submodule-shared").archetype,
-        "this name declares no role, so the seed stores the null it honestly is rather than a"
+        "this repository states no kind, so the seed stores the null it honestly is rather than a"
             + " guess nothing here could correct afterwards");
     assertEquals("shared-things", repos.get("submodule-shared").component, "and its component");
   }

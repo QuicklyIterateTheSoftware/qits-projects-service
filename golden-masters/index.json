@@ -1589,8 +1589,7 @@
           "body": {
             "repositoryId": "{repositoryId}",
             "name": "{repoName}",
-            "url": "https://forge.example.test/contract/contract-events-service.git",
-            "archetype": "SERVICE"
+            "url": "https://forge.example.test/contract/contract-events-service.git"
           },
           "status": 200,
           "file": "a-project-and-an-unadopted-repository-on-the-git-host/adoptRepository.json",
@@ -1667,7 +1666,8 @@
           "path": "/projects/api/projects/{projectId}/repositories",
           "body": {
             "name": "contract-service",
-            "component": "contract"
+            "component": "contract",
+            "archetype": "SERVICE"
           },
           "status": 200,
           "file": "a-project-to-create-a-repository-in/createProjectRepository.json",

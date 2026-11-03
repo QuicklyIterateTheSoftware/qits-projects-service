@@ -1,19 +1,17 @@
 package eu.wohlben.qits.projects.entity;
 
-import java.util.Map;
-import java.util.Set;
-
 /**
  * What kind of part of its project a repository is.
  *
- * <p><b>The name says the kind, and nothing else does.</b> A wrapper mounts every submodule at
- * {@code components/<component>/<name>}, where the path names the <em>component</em> — see {@link
- * eu.wohlben.qits.projects.control.WrapperPath} — so a directory decides nothing about taxonomy any
- * more. {@link #fromRepositoryName} is the single derivation of kind, over the role suffix of the
- * name grammar ({@code <component>[-<modifier>]-<role>[-<tech>]}): {@code qits-ci-service} is a
- * {@link #SERVICE}, {@code qits-eventstream-javalib} a {@link #LIBRARY}. It answers null for a name
- * carrying no role suffix, and null is what the reconcile stores rather than a guess, since nothing
- * in this service can correct a wrong archetype afterwards.
+ * <p><b>The kind is stated, never derived from the name</b> (owner ruling 2026-11-03). It is said
+ * either by whoever creates the repository — the create door's {@code archetype} — or by the
+ * repository itself, in its own committed {@code .config/qits/repository.yml} as {@code repository:
+ * { archetype: DAEMON }}, which the wrapper reconcile reads and applies. The name grammar ({@code
+ * <component>[-<modifier>]-<role>[-<tech>]}) tells a <em>reader</em> what a repository is; it
+ * decides nothing here. A wrapper mounts every submodule at {@code components/<component>/<name>},
+ * where the path names the <em>component</em> — see {@link
+ * eu.wohlben.qits.projects.control.WrapperPath} — so no directory decides it either. A null
+ * archetype means nobody has stated one yet, and it is stored as null rather than guessed.
  *
  * <p>The <b>archetype layout</b> — a mount directory that <em>was</em> the kind, {@code services/},
  * {@code daemons/}, {@code libs/}, {@code frontends/}, {@code cli/}, {@code images/} — is retired
@@ -39,7 +37,7 @@ import java.util.Set;
  * through release A as deprecated aliases so Hibernate could read rows written before the rework;
  * the H2 lineage's V4 retired the last of those rows and they are gone. {@link #APP} is the tenth,
  * added for a standalone web application — see its own doc for why it is not a {@link #FRONTEND}.
- * {@link #AGENT_CONFIG} is the eleventh (qits-1382), and the one value no name derives.
+ * {@link #AGENT_CONFIG} is the eleventh (qits-1382).
  *
  * <p>Adding a value here also requires a Flyway migration: {@code Repository.archetype} carries a DB
  * check constraint over the value set, written <b>inline and named</b> in {@code
@@ -85,10 +83,9 @@ public enum RepositoryArchetype {
    * (qits-1382).
    *
    * <p><b>Platform state, not software</b>, and every exemption follows from that: no {@code
-   * .gitmodules} entry in the wrapper, no backup twin, no CI recipe, no artifact. It carries no role
-   * suffix either, so {@link #fromRepositoryName} never answers it — the row is minted only by {@code
-   * POST …/agent-config-repository}, which states the kind outright, and the ordinary create door
-   * refuses it like every other value that is not a component of its project.
+   * .gitmodules} entry in the wrapper, no backup twin, no CI recipe, no artifact. The row is minted
+   * only by {@code POST …/agent-config-repository}, which states the kind outright; the ordinary
+   * create door refuses it like every other value that is not a component of its project.
    */
   AGENT_CONFIG(false);
 
@@ -108,58 +105,5 @@ public enum RepositoryArchetype {
    */
   public boolean isComponentOfItsProject() {
     return componentOfItsProject;
-  }
-
-  /**
-   * The role suffixes of the name grammar, mapped to the archetype each one declares. Insertion
-   * order is the matching order; no suffix is a suffix of another, so the order is documentation
-   * rather than precedence.
-   */
-  private static final Map<String, RepositoryArchetype> ROLE_SUFFIXES =
-      Map.of(
-          "-service", SERVICE,
-          "-daemon", DAEMON,
-          "-frontend", FRONTEND,
-          "-app", APP,
-          "-oci", IMAGE,
-          "-cli", CLI,
-          "-javalib", LIBRARY,
-          "-jslib", LIBRARY);
-
-  /**
-   * Every role suffix {@link #fromRepositoryName} reads, in no particular order — the set the
-   * project template's {@code components/README.md} teaches, and which {@code
-   * RepositoryArchetypeTemplateSyncTest} holds against that file in both directions. It is also what
-   * the create flow's refusal names when neither the request nor the name says what kind of
-   * component it is.
-   */
-  public static Set<String> roleSuffixes() {
-    return ROLE_SUFFIXES.keySet();
-  }
-
-  /**
-   * The archetype a repository <em>name</em> declares through its role suffix, or null when it
-   * declares none.
-   *
-   * <p>This is the only derivation of kind there is: {@code qits-ci-service} is a {@link #SERVICE},
-   * {@code qits-eventstream-javalib} a {@link #LIBRARY}, {@code qits-workspace-oci} an {@link
-   * #IMAGE}. A tier modifier sits <em>before</em> the role ({@code
-   * qits-deployments-platform-service}), so the suffix still decides.
-   *
-   * <p><b>Null is the answer for every name the renames have not reached</b> — {@code qits-ci},
-   * {@code qits-spa-ci} — and it is a real answer, not a failure: the reconcile only ever asks this
-   * for a row it is creating, and it stores the null rather than inventing a kind.
-   */
-  public static RepositoryArchetype fromRepositoryName(String name) {
-    if (name == null || name.isBlank()) {
-      return null;
-    }
-    String trimmed = name.trim().toLowerCase(java.util.Locale.ROOT);
-    for (Map.Entry<String, RepositoryArchetype> role : ROLE_SUFFIXES.entrySet()) {
-      if (trimmed.endsWith(role.getKey()) && trimmed.length() > role.getKey().length()) {
-        return role.getValue();
-      }
-    }
-    return null;
   }
 }

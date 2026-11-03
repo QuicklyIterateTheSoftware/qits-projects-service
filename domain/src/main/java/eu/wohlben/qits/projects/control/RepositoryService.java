@@ -236,7 +236,9 @@ public class RepositoryService {
     // (project, name) and lives in the alias table below.
     repo.id = UUID.randomUUID().toString();
     repo.url = trimmedUrl;
-    repo.archetype = archetype != null ? archetype : RepositoryArchetype.SERVICE;
+    // The stated kind, or none: a null archetype is "nobody has stated one yet", never defaulted
+    // and never read off the name (owner ruling 2026-11-03).
+    repo.archetype = archetype;
     repo.project = project;
     repositoryRepository.persist(repo);
 
@@ -404,13 +406,16 @@ public class RepositoryService {
    * nowhere. A taken or invalid name is a hard failure instead — see {@link #requireCreatableName}.
    * The row's id is a minted UUID, which is also the id the git host stores it under.
    *
+   * <p>{@code archetype} may be null — nobody has stated the kind yet — and is stored as given; a
+   * stated kind that is not a component of its project is refused.
+   *
    * <p>Adding it to the wrapper is the caller's next step and deliberately not part of this
    * transaction — see {@code ProjectService.createRepository}.
    */
   @Transactional
   public Repository createBlankRepository(
       Project project, String name, RepositoryArchetype archetype) {
-    if (archetype == null || !archetype.isComponentOfItsProject()) {
+    if (archetype != null && !archetype.isComponentOfItsProject()) {
       throw new BadRequestException(
           "Archetype "
               + archetype
@@ -939,7 +944,8 @@ public class RepositoryService {
     Repository repo = new Repository();
     repo.id = repoId;
     repo.url = trimmedUrl;
-    repo.archetype = archetype != null ? archetype : RepositoryArchetype.SERVICE;
+    // The stated kind, or none — never defaulted (owner ruling 2026-11-03).
+    repo.archetype = archetype;
     repo.project = project;
     // Read from what the host reports rather than assumed: the bootstrap's `main` is a convention,
     // and a repository whose host-side default branch says otherwise should say so too.
@@ -2012,11 +2018,9 @@ public class RepositoryService {
    * project; and it would leave {@code nameFor} — which is what the DTO's {@code name} is — free to
    * answer either one, so the row would have no name a client could rely on.
    *
-   * <p><b>The archetype is re-derived from the new name</b>, because under the component layout the
-   * name is what says the kind ({@link RepositoryArchetype#fromRepositoryName}). A rename to a
-   * suffixed name restamps the row; a rename to a name that declares no role leaves the stored
-   * archetype exactly as it was, since "the new name says nothing" is not the same statement as
-   * "this repository is nothing", and nothing here could correct a nulled archetype afterwards.
+   * <p><b>The archetype is left exactly as it was.</b> A name says nothing about the kind (owner
+   * ruling 2026-11-03): the kind is stated at creation or in the repository's own committed {@code
+   * .config/qits/repository.yml}, so a rename neither restamps nor clears it.
    *
    * <p><b>What is refused:</b> the project's wrapper (its name is derived from the project's slug,
    * which is immutable — {@code <slug>-<slug>} — so renaming it would leave the wrapper addressable
@@ -2063,11 +2067,6 @@ public class RepositoryService {
 
               repositoryNameRepository.forgetNames(repo);
               repositoryNameRepository.ensureAlias(repo.project, trimmed, repo);
-
-              RepositoryArchetype declared = RepositoryArchetype.fromRepositoryName(trimmed);
-              if (declared != null) {
-                repo.archetype = declared;
-              }
 
               // Flush last: Hibernate would otherwise put these writes in the commit phase, which
               // is the one round trip inNewTx cannot place and therefore never retries.
@@ -2187,8 +2186,8 @@ public class RepositoryService {
    * nothing else; a listing that carries the public identity is what lets that route be locked to
    * this service alone. qits-maintenance's release-train reader asks too, and it is why every row
    * now carries its {@code archetype} — see {@link RepositoryCoordinatesDto}. The column is read
-   * straight off the row, so a row whose name declares no role suffix answers null here rather than
-   * a guess.
+   * straight off the row, so a row nobody has stated a kind for answers null here rather than a
+   * guess.
    *
    * <p><b>A row with no alias is listed with a null name, never dropped.</b> An unnamed repository
    * is a fact about this service's state and the caller is the one that decides to skip it; omitting

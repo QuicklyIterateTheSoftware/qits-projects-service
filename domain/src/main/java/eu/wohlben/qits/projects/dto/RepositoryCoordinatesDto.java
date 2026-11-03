@@ -16,10 +16,10 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  * reasoning predates qits-maintenance's release-train reader, which decides what a train does with a
  * repository from its kind — a library is bumped into its consumers, a frontend follows its shared
  * library, a service is released on its own — so it needs every repository's archetype before it
- * picks any of them. Deriving it from the name's role suffix at the far end would be this service's
- * {@link RepositoryArchetype#fromRepositoryName} reimplemented in another repository, free to drift
- * from the stored column; asking {@code GET /repositories/{repoId}} once per row would be a request
- * per repository to learn one enum.
+ * picks any of them. Reading the kind at the far end would be a second reader of what this service
+ * stores (the stated kind, never one derived from the name), free to drift from the column; asking
+ * {@code GET /repositories/{repoId}} once per row would be a request per repository to learn one
+ * enum.
  *
  * @param id the opaque row id — the storage key this service and qits-githost share. Never shown to
  *     a person and never an address.
@@ -29,9 +29,9 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  *     and a caller that cannot address it skips it. Omitting it would hide the row instead.
  * @param mainBranch the branch a caller reads by default
  * @param archetype what kind of component this is, serialized <b>by name</b> ({@code SERVICE},
- *     {@code LIBRARY}, …). <b>Null, and the key may be absent</b>, for a row whose name declares no
- *     role suffix — the reconcile stores null rather than guessing, and a guessed kind is the one
- *     thing nothing downstream could correct. A consumer parses it leniently and treats an absent
+ *     {@code LIBRARY}, …). <b>Null, and the key may be absent</b>, for a row nobody has stated a kind
+ *     for — neither its creator nor its own {@code .config/qits/repository.yml} — and this service
+ *     stores null rather than guessing. A consumer parses it leniently and treats an absent
  *     key exactly as a null one; it must never key a lookup on it without an answer for the null.
  * @param declared whether the project's wrapper names this repository — the same reading as {@code
  *     declared} on {@code GET /projects/{projectId}/repositories}, from the one rule {@code

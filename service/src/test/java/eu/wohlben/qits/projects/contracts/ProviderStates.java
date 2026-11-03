@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.BackupOutcome;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecord;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecordType;
 import eu.wohlben.qits.projects.entity.CommitBuildStatus;
@@ -927,8 +928,8 @@ public class ProviderStates {
     String second = token();
     Project qits = project("qits", "qits-" + first, TWO_PROJECTS_EXIST);
     Project telemetry = project("telemetry", "telemetry-" + second, TWO_PROJECTS_EXIST);
-    projectService.createRepository(qits.id, null, "qits-ci-service", null, "qits-ci");
-    projectService.createRepository(qits.id, null, "qits-ci-frontend", null, "qits-ci");
+    projectService.createRepository(qits.id, null, "qits-ci-service", RepositoryArchetype.SERVICE, "qits-ci");
+    projectService.createRepository(qits.id, null, "qits-ci-frontend", RepositoryArchetype.FRONTEND, "qits-ci");
     String epic = create(Archetype.EPIC, qits, EntityWrite.epic("Unified SPA", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String ticket = ticket(qits, "Picker shows every project");
     ticket(qits, "Cards load their lines lazily");
@@ -960,7 +961,7 @@ public class ProviderStates {
   private Setup aProjectWithOneRepository() {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_ONE_REPOSITORY);
-    projectService.createRepository(project.id, null, "contract-service", null);
+    projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -973,7 +974,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_3_REPOSITORIES);
     for (String name : THREE_REPOSITORIES) {
-      projectService.createRepository(project.id, null, name, null);
+      projectService.createRepository(project.id, null, name, statedArchetype(name));
     }
     return new Setup(params("projectId", project.id), List.of(token));
   }
@@ -981,7 +982,7 @@ public class ProviderStates {
   private Setup aRepositoryExists() {
     String token = token();
     Project project = project(token, A_REPOSITORY_EXISTS);
-    var created = projectService.createRepository(project.id, null, "contract-service", null);
+    var created = projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE);
     return new Setup(
         params(
             "projectId", project.id,
@@ -2010,11 +2011,11 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, state);
     String service =
-        projectService.createRepository(project.id, null, "billing-service", null, "billing")
+        projectService.createRepository(project.id, null, "billing-service", RepositoryArchetype.SERVICE, "billing")
             .repository()
             .id;
     String frontend =
-        projectService.createRepository(project.id, null, "billing-frontend", null, "billing")
+        projectService.createRepository(project.id, null, "billing-frontend", RepositoryArchetype.FRONTEND, "billing")
             .repository()
             .id;
 
@@ -2323,8 +2324,31 @@ public class ProviderStates {
   }
 
   private String repository(Project project, String name) {
-    return projectService.createRepository(project.id, null, name, null).repository().id;
+    return projectService
+        .createRepository(project.id, null, name, statedArchetype(name))
+        .repository()
+        .id;
   }
+
+  /**
+   * The kind a state states for the repository it creates. A create no longer reads the kind off
+   * the name (qits-1834), so every state says it outright — and says what the published golden
+   * masters already record for these names, which is why this is a table and not a default.
+   */
+  private static RepositoryArchetype statedArchetype(String name) {
+    RepositoryArchetype stated = STATED_ARCHETYPES.get(name);
+    if (stated == null) {
+      throw new IllegalArgumentException("No archetype is stated for '" + name + "'");
+    }
+    return stated;
+  }
+
+  private static final Map<String, RepositoryArchetype> STATED_ARCHETYPES =
+      Map.of(
+          "contract-service", RepositoryArchetype.SERVICE,
+          "contract-frontend", RepositoryArchetype.FRONTEND,
+          "contract-daemon", RepositoryArchetype.DAEMON,
+          "billing-daemon", RepositoryArchetype.DAEMON);
 
   private String node(Archetype archetype, String parent, EntityWrite write) {
     return work.create(archetype, parent, write, SEEDER).entity().id;
@@ -2425,9 +2449,9 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_PENDING_RELEASE_REQUESTS);
     String service =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     String frontend =
-        projectService.createRepository(project.id, null, "contract-frontend", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-frontend", RepositoryArchetype.FRONTEND).repository().id;
     request(project, service, "contract-service", "Finalized release", State.FINALIZED, 1, null);
     request(project, frontend, "contract-frontend", "Cannot fold", State.CONFLICTED, 2, null);
     request(project, frontend, "contract-frontend", "Rejected by CI", State.REJECTED, 3, "FAILURE");
@@ -2441,7 +2465,7 @@ public class ProviderStates {
   private Setup aProjectWithNoReleaseRequests() {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_NO_RELEASE_REQUESTS);
-    projectService.createRepository(project.id, null, "contract-service", null);
+    projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -2460,7 +2484,7 @@ public class ProviderStates {
     backedUp(
         project, "contract-frontend", "contract", BackupOutcome.FAILED, "the forge refused the push");
     backedUp(project, "billing-daemon", "billing", BackupOutcome.AUTH_REQUIRED, null);
-    projectService.createRepository(project.id, null, "billing-javalib", null, "billing");
+    projectService.createRepository(project.id, null, "billing-javalib", RepositoryArchetype.LIBRARY, "billing");
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -2468,7 +2492,10 @@ public class ProviderStates {
   private void backedUp(
       Project project, String name, String component, BackupOutcome outcome, String detail) {
     String id =
-        projectService.createRepository(project.id, null, name, null, component).repository().id;
+        projectService
+            .createRepository(project.id, null, name, statedArchetype(name), component)
+            .repository()
+            .id;
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -2526,11 +2553,11 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, state);
     String serviceId =
-        projectService.createRepository(project.id, null, "contract-service", null, "contract")
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE, "contract")
             .repository()
             .id;
     String estateId =
-        projectService.createRepository(project.id, null, "contract-suite-app", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-suite-app", RepositoryArchetype.APP).repository().id;
     seededRepos.add(serviceId);
     seededRepos.add(estateId);
     ServiceShas service;
@@ -3047,15 +3074,15 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE);
     String service =
-        projectService.createRepository(project.id, null, "contract-service", null, "contract")
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE, "contract")
             .repository()
             .id;
     String frontend =
-        projectService.createRepository(project.id, null, "contract-frontend", null, "contract")
+        projectService.createRepository(project.id, null, "contract-frontend", RepositoryArchetype.FRONTEND, "contract")
             .repository()
             .id;
     String estate =
-        projectService.createRepository(project.id, null, "contract-suite-app", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-suite-app", RepositoryArchetype.APP).repository().id;
     seededRepos.add(service);
     seededRepos.add(frontend);
     seededRepos.add(estate);
@@ -3223,7 +3250,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST);
     String repoId =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     seededRepos.add(repoId);
     String active =
         releaseRow(
@@ -3659,7 +3686,7 @@ public class ProviderStates {
   /** contract-service, the merger scripted and a CI run in flight; see the two states above. */
   private String releasableRepository(Project project) {
     String repoId =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     requestRepos.add(repoId);
     mergerTouched = true;
     merger
@@ -3681,7 +3708,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, state);
     String repoId =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     seededRepos.add(repoId);
     String merged =
         releaseRow(
@@ -3711,7 +3738,7 @@ public class ProviderStates {
     Project project =
         project(token, A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH);
     String repoId =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     seededRepos.add(repoId);
     String successor =
         releaseRow(
@@ -3801,7 +3828,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS);
     String repoId =
-        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+        projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE).repository().id;
     try {
       SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
       for (int i = 1; i <= 6; i++) {

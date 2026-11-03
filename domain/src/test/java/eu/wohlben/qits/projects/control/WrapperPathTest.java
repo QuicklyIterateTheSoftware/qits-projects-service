@@ -3,7 +3,6 @@ package eu.wohlben.qits.projects.control;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,38 +51,5 @@ public class WrapperPathTest {
             + " it parses as the perfectly good 'components/a/b'");
     assertNull(WrapperPath.parse("  "));
     assertNull(WrapperPath.parse(null));
-  }
-
-  @Test
-  public void theRoleSuffixOfANameIsTheOnlyKindDerivationThereIs() {
-    assertEquals(
-        RepositoryArchetype.SERVICE, RepositoryArchetype.fromRepositoryName("qits-ci-service"));
-    assertEquals(
-        RepositoryArchetype.SERVICE,
-        RepositoryArchetype.fromRepositoryName("qits-deployments-platform-service"),
-        "a tier modifier sits before the role, so the suffix still decides");
-    assertEquals(
-        RepositoryArchetype.DAEMON, RepositoryArchetype.fromRepositoryName("qits-workspace-daemon"));
-    assertEquals(
-        RepositoryArchetype.FRONTEND, RepositoryArchetype.fromRepositoryName("qits-ci-frontend"));
-    assertEquals(
-        RepositoryArchetype.IMAGE, RepositoryArchetype.fromRepositoryName("qits-workspace-oci"));
-    assertEquals(RepositoryArchetype.CLI, RepositoryArchetype.fromRepositoryName("qits-bootstrap-cli"));
-    assertEquals(
-        RepositoryArchetype.LIBRARY,
-        RepositoryArchetype.fromRepositoryName("qits-eventstream-javalib"));
-    assertEquals(
-        RepositoryArchetype.LIBRARY,
-        RepositoryArchetype.fromRepositoryName("qits-ui-components-jslib"));
-  }
-
-  /** Every name the renames have not reached, which is still most of them. */
-  @Test
-  public void aNameWithNoRoleSuffixDeclaresNoKind() {
-    assertNull(RepositoryArchetype.fromRepositoryName("qits-ci"));
-    assertNull(RepositoryArchetype.fromRepositoryName("qits-spa-ci"));
-    assertNull(RepositoryArchetype.fromRepositoryName("cli"), "a bare role word is not a suffix");
-    assertNull(RepositoryArchetype.fromRepositoryName(""));
-    assertNull(RepositoryArchetype.fromRepositoryName(null));
   }
 }

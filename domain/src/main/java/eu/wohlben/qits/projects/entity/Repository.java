@@ -112,8 +112,8 @@ public class Repository extends PanacheEntityBase implements CausedRow {
    *
    * <p><b>Read-only to the entity on purpose</b> ({@code insertable = false, updatable = false}):
    * the increment is a bulk statement that never touches a loaded instance, so a writable mapping
-   * would let the dirty flush of a row loaded before the bump — a rename restamping its archetype, a
-   * reconcile setting the component — write the stale value straight back. Read it from a fresh
+   * would let the dirty flush of a row loaded before the bump — a reconcile applying a committed
+   * archetype or setting the component — write the stale value straight back. Read it from a fresh
    * persistence context.
    */
   @Column(name = "names_revision", insertable = false, updatable = false)

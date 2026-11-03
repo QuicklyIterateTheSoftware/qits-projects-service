@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.notNullValue;
 
 import eu.wohlben.qits.projects.control.GitHostRepositories;
@@ -108,6 +109,27 @@ public class ProjectRepositoryAdoptTest {
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repositoryId", equalTo(repositoryId));
+  }
+
+  /**
+   * The bootstrap no longer states a kind (qits-1834): an adoption without one is admitted and the
+   * row carries a null archetype — never a {@code SERVICE} default, never one read off the name.
+   */
+  @Test
+  public void anAdoptionWithNoArchetypeStoresNone() {
+    String projectId = createProject("Adopt No Kind");
+    String repositoryId = seededBare();
+
+    machine()
+        .body(
+            new ProjectController.AdoptProjectRepositoryRequest(
+                repositoryId, "qits-courier-service", null, null))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/repositories/adopt")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repository.id", equalTo(repositoryId))
+        .body("repository.archetype", nullValue());
   }
 
   @Test
