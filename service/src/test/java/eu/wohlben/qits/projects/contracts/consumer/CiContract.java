@@ -9,6 +9,7 @@ import eu.wohlben.qits.projects.releasehost.HttpPublishRuns;
 import eu.wohlben.qits.projects.releasehost.HttpQaRunCancellations;
 import eu.wohlben.qits.projects.releasehost.HttpReleaseDecisions;
 import eu.wohlben.qits.projects.releasehost.IdpCiBearer;
+import eu.wohlben.qits.projects.releasehost.TestCiBearers;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * <b>What qits-projects asks qits-ci</b> (ticket qits-1149): the release record, the release
  * phase, the active runs, one run's lineage, and the two asks a release request makes of its runs.
- * Every client here calls with {@link IdpCiBearer}, which is off in a test, so the request carries
- * the header identity instead; neither is part of the contract.
+ * Every client here calls with an {@link IdpCiBearer} that presents a fixed machine token — the only
+ * credential these hops send (qits-1332); it is not part of the contract.
  */
 final class CiContract {
 
@@ -30,7 +31,7 @@ final class CiContract {
   private CiContract() {}
 
   private static <T> T ci(T client, String base) {
-    return Fields.with(client, "ciUrl", Optional.of(base), "bearer", new IdpCiBearer());
+    return Fields.with(client, "ciUrl", Optional.of(base), "bearer", TestCiBearers.machine());
   }
 
   private static ConsumerRow row(

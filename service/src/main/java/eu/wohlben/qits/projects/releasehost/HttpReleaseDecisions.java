@@ -24,10 +24,10 @@ import org.jboss.logging.Logger;
  * /ci/api/repositories/{repoId}/releases/{version}/artifacts}, answering {@code
  * {"repository","version","artifacts":[{"type","name","publish","decision","unchangedSince",…}]}}.
  * Built exactly like {@link HttpPublishRuns}: the same address ({@code
- * qits.projects.release-requests.ci-url}), the same credential ({@link IdpCiBearer}, else the
- * forwarded pair) and the same timeouts.
+ * qits.projects.release-requests.ci-url}), the same credential ({@link IdpCiBearer} alone, failing
+ * closed without it) and the same timeouts.
  *
- * <p><b>Every failure is a sentence and never an empty record.</b> An unset address, nobody
+ * <p><b>Every failure is a sentence and never an empty record.</b> An unset address, no bearer, nobody
  * listening, any non-200, a body without an {@code artifacts} list or an entry without a {@code
  * type}, {@code name} and {@code decision} — each answers {@link ReleaseDecisions.Answer#failed}.
  * An empty list is qits-ci saying nothing was owed at that version, and an outage read as that
@@ -78,11 +78,12 @@ public class HttpReleaseDecisions implements ReleaseDecisions {
                   + "/artifacts");
       HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(3)).GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not reading qits-ci's release record of %s at %s: %s", repoId, version,
+            IdpCiBearer.MISSING);
+        return Answer.failed(IdpCiBearer.MISSING);
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() != 200) {

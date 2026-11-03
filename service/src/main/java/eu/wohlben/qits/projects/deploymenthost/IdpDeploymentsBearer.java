@@ -15,18 +15,22 @@ import org.jboss.logging.Logger;
  * sibling on the same {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4), asking the
  * one audience this platform has, {@code qits-platform}, and empty on the same terms.
  *
- * <p>A class of its own rather than an injection of the qits-ci one, because a bearer class here is
- * where its far side's posture is written down and the two postures differ. {@link
- * HttpDeploymentRequests} falls back to the forwarded {@code X-Qits-*} pair when this is empty, the
- * way every read hop in this service does; {@link HttpDeploymentRedeploys} <b>does not</b>, and the
- * reason is the far side's door rather than a preference — see that class.
+ * <p>Both hops to qits-deployments hold it — {@link HttpDeploymentRequests} and {@link
+ * HttpDeploymentRedeploys} — and it is the only credential they send (owner ruling 2026-10-18, epic
+ * qits-543: no forwarded {@code X-Qits-*} pair beside it or instead of it). Both doors admit {@code
+ * qits:system}.
  *
- * <p><b>Empty is a supported answer and the shipped one.</b> With {@code
- * quarkus.oidc-client.qits.client-enabled} false — the default, and any no-idp topology — this
- * process holds no secret and can authenticate to nothing.
+ * <p><b>Empty means the hop does not call.</b> With {@code quarkus.oidc-client.qits.client-enabled}
+ * false — the default, and any no-idp topology — this process holds no secret and can authenticate
+ * to nothing, so each hop fails closed, logs {@link #MISSING} and answers its own failure contract.
  */
 @ApplicationScoped
 public class IdpDeploymentsBearer {
+
+  /** What a hop logs when it has no bearer to present and therefore does not call. */
+  public static final String MISSING =
+      "no machine bearer for qits-deployments: the named OIDC client quarkus.oidc-client.qits is"
+          + " disabled or minted no token, and this call is never sent without one";
 
   private static final Logger LOG = Logger.getLogger(IdpDeploymentsBearer.class);
   private static final Duration TOKEN_TIMEOUT = Duration.ofSeconds(5);

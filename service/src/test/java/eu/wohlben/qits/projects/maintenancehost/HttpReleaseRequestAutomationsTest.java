@@ -309,17 +309,33 @@ class HttpReleaseRequestAutomationsTest {
     assertTrue(answer.automations().isEmpty(), "no kind applies, which releases as before");
   }
 
-  /** No bearer is not a reason to stay silent: the fallback is the forwarded pair, as next door. */
+  /**
+   * No bearer fails closed (qits-1332): nothing is sent — never the forwarded pair — the trigger and
+   * the read are "could not ask", and the re-run is unreachable naming the missing client.
+   */
   @Test
-  void withNoBearerItAsksWithTheForwardedHeaderPair() throws Exception {
+  void withNoBearerItAsksNobody() throws Exception {
+    String base = startServer();
+    HttpReleaseRequestAutomations port = against(base, Optional.empty());
+
+    assertEquals(Optional.empty(), trigger(port, null));
+    assertEquals(Optional.empty(), port.status("qits-landing-app", "rr-1", FOLD));
+    ReleaseRequestAutomations.Run run = port.rerun("qits-landing-app", "rr-1", "screenshot-baselines");
+
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
+    assertEquals(ReleaseRequestAutomations.Run.unreachable(MaintenanceBearer.MISSING), run);
+  }
+
+  @Test
+  void theBearerTravelsAloneWithNoForwardedPair() throws Exception {
     String base = startServer();
 
-    assertTrue(trigger(against(base, Optional.empty()), null).isPresent());
+    trigger(against(base), null);
 
     Received request = received.get(0);
-    assertNull(request.auth(), "no credential means no Authorization header at all");
-    assertEquals("qits-projects", request.user());
-    assertEquals("qits:system", request.roles());
+    assertEquals("Bearer machine-token", request.auth());
+    assertNull(request.user());
+    assertNull(request.roles());
   }
 
   @Test

@@ -29,26 +29,22 @@ import org.jboss.logging.Logger;
  * rather than swallowed. Nothing is retired and nothing is invented: the rerun re-asks the same
  * question the release asked.
  *
- * <h2>The credential, which is {@link HttpDeploymentRequests}' reversed</h2>
+ * <h2>The credential</h2>
  *
- * <p><b>The machine bearer is what this door wants, and the forwarded pair is the fallback.</b> The
- * intake is {@code @RolesAllowed({"qits:system"})} plus a machine-auth check, and {@code qits:system}
- * is exactly what a service client of this platform carries — so the bearer is the right caller here
- * where it is the wrong one for the listing next door, which wants {@code qits:admin}/{@code
- * qits:agent}. Same service, same address, two doors, two callers. That is the whole reason these are
- * two classes rather than two methods, on top of the failure contracts being opposite.
- *
- * <p>The forwarded pair is sent when the named client is off, which is the shipped default and any
- * no-idp topology — and it is a pair the far side accepts <b>only while its own machine-auth gate is
- * off</b>, which is the same topology. Where that gate is on and this service holds no credential,
- * the far side refuses and the refusal reaches the person who pressed the button, which is the
- * correct outcome and the point of the contract below.
+ * <p><b>The {@code qits} named client's machine bearer ({@link IdpDeploymentsBearer}) and nothing
+ * else.</b> The intake is {@code @RolesAllowed({"qits:system"})} plus a machine-auth check, and
+ * {@code qits:system} is exactly what a service client of this platform carries. No forwarded {@code
+ * X-Qits-*} pair is sent beside it or instead of it (owner ruling 2026-10-18, epic qits-543): with
+ * the named client off — the shipped default and any no-idp topology — the hop fails closed, logs
+ * {@link IdpDeploymentsBearer#MISSING} and answers <b>503</b>, the same configuration fact as a
+ * missing address. {@link HttpDeploymentRequests} holds the same bearer on the same address; the two
+ * are two classes because their failure contracts are opposite.
  *
  * <h2>The failure contract</h2>
  *
  * <p><b>It throws, unlike every read hop in this service.</b> Somebody pressed a button and is
  * waiting: a hop that did not happen must reach them as a status code rather than as a shrug in a
- * log. <b>503</b> where there is no address at all — a platform with no qits-deployments cannot
+ * log. <b>503</b> where there is no address or no credential at all — a platform with no qits-deployments cannot
  * redeploy, and that is a configuration fact rather than an outage. <b>502</b> for everything the
  * exchange itself can do: unreachable, refused, a validation error, any status that is not 202. The
  * message names what happened, because the caller's next move differs between "nobody is there" and
@@ -107,11 +103,15 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
               .header("Content-Type", "application/json")
               .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not asking for %s %s to be deployed again: %s", ask.repoId(), ask.version(),
+            IdpDeploymentsBearer.MISSING);
+        throw new DomainException(
+            503,
+            "This service holds no credential for qits-deployments (quarkus.oidc-client.qits), so"
+                + " this version cannot be deployed again from here.");
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() != 202 && response.statusCode() != 200) {

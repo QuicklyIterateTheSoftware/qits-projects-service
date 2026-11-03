@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpReleaseDecisionsTest {
 
-  private record Received(String method, String path, String user) {}
+  private record Received(String method, String path, String auth) {}
 
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -68,7 +68,7 @@ class HttpReleaseDecisionsTest {
               new Received(
                   exchange.getRequestMethod(),
                   exchange.getRequestURI().getPath(),
-                  exchange.getRequestHeaders().getFirst("X-Qits-User")));
+                  exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] bytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(status.get(), bytes.length == 0 ? -1 : bytes.length);
@@ -81,9 +81,13 @@ class HttpReleaseDecisionsTest {
   }
 
   private HttpReleaseDecisions against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpReleaseDecisions against(String base, IdpCiBearer bearer) {
     HttpReleaseDecisions decisions = new HttpReleaseDecisions(QitsHttpClients.of(OpenTelemetry.noop(), null));
     decisions.ciUrl = Optional.ofNullable(base);
-    decisions.bearer = new IdpCiBearer();
+    decisions.bearer = bearer;
     ports.add(decisions);
     return decisions;
   }
@@ -104,7 +108,9 @@ class HttpReleaseDecisionsTest {
     assertEquals(
         List.of(
             new Received(
-                "GET", "/ci/api/repositories/repo-1/releases/2026.1002.1/artifacts", "qits-projects")),
+                "GET",
+                "/ci/api/repositories/repo-1/releases/2026.1002.1/artifacts",
+                TestCiBearers.TOKEN)),
         received);
   }
 
@@ -158,5 +164,17 @@ class HttpReleaseDecisionsTest {
 
     assertFalse(answer.ok());
     assertTrue(answer.failure().contains("could not be reached"), answer.failure());
+  }
+
+  /** No bearer fails closed (qits-1332): nothing is sent, and the failure names the client. */
+  @Test
+  void withNoBearerItAsksNobodyAndSaysWhy() throws IOException {
+    String base = startServer();
+
+    ReleaseDecisions.Answer answer = against(base, TestCiBearers.none()).of("repo-1", "v");
+
+    assertFalse(answer.ok());
+    assertEquals(IdpCiBearer.MISSING, answer.failure());
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
   }
 }

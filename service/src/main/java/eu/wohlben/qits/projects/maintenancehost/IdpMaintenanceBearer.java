@@ -19,8 +19,8 @@ import org.jboss.logging.Logger;
  * service identity and secret.
  *
  * <p>Empty on the same three terms they are: the named client disabled (the shipped default, and any
- * no-idp topology), a blank token, or a mint that threw. What the caller does with empty is the
- * lenient reading — the forwarded header pair — and {@link MaintenanceBearer} says why.
+ * no-idp topology), a blank token, or a mint that threw. With empty the caller does not call at
+ * all — {@link MaintenanceBearer} says why.
  */
 @ApplicationScoped
 @DefaultBean

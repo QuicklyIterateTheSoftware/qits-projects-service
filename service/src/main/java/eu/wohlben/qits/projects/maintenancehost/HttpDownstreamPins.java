@@ -24,8 +24,8 @@ import org.jboss.logging.Logger;
 /**
  * The shipped {@link DownstreamPins}: two GETs against qits-maintenance, on the address and the
  * credential {@link HttpDownstreamComponents} already uses — {@code
- * qits.projects.release-requests.maintenance-url} and the {@link MaintenanceBearer}, falling back to
- * the forwarded {@code X-Qits-*} pair while the named client is off. Both doors admit {@code
+ * qits.projects.release-requests.maintenance-url} and the {@link MaintenanceBearer} alone, failing
+ * closed with no bearer (owner ruling 2026-10-18, epic qits-543). Both doors admit {@code
  * qits:system} and {@code qits:agent}.
  *
  * <pre>
@@ -138,11 +138,10 @@ public class HttpDownstreamPins implements DownstreamPins {
               .header("Accept", "application/json")
               .GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        return unknown(path, MaintenanceBearer.MISSING);
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (notFoundIsEmpty && response.statusCode() == 404) {
