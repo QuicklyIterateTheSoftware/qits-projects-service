@@ -632,6 +632,173 @@ public class BranchDeliveryTest {
   }
 
   /**
+   * qits-1830: the branches a superseded red release carries ride its successor inside the folded
+   * tag, not as its sources — here the successor's one named source is {@code main} — and they go
+   * RELEASED and LIVE with it, at its version, where they used to stay MOVED for good.
+   */
+  @Test
+  public void aSupersededBranchIsReleasedAndLiveWithItsSuccessor() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch);
+    String earlier = firstRequest(repoA);
+    String earlierQid = qualifiedIdOf(repoA, earlier);
+    redPublish(repoA, tag);
+
+    String successorTag = stageRelease();
+    String successor = create(repoA, "main");
+    assertEquals("OBSOLETE", stateOf(repoA, earlier), "the premise: superseded");
+    String successorQid = qualifiedIdOf(repoA, successor);
+    verdict("BuildSuccessful", repoA, mergedShaOf(repoA, successor), run("green"), null);
+    awaitState(repoA, successor, "RELEASED");
+    deploymentActive(successorTag);
+    finalization.sweep();
+    awaitState(repoA, successor, "FINALIZED");
+
+    awaitMoves(
+        branch,
+        List.of(
+            "JOINED@" + earlierQid,
+            "RELEASED@" + earlierQid,
+            "FAILED@" + earlierQid,
+            "MOVED@" + successorQid,
+            "RELEASED@" + successorQid,
+            "LIVE@" + successorQid));
+    BranchDeliveryStep released = announced.stepsOf(branch).get(4);
+    assertEquals(successorTag, released.version());
+    BranchDeliveryStep live = last(branch);
+    assertEquals(successor, live.requestId());
+    assertEquals(successorTag, live.version());
+    assertEquals("LIVE", live.everywhere());
+    assertEquals("LIVE", ledgerStep(repoA, branch));
+  }
+
+  /**
+   * qits-1830: a carry fails with its successor's fold, and comes back to JOINED with it as a
+   * source does, so the successor's release still takes it to RELEASED.
+   */
+  @Test
+  public void aCarryFailsWithItsSuccessorsFoldAndIsReleasedOnceItIsGreenAgain() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch);
+    String earlierQid = qualifiedIdOf(repoA, firstRequest(repoA));
+    redPublish(repoA, tag);
+    String successorTag = stageRelease();
+    String successor = create(repoA, "main");
+    String successorQid = qualifiedIdOf(repoA, successor);
+    String fold = mergedShaOf(repoA, successor);
+
+    String red = run("red");
+    verdict("BuildFailed", repoA, fold, red, null);
+
+    List<String> failed =
+        List.of(
+            "JOINED@" + earlierQid,
+            "RELEASED@" + earlierQid,
+            "FAILED@" + earlierQid,
+            "MOVED@" + successorQid,
+            "FAILED@" + successorQid);
+    awaitMoves(branch, failed);
+    assertEquals("CI", last(branch).failure());
+    assertEquals(red, last(branch).runId());
+    assertEquals("REJECTED", stateOf(repoA, successor));
+
+    verdict("BuildSuccessful", repoA, fold, run("green-retry"), red);
+    awaitState(repoA, successor, "RELEASED");
+
+    List<String> released = new ArrayList<>(failed);
+    released.addAll(List.of("JOINED@" + successorQid, "RELEASED@" + successorQid));
+    awaitMoves(branch, released);
+    assertEquals(successorTag, last(branch).version());
+  }
+
+  /**
+   * qits-1830: a successor that goes red and OBSOLETE in turn hands the carries on to the request
+   * that supersedes it, as it hands on its own sources — they ride inside its tag too.
+   */
+  @Test
+  public void aSupersededSuccessorMovesItsCarriesOnToTheNextRequest() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tagA = releaseOf(repoA, branch);
+    String qidA = qualifiedIdOf(repoA, firstRequest(repoA));
+    redPublish(repoA, tagA);
+    String tagB = stageRelease();
+    String b = create(repoA, "main");
+    String qidB = qualifiedIdOf(repoA, b);
+    verdict("BuildSuccessful", repoA, mergedShaOf(repoA, b), run("green"), null);
+    awaitState(repoA, b, "RELEASED");
+    redPublish(repoA, tagB);
+
+    String c = create(repoA, "main");
+
+    assertEquals("OBSOLETE", stateOf(repoA, b), "the premise: the successor is superseded too");
+    String qidC = qualifiedIdOf(repoA, c);
+    awaitMoves(
+        branch,
+        List.of(
+            "JOINED@" + qidA,
+            "RELEASED@" + qidA,
+            "FAILED@" + qidA,
+            "MOVED@" + qidB,
+            "RELEASED@" + qidB,
+            "FAILED@" + qidB,
+            "MOVED@" + qidC));
+    BranchDeliveryStep moved = last(branch);
+    assertEquals(b, moved.previousRequestId());
+    assertEquals(c, moved.requestId());
+  }
+
+  /**
+   * qits-1830: a branch handed on to a request — MOVED there, a source of it — that is late again
+   * when that request releases is handed on again, and is never RELEASED by the request it leaves:
+   * the carries that release promotes are only the branches that were no source of it.
+   */
+  @Test
+  public void aHandedOnBranchLateAgainIsNeverReleasedByTheRequestItLeaves()
+      throws InterruptedException {
+    String branch = ticketBranch();
+    String late = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String first = stageRelease();
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    String id = create(repoA, branch);
+    verdict("BuildSuccessful", repoA, mergedShaOf(repoA, id), run("green"), null);
+    assertTrue(held.awaitEntered(), "the worker reached the executor");
+    assertEquals(id, create(repoA, late), "the late branch joins the request being released");
+    held.release();
+    awaitState(repoA, id, "RELEASED");
+    BranchDeliveryStep handedOn = awaitLastStep(late, "MOVED");
+    String second = handedOn.requestId();
+    String secondQid = handedOn.qualifiedId();
+    deploymentActive(first);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+
+    // The second request releases while the branch has moved past its fold.
+    stageRelease();
+    String fold = mergedShaOf(repoA, second);
+    gitHost.doesNotContain(repoA, "refs/heads/" + late, fold);
+    verdict("BuildSuccessful", repoA, fold, run("green-second"), null);
+    awaitState(repoA, second, "RELEASED");
+
+    // The hand-on lands after the release settled: wait for the step that leaves the second request.
+    await(() -> announced.stepsOf(late).size() >= 3);
+    BranchDeliveryStep again = last(late);
+    assertEquals("MOVED", again.step(), "steps: " + announced.movesOf(late));
+    assertNotEquals(second, again.requestId(), "handed on again");
+    assertEquals(second, again.previousRequestId());
+    assertEquals(
+        List.of(
+            "JOINED@" + qualifiedIdOf(repoA, id),
+            "MOVED@" + secondQid,
+            "MOVED@" + again.qualifiedId()),
+        announced.movesOf(late),
+        "never RELEASED by the request it was handed on from");
+  }
+
+  /**
    * {@link MainFinalizationTest}'s deployment going live: FINALIZED is LIVE. The branch was pushed
    * to a second repository nothing asked a release of, so it is not LIVE everywhere until that
    * PUSHED row is gone; and a push reusing the name after it went live starts the row over.
