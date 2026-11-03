@@ -4,9 +4,8 @@ import java.util.Collection;
 import java.util.Locale;
 
 /**
- * Git-safe slugs for epics, features and tasks — the path segments of the branch names the platform
- * mints: {@code epic/<epic>}, {@code feature/<epic>/<feature>}, {@code
- * task/<epic>/<feature>/<task>}.
+ * Short, git-safe names for work entities, unique within their slug scope. Since qits-1152 they
+ * name no branch: branches are named by qualified id, see {@link WorkBranches} (same package).
  */
 public final class Slugs {
 
@@ -15,20 +14,19 @@ public final class Slugs {
    * {@link #slugify}'s truncation and {@link #unique}'s re-truncation when it appends {@code -2},
    * {@code -3}, … — so the two can never disagree about what fits.
    *
-   * <p><b>Why 55, and why nothing nearer the obvious bounds.</b> Nothing in git or in this database
-   * enforces a length at all: every slug column is {@code varchar(255)}, and qits-githost validates
-   * refnames through JGit, which has no length cap. What actually binds is in a <em>different</em>
-   * repository — {@code WorkspaceService.toWorkspaceSlug} in qits-workspaces-service, which
-   * sanitizes a branch name and then hard-cuts it at <b>64 characters</b>, because the result
-   * becomes a filesystem path segment. The longest branch prefix this service mints is
-   * {@code "refining/"}, nine characters, so {@code 55 + 9 = 64} is exactly the largest slug that
-   * cannot overflow that cut.
+   * <p><b>55 is a readability choice, not a bound.</b> Nothing in git or in this database enforces
+   * a length at all: every slug column is {@code varchar(255)}, and qits-githost validates refnames
+   * through JGit, which has no length cap. Since qits-1152 no branch this platform mints carries a
+   * slug at all — {@link WorkBranches} names a branch by the work item's qualified id, not by its
+   * slug — so there is nothing elsewhere a longer slug could overflow. 55 is simply long enough
+   * to tell titles apart and short enough to read in a list or a phase prompt.
    *
-   * <p><b>Going past 55 means fixing the 64-cut first, and that cut is sharp.</b>
-   * {@code toWorkspaceSlug} truncates with <em>no de-collision</em>: two branches whose first 64
-   * sanitized characters agree collapse onto one workspace id, and the second dispatch then fails
-   * as "Workspace already exists" — a name clash presenting as a duplicate, a long way from its
-   * cause. Raise this constant only together with a de-colliding fix over there.
+   * <p>It used to be argued from a 64-character path cut on a sibling service's branch-to-workspace
+   * naming; that method is gone (qits-1838), and so is the reasoning. A reader who finds the old
+   * argument written down elsewhere is reading history, not a live constraint.
+   *
+   * <p><b>Raising it needs no change in any other repository.</b> It only widens newly minted
+   * slugs — see the next paragraph.
    *
    * <p><b>There is no backfill and there never will be.</b> A slug is minted once at create and
    * never re-derived ({@code @Column(updatable = false)}; see {@link #slugify}), deliberately, so
@@ -50,11 +48,11 @@ public final class Slugs {
    * {@code domain} module — epics must not depend on {@code domain}, so the lowercase/dash/strip
    * rule is duplicated rather than shared, and a change to the shape of the derivation belongs in
    * both. <b>The caps are NOT the same number and must not be kept in step</b>:
-   * {@link #MAX_LENGTH} is {@value #MAX_LENGTH} because a branch name has to survive
-   * qits-workspaces' 64-character path cut, while {@code ProjectService.MAX_SLUG_LENGTH} is 31 for
-   * a reason entirely its own — a wrapper repository is named {@code <slug>-<slug>} and has to fit
-   * one 64-character path segment, so {@code 31 + 31 + 1 = 63}. Each derivation is argued where its
-   * constant is declared; neither number may be copied across.
+   * {@link #MAX_LENGTH} is {@value #MAX_LENGTH} — a readability cap (see {@link #MAX_LENGTH}) —
+   * while {@code ProjectService.MAX_SLUG_LENGTH} is 31 for a reason entirely its own — a wrapper
+   * repository is named {@code <slug>-<slug>} and has to fit one 64-character path segment, so
+   * {@code 31 + 31 + 1 = 63}. Each derivation is argued where its constant is declared; neither
+   * number may be copied across.
    *
    * <p><b>A slug is minted once and never re-derived.</b> Every column holding one is
    * {@code updatable = false} and no update path touches it, so a retitle leaves the slug — and the

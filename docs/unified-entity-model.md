@@ -781,16 +781,15 @@ slug minted now is a slug either old writer would have minted; only the cap has 
 `Slugs.unique` read.
 
 Nothing in git or in this database enforces a bound — slug columns are `varchar(255)` and
-qits-githost validates refnames through JGit, which has no length cap. What binds is
-`WorkspaceService.toWorkspaceSlug` in **qits-workspaces-service**: it sanitizes a branch name and
-hard-cuts it at **64 characters**, because the result becomes a filesystem path segment. The longest
-branch prefix minted here is `refining/` (9 characters), so `55 + 9 = 64` is the largest slug that
-cannot overflow that cut.
+qits-githost validates refnames through JGit, which has no length cap. And since qits-1152 no
+branch this platform mints carries a slug at all: `WorkBranches` names a branch by the work item's
+qualified id, not by its slug. So 55 is a readability choice rather than a bound — long enough to
+tell titles apart, short enough to read in a list or a phase prompt — and raising it needs no
+change in any other repository; it only widens newly minted slugs, as the next paragraph argues.
 
-Going beyond 55 means fixing the 64-cut first, and that is not a free change: `toWorkspaceSlug`
-truncates with **no de-collision**, so two branches whose first 64 sanitized characters agree
-collapse onto one workspace id and the second dispatch fails as "Workspace already exists" — a name
-clash presenting as a duplicate.
+It used to be argued from a path-length cut on a sibling service's branch-to-workspace naming, a
+method that has since been deleted (qits-1838) along with its caller. A reader who finds that older
+argument written down elsewhere is reading history, not a live constraint.
 
 **No backfill.** A slug is minted once at create and never re-derived, deliberately, so that a
 rename cannot orphan a branch already cut from the old slug. Names already truncated under the old
