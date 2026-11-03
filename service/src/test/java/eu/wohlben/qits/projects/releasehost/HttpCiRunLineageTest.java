@@ -26,6 +26,7 @@ class HttpCiRunLineageTest {
 
   private HttpServer server;
   private final List<String> paths = new CopyOnWriteArrayList<>();
+  /** The Authorization each request carried. */
   private final List<String> roles = new CopyOnWriteArrayList<>();
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> body = new AtomicReference<>("{}");
@@ -51,7 +52,7 @@ class HttpCiRunLineageTest {
         "/",
         exchange -> {
           paths.add(exchange.getRequestURI().getPath());
-          roles.add(String.valueOf(exchange.getRequestHeaders().getFirst("X-Qits-Roles")));
+          roles.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] bytes = body.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(status.get(), bytes.length == 0 ? -1 : bytes.length);
@@ -64,9 +65,13 @@ class HttpCiRunLineageTest {
   }
 
   private HttpCiRunLineage against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpCiRunLineage against(String base, IdpCiBearer bearer) {
     HttpCiRunLineage lineage = new HttpCiRunLineage(QitsHttpClients.of(OpenTelemetry.noop(), null));
     lineage.ciUrl = Optional.ofNullable(base);
-    lineage.bearer = new IdpCiBearer();
+    lineage.bearer = bearer;
     lineages.add(lineage);
     return lineage;
   }
@@ -78,7 +83,7 @@ class HttpCiRunLineageTest {
 
     assertEquals(Optional.of("run-a"), lineage.retryOfRunId("run-b"));
     assertEquals(List.of("/ci/api/runs/run-b"), paths);
-    assertEquals(List.of("qits:system"), roles, "the forwarded pair while the named client is off");
+    assertEquals(List.of(TestCiBearers.TOKEN), roles, "the machine bearer and nothing else");
   }
 
   @Test
@@ -111,5 +116,15 @@ class HttpCiRunLineageTest {
     server.stop(0);
     server = null;
     assertEquals(Optional.empty(), against(base).retryOfRunId("run-b"));
+  }
+
+  /** No bearer fails closed (qits-1332): nothing is sent and the chain stops. */
+  @Test
+  void withNoBearerItAsksNobody() throws IOException {
+    body.set("{\"id\":\"run-b\",\"retryOfRunId\":\"run-a\"}");
+
+    assertEquals(
+        Optional.empty(), against(startServer(), TestCiBearers.none()).retryOfRunId("run-b"));
+    assertEquals(List.of(), paths, "nothing may be sent without the bearer");
   }
 }

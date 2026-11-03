@@ -29,13 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * listening are all "could not be asked", because the one thing the caller may never be told is that
  * a released, deployable repository has nothing owed when the truth is that nobody could be asked.
  *
- * <p>The second claim is the credential, and it is not the one the neighbouring hops make: this door
- * is {@code qits:admin}/{@code qits:agent} over there while a platform service client carries {@code
- * qits:system} alone, so the read presents the forwarded pair as an agent and no bearer at all.
+ * <p>The second claim is the credential (qits-1332): the read presents this service's own machine
+ * bearer and no forwarded {@code X-Qits-*} pair, and with no bearer it asks nobody.
  */
 class HttpDeploymentRequestsTest {
 
-  private record Received(String method, String path, String query, String user, String roles) {}
+  private record Received(
+      String method, String path, String query, String auth, String user, String roles) {}
 
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -71,6 +71,7 @@ class HttpDeploymentRequestsTest {
                   exchange.getRequestMethod(),
                   exchange.getRequestURI().getPath(),
                   exchange.getRequestURI().getQuery(),
+                  exchange.getRequestHeaders().getFirst("Authorization"),
                   exchange.getRequestHeaders().getFirst("X-Qits-User"),
                   exchange.getRequestHeaders().getFirst("X-Qits-Roles")));
           byte[] bytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
@@ -85,8 +86,13 @@ class HttpDeploymentRequestsTest {
   }
 
   private HttpDeploymentRequests against(String base) {
+    return against(base, TestDeploymentsBearers.machine());
+  }
+
+  private HttpDeploymentRequests against(String base, IdpDeploymentsBearer bearer) {
     HttpDeploymentRequests requests = new HttpDeploymentRequests(QitsHttpClients.of(OpenTelemetry.noop(), null));
     requests.deploymentsUrl = Optional.ofNullable(base);
+    requests.bearer = bearer;
     ports.add(requests);
     return requests;
   }
@@ -114,17 +120,28 @@ class HttpDeploymentRequestsTest {
   }
 
   /**
-   * The credential, which is deliberately not a machine bearer: that listing is a person's and an
-   * agent's door, and this service's client carries {@code qits:system} alone.
+   * The credential: the far side's listing admits {@code qits:system}, so the read presents this
+   * service's machine bearer and no forwarded pair — never the {@code qits:agent} pair it once sent.
    */
   @Test
-  void theReadPresentsTheForwardedPairAsAnAgentAndNoBearer() throws Exception {
+  void theReadPresentsTheMachineBearerAndNoForwardedPair() throws Exception {
     String base = startServer();
 
     against(base).forRelease("repo-1", "2026.916.1");
 
-    assertEquals("qits-projects", received.get(0).user());
-    assertEquals("qits:agent", received.get(0).roles());
+    assertEquals(TestDeploymentsBearers.TOKEN, received.get(0).auth());
+    assertNull(received.get(0).user());
+    assertNull(received.get(0).roles());
+  }
+
+  /** No bearer fails closed: nothing is sent, and the answer is "could not ask". */
+  @Test
+  void withNoBearerItAsksNobodyAndAnswersCouldNotAsk() throws Exception {
+    String base = startServer();
+
+    assertEquals(
+        Optional.empty(), against(base, TestDeploymentsBearers.none()).forRelease("repo-1", "v"));
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
   }
 
   /** A null status is a real answer over there — a request whose deployment was never created. */

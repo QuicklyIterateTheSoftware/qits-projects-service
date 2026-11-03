@@ -22,8 +22,8 @@ import org.jboss.logging.Logger;
 /**
  * The shipped {@link AutomationKinds}: one GET against qits-maintenance (task qits-1046), on the
  * address and the credential {@link HttpDownstreamPins} uses — {@code
- * qits.projects.release-requests.maintenance-url} and the {@link MaintenanceBearer}, falling back to
- * the forwarded {@code X-Qits-*} pair while the named client is off. The door admits {@code
+ * qits.projects.release-requests.maintenance-url} and the {@link MaintenanceBearer} alone, failing
+ * closed with no bearer (owner ruling 2026-10-18, epic qits-543). The door admits {@code
  * qits:system} and {@code qits:agent}.
  *
  * <pre>
@@ -86,11 +86,10 @@ public class HttpAutomationKinds implements AutomationKinds {
               .header("Accept", "application/json")
               .GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        return unknown(MaintenanceBearer.MISSING);
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() / 100 != 2) {

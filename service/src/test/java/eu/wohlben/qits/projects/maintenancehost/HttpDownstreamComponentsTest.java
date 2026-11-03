@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * shape.
  *
  * <p>Two things are under test and they are the two the flow cannot see: the exact wire shape (the
- * one path with the repository's row id interpolated, the method, the bearer and the header pair it
- * falls back to), and that <b>every</b> way this can go wrong answers {@code Optional.empty()}
+ * one path with the repository's row id interpolated, the method, the bearer and no forwarded pair —
+ * with no bearer it asks nobody, qits-1332), and that <b>every</b> way this can go wrong answers {@code Optional.empty()}
  * without throwing. The second is the port's whole contract — the fold has already landed when this
  * runs — and the third thing pinned beside it is the distinction the whole feature rests on: a 200
  * carrying an empty array is a PRESENT empty list, not the same answer as "could not ask".
@@ -112,26 +112,24 @@ class HttpDownstreamComponentsTest {
     assertEquals("GET", request.method());
     assertEquals("/maintenance/api/repositories/repo-1/downstream", request.path());
     assertEquals("Bearer machine-token", request.auth());
+    assertNull(request.user(), "the bearer alone, never the forwarded pair beside it");
+    assertNull(request.roles());
     assertEquals(
         Optional.of(List.of("qits-ci-frontend", "qits-ci-service")),
         answer,
         "the names alone, in the order the far side sent them — depth ascending is the answer");
   }
 
-  /** No bearer is not a reason to stay silent here: the far side's door is a read. */
+  /** No bearer fails closed (qits-1332): nothing is sent, and the answer is "could not ask". */
   @Test
-  void withNoBearerItAsksWithTheForwardedHeaderPair() throws Exception {
+  void withNoBearerItAsksNobody() throws Exception {
     String base = startServer();
     responseBody.set("{\"downstream\":[{\"repository\":\"qits-ci-service\"}]}");
 
     Optional<List<String>> answer = against(base, Optional.empty()).downstreamOf("repo-1", "lib");
 
-    assertEquals(1, received.size());
-    Received request = received.get(0);
-    assertNull(request.auth(), "no credential means no Authorization header at all");
-    assertEquals("qits-projects", request.user());
-    assertEquals("qits:system", request.roles());
-    assertEquals(Optional.of(List.of("qits-ci-service")), answer);
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
+    assertEquals(Optional.empty(), answer);
   }
 
   /**

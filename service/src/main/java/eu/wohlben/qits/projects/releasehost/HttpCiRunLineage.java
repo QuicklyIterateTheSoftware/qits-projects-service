@@ -20,10 +20,9 @@ import org.jboss.logging.Logger;
 /**
  * The {@link CiRunLineage} port over qits-ci's single-run read, {@code GET /ci/api/runs/{runId}} —
  * {@link HttpActiveBuilds}' shape one path over: the same {@code ci-url}, the same credential (the
- * {@code ci} named client's bearer when enabled, the forwarded {@code qits:system} pair otherwise),
- * the same short timeouts. The far side admits {@code qits:system}.
+ * {@code qits} named client's bearer alone, failing closed without one), the same short timeouts. The far side admits {@code qits:system}.
  *
- * <p>Only {@code retryOfRunId} is read off the run. Every failure — unset address, 404, any other
+ * <p>Only {@code retryOfRunId} is read off the run. Every failure — unset address, no bearer, 404, any other
  * non-200, unreachable, an unreadable body — is {@code Optional.empty()}: the retry walk stops there,
  * which is what it did before this port existed. A 404 is logged at DEBUG because it is ordinary (a
  * run qits-ci has since collected); everything else at WARN, since it silently costs a re-arm.
@@ -69,11 +68,12 @@ public class HttpCiRunLineage implements CiRunLineage {
               .timeout(Duration.ofSeconds(3))
               .GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not reading run %s from qits-ci; the retry chain stops there: %s", runId,
+            IdpCiBearer.MISSING);
+        return Optional.empty();
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() == 404) {

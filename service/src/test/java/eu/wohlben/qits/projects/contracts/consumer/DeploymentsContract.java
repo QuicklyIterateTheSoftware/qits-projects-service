@@ -5,7 +5,7 @@ import eu.wohlben.qits.projects.control.DeploymentRedeploys;
 import eu.wohlben.qits.projects.control.DeploymentRequests;
 import eu.wohlben.qits.projects.deploymenthost.HttpDeploymentRedeploys;
 import eu.wohlben.qits.projects.deploymenthost.HttpDeploymentRequests;
-import eu.wohlben.qits.projects.deploymenthost.IdpDeploymentsBearer;
+import eu.wohlben.qits.projects.deploymenthost.TestDeploymentsBearers;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,7 +42,10 @@ final class DeploymentsContract {
               Trigger.operation("getReleaseRequest"),
               (base, p) -> {
                 List<DeploymentRequests.DeploymentRequestView> views =
-                    Fields.with(new HttpDeploymentRequests(RowClients.clients()), "deploymentsUrl", Optional.of(base))
+                    Fields.with(
+                            new HttpDeploymentRequests(RowClients.clients()),
+                            "deploymentsUrl", Optional.of(base),
+                            "bearer", TestDeploymentsBearers.machine())
                         .forRelease(p.get("repoId"), p.get("version"))
                         .orElseThrow();
                 assertFalse(views.isEmpty());
@@ -68,7 +71,7 @@ final class DeploymentsContract {
                   Fields.with(
                           new HttpDeploymentRedeploys(RowClients.clients()),
                           "deploymentsUrl", Optional.of(base),
-                          "bearer", new IdpDeploymentsBearer())
+                          "bearer", TestDeploymentsBearers.machine())
                       .deployAgain(
                           new DeploymentRedeploys.Redeploy(
                               p.get("repoId"),

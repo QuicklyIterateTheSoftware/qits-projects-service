@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpPublishRunsTest {
 
-  private record Received(String method, String path, String query, String user) {}
+  private record Received(String method, String path, String query, String auth) {}
 
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -61,7 +61,7 @@ class HttpPublishRunsTest {
                   exchange.getRequestMethod(),
                   exchange.getRequestURI().getPath(),
                   exchange.getRequestURI().getQuery(),
-                  exchange.getRequestHeaders().getFirst("X-Qits-User")));
+                  exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] bytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(status.get(), bytes.length == 0 ? -1 : bytes.length);
@@ -73,11 +73,14 @@ class HttpPublishRunsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  /** With the named client off — the shipped default — the read presents the forwarded pair. */
   private HttpPublishRuns against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpPublishRuns against(String base, IdpCiBearer bearer) {
     HttpPublishRuns runs = new HttpPublishRuns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     runs.ciUrl = Optional.ofNullable(base);
-    runs.bearer = new IdpCiBearer();
+    runs.bearer = bearer;
     ports.add(runs);
     return runs;
   }
@@ -92,7 +95,7 @@ class HttpPublishRunsTest {
     assertEquals("GET", asked.method());
     assertEquals("/ci/api/repositories/repo-1/release-phase", asked.path());
     assertTrue(asked.query().contains("refs/tags/2026.916.1"), asked.query());
-    assertEquals("qits-projects", asked.user(), "the forwarded pair, with no idp configured");
+    assertEquals(TestCiBearers.TOKEN, asked.auth(), "the machine bearer and nothing else");
   }
 
   @Test
@@ -139,5 +142,16 @@ class HttpPublishRunsTest {
   void nobodyListeningIsCouldNotAskAndNeverAThrow() {
     assertEquals(
         Optional.empty(), against("http://127.0.0.1:1").declaredFor("repo-1", "refs/tags/v"));
+  }
+
+  /** No bearer fails closed (qits-1332): nothing is sent, and the answer is "could not ask". */
+  @Test
+  void withNoBearerItAsksNobody() throws Exception {
+    String base = startServer();
+
+    assertEquals(
+        Optional.empty(),
+        against(base, TestCiBearers.none()).declaredFor("repo-1", "refs/tags/v"));
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
   }
 }

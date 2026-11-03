@@ -40,14 +40,15 @@ import org.jboss.logging.Logger;
  * off</b>, and "could not re-run that phase" would be strictly less than what was already known.
  *
  * <p>Statuses it composes itself are only the ones qits-ci said nothing about: <b>503</b> with no
- * address configured — a platform with no qits-ci cannot re-run anything — and <b>502</b> for the
+ * address or no credential configured — a platform with no qits-ci cannot re-run anything — and <b>502</b> for the
  * exchange, an unreachable service or a body that carries no run id. A refusal with no readable
  * message still travels with its status, and gains a neutral sentence rather than a guessed one.
  *
- * <p>The credential is {@link IdpCiBearer}, this service's machine bearer, with the same forwarded
- * {@code X-Qits-*} fallback its three neighbours on this address take — the rerun door is {@code
- * @RolesAllowed({"qits:admin", "qits:system"})} over there, and {@code qits:system} is exactly what
- * this service's client carries.
+ * <p>The credential is {@link IdpCiBearer}, this service's machine bearer, and nothing else — the
+ * rerun door is {@code @RolesAllowed({"qits:admin", "qits:system"})} over there, and {@code
+ * qits:system} is exactly what this service's client carries. With no bearer nothing is sent and the
+ * answer is <b>503</b> naming the missing client, no forwarded {@code X-Qits-*} pair (owner ruling
+ * 2026-10-18, epic qits-543).
  */
 @ApplicationScoped
 @DefaultBean
@@ -94,11 +95,15 @@ public class HttpPipelinePhaseReruns implements PipelinePhaseReruns {
               .header("Content-Type", "application/json")
               .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not asking qits-ci to re-run the %s phase of release request %s: %s", ciPhase,
+            releaseRequestId, IdpCiBearer.MISSING);
+        throw new DomainException(
+            503,
+            "This service holds no credential for qits-ci (quarkus.oidc-client.qits), so no run of"
+                + " this release can be asked for again.");
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() != 202 && response.statusCode() != 200) {

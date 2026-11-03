@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpQaRunCancellationsTest {
 
-  private record Received(String method, String path, String body) {}
+  private record Received(String method, String path, String body, String auth) {}
 
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
@@ -55,7 +55,10 @@ class HttpQaRunCancellationsTest {
           String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
           received.add(
               new Received(
-                  exchange.getRequestMethod(), exchange.getRequestURI().getPath(), body));
+                  exchange.getRequestMethod(),
+                  exchange.getRequestURI().getPath(),
+                  body,
+                  exchange.getRequestHeaders().getFirst("Authorization")));
           exchange.sendResponseHeaders(202, -1);
           exchange.getResponseBody().close();
         });
@@ -63,12 +66,15 @@ class HttpQaRunCancellationsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  /** With the named client off — the shipped default — the hop presents the forwarded pair. */
   private HttpQaRunCancellations against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpQaRunCancellations against(String base, IdpCiBearer bearer) {
     HttpQaRunCancellations cancellations =
         new HttpQaRunCancellations(QitsHttpClients.of(OpenTelemetry.noop(), null));
     cancellations.ciUrl = Optional.ofNullable(base);
-    cancellations.bearer = new IdpCiBearer();
+    cancellations.bearer = bearer;
     ports.add(cancellations);
     return cancellations;
   }
@@ -143,5 +149,18 @@ class HttpQaRunCancellationsTest {
     against(base).cancelQaRunsOf("repo-1", "  ");
 
     assertTrue(received.isEmpty(), "a repository-wide QA cancellation must never be sent either");
+  }
+
+  /** The bearer is the credential, and with none nothing is sent (qits-1332). */
+  @Test
+  void theBearerIsTheCredentialAndWithoutOneNothingIsSent() throws Exception {
+    String base = startServer();
+
+    against(base).cancelRunsOf("repo-1", "req-1");
+    assertEquals(TestCiBearers.TOKEN, received.get(0).auth());
+    received.clear();
+
+    against(base, TestCiBearers.none()).cancelRunsOf("repo-1", "req-1");
+    assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
   }
 }

@@ -44,28 +44,23 @@ import org.jboss.logging.Logger;
  * which is the one answer that would draw a released, deployable repository as though nothing were
  * owed. An empty list reaches the assembler only when qits-deployments really answered one.
  *
- * <h2>The credential, which is not {@code HttpPublishRuns}'</h2>
+ * <h2>The credential</h2>
  *
- * <p><b>This hop presents the forwarded {@code X-Qits-*} pair and deliberately no machine bearer,
- * and the reason is the far side's door rather than a preference.</b> That listing is {@code
- * @RolesAllowed({"qits:admin", "qits:agent"})} — a person's role and an agent's — while a service
- * client of this platform carries {@code qits:system} and its own {@code clients/<id>} and nothing
- * else, fixed in qits-idp's {@code ClientRegistry} rather than configurable per deployment. So a
- * bearer here would be a <b>guaranteed 403</b>, and this port's contract would faithfully turn that
- * into a permanent {@code UNKNOWN} deployment phase with one DEBUG line to say why — the failure
- * mode CLAUDE.md records qits-workspaces' reference read costing a release to learn, reproduced
- * knowingly. The role asserted is {@code qits:agent} rather than {@code qits:admin} because this is
- * a read and {@code qits:agent} is this platform's read role; nothing here writes.
+ * <p><b>This hop presents the {@code qits} named client's machine bearer ({@link
+ * IdpDeploymentsBearer}) and nothing else</b> — no forwarded {@code X-Qits-*} pair beside it or
+ * instead of it (owner ruling 2026-10-18, epic qits-543). The listing at the far side, qits-deployments'
+ * {@code PdDeploymentRequestController}, admits {@code qits:system}, which is exactly what this
+ * service's client carries; the {@code qits:agent} pair this class once asserted was a service
+ * acting with an agent's role, and is gone (qits-1332).
  *
- * <p><b>Its sibling {@link HttpDeploymentRedeploys} does the opposite</b>, on the same address, for
- * the same kind of reason: that intake is {@code qits:system} <em>plus</em> a machine-auth check, so
- * a bearer is what it wants and the forwarded pair is the fallback. Two doors of one service wanting
- * two different callers is not a thing to tidy; it is the thing to get right, and it is why the two
- * hops are two classes.
+ * <p>With no bearer — the named client disabled, the shipped default and any no-idp topology, or a
+ * mint that failed — the hop <b>fails closed</b>: nothing is sent, one WARN names the missing client
+ * ({@link IdpDeploymentsBearer#MISSING}) and the answer is the same "could not ask" as every other
+ * failure above, never an empty list.
  *
- * <p>The honest long-term fix is qits-deployments admitting {@code qits:system} to its listing, at
- * which point this class prefers a bearer like every other read hop here. That is another
- * repository's change and is deliberately not made from this side.
+ * <p>{@link HttpDeploymentRedeploys} holds the same bearer on the same address; the two stay two
+ * classes because their failure contracts are opposite — this one answers "could not ask", that one
+ * throws to the person who pressed the button.
  */
 @ApplicationScoped
 @DefaultBean
@@ -79,6 +74,8 @@ public class HttpDeploymentRequests implements DeploymentRequests {
 
   @ConfigProperty(name = "qits.projects.release-requests.deployments-url")
   Optional<String> deploymentsUrl;
+
+  @Inject IdpDeploymentsBearer bearer;
 
   @Inject
   public HttpDeploymentRequests(QitsHttpClients clients) {
@@ -99,6 +96,13 @@ public class HttpDeploymentRequests implements DeploymentRequests {
     if (deploymentsUrl.isEmpty() || deploymentsUrl.get().isBlank()) {
       return Optional.empty();
     }
+    Optional<String> authorization = bearer.authorization();
+    if (authorization.isEmpty()) {
+      LOG.warnf(
+          "Not reading qits-deployments' deployment requests for %s %s: %s",
+          repoId, version, IdpDeploymentsBearer.MISSING);
+      return Optional.empty();
+    }
     try {
       URI uri =
           URI.create(
@@ -110,8 +114,7 @@ public class HttpDeploymentRequests implements DeploymentRequests {
       HttpRequest request =
           HttpRequest.newBuilder(uri)
               .timeout(Duration.ofSeconds(3))
-              .header("X-Qits-User", "qits-projects")
-              .header("X-Qits-Roles", "qits:agent")
+              .header("Authorization", authorization.get())
               .GET()
               .build();
       HttpResponse<String> response =

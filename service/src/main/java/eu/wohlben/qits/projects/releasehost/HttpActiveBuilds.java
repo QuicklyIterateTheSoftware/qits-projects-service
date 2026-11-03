@@ -29,9 +29,11 @@ import org.jboss.logging.Logger;
  * are still running, which is the exact defect this whole feature exists to close (and which the
  * gate itself did until qits-760: qits-ci's own restart was read as "nothing in flight").
  *
- * <p>The credential is a machine bearer when the {@code ci} named client is enabled ({@link
- * IdpCiBearer}); while it is off (the shipped default, and any no-idp topology) the read falls
- * back to the forwarded pair, qits-net's standing posture.
+ * <p>The credential is the {@code qits} named client's machine bearer ({@link IdpCiBearer}) and
+ * nothing else. While the client is off (the shipped default, and any no-idp topology) the probe
+ * sends nothing, logs {@link IdpCiBearer#MISSING} and answers empty with {@link #configured} true —
+ * so the gate holds — rather than falling back to a forwarded {@code X-Qits-*} pair (owner ruling
+ * 2026-10-18, epic qits-543).
  */
 @ApplicationScoped
 @DefaultBean
@@ -75,11 +77,11 @@ public class HttpActiveBuilds implements ActiveBuilds {
               .timeout(Duration.ofSeconds(3))
               .GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not reading qits-ci's active listing: %s", IdpCiBearer.MISSING);
+        return Optional.empty();
       }
+      builder.header("Authorization", authorization.get());
       HttpRequest request = builder.build();
       HttpResponse<String> response =
           client.send(request, HttpResponse.BodyHandlers.ofString());

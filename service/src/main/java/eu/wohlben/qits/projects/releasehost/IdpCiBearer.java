@@ -15,15 +15,21 @@ import org.jboss.logging.Logger;
  * the {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4), asking one audience,
  * {@code qits-platform}, empty on the same terms.
  *
- * <p>Two hops hold it and both are about a release request's gate: {@link HttpActiveBuilds} reads
- * the active-runs listing, and {@link HttpQaRunCancellations} asks for a superseded request's runs
- * to be stopped. Empty is a supported answer for both — with the named client disabled (the shipped
- * default, and any no-idp topology) each falls back to the forwarded {@code X-Qits-*} pair rather
- * than refusing, because unlike the git host's release primitives neither of these is load-bearing:
- * an unanswerable listing keeps a request pending and an unmade cancellation costs a build agent.
+ * <p>Every hop to qits-ci holds it — {@link HttpActiveBuilds}, {@link HttpCiRunLineage}, {@link
+ * HttpPipelinePhaseReruns}, {@link HttpPublishRuns}, {@link HttpQaRunCancellations} and {@link
+ * HttpReleaseDecisions} — and it is the only credential they send (owner ruling 2026-10-18, epic
+ * qits-543: a service calls a peer with its own bearer and no forwarded {@code X-Qits-*} pair). With
+ * the named client disabled, or a mint that fails, it is empty and the hop <b>fails closed</b>: it
+ * sends nothing, logs {@link #MISSING}, and answers its own failure contract, as {@code
+ * wiring/HttpGitHostRepositories} does.
  */
 @ApplicationScoped
 public class IdpCiBearer {
+
+  /** What a hop logs when it has no bearer to present and therefore does not call. */
+  public static final String MISSING =
+      "no machine bearer for qits-ci: the named OIDC client quarkus.oidc-client.qits is disabled"
+          + " or minted no token, and this call is never sent without one";
 
   private static final Logger LOG = Logger.getLogger(IdpCiBearer.class);
   private static final Duration TOKEN_TIMEOUT = Duration.ofSeconds(5);

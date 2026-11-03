@@ -55,7 +55,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>Every failure is one behaviour</h2>
  *
- * <p>The address unset or blank, an unreachable or refusing qits-maintenance, a 404 from a version
+ * <p>The address unset or blank, no bearer, an unreachable or refusing qits-maintenance, a 404 from a version
  * that has not shipped the route yet, a timeout, a body that will not parse, a body with no {@code
  * downstream} array: one WARN and {@link Optional#empty()}. Empty is "could not ask" and the caller
  * turns it into an absent event key, which every consumer already reads as unknown. <b>A 200 with a
@@ -63,11 +63,11 @@ import org.jboss.logging.Logger;
  * repository is a leaf", and the two must not be collapsed. Nothing here throws: this runs after a
  * fold has already landed and an enrichment may never fail an announcement.
  *
- * <p>The credential is the {@code maintenance} named OIDC client's bearer ({@link
- * IdpMaintenanceBearer}), assumed to need {@code qits:system} at the far side. While the client is
- * off — the shipped default, and any no-idp topology — the hop falls back to the forwarded {@code
- * X-Qits-*} pair, the posture {@code releasehost/HttpQaRunCancellations} takes for the same reason:
- * this door is a read that decides nothing.
+ * <p>The credential is the {@code qits} named OIDC client's bearer ({@link IdpMaintenanceBearer},
+ * {@code qits:system}) and nothing else. While the client is off — the shipped default, and any
+ * no-idp topology — the hop sends nothing and answers "could not ask", its WARN naming the missing
+ * client ({@link MaintenanceBearer#MISSING}); no forwarded {@code X-Qits-*} pair is sent instead
+ * (owner ruling 2026-10-18, epic qits-543).
  *
  * <p><b>{@code readTree}, never a bound record</b>, in the {@code wiring/HttpGitHostRepositories}
  * discipline: a record reached through a bare {@link ObjectMapper} needs {@code
@@ -131,11 +131,10 @@ public class HttpDownstreamComponents implements DownstreamComponents {
               .header("Accept", "application/json")
               .GET();
       Optional<String> authorization = bearer.authorization();
-      if (authorization.isPresent()) {
-        builder.header("Authorization", authorization.get());
-      } else {
-        builder.header("X-Qits-User", "qits-projects").header("X-Qits-Roles", "qits:system");
+      if (authorization.isEmpty()) {
+        return unknown(repoId, repoName, MaintenanceBearer.MISSING);
       }
+      builder.header("Authorization", authorization.get());
       HttpResponse<String> response =
           client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() / 100 != 2) {

@@ -54,6 +54,7 @@ class HttpActiveBuildsTest {
     server.createContext(
         "/",
         exchange -> {
+          asked.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] bytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
           exchange.sendResponseHeaders(status.get(), bytes.length == 0 ? -1 : bytes.length);
@@ -65,10 +66,17 @@ class HttpActiveBuildsTest {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
+  /** The Authorization each request carried. */
+  private final List<String> asked = new java.util.concurrent.CopyOnWriteArrayList<>();
+
   private HttpActiveBuilds against(String base) {
+    return against(base, TestCiBearers.machine());
+  }
+
+  private HttpActiveBuilds against(String base, IdpCiBearer bearer) {
     HttpActiveBuilds probe = new HttpActiveBuilds(QitsHttpClients.of(OpenTelemetry.noop(), null));
     probe.ciUrl = Optional.ofNullable(base);
-    probe.bearer = new IdpCiBearer();
+    probe.bearer = bearer;
     probes.add(probe);
     return probe;
   }
@@ -113,5 +121,25 @@ class HttpActiveBuildsTest {
             + "{\"repoId\":\"repo-1\",\"commitSha\":\"other\"},"
             + "{\"repoId\":\"repo-2\",\"commitSha\":\"abc\"}]}");
     assertEquals(Optional.of(1), probe.activeFor("repo-1", "abc"));
+  }
+
+  /**
+   * No bearer fails closed (qits-1332): configured, nothing sent, and "could not ask" — the gate
+   * holds rather than a forwarded pair being sent instead.
+   */
+  @Test
+  void withNoBearerItIsConfiguredAndAsksNobody() throws Exception {
+    HttpActiveBuilds probe = against(startServer(), TestCiBearers.none());
+
+    assertTrue(probe.configured());
+    assertEquals(Optional.empty(), probe.activeFor("repo-1", "abc"));
+    assertTrue(asked.isEmpty(), "nothing may be sent without the bearer");
+  }
+
+  @Test
+  void theBearerIsTheCredential() throws Exception {
+    against(startServer()).activeFor("repo-1", "abc");
+
+    assertEquals(List.of(TestCiBearers.TOKEN), asked);
   }
 }
