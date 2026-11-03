@@ -5,12 +5,12 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -85,16 +85,14 @@ public class RepositoryCatalogueTest {
   private RequestSpecification session() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"));
   }
 
   /** qits-ci as it presents itself: a machine bearer's roles, and no browser session. */
   private RequestSpecification machine() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dev-qits-ci")
-        .header("X-Qits-Roles", "qits:system");
+        .header("Authorization", ContractBearers.caller("dev-qits-ci", "qits:system"));
   }
 
   private String createProject(String name) {
@@ -293,8 +291,7 @@ public class RepositoryCatalogueTest {
   @Test
   public void aNamedCallerWithoutTheRoleIsRefused() {
     given()
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:user")
+        .header("Authorization", ContractBearers.caller("alice", "qits:user"))
         .when()
         .get("/projects/api/repositories")
         .then()

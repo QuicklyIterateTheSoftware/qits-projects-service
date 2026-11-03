@@ -12,6 +12,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
  * /projects/api/projects/{project}/work} with its three filters.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkReadApiTest {
 
   private EntityFixtures.Project project;

@@ -10,6 +10,7 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecordType;
 import eu.wohlben.qits.projects.testsupport.RecordingProjectDomainRegistrar;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
  * implementation ships next; here the question is only whether an outcome survives the trip out.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ProjectReconcileControllerTest {
 
   @Inject ProjectService projectService;

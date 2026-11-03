@@ -34,6 +34,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns.Spoken;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ExtractableResponse;
 import io.restassured.response.Response;
@@ -62,6 +63,7 @@ import org.junit.jupiter.api.function.Executable;
  * mid-test.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestSourceMoveTest {
 
   @Inject ReleaseRequests releaseRequests;

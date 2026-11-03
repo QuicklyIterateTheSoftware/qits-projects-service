@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
@@ -30,6 +31,7 @@ import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -61,6 +63,7 @@ import org.junit.jupiter.api.Test;
  * the request's participants are what is read (qits-1673).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class UnattendedGateTicketTest {
 
   /** The default of {@code qits.projects.release-requests.unattended-requesters}. */
@@ -974,8 +977,7 @@ public class UnattendedGateTicketTest {
   /** A create by {@code requester} — the forwarded caller, which is what attribution reads. */
   private String create(String branch, String requester) {
     return given()
-        .header("X-Qits-User", requester)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(requester, "qits:admin"))
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"" + branch + "\",\"summary\":\"bump(dependencies)\"}")
         .post(base())

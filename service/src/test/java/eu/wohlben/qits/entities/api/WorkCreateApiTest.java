@@ -11,6 +11,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import java.util.Map;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
  * its schema requires is {@code EntitySchemaApiTest}'s drift pin.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkCreateApiTest {
 
   private static ValidatableResponse create(Map<String, Object> body) {

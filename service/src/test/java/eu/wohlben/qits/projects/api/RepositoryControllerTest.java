@@ -3,10 +3,12 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -15,6 +17,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RepositoryControllerTest {
 
   private final String fixtureUrl;
@@ -387,8 +390,7 @@ public class RepositoryControllerTest {
     String repoId = createProjectAndRepository();
 
     given()
-        .header("X-Qits-User", "dev-qits-workspaces")
-        .header("X-Qits-Roles", "qits:system")
+        .header("Authorization", ContractBearers.caller("dev-qits-workspaces", "qits:system"))
         .when()
         .get("/projects/api/repositories/" + repoId)
         .then()
@@ -396,8 +398,7 @@ public class RepositoryControllerTest {
         .body("repository.id", equalTo(repoId));
 
     given()
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"))
         .when()
         .get("/projects/api/repositories/" + repoId)
         .then()

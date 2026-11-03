@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.path.json.JsonPath;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Test;
  * prove four lines of string handling.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class PinsControllerTest {
 
   /**

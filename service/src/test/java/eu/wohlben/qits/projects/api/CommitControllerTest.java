@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -18,6 +19,7 @@ import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class CommitControllerTest {
 
   @Inject GitHostAddress gitHost;

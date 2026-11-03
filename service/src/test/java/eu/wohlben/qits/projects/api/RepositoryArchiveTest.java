@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.RepositoryArchive;
 import eu.wohlben.qits.projects.control.RepositoryArchivedEdit;
@@ -27,6 +28,7 @@ import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.util.LinkedHashMap;
@@ -47,6 +49,7 @@ import org.junit.jupiter.api.Test;
  * directly ({@code ReleaseRequestAgentBoundsTest}'s split).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RepositoryArchiveTest {
 
   private static final String CONFIG = RepositoryArchivedEdit.PATH;
@@ -306,8 +309,7 @@ public class RepositoryArchiveTest {
 
     for (String verb : List.of("archive", "unarchive")) {
       given()
-          .header("X-Qits-User", "someone")
-          .header("X-Qits-Roles", "qits:agent")
+          .header("Authorization", ContractBearers.caller("someone", "qits:agent"))
           .contentType(ContentType.JSON)
           .when()
           .post(door(verb))

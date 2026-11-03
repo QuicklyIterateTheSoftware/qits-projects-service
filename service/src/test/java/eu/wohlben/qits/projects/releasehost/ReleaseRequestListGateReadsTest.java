@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.entity.StoredGateSet;
 import io.quarkus.arc.ClientProxy;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.path.json.JsonPath;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -57,6 +58,7 @@ import org.junit.jupiter.api.Test;
  * could not make it — and the reads are then seen to happen anyway, behind the page.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestListGateReadsTest {
 
   /** How long every tree read takes here — a slow git host, made slow on purpose. */

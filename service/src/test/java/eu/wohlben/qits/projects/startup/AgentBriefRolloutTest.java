@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.AgentSurfaceDefaults;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 /** The workspace agents' brief on asking the delivery desk (qits-1679) rolls onto unedited rows. */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class AgentBriefRolloutTest {
 
   private static final List<String> SURFACES =

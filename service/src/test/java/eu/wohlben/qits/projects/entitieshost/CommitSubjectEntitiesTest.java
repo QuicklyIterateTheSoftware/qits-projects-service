@@ -10,6 +10,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
  * slugs are the ones the writer actually allocated rather than fixtures agreeing with themselves.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class CommitSubjectEntitiesTest {
 
   @Inject CommitSubjectEntities subjects;

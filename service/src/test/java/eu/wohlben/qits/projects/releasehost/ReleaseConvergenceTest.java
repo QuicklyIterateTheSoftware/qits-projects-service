@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
@@ -23,6 +24,7 @@ import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -53,6 +55,7 @@ import org.junit.jupiter.api.Test;
  * the automations gate passes and what holds a request here is only ever the CI gate.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseConvergenceTest {
 
   @Inject BuildStatusListener listener;
@@ -387,8 +390,7 @@ public class ReleaseConvergenceTest {
       body.append(",\"priority\":\"").append(priority).append('"');
     }
     return given()
-        .header("X-Qits-User", requester)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(requester, "qits:admin"))
         .contentType(ContentType.JSON)
         .body(body.append('}').toString())
         .post(base(repoId))

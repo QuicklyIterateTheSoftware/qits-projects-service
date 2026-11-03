@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import java.util.LinkedHashMap;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
  * <p>Fixtures are written through {@link EntityFixtures}.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkApiTest {
 
   private static final String WORK = "/projects/api/work/";

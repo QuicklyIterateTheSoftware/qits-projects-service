@@ -41,8 +41,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * empty classpath fails rather than skipping.
  *
  * <p>Each interaction runs as one {@code @TestTemplate} invocation against this {@code @QuarkusTest}
- * application over real HTTP ({@link HttpTestTarget} at the test port), unauthenticated — the
- * {@code %test} dev user, exactly as {@link GoldenMasterRecordingTest}'s REST-assured calls run.
+ * application over real HTTP ({@link HttpTestTarget} at the test port), as {@link
+ * ContractBearers#consumerCaller()} where the pact carries no credential, exactly as {@link
+ * GoldenMasterRecordingTest}'s REST-assured calls run.
  *
  * <p><b>Ordering.</b> {@code PlatformStateReset} is a Quarkus before-each callback, so it runs in
  * JUnit's before-each phase; pact-jvm runs the {@code @State} methods in the before-TEST-EXECUTION
@@ -67,7 +68,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *       door (scheduling, qits-887; a campaign criterion's approval) answer as it does for them, and
  *       exactly what {@link GoldenMasterRecordingTest} sends when it records the answer the consumer
  *       wrote against. Any other trigger (a CLI command, a service's schedule) calls as the plain
- *       {@code %test} dev user, as before. A state that returns an {@code authorization} param
+ *       consumer caller. A state that returns an {@code authorization} param
  *       grants it ({@link ContractBearers}), so the pact's {@code Authorization} header arrives as the machine identity the edge
  *       forwards.
  *   <li><b>State-param stand-ins in the body are this run's values</b> ({@link
@@ -248,6 +249,11 @@ class ConsumerPactVerificationTest {
     if (kind != null && kind.isString() && "ui".equals(kind.asString())) {
       request.addHeader(
           "Cookie", PersonCheck.SESSION_COOKIE + "=" + FakeSessionIntrospection.admin("dev"));
+    }
+    if (!request.containsHeader("Authorization")) {
+      // An interaction without a credential of its own is the consumer's caller, named rather than
+      // left to a forward-auth dev user (epic qits-543).
+      request.setHeader("Authorization", ContractBearers.consumerCaller());
     }
 
     HttpEntity entity = request.getEntity();

@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.contracts.ProviderStates;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.Test;
  * row's entry.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class DispatchedWorkspacesReadTest {
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
@@ -54,8 +57,7 @@ public class DispatchedWorkspacesReadTest {
   private RequestSpecification asAdmin() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dana")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("dana", "qits:admin"));
   }
 
   private String createProject(String name) {
@@ -334,8 +336,7 @@ public class DispatchedWorkspacesReadTest {
     dispatch.willFind(onTicket(44L, ticketId));
 
     given()
-        .header("X-Qits-User", "agent-test")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent-test", "qits:agent"))
         .when()
         .get("/projects/api/projects/" + projectId + "/work/workspaces")
         .then()

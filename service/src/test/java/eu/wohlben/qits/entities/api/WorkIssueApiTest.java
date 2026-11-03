@@ -7,11 +7,13 @@ import static org.hamcrest.Matchers.hasItem;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import java.util.HashMap;
@@ -24,13 +26,13 @@ import org.junit.jupiter.api.Test;
  * ({@link PersonGateIdpTenant}), so a caller is what it sends, and each refusal below can fail.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 @WithTestResource(PersonGateIdpTenant.class)
 class WorkIssueApiTest {
 
   private static RequestSpecification person() {
     return given()
-        .header("X-Qits-User", "ada")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada"))
         .contentType(ContentType.JSON);
   }
@@ -38,8 +40,7 @@ class WorkIssueApiTest {
   /** {@code qits:admin} asserted in headers, which is no proof of a person. */
   private static RequestSpecification adminHeaders() {
     return given()
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"))
         .contentType(ContentType.JSON);
   }
 

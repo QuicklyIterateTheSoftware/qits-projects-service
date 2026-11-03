@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
@@ -17,6 +18,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -47,6 +49,7 @@ import org.junit.jupiter.api.Test;
  * WorkDispatchControllerTest} is the door's own suite across both archetypes.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class TicketFlowDispatchTest {
 
   /** The press this suite makes: the whole flow, which is what the retired ticket door always meant. */
@@ -74,8 +77,7 @@ public class TicketFlowDispatchTest {
         // A person behind the press: the session the edge keeps, as a browser sends it (qits-887).
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"));
   }
 
   private String createProject(String name) {
@@ -111,8 +113,7 @@ public class TicketFlowDispatchTest {
   private RequestSpecification asAdminAgent() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "admin-agent")
-        .header("X-Qits-Roles", "qits:admin-agent");
+        .header("Authorization", ContractBearers.caller("admin-agent", "qits:admin-agent"));
   }
 
   private String statusOf(String ticketId) {

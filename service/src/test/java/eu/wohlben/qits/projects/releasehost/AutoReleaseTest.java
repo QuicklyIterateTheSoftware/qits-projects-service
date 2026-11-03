@@ -21,6 +21,7 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.entity.RepositoryName;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -51,6 +52,7 @@ import org.junit.jupiter.api.Test;
  * ManifestVersionBumpTest} owns the exhaustive manifest cases offline.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class AutoReleaseTest {
 
   @Inject eu.wohlben.qits.projects.bus.BuildStatusListener buildListener;

@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.workspacehost.NoWorkspacesContextProfile;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.Test;
  * RELEASED, and the workspaces linger exactly as they did before the port existed.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 @TestProfile(NoWorkspacesContextProfile.class)
 public class ReleaseWithNoWorkspaceResolutionTest {
 

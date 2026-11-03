@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ReleaseRequestAnnouncer;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
@@ -20,6 +21,7 @@ import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -49,6 +51,7 @@ import org.junit.jupiter.api.Test;
  * running" is a fold announced DONE with no verdict of its own yet.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestOwedRefoldTest {
 
   @Inject eu.wohlben.qits.projects.bus.BuildStatusListener buildListener;
@@ -340,8 +343,7 @@ public class ReleaseRequestOwedRefoldTest {
   private String inQa(String inRepo) {
     String id =
         given()
-            .header("X-Qits-User", "ada")
-            .header("X-Qits-Roles", "qits:admin")
+            .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
             .contentType(ContentType.JSON)
             .body("{\"branch\":\"work\",\"summary\":\"a gated release\"}")
             .post(base(inRepo))
@@ -369,8 +371,7 @@ public class ReleaseRequestOwedRefoldTest {
   private RequestSpecification admin() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "ada")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada"));
   }
 

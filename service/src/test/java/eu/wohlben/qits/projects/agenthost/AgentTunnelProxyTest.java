@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.AgentHarnessCapability;
 import eu.wohlben.qits.projects.persistence.AgentHarnessCapabilityRepository;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonCodec;
@@ -82,6 +83,15 @@ class AgentTunnelProxyTest {
   @Inject AgentCapabilityRelay relay;
 
   @Inject AgentHarnessCapabilityRepository capabilities;
+
+  /**
+   * The caller every dial and request here presents: a platform peer the suite names ({@code
+   * qits:system}, no token), where it used to lean on forward-auth's {@code %test} dev user, which
+   * leaves with qits-1338 (epic qits-543).
+   */
+  private static String peer() {
+    return ContractBearers.caller("tunnel-test-peer", "qits:system");
+  }
 
   @TestHTTPResource("/")
   URL root;
@@ -227,6 +237,7 @@ class AgentTunnelProxyTest {
         wsClient
             .connect(
                 new WebSocketConnectOptions()
+                    .addHeader("Authorization", peer())
                     .setHost(root.getHost())
                     .setPort(root.getPort())
                     .setURI(DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + id))
@@ -282,6 +293,7 @@ class AgentTunnelProxyTest {
                 wsClient
                     .connect(
                         new WebSocketConnectOptions()
+                    .addHeader("Authorization", peer())
                             .setHost(root.getHost())
                             .setPort(root.getPort())
                             .setURI(path))
@@ -307,6 +319,7 @@ class AgentTunnelProxyTest {
             .send(
                 HttpRequest.newBuilder(URI.create("http://" + root.getHost() + ":" + root.getPort() + path))
                     .version(PROXY_HOP_VERSION)
+                    .header("Authorization", peer())
                     // A caller-supplied credential the proxy must REPLACE rather than forward:
                     // the daemon's bearer says "qits is calling", not "this user is calling".
                     .header("Authorization", "Bearer not-the-daemons-token")
@@ -563,6 +576,7 @@ class AgentTunnelProxyTest {
                             + ContainerProxyPath.base(project)
                             + "commands"))
                 .version(PROXY_HOP_VERSION)
+                    .header("Authorization", peer())
                 .GET()
                 .build(),
             HttpResponse.BodyHandlers.ofString());
@@ -579,6 +593,7 @@ class AgentTunnelProxyTest {
                 wsClient
                     .connect(
                         new WebSocketConnectOptions()
+                    .addHeader("Authorization", peer())
                             .setHost(root.getHost())
                             .setPort(root.getPort())
                             .setURI(AgentTunnels.STREAM_PATH_PREFIX + nonce))
@@ -602,6 +617,7 @@ class AgentTunnelProxyTest {
                                 + ContainerProxyPath.base(UUID.randomUUID().toString())
                                 + "commands"))
                     .version(PROXY_HOP_VERSION)
+                    .header("Authorization", peer())
                     .GET()
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -621,6 +637,7 @@ class AgentTunnelProxyTest {
             wsClient
                 .connect(
                     new WebSocketConnectOptions()
+                    .addHeader("Authorization", peer())
                         .setHost(root.getHost())
                         .setPort(root.getPort())
                         .setURI(AgentTunnels.STREAM_PATH_PREFIX + "not-a-nonce"))

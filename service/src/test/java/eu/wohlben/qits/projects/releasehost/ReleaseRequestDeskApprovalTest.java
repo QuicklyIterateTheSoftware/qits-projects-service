@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.AutomationKinds;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -919,8 +920,7 @@ public class ReleaseRequestDeskApprovalTest {
   private static RequestSpecification person(String name) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", name)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(name, "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(name));
   }
 

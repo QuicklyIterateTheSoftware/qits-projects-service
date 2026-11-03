@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.security.AgentTokens;
 import eu.wohlben.qits.projects.startup.DevelopmentGuideSeed;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
 import java.util.List;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
 
 /** The development guide (qits-1679): each variant, detection, storage and the rollout. */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class DevelopmentGuideControllerTest {
 
   @Inject DevelopmentGuideSeed seed;

@@ -30,6 +30,7 @@ import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -641,8 +642,7 @@ class CampaignExecutorTest {
         .body("message", containsString("a campaign presses dispatch only"));
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "an-agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("an-agent", "qits:agent"))
         .body(Map.of("mode", "FLOW"))
         .post(path)
         .then()
@@ -967,8 +967,7 @@ class CampaignExecutorTest {
   private static RequestSpecification asAdmin(String user) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user));
   }
 }

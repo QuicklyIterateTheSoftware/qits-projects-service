@@ -25,6 +25,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ExtractableResponse;
 import io.restassured.response.Response;
@@ -58,6 +59,7 @@ import org.junit.jupiter.api.Test;
  * ReleaseSupersessionTest} does.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseFeatureFreezeTest {
 
   @Inject ReleaseRequests releaseRequests;

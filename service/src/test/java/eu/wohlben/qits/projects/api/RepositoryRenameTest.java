@@ -9,10 +9,12 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.FakeGitHostRepositories;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.testsupport.RecordingRepositoryAnnouncer;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.Test;
  * fails the rename.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RepositoryRenameTest {
 
   /** Wins the port's injection over the shipped {@code @DefaultBean} announcer. */
@@ -78,7 +81,9 @@ public class RepositoryRenameTest {
   }
 
   private io.restassured.response.Response resolveByName(String projectId, String name) {
+    // The by-name door is qits-githost's, qits:system alone.
     return given()
+        .header("Authorization", ContractBearers.caller("dev-qits-githost", "qits:system"))
         .when()
         .get("/projects/api/projects/" + projectId + "/repositories/by-name/" + name);
   }

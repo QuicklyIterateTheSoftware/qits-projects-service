@@ -11,6 +11,7 @@ import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import java.util.HashMap;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
  * where that service is.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkPatchApiTest {
 
   private static String createProject() {

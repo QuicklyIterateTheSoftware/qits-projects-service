@@ -11,8 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.Test;
  * (the test-profile budget rule), against the refinement fakes and the recording dispatch port.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class WorkRefinementControllerTest {
 
   @Inject RecordingWorkspaceAgentDispatch workspaces;
@@ -54,8 +57,7 @@ public class WorkRefinementControllerTest {
   private static RequestSpecification asAdmin() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dana")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("dana", "qits:admin"));
   }
 
   private String createProject(String name) {

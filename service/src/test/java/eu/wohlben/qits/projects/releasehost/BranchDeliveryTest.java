@@ -33,6 +33,7 @@ import eu.wohlben.qits.projects.entity.RepositoryName;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -60,6 +61,7 @@ import org.junit.jupiter.api.Test;
  * so each test also proves the row committed before it was told.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class BranchDeliveryTest {
 
   private static final String SCREENSHOTS = "screenshot-baselines";

@@ -18,10 +18,12 @@ import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -49,6 +51,7 @@ import org.junit.jupiter.api.Test;
  * and the wire shapes are pinned in the golden masters ({@code listWorkComments}).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkCommentApiTest {
 
   @Inject WorkEntityService entities;
@@ -100,7 +103,7 @@ class WorkCommentApiTest {
   }
 
   private static RequestSpecification as(String user) {
-    return given().header("X-Qits-User", user).header("X-Qits-Roles", "qits:admin");
+    return given().header("Authorization", ContractBearers.caller(user, "qits:admin"));
   }
 
   private static String comment(String user, String entityId, String body) {

@@ -14,10 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.control.IdeaService;
 import eu.wohlben.qits.entities.error.ForbiddenException;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.Test;
  * qits-1790) and the absence of a delete.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class IdeaApiTest {
 
   @Inject IdeaService ideas;
@@ -536,8 +539,7 @@ class IdeaApiTest {
 
   private static RequestSpecification asForwarded(String role) {
     return given()
-        .header("X-Qits-User", "somebody")
-        .header("X-Qits-Roles", role)
+        .header("Authorization", ContractBearers.caller("somebody", role))
         .contentType(ContentType.JSON);
   }
 }

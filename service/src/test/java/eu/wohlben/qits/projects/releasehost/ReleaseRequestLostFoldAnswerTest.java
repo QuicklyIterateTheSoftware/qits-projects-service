@@ -12,6 +12,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
  * recorded is still no change at all.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestLostFoldAnswerTest {
 
   private static final String BRANCH = "ticket/qits-1565";

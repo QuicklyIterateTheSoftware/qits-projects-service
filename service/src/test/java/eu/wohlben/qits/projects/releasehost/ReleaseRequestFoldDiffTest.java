@@ -26,6 +26,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -57,6 +58,7 @@ import org.junit.jupiter.api.Test;
  * inside somebody else's test.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestFoldDiffTest {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;

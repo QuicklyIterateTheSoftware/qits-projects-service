@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
@@ -34,20 +35,21 @@ import org.junit.jupiter.api.Test;
 @WithTestResource(PersonGateIdpTenant.class)
 class ScheduleNeedsAPersonDoorTest {
 
-  /** A person's browser session as the edge forwards it: the asserted pair, and the cookie. */
+  /**
+   * A person's browser session: the caller the suite names ({@link ContractBearers#caller}, what the
+   * asserted header pair used to establish — no token), and the cookie.
+   */
   private static RequestSpecification session(String asserted, String person) {
     return given()
-        .header("X-Qits-User", asserted)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(asserted, "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(person))
         .contentType(ContentType.JSON);
   }
 
-  /** {@code qits:admin} asserted in headers and nothing this service can verify. */
+  /** {@code qits:admin} asserted, with no token and no session — nothing this service can verify. */
   private static RequestSpecification headersOnly() {
     return given()
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"))
         .contentType(ContentType.JSON);
   }
 
@@ -281,17 +283,16 @@ class ScheduleNeedsAPersonDoorTest {
   }
 
   @Test
-  void aServiceClientAndAMachineBearerUnderAssertedHeadersAreRefused() {
+  void aServiceClientAndAMachineBearerBesideASessionCookieAreRefused() {
     String projectId = project("Service client");
     String id = refined(projectId, "TICKET");
     status(bearer(serviceClient()), id, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
-    // The bearer is the credential: admin headers beside it assert nothing.
+    // The bearer is the credential: an admin's session cookie beside it asserts nothing. (Forwarded
+    // admin headers used to ride along here too; forward-auth leaves with qits-1338.)
     status(
             bearer(serviceClient())
-                .header("X-Qits-User", "ada")
-                .header("X-Qits-Roles", "qits:admin")
                 .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada")),
             id,
             "READY_FOR_DEV")

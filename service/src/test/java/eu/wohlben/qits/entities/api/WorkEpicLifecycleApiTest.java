@@ -13,6 +13,7 @@ import static org.hamcrest.Matchers.nullValue;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
  * person's (qits-887) and an epic's status is {@code qits:admin} alone.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkEpicLifecycleApiTest {
 
   private static final String WORK = "/projects/api/work/";

@@ -13,6 +13,7 @@ import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -260,8 +261,7 @@ public class RetiredEntityDoorsTest {
   private static RequestSpecification asAdmin() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"));
   }
 
   /** The route's path under {@code /projects/api} with every {@code {name}} a seeded row. */

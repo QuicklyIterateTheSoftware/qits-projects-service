@@ -6,11 +6,13 @@ import static org.hamcrest.Matchers.equalTo;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -31,14 +33,14 @@ import org.junit.jupiter.api.Test;
  * mints for it and nothing a header asserts.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 @WithTestResource(PersonGateIdpTenant.class)
 class DeskCoordinatorRightsDoorTest {
 
   /** A person's browser session as the edge forwards it. */
   private static RequestSpecification person() {
     return given()
-        .header("X-Qits-User", "ada")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada"))
         .contentType(ContentType.JSON);
   }

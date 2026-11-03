@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.GitExecutor;
 import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
@@ -152,8 +153,7 @@ public class CommitSubjectsControllerTest {
     Repository repo = cloned("Commit Subjects Refusals");
     for (String limit : new String[] {"0", "1001"}) {
       given()
-          .header("X-Qits-User", "agent-test")
-          .header("X-Qits-Roles", "qits:agent")
+          .header("Authorization", ContractBearers.caller("agent-test", "qits:agent"))
           .queryParam("limit", limit)
           .when()
           .get("/projects/api/repositories/" + repo.id + "/commit-subjects")
@@ -161,16 +161,14 @@ public class CommitSubjectsControllerTest {
           .statusCode(400);
     }
     given()
-        .header("X-Qits-User", "agent-test")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent-test", "qits:agent"))
         .queryParam("branch", "no-such-branch")
         .when()
         .get("/projects/api/repositories/" + repo.id + "/commit-subjects")
         .then()
         .statusCode(404);
     given()
-        .header("X-Qits-User", "agent-test")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent-test", "qits:agent"))
         .queryParam("branch", "-D")
         .when()
         .get("/projects/api/repositories/" + repo.id + "/commit-subjects")
@@ -180,8 +178,7 @@ public class CommitSubjectsControllerTest {
 
   private JsonPath read(String repoId, Map<String, String> query, String role) {
     return given()
-        .header("X-Qits-User", "subjects-test")
-        .header("X-Qits-Roles", role)
+        .header("Authorization", ContractBearers.caller("subjects-test", role))
         .queryParams(query)
         .when()
         .get("/projects/api/repositories/" + repoId + "/commit-subjects")

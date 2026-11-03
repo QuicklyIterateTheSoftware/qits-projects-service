@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
@@ -53,13 +54,12 @@ public class RepositoryNameCutoverTest {
   private RequestSpecification session() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"));
   }
 
   /** The git host as it presents itself: it resolves every name-addressed clone with these roles. */
   private RequestSpecification gitHost() {
-    return given().header("X-Qits-User", "dev-qits-githost").header("X-Qits-Roles", "qits:system");
+    return given().header("Authorization", ContractBearers.caller("dev-qits-githost", "qits:system"));
   }
 
   private String createProject(String name) {

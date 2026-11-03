@@ -24,6 +24,7 @@ import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
@@ -31,6 +32,7 @@ import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -47,13 +49,12 @@ import org.junit.jupiter.api.function.Executable;
  *
  * <p><b>Two layers, tested where each can be reached — the split {@code
  * ReleaseRequestAgentBoundsTest} explains and this class inherits.</b> The <b>binding</b> reads the
- * token's {@code project} claim, and a {@code @QuarkusTest} cannot put a token in front of this
- * service: the forwarded-header mechanism's {@code %test} dev user wins over a {@code @TestSecurity}
- * identity, and that dev user holds all four platform roles. So the controllers are driven directly,
- * with hand-made identities from {@link AgentTokens} over real rows and the real beans. The
- * <b>roles</b> are what a forwarded header carries, so they are tested over HTTP with {@code
- * X-Qits-Roles: qits:agent} — and only the roles: a forwarded agent carries no token at all, so the
- * claim binding is unreachable from there by construction.
+ * token's {@code project} claim, and the {@code @QuarkusTest} suite runs no OIDC tenant to put a
+ * real token in front of this service. So the controllers are driven directly, with hand-made
+ * identities from {@link AgentTokens} over real rows and the real beans. The <b>roles</b> are
+ * tested over HTTP with a suite caller ({@link ContractBearers#caller}) holding {@code qits:agent}
+ * — and only the roles: such a caller carries no token at all (it stands for what the forwarded
+ * header pair used to establish), so the claim binding is unreachable from there by construction.
  *
  * <p><b>What the HTTP half can still say, and it is the sharper half of the door.</b> A granted
  * route and an admin-only route both answer 403 to a bound agent that does not cover the project —
@@ -75,6 +76,7 @@ import org.junit.jupiter.api.function.Executable;
  * AgentReadAccessTest} and its binding is the same {@code requireProject} call as the doors below.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class EntityAgentBoundsTest {
 
   private static final String OWN_PROJECT = "entity-bounds-own";
@@ -1011,7 +1013,7 @@ class EntityAgentBoundsTest {
   // ---- the roles, over HTTP ---------------------------------------------------------------------
 
   /**
-   * The doors a platform service reaches over HTTP with {@code X-Qits-Roles: qits:system}
+   * The doors a platform service reaches over HTTP holding {@code qits:system}
    * (qits-667): the role lists admit the machine, and the whole MAINTENANCE round trip goes through
    * in a project it has no tie to, the reporter being the asserted user.
    */
@@ -1065,22 +1067,19 @@ class EntityAgentBoundsTest {
 
   private static RequestSpecification asForwardedMachine() {
     return given()
-        .header("X-Qits-User", "qits-maintenance")
-        .header("X-Qits-Roles", "qits:system")
+        .header("Authorization", ContractBearers.caller("qits-maintenance", "qits:system"))
         .contentType(ContentType.JSON);
   }
 
   private static RequestSpecification asForwardedAgent() {
     return given()
-        .header("X-Qits-User", "someone")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("someone", "qits:agent"))
         .contentType(ContentType.JSON);
   }
 
   private static RequestSpecification asForwardedCiRun() {
     return given()
-        .header("X-Qits-User", "qits-ci")
-        .header("X-Qits-Roles", "qits:ci-run")
+        .header("Authorization", ContractBearers.caller("qits-ci", "qits:ci-run"))
         .contentType(ContentType.JSON);
   }
 

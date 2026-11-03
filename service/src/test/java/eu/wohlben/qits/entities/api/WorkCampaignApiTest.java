@@ -20,6 +20,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ForbiddenException;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
@@ -27,6 +28,7 @@ import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -45,13 +47,14 @@ import org.junit.jupiter.api.Test;
  * about the rules and the roles.
  *
  * <p>{@code EntityAgentBoundsTest} explains the split this class follows: roles are read over HTTP
- * with a forwarded {@code X-Qits-Roles: qits:agent}, and the claim binding — which a forwarded agent
+ * with a suite caller holding {@code qits:agent}, and the claim binding — which a forwarded agent
  * can never satisfy, having no token — is driven directly through {@link CampaignDoors}, the bean
  * {@link WorkMembersController} delegates to, with {@link AgentTokens} identities.
  *
  * <p>No {@code @TestProfile} (the test-profile budget rule).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkCampaignApiTest {
 
   private static final String PROJECT = "campaign-api";
@@ -371,8 +374,7 @@ class WorkCampaignApiTest {
         .body("progress.members.size()", equalTo(2));
     asForwardedAgent().get(WORK + "no-such-campaign/progress").then().statusCode(404);
     given()
-        .header("X-Qits-User", "someone")
-        .header("X-Qits-Roles", "qits:system")
+        .header("Authorization", ContractBearers.caller("someone", "qits:system"))
         .get(base + "/progress")
         .then()
         .statusCode(403);
@@ -608,8 +610,7 @@ class WorkCampaignApiTest {
 
   private static RequestSpecification asForwardedAgent() {
     return given()
-        .header("X-Qits-User", "someone")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("someone", "qits:agent"))
         .contentType(ContentType.JSON);
   }
 

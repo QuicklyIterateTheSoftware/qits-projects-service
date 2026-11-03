@@ -12,12 +12,14 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentLookup;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -42,6 +44,7 @@ import org.junit.jupiter.api.Test;
  * header pair carries no token and so no claim.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 @WithTestResource(PersonGateIdpTenant.class)
 class WorkCommentAuthorshipTest {
 
@@ -88,7 +91,7 @@ class WorkCommentAuthorshipTest {
   // --- callers ---------------------------------------------------------------------------------
 
   private static RequestSpecification person(String name, String role) {
-    return given().header("X-Qits-User", name).header("X-Qits-Roles", role);
+    return given().header("Authorization", ContractBearers.caller(name, role));
   }
 
   private RequestSpecification agent(String subject, String agentId) {

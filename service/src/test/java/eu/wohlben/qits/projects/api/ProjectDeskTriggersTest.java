@@ -7,15 +7,14 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindow;
 import eu.wohlben.qits.projects.entity.DeskTriggerWindowState;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import java.time.Instant;
@@ -34,11 +33,10 @@ import org.junit.jupiter.api.Test;
  * this is the read, and the engine has its own suites. Each test makes a project of its own, so the
  * answer holds only what the test wrote.
  *
- * <p>Under {@link NoDevUserProfile}, the deployed posture: a request with no credential is
- * anonymous, not the {@code %test} admin, so every call names its caller as the edge does.
+ * <p>The deployed posture (the suite's test config blanks the dev user, epic qits-543): a request
+ * with no credential is anonymous, so every call names its caller.
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class ProjectDeskTriggersTest {
 
   private static final Instant T0 = Instant.parse("2026-03-01T10:00:00Z");
@@ -65,8 +63,7 @@ public class ProjectDeskTriggersTest {
   private RequestSpecification as(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private RequestSpecification asAdmin() {

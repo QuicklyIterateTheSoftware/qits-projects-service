@@ -17,6 +17,7 @@ import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.AutomationKinds;
 import eu.wohlben.qits.projects.control.DownstreamPins;
 import eu.wohlben.qits.projects.entity.Project;
@@ -325,8 +326,7 @@ public class ReleaseRequestApprovalRolesTest {
         .statusCode(403);
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"))
         .body("{\"mergedSha\":\"" + fold + "\"}")
         .post(base(manualRepoId) + "/" + id + "/approve")
         .then()
@@ -629,8 +629,7 @@ public class ReleaseRequestApprovalRolesTest {
   private static RequestSpecification person(String name) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", name)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(name, "qits:admin"))
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(name));
   }
 

@@ -11,6 +11,7 @@ import eu.wohlben.qits.projects.control.TechnicalProcess;
 import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
  * active-process is simply null (mirrors the workspace endpoint; the pull POST keeps its 404).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RepositoryActiveProcessTest {
 
   @Inject TechnicalProcessRegistry registry;

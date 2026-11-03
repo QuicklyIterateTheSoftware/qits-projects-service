@@ -6,9 +6,8 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.ws.rs.core.Response;
@@ -18,19 +17,17 @@ import org.junit.jupiter.api.Test;
  * {@code POST /projects/api/projects/{projectId}/agent-config-repository} (qits-1382): the one door
  * that mints a project's {@code qits-agent-config}, and who may press it.
  *
- * <p>Under {@link NoDevUserProfile} for {@link ProjectRepositoryCreateDoorTest}'s reason — the
- * {@code %test} dev user holds every role, so a refusal is only observable with it blanked — and
- * with that class's caller matrix, because the roles here are the create door's and must stay so.
+ * <p>With the suite's dev user blanked (test config, epic qits-543) for {@link
+ * ProjectRepositoryCreateDoorTest}'s reason — a refusal is only observable when a caller is what it
+ * names — and with that class's caller matrix, because the roles here are the create door's and must stay so.
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class AgentConfigRepositoryDoorTest {
 
   private RequestSpecification as(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private RequestSpecification session() {
@@ -116,8 +113,7 @@ public class AgentConfigRepositoryDoorTest {
         .statusCode(Response.Status.OK.getStatusCode());
     press(session(), projectId).then().statusCode(Response.Status.OK.getStatusCode());
     given()
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"))
         .when()
         .post("/projects/api/projects/" + projectId + "/agent-config-repository")
         .then()

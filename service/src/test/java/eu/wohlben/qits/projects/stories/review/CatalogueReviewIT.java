@@ -61,10 +61,9 @@ import org.junit.jupiter.api.TestMethodOrder;
  * changed. {@link StoryPlatform#awaitMirrorFreshnessLapse()} is what turns it back into a fact
  * about the route.
  *
- * <p>Both stories are a <b>person's</b>: the platform edge asserts {@code X-Qits-User} and {@code
- * X-Qits-Roles}, this service authenticates no human itself, and the OIDC tenant is bearer-only so
- * a request with no {@code Authorization} header falls through to the header mechanism exactly as it
- * does behind the edge. That is what makes "an operator" an honest name for the arrow.
+ * <p>Both stories are a <b>person's</b>: the operator presents a person's bearer from the same idp
+ * ({@code qits:admin} in its groups), as a signed-in person reaches this service once forward-auth
+ * leaves with qits-1338. That is what makes "an operator" an honest name for the arrow.
  *
  * <p>It runs last of this repository's story classes on purpose: it reads what {@link
  * ProjectCatalogueIT} and {@link EpicPlanningIT} put there, which is the state a real operator

@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.response.ValidatableResponse;
 import jakarta.ws.rs.core.Response;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Test;
  * transition's own status rule — is asserted over there, where it costs no HTTP round trip.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class EntityArchetypesApiTest {
 
   private static final String PATH = "/projects/api/work/archetypes";

@@ -14,6 +14,7 @@ import eu.wohlben.qits.projects.api.CommentTurns;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.bus.EntityCommented;
 import eu.wohlben.qits.projects.bus.RecordingEntityCommentAnnouncer;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -23,6 +24,7 @@ import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -48,6 +50,7 @@ import org.junit.jupiter.api.Test;
  * WorkCommentAuthorshipTest}), because the agent claim and the {@code name} claim live on a bearer.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 @WithTestResource(PersonGateIdpTenant.class)
 class WorkCommentNotificationTest {
 
@@ -125,7 +128,7 @@ class WorkCommentNotificationTest {
   // --- callers ---------------------------------------------------------------------------------
 
   private static RequestSpecification person(String name) {
-    return given().header("X-Qits-User", name).header("X-Qits-Roles", "qits:admin");
+    return given().header("Authorization", ContractBearers.caller(name, "qits:admin"));
   }
 
   private static RequestSpecification bearer(String subject, Map<String, Object> claims, String... groups) {

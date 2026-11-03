@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.nullValue;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.ws.rs.core.Response;
 import java.util.LinkedHashMap;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
  * by side.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class EntityTransitionApiTest {
 
   private String createProject() {

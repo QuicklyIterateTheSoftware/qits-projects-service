@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.PipelinePhaseReruns;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -33,10 +34,10 @@ import org.junit.jupiter.api.function.Executable;
  * approves.
  *
  * <p>Two layers, tested where each can be reached. The <b>bounds</b> read the token's claims, and
- * a {@code @QuarkusTest} cannot put a token in front of this service: the forwarded-header
- * mechanism's dev user wins over a {@code @TestSecurity} identity. So the controller is driven
- * directly, with a hand-made token and the real beans over real rows. The <b>roles</b> are what
- * the forwarded header carries, so they are tested over HTTP with {@code X-Qits-Roles: qits:agent}.
+ * the {@code @QuarkusTest} suite runs no OIDC tenant to put a real token in front of this service.
+ * So the controller is driven directly, with a hand-made token and the real beans over real rows.
+ * The <b>roles</b> are tested over HTTP with a claimless suite caller holding {@code qits:agent}
+ * ({@code ContractBearers.caller}).
  */
 @QuarkusTest
 public class ReleaseRequestAgentBoundsTest {
@@ -289,8 +290,7 @@ public class ReleaseRequestAgentBoundsTest {
 
   private static io.restassured.specification.RequestSpecification asForwardedAgent() {
     return given()
-        .header("X-Qits-User", "someone")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("someone", "qits:agent"))
         .contentType(ContentType.JSON);
   }
 
@@ -341,8 +341,7 @@ public class ReleaseRequestAgentBoundsTest {
 
   private static io.restassured.specification.RequestSpecification asForwardedCiRun() {
     return given()
-        .header("X-Qits-User", "qits-ci")
-        .header("X-Qits-Roles", "qits:ci-run")
+        .header("Authorization", ContractBearers.caller("qits-ci", "qits:ci-run"))
         .contentType(ContentType.JSON);
   }
 

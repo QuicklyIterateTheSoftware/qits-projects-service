@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.control.AgentSurfaceDefaults;
 import eu.wohlben.qits.projects.startup.AgentSurfaceSeed;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test;
  * along with the bug.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class AgentSurfaceConfigurationControllerTest {
 
   @Inject AgentSurfaceSeed seed;

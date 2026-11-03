@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ProjectConfig;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.FrontDesk;
@@ -140,7 +141,7 @@ class FrontDeskTest {
   }
 
   private static RequestSpecification person() {
-    return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:admin");
+    return given().header("Authorization", ContractBearers.caller("someone", "qits:admin"));
   }
 
   private static String base(String projectId) {

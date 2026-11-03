@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.entities.control.DossierAssetService;
 import eu.wohlben.qits.entities.error.ForbiddenException;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.refinementhost.RefinementDesigns;
@@ -17,6 +18,7 @@ import eu.wohlben.qits.projects.refinementhost.RefinementService;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.util.List;
@@ -33,11 +35,12 @@ import org.junit.jupiter.api.function.Executable;
  *
  * <p><b>Driven directly, as {@code EntityAgentBoundsTest} explains:</b> the binding reads the
  * token's claims, which a {@code @QuarkusTest} cannot put in front of this service over HTTP (the
- * {@code %test} dev user wins), so the controllers are built by hand with identities from {@link
+ * suite runs no OIDC tenant), so the controllers are built by hand with identities from {@link
  * AgentTokens} over real rows and the real beans. The roles half — dispatch, which a refinement
  * token's {@code qits:agent} cannot open — is a forwarded header and is driven over HTTP.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RefinementEntityBindingTest {
 
   private static final String OWN_DRAFT = "{\"text\":\"own draft\"}";
@@ -244,8 +247,7 @@ public class RefinementEntityBindingTest {
 
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "tok-room")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("tok-room", "qits:agent"))
         .body(Map.of("mode", "FLOW"))
         .when()
         .post("/projects/api/work/" + rooms.entityA() + "/dispatch")

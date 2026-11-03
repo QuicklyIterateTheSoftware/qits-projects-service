@@ -17,6 +17,7 @@ import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import eu.wohlben.qits.projects.api.AgentWaiting;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -24,6 +25,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities.Told;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.Test;
  * in time ({@link #backdate}), which is the one write here that does not go through a door.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class AgentWaitingApiTest {
 
   @Inject RecordingWorkspaceAgentEntities agents;
@@ -65,8 +68,7 @@ class AgentWaitingApiTest {
   private static RequestSpecification asSystem() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dev-qits-workspaces")
-        .header("X-Qits-Roles", "qits:system");
+        .header("Authorization", ContractBearers.caller("dev-qits-workspaces", "qits:system"));
   }
 
   private static ValidatableResponse report(String id, Map<String, Object> body) {
@@ -91,8 +93,7 @@ class AgentWaitingApiTest {
   private static ValidatableResponse setBlocked(String id, boolean blocked, String reason) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dana")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("dana", "qits:admin"))
         .body(map("blocked", blocked, "reason", reason))
         .when()
         .post("/projects/api/work/" + id + "/blocked")
@@ -678,8 +679,7 @@ class AgentWaitingApiTest {
 
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "agent-qits-895")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent-qits-895", "qits:agent"))
         .body(map("waiting", true))
         .when()
         .post("/projects/api/work/" + ticket + "/agent-waiting")
@@ -687,8 +687,7 @@ class AgentWaitingApiTest {
         .statusCode(403);
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"))
         .body(map("waiting", true))
         .when()
         .post("/projects/api/work/" + ticket + "/agent-waiting")

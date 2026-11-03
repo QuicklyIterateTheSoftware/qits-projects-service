@@ -10,6 +10,7 @@ import eu.wohlben.qits.projects.control.AgentCapabilityDefaults;
 import eu.wohlben.qits.projects.persistence.AgentHarnessCapabilityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test;
  * meets first on a real estate and is the case with the most to get wrong.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class AgentCapabilityControllerTest {
 
   private static final String PATH = "/projects/api/agent-capabilities";

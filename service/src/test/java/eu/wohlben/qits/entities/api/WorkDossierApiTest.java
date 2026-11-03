@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.nullValue;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import java.util.HashMap;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Test;
  * written while the ticket is REPORTED and again after it is DONE.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class WorkDossierApiTest {
 
   private static final String WORK = "/projects/api/work/";

@@ -11,6 +11,7 @@ import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test;
  * browser screen instead — an epic marked Implemented from the board kept its room for good.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class EpicResolutionCleanupTest {
 
   private String createProject(String name) {

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAnnouncer;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -22,6 +23,7 @@ import eu.wohlben.qits.projects.entity.RepositoryName;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -47,6 +49,7 @@ import org.junit.jupiter.api.Test;
  * order, the {@code preRun} block on the answer and the QA phase's {@code WAITING_FOR_PRE_RUN}.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestPreRunTest {
 
   private static final String SCREENSHOTS = "screenshot-baselines";
@@ -932,8 +935,7 @@ public class ReleaseRequestPreRunTest {
 
   private static io.restassured.specification.RequestSpecification asMaintenance() {
     return given()
-        .header("X-Qits-User", "dev-qits-maintenance")
-        .header("X-Qits-Roles", "qits:system")
+        .header("Authorization", ContractBearers.caller("dev-qits-maintenance", "qits:system"))
         .contentType(ContentType.JSON);
   }
 
@@ -944,8 +946,7 @@ public class ReleaseRequestPreRunTest {
   private String create(String branch) {
     String id =
         given()
-            .header("X-Qits-User", "ada")
-            .header("X-Qits-Roles", "qits:admin")
+            .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
             .contentType(ContentType.JSON)
             .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post(base())
@@ -986,8 +987,7 @@ public class ReleaseRequestPreRunTest {
   private String create(String inRepo, String branch) {
     String id =
         given()
-            .header("X-Qits-User", "ada")
-            .header("X-Qits-Roles", "qits:admin")
+            .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
             .contentType(ContentType.JSON)
             .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
             .post("/projects/api/repositories/" + inRepo + "/release-requests")

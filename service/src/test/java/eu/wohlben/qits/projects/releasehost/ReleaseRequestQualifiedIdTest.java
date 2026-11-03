@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ReleaseRequestNumbers;
 import eu.wohlben.qits.projects.control.ReleaseRequestStateAnnouncer;
 import eu.wohlben.qits.projects.entity.Project;
@@ -16,6 +17,7 @@ import eu.wohlben.qits.projects.entity.RepositoryName;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.util.List;
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.Test;
  * events, and accepted by the doors in place of the uuid.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestQualifiedIdTest {
 
   @Inject ReleaseRequestNumbers numbers;
@@ -222,8 +225,7 @@ public class ReleaseRequestQualifiedIdTest {
 
   private static String create(String repoId) {
     return given()
-        .header("X-Qits-User", "ada")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
         .post(base(repoId))

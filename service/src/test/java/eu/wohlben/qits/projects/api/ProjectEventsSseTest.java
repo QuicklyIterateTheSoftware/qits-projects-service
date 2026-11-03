@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.api.WorkRequests;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test;
  * the real CDI async bus, not by calling the broadcaster.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class ProjectEventsSseTest {
 
   @TestHTTPResource("/projects/api/projects/")

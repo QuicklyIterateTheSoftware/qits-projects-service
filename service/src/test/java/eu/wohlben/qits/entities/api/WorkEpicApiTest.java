@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
  * wholesale: a caller named with no role would be refused by the routes' {@code @RolesAllowed}.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkEpicApiTest {
 
   private static final String WORK = "/projects/api/work/";

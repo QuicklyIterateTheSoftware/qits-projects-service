@@ -23,6 +23,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -49,6 +50,7 @@ import org.junit.jupiter.api.Test;
  * vacuously is gone, and so is the property that configured it.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestFlowTest {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;

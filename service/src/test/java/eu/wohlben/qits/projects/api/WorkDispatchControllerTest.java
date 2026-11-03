@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
@@ -24,6 +25,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -50,6 +52,7 @@ import org.junit.jupiter.api.Test;
  * shares, so this class costs no boot (the test-profile budget rule).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class WorkDispatchControllerTest {
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
@@ -136,8 +139,7 @@ public class WorkDispatchControllerTest {
         // A person behind the press: the session the edge keeps, as a browser sends it (qits-887).
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"));
   }
 
   private String createProject(String name) {
@@ -224,8 +226,7 @@ public class WorkDispatchControllerTest {
   private RequestSpecification asAdminAgent() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "admin-agent")
-        .header("X-Qits-Roles", "qits:admin-agent");
+        .header("Authorization", ContractBearers.caller("admin-agent", "qits:admin-agent"));
   }
 
   private void pressRefusedForAMachine(String entityId, String mode, String says) {
@@ -960,16 +961,14 @@ public class WorkDispatchControllerTest {
     String ticketId = createTicket(projectId, "Not for agents");
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent", "qits:agent"))
         .body(Map.of("mode", "FLOW"))
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(403);
     given()
-        .header("X-Qits-User", "agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent", "qits:agent"))
         .when()
         .get("/projects/api/work/" + ticketId + "/dispatch")
         .then()
@@ -981,16 +980,14 @@ public class WorkDispatchControllerTest {
     transitionTicket(ticketId, "REFINED");
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent", "qits:agent"))
         .body(Map.of("mode", "FLOW"))
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(403);
     given()
-        .header("X-Qits-User", "agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent", "qits:agent"))
         .when()
         .get("/projects/api/work/" + ticketId + "/dispatch")
         .then()

@@ -5,11 +5,10 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.notNullValue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.GitHostRepositories;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -31,12 +30,11 @@ import org.junit.jupiter.api.Test;
  * anonymous rather than the synthetic {@code dev} identity that holds every platform role. The
  * route is {@code qits:system} alone, so a browser session is refused here — which is what the
  * method-level annotation replacing the class-level one is for, and the defect class this repo
- * watches. It is {@link NoDevUserProfile} itself rather than a copy of it: a profile is keyed by
- * its class, so an identical one of this class's own was a whole second app boot — ~125 MB of
- * metaspace retained for the rest of the run (qits-965, the test-profile budget rule).
+ * watches. It needs no profile of its own: the suite's test config blanks the dev user (epic
+ * qits-543), and a profile is keyed by its class, so one would be a whole second app boot — ~125 MB
+ * of metaspace retained for the rest of the run (qits-965, the test-profile budget rule).
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class ProjectRepositoryAdoptTest {
 
   /** The fake git host of the domain suite: {@code ensure} is {@code PUT /git/<repoId>}. */
@@ -46,16 +44,14 @@ public class ProjectRepositoryAdoptTest {
   private RequestSpecification session() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"));
   }
 
   /** The bootstrap as it presents itself: a machine bearer's roles, and no browser session. */
   private RequestSpecification machine() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dev-qits-bootstrap")
-        .header("X-Qits-Roles", "qits:system");
+        .header("Authorization", ContractBearers.caller("dev-qits-bootstrap", "qits:system"));
   }
 
   private String createProject(String name) {

@@ -16,6 +16,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkTag;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
  * {@code PhaseAdvanceTest}'s.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkTagApiTest {
 
   private static final String RESERVED = WorkTag.RESERVED_FOR_HUMAN.name();

@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Test;
  * what it answers, and that a client sorting the listing by the order rule sees the drop.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkPriorityApiTest {
 
   @Inject WorkEntityService work;

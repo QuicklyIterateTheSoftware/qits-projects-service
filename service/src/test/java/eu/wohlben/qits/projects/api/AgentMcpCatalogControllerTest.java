@@ -9,12 +9,14 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.persistence.AgentMcpCatalogEntryRepository;
 import eu.wohlben.qits.projects.persistence.AgentMcpCredentialRepository;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository;
 import eu.wohlben.qits.projects.startup.AgentSurfaceSeed;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
@@ -39,6 +41,7 @@ import org.junit.jupiter.api.Test;
  * them through those doors, exactly as the {@code qits agent-mcp credentials} verbs do.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class AgentMcpCatalogControllerTest {
 
   private static final String CATALOG = "/projects/api/agent-mcp-catalog";
@@ -505,8 +508,7 @@ public class AgentMcpCatalogControllerTest {
   private static RequestSpecification as(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private static void setCredential(String key, String value) {

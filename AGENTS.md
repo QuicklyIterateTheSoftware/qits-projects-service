@@ -895,7 +895,7 @@ write** (user ruling, 2026-09-12):
   opposite and stays `qits:admin` alone — an agent may add to a project and may not take anything
   out of it. `qits:system` is deliberately not on the list: the machine door here is
   `…/repositories/adopt`. `api/ProjectRepositoryCreateDoorTest` drives four callers at the route
-  under `NoDevUserProfile`, and `AgentReadAccessTest.CATALOGUE_AGENT_WRITES` is where the grant is
+  with the dev user blanked, and `AgentReadAccessTest.CATALOGUE_AGENT_WRITES` is where the grant is
   declared. `POST /projects/{projectId}/agent-config-repository` (qits-1382) takes the same three
   roles on the same argument: it creates the project's one `qits-agent-config` or reads it back
   (`api/AgentConfigRepositoryDoorTest`).
@@ -985,20 +985,32 @@ spells both roles.
 answers **401** at the mechanism's challenge; a named caller without the role authenticates and
 answers **403**. `EntitiesAuditIdentityTest` pins both.
 
-**The suite goes through the mechanism, never around it.** `qits-auth-core` ships a `%test` dev user
-granted all four platform roles, so a plain `given()` already is an admin session and the ordinary
-test needs no fixture. A test about a *particular* caller sends what the edge sends — `X-Qits-User`
-plus `X-Qits-Roles`, as the two role-pinning tests do — and a test under
-`NoDevUserProfile`, which blanks the dev user to reach the deployed posture, has no identity until it
-sends them.
+**No test uses forward-auth (epic qits-543, qits-1369).** `X-Qits-User` / `X-Qits-Roles` and the
+`%test` dev user leave qits-auth-core with qits-1338, and the suite already runs without them: the
+test config blanks the dev user and renames the forward headers (`%test.qits.auth.forward.*` in
+`service/src/test/resources/application.properties`, which go with qits-1338), so a request with no
+credential is anonymous and a stray pair authenticates nothing (`security/ForwardAuthTest` is the
+one test that still sends it, to prove that). A class whose requests have one caller names it with
+`@TestSecurity(user = "dev", roles = ...)` and the roles it means; a request naming a particular
+caller sends `Authorization: <ContractBearers.caller(subject, roles...)>`, which
+`contracts/SuiteCallerMechanism` turns into that caller — a plain name and its roles, no token, the
+identity the header pair used to establish — and which wins over a class's `@TestSecurity` (that
+identity stands in only for a request that is otherwise anonymous). A provider state's granted
+`Bearer` is answered by the same mechanism, as a token. Contract recordings without a credential of
+their own run as `ContractBearers.consumerCaller()`. The packaged ITs send `MockIdp` bearers, for a
+person (`StoryIdentities.person`) as for a machine.
 
-The identity exists to name `changed_by`; `EntitiesAuditIdentityTest` is what pins that, and it uses
-the real header rather than `@TestSecurity` on purpose. The header **is** the contract under test —
-nothing else ever produces a principal in a deployed service — so `@TestSecurity` would install an
-identity without going through the mechanism and prove a path the deployment never takes. That is
-also how the bug ran unseen: this repo shipped `SecurityIdentity` with no mechanism behind it,
-`changed_by` was null on every row, and an annotation that fabricates an identity would have gone on
-passing the whole time.
+The identity exists to name `changed_by`; `EntitiesAuditIdentityTest` is what pins that, and it
+names its caller on the request rather than with `@TestSecurity` on purpose: the credential then
+goes through a mechanism, the way every deployed caller does, and an annotation that fabricates an
+identity would have gone on passing while this repo shipped `SecurityIdentity` with no mechanism
+behind it and `changed_by` was null on every row.
+
+**Dev mode needs a bearer.** The `%dev` dev user goes with qits-1338, and `%dev` keeps the OIDC
+tenant off (`%dev.qits.auth.machine.required=false`), so `quarkus:dev` answers 401 on every guarded
+route until the tenant is pointed at an idp (`-Dqits.auth.machine.required=true
+-Dquarkus.oidc.auth-server-url=...`); then call it with a person's token, for example
+`curl -H "Authorization: Bearer $(qits-token qits-platform)" ...`, or through the `qits` CLI.
 
 Do not lift `projects/security` into a shared qits-auth javalib. Every repo builds from a clone of
 itself alone, so ~115 lines duplicated per service is cheaper than a jar that has to travel to all of
@@ -4104,7 +4116,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   golden-master artifact consumers write their pacts against (epic qits-546). `contracts/
   GoldenMasterRecordingTest` runs each `(state, operation)` pair in its table — the state from
   `contracts/ProviderStates`, an injectable bean a pact `@State` method can delegate to — calls the
-  route as the `%test` dev user, keeps only the list entries the state created, freezes ids,
+  route as `ContractBearers.consumerCaller()` (the old `%test` dev user, named), keeps only the list entries the state created, freezes ids,
   instants and the states' random slug tokens (`contracts/Freezer`), and compares
   `golden-masters/<state-slug>/<operationId>.json` plus `index.json`; the same switch rewrites them.
   A state assumes nothing about the database and is safe to run beside any other, so a slug carries
@@ -4154,7 +4166,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   package and any byte change publishes a new version.
 - **`contracts/ConsumerPactVerificationTest` verifies every consumer's pact against this provider**
   (epic qits-546) — a `@QuarkusTest` on the default profile, one `@TestTemplate` invocation per
-  interaction, over real HTTP at the test port as the `%test` dev user (plain pact-jvm
+  interaction, over real HTTP at the test port as `ContractBearers.consumerCaller()` (plain pact-jvm
   `HttpTestTarget`; the Quarkiverse `quarkus-pact-provider` extension was passed over because its
   newest release is built against Quarkus 3.14.1, pins pact-jvm 4.6.17 against the consumers'
   4.6.21, and drags `quarkus-kotlin` into the test application). Five things are the rule:
@@ -4187,7 +4199,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
     An interaction whose `qits-trigger.kind` is `ui` rides a person's session cookie, as a browser
     does and as `GoldenMasterRecordingTest` records (so a person's door — scheduling, a criterion's
     approval — answers as it does for them); a CLI command or a service schedule calls as the plain
-    `%test` dev user. And `contracts/StateParamRequestBody` swaps a request-body string — value or
+    consumer caller. And `contracts/StateParamRequestBody` swaps a request-body string — value or
     member name — that is exactly a state param's pinned example, or exactly the golden masters'
     `"{name}"` placeholder, for what this run's `@State` returned: the `ProviderState` generator a
     JSON key cannot carry (`transitionWork`'s body is keyed by qualified id). No response, no
@@ -4290,7 +4302,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   `jcmd <pid> VM.classloader_stats`) for the rest of the run. That retained metaspace is the
   largest single term of the surefire fork's footprint (~1.2 GB of a ~2.7 GB RSS). A profile is
   keyed by its **class**, not its content: two classes returning the same overrides are two boots.
-  So reuse an existing profile (`NoDevUserProfile`, `RepositoryCatalogueTest.DeployedPosture`,
+  So reuse an existing profile (`RepositoryCatalogueTest.DeployedPosture`,
   `workspacehost.NoWorkspacesContextProfile`) before writing one, and make a new one only for config
   no existing one can carry.
 - **No background git from a test JVM.** The root pom sets `gc.auto=0`, `maintenance.auto=false`
@@ -4339,11 +4351,12 @@ and a self-contained HTML page carrying the story's **network diagram**. The fra
 of `components/qits-userflows/qits-userflows-javalib` and not out of the integrations reactor.
 
 **Every story is a `@QuarkusIntegrationTest` against the packaged artifact, and that is not a
-preference.** Inside a `@QuarkusTest` the shipped `%test` dev user holds all four platform roles and
-the OIDC tenant is off, so *every door in this service is open to a plain `given()`* — a refusal
-cannot be observed at all and a route assertion proves nothing about what deploys. A launched
-artifact runs in `NORMAL` mode with the tenant on and no dev user, which is the first moment
-`qits:admin` and `qits:system` mean different things. That is why `stories/refusals/` exists and why
+preference.** Inside a `@QuarkusTest` the OIDC tenant is off and every caller is one the suite
+names (`@TestSecurity`, `ContractBearers.caller`) — it used to be the `%test` dev user holding all
+four platform roles, so *every door was open to a plain `given()`* — and a route assertion proves
+nothing about what deploys. A launched artifact runs in `NORMAL` mode with the tenant on, where only
+a validated bearer is a caller, which is the first moment `qits:admin` and `qits:system` mean
+different things for a real token. That is why `stories/refusals/` exists and why
 its three stories cannot move into the surefire suite.
 
 **One `@TestProfile` across every story class** — `TokenValidationBootstrapIT.PackagedWithMockIdp` —

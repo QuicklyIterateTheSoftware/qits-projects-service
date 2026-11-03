@@ -31,6 +31,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.SessionReport;
 import eu.wohlben.qits.projectsdaemon.protocol.Sessions;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.quarkus.websockets.next.WebSocketConnection;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -56,6 +57,7 @@ import org.junit.jupiter.api.Test;
  * room; and the per-project cap.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class RefinementSessionsTest {
 
   @Inject AgentDaemonRegistry daemons;

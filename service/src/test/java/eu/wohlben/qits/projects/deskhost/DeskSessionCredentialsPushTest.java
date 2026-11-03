@@ -23,6 +23,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.SessionCredentials;
 import eu.wohlben.qits.projectsdaemon.protocol.SessionCredentials.Credential;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.quarkus.websockets.next.WebSocketConnection;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
@@ -44,6 +45,7 @@ import org.junit.jupiter.api.Test;
  * discarded — and never to a daemon below capability 2.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class DeskSessionCredentialsPushTest {
 
   @Inject AgentDaemonRegistry daemons;

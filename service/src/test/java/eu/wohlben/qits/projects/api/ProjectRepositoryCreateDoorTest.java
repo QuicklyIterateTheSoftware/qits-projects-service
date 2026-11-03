@@ -5,9 +5,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.ws.rs.core.Response;
@@ -18,14 +17,11 @@ import org.junit.jupiter.api.Test;
  * add a component to a project; that is the widening this class is about, and the half that matters
  * more is the one that says who still may not.
  *
- * <p><b>It runs under {@link NoDevUserProfile}, and that is what makes any of it observable.</b> The
- * {@code %test} dev user this platform ships holds every platform role, so inside an ordinary
- * {@code @QuarkusTest} a plain {@code given()} is already an administrator and a route refusing a
- * caller could not be seen — the call would be admitted whatever headers it carried. With the
- * fallback blanked, an identity is exactly what the {@code X-Qits-User}/{@code X-Qits-Roles} pair
- * says, which is the deployed posture. It is the same profile {@code ForwardAuthTest} and {@code
- * ReleaseRequestApprovalDoorTest} use, so this class joins their launched application rather than
- * starting an eleventh one.
+ * <p><b>It runs with the dev user blanked, and that is what makes any of it observable.</b> The
+ * {@code %test} dev user qits-auth-core shipped held every platform role, so a plain {@code given()}
+ * was an administrator and a route refusing a caller could not be seen. The suite's test config
+ * blanks it (epic qits-543; the user itself goes with qits-1338), so an identity is exactly the
+ * caller a request names ({@code ContractBearers.caller}), which is the deployed posture.
  *
  * <p><b>Both halves in one class, deliberately.</b> A method-level {@code @RolesAllowed} REPLACES
  * the class-level {@code qits:admin} rather than adding to it, and this repository has shipped that
@@ -35,39 +31,34 @@ import org.junit.jupiter.api.Test;
  * route and each has to land where it is supposed to.
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class ProjectRepositoryCreateDoorTest {
 
   /** A browser session as the edge forwards it. */
   private RequestSpecification session() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("alice", "qits:admin"));
   }
 
   /** An agent's own credential: {@code qits:agent} and nothing beside it. */
   private RequestSpecification agent() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "agent-qits-291")
-        .header("X-Qits-Roles", "qits:agent");
+        .header("Authorization", ContractBearers.caller("agent-qits-291", "qits:agent"));
   }
 
   /** A machine bearer — the bootstrap's kind of caller, whose door here is {@code …/adopt}. */
   private RequestSpecification machine() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "dev-qits-bootstrap")
-        .header("X-Qits-Roles", "qits:system");
+        .header("Authorization", ContractBearers.caller("dev-qits-bootstrap", "qits:system"));
   }
 
   /** Authenticated and holding nothing this surface names. */
   private RequestSpecification stranger() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:user");
+        .header("Authorization", ContractBearers.caller("mallory", "qits:user"));
   }
 
   private String createProject(String name) {

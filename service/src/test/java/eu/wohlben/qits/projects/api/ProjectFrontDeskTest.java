@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.agenthost.FakeProjectDaemon;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
@@ -76,8 +77,7 @@ public class ProjectFrontDeskTest {
   private RequestSpecification as(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private RequestSpecification asAdmin() {

@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.hasSize;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.UUID;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
  * adds is the database and the route.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class CommitBuildStatusApiTest {
 
   @Inject BuildStatusListener listener;

@@ -10,7 +10,7 @@ import java.util.Map;
  * bearer is validated at all, and the reason {@link BearerJwksTest} can be a surefire test rather
  * than a third packaged IT.
  *
- * <p>It moves exactly three keys, and the shipped key path is untouched: discovery stays on (the
+ * <p>It moves exactly two keys, and the shipped key path is untouched: discovery stays on (the
  * mock serves {@code /idp/.well-known/openid-configuration}, whose {@code issuer} is the {@code iss}
  * it mints and whose {@code jwks_uri} is its {@code /idp/jwks}, qits-708), no issuer is configured,
  * the audience stays the shipped {@code qits-platform}, and {@code jwks.resolve-early} stays {@code
@@ -21,10 +21,10 @@ import java.util.Map;
  *       quarkus.oidc.tenant-enabled=${qits.auth.machine.required:false}}, so this one key is the
  *       difference between a service that reads bearers and one that ignores them.
  *   <li>{@code quarkus.oidc.auth-server-url} is the one seam moved — where the idp is.
- *   <li>{@code qits.auth.forward.dev-user} is blanked, as {@link NoDevUserProfile} does it, so a
- *       request with no credential is really anonymous instead of the {@code %test} admin
- *       qits-auth-core hands every plain {@code given()}.
  * </ul>
+ *
+ * <p>The test config already blanks the forward-auth dev user for every suite (epic qits-543), so a
+ * request with no credential is really anonymous here too.
  *
  * <p>The mock is started through {@link MockIdp#ensureStarted()} and reached again from the test
  * class through {@link MockIdp#attach()}, because a lifecycle manager and a test method need not
@@ -45,8 +45,7 @@ public class MockIdpTenant implements QuarkusTestResourceLifecycleManager {
     idp.reset();
     return Map.of(
         "qits.auth.machine.required", "true",
-        "quarkus.oidc.auth-server-url", idp.baseUrl(),
-        "qits.auth.forward.dev-user", "");
+        "quarkus.oidc.auth-server-url", idp.baseUrl());
   }
 
   @Override

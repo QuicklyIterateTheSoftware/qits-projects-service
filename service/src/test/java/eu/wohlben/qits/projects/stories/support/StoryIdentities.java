@@ -16,17 +16,14 @@ import io.restassured.specification.RequestSpecification;
  * {@code groups=[qits:system]} — qits-idp copies a client's
  * roles into that claim and quarkus-oidc reads it as roles with no configuration at all.
  *
- * <h2>A person is a pair of headers</h2>
+ * <h2>A person is a bearer too</h2>
  *
- * <p>{@link #person(RequestSpecification, String)} sends {@code X-Qits-User} and {@code
- * X-Qits-Roles} instead, which is what the platform edge asserts for a logged-in human: this
- * service authenticates no person itself, and the edge strips every client-supplied {@code
- * X-Qits-*} header from every inbound request, which is the entire reason a header can be trusted
- * as an identity here. That is not a shortcut around the bearer — the OIDC tenant is
- * {@code application-type=service}, i.e. <b>bearer-only</b>, so a request carrying no {@code
- * Authorization} header is never challenged by it and falls through to the header mechanism exactly
- * as it does behind the edge. Using it is what makes a story say "a product owner" honestly rather
- * than dressing a person up as a machine.
+ * <p>{@link #person(RequestSpecification, String)} presents a person's token from the same idp:
+ * the person's name in {@code sub}, the platform audience and {@code qits:admin} in {@code groups}.
+ * Forward-auth — the identity header pair the edge used to assert —
+ * leaves qits-auth-core with qits-1338 (epic qits-543), so a signed-in person reaches this service
+ * the way a machine does, and the roles are what tell them apart. Using it is what makes a story
+ * say "a product owner" honestly rather than dressing a person up as a machine.
  *
  * <p><b>The synthetic {@code %test} dev user is not available here, and that is the point.</b>
  * {@code qits.auth.forward.dev-user} is {@code %test}-scoped, and a launched artifact runs in
@@ -37,10 +34,10 @@ import io.restassured.specification.RequestSpecification;
  *
  * <h2>A verified person is neither of those (qits-887, qits-891)</h2>
  *
- * <p>{@link #person(RequestSpecification, String)}'s asserted header pair is enough to open any
- * {@code qits:admin} route, but it is deliberately <b>not</b> enough to satisfy {@code
- * PersonCheck} — the door a scheduling move (REFINED -&gt; READY_FOR_DEV) stands behind, which asks
- * whether this process itself verified a person rather than believing a header. {@link
+ * <p>{@link #person(RequestSpecification, String)}'s bearer is enough to open any {@code
+ * qits:admin} route, but it is deliberately <b>not</b> enough to satisfy {@code PersonCheck} — the
+ * door a scheduling move (REFINED -&gt; READY_FOR_DEV) stands behind, which accepts a person's CLI
+ * token only: it carries no {@code credential_type=cli}. {@link
  * #personsCli(RequestSpecification, String)} is the second of qits-891's two proofs, a person's
  * {@code qits} CLI bearer: idp-signed, {@code credential_type=cli}, no {@code context_kind}, {@code
  * qits:admin} in its groups — the marks a service client and a commissioned agent never carry. A
@@ -54,14 +51,8 @@ public final class StoryIdentities {
   /** The machine role a platform peer holds: the bootstrap's doors and the four shared reads. */
   public static final String MACHINE_ROLE = "qits:system";
 
-  /** The human role the edge asserts for an authenticated admin session. */
+  /** The human role a signed-in admin holds. */
   public static final String HUMAN_ROLE = "qits:admin";
-
-  /** The header the edge names the logged-in person in. */
-  public static final String USER_HEADER = "X-Qits-User";
-
-  /** The header the edge asserts that person's roles in, comma-separated. */
-  public static final String ROLES_HEADER = "X-Qits-Roles";
 
   private StoryIdentities() {}
 
@@ -88,9 +79,23 @@ public final class StoryIdentities {
     return request.header("Authorization", "Bearer " + platformToken(subject));
   }
 
-  /** {@code given()} with the two headers the edge asserts for a logged-in admin session. */
+  /**
+   * A signed-in admin's bearer: {@code subject} in {@code sub} (the name the audit rows record),
+   * {@code qits:admin} in its groups, and no {@code credential_type} — a person, not a person's CLI.
+   * Minted fresh per call like {@link #platformToken}.
+   */
+  public static String personToken(String subject) {
+    return MockIdp.attach()
+        .token()
+        .subject(subject)
+        .audience(AUDIENCE)
+        .groups(HUMAN_ROLE)
+        .mint();
+  }
+
+  /** {@code given()} with a signed-in admin's bearer on it. */
   public static RequestSpecification person(RequestSpecification request, String user) {
-    return request.header(USER_HEADER, user).header(ROLES_HEADER, HUMAN_ROLE);
+    return request.header("Authorization", "Bearer " + personToken(user));
   }
 
   /**

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
@@ -17,6 +18,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -48,6 +50,7 @@ import org.junit.jupiter.api.Test;
  * change nothing at all.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestApprovalGateTest {
 
   @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
@@ -773,8 +776,7 @@ public class ReleaseRequestApprovalGateTest {
   private String create(String repoId, String branch, String requester) {
     String id =
         given()
-            .header("X-Qits-User", requester)
-            .header("X-Qits-Roles", "qits:admin")
+            .header("Authorization", ContractBearers.caller(requester, "qits:admin"))
             .contentType(ContentType.JSON)
             .body(
                 "{\"branch\":\""

@@ -12,6 +12,7 @@ import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.persistence.RefinementDesignRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.util.Map;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
  * already moved past is refused, and the refusal carries the current document.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RefinementDesignControllerTest {
 
   @Inject RefinementDesignRepository store;

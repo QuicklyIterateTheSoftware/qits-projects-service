@@ -53,18 +53,12 @@ class BearerJwksTest {
 
   @Test
   @Order(1)
-  void neitherBootNorHeaderTrafficEverReachesTheIdp() {
+  void neitherBootNorTokenlessTrafficEverReachesTheIdp() {
     // The listener is up and serving, and the mock idp has been asked for nothing at all: with
     // resolve-early=false the tenant is created without a network call, which is the whole point —
-    // a deployment's health probe is answered while the idp is still starting.
-    given()
-        .header("X-Qits-User", "alice")
-        .header("X-Qits-Roles", "qits:admin")
-        .when()
-        .get(IDENTITY)
-        .then()
-        .statusCode(200)
-        .body("principal", equalTo("alice"));
+    // a deployment's health probe is answered while the idp is still starting. A request with no
+    // token is anonymous and fetches nothing (forward-auth's header identity, which this step used
+    // to send as well, leaves qits-auth-core with qits-1338).
     given().when().get(IDENTITY).then().statusCode(200).body("anonymous", equalTo(true));
 
     assertEquals(0, jwksFetches(), "only a bearer may fetch the keys");

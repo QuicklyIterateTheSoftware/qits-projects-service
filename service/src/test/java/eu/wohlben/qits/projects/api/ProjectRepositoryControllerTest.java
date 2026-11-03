@@ -8,9 +8,11 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Test;
  * the "empty manifest stands down" rule visible beside the enforcement.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ProjectRepositoryControllerTest {
 
   private final String fixtureUrl;
@@ -565,7 +568,9 @@ public class ProjectRepositoryControllerTest {
   // --- name resolution: what qits-githost's name-addressed git scheme reads ---
 
   private io.restassured.response.Response resolveByName(String projectId, String repoName) {
+    // The by-name door is qits-githost's, qits:system alone.
     return given()
+        .header("Authorization", ContractBearers.caller("dev-qits-githost", "qits:system"))
         .when()
         .get("/projects/api/projects/" + projectId + "/repositories/by-name/" + repoName);
   }
@@ -741,8 +746,7 @@ public class ProjectRepositoryControllerTest {
   public void aMachineWithTheSystemRoleAloneReadsTheRepositoriesListing() {
     String projectId = createProject("Closure Reader");
     given()
-        .header("X-Qits-User", "dev-qits-workspaces")
-        .header("X-Qits-Roles", "qits:system")
+        .header("Authorization", ContractBearers.caller("dev-qits-workspaces", "qits:system"))
         .when()
         .get("/projects/api/projects/" + projectId + "/repositories")
         .then()

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.QaRunCancellations;
 import eu.wohlben.qits.projects.control.ReleasePipelineRuns;
 import eu.wohlben.qits.projects.control.ReleaseRequestAnnouncer;
@@ -25,6 +26,7 @@ import eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -54,6 +56,7 @@ import org.junit.jupiter.api.Test;
  * ({@code ReleasePipelineRuns.record} re-evaluating what is downstream).
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class UpstreamInFlightGateTest {
 
   private static final String SCREENSHOTS = "screenshot-baselines";
@@ -611,8 +614,7 @@ public class UpstreamInFlightGateTest {
 
   private String create(String inRepo) {
     return given()
-        .header("X-Qits-User", "ada")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"work\",\"summary\":\"a release\"}")
         .post("/projects/api/repositories/" + inRepo + "/release-requests")

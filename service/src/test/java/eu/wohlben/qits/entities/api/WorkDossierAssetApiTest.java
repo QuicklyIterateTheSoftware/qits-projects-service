@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import java.util.Base64;
 import java.util.Map;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
  * {@code /work} content route serves the bytes it names.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class WorkDossierAssetApiTest {
 
   /** A 1x1 PNG, so the attachment door's byte sniffing lets it in. */

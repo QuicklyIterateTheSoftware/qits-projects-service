@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.entity.Archetype;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ import org.junit.jupiter.api.TestFactory;
  * project, a parent, a repository, a sibling), which come from fixtures.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class EntitySchemaApiTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();

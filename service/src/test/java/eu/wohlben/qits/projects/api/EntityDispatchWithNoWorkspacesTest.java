@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.workspacehost.NoWorkspacesContextProfile;
 import io.quarkus.test.junit.QuarkusTest;
@@ -47,8 +48,7 @@ public class EntityDispatchWithNoWorkspacesTest {
   private RequestSpecification asAdmin() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "mallory")
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller("mallory", "qits:admin"));
   }
 
   @Test

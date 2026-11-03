@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities.Told;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import jakarta.inject.Inject;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test;
  * project claim in front of this service.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class EntityBlockApiTest {
 
   /** What the agents working an entity were told about it (qits-614, qits-617). */

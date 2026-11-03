@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.agroal.api.AgroalDataSource;
 import io.quarkus.agroal.DataSource;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.sql.Connection;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
  * alias of {@code ensure} until that consumer releases a pact without it.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class RefinementContainersRetiredTest {
 
   @Inject

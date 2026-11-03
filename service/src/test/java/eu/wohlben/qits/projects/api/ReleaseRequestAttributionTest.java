@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
@@ -27,6 +28,7 @@ import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -58,6 +60,7 @@ import org.junit.jupiter.api.Test;
  * active"), so nothing settles a fixture mid-test.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestAttributionTest {
 
   /** A workspace agent's token subject, as qits-idp mints it. */
@@ -349,8 +352,7 @@ public class ReleaseRequestAttributionTest {
   /** A forwarded caller named {@code user}: its name is the identity a write is attributed to. */
   private static io.restassured.specification.RequestSpecification asCaller(String user) {
     return given()
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"))
         .contentType(ContentType.JSON);
   }
 

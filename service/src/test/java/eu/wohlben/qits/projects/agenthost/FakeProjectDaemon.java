@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.agenthost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonCodec;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
@@ -51,6 +52,9 @@ public final class FakeProjectDaemon implements AutoCloseable {
   private NetClient netClient;
   private WebSocket controlSocket;
 
+  /** {@link #credential()}, granted once on the caller's thread and sent on every dial. */
+  private final String authorization = credential();
+
   private FakeProjectDaemon(Vertx vertx, AgentTunnels tunnels, String projectId) {
     this.vertx = vertx;
     this.tunnels = tunnels;
@@ -76,6 +80,15 @@ public final class FakeProjectDaemon implements AutoCloseable {
       daemon.close();
       throw new IllegalStateException("could not stand up a fake daemon for " + projectId, e);
     }
+  }
+
+  /**
+   * What it dials home with: a platform peer the suite names ({@code qits:system}, no token), where
+   * it used to lean on forward-auth's {@code %test} dev user, which leaves with qits-1338 (epic
+   * qits-543). A real desk presents its own {@code qits_tok_}.
+   */
+  private static String credential() {
+    return ContractBearers.caller("fake-project-daemon", "qits:system");
   }
 
   /** Everything that reached the API, in order. */
@@ -126,7 +139,8 @@ public final class FakeProjectDaemon implements AutoCloseable {
                 new WebSocketConnectOptions()
                     .setHost(host)
                     .setPort(port)
-                    .setURI(DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + projectId))
+                    .setURI(DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + projectId)
+                    .addHeader("Authorization", authorization))
             .toCompletionStage()
             .toCompletableFuture()
             .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -160,7 +174,12 @@ public final class FakeProjectDaemon implements AutoCloseable {
         .onSuccess(
             local ->
                 wsClient
-                    .connect(new WebSocketConnectOptions().setHost(host).setPort(port).setURI(path))
+                    .connect(
+                        new WebSocketConnectOptions()
+                            .setHost(host)
+                            .setPort(port)
+                            .setURI(path)
+                            .addHeader("Authorization", authorization))
                     .onSuccess(
                         remote -> {
                           remote.handler(local::write);

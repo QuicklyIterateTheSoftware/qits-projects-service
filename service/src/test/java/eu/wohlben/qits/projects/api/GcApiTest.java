@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.GitExecutor;
 import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -51,8 +52,7 @@ public class GcApiTest {
   private static RequestSpecification as(String user, String role) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", role);
+        .header("Authorization", ContractBearers.caller(user, role));
   }
 
   private static String body(boolean dryRun, String pins) {

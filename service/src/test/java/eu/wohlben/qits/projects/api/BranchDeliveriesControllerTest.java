@@ -12,6 +12,7 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.BranchDeliveryRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test;
  * read, and {@code BranchDeliveryTest} is where the flows that write them are driven.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class BranchDeliveriesControllerTest {
 
   private static final String DOOR = "/projects/api/branch-deliveries";

@@ -8,9 +8,11 @@ import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
  * lifecycle move of whatever archetype the row is, under that archetype's roles.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 class WorkStatusApiTest {
 
   private static ValidatableResponse move(RequestSpecification as, String id, Object target) {
@@ -49,7 +52,7 @@ class WorkStatusApiTest {
 
   /** What the edge sends for an agent: the role, and no token — see {@code EntityAgentBoundsTest}. */
   private static RequestSpecification asForwardedAgent() {
-    return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:agent");
+    return given().header("Authorization", ContractBearers.caller("someone", "qits:agent"));
   }
 
   /**
@@ -57,7 +60,7 @@ class WorkStatusApiTest {
    * no {@code qits:admin}, so this is the identity the follow-up actually widens the door for.
    */
   private static RequestSpecification asForwardedAdminAgent() {
-    return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:admin-agent");
+    return given().header("Authorization", ContractBearers.caller("someone", "qits:admin-agent"));
   }
 
   @Test

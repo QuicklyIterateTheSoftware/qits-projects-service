@@ -22,6 +22,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import jakarta.inject.Inject;
@@ -48,6 +49,7 @@ import org.junit.jupiter.api.Test;
  * that goes live clears the failure and finalizes as before. Nothing redeploys on its own.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class DeploymentRollbackTest {
 
   private static final String GATE = "qualityGates.find { it.kind == 'deployment-not-rolled-back' }";

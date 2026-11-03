@@ -17,6 +17,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -30,6 +31,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
@@ -48,7 +50,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>Two layers, as {@code EntityAgentBoundsTest} splits them.</b> The binding reads the token's
  * {@code project} claim, which a {@code @QuarkusTest} cannot put in front of this service over HTTP
- * (the {@code %test} dev user wins over any test identity), so the press is driven through {@link
+ * (the suite runs no OIDC tenant), so the press is driven through {@link
  * DispatchDoors#press} with hand-made identities from {@link AgentTokens}, over real rows and the
  * recording workspaces port. The <b>roles</b> are what a forwarded header carries and are driven
  * over HTTP: a plain {@code qits:agent} is refused at the door, a forwarded {@code qits:desk} passes
@@ -58,6 +60,7 @@ import org.junit.jupiter.api.Test;
  * <p>No profile of its own: the default application every door suite shares.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class DeskDispatchTest {
 
   private static final String RULE = "backlog-newest-first";
@@ -99,8 +102,7 @@ public class DeskDispatchTest {
     return given()
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"));
   }
 
   private String createProject(String name) {
@@ -569,8 +571,7 @@ public class DeskDispatchTest {
 
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "admin-agent")
-        .header("X-Qits-Roles", "qits:admin-agent")
+        .header("Authorization", ContractBearers.caller("admin-agent", "qits:admin-agent"))
         .body(Map.of("mode", "FLOW", "rule", "start-refined"))
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
@@ -594,8 +595,7 @@ public class DeskDispatchTest {
 
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "agent")
-        .header("X-Qits-Roles", "qits:agent")
+        .header("Authorization", ContractBearers.caller("agent", "qits:agent"))
         .body(Map.of("mode", "FLOW", "rule", RULE))
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
@@ -603,8 +603,7 @@ public class DeskDispatchTest {
         .statusCode(403);
     given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "desk")
-        .header("X-Qits-Roles", "qits:desk")
+        .header("Authorization", ContractBearers.caller("desk", "qits:desk"))
         .body(Map.of("mode", "FLOW", "rule", RULE))
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")

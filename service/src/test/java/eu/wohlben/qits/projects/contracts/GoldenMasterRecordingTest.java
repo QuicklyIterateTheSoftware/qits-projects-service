@@ -38,9 +38,9 @@ import org.junit.jupiter.api.Test;
  * root, the source of the published golden-master artifact consumers write their pacts against.
  *
  * <p>For each (state, operation) pair in {@link #INTERACTIONS} it runs the state ({@link
- * ProviderStates}), calls the endpoint through REST-assured as the {@code %test} dev user, keeps
- * only the list entries the state created, freezes ids, instants and unique tokens ({@link
- * Freezer}) and renders {@code golden-masters/<state-slug>/<operationId>.json}; then it renders
+ * ProviderStates}), calls the endpoint through REST-assured as {@link
+ * ContractBearers#consumerCaller()}, keeps only the list entries the state created, freezes ids,
+ * instants and unique tokens ({@link Freezer}) and renders {@code golden-masters/<state-slug>/<operationId>.json}; then it renders
  * {@code golden-masters/index.json} describing all of them.
  *
  * <p>It <b>compares by default</b> and fails with a unified diff per differing file — including a
@@ -1663,6 +1663,12 @@ class GoldenMasterRecordingTest {
               : given();
       for (Map.Entry<String, String> header : interaction.headers().entrySet()) {
         request = request.header(header.getKey(), expand(header.getValue(), params));
+      }
+      if (!interaction.headers().containsKey("Authorization")) {
+        // A recorded call without a credential of its own is the consumer's caller, named rather
+        // than left to a forward-auth dev user (epic qits-543): sent, not recorded, so the golden
+        // master stays the consumer's shape.
+        request = request.header("Authorization", ContractBearers.consumerCaller());
       }
       if (interaction.requestBody() != null) {
         request =

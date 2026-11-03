@@ -53,7 +53,7 @@ import org.junit.jupiter.api.TestMethodOrder;
  *
  * <p><b>Two actors, because it really is two people.</b> A product owner shapes and freezes the
  * scope; an engineer marks the work done afterwards and never touches the scope. The audit log is
- * what keeps them apart — every row records the {@code X-Qits-User} the edge asserted, which is the
+ * what keeps them apart — every row records the principal of the person's bearer, which is the
  * only thing that ever produces a principal in a deployed process — and the second story reads it
  * back rather than taking the write's word for it.
  *
@@ -288,7 +288,7 @@ public class EpicPlanningIT {
       refused, because the guard is per field. An engineer marks the task done and then its
       feature, and "done" for the epic is derived from exactly that rather than stored, so no fifth
       status can disagree with it. The audit subtree is then read back to see who did it: every row
-      records the X-Qits-User the platform edge asserted, which is the only thing that produces a
+      records the principal of the person's bearer, which is the only thing that produces a
       principal in a deployed process at all.
       """)
   @UserflowRunsAfter(TokenValidationBootstrapIT.class)

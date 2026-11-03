@@ -28,6 +28,7 @@ import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.arc.ClientProxy;
 import io.quarkus.hibernate.orm.PersistenceUnit;
@@ -92,8 +93,7 @@ class CampaignCriteriaClaimSeamTest {
     projectId =
         given()
             .contentType(ContentType.JSON)
-            .header("X-Qits-User", "setup")
-            .header("X-Qits-Roles", "qits:admin")
+            .header("Authorization", ContractBearers.caller("setup", "qits:admin"))
             .body(
                 new ProjectController.CreateProjectRequest(
                     "Claim Seam", null, null, null, ProjectRequests.DNS))
@@ -180,8 +180,7 @@ class CampaignCriteriaClaimSeamTest {
     assertTrue(failed.lastError().contains(broken.id()), failed.lastError());
     assertTrue(failed.lastError().contains("the epics database said no"), failed.lastError());
     given()
-        .header("X-Qits-User", "dana")
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller("dana", "qits:admin"))
         .get("/projects/api/work/" + campaign.id + "/progress")
         .then()
         .statusCode(200)

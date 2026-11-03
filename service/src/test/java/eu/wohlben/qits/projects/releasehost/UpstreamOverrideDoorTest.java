@@ -21,11 +21,9 @@ import eu.wohlben.qits.projects.entity.RepositoryName;
 import eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
@@ -47,14 +45,14 @@ import org.junit.jupiter.api.Test;
  * a frontend and a service, the fake closure saying the service is downstream of the frontend —
  * reached through the door a person presses.
  *
- * <p>Under {@link NoDevUserProfile}, as {@code ReleaseRequestApprovalDoorTest} is and for its
- * reason: with the {@code %test} dev user blanked an identity is exactly what the caller sends, so
+ * <p>With the dev user blanked (the suite's test config, epic qits-543), as {@code
+ * ReleaseRequestApprovalDoorTest} is and for its reason: an identity is exactly what the caller
+ * sends, so
  * every call here states its caller. A person is a browser session (the cookie this service
  * introspects); a service client and an agent are their bearers ({@link ContractBearers}); an
- * administrator asserted in {@code X-Qits-*} headers alone is nobody.
+ * administrator named with no token and no session ({@code ContractBearers.caller}) is nobody.
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class UpstreamOverrideDoorTest {
 
   private static final String SERVICE_CLIENT_BEARER = "Bearer upstream-override-service-client";
@@ -275,8 +273,6 @@ public class UpstreamOverrideDoorTest {
             ADMIN_AGENT_BEARER)) {
       given()
           .contentType(ContentType.JSON)
-          .header("X-Qits-User", "a-machine")
-          .header("X-Qits-Roles", "qits:admin")
           .header("Authorization", bearer)
           .body(body)
           .post(base(svcRepo) + "/" + svc + "/upstream-overrides")
@@ -454,8 +450,6 @@ public class UpstreamOverrideDoorTest {
   private static RequestSpecification asBearer(String bearer) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "a-machine")
-        .header("X-Qits-Roles", "qits:agent")
         .header("Authorization", bearer);
   }
 
@@ -463,8 +457,7 @@ public class UpstreamOverrideDoorTest {
   private static RequestSpecification headersOnly(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private void overrideAs(String name, String svc, String fe) {

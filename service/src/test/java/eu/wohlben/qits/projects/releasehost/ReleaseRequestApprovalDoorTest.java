@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -19,11 +20,9 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
-import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
@@ -43,14 +42,12 @@ import org.junit.jupiter.api.Test;
  * these routes did not exist yet; this class is the same subject reached the way the product reaches
  * it, and what it pins is everything that lives between the HTTP boundary and the insert.
  *
- * <p><b>It runs under {@link NoDevUserProfile}, and that is what makes the role assertion possible
- * at all.</b> The {@code %test} dev user this platform ships holds every platform role, so inside an
- * ordinary {@code @QuarkusTest} a plain {@code given()} is already an administrator and a route
- * refusing {@code qits:system} could not be observed — the call would be admitted as admin whatever
- * headers it carried. With the fallback blanked, an identity is exactly what the {@code
- * X-Qits-User}/{@code X-Qits-Roles} pair says it is, which is the deployed posture; that is {@code
- * ForwardAuthTest}'s idiom and {@code ProjectRepositoryAdoptTest}'s use of it. Every call here
- * therefore states its caller, and the ones that do not state {@code qits:admin} are making a point.
+ * <p><b>It runs with the dev user blanked, and that is what makes the role assertion possible at
+ * all.</b> The {@code %test} dev user qits-auth-core shipped held every platform role, so a plain
+ * {@code given()} was an administrator and a route refusing {@code qits:system} could not be
+ * observed. The suite's test config blanks it (epic qits-543; the user itself goes with qits-1338),
+ * so an identity is exactly the caller a request names ({@code ContractBearers.caller}), which is
+ * the deployed posture. Every call here therefore states its caller, and the ones that do not state {@code qits:admin} are making a point.
  *
  * <p><b>The negative in {@link #aMachineMayAskAndWithdrawButMayNotSignOff} is the load-bearing test
  * of this feature.</b> A method-level {@code @RolesAllowed} replaces the class-level one rather than
@@ -71,7 +68,6 @@ import org.junit.jupiter.api.Test;
  * ReleaseRequestApprovalGateTest} is this class's own.
  */
 @QuarkusTest
-@TestProfile(NoDevUserProfile.class)
 public class ReleaseRequestApprovalDoorTest {
 
   /** The automation kind scripted red for {@link #automationRepoId}. */
@@ -330,8 +326,8 @@ public class ReleaseRequestApprovalDoorTest {
   }
 
   /**
-   * <b>Asserted headers are not a person</b> (qits-891). {@code qits:admin} in {@code X-Qits-Roles}
-   * passes the role filter, and is exactly what anything on the network could send; without a proof
+   * <b>Asserted headers are not a person</b> (qits-891). An asserted {@code qits:admin} with no
+   * token (a suite caller, what the forwarded header pair used to establish) passes the role filter, and is exactly what anything on the network could send; without a proof
    * this service verified — here a session cookie — both doors are 403 and nothing is written. A
    * session idp does not hold as an admin, or does not know at all, is the same 403.
    */
@@ -687,16 +683,14 @@ public class ReleaseRequestApprovalDoorTest {
   private RequestSpecification headersOnly(String user) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin");
+        .header("Authorization", ContractBearers.caller(user, "qits:admin"));
   }
 
   /** A machine peer as its bearer presents it: entitled to ask for a release, never to sign one. */
   private RequestSpecification machine() {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "qits-platform-maintenance")
-        .header("X-Qits-Roles", "qits:system");
+        .header("Authorization", ContractBearers.caller("qits-platform-maintenance", "qits:system"));
   }
 
   /**
@@ -707,8 +701,7 @@ public class ReleaseRequestApprovalDoorTest {
   private RequestSpecification as(String user, String roles) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", user)
-        .header("X-Qits-Roles", roles);
+        .header("Authorization", ContractBearers.caller(user, roles));
   }
 
   private String base(String repoId) {

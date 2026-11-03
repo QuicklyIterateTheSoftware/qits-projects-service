@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
+import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchDeliveryNotices;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
@@ -29,6 +30,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns.Spoken;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -60,6 +62,7 @@ import org.junit.jupiter.api.Test;
  * replaces), the hand-on is {@link BranchDeliveryTest}'s, which is {@link AutoReleaseTest}'s.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class BranchDeliveryNoticeTest {
 
   private static final String PERSON = "ab9c11c9-c970-4068-9016-fdba1978eb04";
@@ -630,8 +633,7 @@ public class BranchDeliveryNoticeTest {
   /** A create by {@code requester} — the forwarded caller, which is what attribution reads. */
   private String create(String branch, String requester) {
     return given()
-        .header("X-Qits-User", requester)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(requester, "qits:admin"))
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release\"}")
         .post(base())
@@ -643,8 +645,7 @@ public class BranchDeliveryNoticeTest {
 
   private void join(String id, String branch, String requester) {
     given()
-        .header("X-Qits-User", requester)
-        .header("X-Qits-Roles", "qits:admin")
+        .header("Authorization", ContractBearers.caller(requester, "qits:admin"))
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"" + branch + "\"}")
         .post(base() + "/" + id + "/sources")

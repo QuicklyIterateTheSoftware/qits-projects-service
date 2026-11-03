@@ -17,6 +17,7 @@ import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
  * rows in step both ways. Against {@link FakeRefinementTokens}, the suite's qits-idp.
  */
 @QuarkusTest
+@TestSecurity(user = "dev", roles = "qits:admin")
 public class RefinementTokenTest {
 
   @Inject FakeRefinementTokens tokens;
