@@ -520,6 +520,10 @@ components:
             $ref: "#/components/schemas/CriterionGroupDto"
         holdsStatus:
           type: boolean
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneRef"
     CampaignMemberEntityDto:
       type: object
       properties:
@@ -1495,6 +1499,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkTag"
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneRef"
+        unmetMilestones:
+          type: integer
+          format: int32
     EntityTransition:
       type: object
       properties:
@@ -2102,6 +2113,196 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
+    MilestoneAnswer:
+      type: object
+      description: One milestone.
+      properties:
+        milestone:
+          $ref: "#/components/schemas/MilestoneDto"
+    MilestoneApproval:
+      type: object
+      description: A person's yes on an APPROVAL criterion.
+      properties:
+        note:
+          type: string
+          description: "Why, optionally."
+    MilestoneCreate:
+      type: object
+      required:
+      - displayName
+      - groups
+      description: "A new milestone: its name and its condition."
+      properties:
+        displayName:
+          type: string
+          description: "What it is called, e.g. \"bootstrap test node\"."
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneGroupSpec"
+          description: At least one group of at least one criterion.
+    MilestoneCriterionDto:
+      type: object
+      description: One AND'd criterion of a milestone.
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        predicate:
+          type: object
+          additionalProperties: {}
+        seeded:
+          type: boolean
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
+        evidence:
+          $ref: "#/components/schemas/CriterionEvidenceDto"
+        approval:
+          $ref: "#/components/schemas/CriterionApprovalDto"
+    MilestoneCriterionSpec:
+      type: object
+      required:
+      - kind
+      description: "One criterion of a milestone, as stated."
+      properties:
+        id:
+          type: string
+          description: "An existing criterion's id, to keep its latch; omitted states\
+            \ a new one."
+        kind:
+          type: string
+          description: "ENTITY_STATUS, DEPLOYMENT_ACTIVE, SCM_RELEASE or APPROVAL"
+        predicate:
+          type: object
+          additionalProperties: {}
+          description: "The kind's predicate; an ENTITY_STATUS predicate's entityId\
+            \ takes a qualified id or a UUID. APPROVAL takes {}."
+    MilestoneDto:
+      type: object
+      description: "A milestone, its condition and what waits on it."
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
+        met:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneGroupDto"
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneWorkDto"
+        memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneMembershipDto"
+    MilestoneGroupDto:
+      type: object
+      description: One OR'd group of a milestone's condition.
+      properties:
+        id:
+          type: string
+        position:
+          type: integer
+          format: int32
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneCriterionDto"
+    MilestoneGroupSpec:
+      type: object
+      description: "One OR'd group of a milestone, as stated."
+      properties:
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneCriterionSpec"
+    MilestoneGroups:
+      type: object
+      required:
+      - groups
+      description: A milestone's whole condition.
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneGroupSpec"
+          description: At least one group of at least one criterion.
+    MilestoneList:
+      type: object
+      description: "A project's milestones, oldest first."
+      properties:
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneDto"
+    MilestoneMembershipDto:
+      type: object
+      description: A campaign membership waiting on a milestone.
+      properties:
+        membershipId:
+          type: string
+        campaignId:
+          type: string
+        campaignQualifiedId:
+          type: string
+        campaignTitle:
+          type: string
+        entityId:
+          type: string
+        entityQualifiedId:
+          type: string
+        claimedAt:
+          $ref: "#/components/schemas/Instant"
+        generatedCondition:
+          type: boolean
+    MilestoneRef:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
+    MilestoneRename:
+      type: object
+      required:
+      - displayName
+      description: A milestone's new name.
+      properties:
+        displayName:
+          type: string
+    MilestoneWorkDto:
+      type: object
+      description: A work entity waiting on a milestone.
+      properties:
+        id:
+          type: string
+        qualifiedId:
+          type: string
+        archetype:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
     MoveReleaseRequestSource:
       type: object
       required:
@@ -3321,6 +3522,13 @@ components:
             type: string
         relatedTo:
           type: string
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneRef"
+        unmetMilestones:
+          type: integer
+          format: int32
     UUID:
       type: string
       format: uuid
@@ -3801,6 +4009,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CampaignMemberDto"
+    WorkMemberMilestones:
+      type: object
+      required:
+      - milestoneIds
+      description: "The milestones a membership waits on, by id, whole."
+      properties:
+        milestoneIds:
+          type: array
+          items:
+            type: string
+          description: Existing milestones of the campaign's project.
     WorkMemberMove:
       type: object
       required:
@@ -3811,6 +4030,14 @@ components:
           type: integer
           format: int32
           description: "The new position, 0-based."
+    WorkMilestoneList:
+      type: object
+      description: "The milestones a work entity waits on, in the order attached."
+      properties:
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/MilestoneRef"
     WorkOutcome:
       type: string
       enum:
@@ -4865,6 +5092,191 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
+  /projects/api/milestones/{milestoneId}:
+    patch:
+      summary: Rename a milestone
+      description: "Changes its displayName and nothing else: no criterion, latch\
+        \ or date moves, and no event is sent. A bound agent renames only in its own\
+        \ project."
+      operationId: renameMilestone
+      parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneRename"
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/MilestoneRename"
+        required: true
+      responses:
+        "200":
+          description: The milestone renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneAnswer"
+        "400":
+          description: No name
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: No milestone with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Milestone Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+    get:
+      summary: Read one milestone
+      description: "The milestone with its groups and criteria — each with createdAt\
+        \ and satisfiedAt, a criterion with its evidence or approval — whether it\
+        \ is met and since when, the work entities that wait on it (qualified id,\
+        \ title, status) and the campaign memberships it gates."
+      operationId: getMilestone
+      parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The milestone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneAnswer"
+        "404":
+          description: No milestone with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Milestone Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/milestones/{milestoneId}/criteria/{criterionId}/approve:
+    post:
+      summary: A person's yes on a milestone's APPROVAL criterion
+      description: "qits:admin, and then a person this service verified itself; the\
+        \ name recorded is the proof's. The milestone's own project's delivery desk\
+        \ (qits:desk, its own delivery token) may approve too, recorded under its\
+        \ token subject. Sends MilestoneMet when the approval makes the milestone\
+        \ hold. Refused when the criterion is not APPROVAL or is already approved."
+      operationId: approveMilestoneCriterion
+      parameters:
+      - name: criterionId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneApproval"
+        required: true
+      responses:
+        "200":
+          description: The milestone with the criterion approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneAnswer"
+        "403":
+          description: Neither a verified person nor this milestone's project's delivery
+            desk
+        "404":
+          description: "No milestone, or no such criterion on it"
+        "409":
+          description: "Not an APPROVAL, or already approved"
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Milestone Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+  /projects/api/milestones/{milestoneId}/groups:
+    put:
+      summary: Replace a milestone's condition
+      description: "PUT semantics: every group and criterion. A criterion restating\
+        \ an existing id with the same kind and predicate keeps its latch; a changed\
+        \ or new one starts unlatched, its floor moved to now; an omitted one is deleted.\
+        \ A milestone that stops holding loses its satisfiedAt and MilestoneUnmet\
+        \ is sent; one that comes to hold sends MilestoneMet. A bound agent edits\
+        \ only in its own project. Groups are OR'd and the criteria in a group AND'd;\
+        \ the milestone is met while one group holds. Kinds: ENTITY_STATUS {entityId\
+        \ (qualified id or UUID of a work entity of the same project), status}, DEPLOYMENT_ACTIVE,\
+        \ SCM_RELEASE, APPROVAL {} (a person's approve). ENTITY_STATUS latches from\
+        \ the current state at once when its target already stands at or past the\
+        \ status (evidence CURRENT_STATE). DEPLOYMENT_ACTIVE and SCM_RELEASE latch\
+        \ only on events that happen after the criterion was made: a deployment or\
+        \ a release from before it never meets it."
+      operationId: setMilestoneGroups
+      parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneGroups"
+        required: true
+      responses:
+        "200":
+          description: The milestone as the edit left it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneAnswer"
+        "400":
+          description: "No groups, an empty group, a predicate the service cannot\
+            \ read, a restated id that is not this milestone's, or an ENTITY_STATUS\
+            \ target outside the project"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: No milestone with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Milestone Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
@@ -5732,6 +6144,94 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
+  /projects/api/projects/{project}/milestones:
+    get:
+      summary: List a project's milestones
+      description: "Every milestone of the project, oldest first, each whole: its\
+        \ groups and criteria with their dates, whether it is met and since when,\
+        \ and what waits on it. The project is its id or its slug. met=false lists\
+        \ the unmet ones only — what work still needs — and met=true the met ones."
+      operationId: listProjectMilestones
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      - description: Only the met (true) or the unmet (false) milestones.
+        name: met
+        in: query
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: The milestones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneList"
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Milestones Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+    post:
+      summary: Create a milestone
+      description: "A new milestone of the project, named and with its whole condition.\
+        \ A bound agent creates only in its own project. Groups are OR'd and the criteria\
+        \ in a group AND'd; the milestone is met while one group holds. Kinds: ENTITY_STATUS\
+        \ {entityId (qualified id or UUID of a work entity of the same project), status},\
+        \ DEPLOYMENT_ACTIVE, SCM_RELEASE, APPROVAL {} (a person's approve). ENTITY_STATUS\
+        \ latches from the current state at once when its target already stands at\
+        \ or past the status (evidence CURRENT_STATE). DEPLOYMENT_ACTIVE and SCM_RELEASE\
+        \ latch only on events that happen after the criterion was made: a deployment\
+        \ or a release from before it never meets it."
+      operationId: createMilestone
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneCreate"
+        required: true
+      responses:
+        "201":
+          description: "The milestone as written, latched from the current state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneAnswer"
+        "400":
+          description: "No name, no groups, an empty group, a predicate the service\
+            \ cannot read, or an ENTITY_STATUS target outside the project"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: No such project
+        "401":
+          description: Not Authorized
+      tags:
+      - Project Milestones Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
   /projects/api/projects/{project}/work:
     get:
       summary: List a project's work of every archetype
@@ -9699,6 +10199,60 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
+  /projects/api/work/{qualifiedId}/members/{membershipId}/milestones:
+    put:
+      summary: Set the milestones a membership waits on
+      description: "PUT semantics: the membership is dispatched once every listed\
+        \ milestone is met, and an empty list waits on nothing. Each must be an existing\
+        \ milestone of the campaign's project; the member entity is attached to each,\
+        \ so it shows what it needs. A milestone left off stays attached to the member\
+        \ entity — except the membership's generated condition (the one PUT …/condition\
+        \ edits), which is detached from it and deleted once nothing waits on it.\
+        \ Refused once the member was claimed (a claim freezes it) and at a DROPPED\
+        \ campaign. A bound agent edits only in its own project."
+      operationId: setWorkMemberMilestones
+      parameters:
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkMemberMilestones"
+        required: true
+      responses:
+        "200":
+          description: The member with its milestones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberAnswer"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No campaign, no such membership on it, or no such milestone"
+        "409":
+          description: "Claimed, a DROPPED campaign, or a milestone of another project"
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
   /projects/api/work/{qualifiedId}/members/{membershipId}/position:
     put:
       summary: Move a membership within its campaign
@@ -9738,6 +10292,117 @@ paths:
           description: Bad Request
       tags:
       - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/milestones:
+    get:
+      summary: The milestones a work entity waits on
+      description: "Each its id, its displayName and since when it is met (satisfiedAt,\
+        \ null while it is not). The entity needs something while any is unmet."
+      operationId: listWorkMilestones
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The milestones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMilestoneList"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Milestones Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/milestones/{milestoneId}:
+    delete:
+      summary: A work entity no longer waits on a milestone
+      description: "The milestone itself stays, and so does every campaign membership\
+        \ waiting on it. Answers what the entity waits on now. A bound agent detaches\
+        \ only in its own project."
+      operationId: detachWorkMilestone
+      parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The milestones it waits on now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMilestoneList"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No entity with this id, or it does not wait on this milestone"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Milestones Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+    put:
+      summary: A work entity waits on a milestone
+      description: Idempotent. The milestone must be of the entity's project. Answers
+        what the entity waits on now. A bound agent attaches only in its own project.
+      operationId: attachWorkMilestone
+      parameters:
+      - name: milestoneId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The milestones it waits on now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMilestoneList"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No entity, or no milestone, with this id"
+        "409":
+          description: The milestone is of another project
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Milestones Controller
       security:
       - SecurityScheme:
         - qits:admin

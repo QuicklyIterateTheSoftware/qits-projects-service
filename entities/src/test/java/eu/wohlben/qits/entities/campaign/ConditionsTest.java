@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.campaign;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -10,14 +11,14 @@ import org.junit.jupiter.api.Test;
 /** {@link Conditions#satisfied}: the monotone DNF, and nothing else. Plain JUnit. */
 class ConditionsTest {
 
-  private static CampaignCriterion latched() {
-    CampaignCriterion criterion = new CampaignCriterion();
+  private static MilestoneCriterion latched() {
+    MilestoneCriterion criterion = new MilestoneCriterion();
     criterion.satisfiedAt = Instant.parse("2026-09-27T10:00:00Z");
     return criterion;
   }
 
-  private static CampaignCriterion open() {
-    return new CampaignCriterion();
+  private static MilestoneCriterion open() {
+    return new MilestoneCriterion();
   }
 
   @Test

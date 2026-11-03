@@ -285,6 +285,11 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    * <p>Also owed (qits-1751) by a fold that found a freshly added source not yet on the git host,
    * its reason prefixed {@code "a source is not on the git host yet: "}: that one is paid by the
    * sweep even over a fold in flight, since the fold that pays it is the one carrying the source.
+   *
+   * <p>And owed (qits-1850) by a fold of a PENDING request with a fold that the git host could not
+   * make (an {@code unreachable} answer, a 500), its reason prefixed {@code "the git host could not
+   * fold the sources: "} and its instant re-stamped by every failed attempt: the sweep pays that one
+   * over a fold in flight too, but only once the backoff since the last attempt has passed.
    */
   @Column(name = "refold_owed_at")
   public Instant refoldOwedAt;

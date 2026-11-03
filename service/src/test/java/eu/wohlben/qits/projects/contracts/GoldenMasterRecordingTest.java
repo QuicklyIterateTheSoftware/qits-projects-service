@@ -138,6 +138,7 @@ class GoldenMasterRecordingTest {
   private static final Map<String, String> BEARER = Map.of("Authorization", "{authorization}");
 
   static final List<Interaction> INTERACTIONS =
+      withMilestones(
       withServiceCallers(
       withReleaseRequests(
       withWorkFamily(
@@ -491,7 +492,7 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null))))));
+              null)))))));
 
   /**
    * The landing app's release-request pages (epic qits-112): every read the detail page makes, in
@@ -1353,6 +1354,94 @@ class GoldenMasterRecordingTest {
             ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
             "getBranchDeliveries",
             "/projects/api/branch-deliveries?branch=ticket/qits-9001"));
+    return List.copyOf(all);
+  }
+
+  /**
+   * The milestone doors (epic qits-615): a project's list and a milestone's read in both an unmet
+   * and a met state, every write on a ticket waiting on an unmet one — the create, the rename, the
+   * condition's replace, a person's approve, the attach and the detach — and the work reads that
+   * carry {@code milestones} and {@code unmetMilestones}; and a campaign member waiting on a
+   * milestone, its members read and its milestones set.
+   */
+  private static List<Interaction> withMilestones(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    String unmet = ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE;
+    String met = ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE;
+    String member = ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE;
+    String projectMilestones = "/projects/api/projects/{projectId}/milestones";
+    String milestone = "/projects/api/milestones/{milestoneId}";
+    for (String state : List.of(unmet, met)) {
+      all.add(read(state, "listProjectMilestones", projectMilestones));
+      all.add(read(state, "getMilestone", milestone));
+      all.add(read(state, "getWork", "/projects/api/work/{qualifiedId}"));
+      all.add(read(state, "listWorkMilestones", "/projects/api/work/{qualifiedId}/milestones"));
+      all.add(read(state, "listProjectWork", "/projects/api/projects/{projectId}/work"));
+    }
+    all.add(
+        new Interaction(
+            unmet,
+            "createMilestone",
+            "POST",
+            projectMilestones,
+            201,
+            null,
+            null,
+            "{\"displayName\":\"bootstrap ticket done\",\"groups\":[{\"criteria\":["
+                + "{\"kind\":\"ENTITY_STATUS\","
+                + "\"predicate\":{\"entityId\":\"{qualifiedId}\",\"status\":\"DONE\"}}]}]}"));
+    all.add(
+        write(
+            unmet,
+            "renameMilestone",
+            "PATCH",
+            milestone,
+            "{\"displayName\":\"bootstrap test node (arm64)\"}"));
+    all.add(
+        write(
+            unmet,
+            "setMilestoneGroups",
+            "PUT",
+            milestone + "/groups",
+            "{\"groups\":["
+                + "{\"criteria\":[{\"id\":\"{criterionId}\",\"kind\":\"APPROVAL\",\"predicate\":{}}]},"
+                + "{\"criteria\":[{\"kind\":\"ENTITY_STATUS\","
+                + "\"predicate\":{\"entityId\":\"{qualifiedId}\",\"status\":\"DONE\"}}]}]}"));
+    all.add(
+        write(
+            unmet,
+            "approveMilestoneCriterion",
+            "POST",
+            milestone + "/criteria/{criterionId}/approve",
+            "{\"note\":\"Node 7 is up.\"}"));
+    all.add(
+        new Interaction(
+            unmet,
+            "attachWorkMilestone",
+            "PUT",
+            "/projects/api/work/{qualifiedId}/milestones/{otherMilestoneId}",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            unmet,
+            "detachWorkMilestone",
+            "DELETE",
+            "/projects/api/work/{qualifiedId}/milestones/{milestoneId}",
+            200,
+            null,
+            null));
+    all.add(read(member, "listWorkMembers", "/projects/api/work/{qualifiedId}/members"));
+    all.add(read(member, "getMilestone", milestone));
+    all.add(read(member, "getWork", "/projects/api/work/{ticketQualifiedId}"));
+    all.add(
+        write(
+            member,
+            "setWorkMemberMilestones",
+            "PUT",
+            "/projects/api/work/{qualifiedId}/members/{membershipId}/milestones",
+            "{\"milestoneIds\":[\"{milestoneId}\",\"{otherMilestoneId}\"]}"));
     return List.copyOf(all);
   }
 

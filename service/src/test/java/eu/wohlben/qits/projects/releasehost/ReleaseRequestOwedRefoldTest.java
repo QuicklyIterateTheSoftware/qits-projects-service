@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.contracts.ContractBearers;
+import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAnnouncer;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
@@ -25,6 +26,7 @@ import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -330,6 +332,37 @@ public class ReleaseRequestOwedRefoldTest {
     assertNull(row(id).refoldOwedAt);
     releaseRequests.sweep();
     assertEquals(folds + 1, foldsOf(repoId), "and paid once");
+  }
+
+  /**
+   * 8. A re-fold the git host could not make (qits-1850) is owed too, and unlike an automation's it
+   * is not held for the fold in flight: it was asked for at once — here a person's push — and the
+   * fold in QA lacks what it carried. The sweep knocks for it once the backoff has passed.
+   */
+  @Test
+  public void aRefoldTheGitHostCouldNotMakeIsKnockedForOverAFoldInFlight() {
+    String id = inQa(repoId);
+    String merged = mergedShaOf(repoId, id);
+
+    merger.answer(BackingBranchMerger.Outcome.unreachable("qits-githost answered 500"));
+    headMoved(repoId, "work");
+    assertEquals(merged, mergedShaOf(repoId, id));
+    assertNotNull(row(id).refoldOwedAt, "the failed fold is owed");
+    int folds = foldsOf(repoId);
+
+    merger.answerFreshMerges();
+    releaseRequests.sweep();
+    assertEquals(folds, foldsOf(repoId), "inside the backoff, no knock");
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findById(id).refoldOwedAt =
+                    Instant.now().minus(Duration.ofHours(1)));
+    releaseRequests.sweep();
+    assertEquals(folds + 1, foldsOf(repoId), "past it, knocked although QA still runs");
+    assertNotEquals(merged, mergedShaOf(repoId, id));
+    assertNull(row(id).refoldOwedAt);
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -302,6 +302,21 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
   }
 
+  @State(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE)
+  Map<String, String> aTicketWaitingOnAnUnmetMilestone() {
+    return states.params(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE);
+  }
+
+  @State(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE)
+  Map<String, String> aTicketWaitingOnAMetMilestone() {
+    return states.params(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE);
+  }
+
+  @State(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE)
+  Map<String, String> aCampaignMemberWaitingOnAMilestone() {
+    return states.params(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE);
+  }
+
   @State(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE)
   Map<String, String> anEpicWithASketchToInline() {
     return states.params(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE);

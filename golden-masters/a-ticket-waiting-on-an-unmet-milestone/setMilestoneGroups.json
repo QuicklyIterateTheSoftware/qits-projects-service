@@ -1,0 +1,61 @@
+{
+  "milestone": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "projectId": "00000000-0000-4000-8000-000000000004",
+    "displayName": "bootstrap test node",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "satisfiedAt": null,
+    "met": false,
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "position": 0,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "satisfiedAt": null,
+        "criteria": [
+          {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "kind": "APPROVAL",
+            "predicate": {},
+            "seeded": false,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "satisfiedAt": null,
+            "evidence": null,
+            "approval": null
+          }
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "position": 1,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "satisfiedAt": null,
+        "criteria": [
+          {
+            "id": "00000000-0000-4000-8000-000000000008",
+            "kind": "ENTITY_STATUS",
+            "predicate": {
+              "entityId": "00000000-0000-4000-8000-000000000005",
+              "status": "DONE"
+            },
+            "seeded": false,
+            "createdAt": "2026-01-01T00:00:00Z",
+            "satisfiedAt": null,
+            "evidence": null,
+            "approval": null
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "qualifiedId": "contract-00000001-1",
+        "archetype": "TICKET",
+        "title": "Bootstrap a fresh node",
+        "status": "REPORTED"
+      }
+    ],
+    "memberships": []
+  }
+}

@@ -18,7 +18,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -90,7 +90,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -162,7 +162,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -229,12 +229,84 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
+            "schedule": "CatchupSweeper.catchUp(projects-campaign-milestones)"
+          },
+          "qits-via": {
+            "artifact": "eu.wohlben.qits:qits-eventstream",
+            "repository": "qits-eventstream-javalib",
+            "version": "2026.1103.140652"
+          }
+        }
+      },
+      "description": "CatchupSweeper.catchUp(projects-campaign-milestones): listEvents (one name)",
+      "key": "2b1f10d8",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no events"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "200"
+          ],
+          "name": [
+            "MilestoneMet"
+          ],
+          "order": [
+            "asc"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": []
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
             "schedule": "CatchupSweeper.catchUp(projects-deployment-failure)"
           },
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -306,7 +378,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -378,7 +450,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -450,7 +522,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -522,7 +594,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -594,7 +666,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -663,7 +735,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -732,7 +804,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -796,12 +868,81 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
+            "schedule": "CatchupSweeper.initialize(projects-campaign-milestones)"
+          },
+          "qits-via": {
+            "artifact": "eu.wohlben.qits:qits-eventstream",
+            "repository": "qits-eventstream-javalib",
+            "version": "2026.1103.140652"
+          }
+        }
+      },
+      "description": "CatchupSweeper.initialize(projects-campaign-milestones): listEvents (one name)",
+      "key": "2a4e2228",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no events"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "1"
+          ],
+          "name": [
+            "MilestoneMet"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": []
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
             "schedule": "CatchupSweeper.initialize(projects-deployment-failure)"
           },
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -870,7 +1011,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -939,7 +1080,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -1008,7 +1149,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -1077,7 +1218,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -1146,7 +1287,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },
@@ -1210,7 +1351,7 @@
           "qits-via": {
             "artifact": "eu.wohlben.qits:qits-eventstream",
             "repository": "qits-eventstream-javalib",
-            "version": "2026.1031.131702"
+            "version": "2026.1103.140652"
           }
         }
       },

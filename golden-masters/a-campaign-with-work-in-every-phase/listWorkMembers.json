@@ -24,7 +24,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000009",
@@ -68,10 +69,17 @@
           ]
         }
       ],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "displayName": "Before \"Refined ticket\" in \"Card campaign\"",
+          "satisfiedAt": null
+        }
+      ]
     },
     {
-      "membershipId": "00000000-0000-4000-8000-00000000000c",
+      "membershipId": "00000000-0000-4000-8000-00000000000d",
       "position": 2,
       "entity": {
         "id": "00000000-0000-4000-8000-000000000007",
@@ -95,10 +103,10 @@
       "dispatchError": null,
       "groups": [
         {
-          "id": "00000000-0000-4000-8000-00000000000d",
+          "id": "00000000-0000-4000-8000-00000000000e",
           "criteria": [
             {
-              "id": "00000000-0000-4000-8000-00000000000e",
+              "id": "00000000-0000-4000-8000-00000000000f",
               "kind": "ENTITY_STATUS",
               "predicate": {
                 "entityId": "00000000-0000-4000-8000-000000000006",
@@ -112,10 +120,17 @@
           ]
         }
       ],
-      "holdsStatus": true
+      "holdsStatus": true,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "displayName": "Before \"Reported ticket\" in \"Card campaign\"",
+          "satisfiedAt": null
+        }
+      ]
     },
     {
-      "membershipId": "00000000-0000-4000-8000-00000000000f",
+      "membershipId": "00000000-0000-4000-8000-000000000011",
       "position": 3,
       "entity": {
         "id": "00000000-0000-4000-8000-000000000002",
@@ -139,10 +154,10 @@
       "dispatchError": null,
       "groups": [
         {
-          "id": "00000000-0000-4000-8000-000000000010",
+          "id": "00000000-0000-4000-8000-000000000012",
           "criteria": [
             {
-              "id": "00000000-0000-4000-8000-000000000011",
+              "id": "00000000-0000-4000-8000-000000000013",
               "kind": "ENTITY_STATUS",
               "predicate": {
                 "entityId": "00000000-0000-4000-8000-000000000007",
@@ -156,7 +171,14 @@
           ]
         }
       ],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "displayName": "Before \"Done ticket\" in \"Card campaign\"",
+          "satisfiedAt": null
+        }
+      ]
     }
   ]
 }

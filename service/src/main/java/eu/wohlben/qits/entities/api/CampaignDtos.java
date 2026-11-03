@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.entity.WorkTag;
+import eu.wohlben.qits.entities.milestone.MilestoneRef;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,9 @@ public final class CampaignDtos {
    * One membership: the entity it gathers, its run record and its condition, and — {@code
    * holdsStatus} (qits-650) — whether its member is one that sets the campaign's derived status:
    * not DROPPED, and its status on the campaign walk is the campaign's. False on every member while
-   * the campaign is DONE or DROPPED.
+   * the campaign is DONE or DROPPED. {@code milestones} (epic qits-615) is every milestone the
+   * membership waits on — its generated condition among them — each its id, its name and since when
+   * it is met; the executor dispatches the member once all are met. {@code []} when it waits on none.
    */
   public record CampaignMemberDto(
       String membershipId,
@@ -77,7 +80,8 @@ public final class CampaignDtos {
       Instant dispatchRefusedAt,
       String dispatchError,
       List<CriterionGroupDto> groups,
-      boolean holdsStatus) {}
+      boolean holdsStatus,
+      List<MilestoneRef> milestones) {}
 
   /**
    * The gathered entity, as a member row draws it. {@code tags} (qits-634) is always present, {@code

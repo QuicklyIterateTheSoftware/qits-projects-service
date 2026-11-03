@@ -8,8 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
+import eu.wohlben.qits.entities.campaign.CampaignReadiness;
 import eu.wohlben.qits.entities.campaign.Observation;
+import eu.wohlben.qits.entities.milestone.MilestoneEvaluator;
+import eu.wohlben.qits.entities.milestone.MilestonesChanged;
 import eu.wohlben.qits.eventstream.QitsEvent;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
@@ -33,13 +35,16 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The listener's own half, without a container: the wire names as literals, the decode of the three
- * signatures, the retry arm, the dedupe, and the poison rule. What {@link CampaignEvaluator} itself
- * does with an observation is {@code CampaignEvaluatorTest}'s, against the real database.
+ * signatures, the retry arm, the dedupe, the announcement of what was met, and the poison rule. What
+ * {@link MilestoneEvaluator} itself does with an observation is {@code MilestoneEvaluatorTest}'s,
+ * against the real database.
  */
 class CampaignCriteriaListenerTest {
 
   private CampaignCriteriaListener listener;
   private RecordingEvaluator evaluator;
+  private RecordingReadiness readiness;
+  private RecordingMilestoneAnnouncer announcer;
   private CapturingEvent fired;
   private CampaignCriteriaConsumerHealth health;
 
@@ -47,9 +52,13 @@ class CampaignCriteriaListenerTest {
   void setUp() {
     listener = new CampaignCriteriaListener();
     evaluator = new RecordingEvaluator();
+    readiness = new RecordingReadiness();
+    announcer = new RecordingMilestoneAnnouncer();
     fired = new CapturingEvent();
     health = new CampaignCriteriaConsumerHealth();
     listener.evaluator = evaluator;
+    listener.readiness = readiness;
+    listener.announcer = announcer;
     listener.memberSatisfied = fired;
     listener.health = health;
     // The epics transaction is the seam CampaignCriteriaClaimSeamTest proves against the real
@@ -216,11 +225,9 @@ class CampaignCriteriaListenerTest {
   }
 
   @Test
-  void memberEntityRetriesAreIncludedAndIdsAreDeduped() {
-    evaluator.observeAnswers.add(List.of("m1"));
-    evaluator.observeAnswers.add(List.of());
-    evaluator.retryAnswers.put("qits-1", List.of("m1", "m2"));
-    evaluator.retryAnswers.put("qits-2", List.of("m2"));
+  void memberEntityRetriesFireOncePerMembership() {
+    readiness.retryAnswers.put("qits-1", List.of("m1", "m2"));
+    readiness.retryAnswers.put("qits-2", List.of("m2"));
 
     EntityTransitioned event =
         new EntityTransitioned(
@@ -231,17 +238,17 @@ class CampaignCriteriaListenerTest {
 
     listener.onFrame(frameOf(event));
 
-    assertEquals(List.of("qits-1", "qits-2"), evaluator.retryCalls);
+    assertEquals(List.of("qits-1", "qits-2"), readiness.retryCalls);
     assertEquals(
-        Set.of("m1", "m2"),
-        fired.fired.stream().map(CampaignMemberSatisfied::membershipId).collect(java.util.stream.Collectors.toSet()));
-    assertEquals(2, fired.fired.size(), "m1 named by both arms fires exactly once");
+        List.of("m1", "m2"),
+        fired.fired.stream().map(CampaignMemberSatisfied::membershipId).toList(),
+        "m2 named for both entities fires exactly once");
   }
 
   @Test
   void everyFiredEventCarriesTheFramesOwnIdAsEvidence() {
     UUID id = UUID.randomUUID();
-    evaluator.observeAnswers.add(List.of("m1"));
+    readiness.retryAnswers.put("qits-1", List.of("m1"));
     EntityTransitioned event =
         new EntityTransitioned(
             List.of(entity("qits-1", "REFINED", "REPORTED")), Instant.parse("2026-09-27T10:00:00Z"));
@@ -252,6 +259,49 @@ class CampaignCriteriaListenerTest {
 
     assertEquals(1, fired.fired.size());
     assertEquals(id, fired.fired.get(0).evidenceEventId());
+  }
+
+  @Test
+  void everyMilestoneTheLatchesMetIsAnnouncedAndNoMembershipIsHandedOnForIt() {
+    Instant at = Instant.parse("2026-09-27T10:00:00Z");
+    evaluator.observeAnswers.add(
+        new MilestonesChanged(
+            List.of(new MilestonesChanged.Met("ms-1", "qits", "bootstrap test node", "g-1", at)),
+            List.of()));
+    evaluator.observeAnswers.add(
+        new MilestonesChanged(
+            List.of(new MilestonesChanged.Met("ms-2", "qits", "second", "g-2", at)), List.of()));
+
+    listener.onFrame(
+        frameOf(
+            new EntityTransitioned(
+                List.of(entity("qits-1", "VERIFIED", "IMPLEMENTED"), entity("qits-2", "DONE", "VERIFIED")),
+                at)));
+
+    assertEquals(
+        List.of("ms-1", "ms-2"),
+        announcer.met().stream().map(MilestoneMet::milestoneId).toList(),
+        "one MilestoneMet per milestone, in order");
+    MilestoneMet first = announcer.met().get(0);
+    assertEquals("qits", first.projectId());
+    assertEquals("bootstrap test node", first.displayName());
+    assertEquals("g-1", first.groupId());
+    assertEquals(at, first.satisfiedAt());
+    assertTrue(fired.fired.isEmpty(), "the executor hears a milestone on the bus, never from here");
+
+    evaluator.observeAnswers.add(
+        new MilestonesChanged(
+            List.of(new MilestonesChanged.Met("ms-3", "qits", "deployed", "g-3", at)), List.of()));
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "DeploymentActive",
+            at,
+            "{\"applicationName\":\"qits-ci\",\"environmentName\":\"dev\",\"version\":\"1\"}",
+            null,
+            null,
+            null));
+    assertEquals("ms-3", announcer.met().get(2).milestoneId());
   }
 
   @Test
@@ -271,6 +321,7 @@ class CampaignCriteriaListenerTest {
     assertTrue(health.lastError().contains(frame.id()), health.lastError());
     assertTrue(health.lastError().contains("the epics database is gone"), health.lastError());
     assertTrue(fired.fired.isEmpty(), "nothing is handed on from a frame that failed");
+    assertTrue(announcer.published().isEmpty(), "nothing is announced from a frame that failed");
 
     evaluator.failWith = null;
     listener.onFrame(frame);
@@ -334,21 +385,24 @@ class CampaignCriteriaListenerTest {
         null);
   }
 
-  private static final class RecordingEvaluator extends CampaignEvaluator {
+  private static final class RecordingEvaluator extends MilestoneEvaluator {
     final List<Observation.Observed> observed = new ArrayList<>();
-    final Deque<List<String>> observeAnswers = new ArrayDeque<>();
-    final List<String> retryCalls = new ArrayList<>();
-    final Map<String, List<String>> retryAnswers = new HashMap<>();
+    final Deque<MilestonesChanged> observeAnswers = new ArrayDeque<>();
     RuntimeException failWith;
 
     @Override
-    public List<String> observe(Observation.Observed observed) {
+    public MilestonesChanged observe(Observation.Observed observed) {
       if (failWith != null) {
         throw failWith;
       }
       this.observed.add(observed);
-      return observeAnswers.isEmpty() ? List.of() : observeAnswers.poll();
+      return observeAnswers.isEmpty() ? MilestonesChanged.none() : observeAnswers.poll();
     }
+  }
+
+  private static final class RecordingReadiness extends CampaignReadiness {
+    final List<String> retryCalls = new ArrayList<>();
+    final Map<String, List<String>> retryAnswers = new HashMap<>();
 
     @Override
     public List<String> satisfiedUnclaimedMembershipsOf(String entityId) {

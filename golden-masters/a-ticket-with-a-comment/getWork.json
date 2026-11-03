@@ -30,5 +30,7 @@
   "acceptanceCriteria": [
     "It does what it says."
   ],
-  "tags": []
+  "tags": [],
+  "milestones": [],
+  "unmetMilestones": 0
 }

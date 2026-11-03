@@ -20,6 +20,7 @@ import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.EntitiesException;
 import eu.wohlben.qits.entities.persistence.AuditRepository;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -335,7 +336,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
             WHO);
 
     assertEquals(1, restated.groups().size());
-    List<CampaignCriterion> kept = restated.groups().get(0).criteria();
+    List<MilestoneCriterion> kept = restated.groups().get(0).criteria();
     assertEquals(2, kept.size());
     assertEquals(approvalId, kept.get(0).id);
     assertNotNull(kept.get(0).satisfiedAt, "a restated criterion keeps its latch");
@@ -412,7 +413,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   // --- the latch from the current state ------------------------------------------------------------
 
   @Test
-  void theCurrentStateLatchesAtOrPastTheWantedStatusAndNeverFromDropped() {
+  void theCurrentStateLatchesAtOrPastTheWantedStatusWhenTheConditionIsWritten() {
     WorkEntity campaign = campaign();
     WorkEntity verified = walk(ticket("Verified"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     WorkEntity done = walk(ticket("Done"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
@@ -423,39 +424,59 @@ class CampaignServiceTest extends EntitiesTestSupport {
       campaigns.addMember(campaign.id, member.id, 0, false, WHO);
     }
     CampaignService.Member waiting = campaigns.addMember(campaign.id, waiter.id, null, false, WHO);
-    campaigns.setCondition(
-        campaign.id,
-        waiting.membership().id,
-        List.of(
-            group(restated(null, "ENTITY_STATUS", verified.id), restated(null, "ENTITY_STATUS", done.id)),
-            group(restated(null, "ENTITY_STATUS", dropped.id)),
-            group(restated(null, "ENTITY_STATUS", refined.id))),
-        WHO);
+    CampaignService.Member written =
+        campaigns.setCondition(
+            campaign.id,
+            waiting.membership().id,
+            List.of(
+                group(restated(null, "ENTITY_STATUS", verified.id), restated(null, "ENTITY_STATUS", done.id)),
+                group(restated(null, "ENTITY_STATUS", dropped.id)),
+                group(restated(null, "ENTITY_STATUS", refined.id))),
+            WHO);
 
-    List<String> satisfied = campaigns.latchFromCurrentState(campaign.id);
-
-    assertEquals(List.of(waiting.membership().id), satisfied, "the first group now holds");
-    Map<String, CampaignCriterion> byTarget = new LinkedHashMap<>();
-    for (CampaignService.Group group : member(campaign, waiting.membership().id).groups()) {
-      for (CampaignCriterion criterion : group.criteria()) {
-        byTarget.put(((CriterionPredicate.EntityStatusIs) criterion.decoded()).entityId(), criterion);
-      }
-    }
-    CampaignCriterion atVerified = byTarget.get(verified.id);
+    assertTrue(written.satisfied(), "the first group holds at once");
+    Map<String, MilestoneCriterion> byTarget = byTarget(member(campaign, waiting.membership().id));
+    MilestoneCriterion atVerified = byTarget.get(verified.id);
     assertNotNull(atVerified.satisfiedAt);
-    assertEquals(CampaignCriterion.STATE_AT_START, atVerified.evidenceSignature);
+    assertEquals(MilestoneCriterion.CURRENT_STATE, atVerified.evidenceSignature);
     assertNull(atVerified.evidenceEventId);
     assertEquals(
-        "#" + verified.number + " was already VERIFIED when the campaign started",
+        "#" + verified.number + " was already VERIFIED when the criterion was written",
         atVerified.evidenceSummary);
     assertNotNull(byTarget.get(done.id).satisfiedAt, "DONE is past VERIFIED");
-    assertEquals(
-        "#" + done.number + " was already DONE when the campaign started",
-        byTarget.get(done.id).evidenceSummary);
     assertNull(byTarget.get(dropped.id).satisfiedAt, "DROPPED is never past anything");
     assertNull(byTarget.get(refined.id).satisfiedAt, "REFINED is below VERIFIED");
 
+    assertTrue(
+        campaigns.latchFromCurrentState(campaign.id).isEmpty(),
+        "nothing moved since: the start latches nothing more");
+  }
+
+  @Test
+  void theStartLatchesWhatMovedSinceTheConditionWasWritten() {
+    WorkEntity campaign = campaign();
+    WorkEntity a = walk(ticket("A"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
+    campaigns.addMember(campaign.id, a.id, null, false, WHO);
+    CampaignService.Member b = campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO);
+    assertNull(member(campaign, b.membership().id).groups().get(0).criteria().get(0).satisfiedAt);
+    // No bus in this module: A's move is an event nobody hears, as before a campaign is started.
+    walk(a, "VERIFIED");
+
+    assertEquals(List.of(b.membership().id), campaigns.latchFromCurrentState(campaign.id));
+    MilestoneCriterion seed = member(campaign, b.membership().id).groups().get(0).criteria().get(0);
+    assertEquals(MilestoneCriterion.CURRENT_STATE, seed.evidenceSignature);
+    assertEquals("#" + a.number + " was already VERIFIED when the campaign started", seed.evidenceSummary);
     assertTrue(campaigns.latchFromCurrentState(campaign.id).isEmpty(), "a latch fires once");
+  }
+
+  private static Map<String, MilestoneCriterion> byTarget(CampaignService.Member member) {
+    Map<String, MilestoneCriterion> byTarget = new LinkedHashMap<>();
+    for (CampaignService.Group group : member.groups()) {
+      for (MilestoneCriterion criterion : group.criteria()) {
+        byTarget.put(((CriterionPredicate.EntityStatusIs) criterion.decoded()).entityId(), criterion);
+      }
+    }
+    return byTarget;
   }
 
   @Test
@@ -492,7 +513,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
 
     assertNotNull(onA.groups().get(0).criteria().get(0).satisfiedAt, "latched in the same write");
     assertEquals(
-        CampaignCriterion.STATE_AT_START, onA.groups().get(0).criteria().get(0).evidenceSignature);
+        MilestoneCriterion.CURRENT_STATE, onA.groups().get(0).criteria().get(0).evidenceSignature);
   }
 
   // --- the pause hook ------------------------------------------------------------------------------
@@ -670,9 +691,9 @@ class CampaignServiceTest extends EntitiesTestSupport {
 
   private static void assertSeededOn(CampaignService.Member member, String predecessorId) {
     assertEquals(1, member.groups().size(), "one group");
-    List<CampaignCriterion> criteria = member.groups().get(0).criteria();
+    List<MilestoneCriterion> criteria = member.groups().get(0).criteria();
     assertEquals(1, criteria.size(), "one criterion");
-    CampaignCriterion seeded = criteria.get(0);
+    MilestoneCriterion seeded = criteria.get(0);
     assertTrue(seeded.seeded);
     assertEquals(CriterionKind.ENTITY_STATUS, seeded.kind);
     assertEquals(

@@ -24,7 +24,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000005",
@@ -50,7 +51,8 @@
       "dispatchRefusedAt": null,
       "dispatchError": null,
       "groups": [],
-      "holdsStatus": false
+      "holdsStatus": false,
+      "milestones": []
     },
     {
       "membershipId": "00000000-0000-4000-8000-000000000007",
@@ -94,7 +96,14 @@
           ]
         }
       ],
-      "holdsStatus": true
+      "holdsStatus": true,
+      "milestones": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "displayName": "Before \"Waiting ticket\" in \"Ordered campaign\"",
+          "satisfiedAt": null
+        }
+      ]
     }
   ]
 }

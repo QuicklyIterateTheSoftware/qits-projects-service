@@ -3,7 +3,8 @@ package eu.wohlben.qits.entities.campaign;
 import java.util.List;
 
 /**
- * <b>An authoring write left these memberships satisfied and unclaimed</b> (qits-417): an approval,
+ * <b>An authoring write left these memberships satisfied and unclaimed</b> (qits-417): every milestone they wait on is
+ * met (epic qits-615) — after an approval,
  * or an add or a condition edit on a campaign whose start is active. Fired by {@link
  * CampaignService} on the CDI event bus inside the write's own transaction, so an observer declared
  * {@code during = AFTER_SUCCESS} — the service layer's campaign executor — runs only once the write

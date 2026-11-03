@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.WorkTag;
+import eu.wohlben.qits.entities.milestone.MilestoneRef;
 import java.time.Instant;
 import java.util.List;
 
@@ -17,7 +18,9 @@ import java.util.List;
  * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895), and {@code
  * waitingOn} beside it (qits-1153). {@code outcome} and {@code supersededBy} (qits-248) are on every
  * archetype and always on the wire, null included, and so is {@code priority} (qits-753); {@code
- * tags} (qits-634) is always on the wire too, {@code []} when there are none.
+ * tags} (qits-634) is always on the wire too, {@code []} when there are none. {@code milestones}
+ * and {@code unmetMilestones} (epic qits-615) are the project listing's: what each entry waits on,
+ * read for the whole project in one batch.
  *
  * <p><b>{@code excerpt} is what a list says about the body instead</b> (qits-1821): a short
  * plain-text lead of the description — its first prose paragraph, inline Markdown stripped, cut at
@@ -61,7 +64,9 @@ public record EntitySummary(
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
-    List<WorkTag> tags) {
+    List<WorkTag> tags,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<MilestoneRef> milestones,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones) {
 
   public static EntitySummary of(TransitionedEntity e) {
     return new EntitySummary(
@@ -97,6 +102,8 @@ public record EntitySummary(
         e.blockReason(),
         e.blockedBy(),
         e.waitingOn(),
-        e.tags());
+        e.tags(),
+        e.milestones(),
+        e.unmetMilestones());
   }
 }

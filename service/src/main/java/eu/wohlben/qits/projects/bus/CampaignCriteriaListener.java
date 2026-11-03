@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.bus;
 
-import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
+import eu.wohlben.qits.entities.campaign.CampaignReadiness;
 import eu.wohlben.qits.entities.campaign.Observation;
+import eu.wohlben.qits.entities.milestone.MilestoneEvaluator;
+import eu.wohlben.qits.entities.milestone.MilestonesChanged;
 import eu.wohlben.qits.eventstream.QitsDurableEventListener;
 import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventFrame;
@@ -13,19 +15,21 @@ import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import java.util.Collection;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.jboss.logging.Logger;
 
 /**
- * <b>The bus side of the criteria evaluator</b> (epic f6c67e74, qits-416): decode the three
- * event-sourced facts a campaign criterion can wait on, hand each to {@link
- * CampaignEvaluator#observe}, and fire a CDI event per membership it satisfies. Everything the
- * decision itself needs — the candidate query, the latch, the DNF fold — is {@link
- * CampaignEvaluator}'s; this class is the seam between the wire and it, the same shape {@code
- * DeploymentActiveListener} and {@code BuildStatusListener} already are for their own consumptions.
+ * <b>The bus side of the criteria evaluator</b> (epic f6c67e74, qits-416; re-pointed at milestones
+ * by epic qits-615): decode the three event-sourced facts a criterion can wait on, hand each to
+ * {@link MilestoneEvaluator#observe}, and announce a {@link MilestoneMet} per milestone that came to
+ * hold. Everything the decision itself needs — the candidate query, the latch, the dates — is
+ * {@link MilestoneEvaluator}'s; this class is the seam between the wire and it, the same shape
+ * {@code DeploymentActiveListener} and {@code BuildStatusListener} already are for their own
+ * consumptions. The campaign executor hears the milestone on the bus ({@link
+ * CampaignMilestoneListener}), never from here.
  *
  * <h2>Why this goes through the bus even for {@code EntityTransitioned}, which this very service
  * publishes</h2>
@@ -62,18 +66,18 @@ import org.jboss.logging.Logger;
  * <h2>The retry arm</h2>
  *
  * <p>Every entity an {@code EntityTransitioned} batch names is also asked through {@link
- * CampaignEvaluator#satisfiedUnclaimedMembershipsOf}, beside the fresh {@link
- * CampaignEvaluator#observe} call for the batch as a whole. A member refused dispatch earlier —
+ * CampaignReadiness#satisfiedUnclaimedMembershipsOf}, beside the fresh {@link
+ * MilestoneEvaluator#observe} call for the batch as a whole. A member refused dispatch earlier —
  * blocked, wrong status — may be dispatchable now while none of ITS OWN criteria will ever latch
  * again (the criterion that mattered was some OTHER member reaching a status), so the one moment
- * worth re-checking it is exactly when the member itself moves. Membership ids from both arms are
- * deduplicated within the frame before anything fires.
+ * worth re-checking it is exactly when the member itself moves. The ids are deduplicated within the
+ * frame before anything fires.
  *
  * <h2>Two transactions, never one — the boundary this class owns (qits-416)</h2>
  *
  * <p>The library runs {@code onFrame} inside its claim transaction ({@code DurableFunnel}), and by
  * the time it does, the {@code consumed_event} insert has already enlisted a connection of the
- * {@code eventstream} datasource. {@link CampaignEvaluator} reads and writes {@code epics}, a second
+ * {@code eventstream} datasource. {@link MilestoneEvaluator} reads and writes {@code epics}, a second
  * non-XA datasource, and Narayana refuses a second local resource in one JTA transaction — measured
  * live on 2026-09-27, when this consumer failed on every frame with {@code ARJUNA016045 …
  * Enlisted connection used without active transaction}, the claim rolled back each time, and the
@@ -100,9 +104,16 @@ import org.jboss.logging.Logger;
  *       that is not a UUID) is still WARN-and-return, before any transaction is opened.
  * </ul>
  *
- * <h2>What fires, and when</h2>
+ * <h2>What is announced, and when</h2>
  *
- * <p>Every resulting membership id fires a CDI {@link CampaignMemberSatisfied} event —
+ * <p>Every milestone that came to hold is published as a {@link MilestoneMet} through {@link
+ * MilestoneAnnouncer}, <b>after</b> the {@code epics} transaction committed (the outbox writes in a
+ * transaction of its own, so this is safe inside the claim) — never for a latch that rolled back. A
+ * latch that committed under a claim that then rolled back is redelivered, finds its criterion
+ * latched, and announces nothing again: that MilestoneMet is lost, and the executor's periodic sweep
+ * is what dispatches its members then.
+ *
+ * <p>The retry arm's membership ids fire a CDI {@link CampaignMemberSatisfied} event —
  * synchronously ({@link Event#fire}, never {@code fireAsync}), because the executor that observes it
  * ({@code campaignhost/CampaignExecutor}, qits-417) is an {@code @Observes(during =
  * TransactionPhase.AFTER_SUCCESS)} listener, which registers against the transaction active at fire
@@ -140,7 +151,11 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
    */
   static final String CONSUMER_ID = CampaignCriteriaConsumerHealth.CONSUMER_ID;
 
-  @Inject CampaignEvaluator evaluator;
+  @Inject MilestoneEvaluator evaluator;
+
+  @Inject CampaignReadiness readiness;
+
+  @Inject MilestoneAnnouncer announcer;
 
   @Inject Event<CampaignMemberSatisfied> memberSatisfied;
 
@@ -197,20 +212,24 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
     if (eventId == null) {
       return;
     }
+    AtomicReference<MilestonesChanged> changes = new AtomicReference<>(MilestonesChanged.none());
     epicsTransaction.accept(
         () -> {
-          Set<String> satisfied = new LinkedHashSet<>();
+          MilestonesChanged met = MilestonesChanged.none();
           for (EntityTransitioned.Entity entity : transitioned.entities()) {
             Observation observation =
                 new Observation.EntityReached(
                     entity.entityId(), entity.projectId(), entity.status(), entity.statusBefore());
-            satisfied.addAll(observe(observation, eventId, frame));
+            met = met.and(observe(observation, eventId, frame));
           }
+          Set<String> retried = new LinkedHashSet<>();
           for (EntityTransitioned.Entity entity : transitioned.entities()) {
-            satisfied.addAll(evaluator.satisfiedUnclaimedMembershipsOf(entity.entityId()));
+            retried.addAll(readiness.satisfiedUnclaimedMembershipsOf(entity.entityId()));
           }
-          fire(satisfied, eventId);
+          fire(retried, eventId);
+          changes.set(met);
         });
+    announcer.announce(changes.get());
   }
 
   private void onDeploymentActive(EventFrame frame) {
@@ -226,7 +245,7 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
     Observation observation =
         new Observation.DeploymentWentActive(
             payload.applicationName(), payload.environmentName(), payload.version());
-    epicsTransaction.accept(() -> fire(observe(observation, eventId, frame), eventId));
+    latchAndAnnounce(observation, eventId, frame);
   }
 
   /**
@@ -248,20 +267,27 @@ public class CampaignCriteriaListener implements QitsDurableEventListener {
     }
     Observation observation =
         new Observation.Released(changed.projectId(), changed.repoName(), changed.version());
-    epicsTransaction.accept(() -> fire(observe(observation, eventId, frame), eventId));
+    latchAndAnnounce(observation, eventId, frame);
+  }
+
+  /** One observation's latches in the {@code epics} transaction, announced after it committed. */
+  private void latchAndAnnounce(Observation observation, UUID eventId, EventFrame frame) {
+    AtomicReference<MilestonesChanged> changes = new AtomicReference<>(MilestonesChanged.none());
+    epicsTransaction.accept(() -> changes.set(observe(observation, eventId, frame)));
+    announcer.announce(changes.get());
   }
 
   private static boolean isBlank(String value) {
     return value == null || value.isBlank();
   }
 
-  private List<String> observe(Observation observation, UUID eventId, EventFrame frame) {
+  private MilestonesChanged observe(Observation observation, UUID eventId, EventFrame frame) {
     Observation.Observed observed =
         new Observation.Observed(observation, eventId, frame.name(), frame.occurredAt());
     return evaluator.observe(observed);
   }
 
-  /** Inside the {@code epics} transaction, after the latches — see "What fires, and when". */
+  /** Inside the {@code epics} transaction, after the latches — see "What is announced, and when". */
   private void fire(Collection<String> membershipIds, UUID evidenceEventId) {
     for (String membershipId : membershipIds) {
       memberSatisfied.fire(new CampaignMemberSatisfied(membershipId, evidenceEventId));

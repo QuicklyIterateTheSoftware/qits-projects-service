@@ -1,4 +1,4 @@
-package eu.wohlben.qits.entities.campaign;
+package eu.wohlben.qits.entities.milestone;
 
 import eu.wohlben.qits.eventstream.CausationStamp;
 import eu.wohlben.qits.eventstream.CausedRow;
@@ -13,17 +13,15 @@ import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 
 /**
- * <b>One OR'd alternative of a campaign member's condition</b> (V19): the member may run once every
- * {@link CampaignCriterion} of <em>some</em> group has latched — see {@link Conditions}.
- *
- * <p>Owned by a CAMPAIGN {@code entity_membership} row and cascaded with it ({@code
- * fk_campaign_criterion_group_membership}). Positions are dense and zero-based per membership, and
- * a condition write replaces the lot ({@link CampaignService#setCondition}).
+ * <b>One OR'd alternative of a {@link Milestone}</b> (epics V38): it holds once every {@link
+ * MilestoneCriterion} in it has latched, and {@link #satisfiedAt} is then when its last criterion
+ * latched. Cascaded with its milestone; positions are dense and zero-based per milestone, and an
+ * edit replaces the lot ({@link MilestoneService#replaceGroups}).
  */
 @Entity
-@Table(name = "campaign_criterion_group")
+@Table(name = "milestone_group")
 @EntityListeners(CausationStamp.class)
-public class CampaignCriterionGroup extends PanacheEntityBase implements CausedRow {
+public class MilestoneGroup extends PanacheEntityBase implements CausedRow {
 
   @Id public String id;
 
@@ -41,9 +39,8 @@ public class CampaignCriterionGroup extends PanacheEntityBase implements CausedR
     this.causationId = id;
   }
 
-  /** The CAMPAIGN membership this group belongs to. */
-  @Column(name = "membership_id", nullable = false)
-  public String membershipId;
+  @Column(name = "milestone_id", nullable = false)
+  public String milestoneId;
 
   @Column(nullable = false)
   public int position;
@@ -51,4 +48,8 @@ public class CampaignCriterionGroup extends PanacheEntityBase implements CausedR
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   public Instant createdAt;
+
+  /** When it came to hold — its last criterion's latch — or null while it does not. */
+  @Column(name = "satisfied_at")
+  public Instant satisfiedAt;
 }

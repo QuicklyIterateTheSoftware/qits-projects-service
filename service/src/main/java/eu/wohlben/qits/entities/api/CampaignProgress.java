@@ -9,7 +9,7 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberState;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressCampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignStartDto;
-import eu.wohlben.qits.entities.campaign.CampaignCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.campaign.Conditions;
@@ -136,7 +136,7 @@ public final class CampaignProgress {
   public static List<String> waitsFor(CampaignService.Member member) {
     Set<String> ids = new LinkedHashSet<>();
     for (CampaignService.Group group : member.groups()) {
-      for (CampaignCriterion criterion : group.criteria()) {
+      for (MilestoneCriterion criterion : group.criteria()) {
         if (criterion.decoded() instanceof CriterionPredicate.EntityStatusIs target) {
           ids.add(target.entityId());
         }
@@ -218,7 +218,7 @@ public final class CampaignProgress {
   }
 
   private static CampaignCriterionProgressDto criterion(
-      CampaignCriterion criterion, boolean unclaimed, Context context) {
+      MilestoneCriterion criterion, boolean unclaimed, Context context) {
     CriterionPredicate predicate = criterion.decoded();
     boolean satisfied = criterion.satisfiedAt != null;
     String reason =

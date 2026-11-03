@@ -163,6 +163,9 @@ public class WorkEntityDoors {
 
   @Inject CampaignViews campaignViews;
 
+  /** What a work item waits on (epic qits-615), put on every work read. */
+  @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
+
   /** The drop door's write (qits-753). */
   @Inject EntityPriorityService priorities;
 
@@ -201,9 +204,12 @@ public class WorkEntityDoors {
 
   // --- read ------------------------------------------------------------------------------------
 
-  /** The row in the merged shape, qualified. */
+  /** The row in the merged shape, qualified, with the milestones it waits on (epic qits-615). */
   public TransitionedEntity read(WorkEntity row) {
     TransitionedEntity read = qualifiedIds.qualify(catalog.byIds(List.of(row.id)).get(row.id));
+    if (read != null) {
+      read = read.withMilestones(milestones.ofEntity(row.id));
+    }
     if (read != null && read.archetype() == Archetype.CAMPAIGN) {
       // The members that set a campaign's derived status (qits-650), computed at read time; every
       // other archetype leaves the field off the wire.
@@ -1150,8 +1156,14 @@ public class WorkEntityDoors {
     List<String> childIds =
         entities.listChildren(kind, parent.id).stream().map(child -> child.entity().id).toList();
     Map<String, TransitionedEntity> found = catalog.byIds(childIds);
+    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> needs =
+        milestones.ofEntities(childIds);
     return qualifiedIds.qualifyEntities(
-        childIds.stream().map(found::get).filter(Objects::nonNull).toList());
+        childIds.stream()
+            .map(found::get)
+            .filter(Objects::nonNull)
+            .map(child -> child.withMilestones(needs.getOrDefault(child.id(), List.of())))
+            .toList());
   }
 
   /**
@@ -1292,7 +1304,18 @@ public class WorkEntityDoors {
             .filter(entity -> successorId == null || successorId.equals(entity.supersededBy()))
             .filter(entity -> tagged == null || entity.tags().contains(tagged))
             .toList();
-    return qualifiedIds.qualifyEntities(found).stream().map(EntitySummary::of).toList();
+    // What each entry waits on (epic qits-615): two queries for the whole project, never one per
+    // entry.
+    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> needs =
+        found.isEmpty() ? Map.of() : milestones.ofProjectEntities(project);
+    return qualifiedIds
+        .qualifyEntities(
+            found.stream()
+                .map(entity -> entity.withMilestones(needs.getOrDefault(entity.id(), List.of())))
+                .toList())
+        .stream()
+        .map(EntitySummary::of)
+        .toList();
   }
 
   private static Archetype listArchetype(String word) {

@@ -52,10 +52,10 @@ public sealed interface Observation {
   }
 
   /**
-   * An observation as it travels to {@link CampaignEvaluator#observe}: the fact, and the event that
+   * An observation as it travels to {@link eu.wohlben.qits.entities.milestone.MilestoneEvaluator#observe}: the fact, and the event that
    * carried it — its id (the latch's {@code evidence_event_id}), its signature ({@code
    * evidence_signature}) and when it occurred (the forward-only comparison). All four are required:
-   * a latch without an event id is refused by {@code ck_campaign_criterion_evidence}, and a fact
+   * a latch without an event id is refused by {@code ck_milestone_criterion_evidence}, and a fact
    * with no time cannot be placed after a start.
    */
   record Observed(Observation observation, UUID eventId, String signature, Instant occurredAt) {

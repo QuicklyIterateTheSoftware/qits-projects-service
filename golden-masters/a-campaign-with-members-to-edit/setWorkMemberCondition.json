@@ -41,6 +41,13 @@
         ]
       }
     ],
-    "holdsStatus": false
+    "holdsStatus": false,
+    "milestones": [
+      {
+        "id": "00000000-0000-4000-8000-00000000000d",
+        "displayName": "Before \"Export the quarter as CSV\" in \"Close the quarter\"",
+        "satisfiedAt": null
+      }
+    ]
   }
 }

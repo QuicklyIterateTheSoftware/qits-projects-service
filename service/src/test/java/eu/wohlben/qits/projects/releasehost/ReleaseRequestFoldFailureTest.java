@@ -214,6 +214,92 @@ public class ReleaseRequestFoldFailureTest {
     assertNull(rejectingGateOf(id));
   }
 
+  // ---- qits-1850: an unreachable re-fold is knocked for again, backed off ----------------------
+
+  private static final String GITHOST_500 =
+      "qits-githost answered 500: MissingObjectException: Missing unknown dfefa466";
+
+  private static final String UNREACHABLE_DETAIL =
+      "The sources could not be folded: " + GITHOST_500;
+
+  /**
+   * qits-projects-service-rr-427: a request with a fold whose every re-fold qits-githost answered
+   * 500 sat PENDING on the old fold for hours — the sweep re-folds only a request with no fold or
+   * one that owes a re-fold, and the next evaluation overwrote the failure with "Waiting for
+   * automations". The failed fold owes a re-fold, the sweep pays it once the backoff has passed, the
+   * detail keeps the failure meanwhile, and the fold that lands clears both.
+   */
+  @Test
+  public void anUnreachableRefoldIsKnockedForAgainAfterTheBackoffAndKeepsItsFailure() {
+    String id = create("ticket/qits-1850");
+    String merged = request(id).getString("mergedSha");
+    assertNotNull(merged);
+
+    merger.answer(BackingBranchMerger.Outcome.unreachable(GITHOST_500));
+    headMoved("ticket/qits-1850");
+    JsonPath failed = request(id);
+    assertEquals("PENDING", failed.getString("state"));
+    assertEquals(merged, failed.getString("mergedSha"), "the last fold is kept");
+    assertEquals(UNREACHABLE_DETAIL, failed.getString("detail"));
+    assertNotNull(row(id).refoldOwedAt, "the failed fold is owed");
+
+    // Inside the backoff the sweep does not knock, and its evaluation leaves the failure standing.
+    int folds = merger.foldsOf(BackingBranches.ref(id)).size();
+    releaseRequests.sweep();
+    assertEquals(folds, merger.foldsOf(BackingBranches.ref(id)).size(), "backed off");
+    assertEquals(UNREACHABLE_DETAIL, request(id).getString("detail"));
+
+    // Past it, the sweep knocks; the git host still fails, so the failure stands and is owed again.
+    backdateOwedRefold(id, Duration.ofHours(1));
+    releaseRequests.sweep();
+    assertEquals(folds + 1, merger.foldsOf(BackingBranches.ref(id)).size(), "the sweep knocked");
+    assertEquals(UNREACHABLE_DETAIL, request(id).getString("detail"));
+    assertEquals(merged, request(id).getString("mergedSha"));
+    assertNotNull(row(id).refoldOwedAt, "still owed");
+
+    // ... and the backoff starts over from that knock.
+    releaseRequests.sweep();
+    assertEquals(folds + 1, merger.foldsOf(BackingBranches.ref(id)).size(), "backed off again");
+
+    // The git host recovers: the next knock folds, re-arms and pays what was owed.
+    merger.answerFreshMerges();
+    backdateOwedRefold(id, Duration.ofHours(1));
+    releaseRequests.sweep();
+    JsonPath folded = request(id);
+    assertEquals("PENDING", folded.getString("state"));
+    assertNotNull(folded.getString("mergedSha"));
+    assertFalse(merged.equals(folded.getString("mergedSha")), "the fold landed");
+    assertFalse(
+        folded.getString("detail").startsWith("The sources could not be folded"),
+        folded.getString("detail"));
+    assertNull(row(id).refoldOwedAt, "the fold that landed paid it");
+  }
+
+  /** A CONFLICTED request the git host could not reach is still never knocked by the sweep. */
+  @Test
+  public void anUnreachableFoldOfAConflictedRequestOwesNoKnock() {
+    String id = create("ticket/qits-1850");
+    merger.answer(
+        BackingBranchMerger.Outcome.conflict(
+            BackingBranches.ref(id),
+            List.of(
+                new BackingBranchMerger.Conflict(
+                    "pom.xml", "refs/heads/ticket/qits-1850", "abc1234", "content"))));
+    headMoved("ticket/qits-1850");
+    assertEquals("CONFLICTED", request(id).getString("state"));
+
+    merger.answer(BackingBranchMerger.Outcome.unreachable(GITHOST_500));
+    headMoved("ticket/qits-1850");
+    assertEquals("CONFLICTED", request(id).getString("state"));
+    assertNull(row(id).refoldOwedAt, "a conflict is answered by a push, not a knock");
+
+    int folds = merger.foldsOf(BackingBranches.ref(id)).size();
+    merger.answerFreshMerges();
+    releaseRequests.sweep();
+    assertEquals(folds, merger.foldsOf(BackingBranches.ref(id)).size(), "no fold was attempted");
+    assertEquals("CONFLICTED", request(id).getString("state"));
+  }
+
   // ---- qits-1751: a fresh source is waited for ---------------------------------------------
 
   private static final String WAITING =
@@ -328,6 +414,14 @@ public class ReleaseRequestFoldFailureTest {
             () ->
                 ReleaseRequestSource.update(
                     "addedAt = ?1 where requestId = ?2", Instant.now().minus(by), id));
+  }
+
+  private void backdateOwedRefold(String id, Duration by) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.update(
+                    "refoldOwedAt = ?1 where id = ?2", Instant.now().minus(by), id));
   }
 
   private ReleaseRequest row(String id) {

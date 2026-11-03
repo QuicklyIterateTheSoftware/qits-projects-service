@@ -18,6 +18,14 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import eu.wohlben.qits.entities.milestone.CampaignMembershipMilestone;
+import eu.wohlben.qits.entities.milestone.CampaignMembershipMilestoneRepository;
+import eu.wohlben.qits.entities.milestone.Milestone;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneGroup;
+import eu.wohlben.qits.entities.milestone.MilestoneRepository;
+import eu.wohlben.qits.entities.milestone.MilestoneService;
+import eu.wohlben.qits.entities.milestone.MilestonesChanged;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -31,19 +39,32 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
  * <b>A campaign's membership, its members' conditions, and the latches a person or the current
  * state can set</b> (epic f6c67e74, qits-413) — the authoring half. Nothing here matches an event or
- * dispatches: {@link CampaignEvaluator} latches from events (qits-415) and is also the one
- * "satisfied memberships" step {@link #approve} and {@link #latchFromCurrentState} answer through.
+ * dispatches.
+ *
+ * <h2>A member's condition is a milestone (epic qits-615)</h2>
+ *
+ * <p>Since epics V38 a membership waits on milestones ({@code campaign_membership_milestone}), and
+ * its <b>condition</b> — what {@link #setCondition}, {@link #approve} and the seed read and write —
+ * is the one milestone marked {@code generated_condition}, named {@code Before "<member title>" in
+ * "<campaign title>"} ({@link #conditionName}) when these doors create it, and attached to the
+ * member entity too. The doors behave as they did from outside: a whole replace, a restated
+ * criterion keeps its latch, an approval latches once. Latching from events is {@code
+ * MilestoneEvaluator}'s; whether a membership may run is {@link CampaignReadiness}'s — every
+ * milestone it waits on met, none at all being no condition. No {@code campaign_criterion*} table is
+ * read or written here any more.
  *
  * <h2>The rules, each stated once</h2>
  *
@@ -128,9 +149,11 @@ public class CampaignService {
 
   @Inject EntityMembershipRepository memberships;
 
-  @Inject CampaignCriterionGroupRepository groups;
+  @Inject MilestoneService milestoneService;
 
-  @Inject CampaignCriterionRepository criteria;
+  @Inject MilestoneRepository milestones;
+
+  @Inject CampaignMembershipMilestoneRepository waits;
 
   @Inject CampaignStartRecordRepository starts;
 
@@ -143,8 +166,8 @@ public class CampaignService {
 
   @Inject WritePatience writes;
 
-  /** The one "satisfied memberships" step every latch source answers through. */
-  @Inject CampaignEvaluator evaluator;
+  /** The one "satisfied memberships" step every source answers through. */
+  @Inject CampaignReadiness readiness;
 
   /** Renders {@code qits-412}; optional — see {@link EntityQualifier}. */
   @Inject Instance<EntityQualifier> qualifier;
@@ -157,15 +180,31 @@ public class CampaignService {
 
   // --- the views ------------------------------------------------------------------------------------
 
-  /** One OR'd group and its AND'd criteria, in position order. */
-  public record Group(CampaignCriterionGroup group, List<CampaignCriterion> criteria) {}
+  /** One OR'd group of a member's condition and its AND'd criteria, in position order. */
+  public record Group(MilestoneGroup group, List<MilestoneCriterion> criteria) {}
 
-  /** A membership, the entity it gathers, and its condition. */
-  public record Member(EntityMembership membership, WorkEntity entity, List<Group> groups) {
+  /**
+   * A membership, the entity it gathers, its condition (the groups of its generated milestone), and
+   * every milestone it waits on. {@code milestones} null means only the condition is known — a view
+   * built by hand — and then the condition alone decides.
+   */
+  public record Member(
+      EntityMembership membership, WorkEntity entity, List<Group> groups, List<Milestone> milestones) {
 
-    /** Whether the condition holds — {@link Conditions#satisfied}. */
+    /** A member whose condition alone is known. */
+    public Member(EntityMembership membership, WorkEntity entity, List<Group> groups) {
+      this(membership, entity, groups, null);
+    }
+
+    /**
+     * Whether it may run as far as its condition goes: every milestone it waits on is met (none is
+     * no condition) — or, with no milestones known, {@link Conditions#satisfied} over the groups.
+     */
     public boolean satisfied() {
-      return Conditions.satisfied(groups.stream().map(Group::criteria).toList());
+      if (milestones == null) {
+        return Conditions.satisfied(groups.stream().map(Group::criteria).toList());
+      }
+      return milestones.stream().allMatch(Milestone::met);
     }
   }
 
@@ -359,7 +398,7 @@ public class CampaignService {
               }
               memberships.persist(edge);
               if (predecessor != null) {
-                seed(edge, predecessor);
+                seed(campaign, edge, predecessor);
               }
               flush();
               audit(campaign, "MEMBER_ADDED", edge, changedBy);
@@ -459,9 +498,9 @@ public class CampaignService {
                     + " on it. Edit their conditions first.");
           }
           audit(campaign, "MEMBER_REMOVED", gone, changedBy);
-          for (Group group : removed.groups()) {
-            group.criteria().forEach(criteria::delete);
-            groups.delete(group.group());
+          Milestone condition = conditionOf(gone);
+          if (condition != null) {
+            dropCondition(gone, condition);
           }
           int position = gone.position;
           memberships.delete(gone);
@@ -487,139 +526,102 @@ public class CampaignService {
    */
   public Member setCondition(
       String campaignId, String membershipId, List<GroupSpec> stated, String changedBy) {
+    MilestoneService.Decoded decoded = MilestoneService.decode(toMilestoneSpecs(stated), true);
     List<GroupSpec> specs = stated == null ? List.of() : stated;
-    List<String> violations = new ArrayList<>();
-    List<List<CriterionPredicate>> decoded = new ArrayList<>();
-    for (int g = 0; g < specs.size(); g++) {
-      GroupSpec group = specs.get(g);
-      List<CriterionPredicate> row = new ArrayList<>();
-      decoded.add(row);
-      if (group == null || group.criteria() == null || group.criteria().isEmpty()) {
-        violations.add(
-            "group " + (g + 1) + " has no criteria; an empty group would hold at once — remove it");
-        continue;
-      }
-      for (int c = 0; c < group.criteria().size(); c++) {
-        CriterionSpec spec = group.criteria().get(c);
-        String where = "group " + (g + 1) + ", criterion " + (c + 1);
-        if (spec == null) {
-          violations.add(where + ": kind is required");
-          row.add(null);
-          continue;
-        }
-        CriterionPredicate.Decoded d = CriterionPredicate.decode(spec.kind(), spec.predicate(), where);
-        violations.addAll(d.violations());
-        row.add(d.predicate());
-      }
-    }
-    if (!violations.isEmpty()) {
-      throw new BadRequestException(String.join("; ", violations));
-    }
 
-    return writes.hold(
-        "campaign member condition",
-        () -> {
-          WorkEntity campaign = lockCampaign(campaignId);
-          requireEditable(campaign);
-          EntityMembership edge = membershipOf(campaignId, membershipId, true);
-          if (edge.claimedAt != null) {
-            throw new ConflictException(
-                "Member "
-                    + membershipId
-                    + " was claimed at "
-                    + edge.claimedAt
-                    + "; its condition is no longer edited.");
-          }
-          Set<String> members =
-              memberships.campaignMembers(campaignId).stream()
-                  .map(member -> member.childId)
-                  .collect(Collectors.toSet());
-          List<CampaignCriterionGroup> oldGroups = groups.groupsOf(edge.id);
-          Map<String, CampaignCriterion> old = new LinkedHashMap<>();
-          for (CampaignCriterion criterion :
-              criteria.criteriaOfAll(oldGroups.stream().map(group -> group.id).toList())) {
-            old.put(criterion.id, criterion);
-          }
-
-          List<String> refused = new ArrayList<>();
-          Set<String> restated = new HashSet<>();
-          for (int g = 0; g < specs.size(); g++) {
-            for (int c = 0; c < specs.get(g).criteria().size(); c++) {
-              String where = "group " + (g + 1) + ", criterion " + (c + 1);
-              String id = specs.get(g).criteria().get(c).id();
-              if (id != null && (!old.containsKey(id) || !restated.add(id))) {
-                refused.add(
-                    where
-                        + ": "
-                        + id
-                        + (old.containsKey(id)
-                            ? " is restated twice"
-                            : " is not one of this member's criteria — omit the id to state a new one"));
+    MilestonesChanged[] changes = {MilestonesChanged.none()};
+    Member answer =
+        writes.hold(
+            "campaign member condition",
+            () -> {
+              changes[0] = MilestonesChanged.none();
+              WorkEntity campaign = lockCampaign(campaignId);
+              requireEditable(campaign);
+              EntityMembership edge = membershipOf(campaignId, membershipId, true);
+              if (edge.claimedAt != null) {
+                throw new ConflictException(
+                    "Member "
+                        + membershipId
+                        + " was claimed at "
+                        + edge.claimedAt
+                        + "; its condition is no longer edited.");
               }
-              if (decoded.get(g).get(c) instanceof CriterionPredicate.EntityStatusIs target
-                  && !members.contains(target.entityId())) {
-                refused.add(
-                    where
-                        + ": target "
-                        + target.entityId()
-                        + " is not a member of this campaign — add it first");
-              }
-            }
-          }
-          if (!refused.isEmpty()) {
-            throw new BadRequestException(String.join("; ", refused));
-          }
-
-          for (int g = 0; g < specs.size(); g++) {
-            CampaignCriterionGroup group = new CampaignCriterionGroup();
-            group.id = UUID.randomUUID().toString();
-            group.membershipId = edge.id;
-            group.position = g;
-            groups.persist(group);
-            for (int c = 0; c < specs.get(g).criteria().size(); c++) {
-              CriterionPredicate predicate = decoded.get(g).get(c);
-              String id = specs.get(g).criteria().get(c).id();
-              CampaignCriterion criterion = id == null ? null : old.remove(id);
-              String json = predicate.canonicalJson();
-              if (criterion == null) {
-                criterion = new CampaignCriterion();
-                criterion.id = UUID.randomUUID().toString();
-                criterion.kind = predicate.kind();
-                criterion.predicate = json;
-                criterion.groupId = group.id;
-                criterion.position = c;
-                criteria.persist(criterion);
-              } else {
-                if (criterion.kind != predicate.kind() || !criterion.predicate.equals(json)) {
-                  criterion.kind = predicate.kind();
-                  criterion.predicate = json;
-                  criterion.seeded = false;
-                  unlatch(criterion);
+              Set<String> members =
+                  memberships.campaignMembers(campaignId).stream()
+                      .map(member -> member.childId)
+                      .collect(Collectors.toSet());
+              Milestone condition = conditionOf(edge);
+              Set<String> own = new HashSet<>();
+              if (condition != null) {
+                for (Group group : groupsOf(condition)) {
+                  group.criteria().forEach(criterion -> own.add(criterion.id));
                 }
-                criterion.groupId = group.id;
-                criterion.position = c;
               }
-            }
-          }
-          old.values().forEach(criteria::delete);
-          oldGroups.forEach(groups::delete);
-          flush();
-          audit(campaign, "CONDITION_SET", edge, changedBy);
-          if (starts.isActive(campaignId)) {
-            handOver(campaign, latch(campaign), edge);
-          }
-          return member(edge);
-        });
+
+              List<String> refused = new ArrayList<>();
+              Set<String> restated = new HashSet<>();
+              for (int g = 0; g < specs.size(); g++) {
+                for (int c = 0; c < specs.get(g).criteria().size(); c++) {
+                  String where = "group " + (g + 1) + ", criterion " + (c + 1);
+                  String id = specs.get(g).criteria().get(c).id();
+                  if (id != null && (!own.contains(id) || !restated.add(id))) {
+                    refused.add(
+                        where
+                            + ": "
+                            + id
+                            + (own.contains(id)
+                                ? " is restated twice"
+                                : " is not one of this member's criteria — omit the id to state a"
+                                    + " new one"));
+                  }
+                  if (decoded.predicates().get(g).get(c)
+                          instanceof CriterionPredicate.EntityStatusIs target
+                      && !members.contains(target.entityId())) {
+                    refused.add(
+                        where
+                            + ": target "
+                            + target.entityId()
+                            + " is not a member of this campaign — add it first");
+                  }
+                }
+              }
+              if (!refused.isEmpty()) {
+                throw new BadRequestException(String.join("; ", refused));
+              }
+
+              if (specs.isEmpty()) {
+                if (condition != null) {
+                  dropCondition(edge, condition);
+                }
+              } else if (condition == null) {
+                WorkEntity member = entities.findById(edge.childId);
+                Milestone created =
+                    milestoneService.createIn(
+                        campaign.projectId, conditionName(member, campaign), decoded);
+                waitOn(edge, created);
+                changes[0] = changes[0].and(milestoneService.recomputeIn(created.id));
+              } else {
+                milestoneService.lock(condition.id);
+                changes[0] = changes[0].and(milestoneService.replaceGroupsIn(condition, decoded));
+              }
+              flush();
+              milestoneService.announce(changes[0]);
+              audit(campaign, "CONDITION_SET", edge, changedBy);
+              if (starts.isActive(campaignId)) {
+                handOver(campaign, latch(campaign), edge);
+              }
+              return member(edge);
+            });
+    return answer;
   }
 
   /**
-   * <b>A person's yes</b>: latches an APPROVAL criterion with {@code approved_by}, {@code
-   * approval_note} and {@code satisfied_at}. 409 when the criterion is not APPROVAL, when it is
-   * already satisfied (naming who and when), and when the campaign is DONE or DROPPED. Answers the
-   * member if its condition now holds and it is unclaimed ({@link
-   * CampaignEvaluator#satisfiedUnclaimed}, the step every latch source shares), and hands it to the
-   * executor ({@link CampaignMembersSatisfied}, observed after commit), so an approval dispatches
-   * without waiting for the sweep.
+   * <b>A person's yes</b>: latches an APPROVAL criterion of the member's condition with {@code
+   * approved_by}, {@code approval_note} and {@code satisfied_at}. 409 when the criterion is not
+   * APPROVAL, when it is already satisfied (naming who and when), and when the campaign is DONE or
+   * DROPPED. Answers the member if it may now run and is unclaimed ({@link
+   * CampaignReadiness#satisfiedUnclaimed}), and hands it to the executor ({@link
+   * CampaignMembersSatisfied}, observed after commit); the milestone it met is announced too.
    */
   public Approved approve(
       String campaignId, String membershipId, String criterionId, String note, String actor) {
@@ -634,7 +636,7 @@ public class CampaignService {
           }
           EntityMembership edge = membershipOf(campaignId, membershipId, true);
           Member before = member(edge);
-          CampaignCriterion criterion =
+          MilestoneCriterion criterion =
               before.groups().stream()
                   .flatMap(group -> group.criteria().stream())
                   .filter(candidate -> candidate.id.equals(criterionId))
@@ -643,30 +645,12 @@ public class CampaignService {
                       () ->
                           new NotFoundException(
                               "No criterion " + criterionId + " on member " + membershipId));
-          if (criterion.kind != CriterionKind.APPROVAL) {
-            throw new ConflictException(
-                "Criterion "
-                    + criterionId
-                    + " is "
-                    + criterion.kind
-                    + ", not APPROVAL: only an approval is latched by a person.");
-          }
-          if (criterion.satisfiedAt != null) {
-            throw new ConflictException(
-                "Criterion "
-                    + criterionId
-                    + " was already approved by "
-                    + criterion.approvedBy
-                    + " at "
-                    + criterion.satisfiedAt
-                    + ".");
-          }
-          criterion.approvedBy = actor;
-          criterion.approvalNote = note == null || note.isBlank() ? null : note;
-          criterion.satisfiedAt = Instant.now();
-          flush();
+          Milestone condition = milestoneService.lock(conditionOf(edge).id);
+          MilestonesChanged changes =
+              milestoneService.approveIn(condition, criterion.id, note, actor);
+          milestoneService.announce(changes);
           audit(campaign, "CRITERION_APPROVED", edge, actor);
-          List<String> ready = evaluator.satisfiedUnclaimed(List.of(edge.id));
+          List<String> ready = readiness.satisfiedUnclaimed(List.of(edge.id));
           if (!ready.isEmpty()) {
             satisfied.fire(new CampaignMembersSatisfied(campaign.id, ready));
           }
@@ -731,30 +715,30 @@ public class CampaignService {
 
   /**
    * An active campaign's add or condition edit hands over what it left satisfied: the memberships
-   * the state-at-start latch satisfied, and the edited one itself when its condition now holds (a
-   * member joined with no condition, or a condition edited down to one already met).
+   * the current-state latch satisfied, and the edited one itself when it may now run (a member
+   * joined with no condition, or a condition edited down to one already met).
    */
   private void handOver(WorkEntity campaign, List<String> latched, EntityMembership edge) {
-    Set<String> ready = new java.util.LinkedHashSet<>(latched);
-    ready.addAll(evaluator.satisfiedUnclaimed(List.of(edge.id)));
+    Set<String> ready = new LinkedHashSet<>(latched);
+    ready.addAll(readiness.satisfiedUnclaimed(List.of(edge.id)));
     if (!ready.isEmpty()) {
       satisfied.fire(new CampaignMembersSatisfied(campaign.id, List.copyOf(ready)));
     }
   }
 
   /**
-   * <b>Latches ENTITY_STATUS criteria from the targets' current state</b> — the in-flight hole: a
-   * member that joined running may finish before the campaign is started, and its
-   * EntityTransitioned is then in the past, where event criteria never look.
+   * <b>Latches ENTITY_STATUS criteria from the targets' current state</b>, over every milestone the
+   * campaign's unclaimed members wait on — run at a start press, so a member whose target finished
+   * before anybody pressed (an event nothing was listening for yet, or a condition migrated from
+   * before milestones) is not left waiting on an event that is in the past.
    *
-   * <p>For every unsatisfied ENTITY_STATUS criterion of an unclaimed membership whose target's
-   * current status is at or past the wanted one along {@code REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTING <
-   * IMPLEMENTED < VERIFIED < DONE} (DROPPED is never past anything), the criterion latches with {@code
-   * evidence_signature = 'STATE_AT_START'}, no event id, and the summary {@code "<qid> was already
-   * <status> when the campaign started"}. Not history: it reads a row this service owns.
+   * <p>For every unsatisfied ENTITY_STATUS criterion whose target's current status is at or past the
+   * wanted one along {@code REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTING < IMPLEMENTED <
+   * VERIFYING < VERIFIED < DONE} (DROPPED is never past anything), the criterion latches with {@code
+   * evidence_signature = 'CURRENT_STATE'}, no event id, and the summary {@code "<qid> was already
+   * <status> when the campaign started"}. The milestones that came to hold are announced.
    *
-   * @return the memberships a latch landed on whose condition now holds — {@link
-   *     CampaignEvaluator#satisfiedUnclaimed}, the step every latch source answers through
+   * @return the unclaimed memberships waiting on a milestone that came to hold, which may now run
    */
   public List<String> latchFromCurrentState(String campaignId) {
     return writes.hold("campaign latch from current state", () -> latch(lockCampaign(campaignId)));
@@ -762,116 +746,122 @@ public class CampaignService {
 
   /** The body of {@link #latchFromCurrentState}, inside a write that already holds the campaign row. */
   private List<String> latch(WorkEntity campaign) {
-    List<EntityMembership> unclaimed = new ArrayList<>();
+    List<String> unclaimed = new ArrayList<>();
     for (EntityMembership edge : memberships.campaignMembers(campaign.id)) {
-      // Locked BEFORE its criteria are read, so a condition edit or a claim that committed while we
-      // waited is what the read below sees.
+      // Locked BEFORE its milestones are read, so a condition edit or a claim that committed while
+      // we waited is what the read below sees.
       lock(edge);
       if (edge.claimedAt == null) {
-        unclaimed.add(edge);
+        unclaimed.add(edge.id);
       }
     }
-    Map<String, List<Group>> conditions = conditionsOf(unclaimed);
-    Set<String> targetIds = new HashSet<>();
-    for (List<Group> condition : conditions.values()) {
-      for (Group group : condition) {
-        for (CampaignCriterion criterion : group.criteria()) {
-          if (criterion.kind == CriterionKind.ENTITY_STATUS && criterion.satisfiedAt == null) {
-            targetIds.add(((CriterionPredicate.EntityStatusIs) criterion.decoded()).entityId());
-          }
-        }
-      }
+    Map<String, Set<String>> waitingOn = new LinkedHashMap<>();
+    for (CampaignMembershipMilestone wait : waits.ofMemberships(unclaimed)) {
+      waitingOn.computeIfAbsent(wait.milestoneId, id -> new LinkedHashSet<>()).add(wait.membershipId);
     }
-    Map<String, WorkEntity> targets = byId(entities.listByIds(targetIds));
-
-    List<String> latchedOn = new ArrayList<>();
-    Instant now = Instant.now();
-    for (EntityMembership edge : unclaimed) {
-      List<Group> condition = conditions.getOrDefault(edge.id, List.of());
-      boolean latched = false;
-      for (Group group : condition) {
-        for (CampaignCriterion criterion : group.criteria()) {
-          if (criterion.kind != CriterionKind.ENTITY_STATUS || criterion.satisfiedAt != null) {
-            continue;
-          }
-          CriterionPredicate.EntityStatusIs wanted =
-              (CriterionPredicate.EntityStatusIs) criterion.decoded();
-          WorkEntity target = targets.get(wanted.entityId());
-          if (target == null || !reached(target.status, wanted.status())) {
-            continue;
-          }
-          criterion.satisfiedAt = now;
-          criterion.evidenceEventId = null;
-          criterion.evidenceSignature = CampaignCriterion.STATE_AT_START;
-          criterion.evidenceSummary =
-              qid(target) + " was already " + target.status + " when the campaign started";
-          latched = true;
-        }
-      }
-      if (latched) {
-        flush();
+    Set<String> ids = new TreeSet<>(waitingOn.keySet());
+    for (String id : ids) {
+      milestoneService.lock(id);
+    }
+    MilestonesChanged changes =
+        milestoneService.latchCurrentStateOfIn(ids, "when the campaign started");
+    if (changes.isEmpty()) {
+      return List.of();
+    }
+    milestoneService.announce(changes);
+    Set<String> latchedOn = new LinkedHashSet<>();
+    for (String id : changes.metIds()) {
+      latchedOn.addAll(waitingOn.getOrDefault(id, Set.of()));
+    }
+    for (String membershipId : latchedOn) {
+      EntityMembership edge = memberships.findById(membershipId);
+      if (edge != null) {
         audit(campaign, "LATCHED_FROM_CURRENT_STATE", edge, null);
-        latchedOn.add(edge.id);
       }
     }
-    return evaluator.satisfiedUnclaimed(latchedOn);
+    return readiness.satisfiedUnclaimed(latchedOn);
   }
 
   /**
-   * Whether {@code current} is at or past {@code wanted} along {@link #FORWARD}. DROPPED is never
-   * past anything; a DROPPED target is at a wanted DROPPED and nowhere else.
+   * Whether {@code current} is at or past {@code wanted} along the forward walk — {@link
+   * MilestoneService#reached}, kept here for its callers.
    */
   public static boolean reached(String current, String wanted) {
-    if (current == null || wanted == null) {
-      return false;
-    }
-    if (EntityStatus.DROPPED.name().equals(current) || EntityStatus.DROPPED.name().equals(wanted)) {
-      return current.equals(wanted);
-    }
-    int at = FORWARD.indexOf(EntityStatus.valueOf(current));
-    int want = FORWARD.indexOf(EntityStatus.valueOf(wanted));
-    return at >= 0 && want >= 0 && at >= want;
+    return MilestoneService.reached(current, wanted);
+  }
+
+  /**
+   * {@code Before "<member title>" in "<campaign title>"} — the name of a member's condition when
+   * these doors create it. Titles, not qualified ids, for the migration's reason (V38): the slug
+   * lives in another database. A person may rename it.
+   */
+  public static String conditionName(WorkEntity member, WorkEntity campaign) {
+    return "Before \""
+        + (member == null ? "?" : member.title)
+        + "\" in \""
+        + (campaign == null ? "?" : campaign.title)
+        + "\"";
   }
 
   // --- plumbing -------------------------------------------------------------------------------------
 
-  /** The seed: {@code edge} waits on {@code predecessor} reaching VERIFIED, unless it already has. */
-  private void seed(EntityMembership edge, EntityMembership predecessor) {
+  /**
+   * The seed: {@code edge} waits on {@code predecessor} reaching VERIFIED, unless it already has —
+   * a condition milestone of one group of one seeded ENTITY_STATUS criterion, attached to the
+   * membership and the member.
+   */
+  private void seed(WorkEntity campaign, EntityMembership edge, EntityMembership predecessor) {
     WorkEntity before = entities.findById(predecessor.childId);
     if (before == null || ARRIVED.contains(before.status)) {
       return;
     }
-    CampaignCriterionGroup group = new CampaignCriterionGroup();
-    group.id = UUID.randomUUID().toString();
-    group.membershipId = edge.id;
-    group.position = 0;
-    groups.persist(group);
-    CampaignCriterion criterion = new CampaignCriterion();
-    criterion.id = UUID.randomUUID().toString();
-    criterion.groupId = group.id;
-    criterion.position = 0;
-    CriterionPredicate predicate =
-        new CriterionPredicate.EntityStatusIs(before.id, EntityStatus.VERIFIED.name());
-    criterion.kind = predicate.kind();
-    criterion.predicate = predicate.canonicalJson();
-    criterion.seeded = true;
-    criteria.persist(criterion);
+    WorkEntity member = entities.findById(edge.childId);
+    Milestone condition =
+        milestoneService.createSeededIn(
+            campaign.projectId,
+            conditionName(member, campaign),
+            new CriterionPredicate.EntityStatusIs(before.id, EntityStatus.VERIFIED.name()));
+    waitOn(edge, condition);
+    milestoneService.announce(milestoneService.recomputeIn(condition.id));
   }
 
-  private static void unlatch(CampaignCriterion criterion) {
-    criterion.satisfiedAt = null;
-    criterion.evidenceEventId = null;
-    criterion.evidenceSignature = null;
-    criterion.evidenceSummary = null;
-    criterion.approvedBy = null;
-    criterion.approvalNote = null;
+  /** {@code edge} waits on {@code condition}, its generated condition; the member is attached too. */
+  private void waitOn(EntityMembership edge, Milestone condition) {
+    CampaignMembershipMilestone wait = new CampaignMembershipMilestone();
+    wait.membershipId = edge.id;
+    wait.milestoneId = condition.id;
+    wait.generatedCondition = true;
+    waits.persist(wait);
+    milestoneService.attachIn(edge.childId, condition.id);
+  }
+
+  /**
+   * The condition is gone: the generated milestone stops being waited on by the membership and is
+   * detached from the member entity, then deleted unless something else still waits on it ({@link
+   * MilestoneService#dropGeneratedConditionsIn}).
+   */
+  private void dropCondition(EntityMembership edge, Milestone condition) {
+    milestoneService.dropGeneratedConditionsIn(List.of(edge));
+  }
+
+  /** {@code edge}'s generated condition milestone, or null for a member with no condition. */
+  private Milestone conditionOf(EntityMembership edge) {
+    return waits.generatedOf(edge.id).map(wait -> milestones.findById(wait.milestoneId)).orElse(null);
+  }
+
+  /** One milestone's groups, in position order. */
+  private List<Group> groupsOf(Milestone milestone) {
+    return milestoneService.groupsOfIn(List.of(milestone.id)).getOrDefault(milestone.id, List.of())
+        .stream()
+        .map(group -> new Group(group.group(), group.criteria()))
+        .toList();
   }
 
   /** The entity ids a member's ENTITY_STATUS criteria target, satisfied or not. */
   private static Set<String> targets(Member member) {
     Set<String> ids = new HashSet<>();
     for (Group group : member.groups()) {
-      for (CampaignCriterion criterion : group.criteria()) {
+      for (MilestoneCriterion criterion : group.criteria()) {
         if (criterion.kind == CriterionKind.ENTITY_STATUS) {
           ids.add(((CriterionPredicate.EntityStatusIs) criterion.decoded()).entityId());
         }
@@ -971,39 +961,77 @@ public class CampaignService {
     List<EntityMembership> edges = memberships.campaignMembers(campaign.id);
     Map<String, WorkEntity> rows =
         byId(entities.listByIds(edges.stream().map(edge -> edge.childId).toList()));
-    Map<String, List<Group>> conditions = conditionsOf(edges);
-    List<Member> members = new ArrayList<>();
-    for (EntityMembership edge : edges) {
-      members.add(
-          new Member(edge, rows.get(edge.childId), conditions.getOrDefault(edge.id, List.of())));
-    }
-    return new Campaign(campaign, starts.startOf(campaign.id).orElse(null), List.copyOf(members));
+    Map<String, Member> members = membersOf(edges, rows);
+    return new Campaign(
+        campaign, starts.startOf(campaign.id).orElse(null), List.copyOf(members.values()));
   }
 
   /** One member's view. */
   private Member member(EntityMembership edge) {
-    return new Member(
-        edge,
-        entities.findById(edge.childId),
-        conditionsOf(List.of(edge)).getOrDefault(edge.id, List.of()));
+    WorkEntity row = entities.findById(edge.childId);
+    Map<String, WorkEntity> rows = new LinkedHashMap<>();
+    if (row != null) {
+      rows.put(row.id, row);
+    }
+    return membersOf(List.of(edge), rows).get(edge.id);
   }
 
-  /** The conditions of {@code edges}, keyed by membership id — two queries for any number. */
-  private Map<String, List<Group>> conditionsOf(List<EntityMembership> edges) {
-    List<CampaignCriterionGroup> found =
-        groups.groupsOfAll(edges.stream().map(edge -> edge.id).toList());
-    Map<String, List<CampaignCriterion>> byGroup = new LinkedHashMap<>();
-    for (CampaignCriterion criterion :
-        criteria.criteriaOfAll(found.stream().map(group -> group.id).toList())) {
-      byGroup.computeIfAbsent(criterion.groupId, id -> new ArrayList<>()).add(criterion);
+  /**
+   * The members of {@code edges}, keyed by membership id in their order: each with the groups of its
+   * generated condition and every milestone it waits on — four queries for any number.
+   */
+  private Map<String, Member> membersOf(List<EntityMembership> edges, Map<String, WorkEntity> rows) {
+    List<String> ids = edges.stream().map(edge -> edge.id).toList();
+    Map<String, List<Milestone>> waitingOn = milestoneService.ofMembershipsIn(ids);
+    Map<String, String> conditionIds = new LinkedHashMap<>();
+    for (CampaignMembershipMilestone wait : waits.ofMemberships(ids)) {
+      if (wait.generatedCondition) {
+        conditionIds.put(wait.membershipId, wait.milestoneId);
+      }
     }
-    Map<String, List<Group>> conditions = new LinkedHashMap<>();
-    for (CampaignCriterionGroup group : found) {
-      conditions
-          .computeIfAbsent(group.membershipId, id -> new ArrayList<>())
-          .add(new Group(group, List.copyOf(byGroup.getOrDefault(group.id, List.of()))));
+    Map<String, List<MilestoneService.Group>> conditions =
+        milestoneService.groupsOfIn(new LinkedHashSet<>(conditionIds.values()));
+    Map<String, Member> members = new LinkedHashMap<>();
+    for (EntityMembership edge : edges) {
+      String conditionId = conditionIds.get(edge.id);
+      List<Group> groups =
+          conditionId == null
+              ? List.of()
+              : conditions.getOrDefault(conditionId, List.of()).stream()
+                  .map(group -> new Group(group.group(), group.criteria()))
+                  .toList();
+      members.put(
+          edge.id,
+          new Member(
+              edge,
+              rows.get(edge.childId),
+              groups,
+              List.copyOf(waitingOn.getOrDefault(edge.id, List.of()))));
     }
-    return conditions;
+    return members;
+  }
+
+  /** The caller's stated groups as the milestone service reads them. */
+  private static List<MilestoneService.GroupSpec> toMilestoneSpecs(List<GroupSpec> stated) {
+    if (stated == null) {
+      return List.of();
+    }
+    List<MilestoneService.GroupSpec> specs = new ArrayList<>();
+    for (GroupSpec group : stated) {
+      specs.add(
+          group == null || group.criteria() == null
+              ? new MilestoneService.GroupSpec(null)
+              : new MilestoneService.GroupSpec(
+                  group.criteria().stream()
+                      .map(
+                          criterion ->
+                              criterion == null
+                                  ? null
+                                  : new MilestoneService.CriterionSpec(
+                                      criterion.id(), criterion.kind(), criterion.predicate()))
+                      .toList()));
+    }
+    return specs;
   }
 
   /** {@code qits-412}, or {@code #412} with no qualifier — see {@link EntityQualifier}. */
@@ -1019,9 +1047,9 @@ public class CampaignService {
    */
   private void audit(WorkEntity campaign, String change, EntityMembership edge, String changedBy) {
     List<Map<String, Object>> condition = new ArrayList<>();
-    for (Group group : conditionsOf(List.of(edge)).getOrDefault(edge.id, List.of())) {
+    for (Group group : member(edge).groups()) {
       List<Map<String, Object>> rows = new ArrayList<>();
-      for (CampaignCriterion criterion : group.criteria()) {
+      for (MilestoneCriterion criterion : group.criteria()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", criterion.id);
         row.put("kind", criterion.kind.name());

@@ -192,6 +192,33 @@ public class ProviderStates {
   public static final String A_REPORTED_TICKET = "a reported ticket";
 
   /**
+   * A REPORTED ticket waiting on one unmet milestone, "bootstrap test node", whose one group holds
+   * one APPROVAL criterion nobody approved yet (epic qits-615) — plus a second milestone of the
+   * project, "arm64 runner", met by nothing and attached to nothing, for the attach. Params: {@code
+   * projectId}, {@code ticketId}, {@code qualifiedId} (the ticket), {@code milestoneId}, {@code
+   * criterionId} and {@code otherMilestoneId}.
+   */
+  public static final String A_TICKET_WAITING_ON_AN_UNMET_MILESTONE =
+      "a ticket waiting on an unmet milestone";
+
+  /**
+   * {@link #A_TICKET_WAITING_ON_AN_UNMET_MILESTONE} after a person approved the criterion: the
+   * milestone is met, and the ticket needs nothing. The same params.
+   */
+  public static final String A_TICKET_WAITING_ON_A_MET_MILESTONE =
+      "a ticket waiting on a met milestone";
+
+  /**
+   * A REPORTED campaign of one REPORTED ticket whose membership waits on an unmet milestone,
+   * "bootstrap test node" (one APPROVAL criterion) — set through the membership's milestones, so it
+   * has no generated condition — plus a second milestone, "arm64 runner", for the set. Params:
+   * {@code projectId}, {@code qualifiedId} (the campaign), {@code membershipId}, {@code ticketId},
+   * {@code ticketQualifiedId}, {@code milestoneId}, {@code otherMilestoneId}.
+   */
+  public static final String A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE =
+      "a campaign member waiting on a milestone";
+
+  /**
    * A project whose board has agents on it (qits-1815): a REPORTED ticket with two agents — one
    * ACTIVE, one OBSOLETE — a REPORTED epic with one ACTIVE agent, and a REPORTED ticket nobody
    * works on, so {@code GET /projects/{projectId}/work/workspaces} answers two entries — the
@@ -365,6 +392,8 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.entities.control.IdeaService ideas;
 
   @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
+
+  @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
 
   @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
 
@@ -576,6 +605,14 @@ public class ProviderStates {
     states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
     states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
     states.put(A_TICKET_WITH_A_DESIGN, this::aTicketWithADesign);
+    states.put(
+        A_TICKET_WAITING_ON_AN_UNMET_MILESTONE,
+        () -> aTicketWaitingOnAMilestone(A_TICKET_WAITING_ON_AN_UNMET_MILESTONE, false));
+    states.put(
+        A_TICKET_WAITING_ON_A_MET_MILESTONE,
+        () -> aTicketWaitingOnAMilestone(A_TICKET_WAITING_ON_A_MET_MILESTONE, true));
+    states.put(
+        A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE, this::aCampaignMemberWaitingOnAMilestone);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
           if (!name.equals(A_VERIFIED_TICKET)) {
@@ -1751,6 +1788,77 @@ public class ProviderStates {
             "projectId", project.id,
             "qualifiedId", qualified(project, campaign)),
         List.of(token));
+  }
+
+  /** See {@link #A_TICKET_WAITING_ON_AN_UNMET_MILESTONE}; {@code approved} meets the milestone. */
+  private Setup aTicketWaitingOnAMilestone(String name, boolean approved) {
+    String token = token();
+    Project project = project(token, name);
+    String ticket = ticket(project, "Bootstrap a fresh node");
+    var created =
+        milestones.create(project.id, "bootstrap test node", approvalCondition(), PERSON);
+    String milestone = created.view().milestone().id;
+    String criterion = created.view().groups().get(0).criteria().get(0).id;
+    String other =
+        milestones.create(project.id, "arm64 runner", approvalCondition(), PERSON)
+            .view()
+            .milestone()
+            .id;
+    milestones.attach(ticket, milestone);
+    if (approved) {
+      milestones.approve(milestone, criterion, "Node 7 is up.", DEV_USER);
+    }
+    return new Setup(
+        params(
+            "criterionId", criterion,
+            "milestoneId", milestone,
+            "otherMilestoneId", other,
+            "projectId", project.id,
+            "qualifiedId", qualified(project, ticket),
+            "ticketId", ticket),
+        List.of(token));
+  }
+
+  /** See {@link #A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE}. */
+  private Setup aCampaignMemberWaitingOnAMilestone() {
+    String token = token();
+    Project project = project(token, A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE);
+    String campaign =
+        work.createCampaign(project.id, "Ship the bootstrap", "Seeded work.", PERSON).id;
+    String ticket = ticket(project, "Bootstrap a fresh node");
+    String membership =
+        campaigns.addMember(campaign, ticket, null, false, PERSON).membership().id;
+    String milestone =
+        milestones.create(project.id, "bootstrap test node", approvalCondition(), PERSON)
+            .view()
+            .milestone()
+            .id;
+    String other =
+        milestones.create(project.id, "arm64 runner", approvalCondition(), PERSON)
+            .view()
+            .milestone()
+            .id;
+    milestones.setMembershipMilestones(campaign, membership, List.of(milestone));
+    return new Setup(
+        params(
+            "membershipId", membership,
+            "milestoneId", milestone,
+            "otherMilestoneId", other,
+            "projectId", project.id,
+            "qualifiedId", qualified(project, campaign),
+            "ticketId", ticket,
+            "ticketQualifiedId", qualified(project, ticket)),
+        List.of(token));
+  }
+
+  /** One group of one APPROVAL criterion. */
+  private static List<eu.wohlben.qits.entities.milestone.MilestoneService.GroupSpec>
+      approvalCondition() {
+    return List.of(
+        new eu.wohlben.qits.entities.milestone.MilestoneService.GroupSpec(
+            List.of(
+                new eu.wohlben.qits.entities.milestone.MilestoneService.CriterionSpec(
+                    null, "APPROVAL", Map.of()))));
   }
 
   /**
