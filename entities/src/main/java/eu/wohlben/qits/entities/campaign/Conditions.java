@@ -1,10 +1,11 @@
 package eu.wohlben.qits.entities.campaign;
 
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
 import java.util.Collection;
 import java.util.function.Predicate;
 
 /**
- * <b>The rule that decides whether a campaign member's condition holds</b> — a monotone DNF, and
+ * <b>The rule that decides whether a milestone's condition holds</b> — a monotone DNF, and
  * nothing else: a member waits on OR'd groups, each of AND'd criteria.
  *
  * <ul>
@@ -22,14 +23,13 @@ public final class Conditions {
   private Conditions() {}
 
   /** Whether the DNF over {@code groups} holds — see the class javadoc. */
-  public static boolean satisfied(Collection<? extends Collection<CampaignCriterion>> groups) {
+  public static boolean satisfied(Collection<? extends Collection<MilestoneCriterion>> groups) {
     return holds(groups, criterion -> criterion.satisfiedAt != null);
   }
 
   /**
    * The same rule over any representation of a criterion, {@code latched} saying whether one is —
-   * for a reader that has the latches as columns rather than as entities ({@link
-   * CampaignEvaluator#satisfiedUnclaimed}).
+   * for a reader that has the latches in some other shape.
    */
   public static <T> boolean holds(
       Collection<? extends Collection<T>> groups, Predicate<? super T> latched) {

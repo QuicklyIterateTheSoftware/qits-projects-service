@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * <b>What a {@link CampaignCriterion} waits for, one record per {@link CriterionKind}</b>, stored as
+ * <b>What a {@link eu.wohlben.qits.entities.milestone.MilestoneCriterion} waits for, one record per {@link CriterionKind}</b>, stored as
  * canonical JSON in {@code campaign_criterion.predicate}.
  *
  * <table>

@@ -10,6 +10,16 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.milestone.CampaignMembershipMilestone;
+import eu.wohlben.qits.entities.milestone.CampaignMembershipMilestoneRepository;
+import eu.wohlben.qits.entities.milestone.Milestone;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterion;
+import eu.wohlben.qits.entities.milestone.MilestoneCriterionRepository;
+import eu.wohlben.qits.entities.milestone.MilestoneGroup;
+import eu.wohlben.qits.entities.milestone.MilestoneGroupRepository;
+import eu.wohlben.qits.entities.milestone.MilestoneRepository;
+import eu.wohlben.qits.entities.milestone.WorkMilestone;
+import eu.wohlben.qits.entities.milestone.WorkMilestoneRepository;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -22,9 +32,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * Every V19 column round-trips through its entity class. Flyway owns the DDL and {@code
+ * Every V19 and V38 column round-trips through its entity class. Flyway owns the DDL and {@code
  * database.generation} is {@code none}, so a column name that disagrees with its field would go
- * unnoticed until the first query — this is that first query, for all four tables. A {@code
+ * unnoticed until the first query — this is that first query, for every table. A {@code
  * @QuarkusTest} with <b>no {@code @TestProfile}</b> (the test-profile budget rule).
  */
 @QuarkusTest
@@ -35,8 +45,11 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
 
   @Inject WorkEntityService workEntities;
   @Inject EntityMembershipRepository memberships;
-  @Inject CampaignCriterionGroupRepository groups;
-  @Inject CampaignCriterionRepository criteria;
+  @Inject MilestoneRepository milestones;
+  @Inject MilestoneGroupRepository groups;
+  @Inject MilestoneCriterionRepository criteria;
+  @Inject WorkMilestoneRepository workMilestones;
+  @Inject CampaignMembershipMilestoneRepository waits;
   @Inject CampaignStartRecordRepository starts;
   @Inject CampaignService campaigns;
 
@@ -49,6 +62,7 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
                 Archetype.TICKET, PROJECT, EntityWrite.ticket("Work", "it occurs", null, "BUG", null), "t")
             .entity();
     String membershipId = UUID.randomUUID().toString();
+    String milestoneId = UUID.randomUUID().toString();
     String groupId = UUID.randomUUID().toString();
     String criterionId = UUID.randomUUID().toString();
     UUID eventId = UUID.randomUUID();
@@ -73,13 +87,32 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
               edge.dispatchError = "java.io.IOException: gone";
               memberships.persist(edge);
 
-              CampaignCriterionGroup group = new CampaignCriterionGroup();
+              Milestone milestone = new Milestone();
+              milestone.id = milestoneId;
+              milestone.projectId = PROJECT;
+              milestone.displayName = "bootstrap test node";
+              milestone.satisfiedAt = T;
+              milestones.persist(milestone);
+
+              MilestoneGroup group = new MilestoneGroup();
               group.id = groupId;
-              group.membershipId = membershipId;
+              group.milestoneId = milestoneId;
               group.position = 0;
+              group.satisfiedAt = T;
               groups.persist(group);
 
-              CampaignCriterion criterion = new CampaignCriterion();
+              WorkMilestone attached = new WorkMilestone();
+              attached.entityId = ticket.id;
+              attached.milestoneId = milestoneId;
+              workMilestones.persist(attached);
+
+              CampaignMembershipMilestone wait = new CampaignMembershipMilestone();
+              wait.membershipId = membershipId;
+              wait.milestoneId = milestoneId;
+              wait.generatedCondition = true;
+              waits.persist(wait);
+
+              MilestoneCriterion criterion = new MilestoneCriterion();
               criterion.id = criterionId;
               criterion.groupId = groupId;
               criterion.position = 0;
@@ -119,12 +152,24 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
           assertEquals(micros(T.plusSeconds(2)), micros(edge.dispatchRefusedAt));
           assertEquals("java.io.IOException: gone", edge.dispatchError);
 
-          CampaignCriterionGroup group = groups.groupsOf(membershipId).get(0);
+          Milestone milestone = milestones.findById(milestoneId);
+          assertEquals(PROJECT, milestone.projectId);
+          assertEquals("bootstrap test node", milestone.displayName);
+          assertEquals(micros(T), micros(milestone.satisfiedAt));
+          assertTrue(milestone.createdAt != null);
+
+          MilestoneGroup group = groups.groupsOf(milestoneId).get(0);
           assertEquals(groupId, group.id);
           assertEquals(0, group.position);
+          assertEquals(micros(T), micros(group.satisfiedAt));
           assertTrue(group.createdAt != null);
 
-          CampaignCriterion criterion = criteria.findById(criterionId);
+          assertEquals(milestoneId, workMilestones.ofEntity(ticket.id).get(0).milestoneId);
+          CampaignMembershipMilestone wait = waits.generatedOf(membershipId).orElseThrow();
+          assertEquals(milestoneId, wait.milestoneId);
+          assertTrue(wait.createdAt != null);
+
+          MilestoneCriterion criterion = criteria.findById(criterionId);
           assertEquals(groupId, criterion.groupId);
           assertEquals(CriterionKind.DEPLOYMENT_ACTIVE, criterion.kind);
           assertEquals(
@@ -149,7 +194,7 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
   }
 
   @Test
-  void deletingTheCampaignTakesItsStartMembershipsAndCriteriaWithIt() {
+  void deletingTheCampaignTakesItsStartMembershipsAndTheirWaitsWithIt() {
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "Doomed", null, "t");
     WorkEntity ticket =
         workEntities
@@ -181,8 +226,7 @@ class CampaignPersistenceTest extends EntitiesTestSupport {
     inFreshTx(
         () -> {
           assertTrue(starts.startOf(campaign.id).isEmpty());
-          assertEquals(0, groups.count());
-          assertEquals(0, criteria.count());
+          assertTrue(waits.ofMembership(membershipId).isEmpty());
           assertTrue(memberships.campaignMembershipsOf(ticket.id).isEmpty());
         });
   }
