@@ -172,13 +172,34 @@ public class BranchDeliveryRepository
     return atStep(requestId, "FAILED");
   }
 
+  /**
+   * The rows that still name {@code requestId} at MOVED (qits-1830): the branches handed on to it,
+   * moved onto it from the request ahead, or carried onto it by a red release it superseded.
+   */
+  public List<Released> movedBy(String requestId) {
+    return atStep(requestId, "MOVED");
+  }
+
+  /**
+   * The rows that still name {@code requestId} at a step before the tag — JOINED, MOVED, FAILED or
+   * CONFLICTED (qits-1830): every branch the unreleased request carries, as a source or not. Which
+   * of them are its sources is the caller's to tell, from the request's source rows.
+   */
+  public List<Released> carriedBy(String requestId) {
+    return atSteps(requestId, List.of("JOINED", "MOVED", "FAILED", "CONFLICTED"));
+  }
+
   private List<Released> atStep(String requestId, String step) {
+    return atSteps(requestId, List.of(step));
+  }
+
+  private List<Released> atSteps(String requestId, List<String> steps) {
     List<?> rows =
         em().createNativeQuery(
                 "select project_id, repo_id, repo_name, branch, version from branch_delivery"
-                    + " where request_id = ?1 and step = ?2 order by repo_id, branch")
+                    + " where request_id = ?1 and step in (?2) order by repo_id, branch")
             .setParameter(1, requestId)
-            .setParameter(2, step)
+            .setParameter(2, steps)
             .getResultList();
     return rows.stream()
         .map(Object[].class::cast)

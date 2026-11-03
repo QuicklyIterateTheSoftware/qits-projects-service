@@ -646,7 +646,17 @@ merely its only occupant. Six things about it are rules:
     not asked yet holds `everywhere` below LIVE; a LIVE or WITHDRAWN row is reset to PUSHED by a push
     (the name was reused), and a deletion removes a row only while it is still PUSHED.
   - **Followed**: the named `BRANCH` sources only — never the default branch, `release/*`,
-    `maintenance/*` or an implicit tag.
+    `maintenance/*` or an implicit tag — plus the **carries** (qits-1830): a red release's
+    branches, MOVED onto the successor that supersedes it, ride inside the tag it folds in and are
+    no source of it (its only named source may be `main`). Every row naming the successor at
+    JOINED/MOVED/FAILED/CONFLICTED for a branch that is not its source is one
+    (`BranchDeliveryRepository.carriedBy`); the successor's FAILED, CONFLICTED and WITHDRAWN step
+    them with its sources, `resumed` takes them back to JOINED like a source, and `settleReleased`
+    makes them RELEASED at its version (`BranchDeliveries.carriesReleased`) — excluding every branch
+    that was a source as the release settled, so a hand-on never reads RELEASED there — after which
+    LIVE and the post-tag gates walk them as any RELEASED row. `obsolete` moves the earlier
+    request's sources and every row still naming it at MOVED, RELEASED or FAILED, so a chain of red
+    releases carries them on to the last successor.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
     under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
     it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
@@ -655,7 +665,7 @@ merely its only occupant. Six things about it are rules:
     (qits-1725); CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
     withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
-    tag carries); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
+    tag carries, and the carries, qits-1830); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
     step for a decline or a queue's activation, and none for a refold to PENDING — except JOINED
     again: **a request leaving a failure takes its branches back to JOINED** (qits-1719).
     `ReleaseRequestStates.move` calls `BranchDeliveries.resumed` on every move of an existing

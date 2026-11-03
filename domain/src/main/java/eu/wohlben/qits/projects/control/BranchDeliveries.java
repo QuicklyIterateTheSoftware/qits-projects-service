@@ -21,9 +21,11 @@ import jakarta.transaction.TransactionSynchronizationRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.jboss.logging.Logger;
 
@@ -45,6 +47,12 @@ import org.jboss.logging.Logger;
  * repository's default branch (a source of every request, and delivered by none), never a {@code
  * release/} backing branch or a {@code maintenance/} bump, and never a released tag (an implicit
  * source is a release, not a branch).
+ *
+ * <p><b>And the branches a request carries without naming them</b> (qits-1830): a red release's
+ * branches, MOVED onto the successor that supersedes it ({@link #superseded}). They ride inside the
+ * earlier tag the successor folds in, so the successor's failure, its withdrawal and its release
+ * step them as they step its sources ({@link #carriesReleased}) — else they read MOVED for good,
+ * and a successor naming only {@code main} took none of them to LIVE.
  *
  * <h2>Once per position, and {@code everywhere}</h2>
  *
@@ -240,6 +248,9 @@ public class BranchDeliveries {
    * rejection was lifted, a retried run went green at the same fold — so every branch whose ledger
    * row still names it at FAILED or CONFLICTED is on that request again, at the fold it is at now
    * ({@code row.mergedSha}). Rows naming another request, or at any other step, are left alone.
+   * A {@linkplain #carriesOf carry} the failure took along comes back the same way, to JOINED as a
+   * source does rather than to MOVED (qits-1830): a MOVED again would tell its agent the branch
+   * moved a second time, and {@link #carriesReleased} finds a carry at JOINED as readily.
    * Called by {@link ReleaseRequestStates#move} alone, for every move to those two states, so the
    * caller must have set {@code mergedSha} to the fold before the move.
    */
@@ -272,15 +283,34 @@ public class BranchDeliveries {
 
   /**
    * <b>MOVED</b> for every branch {@code earlier} carries: it is OBSOLETE, and {@code successor},
-   * which folds its tag in and releases past it, carries them now.
+   * which folds its tag in and releases past it, carries them now. That is its sources and every
+   * ledger row still naming it at MOVED, RELEASED or FAILED (qits-1830): a branch it carried
+   * itself as a successor rides inside its tag as well, so a chain of red releases A, B, C moves
+   * A's branches on to C when B goes OBSOLETE too, rather than leaving them on B for good.
    */
   public void superseded(ReleaseRequest earlier, ReleaseRequest successor) {
-    for (String branch : branchesOf(earlier)) {
+    if (earlier == null || successor == null) {
+      return;
+    }
+    Set<String> branches = new LinkedHashSet<>(branchesOf(earlier));
+    try {
+      List<BranchDeliveryRepository.Released> held = new ArrayList<>(ledger.movedBy(earlier.id));
+      held.addAll(ledger.releasedBy(earlier.id));
+      held.addAll(ledger.failedBy(earlier.id));
+      held.forEach(row -> branches.add(row.branch()));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "Could not read the carried branches of superseded request %s", earlier.qualifiedId);
+    }
+    for (String branch : branches) {
       moved(earlier.id, earlier.qualifiedId, successor, branch);
     }
   }
 
-  /** <b>FAILED</b>: {@code row}'s fold failed; every branch it carries. */
+  /**
+   * <b>FAILED</b>: {@code row}'s fold failed; every branch it carries, its {@linkplain #carriesOf
+   * carries} included (qits-1830).
+   */
   public void failed(ReleaseRequest row, Failure failure, String runId) {
     failed(row, failure, runId, null);
   }
@@ -291,7 +321,7 @@ public class BranchDeliveries {
    * sha is news and the same one again is not (qits-1725); every branch {@code row} carries.
    */
   public void failed(ReleaseRequest row, Failure failure, String runId, String foldAttempt) {
-    for (String branch : branchesOf(row)) {
+    for (String branch : carriedBranchesOf(row)) {
       step(row, branch, Step.FAILED, null, null, foldAttempt, failure.name(), runId, null, false);
     }
   }
@@ -302,18 +332,22 @@ public class BranchDeliveries {
    * conflict leaves is the last fold that landed, so without it a second, different conflict there
    * would read as the position already held (qits-1725). {@code conflicts} ride the step to the
    * in-transaction listeners — never the event — so the notices tell only the heads they name.
+   * Its {@linkplain #carriesOf carries} take the step too (qits-1830).
    */
   public void conflicted(ReleaseRequest row, List<BackingBranchMerger.Conflict> conflicts) {
     String foldAttempt = FoldAttempt.ofConflicts(conflicts);
-    for (String branch : branchesOf(row)) {
+    for (String branch : carriedBranchesOf(row)) {
       step(
           row, branch, Step.CONFLICTED, null, null, foldAttempt, null, null, null, false, conflicts);
     }
   }
 
-  /** <b>WITHDRAWN</b>: every branch {@code row} still carries. */
+  /**
+   * <b>WITHDRAWN</b>: every branch {@code row} still carries, its {@linkplain #carriesOf carries}
+   * included (qits-1830).
+   */
   public void withdrawn(ReleaseRequest row) {
-    withdrawn(row, branchesOf(row));
+    withdrawn(row, carriedBranchesOf(row));
   }
 
   /**
@@ -329,6 +363,30 @@ public class BranchDeliveries {
   /** <b>RELEASED</b>: the tag {@code row.version} carries each of {@code branches}. */
   public void released(ReleaseRequest row, Collection<String> branches) {
     for (String branch : branches) {
+      step(row, branch, Step.RELEASED, null, null, null, null, null, row.version, false);
+    }
+  }
+
+  /**
+   * <b>RELEASED for the carries</b> (qits-1830): the tag {@code row.version} also carries every
+   * branch {@code row} took over from a red release it superseded ({@link #superseded}). Such a
+   * branch is no source of {@code row} — it rides inside the earlier tag the fold took in as an
+   * implicit source, and the request's named sources may be {@code main} alone — so {@link
+   * #released} never named it, its row stayed MOVED, and {@link #live} (which walks the RELEASED
+   * rows) left it there for good: {@code qits wait branch --until live} never fired.
+   *
+   * <p>{@code sourced} is every branch that was a source of {@code row} as the release settled,
+   * those it hands on included — read before they were taken off it — and each of them is left
+   * alone: a branch the tag carries as a source is {@link #released}'s, and a branch handed on
+   * (it joined while the tag was cut, or moved past it) is not in the tag at all and must never
+   * read RELEASED here; its MOVED to where it lands comes next. Once RELEASED, a carry is walked
+   * by {@link #live}, {@link #gateFailed} and {@link #gateRetried} like any released branch.
+   */
+  public void carriesReleased(ReleaseRequest row, Collection<String> sourced) {
+    if (row == null || row.id == null) {
+      return;
+    }
+    for (String branch : carriesOf(row, sourced)) {
       step(row, branch, Step.RELEASED, null, null, null, null, null, row.version, false);
     }
   }
@@ -791,6 +849,41 @@ public class BranchDeliveries {
   // ---------------------------------------------------------------------------------------------
   // Reads
   // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The branches an unreleased {@code row} carries: its sources ({@link #branchesOf}), then its
+   * {@linkplain #carriesOf carries}.
+   */
+  private List<String> carriedBranchesOf(ReleaseRequest row) {
+    List<String> sourced = branchesOf(row);
+    List<String> carried = new ArrayList<>(sourced);
+    carried.addAll(carriesOf(row, sourced));
+    return carried;
+  }
+
+  /**
+   * <b>The carries</b> of an unreleased {@code row} (qits-1830): every branch whose ledger row
+   * names it at a step before the tag ({@link BranchDeliveryRepository#carriedBy}) and that is not
+   * among {@code sourced}. A branch that left a request does so with a step of its own (MOVED,
+   * WITHDRAWN), so a row naming {@code row} for a branch that is no source of it is one {@link
+   * #superseded} carried onto it — at MOVED, then at whatever {@link #failed}, {@link #conflicted}
+   * or {@link #resumed} (JOINED, as for a source) made of it since.
+   */
+  private List<String> carriesOf(ReleaseRequest row, Collection<String> sourced) {
+    if (row == null || row.id == null) {
+      return List.of();
+    }
+    try {
+      return ledger.carriedBy(row.id).stream()
+          .map(BranchDeliveryRepository.Released::branch)
+          .filter(branch -> sourced == null || !sourced.contains(branch))
+          .distinct()
+          .toList();
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not read the carried branches of release request %s", row.qualifiedId);
+      return List.of();
+    }
+  }
 
   /** The branches {@code row} carries that this ledger follows, in the order they were added. */
   private List<String> branchesOf(ReleaseRequest row) {

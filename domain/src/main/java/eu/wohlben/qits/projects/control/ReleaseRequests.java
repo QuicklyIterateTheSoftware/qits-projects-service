@@ -6948,6 +6948,10 @@ public class ReleaseRequests {
    *       same transaction, so the RELEASED announcement (whose branches are read as it commits, see
    *       {@link ReleaseRequestStates}) names only what was released, and no reader of a RELEASED
    *       request finds a source it never shipped.
+   *   <li>The branches a red release this request superseded carried onto it go RELEASED with the
+   *       named ones ({@link BranchDeliveries#carriesReleased}, qits-1830): they are in the tag,
+   *       inside the earlier one it folded in. Every branch that was a source here as the split
+   *       began is excluded from that walk — above all a hand-on, which the tag does not carry.
    * </ul>
    *
    * <p>Under the row lock every re-fold's write half takes, so nothing joins or re-arms between the
@@ -6969,7 +6973,13 @@ public class ReleaseRequests {
                     return new ReleasedSources(released, List.of());
                   }
                   List<HandedOn> handedOn = new ArrayList<>();
+                  // Every branch that is a source here as the release settles, read before the
+                  // hand-ons leave: none of them is a carry of a superseded release (qits-1830).
+                  Set<String> sourced = new LinkedHashSet<>(ask.namedSources());
                   for (ReleaseRequestSource source : sources.listByRequest(row.id)) {
+                    if (source.kind == ReleaseRequestSource.Kind.BRANCH) {
+                      sourced.add(source.name);
+                    }
                     if (source.kind != ReleaseRequestSource.Kind.BRANCH
                         || source.name.equals(ask.defaultBranch())) {
                       continue;
@@ -6995,6 +7005,9 @@ public class ReleaseRequests {
                   }
                   row.updatedAt = Instant.now();
                   deliveries.released(row, released);
+                  // The branches of a red release it superseded ride inside that tag, which this
+                  // fold took in (qits-1830); a hand-on is in `sourced` and is never one of them.
+                  deliveries.carriesReleased(row, sourced);
                   return new ReleasedSources(released, List.copyOf(handedOn));
                 });
     // Gate 3's trigger (epic qits-897), as settle() pulls it for every RELEASED move.
