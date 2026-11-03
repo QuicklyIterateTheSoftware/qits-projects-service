@@ -210,6 +210,8 @@ public class AgentDaemonRegistry {
    * old enough to survive as evidence would also be a stamp inside the window — and the rollup's
    * whole reason for existing is the case the stamp gets wrong: an agent thinking silently between
    * two frames. Setting them equal deletes that, silently and with every test still green.
+   * {@code startup/AgentActivityHorizonAudit} reports a breach of this at boot, loudly — an ERROR,
+   * never a refusal.
    */
   @ConfigProperty(name = "qits.projects.agent.stale-activity-ttl-ms", defaultValue = "14400000")
   long staleActivityTtlMs;
