@@ -576,6 +576,40 @@ public class ReleaseRequests {
   }
 
   /**
+   * <b>How long the sweep leaves a re-fold the git host could not make before it knocks again</b>
+   * (qits-1850). A fold answered with anything but a merge or a {@code merge-conflict} is {@code
+   * unreachable}, and on a request that already had a fold nothing used to ask again: the sweep
+   * re-folds only a request with no fold or one owing a re-fold, so qits-projects-service-rr-427
+   * sat PENDING on its old fold for hours while every re-fold crashed in qits-githost with a 500.
+   * Such a fold now owes its re-fold ({@link #FOLD_UNREACHABLE}), and the sweep pays it no sooner
+   * than this long after the last attempt — one fixed interval, restarted by every failed knock, so
+   * a 500 that answers the same every time costs the git host one fold per interval rather than one
+   * per thirty-second tick, and a passing outage still heals within it. Configuration so a
+   * deployment can tune it; the suite backdates the stamp instead.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.unreachable-refold-backoff",
+      defaultValue = "PT5M")
+  java.time.Duration unreachableRefoldBackoff;
+
+  /**
+   * The {@link ReleaseRequest#refoldOwedReason} prefix of a re-fold owed because the git host could
+   * not make the last one (qits-1850), followed by what it answered. Owed this way the re-fold is,
+   * like {@link #AWAITING_PUSH}, not held for a fold in flight — the fold that failed was asked for
+   * at once (a push, a join, a move), so the fold being gated lacks what it would have carried — but
+   * it is backed off by {@link #unreachableRefoldBackoff}, and while it stands the request's detail
+   * keeps the failure ({@link #waiting}).
+   */
+  static final String FOLD_UNREACHABLE = "the git host could not fold the sources: ";
+
+  /** Whether {@code row} owes its re-fold to a fold the git host could not make (qits-1850). */
+  private static boolean foldUnreachable(ReleaseRequest row) {
+    return row.refoldOwedAt != null
+        && row.refoldOwedReason != null
+        && row.refoldOwedReason.startsWith(FOLD_UNREACHABLE);
+  }
+
+  /**
    * The source of {@code requestId} that {@code ref} spells — {@code refs/heads/<branch>} or bare —
    * when it was added less than {@link #missingSourceGrace} ago; null when none is that fresh
    * (qits-1751). Read in the caller's transaction.
@@ -3793,10 +3827,12 @@ public class ReleaseRequests {
                 if (row == null || !foldInFlight(row)) {
                   return false;
                 }
-                if (awaitingPush(row)) {
+                if (awaitingPush(row) || foldUnreachable(row)) {
                   // A FRESH SOURCE IS AWAITED (qits-1751): the fold in flight is replaced the
                   // moment its push lands anyway, and coalescing would overwrite the marker that
-                  // lets the sweep knock for it. Re-fold now, as before qits-1570.
+                  // lets the sweep knock for it. Re-fold now, as before qits-1570. The same for a
+                  // re-fold the git host could not make (qits-1850): the fold in flight already
+                  // lacks what that one carried.
                   return false;
                 }
                 boolean first = row.refoldOwedAt == null;
@@ -3873,9 +3909,15 @@ public class ReleaseRequests {
                         || row.refoldOwedAt == null
                         || row.state == ReleaseRequest.State.READY
                         || !ReleaseRequestRepository.UNRELEASED.contains(row.state)
+                        // A fold the git host could not make (qits-1850) is knocked for again
+                        // only once the backoff since the last attempt has passed.
+                        || (foldUnreachable(row)
+                            && Instant.now()
+                                .isBefore(row.refoldOwedAt.plus(unreachableRefoldBackoff)))
                         // A fresh source awaited (qits-1751) is knocked for over a fold in
                         // flight: the fold that pays it is the one that carries the new source.
-                        || (!awaitingPush(row) && foldInFlight(row))) {
+                        // So is a fold the git host could not make (qits-1850), for its reason.
+                        || (!awaitingPush(row) && !foldUnreachable(row) && foldInFlight(row))) {
                       return null;
                     }
                     return row.refoldOwedReason == null
@@ -4638,7 +4680,9 @@ public class ReleaseRequests {
    * <p><b>It is the backstop under an owed re-fold</b> (qits-1570): a request whose automation branch
    * moved while its fold was in flight, and whose fold is in flight no more, is re-folded here if
    * nothing else has done it yet — once, since the fold that lands clears the marker. A READY request
-   * owes nothing.
+   * owes nothing. A re-fold the git host could not make is owed the same way (qits-1850, {@link
+   * #FOLD_UNREACHABLE}) and paid here once {@link #unreachableRefoldBackoff} has passed since the
+   * failed attempt.
    *
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
@@ -5298,8 +5342,31 @@ public class ReleaseRequests {
                 }
                 case UNREACHABLE -> {
                   // A fact about the moment, not about the request: the state is left where it was
-                  // and the sweep folds again.
+                  // and the sweep folds again — which, for a request that already had a fold, it
+                  // never did (qits-1850): the sweep re-folds only a request with no fold or one
+                  // owing a re-fold, so qits-projects-service-rr-427 sat PENDING on its old fold for
+                  // hours while qits-githost answered every re-fold 500, and the next evaluation
+                  // overwrote this sentence with "Waiting for automations". A PENDING request with
+                  // a fold now OWES the re-fold, stamped now so the sweep's knock is backed off from
+                  // this attempt (unreachableRefoldBackoff), and the sentence stands until a fold
+                  // lands (waiting() leaves it). Not a CONFLICTED request — a conflict is answered by
+                  // a push, never a knock — nor a REJECTED or READY one, and not one awaiting a
+                  // fresh source's push (qits-1751), whose own marker the sweep already knocks for.
                   row.detail = "The sources could not be folded: " + outcome.detail();
+                  if (row.state == ReleaseRequest.State.PENDING
+                      && row.mergedSha != null
+                      && !awaitingPush(row)) {
+                    LOG.infof(
+                        "Release request %s keeps its fold %s; the git host could not fold (%s): %s;"
+                            + " the sweep knocks again in %s",
+                        row.qualifiedId,
+                        shortSha(row.mergedSha),
+                        why,
+                        outcome.detail(),
+                        unreachableRefoldBackoff);
+                    row.refoldOwedAt = now;
+                    row.refoldOwedReason = FOLD_UNREACHABLE + outcome.detail();
+                  }
                   return null;
                 }
                 case UNCHANGED -> {
@@ -5405,6 +5472,13 @@ public class ReleaseRequests {
    */
   private static void waiting(ReleaseRequest row, String detail) {
     if (detail.equals(row.detail)) {
+      return;
+    }
+    if (foldUnreachable(row)) {
+      // THE FOLD FAILED AND IS OWED AGAIN (qits-1850): the request is held on its old fold
+      // because the git host could not make the new one, and that — the apply's "The sources
+      // could not be folded: …" — is what the reader needs, not the gate it waits on at a fold
+      // it is about to leave. The fold that lands clears the marker and re-arms the sentence.
       return;
     }
     row.detail = detail;
