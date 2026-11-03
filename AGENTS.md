@@ -3265,10 +3265,10 @@ client pair (`QITS_COMMISSIONED_*`, `*_AUTH_TOKEN_URL`) is gone with it.
 
 **The harness gets exactly one MCP server: the central `qits` server** (qits-630, qits-1174).
 `QITS_PLATFORM_MCP_URL` names the qits CLI served over MCP — application
-`qits-platform-access-mcp-service`, at `http://<env>-qits-platform-access-mcp-service:8080/mcp`,
-composed from `QITS_ENVIRONMENT` (the source `qits.projects.own-host`'s default reads) unless
-`qits.projects.platform-mcp-url` overrides it. The front desk's spec injects it from that one key
-(a refinement room is a session in the same desk). This service serves no MCP
+`qits-platform-access-mcp-service`, at its edge host `https://mcp.qits.<d>/mcp`, which the front
+desk's spec composes from `qits.domain` (a refinement room is a session in the same desk). There is
+no `qits.projects.platform-mcp-url` or `qits.projects.own-host` any more (qits-1415): nothing read
+them once front desks replaced the container factories. This service serves no MCP
 server of its own any more, and sets no `QITS_REPOSITORY_MCP_URL` or `QITS_OBSERVABILITY_MCP_URL`.
 The server has one tool per leaf command, named by the command path joined with `_`
 (`work_details`, `work_update`, `work_status`, `work_block`, `work_create`, `work_list`,
