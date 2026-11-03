@@ -1,8 +1,10 @@
 package eu.wohlben.qits.entities.campaign;
 
 /**
- * <b>The four kinds of fact a campaign member can wait on</b> (V19), stored as its name behind
- * {@code ck_campaign_criterion_kind}. Each has exactly one {@link CriterionPredicate} shape.
+ * <b>The four kinds of fact a milestone can wait on</b> (V19, carried onto the milestone by V38),
+ * stored as its name behind {@code ck_milestone_criterion_kind} (the campaign-era {@code
+ * ck_campaign_criterion_kind} that first named these four; V39 dropped it with the table). Each has
+ * exactly one {@link CriterionPredicate} shape.
  *
  * <ul>
  *   <li>{@link #ENTITY_STATUS} — another member of the same campaign reaches a status ({@code

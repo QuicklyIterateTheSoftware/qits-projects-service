@@ -15,7 +15,8 @@ import java.util.regex.Pattern;
 
 /**
  * <b>What a {@link eu.wohlben.qits.entities.milestone.MilestoneCriterion} waits for, one record per {@link CriterionKind}</b>, stored as
- * canonical JSON in {@code campaign_criterion.predicate}.
+ * canonical JSON in {@code milestone_criterion.predicate} (the campaign-era {@code
+ * campaign_criterion.predicate} this shape first described; V39 dropped that table).
  *
  * <table>
  *   <caption>The four shapes</caption>
