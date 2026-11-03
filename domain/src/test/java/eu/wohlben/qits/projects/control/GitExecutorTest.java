@@ -2,9 +2,12 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -96,5 +99,38 @@ class GitExecutorTest {
     String output = git.exec(tmp.toFile(), "git", "init", "--bare", "--quiet");
     assertEquals("", output);
     assertTrue(tmp.resolve("HEAD").toFile().isFile(), "a bare repo was really initialized");
+  }
+
+  /**
+   * qits-367: the bounded variant gives up on a process that outlives its deadline — killed, and
+   * reported as a timeout — instead of waiting as long as it takes, which is what every other
+   * overload still does. The sleep is far longer than the assertion's ceiling, so passing means
+   * the deadline fired, not that the command finished.
+   */
+  @Test
+  void theBoundedVariantKillsAProcessThatOutlivesItsDeadline() {
+    GitExecutor git = new GitExecutor();
+    long started = System.nanoTime();
+
+    TimeoutException timedOut =
+        assertThrows(
+            TimeoutException.class,
+            () -> git.execAllowNonZero(tmp.toFile(), Duration.ofMillis(300), "sh", "-c", "sleep 60"));
+
+    long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+    assertTrue(elapsedMs < 10_000, "the deadline fired, the sleep did not run out: " + elapsedMs);
+    assertEquals("timed out after 300ms", timedOut.getMessage());
+  }
+
+  /** Inside its deadline the bounded variant answers exactly as the unbounded one would. */
+  @Test
+  void theBoundedVariantReturnsExitCodeAndOutputInsideItsDeadline() throws Exception {
+    GitExecutor git = new GitExecutor();
+
+    GitExecutor.ExecResult result =
+        git.execAllowNonZero(tmp.toFile(), Duration.ofSeconds(30), "sh", "-c", "echo out; exit 3");
+
+    assertEquals(3, result.exitCode());
+    assertEquals("out", result.output());
   }
 }

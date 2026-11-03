@@ -248,8 +248,9 @@ public class WrapperReconcileService {
    *
    * <p><b>Its triggers</b> (qits-767): {@code ReleaseRequests.onMainMoved} for a project's wrapper —
    * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper; one
-   * boot pass over every project ({@code service/…/startup/ProjectConfigBootPass}); and the full
-   * {@link #reconcile} behind the manual door, which calls this first.
+   * boot pass over every project ({@code service/…/startup/ProjectConfigBootPass}, through {@link
+   * #reassertProjectConfig} since qits-386); and the full {@link #reconcile} behind the manual door,
+   * which calls this first.
    *
    * <p><b>An absent file is the default and an unparseable one is left alone.</b> Absence and
    * absent keys are one answer ({@link ProjectConfig#DEFAULT}). A file that will not parse throws
@@ -263,6 +264,15 @@ public class WrapperReconcileService {
    * do moved delivery settings ({@link FrontDeskLifecycleChanged#onDeliveryChanged}) — which alone
    * announce nothing, since {@code ProjectChanged} carries none of them. A moved feature freeze is
    * stored and announces nothing either: it is read where a source is added, never pushed.
+   *
+   * <p><b>Delta-only is this method's contract and not the whole story (qits-386).</b> The platform
+   * edge learns {@code supportsEnvironments} and {@code frontDeskLifecycle} from the event log and
+   * from nothing else, so one lost frame — a crash between the commit and the publish, an outbox
+   * that gave up — left the edge wrong for ever: the next pass finds nothing moved and says nothing.
+   * {@link #reassertProjectConfig} is the level-triggered half: the same reconcile, then the stored
+   * values restated whether or not they moved. Its callers are the boot pass and the person's
+   * project reconcile door; this method, the {@code main}-moved trigger and the full {@link
+   * #reconcile} stay delta-only, so a timer or a release never restates anything.
    *
    * <p>{@link ActivateRequestContext} because the boot pass and the bus consumers call this on
    * threads with no ambient request context.
@@ -278,7 +288,49 @@ public class WrapperReconcileService {
     reconcileProjectConfig(project, wrapper.get());
   }
 
-  private void reconcileProjectConfig(Project project, Repository wrapper) {
+  /**
+   * {@link #reconcileProjectConfig(String)}, and then {@code ProjectChanged} restating the values as
+   * stored afterwards whether or not anything moved (qits-386) — level-triggered where the reconcile
+   * is edge-triggered, so a frame lost between a commit and its publish is restated the next time
+   * this runs rather than never.
+   *
+   * <p><b>Exactly one frame, never two.</b> A pass that moved a value has already announced it with
+   * the new values, and that frame is the re-assertion; only a pass that announced nothing restates.
+   * A {@code project.yml} that will not parse keeps the stored values, as the reconcile always does,
+   * and those stored values are what is restated — the edge must still hear what the project is. A
+   * project with no wrapper has no declaration and is restated nothing, exactly as the reconcile
+   * leaves it alone.
+   *
+   * <p>The announcement is the same fire-and-forget {@link #announceChanged} the delta uses, so a
+   * consumer cannot tell a restatement from a move; the edge's projection is idempotent on the
+   * values, which is what makes saying it again harmless. Only {@code ProjectChanged} is restated:
+   * the {@link FrontDeskLifecycleChanged} hooks act on this process's own rows, which no lost frame
+   * can leave behind, and stay delta-only.
+   *
+   * <p>{@link ActivateRequestContext} for the boot pass's virtual thread, as on the reconcile.
+   */
+  @ActivateRequestContext
+  public void reassertProjectConfig(String projectId) {
+    Project project = projectService.get(projectId);
+    Optional<Repository> wrapper = projectService.findWrapper(projectId);
+    if (wrapper.isEmpty()) {
+      LOG.debugf("Project %s has no wrapper, so there is no project.yml to re-assert", projectId);
+      return;
+    }
+    if (!reconcileProjectConfig(project, wrapper.get())) {
+      LOG.debugf(
+          "Re-asserting project %s: supports_environments=%s, front_desk.lifecycle=%s as stored.",
+          project.id, project.supportsEnvironments, project.frontDeskLifecycle);
+      announceChanged(project);
+    }
+  }
+
+  /**
+   * @return whether this pass announced {@code ProjectChanged} — true exactly when {@code
+   *     supportsEnvironments} or {@code frontDeskLifecycle} moved, which {@link
+   *     #reassertProjectConfig} reads so a moved value is said once and not twice
+   */
+  private boolean reconcileProjectConfig(Project project, Repository wrapper) {
     ProjectConfig config;
     try {
       config = projectConfigParser.parse(wrapperWriter.readFile(wrapper, ProjectConfigParser.CONFIG_PATH));
@@ -294,7 +346,7 @@ public class WrapperReconcileService {
           DeliverySettings.of(project),
           ReleaseRequestsSettings.of(project),
           e.getMessage());
-      return;
+      return false;
     }
     boolean environmentsMoved = config.supportsEnvironments() != project.supportsEnvironments;
     boolean lifecycleMoved = config.frontDeskLifecycle() != project.frontDeskLifecycle;
@@ -303,7 +355,7 @@ public class WrapperReconcileService {
     ReleaseRequestsSettings storedReleaseRequests = ReleaseRequestsSettings.of(project);
     boolean releaseRequestsMoved = !config.releaseRequests().equals(storedReleaseRequests);
     if (!environmentsMoved && !lifecycleMoved && !deliveryMoved && !releaseRequestsMoved) {
-      return;
+      return false;
     }
     LOG.infof(
         "Reconcile: project %s declares supports_environments=%s, front_desk.lifecycle=%s,"
@@ -341,7 +393,9 @@ public class WrapperReconcileService {
     if (environmentsMoved || lifecycleMoved) {
       // ProjectChanged carries neither delivery fact, so a delivery move alone has nothing to say.
       announceChanged(project);
+      return true;
     }
+    return false;
   }
 
   /** Best effort, outside every transaction and never able to fail a reconcile. */

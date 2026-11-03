@@ -33,9 +33,19 @@ import org.jboss.logging.Logger;
  * now — deliberate tiers created over its REST surface, not one per project — so a project has one
  * fact left to reconcile.
  *
- * <p>Nothing here is transactional and nothing here writes: the project's stored record is the
- * input, the outcome is the output, and the row is untouched either way. A reconcile is a
+ * <p>Nothing here is transactional and the dns half writes nothing: the project's stored record is
+ * the input, the outcome is the output, and the row is untouched either way. A reconcile is a
  * re-assertion, not a repair of local state.
+ *
+ * <p><b>It also re-asserts the project's announced configuration (qits-386)</b>, through {@link
+ * WrapperReconcileService#reassertProjectConfig}: {@code supportsEnvironments} and {@code
+ * frontDeskLifecycle} reach the platform edge only on {@code ProjectChanged}, which is published
+ * when a stored value moves and never again, so a lost frame left the edge wrong with no door to
+ * put it right. This is that door. It reads the wrapper's {@code project.yml} first — the one write
+ * this reconcile can cause is that file's values landing, with the hooks a move fires, exactly as a
+ * release of the wrapper would have landed them — and then the event says what is stored, once. <b>Best effort</b>: a failure is a
+ * WARN and the answer is the dns outcome as before, because the response carries no slot for it and
+ * a person asking about the dns record must not get a 500 about a git read.
  */
 @ApplicationScoped
 public class ProjectReconcileService {
@@ -59,7 +69,14 @@ public class ProjectReconcileService {
   @Inject Instance<ProjectDomainRegistrar> domainRegistrars;
 
   /**
-   * Re-assert the project's dns record and answer with the outcome.
+   * The {@code ProjectChanged} re-assert (qits-386). A plain injection: the bean is in this module and
+   * never absent, and it injects nothing that reaches back here.
+   */
+  @Inject WrapperReconcileService wrapperReconcile;
+
+  /**
+   * Re-assert the project's dns record and answer with the outcome, then re-assert its announced
+   * configuration, best effort (see the class doc).
    *
    * <p>An unknown project is the <b>only</b> error: it is the one thing about the request that is
    * wrong, whereas a receiver being down is a result the caller asked for.
@@ -70,7 +87,22 @@ public class ProjectReconcileService {
     Project project = projectService.get(projectId);
     DomainAssertion domain = assertDomain(domainRegistrars, project);
     LOG.infof("Reconciled project %s (%s): domain %s.", project.id, project.slug, domain.outcome());
+    reassertConfiguration(project);
     return new ProjectReconciliation(domain);
+  }
+
+  /** Never able to fail the reconcile: the answer has no slot for it, so it is a WARN. */
+  private void reassertConfiguration(Project project) {
+    try {
+      wrapperReconcile.reassertProjectConfig(project.id);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not re-assert the announced configuration of project %s (%s); the next boot"
+              + " restates it.",
+          project.id,
+          project.slug);
+    }
   }
 
   /**
