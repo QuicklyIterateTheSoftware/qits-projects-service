@@ -26,6 +26,28 @@ public class WorkMilestoneRepository
     return find("entityId in ?1", IN_ORDER, entityIds).list();
   }
 
+  /** The attachments of every milestone in {@code milestoneIds}, in one query. */
+  public List<WorkMilestone> ofMilestones(Collection<String> milestoneIds) {
+    if (milestoneIds == null || milestoneIds.isEmpty()) {
+      return List.of();
+    }
+    return find("milestoneId in ?1", Sort.by("createdAt").and("entityId"), milestoneIds).list();
+  }
+
+  /** Every attachment to a milestone of {@code projectId}, in one query. */
+  public List<WorkMilestone> ofProject(String projectId) {
+    return find(
+            "milestoneId in (select m.id from Milestone m where m.projectId = ?1)",
+            IN_ORDER,
+            projectId)
+        .list();
+  }
+
+  /** Whether anything still waits on {@code milestoneId} through an attachment. */
+  public boolean anyOf(String milestoneId) {
+    return count("milestoneId", milestoneId) > 0;
+  }
+
   /** The entities that wait on {@code milestoneId}. */
   public List<WorkMilestone> ofMilestone(String milestoneId) {
     return find("milestoneId", Sort.by("createdAt").and("entityId"), milestoneId).list();

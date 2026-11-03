@@ -1,5 +1,7 @@
 package eu.wohlben.qits.entities.milestone;
 
+import eu.wohlben.qits.entities.campaign.CampaignMembersSatisfied;
+import eu.wohlben.qits.entities.campaign.CampaignReadiness;
 import eu.wohlben.qits.entities.campaign.CriterionKind;
 import eu.wohlben.qits.entities.campaign.CriterionPredicate;
 import eu.wohlben.qits.entities.campaign.EntityQualifier;
@@ -105,6 +107,11 @@ public class MilestoneService {
 
   @Inject Event<MilestonesChanged> changed;
 
+  @Inject CampaignReadiness readiness;
+
+  /** A membership a set of its milestones left satisfied, handed to the campaign executor. */
+  @Inject Event<CampaignMembersSatisfied> satisfied;
+
   // --- the shapes -----------------------------------------------------------------------------------
 
   /** One OR'd group of a milestone, as a caller states it. */
@@ -160,6 +167,45 @@ public class MilestoneService {
                               .map(row -> row.milestoneId)
                               .toList();
                       return ordered(milestones.listByIds(order), order);
+                    }));
+  }
+
+  /** What every entity of {@code entityIds} waits on, keyed by entity id, in a read of its own. */
+  public Map<String, List<Milestone>> ofEntities(Collection<String> entityIds) {
+    if (entityIds == null || entityIds.isEmpty()) {
+      return Map.of();
+    }
+    return patience.hold(
+        "work milestones read",
+        () -> QuarkusTransaction.requiringNew().call(() -> ofEntitiesIn(entityIds)));
+  }
+
+  /**
+   * What every work entity of {@code projectId} waits on, keyed by entity id — two queries for the
+   * whole project, which is what a project's work listing reads (a milestone and the entities
+   * waiting on it are always of one project).
+   */
+  public Map<String, List<Milestone>> ofProjectEntities(String projectId) {
+    return patience.hold(
+        "project work milestones read",
+        () ->
+            QuarkusTransaction.requiringNew()
+                .call(
+                    () -> {
+                      Map<String, Milestone> byId = new LinkedHashMap<>();
+                      for (Milestone milestone : milestones.ofProject(projectId)) {
+                        byId.put(milestone.id, milestone);
+                      }
+                      Map<String, List<Milestone>> answer = new LinkedHashMap<>();
+                      for (WorkMilestone row : workMilestones.ofProject(projectId)) {
+                        Milestone milestone = byId.get(row.milestoneId);
+                        if (milestone != null) {
+                          answer
+                              .computeIfAbsent(row.entityId, id -> new ArrayList<>())
+                              .add(milestone);
+                        }
+                      }
+                      return answer;
                     }));
   }
 
@@ -305,22 +351,51 @@ public class MilestoneService {
         () -> workMilestones.deleteById(new WorkMilestone.Key(entityId, milestoneId)));
   }
 
+  /** {@link #setMembershipMilestones(String, String, List)} for a membership of any campaign. */
+  public List<Milestone> setMembershipMilestones(String membershipId, List<String> milestoneIds) {
+    return setMembershipMilestones(null, membershipId, milestoneIds);
+  }
+
   /**
    * <b>What a CAMPAIGN membership waits on, set whole</b>: the listed milestones, in order, each of
-   * the campaign's project. 404 for an unknown membership or milestone, 409 once claimed (a claim
-   * freezes the membership) or for a milestone of another project. A milestone left off that was
-   * the membership's generated condition is only detached, never deleted: it may wait elsewhere.
+   * the campaign's project. 404 for an unknown membership, one not of {@code campaignId} (when
+   * given) or an unknown milestone; 409 once claimed (a claim freezes the membership), at a DROPPED
+   * campaign, or for a milestone of another project.
+   *
+   * <ul>
+   *   <li>The member entity is attached to every listed milestone ({@code work_milestone}), so the
+   *       work item shows what it needs; a milestone left off is only no longer waited on by the
+   *       membership, and stays attached to the entity.
+   *   <li>The membership's generated condition kept in the list stays its condition. Left off, it
+   *       stops being one: it is detached from the member entity too, and deleted when nothing waits
+   *       on it any more ({@link #dropGeneratedConditionsIn}). The condition doors then start a new
+   *       one on their next write.
+   *   <li>A membership the set leaves satisfied is handed to the campaign executor, which re-checks
+   *       everything else (started, scheduled, unblocked) itself.
+   * </ul>
    */
-  public List<Milestone> setMembershipMilestones(String membershipId, List<String> milestoneIds) {
+  public List<Milestone> setMembershipMilestones(
+      String campaignId, String membershipId, List<String> milestoneIds) {
     List<String> wanted =
-        milestoneIds == null ? List.of() : List.copyOf(new LinkedHashSet<>(milestoneIds));
+        milestoneIds == null
+            ? List.of()
+            : List.copyOf(
+                new LinkedHashSet<>(milestoneIds.stream().filter(Objects::nonNull).toList()));
     return writes.hold(
         "membership milestones",
         () -> {
           EntityMembership edge = membershipId == null ? null : memberships.findById(membershipId);
-          if (edge == null || edge.kind != MembershipKind.CAMPAIGN) {
-            throw new NotFoundException("No campaign membership " + membershipId);
+          if (edge == null
+              || edge.kind != MembershipKind.CAMPAIGN
+              || (campaignId != null && !campaignId.equals(edge.parentId))) {
+            throw new NotFoundException(
+                "No campaign membership "
+                    + membershipId
+                    + (campaignId == null ? "" : " in campaign " + campaignId));
           }
+          // The campaign row before the membership row: CampaignService's order.
+          WorkEntity campaign =
+              em().find(WorkEntity.class, edge.parentId, LockModeType.PESSIMISTIC_WRITE);
           em().refresh(edge, LockModeType.PESSIMISTIC_WRITE);
           if (edge.claimedAt != null) {
             throw new ConflictException(
@@ -330,7 +405,12 @@ public class MilestoneService {
                     + edge.claimedAt
                     + "; what it waits on is no longer edited.");
           }
-          WorkEntity campaign = entities.findById(edge.parentId);
+          if (campaign != null && EntityStatus.DROPPED.name().equals(campaign.status)) {
+            throw new ConflictException(
+                "Campaign "
+                    + EntityQualifier.render(qualifier, campaign)
+                    + " is DROPPED: what its members wait on is edited only while it is not.");
+          }
           List<Milestone> found = new ArrayList<>();
           for (String id : wanted) {
             Milestone milestone = require(id);
@@ -347,8 +427,14 @@ public class MilestoneService {
             found.add(milestone);
           }
           Set<String> keep = new HashSet<>(wanted);
+          List<CampaignMembershipMilestone> droppedConditions = new ArrayList<>();
           for (CampaignMembershipMilestone row : membershipMilestones.ofMembership(edge.id)) {
-            if (!keep.remove(row.milestoneId)) {
+            if (keep.remove(row.milestoneId)) {
+              continue;
+            }
+            if (row.generatedCondition) {
+              droppedConditions.add(row);
+            } else {
               membershipMilestones.delete(row);
             }
           }
@@ -359,10 +445,62 @@ public class MilestoneService {
               row.milestoneId = id;
               membershipMilestones.persist(row);
             }
+            attachIn(edge.childId, id);
           }
           flush();
+          for (CampaignMembershipMilestone row : droppedConditions) {
+            dropConditionIn(edge, row);
+          }
+          List<String> ready = readiness.satisfiedUnclaimed(List.of(edge.id));
+          if (!ready.isEmpty()) {
+            satisfied.fire(new CampaignMembersSatisfied(edge.parentId, ready));
+          }
           return List.copyOf(found);
         });
+  }
+
+  /**
+   * <b>The generated conditions of memberships that are going away</b> — a member removed, a member
+   * entity or a whole campaign deleted — inside the caller's transaction and <em>before</em> the
+   * membership rows go (their waits cascade with them, and the link would be lost). Each generated
+   * condition stops being waited on by its membership and is detached from the member entity, so it
+   * never lingers there as a stale need; it is then deleted when nothing else — another membership,
+   * another work entity — waits on it. A milestone a person attached elsewhere survives.
+   */
+  @Transactional(TxType.MANDATORY)
+  public void dropGeneratedConditionsIn(Collection<EntityMembership> edges) {
+    if (edges == null || edges.isEmpty()) {
+      return;
+    }
+    Map<String, EntityMembership> byId = new LinkedHashMap<>();
+    for (EntityMembership edge : edges) {
+      byId.put(edge.id, edge);
+    }
+    for (CampaignMembershipMilestone row : membershipMilestones.ofMemberships(byId.keySet())) {
+      if (row.generatedCondition) {
+        dropConditionIn(byId.get(row.membershipId), row);
+      }
+    }
+  }
+
+  /** One membership's generated condition dropped — see {@link #dropGeneratedConditionsIn}. */
+  private void dropConditionIn(EntityMembership edge, CampaignMembershipMilestone row) {
+    String milestoneId = row.milestoneId;
+    membershipMilestones.delete(row);
+    WorkMilestone attached =
+        workMilestones.findById(new WorkMilestone.Key(edge.childId, milestoneId));
+    if (attached != null) {
+      workMilestones.delete(attached);
+    }
+    flush();
+    if (!membershipMilestones.anyOf(milestoneId) && !workMilestones.anyOf(milestoneId)) {
+      Milestone milestone = milestones.findById(milestoneId);
+      if (milestone != null) {
+        // Its groups and criteria go by the foreign keys' cascade.
+        milestones.delete(milestone);
+        flush();
+      }
+    }
   }
 
   /** Fires {@code changes} on the CDI bus, inside the caller's transaction, when not empty. */
@@ -773,12 +911,14 @@ public class MilestoneService {
     List<String> ids = found.stream().map(milestone -> milestone.id).toList();
     Map<String, List<Group>> conditions = groupsOfIn(ids);
     Map<String, List<String>> waitingEntities = new LinkedHashMap<>();
+    for (WorkMilestone row : workMilestones.ofMilestones(ids)) {
+      waitingEntities.computeIfAbsent(row.milestoneId, id -> new ArrayList<>()).add(row.entityId);
+    }
     Map<String, List<String>> waitingMemberships = new LinkedHashMap<>();
-    for (String id : ids) {
-      waitingEntities.put(
-          id, workMilestones.ofMilestone(id).stream().map(row -> row.entityId).toList());
-      waitingMemberships.put(
-          id, membershipMilestones.ofMilestone(id).stream().map(row -> row.membershipId).toList());
+    for (CampaignMembershipMilestone row : membershipMilestones.ofMilestones(ids)) {
+      waitingMemberships
+          .computeIfAbsent(row.milestoneId, id -> new ArrayList<>())
+          .add(row.membershipId);
     }
     return found.stream()
         .map(
@@ -786,8 +926,8 @@ public class MilestoneService {
                 new View(
                     milestone,
                     conditions.getOrDefault(milestone.id, List.of()),
-                    waitingEntities.get(milestone.id),
-                    waitingMemberships.get(milestone.id)))
+                    List.copyOf(waitingEntities.getOrDefault(milestone.id, List.of())),
+                    List.copyOf(waitingMemberships.getOrDefault(milestone.id, List.of()))))
         .toList();
   }
 

@@ -8,6 +8,8 @@ import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.WorkTag;
+import eu.wohlben.qits.entities.milestone.Milestone;
+import eu.wohlben.qits.entities.milestone.MilestoneRef;
 import java.time.Instant;
 import java.util.List;
 
@@ -109,6 +111,12 @@ import java.util.List;
  *     at read time and filled only on a campaign's entity read ({@link #withHeldBy}); empty while
  *     the campaign is DONE or DROPPED or has no members. Null and left off the wire everywhere
  *     else, every other archetype included
+ * @param milestones the milestones the entity waits on (epic qits-615), in the order attached —
+ *     each its id, its name and since when it is met. Filled on the work reads alone ({@link
+ *     #withMilestones}), {@code []} when it waits on none; null and left off the wire on a write's
+ *     answer and an announcement
+ * @param unmetMilestones how many of {@link #milestones} are not met — the work item "needs"
+ *     something while it is above zero. Present exactly when {@link #milestones} is
  * @param excerpt the listing's plain-text lead of {@link #description} (qits-1821, {@link
  *     DescriptionExcerpt}) — <b>never on the wire here</b>: only {@link EntitySummary} answers it,
  *     so a detail, a write's answer and an announcement keep the shape they had. Filled only by
@@ -153,6 +161,8 @@ public record TransitionedEntity(
     List<WorkTag> tags,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<MilestoneRef> milestones,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones,
     @JsonIgnore String excerpt) {
 
   /** The tags never null: an entity without any answers {@code []}, in declaration order. */
@@ -200,6 +210,58 @@ public record TransitionedEntity(
         tags,
         members == null ? null : List.copyOf(members),
         relatedTo,
+        milestones,
+        unmetMilestones,
+        excerpt);
+  }
+
+  /**
+   * The same entity carrying what it waits on (epic qits-615): {@link #milestones} and their
+   * derived {@link #unmetMilestones}. Filled on the work reads only; every write's answer and every
+   * announcement leaves both off the wire.
+   */
+  public TransitionedEntity withMilestones(List<Milestone> needs) {
+    List<MilestoneRef> refs = MilestoneRef.of(needs);
+    return new TransitionedEntity(
+        id,
+        archetype,
+        projectId,
+        number,
+        qualifiedId,
+        title,
+        slug,
+        slugScope,
+        description,
+        status,
+        statusBefore,
+        ticketType,
+        impetus,
+        assignee,
+        createdBy,
+        supersededBy,
+        outcome,
+        repositoryId,
+        implementedAt,
+        implementingAt,
+        dependsOn,
+        parent,
+        position,
+        priority,
+        createdAt,
+        updatedAt,
+        changedBy,
+        blocked,
+        acceptanceCriteria,
+        blockSource,
+        blockReason,
+        blockedBy,
+        waitingOn,
+        inspiredBy,
+        tags,
+        heldBy,
+        relatedTo,
+        refs,
+        MilestoneRef.unmet(refs),
         excerpt);
   }
 
@@ -246,6 +308,8 @@ public record TransitionedEntity(
         tags,
         heldBy,
         relatedTo,
+        milestones,
+        unmetMilestones,
         excerpt);
   }
 
@@ -313,6 +377,8 @@ public record TransitionedEntity(
         WorkTag.ordered(row.tags),
         null,
         row.relatedEntityId,
+        null,
+        null,
         null);
   }
 
@@ -363,6 +429,8 @@ public record TransitionedEntity(
         read.tags(),
         null,
         read.relatedTo(),
+        null,
+        null,
         null);
   }
 
@@ -412,6 +480,8 @@ public record TransitionedEntity(
         WorkTag.ordered(row.tags),
         null,
         row.relatedEntityId,
+        null,
+        null,
         excerptOf(row));
   }
 

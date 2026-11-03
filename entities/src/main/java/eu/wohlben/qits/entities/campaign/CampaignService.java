@@ -26,7 +26,6 @@ import eu.wohlben.qits.entities.milestone.MilestoneGroup;
 import eu.wohlben.qits.entities.milestone.MilestoneRepository;
 import eu.wohlben.qits.entities.milestone.MilestoneService;
 import eu.wohlben.qits.entities.milestone.MilestonesChanged;
-import eu.wohlben.qits.entities.milestone.WorkMilestoneRepository;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -155,8 +154,6 @@ public class CampaignService {
   @Inject MilestoneRepository milestones;
 
   @Inject CampaignMembershipMilestoneRepository waits;
-
-  @Inject WorkMilestoneRepository workMilestones;
 
   @Inject CampaignStartRecordRepository starts;
 
@@ -839,25 +836,12 @@ public class CampaignService {
   }
 
   /**
-   * The condition is gone: the generated milestone is deleted with its groups and attachments,
-   * unless another membership waits on it too — then only this membership stops waiting.
+   * The condition is gone: the generated milestone stops being waited on by the membership and is
+   * detached from the member entity, then deleted unless something else still waits on it ({@link
+   * MilestoneService#dropGeneratedConditionsIn}).
    */
   private void dropCondition(EntityMembership edge, Milestone condition) {
-    boolean shared =
-        waits.ofMilestone(condition.id).stream()
-            .anyMatch(wait -> !wait.membershipId.equals(edge.id));
-    if (shared) {
-      waits.deleteById(new CampaignMembershipMilestone.Key(edge.id, condition.id));
-      workMilestones.deleteById(
-          new eu.wohlben.qits.entities.milestone.WorkMilestone.Key(edge.childId, condition.id));
-    } else {
-      flush();
-      em().createNativeQuery("delete from milestone where id = :id")
-          .setParameter("id", condition.id)
-          .executeUpdate();
-      em().detach(condition);
-    }
-    flush();
+    milestoneService.dropGeneratedConditionsIn(List.of(edge));
   }
 
   /** {@code edge}'s generated condition milestone, or null for a member with no condition. */

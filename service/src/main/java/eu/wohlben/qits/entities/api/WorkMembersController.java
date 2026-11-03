@@ -60,6 +60,8 @@ public class WorkMembersController {
 
   @Inject CampaignDoors doors;
 
+  @Inject MilestoneDoors milestoneDoors;
+
   @Inject SecurityIdentity identity;
 
   @Schema(name = "WorkMemberList", description = "A campaign's members, in campaign order.")
@@ -112,6 +114,14 @@ public class WorkMembersController {
       name = "WorkMemberCondition",
       description = "A member's whole condition: groups OR'd, criteria in a group AND'd.")
   public record WorkMemberCondition(List<WorkConditionGroup> groups) {}
+
+  /** What a membership waits on, whole — PUT semantics; an empty list waits on nothing. */
+  @Schema(
+      name = "WorkMemberMilestones",
+      description = "The milestones a membership waits on, by id, whole.")
+  public record WorkMemberMilestones(
+      @Schema(required = true, description = "Existing milestones of the campaign's project.")
+          List<String> milestoneIds) {}
 
   @Schema(name = "WorkCriterionApproval", description = "A person's yes on an APPROVAL criterion.")
   public record WorkCriterionApproval(@Schema(description = "Why, optionally.") String note) {}
@@ -256,6 +266,47 @@ public class WorkMembersController {
             campaignId(qualifiedId),
             membershipId,
             groupSpecs(request == null ? null : request.groups())));
+  }
+
+  @PUT
+  @Path("/{membershipId}/milestones")
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
+  @Operation(
+      operationId = "setWorkMemberMilestones",
+      summary = "Set the milestones a membership waits on",
+      description =
+          "PUT semantics: the membership is dispatched once every listed milestone is met, and an"
+              + " empty list waits on nothing. Each must be an existing milestone of the campaign's"
+              + " project; the member entity is attached to each, so it shows what it needs. A"
+              + " milestone left off stays attached to the member entity — except the membership's"
+              + " generated condition (the one PUT …/condition edits), which is detached from it"
+              + " and deleted once nothing waits on it. Refused once the member was claimed (a"
+              + " claim freezes it) and at a DROPPED campaign. A bound agent edits only in its own"
+              + " project.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The member with its milestones",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = WorkMemberAnswer.class)))
+  @APIResponse(responseCode = "403", description = "An agent outside its own project")
+  @APIResponse(
+      responseCode = "404",
+      description = "No campaign, no such membership on it, or no such milestone")
+  @APIResponse(
+      responseCode = "409",
+      description = "Claimed, a DROPPED campaign, or a milestone of another project")
+  public WorkMemberAnswer setMilestones(
+      @PathParam("qualifiedId") String qualifiedId,
+      @PathParam("membershipId") String membershipId,
+      WorkMemberMilestones request) {
+    return new WorkMemberAnswer(
+        milestoneDoors.setMemberMilestones(
+            identity,
+            campaignId(qualifiedId),
+            membershipId,
+            request == null || request.milestoneIds() == null ? List.of() : request.milestoneIds()));
   }
 
   @POST

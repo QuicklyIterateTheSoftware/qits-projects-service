@@ -27,6 +27,19 @@ public class CampaignMembershipMilestoneRepository
     return find("membershipId in ?1", IN_ORDER, membershipIds).list();
   }
 
+  /** The waits on every milestone in {@code milestoneIds}, in one query. */
+  public List<CampaignMembershipMilestone> ofMilestones(Collection<String> milestoneIds) {
+    if (milestoneIds == null || milestoneIds.isEmpty()) {
+      return List.of();
+    }
+    return find("milestoneId in ?1", Sort.by("createdAt").and("membershipId"), milestoneIds).list();
+  }
+
+  /** Whether any membership still waits on {@code milestoneId}. */
+  public boolean anyOf(String milestoneId) {
+    return count("milestoneId", milestoneId) > 0;
+  }
+
   /** The memberships that wait on {@code milestoneId}. */
   public List<CampaignMembershipMilestone> ofMilestone(String milestoneId) {
     return find("milestoneId", Sort.by("createdAt").and("membershipId"), milestoneId).list();

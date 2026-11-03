@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
+import eu.wohlben.qits.entities.milestone.MilestoneService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -134,6 +135,9 @@ public class WorkEntityService {
    * (qits-650) — and a reopened campaign itself.
    */
   @Inject CampaignStatusRecompute campaignStatus;
+
+  /** Drops the generated conditions of the campaign memberships a delete takes away (qits-615). */
+  @Inject MilestoneService milestoneService;
 
   /**
    * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
@@ -1736,6 +1740,11 @@ public class WorkEntityService {
           // Before any row goes: a query here auto-flushes, and a row already deleted would have
           // cascaded its campaign edges away and left their gaps behind.
           List<String> leftCampaigns = leaveCampaigns(id, subtree);
+          if (row.archetype == Archetype.CAMPAIGN) {
+            // Its own memberships go by the cascade; their generated conditions must not linger on
+            // the member entities as needs nobody waits on any more (epic qits-615).
+            milestoneService.dropGeneratedConditionsIn(memberships.campaignMembers(id));
+          }
           List<String> threaded = new ArrayList<>();
           threaded.add(id);
           threaded.addAll(subtree.rows().keySet());
@@ -1795,6 +1804,8 @@ public class WorkEntityService {
     // The campaign rows before their membership rows (qits-650): CampaignService's order, so this
     // delete and an add to the same campaign queue on the campaign row instead of deadlocking.
     campaignStatus.lock(edges.stream().map(edge -> edge.parentId).toList());
+    // Before the edges go: their waits cascade with them (epic qits-615).
+    milestoneService.dropGeneratedConditionsIn(edges);
     List<String> campaigns = new ArrayList<>();
     for (EntityMembership edge : edges) {
       memberships.delete(edge);
