@@ -374,10 +374,9 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>A ticket that was dropped starts nothing and says nothing.</b> DROPPED is not a phase that
-   * ended, it is the phases stopping, so there is no turn to deliver, no branch to ask about and
-   * nothing worth putting on the thread — a comment there would be a comment about having done
-   * nothing, on a thread somebody has just finished with.
+   * <b>A ticket that was dropped starts no phase.</b> DROPPED is not a phase that ended, it is the
+   * phases stopping, so there is no phase turn to deliver and no branch to ask about. The one thing
+   * it does say — the stop its agent is told (qits-370) — is the cases below.
    *
    * <p>It hands the bean the ticket rather than pressing the transition door, which every other
    * case here does, and the reason is the status column's check constraint: a persisted DROPPED row
@@ -398,13 +397,122 @@ public class PhaseAdvanceTest {
 
     advance.afterTransition(dropped, null, "dana");
 
-    assertEquals(
-        List.of(), turns.calls(), "a dropped ticket has no phase to start, so no turn is delivered");
+    // The one turn a drop may deliver is the stop (qits-370) — never a phase's — and this row's
+    // project does not exist, so there is no branch to deliver even that on.
+    assertTrue(
+        turns.calls().stream().allMatch(call -> call.text().contains("was moved to DROPPED")),
+        "a dropped ticket has no phase to start, so no phase turn is delivered: " + turns.calls());
     assertEquals(
         List.of(),
         workspaces.lookups(),
         "and it is answered before the workspace lookup, so no release is asked for either — the"
             + " one switch that says a status starts no phase is the whole of the decision");
+  }
+
+  /** {@code POST /work/{qualifiedId}/status} with the body as stated, as dana. */
+  private void move(String ticketId, Map<String, Object> body) {
+    asAdmin("dana")
+        .body(body)
+        .when()
+        .post("/projects/api/work/" + ticketId + "/status")
+        .then()
+        .statusCode(200);
+  }
+
+  /**
+   * <b>A reopen starts nothing</b> (qits-370). DROPPED → REPORTED is a person's decision, like a
+   * scheduling, and REPORTED would start refine: with the FLOW bit left standing from the press
+   * before the drop and an agent answering, the reopen still delivers no turn and says nothing.
+   * Refinement starts at the next press.
+   */
+  @Test
+  public void aReopenDeliversNoTurnEvenWithTheFlowBitStanding() {
+    String projectId = createProject("Advance Reopened");
+    String ticketId = createTicket(projectId, "Back from the dead");
+    move(ticketId, WorkRequests.statusBody("DROPPED"));
+    dispatchEntities.setDispatchContinues(ticketId, true, "dana");
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REPORTED");
+
+    assertEquals("REPORTED", statusOf(ticketId));
+    assertEquals(List.of(), turns.calls(), "a reopen hands no refine turn on");
+    assertEquals(List.of(), thread(ticketId), "and writes nothing on the thread");
+  }
+
+  /**
+   * <b>A drop tells the agent to stop</b> (qits-370): one turn naming the drop, who made it, its
+   * outcome and the item that answers for it, and one sentence on the thread saying the agent was
+   * told. A stop is not a phase, so it goes out whatever the FLOW bit says.
+   */
+  @Test
+  public void aDropTellsTheAgentToStopAndSaysSoOnce() {
+    String projectId = createProject("Advance Dropped");
+    String ticketId = createTicket(projectId, "Not worth doing");
+    String duplicateOf = createTicket(projectId, "The one we keep");
+    dispatchEntities.setDispatchContinues(ticketId, false, "dana");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    move(
+        ticketId,
+        Map.of("target", "DROPPED", "outcome", "DUPLICATE", "supersededBy", duplicateOf));
+
+    String named = addresses.qualifiedIdOf(entities.find(ticketId));
+    String keeper = addresses.qualifiedIdOf(entities.find(duplicateOf));
+    assertEquals(1, turns.calls().size(), "one stop turn: " + turns.calls());
+    RecordingWorkspaceAgentTurns.Spoken stop = turns.lastCall();
+    assertEquals(ticketId, stop.workId(), "the stop finds the agent by the work item");
+    assertTrue(
+        stop.text().contains("`" + named + "` was moved to DROPPED by dana"), stop.text());
+    assertTrue(stop.text().contains("outcome DUPLICATE"), stop.text());
+    assertTrue(stop.text().contains("superseded by `" + keeper + "`"), stop.text());
+    assertTrue(stop.text().contains("Stop work on it"), stop.text());
+    assertTrue(stop.text().contains("Leave the workspace standing"), stop.text());
+    assertEquals(
+        List.of(
+            "Told the agent working on `"
+                + branchOf(ticketId)
+                + "` that `"
+                + named
+                + "` was dropped, and to stop work on it."),
+        thread(ticketId));
+    assertEquals("DROPPED", statusOf(ticketId), "the stop moves nothing");
+  }
+
+  /** A drop with no agent on the item asks the far side and then says nothing (qits-370). */
+  @Test
+  public void aDropWithNoAgentSaysNothing() {
+    String projectId = createProject("Advance Dropped Alone");
+    String ticketId = createTicket(projectId, "Nobody was on this");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.NO_AGENT, "the work item has no agent");
+
+    move(ticketId, WorkRequests.statusBody("DROPPED"));
+
+    assertEquals(1, turns.calls().size(), "the far side is still asked");
+    assertTrue(turns.lastCall().text().contains("outcome WONT_DO"), turns.lastCall().text());
+    assertEquals(List.of(), thread(ticketId), "no agent, no comment");
+  }
+
+  /** A stop that could not be delivered is one honest sentence, claiming no agent (qits-370). */
+  @Test
+  public void aDropWhoseStopCouldNotBeDeliveredSaysSoOnce() {
+    String projectId = createProject("Advance Dropped Refused");
+    String ticketId = createTicket(projectId, "Nothing answers the drop");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.COULD_NOT, "qits-workspaces answered 503");
+
+    move(ticketId, WorkRequests.statusBody("DROPPED"));
+
+    String named = addresses.qualifiedIdOf(entities.find(ticketId));
+    assertEquals(
+        List.of(
+            "Could not tell an agent on `"
+                + branchOf(ticketId)
+                + "` that `"
+                + named
+                + "` was dropped: qits-workspaces answered 503. The ticket is DROPPED and nothing"
+                + " was told to stop."),
+        thread(ticketId));
   }
 
   /**

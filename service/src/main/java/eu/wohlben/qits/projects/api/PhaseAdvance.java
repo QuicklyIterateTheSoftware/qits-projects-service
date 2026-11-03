@@ -127,7 +127,10 @@ import org.jboss.logging.Logger;
  * delivered as for any phase. {@code statusBefore} is passed in for this, and for the two qits-887
  * arms beside it: a person's scheduling (REFINED → READY_FOR_DEV) pushes nothing, and a refine that
  * lands REFINED under FLOW says on the thread that the run now waits for a person — or, with a
- * pre-approval standing, is scheduled on it and carries on (qits-1075).
+ * pre-approval standing, is scheduled on it and carries on (qits-1075). A reopen (DROPPED →
+ * REPORTED) pushes nothing either (qits-370): reviving abandoned work is a person's decision like a
+ * scheduling, and a {@code dispatchContinues} left over from the press before the drop must not hand
+ * it a refine turn — refinement starts at the next press.
  *
  * <h2>Delivering a phase's turn starts the phase (qits-749)</h2>
  *
@@ -142,11 +145,16 @@ import org.jboss.logging.Logger;
  *
  * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}
  * therefore start no phase and deliver no turn, and that is where the one remaining human decision
- * lives: closing a ticket is a person's move, and so is abandoning one. DONE and DROPPED end the
- * flow at its first line and write nothing at all — a ticket whose work was decided against has
- * nothing to ask for and nobody to tell, and a comment saying so would be a comment about having
- * done nothing. VERIFIED does the one thing that is not a phase — it asks for the release of the
- * branch the work was done on — and the section below is the whole of it.
+ * lives: closing a ticket is a person's move, and so is abandoning one. DONE ends the flow at its
+ * first line and writes nothing at all. <b>DROPPED tells the agent to stop</b> (qits-370): an agent
+ * mid-phase would otherwise go on working on work decided against, so the item's agent is handed a
+ * short stop turn — who dropped it, its {@code outcome} and {@code supersededBy}, and to stop
+ * without transitioning it, commenting as if a phase ran or taking its workspace down. A stop is not
+ * a phase, so {@code dispatchContinues} is not read. Spoken, it writes one sentence on the thread
+ * and fires the hint; no agent, no port or no wrapper is the usual silence; a delivery that failed
+ * is a WARN and one sentence, as for a phase. It asks for nothing. VERIFIED does the one thing that
+ * is not a phase — it asks for the release of the branch the work was done on — and the section
+ * below is the whole of it.
  *
  * <h2>VERIFIED asks for a release, and nothing else does</h2>
  *
@@ -418,8 +426,9 @@ public class PhaseAdvance {
    *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param statusBefore the status it moved from, read only to tell the platform's "phase started"
    *     move (READY_FOR_DEV → IMPLEMENTING, IMPLEMENTED → VERIFYING — it pushes nothing) and a
-   *     person's scheduling (REFINED → READY_FOR_DEV — it pushes nothing either, qits-887) from any
-   *     other arrival, and a refine that just landed REFINED; may be null
+   *     person's scheduling (REFINED → READY_FOR_DEV — it pushes nothing either, qits-887) and a
+   *     reopen (DROPPED → REPORTED, nor that, qits-370) from any other arrival, and a refine that
+   *     just landed REFINED; may be null
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(WorkEntity entity, String statusBefore, String changedBy) {
@@ -485,10 +494,26 @@ public class PhaseAdvance {
           entity.archetype, entity.id, statusBefore, entity.status);
       return;
     }
+    if (isReopen(statusOf(statusBefore), statusOf(entity.status))) {
+      // DROPPED → REPORTED is a person's decision to revive abandoned work (qits-370), like the
+      // scheduling above and not a phase hand-off. REPORTED starts refine, so without this arm an
+      // entity whose last press was FLOW — the bit is stale from that press — would be handed a
+      // refine turn the moment somebody reopens it. Refinement starts at the next press.
+      LOG.debugf(
+          "%s %s was reopened (%s → %s); a reopen starts nothing, so no turn is delivered",
+          entity.archetype, entity.id, statusBefore, entity.status);
+      return;
+    }
     Optional<Phase> phase = PhasePrompts.phaseOf(entity);
     if (phase.isEmpty()) {
-      // REFINED (it waits for a person to schedule it, qits-887), DONE and DROPPED, now that
-      // VERIFIED is answered above. A flow that has just refined is scheduled on the pre-approval
+      if (EntityStatus.DROPPED.name().equals(entity.status)) {
+        // A drop is not a phase, so dispatchContinues is not read: an agent mid-phase is told to
+        // stop whichever press started it (qits-370). See the class javadoc.
+        tellTheAgentToStop(entity, changedBy);
+        return;
+      }
+      // REFINED (it waits for a person to schedule it, qits-887) and DONE, now that VERIFIED and
+      // DROPPED are answered above. A flow that has just refined is scheduled on the pre-approval
       // its person's press left (qits-1075), or the delivery desk's under start_refined
       // (qits-1714), and carries straight on into implement; without one it
       // stops here, and says so on the thread when an agent stands on the branch, so the run does
@@ -537,6 +562,14 @@ public class PhaseAdvance {
    * hand-off this class makes, so the two arms that deliver a turn cannot disagree about where.
    */
   private Optional<EntityWorkspaces.Target> addressOf(WorkEntity entity, Phase phase) {
+    return addressOf(entity, "start the " + phase.word() + " phase on");
+  }
+
+  /**
+   * {@link #addressOf(WorkEntity, Phase)} for a turn that is not a phase — the stop a drop delivers
+   * (qits-370); {@code purpose} completes the WARN's "there is no branch to …".
+   */
+  private Optional<EntityWorkspaces.Target> addressOf(WorkEntity entity, String purpose) {
     if (turns.isUnsatisfied()) {
       return Optional.empty();
     }
@@ -544,10 +577,117 @@ public class PhaseAdvance {
     if (target.isEmpty()) {
       LOG.warnf(
           "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
-              + " branch to start the %s phase on",
-          entity.id, entity.status, entity.projectId, phase.word());
+              + " branch to %s",
+          entity.id, entity.status, entity.projectId, purpose);
     }
     return target;
+  }
+
+  /**
+   * <b>The stop a drop delivers</b> (qits-370): the work item's agent is told that the item was
+   * dropped, by whom and why, and to stop — not to transition it, not to comment as if a phase ran,
+   * and to leave its workspace standing. Spoken, one sentence on the thread and the hint; NO_AGENT,
+   * no turn port or no wrapper, nothing at all; a delivery that fails or could not be made, a WARN
+   * and one sentence, as {@link #deliver} does. Never throws.
+   */
+  private void tellTheAgentToStop(WorkEntity entity, String changedBy) {
+    try {
+      Optional<EntityWorkspaces.Target> target = addressOf(entity, "tell its agent to stop on");
+      if (target.isEmpty()) {
+        return;
+      }
+      String branch = target.get().branch();
+      String qualifiedId = workspaces.qualifiedIdOf(entity);
+      String named = qualifiedId == null ? entity.id : qualifiedId;
+      String text = stopTurn(named, changedBy, entity, supersededByOf(entity));
+      WorkspaceAgentTurns.Turn turn;
+      try {
+        turn = turns.get().deliver(entity.id, text);
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            e,
+            "Could not tell the agent of %s %s on %s that it was dropped: the delivery port threw",
+            entity.archetype,
+            entity.id,
+            branch);
+        turn =
+            new WorkspaceAgentTurns.Turn(
+                WorkspaceAgentTurns.Outcome.COULD_NOT, "the delivery failed unexpectedly");
+      }
+      if (turn.outcome() == WorkspaceAgentTurns.Outcome.NO_AGENT) {
+        LOG.debugf(
+            "%s %s was dropped and has no agent, so nobody is told to stop",
+            entity.archetype, entity.id);
+        return;
+      }
+      if (turn.spoken()) {
+        LOG.infof(
+            "Told the agent of %s %s on %s that it was dropped (%s)",
+            entity.archetype, entity.id, branch, turn.outcome());
+        say(
+            entity,
+            "Told the agent working on `"
+                + branch
+                + "` that `"
+                + named
+                + "` was dropped, and to stop work on it.",
+            changedBy);
+      } else {
+        LOG.warnf(
+            "Could not tell the agent of %s %s on %s that it was dropped: %s",
+            entity.archetype, entity.id, branch, turn.detail());
+        say(
+            entity,
+            "Could not tell an agent on `"
+                + branch
+                + "` that `"
+                + named
+                + "` was dropped"
+                + (turn.detail().isBlank() ? "" : ": " + turn.detail())
+                + ". The "
+                + noun(entity)
+                + " is DROPPED and nothing was told to stop.",
+            changedBy);
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "%s %s was dropped, but its agent could not be told to stop",
+          entity.archetype,
+          entity.id);
+    }
+  }
+
+  /**
+   * The stop turn's text (qits-370): what was dropped, by whom, with its outcome and the item that
+   * answers for it, and what the agent is to do — and not do — now.
+   */
+  static String stopTurn(String named, String changedBy, WorkEntity entity, String supersededBy) {
+    return "`"
+        + named
+        + "` was moved to DROPPED by "
+        + (changedBy == null || changedBy.isBlank() ? "an unnamed caller" : changedBy)
+        + (entity.outcome == null ? ", with no outcome recorded" : ", outcome " + entity.outcome)
+        + (supersededBy == null ? "" : ", superseded by `" + supersededBy + "`")
+        + ". Stop work on it now. Do not transition it, and do not comment on it as if a phase"
+        + " ran. Leave the workspace standing.";
+  }
+
+  /**
+   * The item a dropped row names as answering for it, by its qualified id where it can be had, else
+   * its stored id; null when it names none.
+   */
+  private String supersededByOf(WorkEntity entity) {
+    String id = entity.supersededByEntityId;
+    if (id == null) {
+      return null;
+    }
+    try {
+      String qualifiedId = workspaces.qualifiedIdOf(lifecycle.find(id));
+      return qualifiedId == null ? id : qualifiedId;
+    } catch (RuntimeException e) {
+      return id;
+    }
   }
 
   /**
@@ -772,6 +912,11 @@ public class PhaseAdvance {
   /** Whether {@code from → to} is a person scheduling the entity: REFINED → READY_FOR_DEV. */
   private static boolean isScheduling(EntityStatus from, EntityStatus to) {
     return from == EntityStatus.REFINED && to == EntityStatus.READY_FOR_DEV;
+  }
+
+  /** Whether {@code from → to} is a person reopening dropped work: DROPPED → REPORTED (qits-370). */
+  private static boolean isReopen(EntityStatus from, EntityStatus to) {
+    return from == EntityStatus.DROPPED && to == EntityStatus.REPORTED;
   }
 
   /**
