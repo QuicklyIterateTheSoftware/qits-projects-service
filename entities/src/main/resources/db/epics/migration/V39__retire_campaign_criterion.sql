@@ -1,0 +1,23 @@
+-- Retiring campaign_criterion and campaign_criterion_group (qits-1301, epic qits-615): V38 copied
+-- every campaign membership's condition into milestone/milestone_group/milestone_criterion and left
+-- these two tables standing, read and written by nobody. That was deliberate at the time ("a later
+-- migration (qits-1301) drops them") and this is that migration. CampaignService's own javadoc
+-- already says no campaign_criterion* table is read or written any more; dropping the tables is
+-- catching the schema up to that fact, not a behaviour change.
+--
+-- ORDER: campaign_criterion first, then campaign_criterion_group — the reverse of V19's creation
+-- order, and the right one: campaign_criterion.group_id references campaign_criterion_group, so the
+-- child goes before the parent. Each drop takes its own indexes and constraints with it; there is
+-- nothing left to drop by hand. Plain "drop table", not "drop table if exists" — either table being
+-- absent here would mean this lineage already diverged from what every environment has applied, and
+-- that is a condition to fail loudly on rather than paper over.
+--
+-- WHAT STAYS. campaign_start and its first_started_at column are NOT part of this cleanup: a
+-- campaign's start/pause record is still read (CampaignStartRecord, CampaignDtos, CampaignProgress),
+-- and nothing about V38's milestone move touched it — a campaign's run state and its members'
+-- condition are two different facts. The old campaign_membership condition doors
+-- (PUT .../members/{id}/condition, POST .../criteria/{id}/approve) are adapters over the milestone
+-- tables only now; they still exist because the two cannot be told apart from outside, but neither
+-- reads nor writes campaign_criterion* either.
+drop table campaign_criterion;
+drop table campaign_criterion_group;

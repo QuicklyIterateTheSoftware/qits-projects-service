@@ -661,18 +661,101 @@ public class RepositoryService {
   }
 
   /**
-   * The first line of a git failure, capped to the column. git's own message is many lines of
-   * progress and advice; the first line is the sentence, and the rest is what the log keeps.
+   * The command line plus git's own diagnosis, capped to the column (qits-1847).
+   *
+   * <p>A {@link GitExecutor} failure is {@code Command failed [n]: <argv>} on its first line and
+   * git's output after it, so the first line is the command this side ran, never git's words.
+   * Keeping only that line left every failed backup reading the same and hid the one fact a reader
+   * needs: {@code fatal: could not read Username} (no credential stored at all) is a different
+   * remedy from {@code fatal: Authentication failed} (a credential tried and refused).
+   *
+   * <p>So the detail is the first line plus git's decisive line: the FIRST {@code fatal:} line (a
+   * second one is git's generic "Could not read from remote repository"), else the last {@code
+   * error:} line, else the last non-blank line. When the two do not fit, the command line is cut
+   * short, since git's line is what the column is for; a git line alone at or past the cap is cut
+   * and stands alone.
    */
-  private static String shortDetail(String detail) {
+  static String shortDetail(String detail) {
     if (detail == null || detail.isBlank()) {
       return null;
     }
-    String first = detail.strip().lines().findFirst().orElse("").strip();
-    if (first.isEmpty()) {
-      first = detail.strip();
+    List<String> lines = detail.strip().lines().toList();
+    int firstIndex = -1;
+    for (int i = 0; i < lines.size(); i++) {
+      if (!lines.get(i).isBlank()) {
+        firstIndex = i;
+        break;
+      }
     }
-    return first.length() > MAX_BACKUP_DETAIL ? first.substring(0, MAX_BACKUP_DETAIL) : first;
+    String first = firstIndex >= 0 ? lines.get(firstIndex).strip() : detail.strip();
+    List<String> rest =
+        firstIndex >= 0 && firstIndex + 1 < lines.size()
+            ? lines.subList(firstIndex + 1, lines.size())
+            : List.<String>of();
+    String gitLine = decisiveGitLine(rest);
+    if (gitLine != null && gitLine.equals(first)) {
+      gitLine = null;
+    }
+
+    if (gitLine == null) {
+      return first.length() > MAX_BACKUP_DETAIL ? first.substring(0, MAX_BACKUP_DETAIL) : first;
+    }
+    String combined = first + "\n" + gitLine;
+    if (combined.length() <= MAX_BACKUP_DETAIL) {
+      return combined;
+    }
+    if (gitLine.length() >= MAX_BACKUP_DETAIL) {
+      return gitLine.substring(0, MAX_BACKUP_DETAIL);
+    }
+    int firstBudget = MAX_BACKUP_DETAIL - gitLine.length() - 1; // the joining newline
+    return ellipsize(first, firstBudget) + "\n" + gitLine;
+  }
+
+  /**
+   * The line of {@code rest} (everything after {@link #shortDetail}'s first line) that actually
+   * tells a reader what went wrong — see {@link #shortDetail}'s javadoc for the order.
+   */
+  private static String decisiveGitLine(List<String> rest) {
+    String fatal = lineStartingWith(rest, "fatal:", true);
+    if (fatal != null) {
+      return fatal;
+    }
+    String error = lineStartingWith(rest, "error:", false);
+    if (error != null) {
+      return error;
+    }
+    String lastNonBlank = null;
+    for (String line : rest) {
+      if (!line.isBlank()) {
+        lastNonBlank = line.strip();
+      }
+    }
+    return lastNonBlank;
+  }
+
+  private static String lineStartingWith(List<String> lines, String prefix, boolean first) {
+    String found = null;
+    for (String line : lines) {
+      String stripped = line.strip();
+      if (stripped.startsWith(prefix)) {
+        found = stripped;
+        if (first) {
+          break;
+        }
+      }
+    }
+    return found;
+  }
+
+  /** {@code s} as-is when it already fits {@code max}, else cut to {@code max} ending in "…". */
+  private static String ellipsize(String s, int max) {
+    if (s.length() <= max) {
+      return s;
+    }
+    if (max <= 0) {
+      return "";
+    }
+    return max == 1 ? "…" : s.substring(0, max - 1) + "…";
   }
 
   /**
