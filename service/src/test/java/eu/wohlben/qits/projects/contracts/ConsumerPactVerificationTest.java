@@ -118,113 +118,12 @@ class ConsumerPactVerificationTest {
     }
   }
 
-  /** Why a CLI pact pinning the opt-in guard's shape cannot verify since qits-706. */
-  private static final String COMMIT_SUBJECTS_GUARD_GONE =
-      "pins guardEnabled and the complying/exempt counts; since qits-706 every repository is"
-          + " checked against the commit-message variants and the counts are one per variant."
-          + " The CLI's next pact reads only branch, counts.total, counts.nonComplying and"
-          + " nonComplying[]";
-
   /**
-   * qits-landing-app's 2026.1030.201508 list-ideas row sends the golden masters' {@code
-   * {projectId}} placeholder as a literal query value, with no provider-state generator: the
-   * consumer helper generated the path but not the query (qits-1767). Its 2026.1031.30844 pact is
-   * fixed and verifies for real. The gate also verifies every deployed and rollback consumer
-   * version ({@link ClasspathPactLoader}), so this entry stays until 2026.1030.201508 is neither
-   * deployed nor a rollback target of qits-landing-app; only then may it go.
-   *
-   * <p>qits-landing-app's 2026.1031.30844 (pinned) and 2026.1031.174516 (deployed and the
-   * rollback target) show-commit-changes rows pin {@code "parent": null} exactly, recorded when the
-   * endpoint answered null for an omitted parent. Since qits-1793 it answers the first parent it
-   * resolved — the DTO's documented contract, and the golden masters record it — and {@code null}
-   * only for a root commit, which the state's commit is not. Each entry stays until its version is
-   * neither pinned, deployed nor a rollback target of qits-landing-app, i.e. until the consumer
-   * re-records against the new golden masters and that release replaces both.
-   *
-   * <p>qits-platform-access-cli's 2026.1102.235059 (pinned and deployed) {@code qits repositories
-   * create} row creates a repository with no archetype and pins the answer's {@code archetype} as a
-   * string, recorded when the kind was read off the name's role suffix. Since qits-1834 the name
-   * decides nothing and an unstated kind is stored as {@code null}; the golden master now states
-   * {@code SERVICE} in the request, and the CLI's {@code --archetype} forwards it. The entry stays
-   * until 2026.1102.235059 is neither pinned, deployed nor a rollback target of
-   * qits-platform-access-cli.
-   *
-   * <p>qits-platform-access-monorepo's 2026.1103.220719 {@code qits milestones approve} row sends
-   * no {@code Authorization}, so it reaches the door as the plain {@code %test} dev user and {@code
-   * PersonCheck} refuses it 403: the golden master it was written against had been recorded with a
-   * person's session cookie, the browser's proof, which a CLI command does not carry. The golden
-   * master now records the call with the state's {@code authorization}, a person's qits CLI token,
-   * as {@code approveReleaseRequest}'s is (qits-615). The entry stays until 2026.1103.220719 is
-   * neither pinned, deployed nor a rollback target of qits-platform-access-monorepo.
-   *
-   * <p>qits-platform-access-monorepo's 2026.1103.220719 (pinned, and the rollback target) and
-   * 2026.1104.91701 (deployed) {@code qits repositories commit-subjects} rows pin {@code
-   * guardEnabled} and {@code counts.complying}, {@code exempt}, {@code exemptMerge} and {@code
-   * exemptMachine}: the shape of the opt-in guard with its machine-author exemption. Since qits-706
-   * qits-githost refuses a commit fitting no commit-message variant on every repository, so there
-   * is no opt-in to report, and the counts are one per variant ({@code merge}, {@code bump}, {@code
-   * release}, {@code platform}, {@code subject}) beside {@code total} and {@code nonComplying}. The
-   * CLI's next pact reads only {@code branch}, {@code counts.total}, {@code counts.nonComplying}
-   * and {@code nonComplying[]}. Each entry stays until its version is neither pinned, deployed nor
-   * a rollback target of qits-platform-access-monorepo — until no such CLI pact consumes {@code
-   * guardEnabled}; a CLI release between now and then that still does needs an entry of its own.
+   * The pinned, deployed or rollback consumer pact interactions this provider cannot honour. Empty
+   * when every consumer version the gate verifies holds; an entry stays only while its version is
+   * pinned, deployed or a rollback target of its consumer.
    */
-  static final List<KnownWrong> KNOWN_WRONG =
-      List.of(
-          new KnownWrong(
-              "qits-platform-access-cli",
-              "2026.1102.114317",
-              "qits work status: listWorkArchetypes",
-              "pins the registry at five archetypes; qits-1819 adds ISSUE. Its next golden-master"
-                  + " bump records the sixth"),
-          new KnownWrong(
-              "qits-projects-frontend",
-              "2026.1102.105803",
-              "show-work-item-actions: listWorkArchetypes",
-              "pins the registry at fourteen properties; qits-1819 adds RELATED_TO. Its next"
-                  + " golden-master bump records the fifteenth"),
-          new KnownWrong(
-              "qits-landing-app",
-              "2026.1030.201508",
-              "list-ideas: listIdeas",
-              "the query sends a literal {projectId} with no provider-state generator; fixed by"
-                  + " qits-1767"),
-          new KnownWrong(
-              "qits-landing-app",
-              "2026.1031.30844",
-              "show-commit-changes: listCommitChanges",
-              "pins \"parent\": null exactly; since qits-1793 an omitted parent answers the"
-                  + " resolved first parent"),
-          new KnownWrong(
-              "qits-landing-app",
-              "2026.1031.174516",
-              "show-commit-changes: listCommitChanges",
-              "pins \"parent\": null exactly; since qits-1793 an omitted parent answers the"
-                  + " resolved first parent"),
-          new KnownWrong(
-              "qits-platform-access-cli",
-              "2026.1102.235059",
-              "qits repositories create: createProjectRepository",
-              "creates with no archetype and pins the answer's archetype as a string; since"
-                  + " qits-1834 an unstated kind is stored as null. Its next golden-master bump"
-                  + " sends the recorded archetype"),
-          new KnownWrong(
-              "qits-platform-access-monorepo",
-              "2026.1103.220719",
-              "qits milestones approve: approveMilestoneCriterion",
-              "sends no Authorization, so a person's door refuses the dev user 403; qits-615"
-                  + " records the approve with a person's qits CLI token, and the CLI's next pact"
-                  + " sends the person bearer"),
-          new KnownWrong(
-              "qits-platform-access-monorepo",
-              "2026.1103.220719",
-              "qits repositories commit-subjects: measureCommitSubjects",
-              COMMIT_SUBJECTS_GUARD_GONE),
-          new KnownWrong(
-              "qits-platform-access-monorepo",
-              "2026.1104.91701",
-              "qits repositories commit-subjects: measureCommitSubjects",
-              COMMIT_SUBJECTS_GUARD_GONE));
+  static final List<KnownWrong> KNOWN_WRONG = List.of();
 
   @Inject ProviderStates states;
 
