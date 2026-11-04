@@ -254,17 +254,18 @@ public final class StoryPlatform {
   /**
    * One {@code POST} as an admin session, through a client no tap is attached to.
    *
-   * <p>The identity is the same pair the edge asserts ({@link StoryIdentities}), because the fixture
-   * has to go through the mechanism like everybody else — a launched artifact has no dev user to
-   * fall back on, so a fixture that sent no headers would be refused before it created anything.
+   * <p>The identity is a signed-in admin's bearer from this run's idp ({@link
+   * StoryIdentities#personToken}), because the fixture has to go through the mechanism like
+   * everybody else — a launched artifact has no dev user to fall back on, so a fixture that sent no
+   * credential would be refused before it created anything.
    */
   private static JsonNode post(String path, String body) {
     HttpRequest request =
         HttpRequest.newBuilder(URI.create("http://localhost:" + RestAssured.port + path))
             .timeout(REQUEST_TIMEOUT)
             .header("Content-Type", "application/json")
-            .header(StoryIdentities.USER_HEADER, "the-userflow-fixture")
-            .header(StoryIdentities.ROLES_HEADER, StoryIdentities.HUMAN_ROLE)
+            .header(
+                "Authorization", "Bearer " + StoryIdentities.personToken("the-userflow-fixture"))
             .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
             .build();
     HttpResponse<String> response;
