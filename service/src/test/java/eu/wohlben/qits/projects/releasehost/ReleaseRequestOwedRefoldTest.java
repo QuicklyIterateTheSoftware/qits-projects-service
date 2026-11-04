@@ -20,12 +20,14 @@ import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
+import io.quarkus.arc.ClientProxy;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -127,7 +131,10 @@ public class ReleaseRequestOwedRefoldTest {
 
   /** Open requests must not outlive this class: {@code sweep()} walks every open row. */
   @AfterEach
-  void dropTheFixturesRows() {
+  void dropTheFixturesRows() throws Exception {
+    // The suite's properties give a missing source no grace; the qits-1852 test that sets one on the
+    // bean must not leave it to the next class.
+    grace(Duration.ZERO);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -366,6 +373,133 @@ public class ReleaseRequestOwedRefoldTest {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // A re-fold that could not be made holds the request (qits-1852)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * 9. A branch joined while the git host answered 500 owes its re-fold (qits-1850), and a green
+   * verdict at the old fold — which lacks that branch — no longer releases it: the request stays
+   * PENDING saying why. The sweep's knock past the backoff folds the branch in and re-arms it, and
+   * the green verdict at THAT fold releases it, at the fold that carries the branch.
+   */
+  @Test
+  public void aGreenVerdictAtAFoldTheGitHostCouldNotRemakeDoesNotReleaseIt() {
+    String id = inQa(repoId);
+    String merged = mergedShaOf(repoId, id);
+
+    merger.answer(BackingBranchMerger.Outcome.unreachable("qits-githost answered 500"));
+    join(repoId, id, "ticket/qits-1852");
+    assertEquals(merged, mergedShaOf(repoId, id), "the fold could not be made");
+    assertNotNull(row(id).refoldOwedAt, "so it is owed");
+
+    verdict(repoId, "BuildSuccessful", merged, "");
+
+    assertEquals("PENDING", stateOf(repoId, id), "green at a fold that lacks a named source");
+    assertEquals(List.of(), executor.calls(), "nothing is released");
+    assertTrue(
+        detailOf(repoId, id).startsWith("The sources could not be folded"), detailOf(repoId, id));
+    assertNotNull(row(id).refoldOwedAt, "and the re-fold is still owed");
+
+    merger.answerFreshMerges();
+    backdateOwedRefold(id);
+    releaseRequests.sweep();
+
+    String refolded = mergedShaOf(repoId, id);
+    assertNotEquals(merged, refolded, "the knock folds the joined branch in");
+    assertTrue(
+        merger.lastFold().sources().stream().anyMatch(ref -> ref.endsWith("ticket/qits-1852")),
+        merger.lastFold().sources().toString());
+    assertNull(row(id).refoldOwedAt);
+    assertEquals("PENDING", stateOf(repoId, id), "re-armed onto the new fold");
+
+    verdict(repoId, "BuildSuccessful", refolded, "");
+
+    awaitState(repoId, id, "RELEASED");
+    assertEquals(1, executor.calls().size());
+    assertEquals(refolded, executor.calls().get(0).expectedSha(), "the fold with the branch ships");
+  }
+
+  /**
+   * 10. A branch joined before its push lands owes its re-fold (qits-1751), and a green verdict at
+   * the old fold holds the same way, keeping the sentence that says what it waits for.
+   */
+  @Test
+  public void aGreenVerdictAtAFoldAwaitingAFreshSourcesPushDoesNotReleaseIt() throws Exception {
+    String id = inQa(repoId);
+    String merged = mergedShaOf(repoId, id);
+    grace(Duration.ofMinutes(2));
+
+    merger.answer(BackingBranchMerger.Outcome.missingSource("refs/heads/ticket/qits-1852"));
+    join(repoId, id, "ticket/qits-1852");
+    assertEquals(merged, mergedShaOf(repoId, id));
+    assertNotNull(row(id).refoldOwedAt, "the push is awaited");
+
+    verdict(repoId, "BuildSuccessful", merged, "");
+
+    assertEquals("PENDING", stateOf(repoId, id), "green at a fold that lacks the fresh source");
+    assertEquals(List.of(), executor.calls(), "nothing is released");
+    assertEquals(
+        "The sources could not be folded yet: refs/heads/ticket/qits-1852 is not on the git host;"
+            + " waiting for its push",
+        detailOf(repoId, id));
+  }
+
+  /**
+   * 11. The same defect one state later: a READY request whose re-fold the git host cannot make goes
+   * back to PENDING owing it, and the worker never ships the old fold.
+   *
+   * <p>How "READY and not executed yet" is held deterministically: the release worker is ONE thread
+   * ({@code release-request-worker}), so a release of another request parked inside the executor
+   * ({@link RecordingReleaseExecutor#holdNextRelease}) keeps this request's execution queued behind
+   * it. Holding this request's own release would not do — the executor has its snapshot by then and
+   * the tag is cut whatever the row does (qits-1615). The parked one is the reviewed repository's,
+   * so the two never share a repository's in-flight hold. Once it is let go, a no-op submitted to
+   * the worker returns only after the queued execution has run.
+   */
+  @Test
+  public void aReadyRequestWhoseRefoldFailsGoesBackToPendingAndIsNotReleased() throws Exception {
+    String parked = inQa(reviewedRepoId);
+    String parkedSha = mergedShaOf(reviewedRepoId, parked);
+    verdict(reviewedRepoId, "BuildSuccessful", parkedSha, "");
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    admin()
+        .body("{\"mergedSha\":\"" + parkedSha + "\",\"note\":\"park the worker\"}")
+        .post(base(reviewedRepoId) + "/" + parked + "/approve")
+        .then()
+        .statusCode(200);
+    assertTrue(held.awaitEntered(), "the worker is parked in the other request's release");
+
+    String id = inQa(repoId);
+    String merged = mergedShaOf(repoId, id);
+    verdict(repoId, "BuildSuccessful", merged, "");
+    assertEquals("READY", stateOf(repoId, id), "READY, its release queued behind the parked one");
+
+    merger.answer(BackingBranchMerger.Outcome.unreachable("qits-githost answered 500"));
+    join(repoId, id, "ticket/qits-1852");
+
+    assertEquals("PENDING", stateOf(repoId, id), "back in front of its gates");
+    assertEquals(merged, mergedShaOf(repoId, id));
+    assertNotNull(row(id).refoldOwedAt, "owing the re-fold");
+    assertTrue(row(id).refoldOwedReason.contains("qits-githost answered 500"));
+
+    held.release();
+    awaitState(reviewedRepoId, parked, "RELEASED");
+    drainWorker();
+
+    assertEquals(
+        List.of(parked),
+        executor.calls().stream().map(RecordingReleaseExecutor.Released::requestId).toList(),
+        "the old fold was never released");
+    assertEquals("PENDING", stateOf(repoId, id));
+
+    // And it does not go READY again at the old fold either.
+    releaseRequests.sweep();
+    assertEquals("PENDING", stateOf(repoId, id));
+    drainWorker();
+    assertEquals(1, executor.calls().size());
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Driving it
   // ---------------------------------------------------------------------------------------------
 
@@ -395,6 +529,44 @@ public class ReleaseRequestOwedRefoldTest {
     assertEquals(merged, row(id).qaAnnouncedSha, "QA is asked for at the fold");
     cancellations.reset();
     return id;
+  }
+
+  private void join(String inRepo, String id, String branch) {
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"" + branch + "\"}")
+        .post(base(inRepo) + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+  }
+
+  private String detailOf(String inRepo, String id) {
+    return given().get(base(inRepo) + "/" + id).then().extract().path("request.detail");
+  }
+
+  /** Past {@code unreachableRefoldBackoff}, so the sweep's next pass knocks (qits-1850). */
+  private static void backdateOwedRefold(String id) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findById(id).refoldOwedAt =
+                    Instant.now().minus(Duration.ofHours(1)));
+  }
+
+  /** The missing-source grace on the bean, as {@code ReleaseRequestFoldFailureTest} sets it. */
+  private void grace(Duration grace) throws Exception {
+    Field field = ReleaseRequests.class.getDeclaredField("missingSourceGrace");
+    field.setAccessible(true);
+    field.set(ClientProxy.unwrap(releaseRequests), grace);
+  }
+
+  /** Returns once every execution queued on the single release worker before it has run. */
+  private void drainWorker() throws Exception {
+    Field field = ReleaseRequests.class.getDeclaredField("worker");
+    field.setAccessible(true);
+    ((ExecutorService) field.get(ClientProxy.unwrap(releaseRequests)))
+        .submit(() -> {})
+        .get(30, TimeUnit.SECONDS);
   }
 
   private static String automationBranchOf(String id) {
