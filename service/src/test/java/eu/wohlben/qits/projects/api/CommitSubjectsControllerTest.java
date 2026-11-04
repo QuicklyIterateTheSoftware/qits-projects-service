@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.contracts.ContractBearers;
@@ -27,10 +28,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>{@code GET /repositories/{repoId}/commit-subjects}</b> (qits-302) against a real repository: a
- * merge, a machine bump with a free-text subject, a complying {@code feat(qits-1): x} and a
- * person's free-text commit, each landing in its own class — and the guard's opt-in file read off
- * the branch, absent and then present.
+ * <b>{@code GET /repositories/{repoId}/commit-subjects}</b> (qits-302, qits-706) against a real
+ * repository: a merge, a maintenance bump, a release stamp, a platform chore, a complying {@code
+ * feat(qits-1): x} and a person's free-text commit, each counted under its own variant — or under
+ * none — whoever authored it.
  *
  * <p>Driven through real git the way {@code MergeRangeCommitsTest} is: the fixture bare is cloned
  * as a repository, the history is made in a working clone and pushed to the git host, and the
@@ -50,11 +51,12 @@ public class CommitSubjectsControllerTest {
   @Inject GitExecutor git;
 
   @Test
-  public void eachCommitLandsInOneClassAndTheNonComplyingAreListed() throws Exception {
+  public void eachCommitLandsUnderOneVariantAndTheNonComplyingAreListed() throws Exception {
     Repository repo = cloned("Commit Subjects Project");
     Path work = checkout(repo);
     String main = repo.mainBranch;
-    // What the fixture already holds: free-text subjects by a person, so every one non-complying.
+    // What the fixture already holds: free-text subjects from before the rule, so every one fits
+    // no variant — the expected reading of an old history.
     int fixture =
         Integer.parseInt(git.exec(work.toFile(), "git", "rev-list", "--count", "HEAD").trim());
 
@@ -66,6 +68,13 @@ public class CommitSubjectsControllerTest {
     git.exec(work.toFile(), "git", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side");
     commit(work, "bump.txt", "bump(dependencies): 2 dependencies", "qits maintenance",
         "maintenance@qits.local");
+    commit(work, "release.txt", "release(2026.1104.1): qits-1 the export", "qits-projects",
+        "qits-projects@qits.internal");
+    commit(work, "chore.txt", "chore(platform): add the export to the project", "qits-projects",
+        "qits-projects@qits.internal");
+    // Only the first line counts: git's %s would join these two lines into a complying subject.
+    commit(work, "split.txt", "feat(qits-3):\nthe message on the second line", "A Person",
+        "person@example.com");
     commit(work, "x.txt", "feat(qits-1): x", "A Person", "person@example.com");
     git.exec(work.toFile(), "git", "push", "-q", "origin", main, "side");
     goCold(repo);
@@ -75,48 +84,42 @@ public class CommitSubjectsControllerTest {
     assertEquals(repo.id, answer.getString("repositoryId"));
     assertEquals(main, answer.getString("branch"), "no branch asked for: the main branch");
     assertEquals(100, answer.getInt("limit"));
-    assertFalse(answer.getBoolean("guardEnabled"), "no opt-in file on the branch");
-    assertEquals(fixture + 5, answer.getInt("counts.total"));
-    assertEquals(2, answer.getInt("counts.complying"), "feat(qits-1) and feat(qits-2)");
-    assertEquals(2, answer.getInt("counts.exempt"));
-    assertEquals(1, answer.getInt("counts.exemptMerge"), "the merge");
-    assertEquals(1, answer.getInt("counts.exemptMachine"), "maintenance's free-text bump");
-    assertEquals(fixture + 1, answer.getInt("counts.nonComplying"));
+    assertEquals(fixture + 8, answer.getInt("counts.total"));
+    assertEquals(1, answer.getInt("counts.merge"), "the merge");
+    assertEquals(1, answer.getInt("counts.bump"), "maintenance's bump");
+    assertEquals(1, answer.getInt("counts.release"), "the release stamp");
+    assertEquals(1, answer.getInt("counts.platform"), "the platform's chore");
+    assertEquals(2, answer.getInt("counts.subject"), "feat(qits-1) and feat(qits-2)");
+    assertEquals(fixture + 2, answer.getInt("counts.nonComplying"));
 
     List<Map<String, Object>> offenders = answer.getList("nonComplying");
-    assertEquals(fixture + 1, offenders.size(), "the full non-complying listing");
-    Map<String, Object> person = offenders.getFirst();
-    assertEquals("Fix the thing quickly", person.get("subject"), "newest first: " + offenders);
+    assertEquals(fixture + 2, offenders.size(), "the full non-complying listing");
+    Map<String, Object> split = offenders.getFirst();
+    assertEquals("feat(qits-3):", split.get("subject"), "newest first, first line: " + offenders);
+    Map<String, Object> person = offenders.get(1);
+    assertEquals("Fix the thing quickly", person.get("subject"));
     assertEquals("A Person", person.get("authorName"));
     assertEquals("person@example.com", person.get("authorEmail"));
     assertTrue(((String) person.get("hash")).length() == 40, person.toString());
     assertTrue(((String) person.get("hash")).startsWith((String) person.get("shortHash")));
     assertFalse(((String) person.get("date")).isBlank());
     List<String> subjects = offenders.stream().map(o -> (String) o.get("subject")).toList();
-    assertFalse(subjects.contains("Merge branch 'side'"), "a merge is exempt: " + subjects);
-    assertFalse(
-        subjects.contains("bump(dependencies): 2 dependencies"), "a machine bump is exempt");
-    assertEquals(List.of("qits-1", "qits-2"), answer.getList("qualifiedIds"));
+    assertFalse(subjects.contains("Merge branch 'side'"), "a merge fits MERGE: " + subjects);
+    assertEquals(List.of("qits-1", "qits-2"), answer.getList("qualifiedIds"),
+        "the SUBJECT commits' ids only — a release's summary names none");
+    assertNull(answer.get("guardEnabled"), "there is no opt-in any more");
 
-    // Opting in is an ordinary commit carrying the guard's file; the read follows the branch.
-    Files.createDirectories(work.resolve(".config/qits"));
-    commit(work, ".config/qits/commit-subjects.yml", "chore(qits-1): opt into the guard",
-        "A Person", "person@example.com", "# the receive guard\nenforce: true # on\n");
-    git.exec(work.toFile(), "git", "push", "-q", "origin", main);
-    goCold(repo);
+    JsonPath limited = read(repo.id, Map.of("branch", main, "limit", "3"), "qits:system");
+    assertEquals(3, limited.getInt("limit"));
+    assertEquals(3, limited.getInt("counts.total"), "limited to the newest three");
+    assertEquals(1, limited.getInt("counts.subject"));
+    assertEquals(1, limited.getInt("counts.platform"));
+    assertEquals(1, limited.getInt("counts.nonComplying"));
 
-    JsonPath optedIn = read(repo.id, Map.of("branch", main, "limit", "3"), "qits:system");
-    assertTrue(optedIn.getBoolean("guardEnabled"), "enforce: true on the branch read");
-    assertEquals(3, optedIn.getInt("limit"));
-    assertEquals(3, optedIn.getInt("counts.total"), "limited to the newest three");
-    assertEquals(2, optedIn.getInt("counts.complying"));
-    assertEquals(1, optedIn.getInt("counts.exemptMachine"));
-    assertEquals(0, optedIn.getInt("counts.nonComplying"));
-
-    // A branch without the file reads false, whatever another branch says.
     JsonPath side = read(repo.id, Map.of("branch", "side"), "qits:admin");
-    assertFalse(side.getBoolean("guardEnabled"));
     assertEquals("side", side.getString("branch"));
+    assertEquals(1, side.getInt("counts.subject"));
+    assertEquals(0, side.getInt("counts.merge"));
   }
 
   /**
@@ -143,7 +146,7 @@ public class CommitSubjectsControllerTest {
     JsonPath answer = read(repo.id, Map.of(), "qits:agent");
 
     assertEquals(fixture + 1, answer.getInt("counts.total"));
-    assertEquals(1, answer.getInt("counts.complying"), "one commit, naming two ids");
+    assertEquals(1, answer.getInt("counts.subject"), "one commit, naming two ids");
     assertEquals(fixture, answer.getInt("counts.nonComplying"), "the fixture's free-text history");
     assertEquals(List.of("qits-1", "qits-2"), answer.getList("qualifiedIds"));
   }

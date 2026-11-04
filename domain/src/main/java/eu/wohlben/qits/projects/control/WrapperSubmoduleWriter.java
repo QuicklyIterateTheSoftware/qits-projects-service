@@ -115,7 +115,7 @@ public class WrapperSubmoduleWriter {
         content -> WrapperGitmodules.addEntry(content, name, directory),
         List.of(new RepoMirror.Gitlink(path, childMainHeadSha)),
         List.of(),
-        "Add " + path + " to the project");
+        "chore(platform): add " + path + " to the project");
     return path;
   }
 
@@ -158,7 +158,7 @@ public class WrapperSubmoduleWriter {
         content -> WrapperGitmodules.removeEntry(content, name),
         List.of(),
         List.of(path.get()),
-        "Remove " + path.get() + " from the project");
+        "chore(platform): remove " + path.get() + " from the project");
     return path;
   }
 
@@ -249,6 +249,9 @@ public class WrapperSubmoduleWriter {
    * The whole write: refresh, read the tip, amend, commit the amended tree, push. Retried from a
    * fresh read when the push loses a fast-forward race, since the other writer's entry has to end up
    * in the file this one appends to.
+   *
+   * <p>{@code message} is a {@code chore(platform): …} subject: the platform's own housekeeping, one
+   * of the commit-message variants qits-githost accepts on every repository (qits-706).
    */
   private void commit(
       Repository wrapper,

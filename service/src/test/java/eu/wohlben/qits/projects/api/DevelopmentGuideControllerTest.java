@@ -310,7 +310,8 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1665_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
@@ -330,6 +331,9 @@ public class DevelopmentGuideControllerTest {
         DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
             "`qits release-request regenerate --kind <kind>`"));
     for (String previous : DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY)) {
+      if (previous.equals(DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW)) {
+        continue; // shipped after qits-1816, so it carries qits-1816's paragraph by right
+      }
       assertFalse(previous.contains("A red automation"), "a previous text was rewritten");
     }
     String key = DevelopmentGuideDefaults.FLOW_KEY;
@@ -341,6 +345,44 @@ public class DevelopmentGuideControllerTest {
 
     assertTrue(
         read("agent").getString("markdown").contains("qits release-request regenerate --kind"));
+  }
+
+  /**
+   * qits-706: the flow says qits-githost refuses, on every repository, a commit fitting no
+   * commit-message variant, names the five, and drops the opt-in file, the exemptions and the
+   * break-glass; an unedited row of the text before rolls forward.
+   */
+  @Test
+  public void anUneditedFlowPartRollsForwardFromQits706() {
+    String current = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
+    for (String variant :
+        new String[] {
+          "- SUBJECT `feat(qits-1337): ...`",
+          "- BUMP `bump(<group>): <n> dependencies`",
+          "- RELEASE `release(<version>): ...`",
+          "- PLATFORM `chore(platform): ...`",
+          "- MERGE: any merge commit"
+        }) {
+      assertTrue(current.contains(variant), variant);
+    }
+    assertTrue(current.contains("There is no opt-in file, no exemption and no break-glass"));
+    assertTrue(current.contains("`GET /projects/api/repositories/{id}/commit-subjects`"));
+    for (String gone :
+        new String[] {"commit-subjects.yml", "enforce: true", "qits.subject-bypass", "are exempt"}) {
+      assertFalse(current.contains(gone), gone);
+    }
+    assertTrue(
+        DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW.contains("qits.subject-bypass"),
+        "the qits-706 text is the one with the opt-in guard and its break-glass");
+
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    AgentSurfaceConfigurationDto flow = surfaces.get(key);
+    surfaces.save(
+        key, withText(flow, DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains("- PLATFORM `chore(platform): ...`"));
   }
 
   /** qits-1724: an unedited flow row holding the qits-1724 text rolls forward on boot. */

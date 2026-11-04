@@ -821,19 +821,22 @@ components:
         total:
           type: integer
           format: int32
-        complying:
+        merge:
+          type: integer
+          format: int32
+        bump:
+          type: integer
+          format: int32
+        release:
+          type: integer
+          format: int32
+        platform:
+          type: integer
+          format: int32
+        subject:
           type: integer
           format: int32
         nonComplying:
-          type: integer
-          format: int32
-        exempt:
-          type: integer
-          format: int32
-        exemptMerge:
-          type: integer
-          format: int32
-        exemptMachine:
           type: integer
           format: int32
     CommitSubjectsDto:
@@ -846,8 +849,6 @@ components:
         limit:
           type: integer
           format: int32
-        guardEnabled:
-          type: boolean
         counts:
           $ref: "#/components/schemas/CommitSubjectCounts"
         nonComplying:
@@ -7308,13 +7309,16 @@ paths:
         - qits:agent
   /projects/api/repositories/{repoId}/commit-subjects:
     get:
-      summary: Commit-subject compliance of a branch's newest commits
+      summary: How a branch's newest commits fit the commit-message variants
       description: "Of the newest `limit` commits on `branch` (default: the repository's\
-        \ main branch; limit default 100, at most 1000), how many name their subject\
-        \ as `term(<project>-<n>): message`. Merges and commits by a configured machine\
-        \ author are exempt. Lists every non-complying commit, and says whether the\
-        \ branch opts into the git host's commit-subject guard (`.config/qits/commit-subjects.yml`\
-        \ holding `enforce: true`)."
+        \ main branch; limit default 100, at most 1000), how many fit each commit-message\
+        \ variant the git host accepts — the first that fits, in order: MERGE (two\
+        \ or more parents, any message), BUMP (`bump(<group>): <n> dependencies`),\
+        \ RELEASE (`release(<version>): …`), PLATFORM (`chore(platform): …`) and SUBJECT\
+        \ (`term(<project>-<n>): message`, several comma-separated ids allowed). Only\
+        \ the message's first line counts. Lists every commit fitting none: the git\
+        \ host refuses such a commit on every repository, so commits from before that\
+        \ rule ordinarily appear here, which is expected."
       operationId: measureCommitSubjects
       parameters:
       - name: repoId

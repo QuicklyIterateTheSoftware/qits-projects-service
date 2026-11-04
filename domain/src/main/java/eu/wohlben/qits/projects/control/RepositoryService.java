@@ -1140,7 +1140,7 @@ public class RepositoryService {
           mirror.commitTree(
               treeSha,
               List.of(),
-              "Initialize the " + what + " template skeleton",
+              "chore(platform): initialize the " + what + " template skeleton",
               gitIdentity.asCommitIdentity());
       LOG.infof(
           "Built the %s template skeleton commit %s for repository %s",

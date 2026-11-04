@@ -2,14 +2,14 @@
   "repositoryId": "00000000-0000-4000-8000-000000000002",
   "branch": "main",
   "limit": 100,
-  "guardEnabled": false,
   "counts": {
     "total": 1,
-    "complying": 0,
-    "nonComplying": 1,
-    "exempt": 0,
-    "exemptMerge": 0,
-    "exemptMachine": 0
+    "merge": 0,
+    "bump": 0,
+    "release": 0,
+    "platform": 0,
+    "subject": 0,
+    "nonComplying": 1
   },
   "nonComplying": [
     {

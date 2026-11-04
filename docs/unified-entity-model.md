@@ -401,33 +401,32 @@ consumer that cares about the project does is **compare**: `NamedEntity` carries
 than disguised as "no id found". `anIdFromAnotherProjectResolvesToThatProjectsEntity` pins it, over
 two projects whose runs both start at 1.
 
-### Measuring a branch against it (qits-302)
+### Measuring a branch against it (qits-302, qits-706)
 
 `GET /projects/api/repositories/{repoId}/commit-subjects?branch=&limit=` (`qits:admin`,
 `qits:agent`, `qits:system`) and the central server's `repositories_commit-subjects` tool answer "of the newest `limit`
-commits on this branch (default the repository's main branch, 100, at most 1000), how many name a
-subject, and which do not". `service/…/entitieshost/CommitSubjectCompliance` asks `reference` above
-and nothing else, and puts each commit in exactly one class, in this order:
+commits on this branch (default the repository's main branch, 100, at most 1000), how many fit each
+commit-message variant, and which fit none". qits-githost refuses, on every repository and from
+every pusher, a new commit whose first line fits none of the five; there is no opt-in file, no
+exemption by identity and no break-glass, and a push into a repository with no refs at all is
+adopting history and is not checked. `service/…/entitieshost/CommitMessageVariants` mirrors the git
+host's variants, and `CommitSubjectCompliance` puts each commit under the first it fits — only the
+first line of the message counts:
 
-| class | when |
-| --- | --- |
-| `EXEMPT` / `MERGE` | more than one parent |
-| `EXEMPT` / `MACHINE` | author email in `qits.projects.commit-subjects.machine-authors` (default `maintenance@qits.local,qits-projects@qits.internal,release-train@qits.local`) |
-| `COMPLYING` | `reference` finds an id — syntax only, no lookup |
-| `NON_COMPLYING` | everything else; each one is listed with hash, subject, author and date |
+| variant | first line (or parents) | e.g. |
+| --- | --- | --- |
+| `MERGE` | two or more parents, any message | `Merge branch 'side'` |
+| `BUMP` | `^bump\([0-9A-Za-z._-]+\): [0-9]+ dependencies$` | `bump(qits-112): 2 dependencies` |
+| `RELEASE` | `^release\([0-9]+\.[0-9]+\.[0-9]+\): .+$` | `release(2026.1104.94340): …` |
+| `PLATFORM` | `^chore\(platform\): \S.*$` | `chore(platform): add workspace development flow` |
+| `SUBJECT` | `term(<id>[, <id>…])[!]: message`, `<id>` = `[A-Za-z0-9][A-Za-z0-9-]*-[0-9]{1,18}` | `feat(qits-1337): …` |
 
-**"No subject" on a merge or a machine commit is normal and is never counted against the branch.**
-A merge message is machine-written and qits-githost's receive guard does not check it either (only
-the commits it brings in); a qits-maintenance bump or a release-flow fold/`release(<v>)` commit is
-platform automation, which the guard exempts by *pusher* identity (`qits:system`, `qits:ci-run`). A
-commit records no pusher, so the author's address stands in for it here. **`qits@local` is not a
-machine author**: it is `GitIdentity`'s default, which is also the identity every workspace and
-agent container commits as, so listing it would exempt exactly the agents' own work.
-
-`guardEnabled` reports whether `.config/qits/commit-subjects.yml` on the branch read holds `enforce:
-true`, parsed the way qits-githost's `CommitSubjectHook.enforceTrue` parses it (top-level key, `" #"`
-comment stripped, last occurrence wins, only exactly `true`); absent is false. The guard itself reads
-the file from the default branch, so on any other branch this is "would opt in once merged".
+A commit fitting none is listed with hash, subject, author and date under `nonComplying`, and
+counted in `counts.nonComplying` beside `counts.{total, merge, bump, release, platform, subject}`.
+**Commits from before the rule ordinarily land there, and that is expected**: the hook checks new
+commits only. Who wrote a commit decides nothing. `SUBJECT`'s grammar is a strict subset of
+`references` above — every subject it accepts reads to at least one id, which `qualifiedIds` lists —
+and the variants are pinned by `commit-message-vectors.tsv`, which qits-githost carries verbatim.
 
 ## What is left for the SPA
 
