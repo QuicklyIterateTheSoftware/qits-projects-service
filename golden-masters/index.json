@@ -5343,6 +5343,7 @@
       "name": "a ticket waiting on an unmet milestone",
       "slug": "a-ticket-waiting-on-an-unmet-milestone",
       "params": {
+        "authorization": "Bearer qits_tok_contract-person-cli",
         "criterionId": "00000000-0000-4000-8000-000000000001",
         "milestoneId": "00000000-0000-4000-8000-000000000002",
         "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
@@ -5356,6 +5357,9 @@
           "operationId": "approveMilestoneCriterion",
           "method": "POST",
           "path": "/projects/api/milestones/{milestoneId}/criteria/{criterionId}/approve",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
           "body": {
             "note": "Node 7 is up."
           },

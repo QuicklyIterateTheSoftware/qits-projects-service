@@ -136,6 +136,60 @@ class MilestoneMigrationTest {
   }
 
   @Test
+  void v39DropsBothCampaignCriterionTablesAndLeavesWhatV38MigratedUntouched() throws Exception {
+    String url = EmbeddedPg.url("qp_epics_v39_retire");
+    migrateTo(url, "37");
+    try (Connection db = connect(url)) {
+      fixture(db);
+    }
+    migrateTo(url, "38");
+    String held;
+    try (Connection db = connect(url)) {
+      // the same facts the first test pins at V38, read before V39 runs
+      held = milestoneOf(db, "m-held");
+      assertEquals(
+          "Before \"Held\" in \"The order\"",
+          text(db, "select display_name from milestone where id = '" + held + "'"));
+      assertEquals(2, count(db, "select count(*) from milestone"));
+      assertEquals(3, count(db, "select count(*) from milestone_group"));
+      assertEquals(5, count(db, "select count(*) from milestone_criterion"));
+      assertEquals(3, count(db, "select count(*) from campaign_criterion_group"));
+      assertEquals(5, count(db, "select count(*) from campaign_criterion"));
+    }
+
+    migrateTo(url, "39");
+
+    try (Connection db = connect(url)) {
+      // both campaign-era tables are gone outright, not merely empty
+      assertNull(text(db, "select to_regclass('campaign_criterion')::text"));
+      assertNull(text(db, "select to_regclass('campaign_criterion_group')::text"));
+      assertEquals(
+          0,
+          count(
+              db,
+              "select count(*) from information_schema.tables where table_name in"
+                  + " ('campaign_criterion', 'campaign_criterion_group')"));
+
+      // the milestone rows V38 migrated are untouched by the drop
+      assertEquals(
+          "Before \"Held\" in \"The order\"",
+          text(db, "select display_name from milestone where id = '" + held + "'"));
+      assertEquals(2, count(db, "select count(*) from milestone"));
+      assertEquals(3, count(db, "select count(*) from milestone_group"));
+      assertEquals(5, count(db, "select count(*) from milestone_criterion"));
+      assertEquals(
+          "true",
+          text(
+              db,
+              "select generated_condition::text from campaign_membership_milestone"
+                  + " where membership_id = 'm-held'"));
+      assertEquals(
+          held,
+          text(db, "select milestone_id from work_milestone where entity_id = 'e-held'"));
+    }
+  }
+
+  @Test
   void theNewTablesCascadeFromWhatOwnsThem() throws Exception {
     try (Connection db = migrated("qp_epics_v38_cascade")) {
       entities(db);

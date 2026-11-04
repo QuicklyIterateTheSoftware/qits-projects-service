@@ -196,14 +196,15 @@ public class ProviderStates {
    * one APPROVAL criterion nobody approved yet (epic qits-615) — plus a second milestone of the
    * project, "arm64 runner", met by nothing and attached to nothing, for the attach. Params: {@code
    * projectId}, {@code ticketId}, {@code qualifiedId} (the ticket), {@code milestoneId}, {@code
-   * criterionId} and {@code otherMilestoneId}.
+   * criterionId}, {@code otherMilestoneId} and the {@code authorization} a person's qits CLI token
+   * is presented as, for the approve from a terminal.
    */
   public static final String A_TICKET_WAITING_ON_AN_UNMET_MILESTONE =
       "a ticket waiting on an unmet milestone";
 
   /**
    * {@link #A_TICKET_WAITING_ON_AN_UNMET_MILESTONE} after a person approved the criterion: the
-   * milestone is met, and the ticket needs nothing. The same params.
+   * milestone is met, and the ticket needs nothing. The same params, less {@code authorization}.
    */
   public static final String A_TICKET_WAITING_ON_A_MET_MILESTONE =
       "a ticket waiting on a met milestone";
@@ -1805,18 +1806,22 @@ public class ProviderStates {
             .milestone()
             .id;
     milestones.attach(ticket, milestone);
+    Map<String, String> params = new TreeMap<>();
+    params.put("criterionId", criterion);
+    params.put("milestoneId", milestone);
+    params.put("otherMilestoneId", other);
+    params.put("projectId", project.id);
+    params.put("qualifiedId", qualified(project, ticket));
+    params.put("ticketId", ticket);
     if (approved) {
       milestones.approve(milestone, criterion, "Node 7 is up.", DEV_USER);
+    } else {
+      // A person approves the criterion: the CLI's approve sends their qits CLI token (qits-615),
+      // as it does for a release request's; a browser's session needs no param.
+      bearers.grantPerson(PERSON_CLI_BEARER, "dev");
+      params.put("authorization", PERSON_CLI_BEARER);
     }
-    return new Setup(
-        params(
-            "criterionId", criterion,
-            "milestoneId", milestone,
-            "otherMilestoneId", other,
-            "projectId", project.id,
-            "qualifiedId", qualified(project, ticket),
-            "ticketId", ticket),
-        List.of(token));
+    return new Setup(Collections.unmodifiableMap(params), List.of(token));
   }
 
   /** See {@link #A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE}. */

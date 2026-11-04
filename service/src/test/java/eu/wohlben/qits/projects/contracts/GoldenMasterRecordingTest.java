@@ -1407,13 +1407,20 @@ class GoldenMasterRecordingTest {
                 + "{\"criteria\":[{\"id\":\"{criterionId}\",\"kind\":\"APPROVAL\",\"predicate\":{}}]},"
                 + "{\"criteria\":[{\"kind\":\"ENTITY_STATUS\","
                 + "\"predicate\":{\"entityId\":\"{qualifiedId}\",\"status\":\"DONE\"}}]}]}"));
+    // A person approves, from a terminal: the CLI sends their qits CLI token (the state's
+    // authorization), and the door verifies it as a person's (PersonCheck). A browser's session
+    // is the other proof, and the answer is the same.
     all.add(
-        write(
+        new Interaction(
             unmet,
             "approveMilestoneCriterion",
             "POST",
             milestone + "/criteria/{criterionId}/approve",
-            "{\"note\":\"Node 7 is up.\"}"));
+            200,
+            null,
+            null,
+            "{\"note\":\"Node 7 is up.\"}",
+            BEARER));
     all.add(
         new Interaction(
             unmet,

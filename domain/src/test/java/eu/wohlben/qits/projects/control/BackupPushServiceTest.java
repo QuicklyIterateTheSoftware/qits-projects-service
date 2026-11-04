@@ -397,7 +397,12 @@ public class BackupPushServiceTest {
         eu.wohlben.qits.projects.entity.BackupOutcome.SUCCEEDED,
         outcomeOf(repo.id),
         "the broken twin was recorded as a failure");
-    assertNotEquals(null, detailOf(repo.id), "with git's own first line to read");
+    String detail = detailOf(repo.id);
+    assertNotEquals(null, detail, "with git's own line to read, not just the command");
+    assertTrue(
+        detail.lines().anyMatch(line -> line.startsWith("fatal:")),
+        "git's own fatal: line survives beside the command sentence: " + detail);
+    assertTrue(detail.length() <= 1000, "it fits the column: " + detail.length());
 
     pointAtTwin(repo, twin);
     backupPushService.backupNow(repo.id);
@@ -496,9 +501,12 @@ public class BackupPushServiceTest {
         eu.wohlben.qits.projects.entity.BackupOutcome.FAILED, BackupPushService.classify(null));
   }
 
-  /** The detail column is 1000 characters and git's message is many lines; the first is the one. */
+  /**
+   * The detail column is 1000 characters and git's message is many lines; the command sentence
+   * is the first and git's own decisive line is the second, not the whole transcript.
+   */
   @Test
-  public void theRecordedDetailIsGitsFirstLine() throws Exception {
+  public void theRecordedDetailIsGitsCommandPlusItsOwnLine() throws Exception {
     var project = projectService.create("Backup Detail", "backup-detail", null);
     var repo = repositoryBackedUpTo(project, twin("testing-repo"));
     breakTheTwin(repo);
@@ -507,6 +515,7 @@ public class BackupPushServiceTest {
 
     String detail = detailOf(repo.id);
     assertTrue(detail.length() <= 1000, "it fits the column: " + detail.length());
-    assertTrue(!detail.contains("\n"), "one line, not a transcript: " + detail);
+    java.util.List<String> lines = detail.lines().toList();
+    assertTrue(lines.size() <= 2, "the command sentence plus git's own line, not a transcript: " + detail);
   }
 }

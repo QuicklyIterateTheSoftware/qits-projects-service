@@ -141,6 +141,14 @@ class ConsumerPactVerificationTest {
    * {@code SERVICE} in the request, and the CLI's {@code --archetype} forwards it. The entry stays
    * until 2026.1102.235059 is neither pinned, deployed nor a rollback target of
    * qits-platform-access-cli.
+   *
+   * <p>qits-platform-access-monorepo's 2026.1103.220719 {@code qits milestones approve} row sends
+   * no {@code Authorization}, so it reaches the door as the plain {@code %test} dev user and {@code
+   * PersonCheck} refuses it 403: the golden master it was written against had been recorded with a
+   * person's session cookie, the browser's proof, which a CLI command does not carry. The golden
+   * master now records the call with the state's {@code authorization}, a person's qits CLI token,
+   * as {@code approveReleaseRequest}'s is (qits-615). The entry stays until 2026.1103.220719 is
+   * neither pinned, deployed nor a rollback target of qits-platform-access-monorepo.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -180,7 +188,14 @@ class ConsumerPactVerificationTest {
               "qits repositories create: createProjectRepository",
               "creates with no archetype and pins the answer's archetype as a string; since"
                   + " qits-1834 an unstated kind is stored as null. Its next golden-master bump"
-                  + " sends the recorded archetype"));
+                  + " sends the recorded archetype"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              "2026.1103.220719",
+              "qits milestones approve: approveMilestoneCriterion",
+              "sends no Authorization, so a person's door refuses the dev user 403; qits-615"
+                  + " records the approve with a person's qits CLI token, and the CLI's next pact"
+                  + " sends the person bearer"));
 
   @Inject ProviderStates states;
 

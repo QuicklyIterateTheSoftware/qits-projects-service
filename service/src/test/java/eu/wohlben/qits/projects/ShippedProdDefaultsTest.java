@@ -109,10 +109,6 @@ class ShippedProdDefaultsTest {
     assertFalse(config.getOptionalValue("qits.projects.own-host", String.class).isPresent());
     assertFalse(
         config.getOptionalValue("qits.projects.container-git-url", String.class).isPresent());
-    // Telemetry moves in a later step of epic qits-428, not with the peers.
-    assertEquals(
-        "http://dev-qits-observability:8080",
-        config.getValue("qits.observability.url", String.class));
     assertEquals(
         "https://idp.qits.wohlben.eu/idp",
         config.getValue("quarkus.oidc.auth-server-url", String.class));

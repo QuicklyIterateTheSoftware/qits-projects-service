@@ -63,8 +63,9 @@ import java.util.stream.Collectors;
  * member entity too. The doors behave as they did from outside: a whole replace, a restated
  * criterion keeps its latch, an approval latches once. Latching from events is {@code
  * MilestoneEvaluator}'s; whether a membership may run is {@link CampaignReadiness}'s — every
- * milestone it waits on met, none at all being no condition. No {@code campaign_criterion*} table is
- * read or written here any more.
+ * milestone it waits on met, none at all being no condition. These doors are adapters over the
+ * milestone tables only — nothing here reads or writes {@code campaign_criterion*}, and since
+ * qits-1301 (V39) those tables are gone outright.
  *
  * <h2>The rules, each stated once</h2>
  *
