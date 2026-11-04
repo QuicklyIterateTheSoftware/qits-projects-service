@@ -499,6 +499,58 @@ public class ReleaseRequestOwedRefoldTest {
     assertEquals(1, executor.calls().size());
   }
 
+  /**
+   * 12. The same as 11 for a fresh source whose push is on its way (qits-1751): a READY request that
+   * joins a branch not on the git host yet goes back to PENDING owing the re-fold, keeps the
+   * sentence that says so, and the worker never ships the fold that lacks the branch. Parked as 11
+   * parks it.
+   */
+  @Test
+  public void aReadyRequestJoiningAFreshSourceGoesBackToPendingAndIsNotReleased() throws Exception {
+    grace(Duration.ofMinutes(2));
+    String parked = inQa(reviewedRepoId);
+    String parkedSha = mergedShaOf(reviewedRepoId, parked);
+    verdict(reviewedRepoId, "BuildSuccessful", parkedSha, "");
+    RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
+    admin()
+        .body("{\"mergedSha\":\"" + parkedSha + "\",\"note\":\"park the worker\"}")
+        .post(base(reviewedRepoId) + "/" + parked + "/approve")
+        .then()
+        .statusCode(200);
+    assertTrue(held.awaitEntered(), "the worker is parked in the other request's release");
+
+    String id = inQa(repoId);
+    String merged = mergedShaOf(repoId, id);
+    verdict(repoId, "BuildSuccessful", merged, "");
+    assertEquals("READY", stateOf(repoId, id), "READY, its release queued behind the parked one");
+
+    merger.answer(BackingBranchMerger.Outcome.missingSource("refs/heads/ticket/qits-1852"));
+    join(repoId, id, "ticket/qits-1852");
+
+    assertEquals("PENDING", stateOf(repoId, id), "back in front of its gates");
+    assertEquals(merged, mergedShaOf(repoId, id));
+    assertNotNull(row(id).refoldOwedAt, "owing the re-fold");
+    assertEquals(
+        "The sources could not be folded yet: refs/heads/ticket/qits-1852 is not on the git host;"
+            + " waiting for its push",
+        detailOf(repoId, id));
+
+    held.release();
+    awaitState(reviewedRepoId, parked, "RELEASED");
+    drainWorker();
+
+    assertEquals(
+        List.of(parked),
+        executor.calls().stream().map(RecordingReleaseExecutor.Released::requestId).toList(),
+        "the old fold was never released");
+
+    // The sweep knocks for the push and finds it still on its way: still PENDING, still unreleased.
+    releaseRequests.sweep();
+    assertEquals("PENDING", stateOf(repoId, id));
+    drainWorker();
+    assertEquals(1, executor.calls().size());
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Driving it
   // ---------------------------------------------------------------------------------------------
