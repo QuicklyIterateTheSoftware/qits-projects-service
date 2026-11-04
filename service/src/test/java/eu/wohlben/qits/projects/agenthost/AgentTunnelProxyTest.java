@@ -27,6 +27,7 @@ import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -319,6 +320,7 @@ class AgentTunnelProxyTest {
             .send(
                 HttpRequest.newBuilder(URI.create("http://" + root.getHost() + ":" + root.getPort() + path))
                     .version(PROXY_HOP_VERSION)
+                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                     .header("Authorization", peer())
                     // A caller-supplied credential the proxy must REPLACE rather than forward:
                     // the daemon's bearer says "qits is calling", not "this user is calling".
@@ -576,7 +578,8 @@ class AgentTunnelProxyTest {
                             + ContainerProxyPath.base(project)
                             + "commands"))
                 .version(PROXY_HOP_VERSION)
-                    .header("Authorization", peer())
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .header("Authorization", peer())
                 .GET()
                 .build(),
             HttpResponse.BodyHandlers.ofString());
@@ -617,6 +620,7 @@ class AgentTunnelProxyTest {
                                 + ContainerProxyPath.base(UUID.randomUUID().toString())
                                 + "commands"))
                     .version(PROXY_HOP_VERSION)
+                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
                     .header("Authorization", peer())
                     .GET()
                     .build(),

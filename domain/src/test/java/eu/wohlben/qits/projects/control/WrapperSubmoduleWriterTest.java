@@ -234,27 +234,64 @@ public class WrapperSubmoduleWriterTest {
    *
    * <p>The race is made deterministic with a client-side {@code pre-push} hook in the mirror: it
    * advances the host's branch behind this push's back exactly once, then deletes itself.
+   *
+   * <p>The winner's commit carries a real wrapper entry of its own — a {@code .gitmodules} section
+   * and its {@code 160000} gitlink at {@code components/other-repo/other-repo} — so the test can
+   * tell a retry that re-read the tip from one that merely landed on top of it: the winner's entry
+   * must survive, both in the file and as a gitlink.
    */
   @Test
   public void aLostFastForwardRaceIsRetriedAgainstTheWinnersCommit() throws Exception {
     var project = projectService.create("Wrapper Race", "wrace", null);
     var wrapper = wrapperOf(project);
     var child = child(project, "testing-repo.git");
+    // Any real commit on the host will do as the winner's gitlink: the writer re-reads the
+    // .gitmodules text and amends the tree, it never resolves another entry's pin.
+    String otherSha = headOf(child(project, "submodule-shared.git"));
     // Warm the mirror so the pre-push hook has somewhere to live.
     repositoryService.syncStatus(wrapper.id);
 
-    // The interloper's commit, built in the host's own bare and not yet referenced by anything.
+    // The interloper's commit, built in the host's own bare and not yet referenced by anything. It
+    // adds a wrapper entry of its own, formatted exactly as the writer would format it, through a
+    // throwaway index so nothing in the bare's refs moves until the hook says so.
     Path host = hostOf(wrapper.id);
     String base = inHost(wrapper.id, "git", "rev-parse", "main");
-    String tree = inHost(wrapper.id, "git", "rev-parse", "main^{tree}");
+    String otherPath = "components/other-repo/other-repo";
+    GitExecutor.ExecResult current = git.showFile(host.toFile(), "main", ".gitmodules");
+    String currentGitmodules = current.exitCode() == 0 ? current.output() : "";
+    if (!currentGitmodules.isEmpty() && !currentGitmodules.endsWith("\n")) {
+      currentGitmodules += "\n";
+    }
+    String winnersGitmodules =
+        WrapperGitmodules.addEntry(currentGitmodules, "other-repo", "components/other-repo");
+    Path scratch = Files.createTempDirectory("qits-wrapper-race");
+    Path gitmodulesFile = scratch.resolve("gitmodules");
+    Files.writeString(gitmodulesFile, winnersGitmodules);
+    Map<String, String> env =
+        Map.of(
+            "GIT_INDEX_FILE", scratch.resolve("index").toString(),
+            "GIT_AUTHOR_NAME", "other",
+            "GIT_AUTHOR_EMAIL", "other@local",
+            "GIT_COMMITTER_NAME", "other",
+            "GIT_COMMITTER_EMAIL", "other@local");
+    git.exec(host.toFile(), env, "git", "read-tree", base);
+    String blob =
+        git.exec(host.toFile(), env, "git", "hash-object", "-w", gitmodulesFile.toString()).trim();
+    git.exec(
+        host.toFile(),
+        env,
+        "git",
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "100644," + blob + ",.gitmodules",
+        "--cacheinfo",
+        "160000," + otherSha + "," + otherPath);
+    String tree = git.exec(host.toFile(), env, "git", "write-tree").trim();
     String interloper =
         git.exec(
                 host.toFile(),
-                java.util.Map.of(
-                    "GIT_AUTHOR_NAME", "other",
-                    "GIT_AUTHOR_EMAIL", "other@local",
-                    "GIT_COMMITTER_NAME", "other",
-                    "GIT_COMMITTER_EMAIL", "other@local"),
+                env,
                 "git",
                 "commit-tree",
                 tree,
@@ -273,8 +310,15 @@ public class WrapperSubmoduleWriterTest {
         interloper,
         inHost(wrapper.id, "git", "rev-parse", "main^1"),
         "the retry built on the winner's commit rather than re-pushing the stale one");
+    String gitmodules = inHost(wrapper.id, "git", "show", "main:.gitmodules");
+    assertTrue(gitmodules.contains("path = components/testing-repo/testing-repo"), gitmodules);
     assertTrue(
-        inHost(wrapper.id, "git", "show", "main:.gitmodules").contains("components/testing-repo/testing-repo"));
+        gitmodules.contains("path = " + otherPath),
+        "the retry amended the winner's .gitmodules rather than the stale one: " + gitmodules);
+    String winnersEntry = inHost(wrapper.id, "git", "ls-tree", "main", otherPath);
+    assertTrue(
+        winnersEntry.startsWith("160000 commit " + otherSha),
+        "the winner's gitlink survived the retry, got: " + winnersEntry);
     assertFalse(
         Files.exists(gitMirrors.of(wrapper.id).gitDir().resolve("hooks").resolve("pre-push")),
         "the one-shot hook removed itself, so it cannot leak into another test");
