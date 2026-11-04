@@ -3,43 +3,47 @@ package eu.wohlben.qits.projects.entitieshost;
 import java.util.List;
 
 /**
- * The commit-subject compliance of a branch's newest commits — {@link CommitSubjectCompliance}'s
+ * How a branch's newest commits fit the commit-message variants — {@link CommitSubjectCompliance}'s
  * answer, served by {@code GET /repositories/{repoId}/commit-subjects}.
  *
  * @param repositoryId the repository read
  * @param branch the branch read — the repository's main branch when none was asked for
  * @param limit how many commits were asked for; {@code counts.total} is fewer on a short history
- * @param guardEnabled whether {@code .config/qits/commit-subjects.yml} on that branch holds {@code
- *     enforce: true} — the file qits-githost's receive guard opts a repository in by. Absent is false
- * @param counts how many commits fell in each class
- * @param nonComplying every NON_COMPLYING commit, newest first
- * @param qualifiedIds the distinct qualified ids the complying subjects name, newest first. Syntax
+ * @param counts how many commits fit each variant, and how many fit none
+ * @param nonComplying every commit that fits no variant, newest first. Commits from before
+ *     qits-githost refused them ordinarily land here; that is expected of an old history
+ * @param qualifiedIds the distinct qualified ids the SUBJECT commits name, newest first. Syntax
  *     only: an id here is not checked to name an entity
  */
 public record CommitSubjectsDto(
     String repositoryId,
     String branch,
     int limit,
-    boolean guardEnabled,
     CommitSubjectCounts counts,
     List<NonComplyingCommit> nonComplying,
     List<String> qualifiedIds) {
 
   /**
-   * @param total commits read; {@code complying + nonComplying + exempt}
-   * @param exempt {@code exemptMerge + exemptMachine}
-   * @param exemptMerge commits with more than one parent
-   * @param exemptMachine commits authored by a configured machine identity
+   * One count per {@link CommitMessageVariants} variant, plus the commits that fit none.
+   *
+   * @param total commits read; {@code merge + bump + release + platform + subject + nonComplying}
+   * @param merge commits with two or more parents, whatever their message
+   * @param bump {@code bump(<group>): <n> dependencies}, qits-maintenance's bumps
+   * @param release {@code release(<version>): …}, the release's version stamp
+   * @param platform {@code chore(platform): …}, the platform's own housekeeping
+   * @param subject {@code term(<project>-<n>): …}, a commit naming its work
+   * @param nonComplying commits fitting no variant
    */
   public record CommitSubjectCounts(
       int total,
-      int complying,
-      int nonComplying,
-      int exempt,
-      int exemptMerge,
-      int exemptMachine) {}
+      int merge,
+      int bump,
+      int release,
+      int platform,
+      int subject,
+      int nonComplying) {}
 
-  /** A commit whose subject names no {@code <project>-<n>}, by a non-machine author. */
+  /** A commit whose first line fits no commit-message variant. */
   public record NonComplyingCommit(
       String hash,
       String shortHash,
