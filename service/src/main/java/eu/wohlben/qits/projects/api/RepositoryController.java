@@ -215,11 +215,11 @@ public class RepositoryController {
   }
 
   /**
-   * <b>How many of a branch's newest commits name their subject</b> (qits-302): each commit is
-   * EXEMPT (a merge, or a configured machine author), COMPLYING ({@code term(<project>-<n>):
-   * message}) or NON_COMPLYING, and the non-complying ones are listed. {@code guardEnabled} says
-   * whether the branch carries qits-githost's opt-in file with {@code enforce: true}. See {@link
-   * CommitSubjectCompliance}.
+   * <b>How a branch's newest commits fit the commit-message variants</b> (qits-302, qits-706): each
+   * commit is counted under the first of MERGE, BUMP, RELEASE, PLATFORM and SUBJECT ({@code
+   * term(<project>-<n>): message}) it fits, and those fitting none are listed — the commits
+   * qits-githost now refuses on every repository. History from before that rule ordinarily lists
+   * there. See {@link CommitSubjectCompliance}.
    *
    * <p>A read, so the three readers every repository read admits — a person, an agent, a platform
    * service. A method-level {@code @RolesAllowed} replaces the class-level {@code qits:admin}.
@@ -229,14 +229,17 @@ public class RepositoryController {
   @Path("/{repoId}/commit-subjects")
   @Operation(
       operationId = "measureCommitSubjects",
-      summary = "Commit-subject compliance of a branch's newest commits",
+      summary = "How a branch's newest commits fit the commit-message variants",
       description =
           "Of the newest `limit` commits on `branch` (default: the repository's main branch; limit"
-              + " default 100, at most 1000), how many name their subject as"
-              + " `term(<project>-<n>): message`. Merges and commits by a configured machine author"
-              + " are exempt. Lists every non-complying commit, and says whether the branch opts"
-              + " into the git host's commit-subject guard (`.config/qits/commit-subjects.yml`"
-              + " holding `enforce: true`).")
+              + " default 100, at most 1000), how many fit each commit-message variant the git host"
+              + " accepts — the first that fits, in order: MERGE (two or more parents, any"
+              + " message), BUMP (`bump(<group>): <n> dependencies`), RELEASE (`release(<version>):"
+              + " …`), PLATFORM (`chore(platform): …`) and SUBJECT (`term(<project>-<n>): message`,"
+              + " several comma-separated ids allowed). Only the message's first line counts."
+              + " Lists every commit fitting none: the git host refuses such a commit on every"
+              + " repository, so commits from before that rule ordinarily appear here, which is"
+              + " expected.")
   public CommitSubjectsDto commitSubjects(
       @PathParam("repoId") String repoId,
       @QueryParam("branch") String branch,

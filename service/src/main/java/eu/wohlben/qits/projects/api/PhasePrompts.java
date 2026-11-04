@@ -238,10 +238,10 @@ final class PhasePrompts {
 
   /**
    * <b>The commit-subject convention</b> (qits-301, epic qits-297), given literally with the real id
-   * so the agent copies a form rather than reconstructing one. Worded as the convention and not as a
-   * rule, because only a repository that opts into qits-githost's receive guard refuses a commit
-   * without it. Nothing where there is no id: a sentence telling the agent to write {@code
-   * feat(null): …} is worse than none.
+   * so the agent copies a form rather than reconstructing one. Since qits-706 qits-githost refuses
+   * on every repository a commit whose first line fits no commit-message variant, and this SUBJECT
+   * form is the one an agent's own work takes. Nothing where there is no id: a sentence telling the
+   * agent to write {@code feat(null): …} is worse than none.
    */
   private static String commitSubjects(String qualifiedId) {
     return qualifiedId == null

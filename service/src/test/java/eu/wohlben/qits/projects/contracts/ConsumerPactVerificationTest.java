@@ -118,6 +118,13 @@ class ConsumerPactVerificationTest {
     }
   }
 
+  /** Why a CLI pact pinning the opt-in guard's shape cannot verify since qits-706. */
+  private static final String COMMIT_SUBJECTS_GUARD_GONE =
+      "pins guardEnabled and the complying/exempt counts; since qits-706 every repository is"
+          + " checked against the commit-message variants and the counts are one per variant."
+          + " The CLI's next pact reads only branch, counts.total, counts.nonComplying and"
+          + " nonComplying[]";
+
   /**
    * qits-landing-app's 2026.1030.201508 list-ideas row sends the golden masters' {@code
    * {projectId}} placeholder as a literal query value, with no provider-state generator: the
@@ -149,6 +156,18 @@ class ConsumerPactVerificationTest {
    * master now records the call with the state's {@code authorization}, a person's qits CLI token,
    * as {@code approveReleaseRequest}'s is (qits-615). The entry stays until 2026.1103.220719 is
    * neither pinned, deployed nor a rollback target of qits-platform-access-monorepo.
+   *
+   * <p>qits-platform-access-monorepo's 2026.1103.220719 (pinned, and the rollback target) and
+   * 2026.1104.91701 (deployed) {@code qits repositories commit-subjects} rows pin {@code
+   * guardEnabled} and {@code counts.complying}, {@code exempt}, {@code exemptMerge} and {@code
+   * exemptMachine}: the shape of the opt-in guard with its machine-author exemption. Since qits-706
+   * qits-githost refuses a commit fitting no commit-message variant on every repository, so there
+   * is no opt-in to report, and the counts are one per variant ({@code merge}, {@code bump}, {@code
+   * release}, {@code platform}, {@code subject}) beside {@code total} and {@code nonComplying}. The
+   * CLI's next pact reads only {@code branch}, {@code counts.total}, {@code counts.nonComplying}
+   * and {@code nonComplying[]}. Each entry stays until its version is neither pinned, deployed nor
+   * a rollback target of qits-platform-access-monorepo — until no such CLI pact consumes {@code
+   * guardEnabled}; a CLI release between now and then that still does needs an entry of its own.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -195,7 +214,17 @@ class ConsumerPactVerificationTest {
               "qits milestones approve: approveMilestoneCriterion",
               "sends no Authorization, so a person's door refuses the dev user 403; qits-615"
                   + " records the approve with a person's qits CLI token, and the CLI's next pact"
-                  + " sends the person bearer"));
+                  + " sends the person bearer"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              "2026.1103.220719",
+              "qits repositories commit-subjects: measureCommitSubjects",
+              COMMIT_SUBJECTS_GUARD_GONE),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              "2026.1104.91701",
+              "qits repositories commit-subjects: measureCommitSubjects",
+              COMMIT_SUBJECTS_GUARD_GONE));
 
   @Inject ProviderStates states;
 
