@@ -241,6 +241,13 @@ import org.jboss.logging.Logger;
  * for a request that went READY, whose release ships the fold that was gated. Every other move, and
  * every other re-fold cause, re-folds at once exactly as before and pays what was owed with it.
  *
+ * <p><b>A re-fold owed because it could not be made is not forgiven</b> (qits-1852). One the git
+ * host could not make ({@link #FOLD_UNREACHABLE}, qits-1850) or one waiting for a fresh source's
+ * push ({@link #AWAITING_PUSH}, qits-1751) says the fold being gated lacks a source the request
+ * names, so {@link #evaluate} holds the request PENDING in front of READY however green that fold
+ * is, and a READY request whose re-fold fails either way goes back to PENDING owing it. Only the
+ * automation's owed re-fold is dropped at READY.
+ *
  * <h2>The approval gate</h2>
  *
  * <p><b>Some releases need a person to say yes, and that is a gate of its own rather than a clause
@@ -607,6 +614,22 @@ public class ReleaseRequests {
     return row.refoldOwedAt != null
         && row.refoldOwedReason != null
         && row.refoldOwedReason.startsWith(FOLD_UNREACHABLE);
+  }
+
+  /**
+   * The sentence {@link #apply} writes for a re-fold owed "now" ({@link #AWAITING_PUSH} or {@link
+   * #FOLD_UNREACHABLE}), rebuilt from the marker's reason: what {@link #evaluate}'s last hold names
+   * (qits-1852). {@link #waiting} keeps the sentence already standing, which is this one wherever
+   * the write half wrote it.
+   */
+  private static String owedRefoldDetail(ReleaseRequest row) {
+    if (awaitingPush(row)) {
+      return "The sources could not be folded yet: "
+          + row.refoldOwedReason.substring(AWAITING_PUSH.length())
+          + " is not on the git host; waiting for its push";
+    }
+    return "The sources could not be folded: "
+        + row.refoldOwedReason.substring(FOLD_UNREACHABLE.length());
   }
 
   /**
@@ -3893,9 +3916,12 @@ public class ReleaseRequests {
    * it on the spot) and by {@link #sweep} as the backstop for everything else.
    *
    * <p>A request that went READY, or left the unreleased states, owes nothing: its release ships the
-   * fold that was gated, and the next request's automations re-plan whatever the branch carried. The
-   * marker is not cleared here but by the fold's write half ({@link #apply}), so a fold that could
-   * not be made leaves it owed for the next sweep.
+   * fold that was gated, and the next request's automations re-plan whatever the branch carried. A
+   * READY request can only owe an automation's re-fold (qits-1852): one the git host could not make,
+   * or one awaiting a fresh source's push, holds a request PENDING in {@link #evaluate}, and a READY
+   * request that comes to owe one is moved back to PENDING by {@link #apply}, where this pays it.
+   * The marker is not cleared here but by the fold's write half ({@link #apply}), so a fold that
+   * could not be made leaves it owed for the next sweep.
    */
   private boolean payOwedRefold(String id) {
     String owed;
@@ -4680,9 +4706,11 @@ public class ReleaseRequests {
    * <p><b>It is the backstop under an owed re-fold</b> (qits-1570): a request whose automation branch
    * moved while its fold was in flight, and whose fold is in flight no more, is re-folded here if
    * nothing else has done it yet — once, since the fold that lands clears the marker. A READY request
-   * owes nothing. A re-fold the git host could not make is owed the same way (qits-1850, {@link
-   * #FOLD_UNREACHABLE}) and paid here once {@link #unreachableRefoldBackoff} has passed since the
-   * failed attempt.
+   * owes nothing: an automation's owed re-fold is forgiven at READY, and the two that are not ({@link
+   * #FOLD_UNREACHABLE}, {@link #AWAITING_PUSH}) never stand on a READY row (qits-1852: {@link
+   * #evaluate} holds it PENDING, and {@link #apply} moves a READY one back). A re-fold the git host
+   * could not make is owed the same way (qits-1850, {@link #FOLD_UNREACHABLE}) and paid here once
+   * {@link #unreachableRefoldBackoff} has passed since the failed attempt.
    *
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
@@ -5297,6 +5325,13 @@ public class ReleaseRequests {
                         "Release request %s: %s is not on the git host yet; %s was added at %s,"
                             + " so its push is waited for (%s)",
                         row.qualifiedId, outcome.detail(), fresh.name, fresh.addedAt, why);
+                    // A READY REQUEST GOES BACK TO PENDING FOR IT (qits-1852): it passed its gates
+                    // at a fold that lacks this source, and payOwedRefold skips READY, so left READY
+                    // the worker would ship that fold with the source named and absent. PENDING,
+                    // evaluate()'s last hold keeps it there until the fold carrying the source
+                    // lands. The fold is unchanged, so nothing else is re-armed: its verdict and
+                    // approval still stand for the case where the re-fold lands at the same sha.
+                    demoteReady(row, now);
                     row.detail =
                         "The sources could not be folded yet: "
                             + outcome.detail()
@@ -5350,12 +5385,20 @@ public class ReleaseRequests {
                   // a fold now OWES the re-fold, stamped now so the sweep's knock is backed off from
                   // this attempt (unreachableRefoldBackoff), and the sentence stands until a fold
                   // lands (waiting() leaves it). Not a CONFLICTED request — a conflict is answered by
-                  // a push, never a knock — nor a REJECTED or READY one, and not one awaiting a
-                  // fresh source's push (qits-1751), whose own marker the sweep already knocks for.
+                  // a push, never a knock — nor a REJECTED one, and not one awaiting a fresh
+                  // source's push (qits-1751), whose own marker the sweep already knocks for.
+                  //
+                  // A READY REQUEST OWES IT TOO, AND GOES BACK TO PENDING FOR IT (qits-1852). The
+                  // re-fold was asked for — a join, a push — because the fold it passed its gates at
+                  // lacks something; left READY (payOwedRefold skips READY) the worker shipped that
+                  // fold with the joined branch named and absent. PENDING, evaluate()'s last hold
+                  // keeps it there until the owed re-fold lands and re-arms it.
                   row.detail = "The sources could not be folded: " + outcome.detail();
-                  if (row.state == ReleaseRequest.State.PENDING
+                  if ((row.state == ReleaseRequest.State.PENDING
+                          || row.state == ReleaseRequest.State.READY)
                       && row.mergedSha != null
                       && !awaitingPush(row)) {
+                    demoteReady(row, now);
                     LOG.infof(
                         "Release request %s keeps its fold %s; the git host could not fold (%s): %s;"
                             + " the sweep knocks again in %s",
@@ -5465,10 +5508,34 @@ public class ReleaseRequests {
   }
 
   /**
+   * <b>A READY request whose re-fold could not be made goes back to PENDING</b> (qits-1852), the
+   * one move {@link #apply} makes for an owed re-fold: the fold it passed its gates at lacks a
+   * source it names, so the worker must not ship it, and {@link #execute} releases only a READY or
+   * FAILED row. Nothing else is re-armed, because the fold did not move — the QA stamp, the verdict
+   * and an approval still name it, so a re-fold landing at the same sha goes READY again on them —
+   * and {@code armedAt} is stamped, as the fold rejection's reopen at the same sha stamps it, so a
+   * stall from here is its own (qits-1694). Any other state is left as it is.
+   */
+  private void demoteReady(ReleaseRequest row, Instant now) {
+    if (row.state != ReleaseRequest.State.READY) {
+      return;
+    }
+    LOG.infof(
+        "Release request %s was READY at %s and goes back to PENDING: its re-fold is owed",
+        row.qualifiedId, shortSha(row.mergedSha));
+    states.move(row, ReleaseRequest.State.PENDING);
+    row.armedAt = now;
+  }
+
+  /**
    * Say why a PENDING request is still pending, <b>only when the sentence changed</b>. The sweep
    * re-evaluates every open request every 30 seconds and a request can wait for a whole pipeline,
    * so stamping {@code updatedAt} on every tick would keep re-sorting the board (which is ordered by
    * it) and write a row per request per tick for no news at all.
+   *
+   * <p>A request owing a re-fold "now" — the git host could not make it ({@link #FOLD_UNREACHABLE},
+   * qits-1850) or a fresh source's push is awaited ({@link #AWAITING_PUSH}, qits-1852) — keeps the
+   * sentence its fold's write half left: that, not the gate in front of it, is why it waits.
    */
   private static void waiting(ReleaseRequest row, String detail) {
     if (detail.equals(row.detail)) {
@@ -5479,6 +5546,13 @@ public class ReleaseRequests {
       // because the git host could not make the new one, and that — the apply's "The sources
       // could not be folded: …" — is what the reader needs, not the gate it waits on at a fold
       // it is about to leave. The fold that lands clears the marker and re-arms the sentence.
+      return;
+    }
+    if (awaitingPush(row)) {
+      // A FRESH SOURCE IS AWAITED, AND SAYING SO IS THE HOLD'S REASON (qits-1852): the apply's "The
+      // sources could not be folded yet: … waiting for its push" is why evaluate() keeps this
+      // request PENDING whatever its gates read at the old fold, so it stands for the same reason
+      // the unreachable sentence does. The fold that carries the source clears the marker.
       return;
     }
     row.detail = detail;
@@ -6119,13 +6193,31 @@ public class ReleaseRequests {
                     waiting(row, waitingFor(releasesInFlight));
                     return false;
                   }
+                  // THE FOLD LACKS A SOURCE IT NAMES, AND THAT HOLDS IT LAST (qits-1852). Every gate
+                  // above judged the fold the request HAS, and a request owing a re-fold "now" knows
+                  // that fold is not the one it asks for: the git host could not make the newer one
+                  // (FOLD_UNREACHABLE, qits-1850 — a branch joined while it answered 500) or a fresh
+                  // source is not on it yet (AWAITING_PUSH, qits-1751). Going READY here released
+                  // the old fold with the joined branch named on the release and absent from the
+                  // tag. So it stays PENDING on the sentence its fold's write half left (waiting()
+                  // keeps it), and the re-fold the sweep pays — or the push, or any fold that lands
+                  // — re-arms it onto a fold that carries the source, gated afresh. An automation's
+                  // owed re-fold (qits-1570) is not one of these and is still forgiven below.
+                  if (awaitingPush(row) || foldUnreachable(row)) {
+                    waiting(row, owedRefoldDetail(row));
+                    return false;
+                  }
                   states.move(row, ReleaseRequest.State.READY);
                   row.detail = null;
                   if (row.refoldOwedAt != null) {
-                    // THE OWED RE-FOLD IS FORGIVEN, NOT PAID (qits-1570): the release ships the fold
-                    // that was gated and approved, and whatever the automation branch moved to
-                    // after it is re-planned by the next request's automations against the new
-                    // main. Re-folding now would throw away exactly what this request waited for.
+                    // THE OWED RE-FOLD IS FORGIVEN, NOT PAID (qits-1570), and only an automation's
+                    // reaches here (qits-1852): a re-fold owed because the git host could not make
+                    // it, or because a fresh source's push is awaited, held the request just above.
+                    // What is left is the automation branch that moved while the fold was in
+                    // flight: the release ships the fold that was gated and approved, and whatever
+                    // the automation branch moved to after it is re-planned by the next request's
+                    // automations against the new main. Re-folding now would throw away exactly
+                    // what this request waited for.
                     LOG.infof(
                         "Release request %s goes READY at %s; the re-fold it owed (%s) is dropped",
                         row.qualifiedId, shortSha(row.mergedSha), row.refoldOwedReason);

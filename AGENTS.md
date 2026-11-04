@@ -1744,8 +1744,14 @@ started four release builds for one change. Now:
   flight — a red verdict, a decline, gate 3's interrupt — and by the sweep as the backstop; every
   fold that is made (anything but UNREACHABLE) clears it, so any other move, a join or any other
   re-fold cause pays it for free and still cancels at once. READY drops it: the release ships the
-  gated fold. The pre-run's note is not touched meanwhile (a FRESH note is never re-read once QA is
-  announced), and a note that stops reading passed ends the flight, so the sweep re-folds.
+  gated fold. **Not a re-fold owed because it could not be made** (qits-1852): one the git host
+  answered UNREACHABLE (`FOLD_UNREACHABLE`, qits-1850) or one waiting for a fresh source's push
+  (`AWAITING_PUSH`, qits-1751) means the gated fold lacks a source the request names, so `evaluate`
+  holds the request PENDING in front of READY (after every other gate, keeping the fold's sentence
+  as `detail`), and `apply` moves a READY request whose re-fold fails either way back to PENDING
+  owing it; the re-fold that lands re-arms it. The pre-run's note is not touched meanwhile (a FRESH
+  note is never re-read once QA is announced), and a note that stops reading passed ends the
+  flight, so the sweep re-folds.
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
