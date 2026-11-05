@@ -1372,6 +1372,20 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
             "getWork",
             "/projects/api/work/{qualifiedId}"));
+    // The backup twin reset (qits-1885), as `qits repositories backup-reset` sends it: a person's
+    // CLI token, since the door is a person's (or the project's desk's). The twin's main is a
+    // forge's unrelated seed, so the answer is an UNRELATED_RESET between two seeded shas.
+    all.add(
+        new Interaction(
+            ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY,
+            "backupResetRepository",
+            "POST",
+            "/projects/api/repositories/{repositoryId}/backup-reset",
+            200,
+            null,
+            null,
+            "{\"reason\":\"The forge seeded the twin with a README commit of its own.\"}",
+            BEARER));
     return List.copyOf(all);
   }
 

@@ -336,6 +336,16 @@ public class ProviderStates {
   public static final String A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT =
       "a project with VERIFIED tickets in every wrapper verdict";
 
+  /**
+   * qits-1885: the backup twin reset door. A library on the git host at one seeded commit, whose
+   * backup twin — a real bare standing in for the forge — holds a README-only first commit of its
+   * own, unrelated to ours: the live qits-bootstrap-javalib case, which the backup refuses for
+   * ever. Params {@code projectId}, {@code repositoryId}, and the {@code authorization} a person's
+   * qits CLI token is presented as, since the door is a person's (or the project's desk's).
+   */
+  public static final String A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY =
+      "a repository whose backup twin holds unrelated history";
+
   /** The released branch's name, fixed: the read door is addressed by it. */
   static final String RELEASED_BRANCH = "ticket/qits-9001";
 
@@ -667,6 +677,9 @@ public class ProviderStates {
     states.put(
         A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
         this::aProjectWithVerifiedTicketsInEveryWrapperVerdict);
+    states.put(
+        A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY,
+        this::aRepositoryWhoseBackupTwinHoldsUnrelatedHistory);
   }
 
   /** Every state name this provider answers for. */
@@ -696,6 +709,7 @@ public class ProviderStates {
       frontDeskDaemon = null;
     }
     SeededGit.deleteAll();
+    deleteBackupTwins();
     bearers.reset();
     if (fakesTouched) {
       fakesTouched = false;
@@ -4058,6 +4072,81 @@ public class ProviderStates {
       throw new IllegalStateException("Could not seed the tagged repository", e);
     }
     return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  /** The backup twins {@link #aRepositoryWhoseBackupTwinHoldsUnrelatedHistory} made, by repository. */
+  private final Map<String, java.nio.file.Path> backupTwins = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * See {@link #A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY}. Both sides are written by
+   * {@link SeededGit}, so our main and the twin's seed are the same shas on every run, and the
+   * recorded {@code twinShaBefore} and {@code pushedSha} are fixed values rather than frozen ones.
+   * The twin's path is the row's {@code url}, which no recorded answer carries.
+   */
+  private Setup aRepositoryWhoseBackupTwinHoldsUnrelatedHistory() {
+    String token = token();
+    Project project = project(token, A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY);
+    String repoId =
+        projectService
+            .createRepository(project.id, null, "contract-javalib", RepositoryArchetype.LIBRARY)
+            .repository()
+            .id;
+    try {
+      SeededGit ours = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+      ours.write(Map.of("README.md", "# contract-javalib\n\nShared invoice types.\n"));
+      ours.commit(1, "Import the invoice types");
+      ours.push("main");
+      goCold(repoId);
+
+      java.nio.file.Path twin =
+          java.nio.file.Files.createTempDirectory("contract-backup-twin").resolve("contract-javalib.git");
+      backupTwins.put(repoId, twin);
+      gitWork.exec(twin.getParent().toFile(), "git", "init", "-q", "--bare", twin.toString());
+      SeededGit forge = SeededGit.init(gitWork, twin.toString());
+      forge.write(Map.of("README.md", "# contract-javalib\n"));
+      forge.commit(2, "Initial commit");
+      forge.push("main");
+    } catch (Exception e) {
+      throw new IllegalStateException("Could not seed the repository and its backup twin", e);
+    }
+    java.nio.file.Path twin = backupTwins.get(repoId);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Repository row = Repository.findById(repoId);
+              row.url = twin.toString();
+              row.mainBranch = "main";
+            });
+    bearers.grantPerson(PERSON_CLI_BEARER, "dev");
+    return new Setup(
+        params(
+            "projectId", project.id,
+            "repositoryId", repoId,
+            "authorization", PERSON_CLI_BEARER),
+        List.of(token));
+  }
+
+  /** Deletes the twins and the reset rows {@link #aRepositoryWhoseBackupTwinHoldsUnrelatedHistory} left. */
+  private void deleteBackupTwins() {
+    if (backupTwins.isEmpty()) {
+      return;
+    }
+    Map<String, java.nio.file.Path> twins = Map.copyOf(backupTwins);
+    backupTwins.clear();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                eu.wohlben.qits.projects.entity.RepositoryBackupReset.delete(
+                    "repositoryId in ?1", List.copyOf(twins.keySet())));
+    for (java.nio.file.Path twin : twins.values()) {
+      try (var paths = java.nio.file.Files.walk(twin.getParent())) {
+        for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+          java.nio.file.Files.deleteIfExists(path);
+        }
+      } catch (java.io.IOException e) {
+        // A twin left behind is litter in the temp directory, never a failed state.
+      }
+    }
   }
 
   // --- seeding ---------------------------------------------------------------------------------

@@ -260,6 +260,9 @@ class AgentReadAccessTest {
           "ReleaseRequestController.waiveAutomations",
           // Lifting gate 3 past a building upstream is a person's call (epic qits-897, qits-914).
           "ReleaseRequestController.overrideUpstream",
+          // Letting the backup twin's unrelated main be replaced is a person's (or the project's
+          // desk's) decision about a forge copy (qits-1885).
+          "RepositoryController.backupReset",
           "WorkCommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
           "WorkMembersController.approve",

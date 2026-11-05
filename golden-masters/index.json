@@ -4905,6 +4905,41 @@
       ]
     },
     {
+      "name": "a repository whose backup twin holds unrelated history",
+      "slug": "a-repository-whose-backup-twin-holds-unrelated-history",
+      "params": {
+        "authorization": "Bearer qits_tok_contract-person-cli",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "backupResetRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/backup-reset",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "reason": "The forge seeded the twin with a README commit of its own."
+          },
+          "status": 200,
+          "file": "a-repository-whose-backup-twin-holds-unrelated-history/backupResetRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.decidedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a repository with a branch to release",
       "slug": "a-repository-with-a-branch-to-release",
       "params": {
