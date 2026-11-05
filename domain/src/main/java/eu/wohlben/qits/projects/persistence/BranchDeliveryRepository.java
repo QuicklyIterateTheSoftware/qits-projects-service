@@ -26,10 +26,16 @@ public class BranchDeliveryRepository
 
   /**
    * What a step is compared with before it is published: the row's step, request, fold and fold
-   * attempt (qits-1725).
+   * attempt (qits-1725) — and, for the reconcile, the tip the branch was deleted at (qits-1869),
+   * which no step compares.
    */
   public record Position(
-      String step, String requestId, String foldSha, String foldAttempt, String version) {}
+      String step,
+      String requestId,
+      String foldSha,
+      String foldAttempt,
+      String version,
+      String deletedSha) {}
 
   /**
    * One row's key and version, for the walks over a request's RELEASED rows (LIVE, and a failed
@@ -42,7 +48,8 @@ public class BranchDeliveryRepository
   public Optional<Position> position(String projectId, String repoId, String branch) {
     List<?> rows =
         em().createNativeQuery(
-                "select step, request_id, fold_sha, fold_attempt, version from branch_delivery"
+                "select step, request_id, fold_sha, fold_attempt, version, deleted_sha"
+                    + " from branch_delivery"
                     + " where project_id = ?1 and repo_id = ?2 and branch = ?3")
             .setParameter(1, projectId)
             .setParameter(2, repoId)
@@ -54,10 +61,19 @@ public class BranchDeliveryRepository
     Object[] row = (Object[]) rows.get(0);
     return Optional.of(
         new Position(
-            (String) row[0], (String) row[1], (String) row[2], (String) row[3], (String) row[4]));
+            (String) row[0],
+            (String) row[1],
+            (String) row[2],
+            (String) row[3],
+            (String) row[4],
+            (String) row[5]));
   }
 
-  /** Writes one row whole, inserting or replacing what the key held. */
+  /**
+   * Writes one row whole, inserting or replacing what the key held. A step is never a deletion, so
+   * it clears {@code deleted_sha} (qits-1869): a branch recreated and carried again must not keep
+   * the tip an earlier deletion recorded.
+   */
   public void upsert(BranchDelivery row) {
     em().createNativeQuery(
             "insert into branch_delivery (project_id, repo_id, repo_name, branch, step, request_id,"
@@ -68,7 +84,8 @@ public class BranchDeliveryRepository
                 + " request_id = excluded.request_id, qualified_id = excluded.qualified_id,"
                 + " fold_sha = excluded.fold_sha, fold_attempt = excluded.fold_attempt,"
                 + " run_id = excluded.run_id,"
-                + " version = excluded.version, changed_at = excluded.changed_at")
+                + " version = excluded.version, changed_at = excluded.changed_at,"
+                + " deleted_sha = null")
         .setParameter(1, row.projectId)
         .setParameter(2, row.repoId)
         .setParameter(3, row.repoName)
@@ -109,7 +126,7 @@ public class BranchDeliveryRepository
     return em().createNativeQuery(
             "update branch_delivery set step = 'PUSHED', request_id = null, qualified_id = null,"
                 + " fold_sha = null, fold_attempt = null, run_id = null, version = null,"
-                + " changed_at = ?4"
+                + " deleted_sha = null, changed_at = ?4"
                 + " where project_id = ?1 and repo_id = ?2 and branch = ?3"
                 + " and step in ('LIVE', 'WITHDRAWN')")
         .setParameter(1, projectId)
@@ -125,6 +142,19 @@ public class BranchDeliveryRepository
             "delete from branch_delivery where repo_id = ?1 and branch = ?2 and step = 'PUSHED'")
         .setParameter(1, repoId)
         .setParameter(2, branch)
+        .executeUpdate();
+  }
+
+  /**
+   * A deleted branch's tip, recorded on every row of {@code (repoId, branch)} that is left — in any
+   * project, at any step (qits-1869). Answers how many rows it wrote; none where no row is left.
+   */
+  public int recordDeletedAt(String repoId, String branch, String sha) {
+    return em().createNativeQuery(
+            "update branch_delivery set deleted_sha = ?3 where repo_id = ?1 and branch = ?2")
+        .setParameter(1, repoId)
+        .setParameter(2, branch)
+        .setParameter(3, sha)
         .executeUpdate();
   }
 

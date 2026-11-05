@@ -1273,6 +1273,49 @@ public class ReleaseRequestFlowTest {
     assertEquals("ticket/qits-1676", told.get(0).deletedBranch());
   }
 
+  /**
+   * qits-1869: with the deleted tip known, the verdict is asked of the tip, never the fold — main
+   * containing the tip is NOTHING though it lacks the fold.
+   */
+  @Test
+  public void aWithdrawalWhoseTipMainContainsIsNothingLostThoughMainLacksTheFold() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("ticket/qits-1678");
+    gitHost.doesNotContain(repoId, mergedShaOf(id), "refs/heads/main");
+    String tip = sha();
+    gitHost.containsCommit(repoId, tip, "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoId, "ticket/qits-1678", tip);
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
+        withdrawalComments.callsFor(id);
+    assertEquals(1, told.size(), "told once: " + told);
+    assertEquals(
+        eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Lost.NOTHING,
+        told.get(0).lost());
+  }
+
+  /** The same over a tip main lacks: UNRELEASED, though main contains the fold. */
+  @Test
+  public void aWithdrawalWhoseTipMainLacksIsUnreleasedThoughMainContainsTheFold() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("ticket/qits-1679");
+    gitHost.containsCommit(repoId, mergedShaOf(id), "refs/heads/main");
+    String tip = sha();
+    gitHost.doesNotContain(repoId, tip, "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoId, "ticket/qits-1679", tip);
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
+        withdrawalComments.callsFor(id);
+    assertEquals(1, told.size(), "told once: " + told);
+    assertEquals(
+        eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Lost.UNRELEASED,
+        told.get(0).lost());
+  }
+
   /** A port that breaks its never-throw contract cannot undo or interrupt the withdrawal. */
   @Test
   public void aThrowingWithdrawalPortLeavesTheWithdrawalStanding() {

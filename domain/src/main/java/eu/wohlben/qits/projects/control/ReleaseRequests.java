@@ -3999,8 +3999,15 @@ public class ReleaseRequests {
    * ReleaseGitHost#contains}), never assumed, so a fold nobody could ask about is UNKNOWN and is
    * never told "nothing was lost". The comment changes no item's status, and nothing it does — a
    * failed ask, a missing port, a port that throws — can throw out of here.
+   *
+   * <p><b>The deleted tip is the better question</b> (qits-1869). {@code sha} is where the branch
+   * stood at the deletion — {@code SCMDeleteBranch}'s {@code sha}; null or blank when unknown. It is
+   * recorded on the branch's ledger rows ({@link BranchDeliveries#deletedAt}), after the WITHDRAWN
+   * writes, so a row that ended earlier and is only deleted now gets it too; and when known, the
+   * withdrawal's verdict asks whether the default branch contains the tip rather than the fold —
+   * the fold merges every source of the request and is not this branch's work alone.
    */
-  public void onBranchDeleted(String repoId, String branch) {
+  public void onBranchDeleted(String repoId, String branch, String sha) {
     String ownBranch =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4018,6 +4025,7 @@ public class ReleaseRequests {
       remerge(ownBranch, "its backing branch " + branch + " was deleted");
       return;
     }
+    String tip = sha == null || sha.isBlank() ? null : sha;
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4076,8 +4084,11 @@ public class ReleaseRequests {
                             open.projectId,
                             open.mergedSha,
                             before,
-                            main));
+                            main,
+                            tip));
                   }
+                  // After the WITHDRAWN writes, which clear it: the tip stays on every row left.
+                  deliveries.deletedAt(repoId, branch, tip);
                   return touched;
                 });
     for (Affected row : affected) {
@@ -4097,10 +4108,16 @@ public class ReleaseRequests {
     }
   }
 
+  /** {@link #onBranchDeleted(String, String, String)} with the deleted tip unknown. */
+  public void onBranchDeleted(String repoId, String branch) {
+    onBranchDeleted(repoId, branch, null);
+  }
+
   /**
    * One open request {@link #onBranchDeleted} touched, read inside its transaction: whether it was
    * withdrawn, and what the withdrawal is told with (qits-1671) — the sources it had before the
-   * deletion, its last fold and the default branch it was left with.
+   * deletion, its last fold, the default branch it was left with and the deleted branch's tip,
+   * null when unknown (qits-1869).
    */
   private record Affected(
       String id,
@@ -4111,7 +4128,8 @@ public class ReleaseRequests {
       String projectId,
       String mergedSha,
       List<String> branchesBefore,
-      String defaultBranch) {}
+      String defaultBranch,
+      String deletedSha) {}
 
   /**
    * Tells the work items of a request {@link #onBranchDeleted} withdrew (qits-1671), after the
@@ -4162,7 +4180,8 @@ public class ReleaseRequests {
                     row.id(),
                     row.qualifiedId(),
                     null,
-                    WrapperBranchEndings.Ending.DELETED_MERGED));
+                    WrapperBranchEndings.Ending.DELETED_MERGED,
+                    row.deletedSha()));
       } catch (RuntimeException e) {
         // The port says it must not throw; the reconcile reads the same facts again.
         LOG.warnf(e, "Could not close the ticket of deleted wrapper branch %s", branch);
@@ -4174,22 +4193,27 @@ public class ReleaseRequests {
    * What the withdrawn request's last fold added to the default branch (qits-1671): NOTHING when the
    * git host says the default branch contains it, UNRELEASED when it says it does not, and UNKNOWN
    * when there is no fold or no answer — "could not ask" is never "nothing was lost".
+   *
+   * <p>With the deleted branch's tip known (qits-1869) the question is the tip, never the fold: the
+   * tip is the branch's own work, while the fold merges every source and may be a commit no ref
+   * keeps. Its answer is final — a NO or a failed ask is not retried against the fold.
    */
   private ReleaseRequestWithdrawalComments.Lost lostBy(String repoId, Affected row) {
-    if (row.mergedSha() == null || !gitHosts.isResolvable()) {
+    String asked = row.deletedSha() != null ? row.deletedSha() : row.mergedSha();
+    String what = row.deletedSha() != null ? "the deleted tip" : "its fold";
+    if (asked == null || !gitHosts.isResolvable()) {
       return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
     }
     ReleaseGitHost.Answer<Boolean> answer;
     try {
-      answer =
-          gitHosts.get().contains(repoId, row.mergedSha(), "refs/heads/" + row.defaultBranch());
+      answer = gitHosts.get().contains(repoId, asked, "refs/heads/" + row.defaultBranch());
     } catch (RuntimeException e) {
       answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
     }
     if (!answer.ok() || answer.value() == null) {
       LOG.warnf(
-          "Release request %s was withdrawn; whether %s contains its fold %s could not be read: %s",
-          row.qualifiedId(), row.defaultBranch(), shortSha(row.mergedSha()), answer.detail());
+          "Release request %s was withdrawn; whether %s contains %s %s could not be read: %s",
+          row.qualifiedId(), row.defaultBranch(), what, shortSha(asked), answer.detail());
       return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
     }
     return answer.value()

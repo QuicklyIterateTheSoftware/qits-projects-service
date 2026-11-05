@@ -25,12 +25,13 @@ public interface WrapperBranchEndings {
      */
     EMPTY,
     /**
-     * The branch was deleted from the wrapper and the last fold that carried it — the ledger row's
-     * {@code fold_sha}, the fold {@link ReleaseRequests#onBranchDeleted} asks about — is contained in
-     * the wrapper's default branch: the git host answered YES ({@code
-     * ReleaseRequestWithdrawalComments.Lost#NOTHING}). Its request ended (withdrawn on the deletion,
-     * or superseded or obsoleted without carrying it on), and nothing of it is left to add to main:
-     * the same rule as {@link #EMPTY}. A NO or an unanswered ask is never this ending.
+     * The branch was deleted from the wrapper and the git host answered YES ({@code
+     * ReleaseRequestWithdrawalComments.Lost#NOTHING}) to whether the wrapper's default branch
+     * contains it: the tip the branch was deleted at where that is known ({@link Ended#deletedSha},
+     * qits-1869), and otherwise the last fold that carried it — the ledger row's {@code fold_sha}.
+     * Its request ended (withdrawn on the deletion, or superseded or obsoleted without carrying it
+     * on), and nothing of it is left to add to main: the same rule as {@link #EMPTY}. A NO or an
+     * unanswered ask is never this ending, and a known tip's NO is never retried against the fold.
      */
     DELETED_MERGED,
     /**
@@ -52,6 +53,8 @@ public interface WrapperBranchEndings {
    * @param qualifiedId that request's qualified id, for the thread
    * @param version the version it released as; null for {@link Ending#EMPTY}
    * @param ending how it ended
+   * @param deletedSha for {@link Ending#DELETED_MERGED} proven from the branch's own tip, that tip
+   *     (qits-1869); null for every other ending and for one proven from the fold
    */
   record Ended(
       String projectId,
@@ -60,7 +63,8 @@ public interface WrapperBranchEndings {
       String requestId,
       String qualifiedId,
       String version,
-      Ending ending) {}
+      Ending ending,
+      String deletedSha) {}
 
   void ended(Ended ended);
 }

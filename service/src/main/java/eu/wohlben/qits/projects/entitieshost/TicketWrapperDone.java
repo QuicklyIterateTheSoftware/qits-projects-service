@@ -56,12 +56,14 @@ import org.jboss.logging.Logger;
  *       qits.projects.wrapper-done.reconcile-every}: every VERIFIED ticket of every project with a
  *       wrapper is read against its wrapper branch's ledger row, the floor under an ending that
  *       could not be told or could not move the ticket. It also decides the two endings the ledger
- *       cannot state alone ({@link #reconciled}): a wrapper branch deleted with its last fold
- *       already in main, and a ticket with no row and no branch at all past a grace. Its first pass
- *       after a deploy is the backfill of the tickets whose requests ended before qits-150.
+ *       cannot state alone ({@link #reconciled}): a wrapper branch deleted with its tip (or, the
+ *       tip unknown, its last fold) already in main, and a ticket with no row and no branch at all
+ *       past a grace. Its first pass after a deploy is the backfill of the tickets whose requests
+ *       ended before qits-150.
  *   <li><b>The deletion</b> — {@code ReleaseRequests.onBranchDeleted}, through {@link #ended}: a
- *       wrapper request withdrawn because its branch was deleted, whose last fold the git host says
- *       main contains ({@code Lost.NOTHING}), is {@link Ending#DELETED_MERGED} at once.
+ *       wrapper request withdrawn because its branch was deleted, whose deleted tip — or, with the
+ *       tip unknown, last fold — the git host says main contains ({@code Lost.NOTHING}), is
+ *       {@link Ending#DELETED_MERGED} at once (qits-1869).
  * </ul>
  *
  * <p>Each closes only a <b>TICKET at VERIFIED</b>: the move is {@link
@@ -104,7 +106,10 @@ public class TicketWrapperDone implements WrapperBranchEndings {
 
   @Inject ProjectChangePublisher publisher;
 
-  /** Asked whether a wrapper branch is gone and whether main contains its last fold (qits-150). */
+  /**
+   * Asked whether a wrapper branch is gone and whether main contains its deleted tip (qits-1869)
+   * or last fold (qits-150).
+   */
   @Inject Instance<ReleaseGitHost> gitHosts;
 
   /**
@@ -247,6 +252,10 @@ public class TicketWrapperDone implements WrapperBranchEndings {
     }
 
     Ended ended(String version, Ending ending) {
+      return ended(version, ending, null);
+    }
+
+    Ended ended(String version, Ending ending, String deletedSha) {
       return new Ended(
           projectId,
           wrapper.id,
@@ -254,7 +263,8 @@ public class TicketWrapperDone implements WrapperBranchEndings {
           held == null ? null : held.requestId(),
           qualifiedId(),
           version,
-          ending);
+          ending,
+          deletedSha);
     }
   }
 
@@ -315,12 +325,16 @@ public class TicketWrapperDone implements WrapperBranchEndings {
    *   <li><b>{@link Ending#DELETED_MERGED}</b> — the row has ENDED (it is WITHDRAWN, or it names a
    *       request that is WITHDRAWN or OBSOLETE, so the branch never reached a successor: one that
    *       had would name the successor), the wrapper branch is gone from the git host, and the
+   *       wrapper's default branch contains the row's {@code deleted_sha} — the tip the deletion
+   *       recorded (qits-1869), the branch's own work — or, only where no tip was recorded, the
    *       row's {@code fold_sha} — the last fold that carried the branch, the very fold {@code
    *       ReleaseRequests.onBranchDeleted} asks about — is contained in the wrapper's default
    *       branch ({@link #lastFoldOf}: the request's {@code merged_sha} stands in only for a row
    *       that still names it, never for a WITHDRAWN one, whose request may have folded on
-   *       without the branch). A row with no fold, a containment the host says
-   *       NO to and one it could not answer all close nothing.
+   *       without the branch). A row with neither, a containment the host says NO
+   *       to and one it could not answer all close nothing; a known tip's NO is never retried
+   *       against the fold, which merges every source of the request and may be a commit no ref
+   *       keeps any more (the gap qits-1869 closes).
    *   <li><b>{@link Ending#NO_BRANCH}</b> — no row at all, the wrapper branch is not on the git
    *       host, and the ticket has been VERIFIED longer than {@link #noBranchGrace}, read off its
    *       {@code updatedAt} (which a move into VERIFIED stamps, and any later write only moves
@@ -349,8 +363,14 @@ public class TicketWrapperDone implements WrapperBranchEndings {
       }
       return branchGone(facts) ? Optional.of(facts.ended(null, Ending.NO_BRANCH)) : Optional.empty();
     }
-    String fold = lastFoldOf(facts);
-    if (!rowEnded(facts) || fold == null || !branchGone(facts)) {
+    if (!rowEnded(facts)) {
+      return Optional.empty();
+    }
+    // qits-1869: the tip the branch was deleted at is the proof when it is known, and then the
+    // only one — a NO or an unanswered ask about it is never retried against the fold.
+    String tip = held.deletedSha() == null || held.deletedSha().isBlank() ? null : held.deletedSha();
+    String asked = tip != null ? tip : lastFoldOf(facts);
+    if (asked == null || !branchGone(facts)) {
       return Optional.empty();
     }
     String main =
@@ -359,17 +379,21 @@ public class TicketWrapperDone implements WrapperBranchEndings {
             : facts.wrapper().mainBranch;
     ReleaseGitHost.Answer<Boolean> contained;
     try {
-      contained = gitHosts.get().contains(facts.wrapper().id, fold, "refs/heads/" + main);
+      contained = gitHosts.get().contains(facts.wrapper().id, asked, "refs/heads/" + main);
     } catch (RuntimeException e) {
       contained = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
     }
     if (!contained.ok() || !Boolean.TRUE.equals(contained.value())) {
       LOG.debugf(
-          "The deleted wrapper branch %s: whether %s contains its fold %s is %s; it closes nothing",
-          facts.branch(), main, fold, contained.ok() ? contained.value() : contained.detail());
+          "The deleted wrapper branch %s: whether %s contains its %s %s is %s; it closes nothing",
+          facts.branch(),
+          main,
+          tip != null ? "deleted tip" : "fold",
+          asked,
+          contained.ok() ? contained.value() : contained.detail());
       return Optional.empty();
     }
-    return Optional.of(facts.ended(null, Ending.DELETED_MERGED));
+    return Optional.of(facts.ended(null, Ending.DELETED_MERGED, tip));
   }
 
   /**
@@ -441,6 +465,10 @@ public class TicketWrapperDone implements WrapperBranchEndings {
     }
   }
 
+  private static String shortSha(String sha) {
+    return sha.length() > 12 ? sha.substring(0, 12) : sha;
+  }
+
   /** What the ticket's thread is told, naming the request that ended its delivery. */
   static String sentence(Ended ended) {
     String request = "`" + (ended.qualifiedId() == null ? ended.requestId() : ended.qualifiedId()) + "`";
@@ -461,12 +489,20 @@ public class TicketWrapperDone implements WrapperBranchEndings {
               + "` was withdrawn because its fold adds nothing to main: there is nothing left to"
               + " release. The platform moves this ticket to **DONE**.";
       case DELETED_MERGED ->
-          "The wrapper branch `"
-              + ended.branch()
-              + "` was deleted, and the last fold of it, in the wrapper release request "
-              + request
-              + ", is already contained in main: nothing of it is left to add. The platform moves"
-              + " this ticket to **DONE**.";
+          ended.deletedSha() != null
+              ? "The wrapper branch `"
+                  + ended.branch()
+                  + "` was deleted at `"
+                  + shortSha(ended.deletedSha())
+                  + "`, which main already contains (wrapper release request "
+                  + request
+                  + "): nothing of it is left to add. The platform moves this ticket to **DONE**."
+              : "The wrapper branch `"
+                  + ended.branch()
+                  + "` was deleted, and the last fold of it, in the wrapper release request "
+                  + request
+                  + ", is already contained in main: nothing of it is left to add. The platform"
+                  + " moves this ticket to **DONE**.";
       case NO_BRANCH ->
           "No wrapper branch `"
               + ended.branch()
