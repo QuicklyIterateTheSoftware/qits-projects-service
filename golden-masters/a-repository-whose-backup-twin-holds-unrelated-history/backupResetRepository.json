@@ -1,0 +1,9 @@
+{
+  "repositoryId": "00000000-0000-4000-8000-000000000002",
+  "kind": "UNRELATED_RESET",
+  "twinShaBefore": "4cafe88754afd99a5b8c174d94b7bca435ec1f3d",
+  "pushedSha": "2ea701248909a576a8800b07134c97e195e6a33b",
+  "decidedBy": "dev",
+  "decidedAt": "2026-01-01T00:00:00Z",
+  "reason": "The forge seeded the twin with a README commit of its own."
+}

@@ -13,6 +13,7 @@ import eu.wohlben.qits.projects.dto.CommitChangesDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.CommitLogDto;
 import eu.wohlben.qits.projects.dto.RepositoryArchiveDto;
+import eu.wohlben.qits.projects.dto.RepositoryBackupResetDto;
 import eu.wohlben.qits.projects.dto.RepositoryCoordinatesDto;
 import eu.wohlben.qits.projects.dto.RepositoryDto;
 import eu.wohlben.qits.projects.dto.SyncStatusDto;
@@ -20,6 +21,7 @@ import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectsDto;
 import eu.wohlben.qits.projects.mapper.RepositoryMapper;
 import eu.wohlben.qits.projects.security.AgentAccess;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -70,6 +72,9 @@ public class RepositoryController {
   @Inject RepositoryArchive repositoryArchive;
 
   @Inject SecurityIdentity identity;
+
+  /** A verified person, or the project's own delivery desk — the backup reset's proof. */
+  @Inject PersonCheck persons;
 
   /**
    * The project's delivery desk ({@code qits:desk}, qits-1596) holds the coordinator's repository
@@ -392,6 +397,98 @@ public class RepositoryController {
     repositoryService.get(repoId); // 404 for an unknown id, like every other repository route
     backupPushService.onPush(repoId);
     return new BackupSyncRequest.Response(repoId, true);
+  }
+
+  /** @param reason why the twin's main may be replaced; required, recorded with the reset */
+  @Schema(
+      name = "RepositoryBackupResetRequest",
+      description = "Why the backup twin's main may be replaced.")
+  public static record BackupResetRequest(String reason) {}
+
+  /**
+   * <b>Reset this repository's backup twin when its main holds unrelated history</b> (qits-1885).
+   *
+   * <p>The backup never forces, so a twin seeded by its forge with a commit of its own — a README
+   * nobody on the platform wrote — refuses every backup as non-fast-forward, for good. This door is
+   * the one way out, and it is deliberately narrow: it fast-forwards a twin that is merely behind,
+   * force-updates main under a lease only when the two histories share no commit at all, and
+   * refuses a twin that is ahead or diverged from a common base, which holds work the platform does
+   * not have. See {@code RepositoryService#resetBackupTwin}.
+   *
+   * <p><b>A person or the project's own delivery desk</b> ({@link PersonCheck#requireAdminOrDesk}),
+   * the upstream override's roles: the decision is "the forge copy's main may be discarded", which
+   * a machine must not make. Plain agents, CI and service clients answer 403; so does another
+   * project's desk. The repository is read first, so an unknown id is a 404.
+   */
+  @POST
+  @Path("/{repoId}/backup-reset")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
+  @Operation(
+      operationId = "backupResetRepository",
+      summary = "Reset this repository's backup twin whose main holds unrelated history",
+      description =
+          "Probes the backup twin's main branch (the repository's url) and pushes ours onto it,"
+              + " under the repository's backup lock. A twin with no main, at ours, or behind ours is"
+              + " fast-forwarded with the backup's own push (kind FAST_FORWARD, no force). A twin"
+              + " whose main shares no commit with ours (a forge's seed commit) has its main"
+              + " force-updated with a lease on the sha probed, tags pushed without force (kind"
+              + " UNRELATED_RESET); only main is ever forced. A twin ahead of ours or diverged from"
+              + " a common base is refused with 409 naming both shas, and nothing is pushed. On"
+              + " success the backup outcome reads SUCCEEDED and the reset is recorded with who"
+              + " decided and why (GET .../backup-resets). Only a person — qits:admin, verified by"
+              + " this service from a browser session or a person's qits CLI token — or the"
+              + " project's delivery desk (its own delivery token, in its own project; recorded"
+              + " under its token subject). Asserted identity headers, agents, CI, service clients"
+              + " and another project's desk answer 403.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The twin's main is ours now",
+      content = @Content(schema = @Schema(implementation = RepositoryBackupResetDto.class)))
+  @APIResponse(responseCode = "400", description = "A missing or blank reason")
+  @APIResponse(
+      responseCode = "403",
+      description = "Neither a verified person nor this project's delivery desk")
+  @APIResponse(responseCode = "404", description = "No such repository")
+  @APIResponse(
+      responseCode = "409",
+      description =
+          "No backup twin; the git host holds no main; the twin is ahead or diverged (nothing"
+              + " pushed); or the twin moved between the probe and the push")
+  @APIResponse(responseCode = "500", description = "The twin or the git host could not be read")
+  public RepositoryBackupResetDto backupReset(
+      @PathParam("repoId") String repoId, BackupResetRequest body) {
+    var repository = repositoryService.get(repoId); // 404 for an unknown repository
+    String actor =
+        persons.requireAdminOrDesk(repository.project == null ? null : repository.project.id);
+    return backupPushService.resetTwin(repoId, body == null ? null : body.reason(), actor);
+  }
+
+  public static record ListBackupResetsRequest() {
+    /** @param resets the repository's backup resets, newest first */
+    @Schema(
+        name = "RepositoryBackupResets",
+        description = "A repository's backup twin resets, newest first.")
+    public record Response(List<RepositoryBackupResetDto> resets) {}
+  }
+
+  /** The repository's backup resets, newest first — a read, so every repository reader's roles. */
+  @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:agent"})
+  @Path("/{repoId}/backup-resets")
+  @Operation(
+      operationId = "listRepositoryBackupResets",
+      summary = "The resets of this repository's backup twin, newest first",
+      description =
+          "Every POST .../backup-reset that pushed: its kind, the twin's main before"
+              + " (twinShaBefore, null when it had none) and after (pushedSha), who decided, when and"
+              + " why. A refused reset is not listed.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The resets",
+      content = @Content(schema = @Schema(implementation = ListBackupResetsRequest.Response.class)))
+  @APIResponse(responseCode = "404", description = "No such repository")
+  public ListBackupResetsRequest.Response backupResets(@PathParam("repoId") String repoId) {
+    return new ListBackupResetsRequest.Response(repositoryService.backupResets(repoId));
   }
 
   @GET

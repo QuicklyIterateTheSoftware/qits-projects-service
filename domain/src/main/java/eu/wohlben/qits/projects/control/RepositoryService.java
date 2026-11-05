@@ -2,9 +2,13 @@ package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.db.DbRetry;
 import eu.wohlben.qits.projects.error.BadRequestException;
+import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.InternalServerErrorException;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.entity.BackupOutcome;
+import eu.wohlben.qits.projects.entity.BackupResetKind;
+import eu.wohlben.qits.projects.entity.RepositoryBackupReset;
+import eu.wohlben.qits.projects.dto.RepositoryBackupResetDto;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.dto.BranchDto;
 import eu.wohlben.qits.projects.dto.RepositoryCoordinatesDto;
@@ -601,6 +605,275 @@ public class RepositoryService {
 
   /** The scalars a backup needs, read in one short transaction. */
   private record BackupSpec(String url, String label, String mainBranch) {}
+
+  /**
+   * Where the reset parks the twin's main while it classifies it — always deleted afterwards, and
+   * pruned anyway by the mirror's next {@code fetch --prune +refs/*:refs/*}, since the git host
+   * holds no such ref. Outside {@code refs/heads/} and {@code refs/tags/}, so no push here can
+   * carry it.
+   */
+  static final String BACKUP_PROBE_PREFIX = "refs/qits-backup-probe/";
+
+  /**
+   * <b>Resets a repository's backup twin whose main the backup can no longer push to</b>
+   * (qits-1885): the one door that may move the twin's main by force, and only when the histories
+   * share no commit at all.
+   *
+   * <p>{@link #backupToTwin} pushes without force on purpose, so a twin whose main is a forge's own
+   * seed commit — a README the forge made when the repository was created there, unrelated to
+   * ours — refuses every backup as non-fast-forward, forever. This reads the twin's main ({@code
+   * ls-remote}), fetches it into the mirror under {@link #BACKUP_PROBE_PREFIX} and classifies it
+   * against ours:
+   *
+   * <ul>
+   *   <li><b>absent, equal, or an ancestor of ours</b> — {@link BackupResetKind#FAST_FORWARD}: the
+   *       backup's own push, no force.
+   *   <li><b>no merge base at all</b> — {@link BackupResetKind#UNRELATED_RESET}: main is pushed with
+   *       {@code --force-with-lease=refs/heads/<main>:<probed sha>}, so a twin that moved after the
+   *       probe is refused rather than overwritten, and the tags without force. Never a bare
+   *       {@code --force} and never {@code --mirror}; no ref but main is ever forced.
+   *   <li><b>ahead of ours, or diverged from a common base</b> — 409 naming both shas, nothing
+   *       pushed and nothing recorded: the twin holds work the platform does not, which is a
+   *       person's to look at, not this door's to discard.
+   * </ul>
+   *
+   * <p>The push is {@code --atomic}: a lease refused, or a tag the twin holds at another commit,
+   * leaves the twin exactly as it was rather than half reset. On success the backup outcome is
+   * recorded SUCCEEDED and a {@link RepositoryBackupReset} row says who, why and what moved.
+   *
+   * <p>The caller holds the repository's backup lock ({@code BackupPushService.resetTwin}), so no
+   * backup overlaps the probe and the push.
+   *
+   * @param actor who decided — a verified person or the project's desk, already checked
+   * @throws NotFoundException for an unknown repository
+   * @throws BadRequestException for a blank reason
+   * @throws DomainException 409 for no twin, a main the git host lacks, a twin ahead or diverged, or
+   *     a twin that moved between the probe and the push
+   */
+  @ActivateRequestContext
+  public RepositoryBackupResetDto resetBackupTwin(String repoId, String reason, String actor) {
+    BackupSpec spec =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  Repository repo = get(repoId);
+                  return new BackupSpec(repo.url, repoLabel(repo), repo.mainBranch);
+                });
+    if (reason == null || reason.isBlank()) {
+      throw new BadRequestException("A reason is required: say why the twin's main may be replaced");
+    }
+    if (spec.url() == null || spec.url().isBlank()) {
+      throw new DomainException(
+          409, "Repository " + spec.label() + " has no backup twin — there is nothing to reset");
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      mirror.refreshNow();
+    } catch (GitMirrorException e) {
+      throw new InternalServerErrorException("Backup reset failed: " + e.getMessage());
+    }
+    java.io.File gitDir = mirror.gitDir().toFile();
+    String branch = resolveMainBranch(spec.mainBranch(), mirror.gitDir());
+    String mainRef = "refs/heads/" + branch;
+    // Every ref below is built from the branch name, and the lease is one argv entry with it inside:
+    // a name git would not accept as a ref is refused before it reaches any remote verb.
+    requireRefFormat(gitDir, mainRef);
+    String ours =
+        revParse(gitDir, mainRef)
+            .orElseThrow(
+                () ->
+                    new DomainException(
+                        409,
+                        "The git host holds no " + branch + " for " + spec.label()
+                            + " — there is nothing to back up"));
+    String twin = twinHead(gitDir, spec, mainRef);
+
+    BackupResetKind kind;
+    if (twin == null || twin.equals(ours)) {
+      kind = BackupResetKind.FAST_FORWARD;
+    } else {
+      kind = classifyTwin(gitDir, spec, branch, mainRef, ours, twin);
+    }
+
+    // --end-of-options after every flag, as the backup's own push: the url and the refspecs are
+    // operands, whatever they hold. Tags carry no `+`, so only main is ever forced, and only with a
+    // lease on the sha probed above.
+    List<String> push = new ArrayList<>(List.of("push", "--atomic"));
+    if (kind == BackupResetKind.UNRELATED_RESET) {
+      push.add("--force-with-lease=" + mainRef + ":" + twin);
+    }
+    push.addAll(
+        List.of("--end-of-options", spec.url(), mainRef + ":" + mainRef, "refs/tags/*:refs/tags/*"));
+    try {
+      git.exec(gitDir, remoteAuth.gitWithCredentials(push.toArray(String[]::new)));
+    } catch (Exception e) {
+      String message = e.getMessage() == null ? "" : e.getMessage();
+      if (message.contains("stale info")
+          || message.contains("non-fast-forward")
+          || message.contains("fetch first")) {
+        throw new DomainException(
+            409,
+            "The twin of " + spec.label() + " moved since it was probed at "
+                + (twin == null ? "(no main)" : shortSha(twin))
+                + "; nothing was pushed — ask again to probe it afresh");
+      }
+      throw new InternalServerErrorException(
+          "Backup reset of " + spec.label() + " failed: " + message);
+    }
+
+    recordBackupOutcome(repoId, BackupOutcome.SUCCEEDED, null);
+    String id = UUID.randomUUID().toString();
+    java.time.Instant decidedAt = java.time.Instant.now();
+    String said = reason.strip();
+    BackupResetKind pushed = kind;
+    // Held through a cutover like recordBackupOutcome, and for its reason: the twin has already
+    // moved when this runs. The id is minted outside the body, so a retry after a lost commit
+    // acknowledgement finds its own row rather than writing a second one.
+    DbRetry.runInNewTx(
+        "backup reset record",
+        () -> {
+          if (RepositoryBackupReset.findById(id) != null) {
+            return;
+          }
+          RepositoryBackupReset row = new RepositoryBackupReset();
+          row.id = id;
+          row.repositoryId = repoId;
+          row.decidedBy = actor;
+          row.decidedAt = decidedAt;
+          row.reason = said;
+          row.kind = pushed;
+          row.twinShaBefore = twin;
+          row.pushedSha = ours;
+          row.persist();
+          row.getEntityManager().flush();
+        });
+    LOG.infof(
+        "Backup twin of %s reset (%s) by %s: %s -> %s. Reason: %s",
+        spec.label(), kind, actor, twin == null ? "(no main)" : twin, ours, said);
+    return new RepositoryBackupResetDto(repoId, kind, twin, ours, actor, decidedAt, said);
+  }
+
+  /** A repository's backup resets, newest first — {@code GET /repositories/{repoId}/backup-resets}. */
+  public List<RepositoryBackupResetDto> backupResets(String repoId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              get(repoId); // 404 for an unknown repository
+              return RepositoryBackupReset.<RepositoryBackupReset>list(
+                      "repositoryId = ?1 order by decidedAt desc, id desc", repoId)
+                  .stream()
+                  .map(RepositoryBackupResetDto::of)
+                  .toList();
+            });
+  }
+
+  /**
+   * The twin's main, read with {@code ls-remote}; null when the twin has no such branch. Only the
+   * exact ref counts: {@code ls-remote}'s pattern is a tail match.
+   */
+  private String twinHead(java.io.File gitDir, BackupSpec spec, String mainRef) {
+    String out;
+    try {
+      out =
+          git.exec(
+              gitDir,
+              remoteAuth.gitWithCredentials("ls-remote", "--end-of-options", spec.url(), mainRef));
+    } catch (Exception e) {
+      throw new InternalServerErrorException(
+          "Could not read the twin of " + spec.label() + ": " + e.getMessage());
+    }
+    for (String line : out.strip().lines().toList()) {
+      String[] parts = line.strip().split("\\s+");
+      if (parts.length == 2 && parts[1].equals(mainRef)) {
+        return parts[0];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Where the twin's {@code twin} stands against our {@code ours}, both on main and known to
+   * differ: fetched into a probe ref (deleted again whatever happens) and asked of {@code
+   * merge-base}. Answers the push to make, or refuses with 409.
+   */
+  private BackupResetKind classifyTwin(
+      java.io.File gitDir, BackupSpec spec, String branch, String mainRef, String ours, String twin) {
+    String probe = BACKUP_PROBE_PREFIX + branch;
+    try {
+      try {
+        git.exec(
+            gitDir,
+            remoteAuth.gitWithCredentials(
+                "fetch", "--no-tags", "--end-of-options", spec.url(), "+" + mainRef + ":" + probe));
+      } catch (Exception e) {
+        throw new InternalServerErrorException(
+            "Could not fetch the twin of " + spec.label() + ": " + e.getMessage());
+      }
+      // The sha itself, not the probe ref: a concurrent mirror refresh prunes the ref, never the
+      // objects, so the answer does not depend on it surviving.
+      if (isAncestor(gitDir, twin, ours)) {
+        return BackupResetKind.FAST_FORWARD;
+      }
+      if (isAncestor(gitDir, ours, twin)) {
+        throw new DomainException(
+            409,
+            "The twin of " + spec.label() + " is ahead: its " + branch + " at " + twin
+                + " contains ours at " + ours
+                + ". Nothing was pushed — the twin holds commits the platform does not have.");
+      }
+      GitExecutor.ExecResult base = gitAllowNonZero(gitDir, "merge-base", ours, twin);
+      if (base.exitCode() == 0) {
+        throw new DomainException(
+            409,
+            "The twin of " + spec.label() + " has diverged: its " + branch + " at " + twin
+                + " and ours at " + ours + " share " + base.output().strip()
+                + ". Nothing was pushed — only unrelated history is reset.");
+      }
+      if (base.exitCode() != 1) {
+        throw new InternalServerErrorException(
+            "Could not compare the twin of " + spec.label() + ": " + base.output());
+      }
+      return BackupResetKind.UNRELATED_RESET;
+    } finally {
+      gitAllowNonZero(gitDir, "update-ref", "-d", probe);
+    }
+  }
+
+  /** {@code merge-base --is-ancestor}: exit 0 yes, 1 no, anything else a failure. */
+  private boolean isAncestor(java.io.File gitDir, String ancestor, String descendant) {
+    GitExecutor.ExecResult result =
+        gitAllowNonZero(gitDir, "merge-base", "--is-ancestor", ancestor, descendant);
+    if (result.exitCode() > 1) {
+      throw new InternalServerErrorException("Could not compare commits: " + result.output());
+    }
+    return result.exitCode() == 0;
+  }
+
+  /** {@code ref} resolved to a commit in the mirror, or empty when it does not exist there. */
+  private Optional<String> revParse(java.io.File gitDir, String ref) {
+    GitExecutor.ExecResult result =
+        gitAllowNonZero(gitDir, "rev-parse", "--verify", "--quiet", ref + "^{commit}");
+    String sha = result.output().strip();
+    return result.exitCode() == 0 && !sha.isEmpty() ? Optional.of(sha) : Optional.empty();
+  }
+
+  /** Refuses a ref name git itself would not accept. */
+  private void requireRefFormat(java.io.File gitDir, String ref) {
+    if (gitAllowNonZero(gitDir, "check-ref-format", ref).exitCode() != 0) {
+      throw new BadRequestException("Not a valid branch name: " + ref);
+    }
+  }
+
+  private GitExecutor.ExecResult gitAllowNonZero(java.io.File gitDir, String... args) {
+    String[] argv = new String[args.length + 1];
+    argv[0] = "git";
+    System.arraycopy(args, 0, argv, 1, args.length);
+    try {
+      return git.execAllowNonZero(gitDir, argv);
+    } catch (Exception e) {
+      throw new InternalServerErrorException("git " + args[0] + " failed: " + e.getMessage());
+    }
+  }
 
   /** Every repository that has a backup twin — the scheduled sweep's worklist. */
   public List<String> repositoryIdsWithBackupTwin() {

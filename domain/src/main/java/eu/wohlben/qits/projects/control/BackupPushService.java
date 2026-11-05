@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.dto.RepositoryBackupResetDto;
 import eu.wohlben.qits.projects.entity.BackupOutcome;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import jakarta.annotation.PreDestroy;
@@ -213,6 +214,17 @@ public class BackupPushService {
     } finally {
       state.running.unlock();
     }
+  }
+
+  /**
+   * {@link RepositoryService#resetBackupTwin} under {@code repoId}'s backup lock (qits-1885): a
+   * backup that read the twin between the reset's probe and its push would race the lease, and one
+   * that pushed first would turn a reset the person asked for into a failure nobody explains.
+   * Unlike everything else here it <b>throws</b> — a person is waiting for the answer. Not counted
+   * in {@link #completedRuns}.
+   */
+  public RepositoryBackupResetDto resetTwin(String repoId, String reason, String actor) {
+    return exclusively(repoId, () -> repositoryService.resetBackupTwin(repoId, reason, actor));
   }
 
   /** {@link #backupQuietly} for a repository the caller names — the suite's and the sweep's seam. */

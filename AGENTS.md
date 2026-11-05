@@ -1163,6 +1163,36 @@ repository with no name a 409, the git host 502 (503 with no address or bearer).
 interaction: every call is one the consumer pact already records. `RepositoryArchivedEditTest`,
 `RepositoryArchiveTest`.
 
+## Resetting a backup twin (qits-1885)
+
+`POST /projects/api/repositories/{repoId}/backup-reset` (`backupResetRepository`), body
+`{"reason": "..."}`, for a twin whose main holds history unrelated to ours (a forge's README seed),
+which the backup — never forced — refuses as non-fast-forward for ever. `BackupPushService.resetTwin`
+runs `RepositoryService.resetBackupTwin` under the repository's backup lock: refresh the mirror,
+`ls-remote` the twin's `refs/heads/<main>`, fetch it into `refs/qits-backup-probe/<main>` (deleted in
+a `finally`; the mirror's `--prune` would drop it anyway) and classify with `merge-base`:
+
+- absent, equal or an ancestor of ours → `FAST_FORWARD`, the backup's own refspecs, no force;
+- no merge base → `UNRELATED_RESET`, `push --atomic --force-with-lease=refs/heads/<main>:<probed sha>`
+  with main and `refs/tags/*:refs/tags/*` (no `+`): only main is ever forced, never `--force` or
+  `--mirror`;
+- ours an ancestor of the twin's (ahead), or diverged with a base → 409 naming both shas, nothing
+  pushed or recorded.
+
+A push refused as `stale info`/non-fast-forward (the twin moved after the probe) is a 409 too; `--atomic`
+keeps a refused push from half-resetting the twin. On success: `recordBackupOutcome(SUCCEEDED)`, one
+`repository_backup_reset` row (V75, `CausedRow`, no FK — it outlives the repository row), an INFO
+line, and 200 `RepositoryBackupResetDto {repositoryId, kind, twinShaBefore, pushedSha, decidedBy,
+decidedAt, reason}`. `GET …/backup-resets` (`listRepositoryBackupResets`, every repository reader,
+`qits:agent` included) lists them newest first. Refusals in order: 404, 403, 400 blank reason, 409
+no twin. **Who**: `PersonCheck.requireAdminOrDesk` — a verified person or the repository's own
+project's delivery desk, the upstream override's roles (`qits:desk`, not `qits:agent`); a plain
+agent, CI, a service client and another project's desk are 403. It is the one ref-writing door the
+desk reaches, by the ticket's decision: it forces nothing but a forge copy's unrelated main, under a
+lease. Provider state `a repository whose backup twin holds unrelated history` (person-CLI bearer as
+`authorization`) records it for the `qits` CLI. `BackupTwinResetTest` (real bares, the lease refused
+via a `reference-transaction` hook in the mirror), `BackupResetDoorTest`.
+
 ## Project slugs
 
 `Project.slug` is **unique** (V6) and immutable (`@Column(updatable = false)`). Each project has its

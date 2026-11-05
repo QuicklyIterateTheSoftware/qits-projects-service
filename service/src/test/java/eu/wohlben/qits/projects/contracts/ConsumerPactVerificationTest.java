@@ -744,6 +744,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT);
   }
 
+  @State(ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY)
+  Map<String, String> aRepositoryWhoseBackupTwinHoldsUnrelatedHistory() {
+    return states.params(ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY);
+  }
+
   @State(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS)
   Map<String, String> theDevelopmentGuideShips() {
     return states.params(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS);
