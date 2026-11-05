@@ -3999,8 +3999,15 @@ public class ReleaseRequests {
    * ReleaseGitHost#contains}), never assumed, so a fold nobody could ask about is UNKNOWN and is
    * never told "nothing was lost". The comment changes no item's status, and nothing it does — a
    * failed ask, a missing port, a port that throws — can throw out of here.
+   *
+   * <p><b>The deleted tip is the better question</b> (qits-1869). {@code sha} is where the branch
+   * stood at the deletion — {@code SCMDeleteBranch}'s {@code sha}; null or blank when unknown. It is
+   * recorded on the branch's ledger rows ({@link BranchDeliveries#deletedAt}), after the WITHDRAWN
+   * writes, so a row that ended earlier and is only deleted now gets it too; and when known, the
+   * withdrawal's verdict asks whether the default branch contains the tip rather than the fold —
+   * the fold merges every source of the request and is not this branch's work alone.
    */
-  public void onBranchDeleted(String repoId, String branch) {
+  public void onBranchDeleted(String repoId, String branch, String sha) {
     String ownBranch =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4018,6 +4025,7 @@ public class ReleaseRequests {
       remerge(ownBranch, "its backing branch " + branch + " was deleted");
       return;
     }
+    String tip = sha == null || sha.isBlank() ? null : sha;
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4076,8 +4084,11 @@ public class ReleaseRequests {
                             open.projectId,
                             open.mergedSha,
                             before,
-                            main));
+                            main,
+                            tip));
                   }
+                  // After the WITHDRAWN writes, which clear it: the tip stays on every row left.
+                  deliveries.deletedAt(repoId, branch, tip);
                   return touched;
                 });
     for (Affected row : affected) {
@@ -4097,10 +4108,16 @@ public class ReleaseRequests {
     }
   }
 
+  /** {@link #onBranchDeleted(String, String, String)} with the deleted tip unknown. */
+  public void onBranchDeleted(String repoId, String branch) {
+    onBranchDeleted(repoId, branch, null);
+  }
+
   /**
    * One open request {@link #onBranchDeleted} touched, read inside its transaction: whether it was
    * withdrawn, and what the withdrawal is told with (qits-1671) — the sources it had before the
-   * deletion, its last fold and the default branch it was left with.
+   * deletion, its last fold, the default branch it was left with and the deleted branch's tip,
+   * null when unknown (qits-1869).
    */
   private record Affected(
       String id,
@@ -4111,7 +4128,8 @@ public class ReleaseRequests {
       String projectId,
       String mergedSha,
       List<String> branchesBefore,
-      String defaultBranch) {}
+      String defaultBranch,
+      String deletedSha) {}
 
   /**
    * Tells the work items of a request {@link #onBranchDeleted} withdrew (qits-1671), after the
@@ -4162,7 +4180,8 @@ public class ReleaseRequests {
                     row.id(),
                     row.qualifiedId(),
                     null,
-                    WrapperBranchEndings.Ending.DELETED_MERGED));
+                    WrapperBranchEndings.Ending.DELETED_MERGED,
+                    row.deletedSha()));
       } catch (RuntimeException e) {
         // The port says it must not throw; the reconcile reads the same facts again.
         LOG.warnf(e, "Could not close the ticket of deleted wrapper branch %s", branch);
@@ -4174,22 +4193,27 @@ public class ReleaseRequests {
    * What the withdrawn request's last fold added to the default branch (qits-1671): NOTHING when the
    * git host says the default branch contains it, UNRELEASED when it says it does not, and UNKNOWN
    * when there is no fold or no answer — "could not ask" is never "nothing was lost".
+   *
+   * <p>With the deleted branch's tip known (qits-1869) the question is the tip, never the fold: the
+   * tip is the branch's own work, while the fold merges every source and may be a commit no ref
+   * keeps. Its answer is final — a NO or a failed ask is not retried against the fold.
    */
   private ReleaseRequestWithdrawalComments.Lost lostBy(String repoId, Affected row) {
-    if (row.mergedSha() == null || !gitHosts.isResolvable()) {
+    String asked = row.deletedSha() != null ? row.deletedSha() : row.mergedSha();
+    String what = row.deletedSha() != null ? "the deleted tip" : "its fold";
+    if (asked == null || !gitHosts.isResolvable()) {
       return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
     }
     ReleaseGitHost.Answer<Boolean> answer;
     try {
-      answer =
-          gitHosts.get().contains(repoId, row.mergedSha(), "refs/heads/" + row.defaultBranch());
+      answer = gitHosts.get().contains(repoId, asked, "refs/heads/" + row.defaultBranch());
     } catch (RuntimeException e) {
       answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
     }
     if (!answer.ok() || answer.value() == null) {
       LOG.warnf(
-          "Release request %s was withdrawn; whether %s contains its fold %s could not be read: %s",
-          row.qualifiedId(), row.defaultBranch(), shortSha(row.mergedSha()), answer.detail());
+          "Release request %s was withdrawn; whether %s contains %s %s could not be read: %s",
+          row.qualifiedId(), row.defaultBranch(), what, shortSha(asked), answer.detail());
       return ReleaseRequestWithdrawalComments.Lost.UNKNOWN;
     }
     return answer.value()
@@ -5984,26 +6008,36 @@ public class ReleaseRequests {
                   // to the CI gate and waits for the verdict of the run in flight, which is also how
                   // the request's read already draws it (gateView reads a hold only on a fold not
                   // announced) — and nothing is cleared and nothing is cancelled.
-                  String upstreamHeld = upstreamHold(row);
+                  // HELD ONLY BY ITS INTERRUPTERS (qits-1872): the interrupt records, beside the
+                  // stamp, the upstream requests that held at that moment, and until the fold is
+                  // announced again only those hold it — upstreamHold reads the rule from the gate,
+                  // so the read, preRunPending and this arm agree. Held against whatever happened
+                  // to be building at each evaluation, a fold with many upstreams was announced
+                  // again only when all of them were idle at once, and with releases leapfrogging
+                  // that took hours. Once none of its interrupters holds, the stamp arm below
+                  // announces DONE at the same sha and the arm above keeps that QA running. A row
+                  // interrupted before the column existed names nobody and is not held at all.
+                  UpstreamHold upstreamHeld = upstreamHold(row);
                   if (upstreamHeld != null
                       && row.mergedSha.equals(row.qaAnnouncedSha)
                       && row.mergedSha.equals(row.qaInterruptedSha)) {
                     LOG.debugf(
                         "Release request %s: QA for %s was interrupted once already; it keeps"
                             + " running although an upstream is building (%s)",
-                        row.id, shortSha(row.mergedSha), upstreamHeld);
+                        row.id, shortSha(row.mergedSha), upstreamHeld.detail());
                   } else if (upstreamHeld != null) {
                     if (row.mergedSha.equals(row.qaAnnouncedSha)) {
                       row.qaAnnouncedSha = null;
                       row.qaInterruptedSha = row.mergedSha;
+                      row.qaInterruptedBy = String.join(",", upstreamHeld.holding());
                       interrupted.set(row.repoId);
                       LOG.infof(
                           "Release request %s: QA for %s is interrupted, an upstream started"
                               + " building (%s); its runs are cancelled and QA is asked for again"
                               + " once the hold clears",
-                          row.id, shortSha(row.mergedSha), upstreamHeld);
+                          row.id, shortSha(row.mergedSha), upstreamHeld.detail());
                     }
-                    waiting(row, upstreamHeld);
+                    waiting(row, upstreamHeld.detail());
                     return false;
                   }
                   // THE PRE-RUN IS DONE AT THIS FOLD, so its QA may start — announced preRun=DONE AT
@@ -6309,15 +6343,19 @@ public class ReleaseRequests {
   }
 
   /**
-   * Gate 3's hold (epic qits-897): the gate's detail where it holds this fold, else null. Asked on a
-   * deciding path, so a closure not on record may be asked for ({@code mayAsk=true}).
+   * Gate 3's hold (epic qits-897): where it holds this fold, the gate's detail and the ids of the
+   * upstream requests holding it; else null. Asked on a deciding path, so a closure not on record
+   * may be asked for ({@code mayAsk=true}).
    *
    * <p>Only a fold not yet answered is held: PENDING, no QA verdict of its own at the fold, outside
    * the estate wrapper — whether or not it was already announced {@code preRun=DONE}. An announced
-   * one is the interrupt's (qits-909), which {@link #evaluate} tells apart by the stamp. UNKNOWN
-   * never holds, and neither does a failure to read: the gate postpones, it never protects content.
+   * one is the interrupt's (qits-909), which {@link #evaluate} tells apart by the stamp; an
+   * interrupted one not announced again is held only by the upstreams that interrupted it
+   * (qits-1872), the rule {@link UpstreamInFlightGate#answer(List, ReleaseRequest)} reports.
+   * UNKNOWN never holds, and neither does a failure to read: the gate postpones, it never protects
+   * content.
    */
-  private String upstreamHold(ReleaseRequest row) {
+  private UpstreamHold upstreamHold(ReleaseRequest row) {
     if (row.state != ReleaseRequest.State.PENDING || row.mergedSha == null) {
       return null;
     }
@@ -6327,13 +6365,22 @@ public class ReleaseRequests {
               .isPresent()) {
         return null;
       }
-      GateEvaluation said = UpstreamInFlightGate.answer(upstreamRequests.activeFor(row, true));
-      return UpstreamInFlightGate.holds(said) ? said.detail() : null;
+      List<GateSubject.Upstream> upstream = upstreamRequests.activeFor(row, true);
+      GateEvaluation said = UpstreamInFlightGate.answer(upstream, row);
+      return UpstreamInFlightGate.holds(said)
+          ? new UpstreamHold(said.detail(), UpstreamInFlightGate.holdingIds(upstream))
+          : null;
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not read what is upstream of release request %s; not holding it", row.id);
       return null;
     }
   }
+
+  /**
+   * Gate 3 holding a fold: its detail, and the ids of the upstream requests holding it — what the
+   * interrupt records (qits-1872).
+   */
+  private record UpstreamHold(String detail, List<String> holding) {}
 
   /** The detail of an estate wrapper's request withdrawn for carrying nothing (qits-1273). */
   public static final String EMPTY_WRAPPER_WITHDRAWN =
@@ -7867,13 +7914,10 @@ public class ReleaseRequests {
               ApprovalView approval =
                   approvalView(
                       requirements,
-                      ApprovalStanding.of(
+                      displayStanding(
                           requirements,
                           page.atFold().getOrDefault(row.id, List.of()),
-                          Set.copyOf(
-                              ApprovalNotices.authorsOf(
-                                  page.named().getOrDefault(row.id, List.of()))),
-                          approvalRoles::rolesOf));
+                          page.named().getOrDefault(row.id, List.of())));
               ReleasedTagPendingMerge released = page.released().get(row.id);
               return dto(
                   row,
@@ -7917,15 +7961,113 @@ public class ReleaseRequests {
 
   private Map<String, List<ApprovalRequirement>> approvalRequirements(
       Page page, Map<String, ReleaseGates.GateSet> gateSets) {
+    return approvalRequirements(page.rows(), page.decisions(), page.existingRepos(), gateSets);
+  }
+
+  /**
+   * <b>A display's approval state for each of {@code rows}, and nothing else of the read</b>
+   * (qits-1873): {@link ReleaseRequestDto#approvalState()} exactly as {@link #listByProject} and
+   * {@link #get} answer it — the same gate sets ({@link ReleaseGates#forDisplay}), the same content
+   * half ({@link #approvalRequirements(List, Map, Set, Map)}), the same standing ({@link
+   * #displayStanding}) — for a reader that names requests but draws none of them, such as the
+   * wrapper-closings read. Derived on every call and never stored, for the approval gate's own
+   * reason. Like every display read it asks the git host nothing on the caller's thread outside the
+   * suite (whose {@code display-reads-synchronously} reads there, as it does for the list).
+   *
+   * <p>The decisions, sources and repositories are read in one transaction of its own, so the caller
+   * must not be inside one. Keyed by request id; an empty {@code rows} answers an empty map.
+   */
+  public Map<String, ReleaseRequest.ApprovalState> approvalStates(
+      java.util.Collection<ReleaseRequest> rows) {
+    if (rows.isEmpty()) {
+      return Map.of();
+    }
+    List<ReleaseRequest> all = List.copyOf(rows);
+    Set<String> repoIds = new LinkedHashSet<>();
+    all.forEach(row -> repoIds.add(row.repoId));
+    record Read(
+        Map<String, ReleaseRequestApproval> decisions,
+        Map<String, List<ReleaseRequestApproval>> atFold,
+        Map<String, List<ReleaseRequestSource>> named,
+        Map<String, String> mainBranchByRepo,
+        Set<String> existingRepos,
+        Map<String, ReleaseGates.Stored> storedGateSets) {}
+    Read read =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  Map<String, String> folds =
+                      all.stream()
+                          .filter(row -> row.mergedSha != null)
+                          .collect(
+                              Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a));
+                  return new Read(
+                      approvals.currentForEach(folds),
+                      approvals.atFoldForEach(folds),
+                      sources.listByRequests(all.stream().map(row -> row.id).toList()).stream()
+                          .collect(Collectors.groupingBy(source -> source.requestId)),
+                      mainBranches(repoIds),
+                      existingRepositories(repoIds),
+                      gates.stored(repoIds));
+                });
+    Map<String, ReleaseGates.GateSet> gateSets =
+        gates.forDisplay(read.mainBranchByRepo(), read.storedGateSets());
+    Map<String, List<ApprovalRequirement>> required =
+        contentRecorder.displayReadsSynchronously()
+            ? withRequestContext(
+                () -> approvalRequirements(all, read.decisions(), read.existingRepos(), gateSets))
+            : approvalRequirements(all, read.decisions(), read.existingRepos(), gateSets);
+    Map<String, ReleaseRequest.ApprovalState> states = new LinkedHashMap<>();
+    for (ReleaseRequest row : all) {
+      List<ApprovalRequirement> requirements = required.getOrDefault(row.id, List.of());
+      states.put(
+          row.id,
+          approvalView(
+                  requirements,
+                  displayStanding(
+                      requirements,
+                      read.atFold().getOrDefault(row.id, List.of()),
+                      read.named().getOrDefault(row.id, List.of())))
+              .state());
+    }
+    return states;
+  }
+
+  /**
+   * The approval standing a display reads: {@code requirements} matched against every decision at
+   * the fold, the request's source authors excluded where a requirement says so. One place, so the
+   * release-request read and {@link #approvalStates} can never stand differently on one fold.
+   */
+  private ApprovalStanding displayStanding(
+      List<ApprovalRequirement> requirements,
+      List<ReleaseRequestApproval> atFold,
+      List<ReleaseRequestSource> named) {
+    return ApprovalStanding.of(
+        requirements,
+        atFold,
+        Set.copyOf(ApprovalNotices.authorsOf(named)),
+        approvalRoles::rolesOf);
+  }
+
+  /**
+   * Each of {@code rows}' approval requirements as a display answers them: the gate set, a settled
+   * request's recorded approval out of {@code decisions}, and an open fold's content half — stored,
+   * or read now in the suite — for a repository in {@code existingRepos}.
+   */
+  private Map<String, List<ApprovalRequirement>> approvalRequirements(
+      List<ReleaseRequest> rows,
+      Map<String, ReleaseRequestApproval> decisions,
+      Set<String> existingRepos,
+      Map<String, ReleaseGates.GateSet> gateSets) {
     boolean synchronous = contentRecorder.displayReadsSynchronously();
     // Read once per fold in the page, however many rows share it (the suite's synchronous path).
     Map<ApprovalContentRecorder.Fold, List<ApprovalRequirement>> readNow = new HashMap<>();
     Map<String, List<ApprovalRequirement>> required = new HashMap<>();
-    for (ReleaseRequest row : page.rows()) {
+    for (ReleaseRequest row : rows) {
       ReleaseGates.GateSet set =
           gateSets.getOrDefault(
               row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved"));
-      ReleaseRequestApproval decision = page.decisions().get(row.id);
+      ReleaseRequestApproval decision = decisions.get(row.id);
       ReleaseRequestApproval recorded =
           decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED
               ? decision
@@ -7935,7 +8077,7 @@ public class ReleaseRequests {
       if (!ApprovalPolicy.isSettled(row.state)
           && row.mergedSha != null
           && !row.mergedSha.isBlank()
-          && page.existingRepos().contains(row.repoId)) {
+          && existingRepos.contains(row.repoId)) {
         if (synchronous) {
           content =
               readNow.computeIfAbsent(
@@ -8056,7 +8198,9 @@ public class ReleaseRequests {
     List<ReleaseGateEvaluator.Evaluated> evaluated = gateEvaluator.evaluate(subject);
     // Gate 3 holds this fold (epic qits-897) — as evaluate() decides it: the gate says PENDING, on a
     // fold not yet announced preRun=DONE. While it holds, the pre-run reads PENDING and the QA phase
-    // WAITING_FOR_PRE_RUN, because the gate stands at pre-run-qa and QA has not been asked for.
+    // WAITING_FOR_PRE_RUN, because the gate stands at pre-run-qa and QA has not been asked for. An
+    // interrupted fold is held only by its recorded interrupters (qits-1872); the gate reads that
+    // off the row itself, so this needs nothing of its own.
     boolean upstreamHeld =
         row.mergedSha != null
             && !row.mergedSha.equals(row.qaAnnouncedSha)

@@ -2514,6 +2514,80 @@
       ]
     },
     {
+      "name": "a project with VERIFIED tickets in every wrapper verdict",
+      "slug": "a-project-with-verified-tickets-in-every-wrapper-verdict",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-2"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-project-with-verified-tickets-in-every-wrapper-verdict/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "status": 200,
+          "file": "a-project-with-verified-tickets-in-every-wrapper-verdict/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listWrapperClosings",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/wrapper-closings",
+          "status": 200,
+          "file": "a-project-with-verified-tickets-in-every-wrapper-verdict/listWrapperClosings.json",
+          "frozen": {
+            "ids": [
+              "$.closings[*].requestId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.closings[*].ticket",
+              "$.closings[*].branch",
+              "$.closings[*].requestQualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with work in every status",
       "slug": "a-project-with-work-in-every-status",
       "params": {

@@ -132,6 +132,7 @@ erDiagram
     string project_id PK "not null"
     string repo_id PK "not null"
     instant changed_at "not null"
+    string deleted_sha
     string fold_attempt
     string fold_sha
     string qualified_id
@@ -332,6 +333,7 @@ erDiagram
     long number "not null"
     string project_id
     string qa_announced_sha
+    string qa_interrupted_by
     string qa_interrupted_sha
     string qualified_id "not null"
     string queued_behind

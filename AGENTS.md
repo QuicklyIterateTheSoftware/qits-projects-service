@@ -1815,6 +1815,16 @@ request in its pre-run, or waiting only on approval, builds nothing and holds no
   `release_request.qa_interrupted_sha` (V53), and an upstream building again while the re-asked QA
   runs at that same fold interrupts nothing — no cancel, the stamp left standing, and the request
   goes on to wait for its own verdict (the read never drew a hold on an announced fold anyway).
+  **Held only by its interrupters** (qits-1872): the interrupt also records the ids of the upstream
+  requests holding at that moment in `release_request.qa_interrupted_by` (V74, comma-separated),
+  and until the fold is announced again only those hold it — the gate's detail names only them, and
+  any other active upstream is a PASSED check. Held against whatever was active at each evaluation,
+  a fold with many upstreams was re-announced only when all of them were idle at once, and starved
+  for hours while they leapfrogged. Once none of the recorded ones holds, the stamp arm announces
+  `preRun=DONE` at the same sha and the qits-1570 rule keeps that QA running. A row interrupted
+  before V74 names nobody and is not held. `UpstreamInFlightGate.answer(list, request)` carries the
+  rule, so the read, `preRunPending` and `evaluate` agree; a new fold is gated by every active
+  upstream as before.
 - **UNKNOWN never holds** (a closure that could not be read); the estate wrapper is exempt; a
   cycle in the closure holds neither side and logs one WARN per pair.
 - **Re-evaluation**: the 30 s sweep is the floor. `control/DownstreamReevaluation` evaluates the
@@ -2602,6 +2612,15 @@ and each one is a decision rather than a simplification:
   unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
   `QUALITY_CHECKS` gate (`control/QualityChecksGate` over `Instance<QualityCheck>`, none yet), so the
   step is empty and every ticket passes it.
+  **The read door** (qits-1873) is `GET /projects/api/projects/{project}/wrapper-closings`
+  (`api/WrapperClosingsController`, `listWrapperClosings`, `getBranchDeliveries`' roles; id or
+  slug, unknown 404): `{closings: [{ticket, branch, verdict, step, requestId, requestQualifiedId,
+  requestState, approval, version}]}`, one per VERIFIED ticket by number. `verdict` is
+  `TicketWrapperDone.Verdict`, classified beside the close rules from the same facts: `NO_REQUEST`
+  (no wrapper, no row, a PUSHED row), `CLOSING` (`endedOnTheLedger`), `UNPROVEN` (`rowEnded`
+  without it — only the reconcile's git-host proof can still close it), else `IN_FLIGHT`.
+  `approval` is `ReleaseRequests.approvalStates`, the release-request read's derivation. No git
+  host is asked. Provider state `a project with VERIFIED tickets in every wrapper verdict`.
 - **An agent can make the transition.** `work_status` reaches `POST /work/{id}/status`, because
   resolving a ticket is a statement about work that is done — which the agent that did it is the one
   who knows — and every move an agent makes is reversible (only DONE is final, and nobody asks for a

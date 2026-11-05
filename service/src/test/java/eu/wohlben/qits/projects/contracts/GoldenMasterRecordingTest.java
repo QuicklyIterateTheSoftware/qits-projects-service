@@ -1354,6 +1354,24 @@ class GoldenMasterRecordingTest {
             ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
             "getBranchDeliveries",
             "/projects/api/branch-deliveries?branch=ticket/qits-9001"));
+    // The wrapper-closings read door (qits-1873): every VERIFIED ticket of a project with where its
+    // wrapper closing stands, one ticket per verdict.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+            "listWrapperClosings",
+            "/projects/api/projects/{projectId}/wrapper-closings"));
+    // The same tickets as the work a consumer's Acceptance view lists, and the IN_FLIGHT one's page.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
     return List.copyOf(all);
   }
 

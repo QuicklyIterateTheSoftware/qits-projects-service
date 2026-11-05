@@ -1354,6 +1354,204 @@ public class BranchDeliveryTest {
     assertEquals("VERIFIED", ticketStatus(ticket));
   }
 
+  // ---- the deleted tip (qits-1869) -------------------------------------------------------------
+
+  /**
+   * qits-1869: the request's fold is a merge of every source and no ref keeps it, so main never
+   * contains it — but the tip the branch was deleted at, which {@code SCMDeleteBranch} carries, is
+   * in main. The deletion records the tip on the row and the withdrawal's verdict asks about it, so
+   * the VERIFIED ticket goes DONE at the deletion, its thread naming the tip.
+   */
+  @Test
+  public void aDeletedWrapperBranchWhoseTipMainContainsClosesItsTicketThoughItsFoldIsGone() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    gitHost.doesNotContain(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+    String tip = sha();
+    gitHost.containsCommit(repoA, tip, "refs/heads/main");
+
+    branchDeleted(repoA, branch, tip);
+
+    assertEquals("WITHDRAWN", stateOf(repoA, id), "the premise: withdrawn on the deletion");
+    assertEquals(tip, ledgerDeletedSha(repoA, branch), "the deletion recorded the tip");
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream()
+            .anyMatch(
+                body ->
+                    body.contains("was deleted at `" + tip.substring(0, 12) + "`")
+                        && body.contains("`" + qid + "`")),
+        "the thread names the tip and the request: " + threadOf(ticket));
+  }
+
+  /**
+   * The reconcile reads the recorded tip too: a deletion whose tip the git host could not answer
+   * for closes nothing then, and the reconcile closes the ticket once main is known to contain the
+   * tip — though main still does not contain the fold.
+   */
+  @Test
+  public void theReconcileClosesATicketWhoseDeletedTipMainContainsThoughItsFoldIsGone() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    String fold = mergedShaOf(repoA, id);
+    String tip = sha();
+    gitHost.containmentOfUnreadable(
+        repoA, tip, eu.wohlben.qits.projects.control.ReleaseGitHost.Answer.failedRetryable("down"));
+    branchDeleted(repoA, branch, tip);
+    pause(300);
+    assertEquals("VERIFIED", ticketStatus(ticket));
+
+    gitHost.reset();
+    gitHost.doesNotContain(repoA, fold, "refs/heads/main");
+    gitHost.containsCommit(repoA, tip, "refs/heads/main");
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+    assertTrue(
+        threadOf(ticket).stream()
+            .anyMatch(body -> body.contains("was deleted at `" + tip.substring(0, 12) + "`")),
+        threadOf(ticket).toString());
+  }
+
+  /**
+   * A known tip is the only proof: main NOT containing it, or a containment the git host could not
+   * answer, closes nothing — at the deletion or on the reconcile — even though main contains the
+   * fold. The fold is never asked in its place.
+   */
+  @Test
+  public void aDeletedTipMainLacksOrCannotAnswerForClosesNothingWhateverTheFold() {
+    asWrapper(repoA);
+    String lacking = verifiedTicket();
+    String lackingBranch = wrapperBranchOf(lacking);
+    String lackingId = create(repoA, lackingBranch);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, lackingId), "refs/heads/main");
+    String lackingTip = sha();
+    gitHost.doesNotContain(repoA, lackingTip, "refs/heads/main");
+    String unread = verifiedTicket();
+    String unreadBranch = wrapperBranchOf(unread);
+    String unreadId = create(repoA, unreadBranch);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, unreadId), "refs/heads/main");
+    String unreadTip = sha();
+    gitHost.containmentOfUnreadable(
+        repoA,
+        unreadTip,
+        eu.wohlben.qits.projects.control.ReleaseGitHost.Answer.failedRetryable("timed out"));
+
+    branchDeleted(repoA, lackingBranch, lackingTip);
+    branchDeleted(repoA, unreadBranch, unreadTip);
+    assertEquals("WITHDRAWN", stateOf(repoA, lackingId));
+    assertEquals("WITHDRAWN", stateOf(repoA, unreadId));
+    pause(500);
+    wrapperDone.reconcile();
+
+    assertEquals("VERIFIED", ticketStatus(lacking), "main lacks the tip: not DONE");
+    assertEquals("VERIFIED", ticketStatus(unread), "could not ask is never nothing lost");
+  }
+
+  /**
+   * The row that ended before its branch was deleted — here withdrawn by hand, so no open request
+   * names the branch at the deletion — gets the tip all the same, and the reconcile closes its
+   * ticket on it; before the deletion its fold, which main does not contain, closed nothing.
+   */
+  @Test
+  public void aRowThatEndedBeforeTheDeletionGetsTheTipAndClosesOnTheReconcile() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    gitHost.doesNotContain(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"reason\":\"not any more\"}")
+        .post(base(repoA) + "/" + id + "/withdraw")
+        .then()
+        .statusCode(200);
+    assertEquals("WITHDRAWN", ledgerStep(repoA, branch));
+    wrapperDone.reconcile();
+    assertEquals("VERIFIED", ticketStatus(ticket), "the fold alone proves nothing");
+
+    String tip = sha();
+    gitHost.containsCommit(repoA, tip, "refs/heads/main");
+    branchDeleted(repoA, branch, tip);
+    assertEquals(tip, ledgerDeletedSha(repoA, branch));
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+  }
+
+  /** The next step on the row, and a re-push, clear the tip: a recreated branch never inherits it. */
+  @Test
+  public void aLaterStepOrARePushClearsTheDeletedTip() {
+    String branch = ticketBranch();
+    String other = ticketBranch();
+    String id = create(repoA, branch);
+    releaseRequests.join(id, other, "alice", null);
+
+    String tip = sha();
+    branchDeleted(repoA, other, tip);
+    assertEquals("WITHDRAWN", ledgerStep(repoA, other));
+    assertEquals(tip, ledgerDeletedSha(repoA, other));
+
+    releaseRequests.join(id, other, "alice", null);
+    assertEquals("JOINED", ledgerStep(repoA, other));
+    assertNull(ledgerDeletedSha(repoA, other), "a step clears the tip");
+
+    branchDeleted(repoA, other, sha());
+    assertEquals("WITHDRAWN", ledgerStep(repoA, other));
+    headMoved(repoA, other, sha());
+    assertEquals("PUSHED", ledgerStep(repoA, other));
+    assertNull(ledgerDeletedSha(repoA, other), "a re-push clears the tip");
+  }
+
+  /** A deletion that names no tip records none, and the fold decides as before qits-1869. */
+  @Test
+  public void aDeletionWithNoTipKeepsTheFoldsVerdict() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+
+    branchDeleted(repoA, branch, null);
+
+    assertEquals("WITHDRAWN", stateOf(repoA, id));
+    assertNull(ledgerDeletedSha(repoA, branch));
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream().anyMatch(body -> body.contains("already contained in main")),
+        threadOf(ticket).toString());
+  }
+
+  /** qits-githost's {@code SCMDeleteBranch}, through the head listener; a null {@code sha} is left out. */
+  private void branchDeleted(String repoId, String branch, String sha) {
+    headListener.onFrame(
+        frame(
+            "SCMDeleteBranch",
+            "{\"branch\":\""
+                + branch
+                + "\",\"repoId\":\""
+                + repoId
+                + "\""
+                + (sha == null ? "" : ",\"sha\":\"" + sha + "\"")
+                + "}"));
+  }
+
+  private String ledgerDeletedSha(String repoId, String branch) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                BranchDelivery.<BranchDelivery>find(
+                        "projectId = ?1 and repoId = ?2 and branch = ?3", projectId, repoId, branch)
+                    .firstResultOptional()
+                    .map(row -> row.deletedSha)
+                    .orElse(null));
+  }
+
   /** Sets the ticket's {@code updated_at}, which a move into VERIFIED stamps, as a test's clock. */
   private void verifiedSince(String ticketId, Instant at) {
     QuarkusTransaction.requiringNew()

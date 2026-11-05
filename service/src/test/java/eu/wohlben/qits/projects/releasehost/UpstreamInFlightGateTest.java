@@ -542,6 +542,205 @@ public class UpstreamInFlightGateTest {
     assertEquals(1, cancellations.calls().size());
   }
 
+  // -----------------------------------------------------------------------------------------
+  // Held only by its interrupters (qits-1872)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * A second upstream of the service, beside the frontend: its own repository, whose closure names
+   * the service too. Returns its repository id.
+   */
+  private String secondUpstream() {
+    String token = UUID.randomUUID().toString();
+    String repo = "upstream-lib-" + token;
+    repository(repo, "lib-" + token.substring(0, 8), RepositoryArchetype.SERVICE);
+    downstream.answerFor(repo, Optional.of(List.of(svcName)));
+    return repo;
+  }
+
+  /**
+   * Two upstreams leapfrogging (qits-1872). The frontend starts building and interrupts the
+   * service's announced fold; the library starts before the frontend ends. The frontend's run fails:
+   * the service is announced DONE again at the same sha although the library is still building — it
+   * did not interrupt this fold, so it does not hold it — and the re-asked QA keeps running through
+   * it (qits-1570). It used to wait until both were idle at once, which leapfrogging never allowed.
+   */
+  @Test
+  public void anInterrupterFailingReleasesTheFoldAlthoughALaterUpstreamBuilds()
+      throws Exception {
+    String libRepo = secondUpstream();
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String lib = create(libRepo);
+    String libFold = mergedShaOf(libRepo, lib);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    String feQid = BackingBranches.qualifiedIdOf(fe);
+    String libQid = BackingBranches.qualifiedIdOf(lib);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+
+    // The frontend starts: one interrupt.
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    awaitHeldCancels(svc, 1);
+    // The library starts before the frontend ends: held by the frontend alone.
+    qaRun(lib, libRepo, libFold, "run-lib-1", "RUNNING");
+    evaluate(svcRepo, svcFold);
+    JsonPath held = request(svcRepo, svc);
+    assertEquals("Waiting for upstream releases: " + feQid, held.getString("detail"));
+    assertEquals("PENDING", gate(held, "state"));
+    assertEquals(
+        "PASSED",
+        held.getString(gatePath("checks.find { it.name == '" + libQid + "' }.state")),
+        "the library did not interrupt the fold: " + held.getList(gatePath("checks")));
+    assertEquals(List.of("DONE"), preRuns(svc));
+
+    // The frontend's run fails: DONE again at the same sha, while the library still builds.
+    qaRun(fe, feRepo, feFold, "run-fe-1", "FAILED");
+    awaitPreRuns(svc, List.of("DONE", "DONE"));
+    evaluate(svcRepo, svcFold);
+    evaluate(svcRepo, svcFold);
+    Thread.sleep(500);
+
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc));
+    assertEquals(svcFold, announcer.announcedFor(svc).get(1).mergedSha());
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(1, heldCancels(svc), cancellations.calls().toString());
+    JsonPath running = request(svcRepo, svc);
+    assertEquals("PENDING", running.getString("state"));
+    assertEquals(
+        "Waiting for a CI verdict for " + svcFold.substring(0, 10), running.getString("detail"));
+  }
+
+  /**
+   * The same leapfrog with the interrupter releasing instead: held through its READY and its
+   * publish, and its publish passing announces DONE again although the library is building.
+   */
+  @Test
+  public void anInterruptersPublishPassingReleasesTheFoldAlthoughALaterUpstreamBuilds()
+      throws Exception {
+    String libRepo = secondUpstream();
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String lib = create(libRepo);
+    String libFold = mergedShaOf(libRepo, lib);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    String feQid = BackingBranches.qualifiedIdOf(fe);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+
+    // The frontend goes READY (no background evaluation): this evaluation interrupts.
+    setState(fe, ReleaseRequest.State.READY);
+    evaluate(svcRepo, svcFold);
+    assertEquals(1, heldCancels(svc), cancellations.calls().toString());
+    assertNull(qaAnnouncedShaOf(svc));
+
+    qaRun(lib, libRepo, libFold, "run-lib-1", "RUNNING");
+    setState(fe, ReleaseRequest.State.RELEASED);
+    releasedTag(fe, feRepo, feFold, ReleasedTagPendingMerge.PublishState.PENDING);
+    evaluate(svcRepo, svcFold);
+    assertEquals(
+        "Waiting for upstream releases: " + feQid, request(svcRepo, svc).getString("detail"));
+    assertEquals(List.of("DONE"), preRuns(svc));
+
+    publishState(fe, ReleasedTagPendingMerge.PublishState.PASSED);
+    evaluate(svcRepo, svcFold);
+    evaluate(svcRepo, svcFold);
+    Thread.sleep(500);
+
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc));
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(1, heldCancels(svc), cancellations.calls().toString());
+    assertEquals(
+        "Waiting for a CI verdict for " + svcFold.substring(0, 10),
+        request(svcRepo, svc).getString("detail"),
+        "waiting for its own run, not for the library");
+  }
+
+  /**
+   * A row interrupted before qa_interrupted_by existed names nobody: nothing holds it, and it is
+   * announced DONE again at once although its interrupter still builds.
+   */
+  @Test
+  public void anInterruptedFoldWithNoRecordedInterruptersIsNotHeld() throws Exception {
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String svc = create(svcRepo);
+    String svcFold = mergedShaOf(svcRepo, svc);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    awaitHeldCancels(svc, 1);
+    assertEquals(fe, qaInterruptedByOf(svc), "the interrupt records the frontend");
+
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.<ReleaseRequest>findById(svc).qaInterruptedBy = null);
+    evaluate(svcRepo, svcFold);
+    Thread.sleep(500);
+
+    assertEquals(List.of("DONE", "DONE"), preRuns(svc));
+    assertEquals(svcFold, qaAnnouncedShaOf(svc));
+    assertEquals(1, heldCancels(svc), cancellations.calls().toString());
+  }
+
+  /**
+   * A new fold after an interrupt is a fresh fold: every active upstream holds it, the ones that
+   * interrupted the old fold and the ones that did not alike.
+   */
+  @Test
+  public void aNewFoldAfterAnInterruptIsHeldByEveryActiveUpstream() {
+    String libRepo = secondUpstream();
+    String fe = create(feRepo);
+    String feFold = mergedShaOf(feRepo, fe);
+    String lib = create(libRepo);
+    String libFold = mergedShaOf(libRepo, lib);
+    String svc = create(svcRepo);
+    String first = mergedShaOf(svcRepo, svc);
+    String feQid = BackingBranches.qualifiedIdOf(fe);
+    String libQid = BackingBranches.qualifiedIdOf(lib);
+    assertEquals(List.of("DONE"), preRuns(svc));
+    cancellations.reset();
+    qaRun(fe, feRepo, feFold, "run-fe-1", "RUNNING");
+    awaitHeldCancels(svc, 1);
+    qaRun(lib, libRepo, libFold, "run-lib-1", "RUNNING");
+
+    releaseRequests.onBranchMoved(svcRepo, "work", freshSha());
+    String second = mergedShaOf(svcRepo, svc);
+    assertNotEquals(first, second);
+    assertEquals(List.of("DONE", "PENDING"), preRuns(svc));
+    String detail = request(svcRepo, svc).getString("detail");
+    assertTrue(
+        detail.startsWith("Waiting for upstream releases: ")
+            && detail.contains(feQid)
+            && detail.contains(libQid),
+        detail);
+
+    // The old fold's interrupter stops: the library, which never interrupted, holds the new fold.
+    qaRun(fe, feRepo, feFold, "run-fe-1", "FAILED");
+    evaluate(svcRepo, second);
+    assertEquals(
+        "Waiting for upstream releases: " + libQid, request(svcRepo, svc).getString("detail"));
+    assertEquals(List.of("DONE", "PENDING"), preRuns(svc));
+
+    qaRun(lib, libRepo, libFold, "run-lib-1", "FAILED");
+    awaitPreRuns(svc, List.of("DONE", "PENDING", "DONE"));
+    assertEquals(second, qaAnnouncedShaOf(svc));
+    assertEquals(1, heldCancels(svc), cancellations.calls().toString());
+  }
+
+  private long heldCancels(String id) {
+    return cancellations.calls().stream()
+        .filter(call -> id.equals(call.releaseRequestId()))
+        .filter(call -> QaRunCancellations.HELD_BY_PRE_RUN_GATE.equals(call.reason()))
+        .count();
+  }
+
+  private String qaInterruptedByOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> ReleaseRequest.<ReleaseRequest>findById(id).qaInterruptedBy);
+  }
+
   /** Both bodies started together on threads of their own; rethrows the first failure. */
   private static void race(Runnable one, Runnable two) throws Exception {
     java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(2);
