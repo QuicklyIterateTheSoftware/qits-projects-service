@@ -375,6 +375,99 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   }
 
   /**
+   * qits-150: nobody states a ticket DONE — not from VERIFIED, where the walk's FORWARD would
+   * otherwise take it, and not by turning another row into a ticket at DONE. The platform sets it
+   * once the wrapper release request carrying the ticket's branch is finalized.
+   */
+  @Test
+  void aTicketsDoneIsNeverStatedThroughThisDoor() {
+    WorkEntity ticket =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                PROJECT,
+                EntityWrite.ticket("Verified", "it occurs", null, "BUG", null)
+                    .withAcceptanceCriteria(CRITERIA),
+                WHO)
+            .entity();
+    workEntities.transition(Archetype.TICKET, ticket.id, "REFINED", WHO);
+    workEntities.transition(Archetype.TICKET, ticket.id, "READY_FOR_DEV", Mover.person(WHO));
+    workEntities.transition(Archetype.TICKET, ticket.id, "IMPLEMENTED", WHO);
+    workEntities.transition(Archetype.TICKET, ticket.id, "VERIFIED", WHO);
+
+    EntityTransition done =
+        new EntityTransition(
+            Archetype.TICKET,
+            null,
+            "Verified",
+            null,
+            EntityStatus.DONE.name(),
+            TicketType.BUG,
+            "it occurs",
+            null,
+            null,
+            null,
+            null,
+            null,
+            CRITERIA);
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> transitions.transition(stated(ticket.id, done), WHO));
+    assertEquals(
+        ticket.id
+            + " would move from VERIFIED to DONE: "
+            + EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS,
+        refusal.getMessage());
+    inFreshTx(() -> assertEquals("VERIFIED", entities.findById(ticket.id).status));
+  }
+
+  /**
+   * qits-150: the quality-check step stands between a ticket's IMPLEMENTED and its verification, so
+   * this door, which has no adjacency rule, states no ticket into VERIFYING or VERIFIED from before
+   * them — the jump would skip the step. The status door judges it.
+   */
+  @Test
+  void aTicketIsNotStatedPastTheQualityStep() {
+    WorkEntity ticket =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                PROJECT,
+                EntityWrite.ticket("Implemented", "it occurs", null, "BUG", null)
+                    .withAcceptanceCriteria(CRITERIA),
+                WHO)
+            .entity();
+    workEntities.transition(Archetype.TICKET, ticket.id, "REFINED", WHO);
+    workEntities.transition(Archetype.TICKET, ticket.id, "READY_FOR_DEV", Mover.person(WHO));
+    workEntities.transition(Archetype.TICKET, ticket.id, "IMPLEMENTING", WHO);
+    for (EntityStatus target : List.of(EntityStatus.VERIFYING, EntityStatus.VERIFIED)) {
+      EntityTransition entry =
+          new EntityTransition(
+              Archetype.TICKET,
+              null,
+              "Implemented",
+              null,
+              target.name(),
+              TicketType.BUG,
+              "it occurs",
+              null,
+              null,
+              null,
+              null,
+              null,
+              CRITERIA);
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () -> transitions.transition(stated(ticket.id, entry), WHO),
+              "IMPLEMENTING -> " + target);
+      assertTrue(refusal.getMessage().contains(QualityChecksGate.NAME), refusal.getMessage());
+    }
+    inFreshTx(() -> assertEquals("IMPLEMENTING", entities.findById(ticket.id).status));
+  }
+
+  /**
    * qits-1757: a CLOSE straight to DONE is a gated move, so this door refuses to state it and
    * names the gate — the status door judges it.
    */

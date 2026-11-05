@@ -1,10 +1,12 @@
 package eu.wohlben.qits.entities.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.error.ConflictException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -28,12 +30,14 @@ class TransitionGateTest extends EntitiesTestSupport {
   @BeforeEach
   void quiet() {
     ArmableGates.disarm();
+    ArmableQualityCheck.reset();
     announcer.clear();
   }
 
   @AfterEach
   void disarm() {
     ArmableGates.disarm();
+    ArmableQualityCheck.reset();
   }
 
   private String ticket() {
@@ -123,5 +127,107 @@ class TransitionGateTest extends EntitiesTestSupport {
     // A correction is planned without asking.
     workEntities.transition(Archetype.TICKET, id, "DROPPED", "t", TestDrops.WONT_DO);
     assertEquals(1, ArmableGates.Second.state.judged().size());
+  }
+
+  // --- the quality-check step between IMPLEMENTED and verification (qits-150) -------------------
+
+  @Inject QualityChecksGate qualityChecks;
+
+  /** A ticket walked to IMPLEMENTED by the walk's own moves. */
+  private String implementedTicket() {
+    String id = ticket();
+    workEntities.transition(Archetype.TICKET, id, "REFINED", "t");
+    workEntities.transition(Archetype.TICKET, id, "READY_FOR_DEV", Mover.person("ada"));
+    workEntities.transition(Archetype.TICKET, id, "IMPLEMENTED", "t");
+    return id;
+  }
+
+  /**
+   * The step judges every ticket move out of IMPLEMENTED into verification — the agent's FORWARD to
+   * VERIFYING, the platform's automatic started move (transitionFrom, as the verify press makes it)
+   * and the SKIP straight to VERIFIED — and a failing check refuses each with the gate's 409.
+   */
+  @Test
+  void theQualityStepJudgesEveryMoveOutOfImplementedIntoVerification() {
+    String id = implementedTicket();
+    ArmableQualityCheck.arm("the claim does not hold");
+
+    for (String target : List.of("VERIFYING", "VERIFIED")) {
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () -> workEntities.transition(Archetype.TICKET, id, target, "agent-7"),
+              "IMPLEMENTED -> " + target);
+      assertEquals(
+          "Ticket "
+              + id
+              + " cannot move to "
+              + target
+              + ": QUALITY_CHECKS: its IMPLEMENTED claim fails a quality check — ARMED_TEST_CHECK:"
+              + " the claim does not hold",
+          refusal.getMessage());
+    }
+    assertThrows(
+        ConflictException.class,
+        () ->
+            workEntities.transitionFrom(
+                Archetype.TICKET,
+                id,
+                EntityStatus.IMPLEMENTED,
+                EntityStatus.VERIFYING,
+                "verify-press"),
+        "the platform's started move goes through the step too");
+    assertEquals("IMPLEMENTED", status(id));
+    assertEquals(3, ArmableQualityCheck.judged().size(), ArmableQualityCheck.judged().toString());
+  }
+
+  /**
+   * The shipped step is empty: with no check refusing, every ticket passes it on both moves, and
+   * the check saw the ticket as it stood — still IMPLEMENTED.
+   */
+  @Test
+  void everyTicketPassesTheEmptyStep() {
+    String verifying = implementedTicket();
+    workEntities.transition(Archetype.TICKET, verifying, "VERIFYING", "t");
+    assertEquals("VERIFYING", status(verifying));
+
+    String skipped = implementedTicket();
+    workEntities.transition(Archetype.TICKET, skipped, "VERIFIED", "t");
+    assertEquals("VERIFIED", status(skipped));
+
+    assertEquals(
+        List.of(verifying + " at IMPLEMENTED", skipped + " at IMPLEMENTED"),
+        ArmableQualityCheck.judged());
+  }
+
+  /**
+   * Where the step stands: a ticket's moves into VERIFYING or VERIFIED from before them — the two
+   * real moves out of IMPLEMENTED, and the jumps the PUT-shaped door could state — and nothing else:
+   * not an epic, not the move back from VERIFIED, not a move off the walk.
+   */
+  @Test
+  void theQualityStepStandsOnlyBetweenATicketsImplementedAndItsVerification() {
+    assertTrue(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING));
+    assertTrue(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED));
+    assertTrue(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.IMPLEMENTING, EntityStatus.VERIFIED),
+        "the PUT-shaped door has no adjacency rule, so its jump is judged too");
+    assertFalse(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.VERIFIED, EntityStatus.VERIFYING));
+    assertFalse(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.VERIFYING, EntityStatus.VERIFIED));
+    assertFalse(
+        qualityChecks.appliesTo(Archetype.TICKET, EntityStatus.DROPPED, EntityStatus.VERIFIED));
+    assertFalse(
+        qualityChecks.appliesTo(Archetype.EPIC, EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING));
+    assertEquals(
+        List.of(QualityChecksGate.NAME),
+        TransitionGates.namesOf(
+            List.of(qualityChecks),
+            Archetype.TICKET,
+            EntityStateMachine.transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED)
+                .orElseThrow()));
   }
 }
