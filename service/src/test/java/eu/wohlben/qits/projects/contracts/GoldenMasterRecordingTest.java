@@ -1361,6 +1361,17 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
             "listWrapperClosings",
             "/projects/api/projects/{projectId}/wrapper-closings"));
+    // The same tickets as the work a consumer's Acceptance view lists, and the IN_FLIGHT one's page.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
     return List.copyOf(all);
   }
 

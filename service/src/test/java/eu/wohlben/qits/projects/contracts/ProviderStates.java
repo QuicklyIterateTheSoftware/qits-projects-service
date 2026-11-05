@@ -942,7 +942,9 @@ public class ProviderStates {
    * which the read leaves out. The requests are seeded rows at fixed minutes in the fresh wrapper,
    * so they are its {@code -rr-1} to {@code -rr-4}; the ledger rows are written straight to
    * {@code branch_delivery} as {@code BranchDeliveries} writes them, at a fixed instant. No git is
-   * read and no ending is told, so nothing moves a ticket to DONE.
+   * read and no ending is told, so nothing moves a ticket to DONE. Its work ({@code listProjectWork})
+   * and the IN_FLIGHT ticket ({@code getWork}, param {@code qualifiedId}) are recorded too, so a
+   * consumer draws its Acceptance view and a ticket page from the same tickets the closings name.
    */
   private Setup aProjectWithVerifiedTicketsInEveryWrapperVerdict() {
     String token = token();
@@ -997,7 +999,9 @@ public class ProviderStates {
                   project, wrapperId, wrapperName, tickets.get(4), "WITHDRAWN", withdrawn,
                   madeUpSha(4), null);
             });
-    return new Setup(params("projectId", project.id), List.of(token));
+    // qualifiedId: the IN_FLIGHT ticket, the one a consumer's ticket page reads (getWork).
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", tickets.get(1)), List.of(token));
   }
 
   /** One wrapper ledger row of the closings state, in the caller's transaction. */
