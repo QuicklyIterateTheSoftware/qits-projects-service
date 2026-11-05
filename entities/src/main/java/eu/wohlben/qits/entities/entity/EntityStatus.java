@@ -39,7 +39,9 @@ package eu.wohlben.qits.entities.entity;
  * means that implementation was started, so implement keeps running (a dispatch resumes it); {@link
  * #IMPLEMENTED} means the change is released and deployed, so verify runs; {@link #VERIFYING} means
  * that verification was started, so verify keeps running (a dispatch resumes it); {@link #VERIFIED} means
- * it no longer occurs on the platform, so a person closes it; {@link #DONE} means closed. So reading
+ * it no longer occurs on the platform, so it is closed — a ticket by the platform, once the wrapper
+ * release request carrying its branch is finalized (qits-150), an epic by a person; {@link #DONE}
+ * means closed. So reading
  * the status tells you both what is true and what happens next.
  *
  * <p><b>{@link #DROPPED} is the one word not on that line</b>, and it starts nothing: it does not
@@ -115,15 +117,24 @@ public enum EntityStatus {
   VERIFYING,
 
   /**
-   * It no longer occurs on the platform. What runs is a person's judgement that there is nothing
-   * left on the thread; a failed verification never lands here, it blocks where it stands ({@link #VERIFYING}, or
-   * {@link #IMPLEMENTED} when nobody moved it).
+   * It no longer occurs on the platform. A failed verification never lands here, it blocks where it
+   * stands ({@link #VERIFYING}, or {@link #IMPLEMENTED} when nobody moved it). What follows depends
+   * on the archetype: a <b>ticket</b> waits for its release — the platform moves it to {@link #DONE}
+   * once the workspace's wrapper release request carrying its branch is finalized, or ends with
+   * nothing left to release (qits-150); an <b>epic</b> waits for a person's judgement that there is
+   * nothing left on the thread.
    */
   VERIFIED,
 
   /**
    * Closed, and final: the one terminal status, with no exits at all. A follow-up to done work is a
    * new entity.
+   *
+   * <p><b>A ticket's DONE is the platform's, never a caller's</b> (qits-150): it is set when the
+   * wrapper release request carrying the ticket's branch is FINALIZED — following the branch through
+   * any move or obsolescence into the request that actually released it — or when that branch's
+   * request is withdrawn because it adds nothing to main. Both doors that move a status refuse a
+   * ticket's DONE for every role. An epic (and a feature, by its CLOSE) is still closed by a person.
    */
   DONE,
 

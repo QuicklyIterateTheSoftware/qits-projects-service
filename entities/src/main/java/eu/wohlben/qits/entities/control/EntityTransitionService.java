@@ -280,6 +280,7 @@ public class EntityTransitionService {
     // After the 400s, so a malformed entry and a final one are told what is wrong with them first
     // (DONE is final says more than a gate would), and before anything is written (qits-887).
     refuseFrozenCriteria(stated, rows);
+    refuseTicketDone(stated, rows);
     refuseGatedStatus(stated, rows);
 
     // The pre-state's status, read before the first write: the rows are managed, so once written
@@ -542,6 +543,41 @@ public class EntityTransitionService {
               + " move");
     }
   }
+
+  /**
+   * <b>Nobody states a ticket DONE</b> (qits-150): a 409 for every entry that would move a ticket
+   * — the row's archetype or the stated one — to DONE from any other status. The platform sets it,
+   * once the wrapper release request carrying the ticket's branch is finalized (or ends with
+   * nothing to release), and no caller of any role may say so instead; the status door refuses the
+   * same move in the same words ({@link #TICKET_DONE_IS_THE_PLATFORMS}). An entry restating DONE on
+   * a row already DONE is no move and passes. An epic keeps its manual DONE.
+   */
+  private static void refuseTicketDone(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      WorkEntity row = rows.get(entry.getKey());
+      String word = blankToNull(entry.getValue().status());
+      if (row == null || !EntityStatus.DONE.name().equals(word) || word.equals(row.status)) {
+        continue;
+      }
+      if (row.archetype == Archetype.TICKET || entry.getValue().archetype() == Archetype.TICKET) {
+        refused.add(entry.getKey() + " would move from " + row.status + " to DONE");
+      }
+    }
+    if (!refused.isEmpty()) {
+      throw new ConflictException(
+          String.join("; ", refused) + ": " + TICKET_DONE_IS_THE_PLATFORMS);
+    }
+  }
+
+  /**
+   * Why no caller moves a ticket to DONE (qits-150), as both doors that could say it — this one and
+   * {@code POST /work/{qualifiedId}/status} — word it.
+   */
+  public static final String TICKET_DONE_IS_THE_PLATFORMS =
+      "DONE is not a status anybody claims for a ticket — the platform sets it when the workspace's"
+          + " wrapper release request carrying the ticket's branch is finalized";
 
   /** Whether {@code status} is scheduled work: READY_FOR_DEV or further along the walk. */
   private static boolean scheduled(EntityStatus status) {
