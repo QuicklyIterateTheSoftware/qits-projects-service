@@ -7891,13 +7891,10 @@ public class ReleaseRequests {
               ApprovalView approval =
                   approvalView(
                       requirements,
-                      ApprovalStanding.of(
+                      displayStanding(
                           requirements,
                           page.atFold().getOrDefault(row.id, List.of()),
-                          Set.copyOf(
-                              ApprovalNotices.authorsOf(
-                                  page.named().getOrDefault(row.id, List.of()))),
-                          approvalRoles::rolesOf));
+                          page.named().getOrDefault(row.id, List.of())));
               ReleasedTagPendingMerge released = page.released().get(row.id);
               return dto(
                   row,
@@ -7941,15 +7938,113 @@ public class ReleaseRequests {
 
   private Map<String, List<ApprovalRequirement>> approvalRequirements(
       Page page, Map<String, ReleaseGates.GateSet> gateSets) {
+    return approvalRequirements(page.rows(), page.decisions(), page.existingRepos(), gateSets);
+  }
+
+  /**
+   * <b>A display's approval state for each of {@code rows}, and nothing else of the read</b>
+   * (qits-1873): {@link ReleaseRequestDto#approvalState()} exactly as {@link #listByProject} and
+   * {@link #get} answer it — the same gate sets ({@link ReleaseGates#forDisplay}), the same content
+   * half ({@link #approvalRequirements(List, Map, Set, Map)}), the same standing ({@link
+   * #displayStanding}) — for a reader that names requests but draws none of them, such as the
+   * wrapper-closings read. Derived on every call and never stored, for the approval gate's own
+   * reason. Like every display read it asks the git host nothing on the caller's thread outside the
+   * suite (whose {@code display-reads-synchronously} reads there, as it does for the list).
+   *
+   * <p>The decisions, sources and repositories are read in one transaction of its own, so the caller
+   * must not be inside one. Keyed by request id; an empty {@code rows} answers an empty map.
+   */
+  public Map<String, ReleaseRequest.ApprovalState> approvalStates(
+      java.util.Collection<ReleaseRequest> rows) {
+    if (rows.isEmpty()) {
+      return Map.of();
+    }
+    List<ReleaseRequest> all = List.copyOf(rows);
+    Set<String> repoIds = new LinkedHashSet<>();
+    all.forEach(row -> repoIds.add(row.repoId));
+    record Read(
+        Map<String, ReleaseRequestApproval> decisions,
+        Map<String, List<ReleaseRequestApproval>> atFold,
+        Map<String, List<ReleaseRequestSource>> named,
+        Map<String, String> mainBranchByRepo,
+        Set<String> existingRepos,
+        Map<String, ReleaseGates.Stored> storedGateSets) {}
+    Read read =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  Map<String, String> folds =
+                      all.stream()
+                          .filter(row -> row.mergedSha != null)
+                          .collect(
+                              Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a));
+                  return new Read(
+                      approvals.currentForEach(folds),
+                      approvals.atFoldForEach(folds),
+                      sources.listByRequests(all.stream().map(row -> row.id).toList()).stream()
+                          .collect(Collectors.groupingBy(source -> source.requestId)),
+                      mainBranches(repoIds),
+                      existingRepositories(repoIds),
+                      gates.stored(repoIds));
+                });
+    Map<String, ReleaseGates.GateSet> gateSets =
+        gates.forDisplay(read.mainBranchByRepo(), read.storedGateSets());
+    Map<String, List<ApprovalRequirement>> required =
+        contentRecorder.displayReadsSynchronously()
+            ? withRequestContext(
+                () -> approvalRequirements(all, read.decisions(), read.existingRepos(), gateSets))
+            : approvalRequirements(all, read.decisions(), read.existingRepos(), gateSets);
+    Map<String, ReleaseRequest.ApprovalState> states = new LinkedHashMap<>();
+    for (ReleaseRequest row : all) {
+      List<ApprovalRequirement> requirements = required.getOrDefault(row.id, List.of());
+      states.put(
+          row.id,
+          approvalView(
+                  requirements,
+                  displayStanding(
+                      requirements,
+                      read.atFold().getOrDefault(row.id, List.of()),
+                      read.named().getOrDefault(row.id, List.of())))
+              .state());
+    }
+    return states;
+  }
+
+  /**
+   * The approval standing a display reads: {@code requirements} matched against every decision at
+   * the fold, the request's source authors excluded where a requirement says so. One place, so the
+   * release-request read and {@link #approvalStates} can never stand differently on one fold.
+   */
+  private ApprovalStanding displayStanding(
+      List<ApprovalRequirement> requirements,
+      List<ReleaseRequestApproval> atFold,
+      List<ReleaseRequestSource> named) {
+    return ApprovalStanding.of(
+        requirements,
+        atFold,
+        Set.copyOf(ApprovalNotices.authorsOf(named)),
+        approvalRoles::rolesOf);
+  }
+
+  /**
+   * Each of {@code rows}' approval requirements as a display answers them: the gate set, a settled
+   * request's recorded approval out of {@code decisions}, and an open fold's content half — stored,
+   * or read now in the suite — for a repository in {@code existingRepos}.
+   */
+  private Map<String, List<ApprovalRequirement>> approvalRequirements(
+      List<ReleaseRequest> rows,
+      Map<String, ReleaseRequestApproval> decisions,
+      Set<String> existingRepos,
+      Map<String, ReleaseGates.GateSet> gateSets) {
     boolean synchronous = contentRecorder.displayReadsSynchronously();
     // Read once per fold in the page, however many rows share it (the suite's synchronous path).
     Map<ApprovalContentRecorder.Fold, List<ApprovalRequirement>> readNow = new HashMap<>();
     Map<String, List<ApprovalRequirement>> required = new HashMap<>();
-    for (ReleaseRequest row : page.rows()) {
+    for (ReleaseRequest row : rows) {
       ReleaseGates.GateSet set =
           gateSets.getOrDefault(
               row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved"));
-      ReleaseRequestApproval decision = page.decisions().get(row.id);
+      ReleaseRequestApproval decision = decisions.get(row.id);
       ReleaseRequestApproval recorded =
           decision != null && decision.decision == ReleaseRequestApproval.Decision.APPROVED
               ? decision
@@ -7959,7 +8054,7 @@ public class ReleaseRequests {
       if (!ApprovalPolicy.isSettled(row.state)
           && row.mergedSha != null
           && !row.mergedSha.isBlank()
-          && page.existingRepos().contains(row.repoId)) {
+          && existingRepos.contains(row.repoId)) {
         if (synchronous) {
           content =
               readNow.computeIfAbsent(

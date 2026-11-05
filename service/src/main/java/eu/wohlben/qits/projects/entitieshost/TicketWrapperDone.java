@@ -79,6 +79,11 @@ import org.jboss.logging.Logger;
  * <p><b>Who moved it</b> is {@link #MOVER}, a machine, and the thread is told which request — by its
  * qualified id — ended the ticket's delivery. A failure to comment leaves the move standing.
  *
+ * <p><b>The same rules, read without moving anything</b> (qits-1873): {@link #closings} answers,
+ * for every VERIFIED ticket of a project, the {@link Verdict} these rules hold of it now — what
+ * {@code GET /projects/{project}/wrapper-closings} serves — classified beside {@link
+ * #endedOnTheLedger} and {@link #rowEnded}, so the read and the move cannot drift apart.
+ *
  * <p>{@code @DefaultBean} like every adapter here, so a test may watch what is told.
  */
 @ApplicationScoped
@@ -273,20 +278,139 @@ public class TicketWrapperDone implements WrapperBranchEndings {
         .call(
             () -> {
               Project project = projects.get(ticket.projectId);
-              Optional<Repository> wrapper = projects.findWrapper(project.id);
-              if (wrapper.isEmpty() || ticket.number < 1 || project.slug == null) {
-                return Optional.<Facts>empty();
-              }
-              String branch =
-                  WorkBranches.of(ticket, QualifiedEntityIds.render(project.slug, ticket.number));
-              BranchDeliveryRepository.Position held =
-                  ledger.position(project.id, wrapper.get().id, branch).orElse(null);
-              ReleaseRequest request =
-                  held == null || held.requestId() == null
-                      ? null
-                      : requests.findByIdOptional(held.requestId()).orElse(null);
-              return Optional.of(new Facts(project.id, wrapper.get(), branch, held, request));
+              return factsIn(project, projects.findWrapper(project.id), ticket);
             });
+  }
+
+  /**
+   * {@link #factsOf}'s reads for one ticket of {@code project}, whose wrapper the caller has looked
+   * up already; inside the caller's transaction. Empty where there is no wrapper, no qualified id.
+   */
+  private Optional<Facts> factsIn(Project project, Optional<Repository> wrapper, WorkEntity ticket) {
+    if (wrapper.isEmpty() || ticket.number < 1 || project.slug == null) {
+      return Optional.empty();
+    }
+    String branch =
+        WorkBranches.of(ticket, QualifiedEntityIds.render(project.slug, ticket.number));
+    BranchDeliveryRepository.Position held =
+        ledger.position(project.id, wrapper.get().id, branch).orElse(null);
+    ReleaseRequest request =
+        held == null || held.requestId() == null
+            ? null
+            : requests.findByIdOptional(held.requestId()).orElse(null);
+    return Optional.of(new Facts(project.id, wrapper.get(), branch, held, request));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The read: where each VERIFIED ticket's closing stands (qits-1873)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * <b>What the close rules would say of a VERIFIED ticket right now</b> (qits-1873), read off the
+   * same {@link Facts} the arrival and the reconcile read — so the read and the move can never
+   * disagree about a ticket:
+   *
+   * <ul>
+   *   <li>{@link #NO_REQUEST} — no wrapper repository, no ledger row, or a row naming no request
+   *       (PUSHED): nothing is carrying the wrapper branch toward a release. The reconcile closes
+   *       such a ticket only past its grace and only with no branch on the git host ({@link
+   *       Ending#NO_BRANCH}), which this read does not ask.
+   *   <li>{@link #CLOSING} — {@link TicketWrapperDone#endedOnTheLedger} holds: the row is LIVE,
+   *       or WITHDRAWN with its request withdrawn as the empty wrapper. The ticket goes DONE at its
+   *       ending, at the arrival or at the next reconcile, whichever comes first.
+   *   <li>{@link #UNPROVEN} — {@link TicketWrapperDone#rowEnded} holds and the ledger alone proves
+   *       no ending: the row is WITHDRAWN, or names a WITHDRAWN or OBSOLETE request, without the
+   *       empty wrapper's proof. Only the git host can still close it ({@link Ending#DELETED_MERGED}: the branch
+   *       gone and main containing its deleted tip or last fold), and this read asks no git host.
+   *   <li>{@link #IN_FLIGHT} — otherwise: the row names a request whose delivery has not ended
+   *       (PENDING, READY, RELEASED, REJECTED, CONFLICTED, FAILED, or a MOVED row naming its
+   *       successor). Its ending is still to come.
+   * </ul>
+   */
+  public enum Verdict {
+    NO_REQUEST,
+    IN_FLIGHT,
+    CLOSING,
+    UNPROVEN
+  }
+
+  /**
+   * One VERIFIED ticket's closing as {@link #closings} reads it (qits-1873).
+   *
+   * @param qualifiedId the ticket's qualified id, {@code <slug>-<number>}
+   * @param branch its wrapper branch, {@link WorkBranches#of}
+   * @param step the wrapper ledger row's step, or null where there is no row (or no wrapper)
+   * @param requestId the request the row names, or null
+   * @param request that request's row where it still exists, else null
+   * @param version the row's version (RELEASED, LIVE), or null
+   */
+  public record Closing(
+      WorkEntity ticket,
+      String qualifiedId,
+      String branch,
+      Verdict verdict,
+      String step,
+      String requestId,
+      ReleaseRequest request,
+      String version) {}
+
+  /**
+   * Every TICKET of {@code projectId} at VERIFIED with its {@link Verdict}, ordered by ticket
+   * number (qits-1873). One read of the epics database for the VERIFIED tickets, then one
+   * transaction of the projects database for the wrapper, each ticket's ledger row and the request
+   * it names — and never the git host: an
+   * UNPROVEN ticket is the reconcile's to prove or leave. A ticket with no qualified id (no number,
+   * a project with no slug) has no wrapper branch to name and is left out. An unknown project is a
+   * 404. Read-only; moves nothing.
+   */
+  public List<Closing> closings(String projectId) {
+    // The tickets are the epics database's and the ledger the projects database's: two non-XA
+    // resources, so two transactions, as the reconcile reads them.
+    List<WorkEntity> verified =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    rows.listByProjectArchetypeAndStatus(
+                        projectId, Archetype.TICKET, EntityStatus.VERIFIED.name()));
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              Project project = projects.get(projectId);
+              if (project.slug == null) {
+                return List.<Closing>of();
+              }
+              Optional<Repository> wrapper = projects.findWrapper(project.id);
+              return verified.stream()
+                  .filter(ticket -> ticket.number >= 1)
+                  .sorted(java.util.Comparator.comparingLong(ticket -> ticket.number))
+                  .map(ticket -> closingOf(project, ticket, factsIn(project, wrapper, ticket)))
+                  .toList();
+            });
+  }
+
+  private static Closing closingOf(Project project, WorkEntity ticket, Optional<Facts> facts) {
+    String qualifiedId = QualifiedEntityIds.render(project.slug, ticket.number);
+    BranchDeliveryRepository.Position held = facts.map(Facts::held).orElse(null);
+    return new Closing(
+        ticket,
+        qualifiedId,
+        WorkBranches.of(ticket, qualifiedId),
+        facts.map(TicketWrapperDone::verdictOf).orElse(Verdict.NO_REQUEST),
+        held == null ? null : held.step(),
+        held == null ? null : held.requestId(),
+        facts.map(Facts::request).orElse(null),
+        held == null ? null : held.version());
+  }
+
+  /** {@link Verdict}'s rules over one ticket's facts, beside the close rules they read. */
+  private static Verdict verdictOf(Facts facts) {
+    if (facts.held() == null || facts.held().requestId() == null) {
+      return Verdict.NO_REQUEST;
+    }
+    if (endedOnTheLedger(facts).isPresent()) {
+      return Verdict.CLOSING;
+    }
+    return rowEnded(facts) ? Verdict.UNPROVEN : Verdict.IN_FLIGHT;
   }
 
   /**

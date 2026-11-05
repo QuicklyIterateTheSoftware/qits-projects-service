@@ -2601,6 +2601,15 @@ and each one is a decision rather than a simplification:
   unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
   `QUALITY_CHECKS` gate (`control/QualityChecksGate` over `Instance<QualityCheck>`, none yet), so the
   step is empty and every ticket passes it.
+  **The read door** (qits-1873) is `GET /projects/api/projects/{project}/wrapper-closings`
+  (`api/WrapperClosingsController`, `listWrapperClosings`, `getBranchDeliveries`' roles; id or
+  slug, unknown 404): `{closings: [{ticket, branch, verdict, step, requestId, requestQualifiedId,
+  requestState, approval, version}]}`, one per VERIFIED ticket by number. `verdict` is
+  `TicketWrapperDone.Verdict`, classified beside the close rules from the same facts: `NO_REQUEST`
+  (no wrapper, no row, a PUSHED row), `CLOSING` (`endedOnTheLedger`), `UNPROVEN` (`rowEnded`
+  without it — only the reconcile's git-host proof can still close it), else `IN_FLIGHT`.
+  `approval` is `ReleaseRequests.approvalStates`, the release-request read's derivation. No git
+  host is asked. Provider state `a project with VERIFIED tickets in every wrapper verdict`.
 - **An agent can make the transition.** `work_status` reaches `POST /work/{id}/status`, because
   resolving a ticket is a statement about work that is done — which the agent that did it is the one
   who knows — and every move an agent makes is reversible (only DONE is final, and nobody asks for a
