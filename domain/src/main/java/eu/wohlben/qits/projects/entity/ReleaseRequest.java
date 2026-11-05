@@ -273,6 +273,17 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String qaInterruptedSha;
 
   /**
+   * The upstream release requests whose building interrupted the fold {@link #qaInterruptedSha}
+   * names (qits-1872, V73), their ids comma-separated — the ones gate 3 held it by at that moment.
+   * Until that fold is announced again only these hold it: an upstream that starts building later
+   * does not, or a fold with many upstreams waited for all of them to be idle at once. Null on a
+   * row interrupted before the column existed, which nothing holds. Meaningful only while {@link
+   * #qaInterruptedSha} names {@link #mergedSha}; written with it, so a re-fold needs no reset.
+   */
+  @Column(name = "qa_interrupted_by")
+  public String qaInterruptedBy;
+
+  /**
    * <b>A re-fold is owed</b> (qits-1570, V53): an automation's own branch ({@code
    * maintenance/automations/…}) moved while the current fold was in flight — QA announced at it with
    * no verdict yet, or green and waiting on approval — and re-folding there would have cancelled that

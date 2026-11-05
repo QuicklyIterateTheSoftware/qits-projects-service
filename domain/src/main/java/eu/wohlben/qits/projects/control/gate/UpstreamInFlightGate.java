@@ -4,7 +4,10 @@ import eu.wohlben.qits.projects.control.ReleaseGates;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -26,6 +29,14 @@ import java.util.stream.Collectors;
  * active or every active one is overridden; UNKNOWN when an active request's closure could not be
  * read and nothing active is known — and <b>UNKNOWN does not hold</b>: the gate postpones and never
  * protects content, so a qits-maintenance outage must not freeze every release.
+ *
+ * <p><b>An interrupted fold</b> (qits-909, qits-1872) — its QA cancelled by this gate's interrupt
+ * and not announced again yet ({@code qaInterruptedSha} names {@code mergedSha}, {@code
+ * qaAnnouncedSha} does not) — is held only by the upstream requests that interrupted it, recorded in
+ * {@code qaInterruptedBy}. Any other active upstream is a PASSED check: held against whatever
+ * happened to be building at each evaluation, a fold with many upstreams was re-announced only when
+ * all of them were idle at once, which with releases leapfrogging was never. A row interrupted
+ * before the column existed names nobody, and nothing holds it.
  *
  * <p><b>What decides is {@code ReleaseRequests.evaluate}</b>, which holds a fresh fold before it is
  * announced {@code preRun=DONE} through {@link #answer} — the same rule this class reports, so the
@@ -76,7 +87,43 @@ public class UpstreamInFlightGate implements ReleaseGate {
 
   @Override
   public GateEvaluation evaluate(GateSubject subject) {
-    return answer(subject.upstream().requests());
+    return answer(subject.upstream().requests(), subject.request());
+  }
+
+  /**
+   * The upstream requests that hold in this list — active, known, not overridden, exactly the ones
+   * {@link #answer} names — by request id. What the interrupt records (qits-1872).
+   */
+  public static List<String> holdingIds(List<GateSubject.Upstream> upstream) {
+    List<String> ids = new ArrayList<>();
+    for (GateSubject.Upstream one : upstream == null ? List.<GateSubject.Upstream>of() : upstream) {
+      if (one.active() && one.known() && one.override() == null) {
+        ids.add(one.requestId());
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * The upstream request ids that may hold this request's fold, or null where every active upstream
+   * may: an interrupted fold not announced again (qits-1872) is held only by its recorded
+   * interrupters — none at all on a row interrupted before they were recorded.
+   */
+  public static Set<String> interruptedBy(ReleaseRequest request) {
+    if (request == null
+        || request.mergedSha == null
+        || !request.mergedSha.equals(request.qaInterruptedSha)
+        || request.mergedSha.equals(request.qaAnnouncedSha)) {
+      return null;
+    }
+    Set<String> ids = new LinkedHashSet<>();
+    if (request.qaInterruptedBy != null) {
+      Arrays.stream(request.qaInterruptedBy.split(","))
+          .map(String::strip)
+          .filter(id -> !id.isEmpty())
+          .forEach(ids::add);
+    }
+    return ids;
   }
 
   /** Whether this answer holds QA: PENDING, and nothing else (UNKNOWN never holds). */
@@ -89,6 +136,15 @@ public class UpstreamInFlightGate implements ReleaseGate {
    * ReleaseRequests.evaluate} decides on.
    */
   public static GateEvaluation answer(List<GateSubject.Upstream> upstream) {
+    return answer(upstream, null);
+  }
+
+  /**
+   * The gate's rule for {@code request}'s fold: {@link #answer(List)}, except that an interrupted
+   * fold is held only by the upstreams that interrupted it ({@link #interruptedBy}, qits-1872).
+   */
+  public static GateEvaluation answer(List<GateSubject.Upstream> upstream, ReleaseRequest request) {
+    Set<String> interrupters = interruptedBy(request);
     List<GateSubject.Upstream> list = upstream == null ? List.of() : upstream;
     List<GateCheck> checks = new ArrayList<>();
     List<String> holding = new ArrayList<>();
@@ -116,6 +172,15 @@ public class UpstreamInFlightGate implements ReleaseGate {
                 name,
                 ReleaseGates.State.PASSED.name(),
                 "Overridden by " + one.override().decidedBy() + "; " + one.doing(),
+                one.qaRunId()));
+        continue;
+      }
+      if (interrupters != null && !interrupters.contains(one.requestId())) {
+        checks.add(
+            new GateCheck(
+                name,
+                ReleaseGates.State.PASSED.name(),
+                "Did not interrupt this fold's QA, so it does not hold it; " + one.doing(),
                 one.qaRunId()));
         continue;
       }
