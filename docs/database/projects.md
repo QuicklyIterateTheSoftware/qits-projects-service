@@ -132,6 +132,7 @@ erDiagram
     string project_id PK "not null"
     string repo_id PK "not null"
     instant changed_at "not null"
+    string deleted_sha
     string fold_attempt
     string fold_sha
     string qualified_id
