@@ -1815,13 +1815,13 @@ request in its pre-run, or waiting only on approval, builds nothing and holds no
   runs at that same fold interrupts nothing — no cancel, the stamp left standing, and the request
   goes on to wait for its own verdict (the read never drew a hold on an announced fold anyway).
   **Held only by its interrupters** (qits-1872): the interrupt also records the ids of the upstream
-  requests holding at that moment in `release_request.qa_interrupted_by` (V73, comma-separated),
+  requests holding at that moment in `release_request.qa_interrupted_by` (V74, comma-separated),
   and until the fold is announced again only those hold it — the gate's detail names only them, and
   any other active upstream is a PASSED check. Held against whatever was active at each evaluation,
   a fold with many upstreams was re-announced only when all of them were idle at once, and starved
   for hours while they leapfrogged. Once none of the recorded ones holds, the stamp arm announces
   `preRun=DONE` at the same sha and the qits-1570 rule keeps that QA running. A row interrupted
-  before V73 names nobody and is not held. `UpstreamInFlightGate.answer(list, request)` carries the
+  before V74 names nobody and is not held. `UpstreamInFlightGate.answer(list, request)` carries the
   rule, so the read, `preRunPending` and `evaluate` agree; a new fold is gated by every active
   upstream as before.
 - **UNKNOWN never holds** (a closure that could not be read); the estate wrapper is exempt; a
