@@ -332,6 +332,10 @@ public class ProviderStates {
   public static final String BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE =
       "branch ticket/qits-9001 is RELEASED in qits-demo-service";
 
+  // qits-1873: the wrapper-closings read door, over one VERIFIED ticket per verdict.
+  public static final String A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT =
+      "a project with VERIFIED tickets in every wrapper verdict";
+
   /** The released branch's name, fixed: the read door is addressed by it. */
   static final String RELEASED_BRANCH = "ticket/qits-9001";
 
@@ -660,6 +664,9 @@ public class ProviderStates {
     states.put(
         BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
         this::branchTicketQits9001IsReleasedInQitsDemoService);
+    states.put(
+        A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT,
+        this::aProjectWithVerifiedTicketsInEveryWrapperVerdict);
   }
 
   /** Every state name this provider answers for. */
@@ -923,6 +930,98 @@ public class ProviderStates {
     return new Setup(
         params("projectId", project.id, "repoId", repoId, "requestId", requestId),
         List.of(token));
+  }
+
+  /**
+   * The wrapper-closings read (qits-1873): a project whose wrapper (the {@code <slug>-<slug>} it
+   * was created with, archetype PROJECT) carries one VERIFIED ticket per verdict, in ticket order — {@code -1} with no
+   * ledger row (NO_REQUEST), {@code -2} JOINED on a PENDING request not folded yet (IN_FLIGHT,
+   * approval NOT_REQUIRED), {@code -3} LIVE on a FINALIZED request at {@code 2026.1105.120000}
+   * (CLOSING), {@code -4} WITHDRAWN with its request withdrawn as the empty wrapper (CLOSING) and
+   * {@code -5} WITHDRAWN on a request a person withdrew (UNPROVEN) — and a sixth ticket, REFINED,
+   * which the read leaves out. The requests are seeded rows at fixed minutes in the fresh wrapper,
+   * so they are its {@code -rr-1} to {@code -rr-4}; the ledger rows are written straight to
+   * {@code branch_delivery} as {@code BranchDeliveries} writes them, at a fixed instant. No git is
+   * read and no ending is told, so nothing moves a ticket to DONE.
+   */
+  private Setup aProjectWithVerifiedTicketsInEveryWrapperVerdict() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT);
+    // The wrapper the project was created with, <slug>-<slug>: the project's one PROJECT repository.
+    String wrapperId = projectService.findWrapper(project.id).orElseThrow().id;
+    String wrapperName = project.slug + "-" + project.slug;
+    seededRepos.add(wrapperId);
+    List<String> tickets = new ArrayList<>();
+    for (String title :
+        List.of(
+            "Nothing asked for yet",
+            "Riding a pending wrapper request",
+            "Live with its wrapper release",
+            "Withdrawn as the empty wrapper",
+            "Withdrawn by a person")) {
+      String ticket = ticket(project, title);
+      walk(Archetype.TICKET, ticket, EntityStatus.VERIFIED);
+      tickets.add(qualified(project, ticket));
+    }
+    String refined = ticket(project, "Not verified yet");
+    walk(Archetype.TICKET, refined, EntityStatus.REFINED);
+    String pending =
+        releaseRow(
+            project, wrapperId, wrapperName, "Release the pending ticket", State.PENDING, 1,
+            null, row -> {});
+    String finalized =
+        releaseRow(
+            project, wrapperId, wrapperName, "Release the live ticket", State.FINALIZED, 2,
+            madeUpSha(2), row -> row.version = "2026.1105.120000");
+    String empty =
+        releaseRow(
+            project, wrapperId, wrapperName, "Release the empty wrapper", State.WITHDRAWN, 3,
+            madeUpSha(3),
+            row -> row.detail = eu.wohlben.qits.projects.control.ReleaseRequests.EMPTY_WRAPPER_WITHDRAWN);
+    String withdrawn =
+        releaseRow(
+            project, wrapperId, wrapperName, "Release the withdrawn ticket", State.WITHDRAWN,
+            4, madeUpSha(4), row -> row.detail = "Withdrawn by " + SEEDER);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              closingRow(
+                  project, wrapperId, wrapperName, tickets.get(1), "JOINED", pending, null, null);
+              closingRow(
+                  project, wrapperId, wrapperName, tickets.get(2), "LIVE", finalized,
+                  madeUpSha(2), "2026.1105.120000");
+              closingRow(
+                  project, wrapperId, wrapperName, tickets.get(3), "WITHDRAWN", empty,
+                  madeUpSha(3), null);
+              closingRow(
+                  project, wrapperId, wrapperName, tickets.get(4), "WITHDRAWN", withdrawn,
+                  madeUpSha(4), null);
+            });
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** One wrapper ledger row of the closings state, in the caller's transaction. */
+  private static void closingRow(
+      Project project,
+      String wrapperId,
+      String wrapperName,
+      String ticket,
+      String step,
+      String requestId,
+      String foldSha,
+      String version) {
+    var row = new eu.wohlben.qits.projects.entity.BranchDelivery();
+    row.projectId = project.id;
+    row.repoId = wrapperId;
+    row.repoName = wrapperName;
+    row.branch = "ticket/" + ticket;
+    row.step = step;
+    row.requestId = requestId;
+    row.qualifiedId = ReleaseRequest.<ReleaseRequest>findById(requestId).qualifiedId;
+    row.foldSha = foldSha;
+    row.version = version;
+    row.changedAt = SEEDED_AT;
+    row.persist();
   }
 
   /** One line of the trigger state's window, admitted when it occurred. */

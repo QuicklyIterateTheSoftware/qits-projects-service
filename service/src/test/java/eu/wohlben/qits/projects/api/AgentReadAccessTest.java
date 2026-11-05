@@ -102,7 +102,8 @@ class AgentReadAccessTest {
           RefinementPromptDraftController.class,
           ReleaseRequestController.class,
           RepositoryController.class,
-          TechnicalProcessEventsController.class);
+          TechnicalProcessEventsController.class,
+          WrapperClosingsController.class);
 
   /**
    * <b>The release-request writes an agent reaches.</b> The first five are bound to the agent's

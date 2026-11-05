@@ -4266,6 +4266,71 @@ components:
           type: string
         status:
           type: string
+    WrapperClosing:
+      type: object
+      description: "One VERIFIED ticket's wrapper branch, its ledger row and request,\
+        \ and the verdict the platform's close rules hold of it now."
+      properties:
+        ticket:
+          type: string
+          description: The ticket's qualified id
+        branch:
+          type: string
+          description: "Its wrapper branch, ticket/<qualified id>"
+        verdict:
+          type: string
+          enum:
+          - NO_REQUEST
+          - IN_FLIGHT
+          - CLOSING
+          - UNPROVEN
+          description: "NO_REQUEST (no wrapper, no ledger row, or a PUSHED row naming\
+            \ no request), IN_FLIGHT (the row names a request whose delivery has not\
+            \ ended), CLOSING (LIVE, or withdrawn as the empty wrapper: the platform\
+            \ moves the ticket to DONE) or UNPROVEN (the row ended without the ledger\
+            \ proving an ending: only the git host can still close it)"
+        step:
+          type:
+          - string
+          - "null"
+          description: The wrapper ledger row's step; null when there is no row
+        requestId:
+          type:
+          - string
+          - "null"
+          description: The request the row names; null when none
+        requestQualifiedId:
+          type:
+          - string
+          - "null"
+          description: That request's qualified id
+        requestState:
+          type:
+          - string
+          - "null"
+          description: That request's state
+        approval:
+          type:
+          - string
+          - "null"
+          description: "That request's approval state as the release-request read\
+            \ derives it: NOT_REQUIRED, WAITING, APPROVED or DECLINED; null when no\
+            \ request"
+        version:
+          type:
+          - string
+          - "null"
+          description: "The row's version (RELEASED, LIVE)"
+    WrapperClosings:
+      type: object
+      description: "Every VERIFIED ticket of a project, with where its wrapper closing\
+        \ stands."
+      properties:
+        closings:
+          type: array
+          items:
+            $ref: "#/components/schemas/WrapperClosing"
+          description: "One per VERIFIED ticket, ordered by ticket number"
     WrapperView:
       type: object
       properties:
@@ -6341,6 +6406,42 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
+        - qits:agent
+  /projects/api/projects/{project}/wrapper-closings:
+    get:
+      summary: Where each VERIFIED ticket's wrapper closing stands
+      description: "One row per ticket at VERIFIED, ordered by number: its wrapper\
+        \ branch, the wrapper ledger row's step and version, the request the row names\
+        \ (id, qualified id, state, approval state) and the verdict of the platform's\
+        \ close rules — NO_REQUEST, IN_FLIGHT, CLOSING (the platform moves it to DONE)\
+        \ or UNPROVEN (ended without proof on the ledger; only the git host can still\
+        \ close it). Asks no git host. An unknown project is a 404."
+      operationId: listWrapperClosings
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WrapperClosings"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Wrapper Closings Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:system
         - qits:agent
   /projects/api/refinements/{id}:
     get:

@@ -1,0 +1,59 @@
+{
+  "closings": [
+    {
+      "ticket": "contract-00000001-1",
+      "branch": "ticket/contract-00000001-1",
+      "verdict": "NO_REQUEST",
+      "step": null,
+      "requestId": null,
+      "requestQualifiedId": null,
+      "requestState": null,
+      "approval": null,
+      "version": null
+    },
+    {
+      "ticket": "contract-00000001-2",
+      "branch": "ticket/contract-00000001-2",
+      "verdict": "IN_FLIGHT",
+      "step": "JOINED",
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "requestQualifiedId": "contract-00000001-contract-00000001-rr-1",
+      "requestState": "PENDING",
+      "approval": "NOT_REQUIRED",
+      "version": null
+    },
+    {
+      "ticket": "contract-00000001-3",
+      "branch": "ticket/contract-00000001-3",
+      "verdict": "CLOSING",
+      "step": "LIVE",
+      "requestId": "00000000-0000-4000-8000-000000000003",
+      "requestQualifiedId": "contract-00000001-contract-00000001-rr-2",
+      "requestState": "FINALIZED",
+      "approval": "NOT_REQUIRED",
+      "version": "2026.1105.120000"
+    },
+    {
+      "ticket": "contract-00000001-4",
+      "branch": "ticket/contract-00000001-4",
+      "verdict": "CLOSING",
+      "step": "WITHDRAWN",
+      "requestId": "00000000-0000-4000-8000-000000000004",
+      "requestQualifiedId": "contract-00000001-contract-00000001-rr-3",
+      "requestState": "WITHDRAWN",
+      "approval": "NOT_REQUIRED",
+      "version": null
+    },
+    {
+      "ticket": "contract-00000001-5",
+      "branch": "ticket/contract-00000001-5",
+      "verdict": "UNPROVEN",
+      "step": "WITHDRAWN",
+      "requestId": "00000000-0000-4000-8000-000000000005",
+      "requestQualifiedId": "contract-00000001-contract-00000001-rr-4",
+      "requestState": "WITHDRAWN",
+      "approval": "NOT_REQUIRED",
+      "version": null
+    }
+  ]
+}

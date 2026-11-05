@@ -739,6 +739,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE);
   }
 
+  @State(ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT)
+  Map<String, String> aProjectWithVerifiedTicketsInEveryWrapperVerdict() {
+    return states.params(ProviderStates.A_PROJECT_WITH_VERIFIED_TICKETS_IN_EVERY_WRAPPER_VERDICT);
+  }
+
   @State(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS)
   Map<String, String> theDevelopmentGuideShips() {
     return states.params(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS);
