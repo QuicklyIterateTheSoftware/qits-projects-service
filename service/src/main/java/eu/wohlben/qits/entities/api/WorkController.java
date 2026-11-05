@@ -277,7 +277,8 @@ public class WorkController {
               nullable = true,
               description =
                   "An issue's move only, written on its thread: required and one line with OBSOLETE,"
-                      + " optional with RESOLVED (the answer). Refused on every other archetype.")
+                      + " and with RESOLVED from the desk; optional with RESOLVED from a person (the"
+                      + " answer). Refused on every other archetype.")
           String reason) {}
 
   /** {@code reason} is required when blocking and optional when unblocking. */

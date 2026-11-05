@@ -14,8 +14,8 @@ import java.util.stream.Collectors;
 
 /**
  * <b>A person answered an issue</b> (qits-1819): they resolved it or commented on it, so the desk
- * can continue the blocked work. Its own moves and comments are dropped by the listener, and an
- * agent's comment does not count: an issue waits on a person.
+ * can continue the blocked work. Its own moves and comments are dropped by the listener, its own
+ * resolve included (qits-1870), and an agent's comment does not count: an issue waits on a person.
  */
 @ApplicationScoped
 public class IssueAnsweredSource implements DeskTriggerSource {

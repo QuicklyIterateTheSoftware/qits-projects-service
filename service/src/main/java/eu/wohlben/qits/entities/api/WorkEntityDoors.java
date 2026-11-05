@@ -658,14 +658,20 @@ public class WorkEntityDoors {
   }
 
   /**
-   * Who moves an issue (qits-1819), a 403 for anyone else: a person resolves it, and a person or the
-   * desk makes it OBSOLETE, the latter with a one-line reason (a 400). A word that is no legal move
-   * is left to the move's own 409.
+   * Who moves an issue (qits-1819), a 403 for anyone else: a person or the desk resolves it
+   * (qits-1870), and a person or the desk makes it OBSOLETE. The desk gives either move a one-line
+   * reason (a 400), while a person's reason stays optional with RESOLVED. A word that is no legal
+   * move is left to the move's own 409.
    */
   private void requireIssueMove(SecurityIdentity identity, String target, String reason) {
     boolean person = movers.of(identity).isPerson();
-    if (EntityStatus.RESOLVED.name().equals(target) && !person) {
-      throw new ForbiddenException("Only a person resolves an issue.");
+    if (EntityStatus.RESOLVED.name().equals(target)) {
+      if (!person && !isDeskCaller(identity)) {
+        throw new ForbiddenException("Only the delivery desk or a person resolves an issue.");
+      }
+      if (!person && (reason == null || reason.isBlank() || reason.lines().count() > 1)) {
+        throw new BadRequestException("Moving an issue to RESOLVED needs a one-line reason.");
+      }
     }
     if (EntityStatus.OBSOLETE.name().equals(target)) {
       if (!person && !isDeskCaller(identity)) {

@@ -465,8 +465,9 @@ public class EntityTransitionService {
 
   /**
    * <b>This door neither makes an issue nor changes one</b> (qits-1819), a 409 naming every such
-   * entry. Only the desk creates an issue and only a person resolves one, and both rules live on
-   * {@code POST /work} and {@code POST /work/{qualifiedId}/status}; a reshape would walk round them.
+   * entry. Only the desk creates an issue and only the desk or a person resolves one, and both rules
+   * live on {@code POST /work} and {@code POST /work/{qualifiedId}/status}; a reshape would walk
+   * round them.
    */
   private static void refuseIssues(
       Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {

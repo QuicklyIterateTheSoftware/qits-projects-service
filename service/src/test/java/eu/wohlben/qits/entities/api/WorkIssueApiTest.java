@@ -330,20 +330,52 @@ class WorkIssueApiTest {
   // --- moves -------------------------------------------------------------------------------------
 
   @Test
-  void onlyAPersonResolvesAndTheThreadCarriesTheAnswer() {
-    String projectId = project("issue-resolve");
+  void onlyTheDeskOrAPersonResolves() {
+    String projectId = project("issue-resolve-refused");
     String id = issue(projectId);
     for (RequestSpecification refused :
         List.of(
-            desk(projectId),
             adminHeaders(),
             machine(projectId, "qits:agent"),
             machine(projectId, "qits:agent", "qits:admin-agent"),
             machine(projectId, "qits:system"))) {
-      move(refused, id, Map.of("target", "RESOLVED")).statusCode(403);
+      move(refused, id, Map.of("target", "RESOLVED", "reason", "Answered.")).statusCode(403);
     }
+    String other = project("issue-resolve-other");
+    move(desk(other), id, Map.of("target", "RESOLVED", "reason", "Answered.")).statusCode(403);
+    person().when().get("/projects/api/work/" + id).then().body("status", equalTo("OPEN"));
+  }
+
+  @Test
+  void theDeskResolvesItsIssueWithOneLine() {
+    String projectId = project("issue-resolve-desk");
+    String id = issue(projectId);
+    move(desk(projectId), id, Map.of("target", "RESOLVED")).statusCode(400);
+    move(desk(projectId), id, Map.of("target", "RESOLVED", "reason", "one\ntwo")).statusCode(400);
     person().when().get("/projects/api/work/" + id).then().body("status", equalTo("OPEN"));
 
+    move(
+            desk(projectId, "qits:agent", "qits:desk"),
+            id,
+            Map.of("target", "RESOLVED", "reason", "Answered on the thread."))
+        .statusCode(200)
+        .body("status", equalTo("RESOLVED"));
+    person()
+        .when()
+        .get("/projects/api/work/" + id + "/comments")
+        .then()
+        .body("entries.comment.body", hasItem("Answered on the thread."));
+
+    String another = issue(projectId);
+    move(desk(projectId), another, Map.of("target", "RESOLVED", "reason", "Made redundant."))
+        .statusCode(200)
+        .body("status", equalTo("RESOLVED"));
+  }
+
+  @Test
+  void aPersonResolvesAndTheThreadCarriesTheAnswer() {
+    String projectId = project("issue-resolve");
+    String id = issue(projectId);
     move(person(), id, Map.of("target", "RESOLVED", "reason", "Lease lifted.\nGo on."))
         .statusCode(200)
         .body("status", equalTo("RESOLVED"));

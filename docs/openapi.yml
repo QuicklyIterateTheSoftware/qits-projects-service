@@ -4236,8 +4236,8 @@ components:
           - string
           - "null"
           description: "An issue's move only, written on its thread: required and\
-            \ one line with OBSOLETE, optional with RESOLVED (the answer). Refused\
-            \ on every other archetype."
+            \ one line with OBSOLETE, and with RESOLVED from the desk; optional with\
+            \ RESOLVED from a person (the answer). Refused on every other archetype."
     WorkTag:
       type: string
       enum:

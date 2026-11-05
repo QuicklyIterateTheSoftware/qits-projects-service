@@ -591,6 +591,20 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
+  /** qits-1870: an unedited brief in which only a person resolved an issue rolls to the current. */
+  @Test
+  public void anUneditedQits1870BriefIsMigrated() {
+    stage(AgentSurfaceDefaults.QITS_1870_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the brief before qits-1870 is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("{\"target\":\"RESOLVED\""), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
   /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.

@@ -254,7 +254,8 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   of its project, `entity.related_to`. The rights are in `WorkEntityDoors`: create is `qits:desk` or
   `qits:desk-admin` alone (a 403 for everyone else, `qits:admin` included), bound to the desk's
   project; RESOLVED takes a verified person (`PersonCheck`, so asserted headers and `qits:admin-agent`
-  are a 403); OBSOLETE takes the desk or a person, with a one-line `reason`. A `reason` on a move lands
+  are a 403), or the desk with a one-line `reason` (qits-1870); OBSOLETE takes the desk or a person,
+  with a one-line `reason`. A `reason` on a move lands
   on the thread. `POST /work/transition` refuses an issue either way (409), since a reshape would walk
   round those rules, and no API deletes one. `WorkIssueApiTest` pins all of it.
 
