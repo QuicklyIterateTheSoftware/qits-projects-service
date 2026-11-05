@@ -233,6 +233,25 @@ public class BranchDeliveries {
   }
 
   /**
+   * {@code branch} was deleted from {@code repoId} at {@code sha} (qits-1869): the tip is recorded on
+   * every row of the branch left there, in any project and at any step — a row withdrawn by this
+   * deletion, and one that ended earlier (moved out, or its request withdrawn) and is only deleted
+   * now. It is the reconcile's proof that a deleted wrapper branch left nothing to add to main. A
+   * blank {@code sha} (unknown) or no row writes nothing. Ledger-only: nothing is announced, and
+   * the next step or push clears it ({@link BranchDeliveryRepository#upsert}).
+   */
+  public void deletedAt(String repoId, String branch, String sha) {
+    if (sha == null || sha.isBlank()) {
+      return;
+    }
+    try {
+      ledger.recordDeletedAt(repoId, branch, sha);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not record the tip %s of deleted branch %s of %s", sha, branch, repoId);
+    }
+  }
+
+  /**
    * <b>JOINED</b>: {@code branch} was put on {@code row}. Not inside {@link #handingOn}, whose
    * caller writes MOVED for the same add.
    */

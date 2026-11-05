@@ -130,6 +130,16 @@ public class BranchDelivery extends PanacheEntityBase {
   @Column(length = 64)
   public String version;
 
+  /**
+   * The tip the branch stood at when the git host deleted it — {@code SCMDeleteBranch}'s {@code
+   * sha} (qits-1869, V73) — written on the row whatever step it holds. The proof that a deleted
+   * wrapper branch left nothing to add to main, where {@link #foldSha}, a merge of every source of
+   * the request, may be unreachable by then. Cleared by every later step and by a re-push; null
+   * where no deletion with a known tip was heard.
+   */
+  @Column(name = "deleted_sha")
+  public String deletedSha;
+
   @Column(name = "changed_at", nullable = false)
   public Instant changedAt;
 

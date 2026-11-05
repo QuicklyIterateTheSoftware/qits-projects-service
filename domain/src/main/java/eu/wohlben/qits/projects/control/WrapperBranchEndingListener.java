@@ -106,7 +106,8 @@ public class WrapperBranchEndingListener implements BranchDeliveryStepListener {
             step.requestId(),
             step.qualifiedId(),
             ending == WrapperBranchEndings.Ending.FINALIZED ? step.version() : null,
-            ending));
+            ending,
+            null));
   }
 
   /**

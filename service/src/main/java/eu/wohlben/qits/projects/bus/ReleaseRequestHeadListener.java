@@ -20,7 +20,8 @@ import org.jboss.logging.Logger;
  * every open request of the repository, and each is folded separately: a shared trigger is never a
  * shared merge. A branch <b>deleted</b> is dropped from the requests naming it, and one left with
  * nothing but the default branch is withdrawn: there is no work in it any more and the row would
- * otherwise stand open forever (three did, 2026-09-01).
+ * otherwise stand open forever (three did, 2026-09-01). The deletion's {@code sha}, the tip the
+ * branch stood at, goes with it (qits-1869).
  *
  * <p>A push to the <b>default branch</b> is also news about {@code main}: every pending released tag
  * the new head contains leaves the implicit source set ({@code ReleaseRequests#onMainMoved}), which
@@ -95,7 +96,9 @@ public class ReleaseRequestHeadListener implements QitsDurableEventListener {
             frame.name(), frame.id());
         return;
       }
-      releaseRequests.onBranchDeleted(repoId, branch);
+      // The tip at the deletion (qits-1869): the proof that a deleted wrapper branch left nothing
+      // to add to main. Absent or blank is "unknown", never poison — the drop still happens.
+      releaseRequests.onBranchDeleted(repoId, branch, payload.path("sha").asText(null));
       return;
     }
     String sha = payload.path("sha").asText(null);
