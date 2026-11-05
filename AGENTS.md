@@ -2589,7 +2589,14 @@ and each one is a decision rather than a simplification:
   it finalizes. A ticket not yet VERIFIED is closed at its arrival at VERIFIED (`PhaseAdvance`
   reads the row, and closes at once when that move found nothing left to release), and
   `TicketWrapperDone.reconcile` (`qits.projects.wrapper-done.reconcile-every`, 10m, `off` in
-  dev/test) is the floor. Both doors refuse a ticket's DONE for every role, a 409
+  dev/test) is the floor. Two more endings count as "nothing left to release": a wrapper branch
+  deleted with the last fold that carried it already in main (`DELETED_MERGED` — told at the
+  deletion by `onBranchDeleted` when its lineage answer is `Lost.NOTHING`, and found by the
+  reconcile on a WITHDRAWN row, or one naming a WITHDRAWN/OBSOLETE request, whose fold the git host
+  says main contains, with the branch gone), and a ticket with no wrapper row and no wrapper branch
+  past `qits.projects.wrapper-done.no-branch-grace` (PT15M) after VERIFIED (`NO_BRANCH`, reconcile
+  only). A row in flight, a NO and an unanswered ask close nothing. The reconcile's first pass
+  after a deploy is the backfill. Both doors refuse a ticket's DONE for every role, a 409
   (`EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS`); DROPPED stays open, an epic's DONE is
   unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
   `QUALITY_CHECKS` gate (`control/QualityChecksGate` over `Instance<QualityCheck>`, none yet), so the

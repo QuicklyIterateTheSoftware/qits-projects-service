@@ -23,7 +23,22 @@ public interface WrapperBranchEndings {
      * pins are fresh ({@link ReleaseRequests#EMPTY_WRAPPER_WITHDRAWN}): there is nothing left to
      * release. Any other withdrawal is not an ending this port hears.
      */
-    EMPTY
+    EMPTY,
+    /**
+     * The branch was deleted from the wrapper and the last fold that carried it — the ledger row's
+     * {@code fold_sha}, the fold {@link ReleaseRequests#onBranchDeleted} asks about — is contained in
+     * the wrapper's default branch: the git host answered YES ({@code
+     * ReleaseRequestWithdrawalComments.Lost#NOTHING}). Its request ended (withdrawn on the deletion,
+     * or superseded or obsoleted without carrying it on), and nothing of it is left to add to main:
+     * the same rule as {@link #EMPTY}. A NO or an unanswered ask is never this ending.
+     */
+    DELETED_MERGED,
+    /**
+     * The ticket has no wrapper ledger row at all and its wrapper branch is not on the git host, past
+     * a grace after it reached VERIFIED: nothing will ever be released for it. Only the reconcile
+     * finds this one.
+     */
+    NO_BRANCH
   }
 
   /**

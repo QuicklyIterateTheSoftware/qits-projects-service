@@ -516,6 +516,12 @@ public class ReleaseRequests {
    */
   @Inject Instance<ReleaseRequestWithdrawalComments> withdrawalComments;
 
+  /**
+   * Told when a wrapper branch is deleted with nothing left to add to main (qits-150), so the
+   * ticket it names goes DONE. Optional like every port here.
+   */
+  @Inject Instance<WrapperBranchEndings> wrapperEndings;
+
   /** Asked whether a caller's transaction is active — see {@link #closeGateTicket}. */
   @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
@@ -4114,28 +4120,53 @@ public class ReleaseRequests {
    * a WARN here.
    */
   private void tellWithdrawn(String repoId, String branch, Affected row) {
+    boolean wrapper = wrapperEndings.isResolvable() && approvalPolicy.isEstateWrapper(repoId);
+    if (!withdrawalComments.isResolvable() && !wrapper) {
+      return;
+    }
+    // One lineage answer for both listeners: the comment's verdict and the ticket's ending.
+    ReleaseRequestWithdrawalComments.Lost lost = lostBy(repoId, row);
     try {
-      if (!withdrawalComments.isResolvable()) {
-        return;
+      if (withdrawalComments.isResolvable()) {
+        withdrawalComments
+            .get()
+            .withdrawn(
+                new ReleaseRequestWithdrawalComments.Withdrawn(
+                    row.id(),
+                    row.qualifiedId(),
+                    repoId,
+                    row.repoName(),
+                    row.projectId(),
+                    branch,
+                    row.branchesBefore(),
+                    row.defaultBranch(),
+                    lost));
       }
-      withdrawalComments
-          .get()
-          .withdrawn(
-              new ReleaseRequestWithdrawalComments.Withdrawn(
-                  row.id(),
-                  row.qualifiedId(),
-                  repoId,
-                  row.repoName(),
-                  row.projectId(),
-                  branch,
-                  row.branchesBefore(),
-                  row.defaultBranch(),
-                  lostBy(repoId, row)));
     } catch (RuntimeException e) {
       LOG.warnf(
           e,
           "Could not tell the work items of release request %s that it was withdrawn",
           row.qualifiedId());
+    }
+    // qits-150: a wrapper branch deleted with nothing left to add to main ended its delivery, the
+    // empty wrapper's rule. Only NOTHING closes the ticket; UNRELEASED and UNKNOWN never do.
+    if (wrapper && lost == ReleaseRequestWithdrawalComments.Lost.NOTHING) {
+      try {
+        wrapperEndings
+            .get()
+            .ended(
+                new WrapperBranchEndings.Ended(
+                    row.projectId(),
+                    repoId,
+                    branch,
+                    row.id(),
+                    row.qualifiedId(),
+                    null,
+                    WrapperBranchEndings.Ending.DELETED_MERGED));
+      } catch (RuntimeException e) {
+        // The port says it must not throw; the reconcile reads the same facts again.
+        LOG.warnf(e, "Could not close the ticket of deleted wrapper branch %s", branch);
+      }
     }
   }
 
