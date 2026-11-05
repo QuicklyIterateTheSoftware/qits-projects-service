@@ -465,11 +465,17 @@
         "IMPLEMENTED": [
           {
             "to": "VERIFYING",
-            "kind": "FORWARD"
+            "kind": "FORWARD",
+            "gates": [
+              "QUALITY_CHECKS"
+            ]
           },
           {
             "to": "VERIFIED",
-            "kind": "SKIP"
+            "kind": "SKIP",
+            "gates": [
+              "QUALITY_CHECKS"
+            ]
           },
           {
             "to": "IMPLEMENTING",

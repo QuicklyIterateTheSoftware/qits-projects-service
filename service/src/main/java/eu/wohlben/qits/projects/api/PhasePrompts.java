@@ -25,7 +25,8 @@ import java.util.Optional;
  * READY_FOR_DEV and IMPLEMENTING both run implement, IMPLEMENTED and VERIFYING both run verify (a
  * press on an "-ING" entity resumes its phase rather than refusing), and VERIFIED and DONE start
  * nothing at all — the work is
- * over and closing is a person's move. {@link EntityStatus#DROPPED} starts nothing either: the work
+ * over, and closing is the platform's for a ticket (once its wrapper release request is finalized,
+ * qits-150) and a person's for an epic. {@link EntityStatus#DROPPED} starts nothing either: the work
  * was decided against. That mapping is declared once, on the state machine ({@code
  * EntityStateMachine.phaseStartedBy}); {@link #phaseOf} is the <b>only</b> place in this service
  * that asks it, and it looks at the archetype only to answer a feature or a task with nothing: an
@@ -64,7 +65,8 @@ import java.util.Optional;
  *       how a phase reports failure. A verification that finds something it can fix fixes it on the
  *       same branch, releases it and verifies again, with the status left where it stands
  *       (qits-1154); it blocks only on what it cannot resolve — a person's decision, a shut door,
- *       someone else's unreleased work; closing is a person's move too.
+ *       someone else's unreleased work. Closing is never the agent's: a ticket's DONE is the
+ *       platform's (qits-150), an epic's a person's.
  *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER}, the
  *       guide-hash note after it ({@link DeskBrief#hashNote}) and the substituted title, type,
  *       qualified id, slug and id. {@code PhasePromptsTest} renders
@@ -141,7 +143,8 @@ final class PhasePrompts {
    * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
    * starts refine, READY_FOR_DEV and IMPLEMENTING implement, IMPLEMENTED and VERIFYING verify, and
    * REFINED (a person schedules it, qits-887), VERIFIED, DONE and DROPPED nothing —
-   * VERIFIED and DONE because the work is over and closing is a person's, DROPPED because the work
+   * VERIFIED and DONE because the work is over and closing is the platform's (a ticket, qits-150)
+   * or a person's (an epic), DROPPED because the work
    * was decided against. This method only reads the stored word back into the enum first.
    */
   static Optional<Phase> phaseOf(WorkEntity entity) {
@@ -345,7 +348,8 @@ final class PhasePrompts {
    * reproduced on demand. The thread says which, because the two are different evidence. A check
    * that fails is fixed on the ticket's branch, released and checked again while the status stays
    * where it is; only what the agent cannot resolve blocks it (qits-1154); it never moves back, and
-   * VERIFIED is as far as an agent goes.
+   * VERIFIED is as far as an agent goes: the platform moves the ticket to DONE once the workspace's
+   * wrapper release request is finalized (qits-150), and the turn says so.
    */
   private static String verifyTicket(WorkEntity ticket, String q) {
     return "Verify ticket \""
@@ -365,10 +369,19 @@ final class PhasePrompts {
         + " meanwhile. Say on the thread with work_comment_create which of the two you did, what"
         + " you found and what you fixed. If it holds, move it to "
         + end(Phase.VERIFY)
-        + " with work_status; closing is a person's move. Call work_block only for what you cannot"
-        + " resolve yourself: a person's decision, a door your credential cannot open, or a defect"
-        + " in someone else's unreleased work.";
+        + " with work_status. " + TICKET_DONE_IS_THE_PLATFORMS + " Call work_block only for what"
+        + " you cannot resolve yourself: a person's decision, a door your credential cannot open, or"
+        + " a defect in someone else's unreleased work.";
   }
+
+  /**
+   * What the ticket's verify turn says about DONE (qits-150): the platform sets it once the
+   * workspace's wrapper release request is finalized, so the agent stops at VERIFIED — both doors
+   * refuse a ticket's DONE for every caller anyway.
+   */
+  static final String TICKET_DONE_IS_THE_PLATFORMS =
+      "Do not move it to DONE: the platform does, once the workspace's wrapper release request is"
+          + " finalized.";
 
   // ---- the three epic templates -------------------------------------------------------------
 

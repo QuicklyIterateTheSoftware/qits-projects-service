@@ -621,6 +621,16 @@ public class WorkEntityDoors {
     if (archetype == Archetype.ISSUE) {
       requireIssueMove(identity, target, reason);
     }
+    if (archetype == Archetype.TICKET
+        && EntityStatus.DONE.name().equals(target)
+        && !EntityStatus.DONE.name().equals(row.status)) {
+      // qits-150: the platform sets a ticket DONE when the wrapper release request carrying its
+      // branch is finalized (TicketWrapperDone), and no caller of any role claims it instead —
+      // qits:admin and qits:system included. DROPPED stays open to whoever may drop it. A ticket
+      // already DONE is left to the lifecycle's own refusal, which says DONE is final.
+      throw new ConflictException(
+          "Ticket " + row.id + ": " + EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS + ".");
+    }
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).

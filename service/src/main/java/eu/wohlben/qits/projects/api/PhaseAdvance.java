@@ -27,6 +27,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.entitieshost.TicketWrapperDone;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
@@ -114,9 +115,9 @@ import org.jboss.logging.Logger;
  * entire input, so a move back from IMPLEMENTED to IMPLEMENTING — a correction of a claim, not a
  * failure path — gets the <em>implement</em> turn, which is precisely right, because rework is
  * what runs next; a move back from VERIFIED to
- * VERIFYING gets the <em>verify</em> turn, re-verification; and a person closing a
- * VERIFIED ticket to DONE gets nothing, which is also right, because DONE starts no phase at all
- * (and, being final, never moves again).
+ * VERIFYING gets the <em>verify</em> turn, re-verification; and a VERIFIED entity closed to DONE
+ * — an epic by a person, a ticket by the platform (qits-150) — gets nothing, which is also right,
+ * because DONE starts no phase at all (and, being final, never moves again).
  *
  * <p><b>The exception is the platform's own "phase started" move</b> (qits-749) — READY_FOR_DEV →
  * IMPLEMENTING or IMPLEMENTED → VERIFYING ({@link EntityStateMachine#isStartedMove}) — and it pushes
@@ -144,8 +145,9 @@ import org.jboss.logging.Logger;
  * on meanwhile is left where it is.
  *
  * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}
- * therefore start no phase and deliver no turn, and that is where the one remaining human decision
- * lives: closing a ticket is a person's move, and so is abandoning one. DONE ends the flow at its
+ * therefore start no phase and deliver no turn. Closing a ticket is nobody's move since qits-150:
+ * the platform sets it DONE when the wrapper release request carrying its branch is finalized
+ * ({@code entitieshost/TicketWrapperDone}); abandoning one stays a person's. DONE ends the flow at its
  * first line and writes nothing at all. <b>DROPPED tells the agent to stop</b> (qits-370): an agent
  * mid-phase would otherwise go on working on work decided against, so the item's agent is handed a
  * short stop turn — who dropped it, its {@code outcome} and {@code supersededBy}, and to stop
@@ -361,6 +363,12 @@ public class PhaseAdvance {
   @Inject DevelopmentGuideService guide;
 
   /**
+   * Where a ticket arriving at VERIFIED is closed when its wrapper delivery has already ended or
+   * nothing is left to release (qits-150). An {@code Instance} so a test may leave it out.
+   */
+  @Inject Instance<TicketWrapperDone> wrapperDone;
+
+  /**
    * The {@code version} that hand-off carries in place of a release version: what the far side's
    * history entry records as having ended the agent's work.
    */
@@ -449,7 +457,10 @@ public class PhaseAdvance {
     if (EntityStatus.VERIFIED.name().equals(entity.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
-      releaseAgentBranches(entity, changedBy);
+      boolean nothingToRelease = releaseAgentBranches(entity, changedBy);
+      // Then the DONE that is the platform's (qits-150): at once when nothing is left to release,
+      // or when the wrapper branch's delivery already ended before the ticket got here.
+      closeIfDelivered(entity, nothingToRelease);
       return;
     }
     if (entity.blocked) {
@@ -993,15 +1004,19 @@ public class PhaseAdvance {
    * its workspace for ever. The same port is told the wrapper branch is done, with {@code verified}
    * standing in for a version. Where a request was asked for, that release resolves the workspace
    * when it lands; where an ask was refused, work may still be unreleased and nothing is resolved.
+   *
+   * @return true on exactly that arm — nothing asked for, nothing refused — which is the one where
+   *     no wrapper release request will ever end for the work item, so a ticket's DONE is made at
+   *     once ({@link #closeIfDelivered}, qits-150); false on every other
    */
-  private void releaseAgentBranches(WorkEntity entity, String changedBy) {
+  private boolean releaseAgentBranches(WorkEntity entity, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
       // No implementation of the port: there is no agent anywhere, so there is nothing to release
       // and nothing to say. The same silence an absent turn port gets.
       LOG.debugf(
           "%s %s is VERIFIED, and no agent lookup is configured, so no release was asked for",
           entity.archetype, entity.id);
-      return;
+      return false;
     }
     List<WorkspaceAgentDispatch.Agent> agents = agentsOf(entity);
     if (agents.isEmpty()) {
@@ -1011,7 +1026,7 @@ public class PhaseAdvance {
           entity,
           "No agent is working on this " + noun(entity) + ", so no release was asked for.",
           changedBy);
-      return;
+      return false;
     }
     Optional<EntityWorkspaces.Target> address = workspaces.find(entity);
     if (address.isEmpty()) {
@@ -1022,7 +1037,7 @@ public class PhaseAdvance {
           entity,
           "The " + noun(entity) + "'s branch cannot be named, so no release was asked for.",
           changedBy);
-      return;
+      return false;
     }
     String wrapperBranch = address.get().branch();
     WorkspaceAgentDispatch.Agent newest = theNewest(agents);
@@ -1150,7 +1165,7 @@ public class PhaseAdvance {
               + refusedScope
               + handedToCleanup(entity, wrapperRepoId, wrapperBranch),
           changedBy);
-      return;
+      return true;
     }
     StringBuilder sentence = new StringBuilder();
     if (!asked.isEmpty()) {
@@ -1179,6 +1194,26 @@ public class PhaseAdvance {
       }
     }
     say(entity, sentence.toString() + wrapperNote + skipped + refusedScope, changedBy);
+    return false;
+  }
+
+  /**
+   * <b>The platform's DONE, at the arrival at VERIFIED</b> (qits-150): a ticket whose move into
+   * VERIFIED found nothing left to release goes DONE at once; otherwise, a wrapper branch whose
+   * delivery already ended — LIVE, or withdrawn because its fold adds nothing to main — before the
+   * ticket got here closes it now, since that ending was heard while the ticket could not yet be
+   * closed. Everything else waits for the wrapper request to end ({@link TicketWrapperDone#ended}).
+   * An epic keeps its manual DONE and is never closed here. Never throws.
+   */
+  private void closeIfDelivered(WorkEntity entity, boolean nothingToRelease) {
+    if (entity.archetype != Archetype.TICKET || !wrapperDone.isResolvable()) {
+      return;
+    }
+    try {
+      wrapperDone.get().verified(entity, nothingToRelease);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not ask whether ticket %s is done", entity.id);
+    }
   }
 
   /**

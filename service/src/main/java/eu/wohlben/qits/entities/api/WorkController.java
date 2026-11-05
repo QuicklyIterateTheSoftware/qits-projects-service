@@ -546,8 +546,9 @@ public class WorkController {
   @APIResponse(
       responseCode = "409",
       description =
-          "A status this door may not state, or a changed acceptance-criteria list from"
-              + " READY_FOR_DEV on")
+          "A status this door may not state — a ticket's DONE among them, which the platform"
+              + " sets when the wrapper release request carrying its branch is finalized — or a"
+              + " changed acceptance-criteria list from READY_FOR_DEV on")
   public Map<String, TransitionedEntity> transition(
       @RequestBody(
               required = true,
@@ -579,8 +580,9 @@ public class WorkController {
               + " project only; its scheduling (REFINED to READY_FOR_DEV) is a person's, or the"
               + " dispatch press's under start_refined. A feature or a"
               + " task moves only once its epic is past REPORTED, and its scheduling (to"
-              + " READY_FOR_DEV, or back) is the epic's. Answers the entity in the merged shape, with"
-              + " statusBefore.")
+              + " READY_FOR_DEV, or back) is the epic's. Nobody moves a ticket to DONE: the platform"
+              + " does, once the wrapper release request carrying its branch is finalized. Answers"
+              + " the entity in the merged shape, with statusBefore.")
   @APIResponse(
       responseCode = "200",
       description = "The entity as the move left it",
@@ -607,8 +609,11 @@ public class WorkController {
           "A move the lifecycle does not allow, a target naming no status, an agent superseding"
               + " an epic, a feature or a task"
               + " whose epic is still REPORTED, or a quality gate refusing a forward move —"
-              + " ACCEPTANCE_CRITERIA, or PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller"
-              + " this service did not verify as a person")
+              + " ACCEPTANCE_CRITERIA, PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller"
+              + " this service did not verify as a person, or QUALITY_CHECKS for a ticket leaving"
+              + " IMPLEMENTED — or a ticket's DONE, which no caller of any role may ask for: the"
+              + " platform sets it when the wrapper release request carrying the ticket's branch is"
+              + " finalized")
   public TransitionedEntity setStatus(
       @PathParam("qualifiedId") String qualifiedId, WorkStatusMove request) {
     WorkEntity row = ids.resolve(qualifiedId);

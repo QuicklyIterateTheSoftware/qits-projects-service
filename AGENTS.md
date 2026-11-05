@@ -2511,7 +2511,7 @@ and each one is a decision rather than a simplification:
   scheduled it (implement runs), IMPLEMENTING means an implementation was started (implement keeps running),
   IMPLEMENTED means the change is released and deployed (verify runs), VERIFYING means a
   verification was started (verify keeps running), VERIFIED means it no longer occurs on the
-  platform (a person closes it), DONE means closed. **IMPLEMENTING and VERIFYING are the two statuses
+  platform (the platform closes it, qits-150 below), DONE means closed. **IMPLEMENTING and VERIFYING are the two statuses
   naming work in flight, and neither is the `IN_PROGRESS` this rule forbade** (qits-749, V22/V23):
   the platform sets them — the dispatch press, the FLOW hand-off that delivers the phase's turn, and
   for IMPLEMENTING an agent's first `implementingAt` marker — so nobody keeps them current by hand,
@@ -2578,10 +2578,26 @@ and each one is a decision rather than a simplification:
   "principal name": its `author` is the agent id (`EntitiesPrincipal.commentAuthor`, qits-1448). An
   edit does not re-stamp either: who wrote it and who last changed it are different facts, and the
   second one is the log's.
+- **The platform sets a ticket DONE, and nobody else does (qits-150).** A ticket is DONE once the
+  wrapper release request carrying its branch `ticket/<qualified id>` is FINALIZED, or is withdrawn
+  with `EMPTY_WRAPPER_WITHDRAWN` (its fold adds nothing to main). `control/WrapperBranchEndingListener`
+  (a `BranchDeliveryStepListener`) hears the branch's ledger row go LIVE, or WITHDRAWN on that
+  request, in the project's `PROJECT` repository, and after the commit tells the port
+  `control/WrapperBranchEndings`; `entitieshost/TicketWrapperDone` moves a VERIFIED ticket
+  (`transitionFrom` VERIFIED → DONE, as `qits-projects`) and names the request on the thread. Keyed
+  on the ledger row, so a MOVED or superseded branch closes its ticket when the request that carried
+  it finalizes. A ticket not yet VERIFIED is closed at its arrival at VERIFIED (`PhaseAdvance`
+  reads the row, and closes at once when that move found nothing left to release), and
+  `TicketWrapperDone.reconcile` (`qits.projects.wrapper-done.reconcile-every`, 10m, `off` in
+  dev/test) is the floor. Both doors refuse a ticket's DONE for every role, a 409
+  (`EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS`); DROPPED stays open, an epic's DONE is
+  unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
+  `QUALITY_CHECKS` gate (`control/QualityChecksGate` over `Instance<QualityCheck>`, none yet), so the
+  step is empty and every ticket passes it.
 - **An agent can make the transition.** `work_status` reaches `POST /work/{id}/status`, because
   resolving a ticket is a statement about work that is done — which the agent that did it is the one
-  who knows — and every move an agent makes is reversible (only DONE, a person's move, is final), so
-  a wrong answer costs a click. A dispatched epic's phases end with the agent's claim the same way
+  who knows — and every move an agent makes is reversible (only DONE is final, and nobody asks for a
+  ticket's: below), so a wrong answer costs a click. A dispatched epic's phases end with the agent's claim the same way
   (see "Epic lifecycle"). `work_comment_update` is there for the front desk's sake — an agent that
   came back knowing more corrects its own earlier note rather than stacking a contradiction under
   it — and it obeys the rule above rather than bending it: an edit moves `updatedAt` and never
@@ -2697,7 +2713,7 @@ Three things travel with it:
   - **Verify verifies ON THE PLATFORM**, and reads the relevant code changes only where the
     situation is conceptually unreproducible — the order of those two is the design, so the fallback
     is never the easy path. A failure is `work_block` with what still occurs — the ticket stays
-    IMPLEMENTED, nothing moves back — and closing stays a person's move.
+    IMPLEMENTED, nothing moves back — and closing is the platform's (qits-150, below).
   - **Each ends the same way** (qits-592): `work_status` to `<next>` as the agent's claim, or
     `work_block` with what is missing or what was found. There is no comment-only arm — a
     comment is invisible to everything that hands out work — and `DROPPED` is **not** the answer

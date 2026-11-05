@@ -5910,8 +5910,11 @@ public class ReleaseRequests {
                       return false;
                     }
                     states.move(row, ReleaseRequest.State.WITHDRAWN);
-                    deliveries.withdrawn(row);
+                    // The detail BEFORE the branches step WITHDRAWN: the ledger's listeners read it
+                    // in this transaction to tell an empty withdrawal from any other, and only
+                    // this one closes the tickets whose wrapper branches it carried (qits-150).
                     row.detail = EMPTY_WRAPPER_WITHDRAWN;
+                    deliveries.withdrawn(row);
                     row.retryable = false;
                     row.updatedAt = Instant.now();
                     LOG.infof(

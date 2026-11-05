@@ -6111,20 +6111,13 @@
           "body": {
             "target": "DONE"
           },
-          "status": 200,
+          "status": 409,
           "file": "a-verified-ticket/setWorkStatus.json",
           "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
+            "ids": [],
+            "instants": [],
             "strings": [
-              "$.qualifiedId"
+              "$.message"
             ],
             "listFilteredTo": null
           }
