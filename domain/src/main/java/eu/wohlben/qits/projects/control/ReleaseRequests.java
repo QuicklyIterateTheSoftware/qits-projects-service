@@ -6008,26 +6008,36 @@ public class ReleaseRequests {
                   // to the CI gate and waits for the verdict of the run in flight, which is also how
                   // the request's read already draws it (gateView reads a hold only on a fold not
                   // announced) — and nothing is cleared and nothing is cancelled.
-                  String upstreamHeld = upstreamHold(row);
+                  // HELD ONLY BY ITS INTERRUPTERS (qits-1872): the interrupt records, beside the
+                  // stamp, the upstream requests that held at that moment, and until the fold is
+                  // announced again only those hold it — upstreamHold reads the rule from the gate,
+                  // so the read, preRunPending and this arm agree. Held against whatever happened
+                  // to be building at each evaluation, a fold with many upstreams was announced
+                  // again only when all of them were idle at once, and with releases leapfrogging
+                  // that took hours. Once none of its interrupters holds, the stamp arm below
+                  // announces DONE at the same sha and the arm above keeps that QA running. A row
+                  // interrupted before the column existed names nobody and is not held at all.
+                  UpstreamHold upstreamHeld = upstreamHold(row);
                   if (upstreamHeld != null
                       && row.mergedSha.equals(row.qaAnnouncedSha)
                       && row.mergedSha.equals(row.qaInterruptedSha)) {
                     LOG.debugf(
                         "Release request %s: QA for %s was interrupted once already; it keeps"
                             + " running although an upstream is building (%s)",
-                        row.id, shortSha(row.mergedSha), upstreamHeld);
+                        row.id, shortSha(row.mergedSha), upstreamHeld.detail());
                   } else if (upstreamHeld != null) {
                     if (row.mergedSha.equals(row.qaAnnouncedSha)) {
                       row.qaAnnouncedSha = null;
                       row.qaInterruptedSha = row.mergedSha;
+                      row.qaInterruptedBy = String.join(",", upstreamHeld.holding());
                       interrupted.set(row.repoId);
                       LOG.infof(
                           "Release request %s: QA for %s is interrupted, an upstream started"
                               + " building (%s); its runs are cancelled and QA is asked for again"
                               + " once the hold clears",
-                          row.id, shortSha(row.mergedSha), upstreamHeld);
+                          row.id, shortSha(row.mergedSha), upstreamHeld.detail());
                     }
-                    waiting(row, upstreamHeld);
+                    waiting(row, upstreamHeld.detail());
                     return false;
                   }
                   // THE PRE-RUN IS DONE AT THIS FOLD, so its QA may start — announced preRun=DONE AT
@@ -6333,15 +6343,19 @@ public class ReleaseRequests {
   }
 
   /**
-   * Gate 3's hold (epic qits-897): the gate's detail where it holds this fold, else null. Asked on a
-   * deciding path, so a closure not on record may be asked for ({@code mayAsk=true}).
+   * Gate 3's hold (epic qits-897): where it holds this fold, the gate's detail and the ids of the
+   * upstream requests holding it; else null. Asked on a deciding path, so a closure not on record
+   * may be asked for ({@code mayAsk=true}).
    *
    * <p>Only a fold not yet answered is held: PENDING, no QA verdict of its own at the fold, outside
    * the estate wrapper — whether or not it was already announced {@code preRun=DONE}. An announced
-   * one is the interrupt's (qits-909), which {@link #evaluate} tells apart by the stamp. UNKNOWN
-   * never holds, and neither does a failure to read: the gate postpones, it never protects content.
+   * one is the interrupt's (qits-909), which {@link #evaluate} tells apart by the stamp; an
+   * interrupted one not announced again is held only by the upstreams that interrupted it
+   * (qits-1872), the rule {@link UpstreamInFlightGate#answer(List, ReleaseRequest)} reports.
+   * UNKNOWN never holds, and neither does a failure to read: the gate postpones, it never protects
+   * content.
    */
-  private String upstreamHold(ReleaseRequest row) {
+  private UpstreamHold upstreamHold(ReleaseRequest row) {
     if (row.state != ReleaseRequest.State.PENDING || row.mergedSha == null) {
       return null;
     }
@@ -6351,13 +6365,22 @@ public class ReleaseRequests {
               .isPresent()) {
         return null;
       }
-      GateEvaluation said = UpstreamInFlightGate.answer(upstreamRequests.activeFor(row, true));
-      return UpstreamInFlightGate.holds(said) ? said.detail() : null;
+      List<GateSubject.Upstream> upstream = upstreamRequests.activeFor(row, true);
+      GateEvaluation said = UpstreamInFlightGate.answer(upstream, row);
+      return UpstreamInFlightGate.holds(said)
+          ? new UpstreamHold(said.detail(), UpstreamInFlightGate.holdingIds(upstream))
+          : null;
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not read what is upstream of release request %s; not holding it", row.id);
       return null;
     }
   }
+
+  /**
+   * Gate 3 holding a fold: its detail, and the ids of the upstream requests holding it — what the
+   * interrupt records (qits-1872).
+   */
+  private record UpstreamHold(String detail, List<String> holding) {}
 
   /** The detail of an estate wrapper's request withdrawn for carrying nothing (qits-1273). */
   public static final String EMPTY_WRAPPER_WITHDRAWN =
@@ -8080,7 +8103,9 @@ public class ReleaseRequests {
     List<ReleaseGateEvaluator.Evaluated> evaluated = gateEvaluator.evaluate(subject);
     // Gate 3 holds this fold (epic qits-897) — as evaluate() decides it: the gate says PENDING, on a
     // fold not yet announced preRun=DONE. While it holds, the pre-run reads PENDING and the QA phase
-    // WAITING_FOR_PRE_RUN, because the gate stands at pre-run-qa and QA has not been asked for.
+    // WAITING_FOR_PRE_RUN, because the gate stands at pre-run-qa and QA has not been asked for. An
+    // interrupted fold is held only by its recorded interrupters (qits-1872); the gate reads that
+    // off the row itself, so this needs nothing of its own.
     boolean upstreamHeld =
         row.mergedSha != null
             && !row.mergedSha.equals(row.qaAnnouncedSha)

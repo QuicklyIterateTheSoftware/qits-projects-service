@@ -1,0 +1,20 @@
+-- GATE 3'S INTERRUPT HOLDS A FOLD ONLY BY THE UPSTREAMS THAT INTERRUPTED IT (qits-1872).
+--
+-- The interrupt (qits-909) clears qa_announced_sha, stamps qa_interrupted_sha (V53) and cancels the
+-- request's QA when an upstream starts building. From then on the fold read like a fresh one, and
+-- every evaluation held it against whatever upstreams were active at that moment: it was announced
+-- again only when the whole upstream set was idle at once. A repository with many upstreams starved
+-- -- three frontend requests sat held for hours while different upstreams leapfrogged each other.
+--
+--   qa_interrupted_by  the upstream release requests gate 3 held the fold by when it interrupted
+--                      its QA, their ids comma-separated. Until the fold qa_interrupted_sha names
+--                      is announced again only these hold it; an upstream that starts building
+--                      later does not, and once none of these holds, the fold is announced
+--                      preRun=DONE at the same sha (and qits-1570 keeps that QA running through
+--                      later upstream builds). Read only while qa_interrupted_sha names merged_sha,
+--                      and written with it, so a re-fold needs no reset.
+--
+-- NOTHING IS BACKFILLED: who interrupted a fold before this column existed was never recorded, and
+-- such a fold, still interrupted and not announced again, is not held at all -- the next evaluation
+-- asks for its QA once more.
+alter table release_request add column qa_interrupted_by text;

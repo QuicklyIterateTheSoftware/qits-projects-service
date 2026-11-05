@@ -205,4 +205,95 @@ class UpstreamInFlightGateTest {
         GateApplicability.DOES_NOT_APPLY,
         gate.applicability(GateFixtures.subject(GateFixtures.configured(ReleaseGates.Kind.CI))));
   }
+
+  // An interrupted fold (qits-1872)
+
+  private static ReleaseRequest interruptedBy(String recorded) {
+    ReleaseRequest row = GateFixtures.request();
+    row.qaInterruptedSha = row.mergedSha;
+    row.qaAnnouncedSha = null;
+    row.qaInterruptedBy = recorded;
+    return row;
+  }
+
+  @Test
+  void anInterruptedFoldIsHeldOnlyByTheUpstreamsThatInterruptedIt() {
+    GateEvaluation answer =
+        gate.evaluate(
+            subject(
+                interruptedBy("id-fe-rr-12"),
+                List.of(building("fe-rr-12", "run-1"), building("lib-rr-3", "run-2")),
+                false,
+                List.of()));
+
+    assertEquals(ReleaseGates.State.PENDING, answer.state());
+    assertEquals("Waiting for upstream releases: fe-rr-12", answer.detail());
+    assertEquals(
+        List.of("PENDING", "PASSED"), answer.checks().stream().map(GateCheck::state).toList());
+    assertTrue(answer.checks().get(1).detail().startsWith("Did not interrupt this fold's QA"));
+  }
+
+  @Test
+  void anInterruptedFoldWhoseInterruptersAreIdlePassesWhileOthersBuild() {
+    GateEvaluation answer =
+        gate.evaluate(
+            subject(
+                interruptedBy("id-fe-rr-12"),
+                List.of(idle("fe-rr-12"), building("lib-rr-3", "run-2")),
+                false,
+                List.of()));
+
+    assertEquals(ReleaseGates.State.PASSED, answer.state());
+    assertFalse(UpstreamInFlightGate.holds(answer));
+  }
+
+  @Test
+  void anInterruptedFoldWithNoRecordedInterruptersIsNotHeld() {
+    for (String legacy : new String[] {null, ""}) {
+      GateEvaluation answer =
+          gate.evaluate(
+              subject(
+                  interruptedBy(legacy), List.of(building("fe-rr-12", "run-1")), false, List.of()));
+      assertFalse(UpstreamInFlightGate.holds(answer), "recorded: " + legacy);
+    }
+  }
+
+  @Test
+  void anAnnouncedOrNewFoldIsHeldByEveryActiveUpstream() {
+    ReleaseRequest announced = interruptedBy("id-fe-rr-12");
+    announced.qaAnnouncedSha = announced.mergedSha;
+    ReleaseRequest refolded = interruptedBy("id-fe-rr-12");
+    refolded.mergedSha = "a-newer-fold";
+    List<GateSubject.Upstream> both =
+        List.of(building("fe-rr-12", "run-1"), building("lib-rr-3", "run-2"));
+
+    for (ReleaseRequest row : List.of(announced, refolded)) {
+      assertEquals(
+          "Waiting for upstream releases: fe-rr-12, lib-rr-3",
+          gate.evaluate(subject(row, both, false, List.of())).detail());
+    }
+  }
+
+  @Test
+  void theHoldingIdsAreTheActiveKnownNotOverriddenOnes() {
+    GateSubject.Upstream overridden =
+        new GateSubject.Upstream(
+            "id-ov",
+            "ov-rr-1",
+            "repo-ov",
+            "Ready",
+            null,
+            true,
+            true,
+            new GateSubject.UpstreamOverride("wohlben", Instant.parse("2026-10-23T10:00:00Z"), null));
+
+    assertEquals(
+        List.of("id-fe-rr-12"),
+        UpstreamInFlightGate.holdingIds(
+            List.of(
+                building("fe-rr-12", "run-1"),
+                idle("lib-rr-3"),
+                unreadable("x-rr-1"),
+                overridden)));
+  }
 }
