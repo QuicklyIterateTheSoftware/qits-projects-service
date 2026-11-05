@@ -74,6 +74,8 @@ public class BranchDeliveryTest {
 
   @Inject eu.wohlben.qits.projects.entitieshost.TicketWrapperDone wrapperDone;
 
+  @Inject eu.wohlben.qits.entities.persistence.WorkEntityRepository workRows;
+
   @Inject BuildStatusListener buildListener;
 
   @Inject ReleaseRequestHeadListener headListener;
@@ -1199,6 +1201,170 @@ public class BranchDeliveryTest {
     wrapperDone.reconcile();
 
     assertEquals("DONE", ticketStatus(ticket));
+  }
+
+  // ---- endings the ledger cannot state alone (qits-150 follow-up) -------------------------------
+
+  /**
+   * A wrapper branch deleted while its request is open withdraws the request; when the git host
+   * says main contains that request's last fold (the withdrawal comment's NOTHING), nothing of the
+   * branch is left to add, and its VERIFIED ticket goes DONE at the deletion.
+   */
+  @Test
+  public void aDeletedWrapperBranchWhoseFoldMainContainsClosesItsTicket() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    String qid = qualifiedIdOf(repoA, id);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoA, branch);
+
+    assertEquals("WITHDRAWN", stateOf(repoA, id), "the premise: withdrawn on the deletion");
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream()
+            .anyMatch(body -> body.contains("`" + qid + "`") && body.contains("was deleted")),
+        "the thread names the request and the deletion: " + threadOf(ticket));
+  }
+
+  /**
+   * A deleted wrapper branch whose last fold main does NOT contain lost unreleased work (YES), and
+   * one whose containment could not be read is UNKNOWN: neither closes the ticket, at the deletion
+   * or on the reconcile.
+   */
+  @Test
+  public void aDeletedWrapperBranchWithUnreleasedOrUnknownLineageClosesNothing() {
+    asWrapper(repoA);
+    String lost = verifiedTicket();
+    String lostBranch = wrapperBranchOf(lost);
+    String lostId = create(repoA, lostBranch);
+    gitHost.doesNotContain(repoA, mergedShaOf(repoA, lostId), "refs/heads/main");
+    String unknown = verifiedTicket();
+    String unknownBranch = wrapperBranchOf(unknown);
+    String unknownId = create(repoA, unknownBranch);
+    gitHost.containmentOfUnreadable(
+        repoA,
+        mergedShaOf(repoA, unknownId),
+        eu.wohlben.qits.projects.control.ReleaseGitHost.Answer.failedRetryable("timed out"));
+
+    releaseRequests.onBranchDeleted(repoA, lostBranch);
+    releaseRequests.onBranchDeleted(repoA, unknownBranch);
+    assertEquals("WITHDRAWN", stateOf(repoA, lostId));
+    assertEquals("WITHDRAWN", stateOf(repoA, unknownId));
+    pause(500);
+    wrapperDone.reconcile();
+
+    assertEquals("VERIFIED", ticketStatus(lost), "unreleased work was lost: not DONE");
+    assertEquals("VERIFIED", ticketStatus(unknown), "could not ask is never nothing lost");
+  }
+
+  /**
+   * The backfill: a row that ended by deletion before anybody closed tickets on it (here, while the
+   * git host could not answer) is closed by the reconcile once main is known to contain its fold.
+   */
+  @Test
+  public void theReconcileClosesATicketWhoseWrapperBranchWasDeletedWithItsFoldInMain() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    String fold = mergedShaOf(repoA, id);
+    gitHost.containmentOfUnreadable(
+        repoA, fold, eu.wohlben.qits.projects.control.ReleaseGitHost.Answer.failedRetryable("down"));
+    releaseRequests.onBranchDeleted(repoA, branch);
+    pause(300);
+    assertEquals("VERIFIED", ticketStatus(ticket));
+
+    gitHost.reset();
+    gitHost.containsCommit(repoA, fold, "refs/heads/main");
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+  }
+
+  /**
+   * A row naming a request that was obsoleted — the branch never reached a successor, or the row
+   * would name it — with the branch gone and its fold in main closes the ticket; the same row
+   * naming a request still open is in flight and closes nothing.
+   */
+  @Test
+  public void anObsoleteRowWhoseFoldMainContainsClosesItsTicketAndAnOpenOneDoesNot() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+
+    wrapperDone.reconcile();
+    assertEquals("VERIFIED", ticketStatus(ticket), "a row on an open request is in flight");
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findById(id).state = ReleaseRequest.State.OBSOLETE);
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+    assertTrue(
+        threadOf(ticket).stream().anyMatch(body -> body.contains("already contained in main")),
+        threadOf(ticket).toString());
+  }
+
+  /**
+   * No ledger row and no wrapper branch: nothing will ever be released, so the reconcile closes the
+   * ticket — but only past the grace after it reached VERIFIED, never before, and never while the
+   * branch exists on the git host.
+   */
+  @Test
+  public void aTicketWithNoRowAndNoBranchClosesOnlyAfterTheGrace() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String present = verifiedTicket();
+    gitHost.headOf(repoA, wrapperBranchOf(present), sha());
+
+    wrapperDone.reconcile();
+    assertEquals("VERIFIED", ticketStatus(ticket), "inside the grace: PhaseAdvance may still ask");
+
+    verifiedSince(ticket, Instant.now().minus(java.time.Duration.ofHours(1)));
+    verifiedSince(present, Instant.now().minus(java.time.Duration.ofHours(1)));
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+    assertTrue(
+        threadOf(ticket).stream().anyMatch(body -> body.contains("No wrapper branch")),
+        threadOf(ticket).toString());
+    assertEquals("VERIFIED", ticketStatus(present), "a branch on the git host may still ship");
+  }
+
+  /** A row still in flight never closes its ticket, gone branch or not, grace or not. */
+  @Test
+  public void aRowInFlightNeverClosesItsTicket() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    String id = create(repoA, branch);
+    gitHost.containsCommit(repoA, mergedShaOf(repoA, id), "refs/heads/main");
+    verifiedSince(ticket, Instant.now().minus(java.time.Duration.ofHours(1)));
+
+    wrapperDone.reconcile();
+
+    assertEquals("JOINED", ledgerStep(repoA, branch));
+    assertEquals("VERIFIED", ticketStatus(ticket));
+  }
+
+  /** Sets the ticket's {@code updated_at}, which a move into VERIFIED stamps, as a test's clock. */
+  private void verifiedSince(String ticketId, Instant at) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                workRows
+                    .getEntityManager()
+                    .createNativeQuery("update entity set updated_at = ?1 where id = ?2")
+                    .setParameter(1, java.sql.Timestamp.from(at))
+                    .setParameter(2, ticketId)
+                    .executeUpdate());
   }
 
   /** Makes {@code repoId} the project's estate wrapper ({@code PROJECT}) for this test. */

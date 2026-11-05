@@ -58,7 +58,19 @@ public interface ReleaseGitHost {
     public static <T> Answer<T> failedRetryable(String detail) {
       return new Answer<>(null, detail, true);
     }
+
+    /**
+     * Whether this failed branch read is the git host saying the branch is not there: final (not
+     * retryable) <b>and</b> naming {@link #NO_SUCH_BRANCH}. A timeout, a 5xx or any other refusal
+     * is "could not ask", never "gone".
+     */
+    public boolean noSuchBranch() {
+      return !ok() && !retryable() && detail.contains(NO_SUCH_BRANCH);
+    }
   }
+
+  /** What qits-githost's refusal of a branch it does not have names: {@code no-such-branch}. */
+  String NO_SUCH_BRANCH = "no-such-branch";
 
   /**
    * Every blob path of one commit, repository-relative and slash-separated. Gitlinks are absent —

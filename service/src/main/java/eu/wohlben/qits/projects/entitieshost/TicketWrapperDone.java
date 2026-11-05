@@ -12,6 +12,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.ProjectService;
+import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.WrapperBranchEndings;
 import eu.wohlben.qits.projects.entity.BranchDelivery.Step;
@@ -23,9 +24,13 @@ import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import io.quarkus.arc.DefaultBean;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.jboss.logging.Logger;
@@ -36,7 +41,7 @@ import org.jboss.logging.Logger;
  * to carry nothing — and no agent or person moves it there: both doors refuse a ticket's DONE for
  * every role ({@code WorkEntityDoors.move}, {@code EntityTransitionService.refuseTicketDone}).
  *
- * <h2>Three ways in, one move</h2>
+ * <h2>Four ways in, one move</h2>
  *
  * <ul>
  *   <li><b>The ending</b> — {@link #ended}, the {@link WrapperBranchEndings} port: the ledger row of
@@ -50,7 +55,13 @@ import org.jboss.logging.Logger;
  *   <li><b>The reconcile</b> — {@link #reconcile}, on {@code
  *       qits.projects.wrapper-done.reconcile-every}: every VERIFIED ticket of every project with a
  *       wrapper is read against its wrapper branch's ledger row, the floor under an ending that
- *       could not be told or could not move the ticket.
+ *       could not be told or could not move the ticket. It also decides the two endings the ledger
+ *       cannot state alone ({@link #reconciled}): a wrapper branch deleted with its last fold
+ *       already in main, and a ticket with no row and no branch at all past a grace. Its first pass
+ *       after a deploy is the backfill of the tickets whose requests ended before qits-150.
+ *   <li><b>The deletion</b> — {@code ReleaseRequests.onBranchDeleted}, through {@link #ended}: a
+ *       wrapper request withdrawn because its branch was deleted, whose last fold the git host says
+ *       main contains ({@code Lost.NOTHING}), is {@link Ending#DELETED_MERGED} at once.
  * </ul>
  *
  * <p>Each closes only a <b>TICKET at VERIFIED</b>: the move is {@link
@@ -92,6 +103,17 @@ public class TicketWrapperDone implements WrapperBranchEndings {
   @Inject ReleaseRequestRepository requests;
 
   @Inject ProjectChangePublisher publisher;
+
+  /** Asked whether a wrapper branch is gone and whether main contains its last fold (qits-150). */
+  @Inject Instance<ReleaseGitHost> gitHosts;
+
+  /**
+   * How long a VERIFIED ticket with no ledger row waits before the reconcile closes it for having
+   * no wrapper branch — at least one reconcile interval, so PhaseAdvance's wrapper ask at the
+   * arrival has written its row first.
+   */
+  @ConfigProperty(name = "qits.projects.wrapper-done.no-branch-grace", defaultValue = "PT15M")
+  Duration noBranchGrace;
 
   // ---------------------------------------------------------------------------------------------
   // The ending
@@ -197,7 +219,7 @@ public class TicketWrapperDone implements WrapperBranchEndings {
                         rows.listByProjectArchetypeAndStatus(
                             project.id, Archetype.TICKET, EntityStatus.VERIFIED.name()));
         for (WorkEntity ticket : verified) {
-          settled(ticket).ifPresent(ended -> done(ticket.id, ticket.projectId, sentence(ended)));
+          reconciled(ticket).ifPresent(ended -> done(ticket.id, ticket.projectId, sentence(ended)));
         }
       } catch (RuntimeException e) {
         LOG.warnf(e, "Could not reconcile the VERIFIED tickets of project %s", project.id);
@@ -210,55 +232,181 @@ public class TicketWrapperDone implements WrapperBranchEndings {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * How {@code ticket}'s wrapper branch's delivery ended, read off its ledger row in the project's
-   * wrapper repository — or empty where it has not ended, or there is no wrapper, no qualified id or
-   * no row.
+   * What the ledger says of {@code ticket}'s wrapper branch, read in one transaction of the projects
+   * database: the branch, the wrapper, the row (or none) and the request the row names (or none).
    */
-  Optional<Ended> settled(WorkEntity ticket) {
+  private record Facts(
+      String projectId,
+      Repository wrapper,
+      String branch,
+      BranchDeliveryRepository.Position held,
+      ReleaseRequest request) {
+
+    String qualifiedId() {
+      return request == null ? (held == null ? null : held.requestId()) : request.qualifiedId;
+    }
+
+    Ended ended(String version, Ending ending) {
+      return new Ended(
+          projectId,
+          wrapper.id,
+          branch,
+          held == null ? null : held.requestId(),
+          qualifiedId(),
+          version,
+          ending);
+    }
+  }
+
+  private Optional<Facts> factsOf(WorkEntity ticket) {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
               Project project = projects.get(ticket.projectId);
               Optional<Repository> wrapper = projects.findWrapper(project.id);
               if (wrapper.isEmpty() || ticket.number < 1 || project.slug == null) {
-                return Optional.<Ended>empty();
+                return Optional.<Facts>empty();
               }
               String branch =
                   WorkBranches.of(ticket, QualifiedEntityIds.render(project.slug, ticket.number));
-              Optional<BranchDeliveryRepository.Position> held =
-                  ledger.position(project.id, wrapper.get().id, branch);
-              if (held.isEmpty() || held.get().requestId() == null) {
-                return Optional.<Ended>empty();
-              }
-              ReleaseRequest request = requests.findByIdOptional(held.get().requestId()).orElse(null);
-              String qualifiedId = request == null ? held.get().requestId() : request.qualifiedId;
-              if (Step.LIVE.name().equals(held.get().step())) {
-                return Optional.of(
-                    new Ended(
-                        project.id,
-                        wrapper.get().id,
-                        branch,
-                        held.get().requestId(),
-                        qualifiedId,
-                        held.get().version(),
-                        Ending.FINALIZED));
-              }
-              if (Step.WITHDRAWN.name().equals(held.get().step())
-                  && request != null
-                  && request.state == ReleaseRequest.State.WITHDRAWN
-                  && ReleaseRequests.EMPTY_WRAPPER_WITHDRAWN.equals(request.detail)) {
-                return Optional.of(
-                    new Ended(
-                        project.id,
-                        wrapper.get().id,
-                        branch,
-                        held.get().requestId(),
-                        qualifiedId,
-                        null,
-                        Ending.EMPTY));
-              }
-              return Optional.<Ended>empty();
+              BranchDeliveryRepository.Position held =
+                  ledger.position(project.id, wrapper.get().id, branch).orElse(null);
+              ReleaseRequest request =
+                  held == null || held.requestId() == null
+                      ? null
+                      : requests.findByIdOptional(held.requestId()).orElse(null);
+              return Optional.of(new Facts(project.id, wrapper.get(), branch, held, request));
             });
+  }
+
+  /**
+   * How {@code ticket}'s wrapper branch's delivery ended, read off its ledger row in the project's
+   * wrapper repository — LIVE, or withdrawn empty — or empty where it has not ended, or there is no
+   * wrapper, no qualified id or no row. What the arrival at VERIFIED asks.
+   */
+  Optional<Ended> settled(WorkEntity ticket) {
+    return factsOf(ticket).flatMap(TicketWrapperDone::endedOnTheLedger);
+  }
+
+  /** The two endings the ledger states by itself: LIVE, and the empty wrapper's withdrawal. */
+  private static Optional<Ended> endedOnTheLedger(Facts facts) {
+    BranchDeliveryRepository.Position held = facts.held();
+    if (held == null || held.requestId() == null) {
+      return Optional.empty();
+    }
+    ReleaseRequest request = facts.request();
+    if (Step.LIVE.name().equals(held.step())) {
+      return Optional.of(facts.ended(held.version(), Ending.FINALIZED));
+    }
+    if (Step.WITHDRAWN.name().equals(held.step())
+        && request != null
+        && request.state == ReleaseRequest.State.WITHDRAWN
+        && ReleaseRequests.EMPTY_WRAPPER_WITHDRAWN.equals(request.detail)) {
+      return Optional.of(facts.ended(null, Ending.EMPTY));
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * <b>What the reconcile asks</b> (qits-150 follow-up): {@link #settled}'s two endings, then the
+   * two the ledger cannot state alone, decided from the git host's facts:
+   *
+   * <ul>
+   *   <li><b>{@link Ending#DELETED_MERGED}</b> — the row has ENDED (it is WITHDRAWN, or it names a
+   *       request that is WITHDRAWN or OBSOLETE, so the branch never reached a successor: one that
+   *       had would name the successor), the wrapper branch is gone from the git host, and the
+   *       row's {@code fold_sha} — the last fold that carried the branch, the very fold {@code
+   *       ReleaseRequests.onBranchDeleted} asks about — is contained in the wrapper's default
+   *       branch ({@link #lastFoldOf}: the request's {@code merged_sha} stands in only for a row
+   *       that still names it, never for a WITHDRAWN one, whose request may have folded on
+   *       without the branch). A row with no fold, a containment the host says
+   *       NO to and one it could not answer all close nothing.
+   *   <li><b>{@link Ending#NO_BRANCH}</b> — no row at all, the wrapper branch is not on the git
+   *       host, and the ticket has been VERIFIED longer than {@link #noBranchGrace}, read off its
+   *       {@code updatedAt} (which a move into VERIFIED stamps, and any later write only moves
+   *       further away — so the grace can only be longer, never shorter). The grace keeps the
+   *       reconcile from racing the wrapper ask {@code PhaseAdvance} makes at the arrival.
+   * </ul>
+   *
+   * A row still in flight — PUSHED, or naming an open request — closes nothing, gone branch or not.
+   * The git host is asked outside any transaction, and "could not ask" is never "gone".
+   */
+  Optional<Ended> reconciled(WorkEntity ticket) {
+    Optional<Facts> read = factsOf(ticket);
+    if (read.isEmpty()) {
+      return Optional.empty();
+    }
+    Facts facts = read.get();
+    Optional<Ended> onTheLedger = endedOnTheLedger(facts);
+    if (onTheLedger.isPresent() || !gitHosts.isResolvable()) {
+      return onTheLedger;
+    }
+    BranchDeliveryRepository.Position held = facts.held();
+    if (held == null) {
+      Instant since = ticket.updatedAt;
+      if (since == null || since.isAfter(Instant.now().minus(noBranchGrace))) {
+        return Optional.empty();
+      }
+      return branchGone(facts) ? Optional.of(facts.ended(null, Ending.NO_BRANCH)) : Optional.empty();
+    }
+    String fold = lastFoldOf(facts);
+    if (!rowEnded(facts) || fold == null || !branchGone(facts)) {
+      return Optional.empty();
+    }
+    String main =
+        facts.wrapper().mainBranch == null || facts.wrapper().mainBranch.isBlank()
+            ? "main"
+            : facts.wrapper().mainBranch;
+    ReleaseGitHost.Answer<Boolean> contained;
+    try {
+      contained = gitHosts.get().contains(facts.wrapper().id, fold, "refs/heads/" + main);
+    } catch (RuntimeException e) {
+      contained = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+    }
+    if (!contained.ok() || !Boolean.TRUE.equals(contained.value())) {
+      LOG.debugf(
+          "The deleted wrapper branch %s: whether %s contains its fold %s is %s; it closes nothing",
+          facts.branch(), main, fold, contained.ok() ? contained.value() : contained.detail());
+      return Optional.empty();
+    }
+    return Optional.of(facts.ended(null, Ending.DELETED_MERGED));
+  }
+
+  /**
+   * The last fold that carried the branch: the row's {@code fold_sha} where the step wrote one (a
+   * WITHDRAWN step always records the fold it left). A row still naming its request at a step that
+   * recorded none — a JOINED written before the first fold — rode that request to its end, so the
+   * request's last fold carried it. A WITHDRAWN row without a fold has none: the request may have
+   * folded on without the branch.
+   */
+  private static String lastFoldOf(Facts facts) {
+    if (facts.held().foldSha() != null) {
+      return facts.held().foldSha();
+    }
+    if (Step.WITHDRAWN.name().equals(facts.held().step()) || facts.request() == null) {
+      return null;
+    }
+    return facts.request().mergedSha;
+  }
+
+  /** WITHDRAWN, or naming a request that ended without carrying the branch on. */
+  private static boolean rowEnded(Facts facts) {
+    if (Step.WITHDRAWN.name().equals(facts.held().step())) {
+      return true;
+    }
+    ReleaseRequest request = facts.request();
+    return request != null
+        && (request.state == ReleaseRequest.State.WITHDRAWN
+            || request.state == ReleaseRequest.State.OBSOLETE);
+  }
+
+  /** True only when the git host says the branch is not there; any failure is "could not ask". */
+  private boolean branchGone(Facts facts) {
+    try {
+      return gitHosts.get().head(facts.wrapper().id, facts.branch()).noSuchBranch();
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 
   /**
@@ -312,6 +460,18 @@ public class TicketWrapperDone implements WrapperBranchEndings {
               + ended.branch()
               + "` was withdrawn because its fold adds nothing to main: there is nothing left to"
               + " release. The platform moves this ticket to **DONE**.";
+      case DELETED_MERGED ->
+          "The wrapper branch `"
+              + ended.branch()
+              + "` was deleted, and the last fold of it, in the wrapper release request "
+              + request
+              + ", is already contained in main: nothing of it is left to add. The platform moves"
+              + " this ticket to **DONE**.";
+      case NO_BRANCH ->
+          "No wrapper branch `"
+              + ended.branch()
+              + "` exists on the git host and no release request ever carried one, so nothing"
+              + " will be released for this ticket. The platform moves it to **DONE**.";
     };
   }
 }

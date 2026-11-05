@@ -95,10 +95,7 @@ final class ReleasableBranch {
    * retryable) <b>and</b> naming {@link #NO_SUCH_BRANCH}. See that constant for why both.
    */
   static boolean gone(ReleaseGitHost.Answer<String> head) {
-    return !head.ok()
-        && !head.retryable()
-        && head.detail() != null
-        && head.detail().contains(NO_SUCH_BRANCH);
+    return head.noSuchBranch();
   }
 
   /** True only when the host answered yes; a failed read is "could not ask", never "no". */
