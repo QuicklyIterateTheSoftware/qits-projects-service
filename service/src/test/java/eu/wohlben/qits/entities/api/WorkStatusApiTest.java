@@ -213,4 +213,69 @@ class WorkStatusApiTest {
         .body("statusBefore", equalTo("REPORTED"));
     statusOf(epic, "REFINED");
   }
+
+  /** A ticket of {@code projectId} walked to VERIFIED through this door, as a person. */
+  private static String verifiedTicket(String projectId) {
+    String ticket = EntityFixtures.ticket(projectId);
+    for (String target : java.util.List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
+      move(ticket, target).statusCode(200);
+    }
+    return ticket;
+  }
+
+  /**
+   * qits-150: no caller moves a ticket to DONE through this door — a person, qits:admin,
+   * qits:admin-agent and a platform service alike get the same 409 — because the platform sets it
+   * once the workspace's wrapper release request carrying the ticket's branch is finalized.
+   * DROPPED stays open, and an epic's DONE is untouched.
+   */
+  @Test
+  void noCallerMovesATicketToDone() {
+    EntityFixtures.Project project = EntityFixtures.project("Status Ticket Done");
+    String ticket = verifiedTicket(project.id());
+
+    for (RequestSpecification caller :
+        java.util.List.of(
+            given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+            given().header("Authorization", ContractBearers.caller("ada", "qits:admin")),
+            asForwardedAdminAgent(),
+            given().header("Authorization", ContractBearers.caller("svc", "qits:system")))) {
+      move(caller, ticket, "DONE")
+          .statusCode(409)
+          .body(
+              "message",
+              containsString(
+                  "the platform sets it when the workspace's wrapper release request carrying the"
+                      + " ticket's branch is finalized"));
+    }
+    statusOf(ticket, "VERIFIED");
+
+    move(ticket, "DROPPED").statusCode(200).body("status", equalTo("DROPPED"));
+  }
+
+  /** qits-150: the PUT-shaped transition door refuses a ticket's DONE in the same words. */
+  @Test
+  void theTransitionDoorRefusesATicketsDoneToo() {
+    EntityFixtures.Project project = EntityFixtures.project("Transition Ticket Done");
+    String ticket = verifiedTicket(project.id());
+    java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+    entry.put("archetype", "TICKET");
+    entry.put("title", "Done by nobody");
+    entry.put("impetus", "it occurs");
+    entry.put("ticketType", "BUG");
+    entry.put("status", "DONE");
+    entry.put("acceptanceCriteria", TestCriteria.CRITERIA);
+
+    given()
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin", "qits:system"))
+        .contentType(ContentType.JSON)
+        .body(java.util.Map.of(ticket, entry))
+        .when()
+        .post("/projects/api/work/transition")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("would move from VERIFIED to DONE"))
+        .body("message", containsString("the platform sets it"));
+    statusOf(ticket, "VERIFIED");
+  }
 }

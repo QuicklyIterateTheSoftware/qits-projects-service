@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.entities.api.PlatformDone;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.WorkEntityDoors;
 import eu.wohlben.qits.eventstream.control.EventFrame;
@@ -297,7 +298,7 @@ public class UnattendedGateTicketTest {
     awaitState(id, "REJECTED");
     String first = TestCriteria.give(awaitTicketOn(id));
 
-    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
       given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body("{\"target\":\"" + target + "\"}")
@@ -305,6 +306,8 @@ public class UnattendedGateTicketTest {
           .then()
           .statusCode(200);
     }
+    // A ticket's DONE is the platform's (qits-150): no door makes it.
+    PlatformDone.of(first);
 
     headMoved("maintenance/dependencies");
     awaitState(id, "PENDING");
@@ -663,12 +666,17 @@ public class UnattendedGateTicketTest {
   public void anAlreadyClosedTicketIsLeftAloneAndTheStampIsWritten() {
     List<List<String>> walks =
         List.of(List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"), List.of("DROPPED"));
+    // A ticket's DONE is the platform's (qits-150): the walk's last step is made the way it makes it.
     for (List<String> walk : walks) {
       String id = create("maintenance/dependencies", ROBOT);
       verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
       awaitState(id, "REJECTED");
       String ticketId = TestCriteria.give(awaitTicketOn(id));
       for (String target : walk) {
+        if ("DONE".equals(target)) {
+          PlatformDone.of(ticketId);
+          continue;
+        }
         given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
             .contentType(ContentType.JSON)
             .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))

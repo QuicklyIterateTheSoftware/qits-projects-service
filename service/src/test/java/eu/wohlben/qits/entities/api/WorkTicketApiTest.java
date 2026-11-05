@@ -74,6 +74,11 @@ class WorkTicketApiTest {
   /** Walk a ticket along the pipeline, one move per step, asserting nothing else. */
   private static void walkTo(String ticket, String... targets) {
     for (String target : targets) {
+      if ("DONE".equals(target)) {
+        // A ticket's DONE is the platform's (qits-150): both doors refuse it.
+        PlatformDone.of(ticket);
+        continue;
+      }
       move(ticket, target).statusCode(200);
     }
   }

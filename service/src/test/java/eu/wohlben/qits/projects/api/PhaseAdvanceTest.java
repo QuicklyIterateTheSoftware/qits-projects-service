@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.api.PlatformDone;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
@@ -365,13 +366,15 @@ public class PhaseAdvanceTest {
     // The turn was spoken, so the verification started and the ticket says so (qits-749).
     assertEquals("VERIFYING", statusOf(ticketId));
 
-    // VERIFIED and DONE start no phase: the work is over and closing is a person's move. VERIFIED
-    // does ask for the release of the branch the work was done on — which is not a turn, and is
-    // what the tests below are about.
+    // VERIFIED and DONE start no phase: the work is over, and a ticket's DONE is the platform's
+    // (qits-150). VERIFIED does ask for the release of the branch the work was done on — which is
+    // not a turn, and is what the tests below are about.
     transition(ticketId, "VERIFIED");
     assertEquals(
         1, turns.calls().size(), "a move into VERIFIED starts no phase, so it delivers no turn");
-    transition(ticketId, "DONE");
+    if ("VERIFIED".equals(statusOf(ticketId))) {
+      PlatformDone.of(ticketId);
+    }
     assertEquals(1, turns.calls().size(), "and neither does a move into DONE");
   }
 
@@ -1410,6 +1413,10 @@ public class PhaseAdvanceTest {
             + createdAtMain(ticketId),
         thread(ticketId).get(thread(ticketId).size() - 1));
     assertTrue(handedToCleanup(ticketId).isEmpty(), "the wrapper's release resolves the workspace");
+    assertEquals(
+        "VERIFIED",
+        statusOf(ticketId),
+        "a wrapper request was asked for: the ticket is DONE only when it finalizes (qits-150)");
   }
 
   /**
@@ -2109,7 +2116,9 @@ public class PhaseAdvanceTest {
   /**
    * <b>A wrapper branch that cannot be created is not asked for</b>: a request naming a source the
    * git host does not have rejects its fold (qits-1221). The thread says why, and with nothing else
-   * asked for, the qits-1218 rule decides as before — the workspace is handed to cleanup.
+   * asked for, the qits-1218 rule decides as before — the workspace is handed to cleanup. And since
+   * no wrapper release request will ever end for it, the platform moves the ticket to DONE at once
+   * (qits-150): nothing is left to release.
    */
   @Test
   void aWrapperBranchThatCannotBeCreatedIsNotAskedForAndTheWorkspaceIsHandedToCleanup() {
@@ -2136,10 +2145,15 @@ public class PhaseAdvanceTest {
             + "` is not on the git host and could not be created at `main` to carry the estate"
             + " pins (qits-githost could not be reached), so the wrapper's release was not asked"
             + " for. Its workspace was handed to cleanup.",
-        thread(ticketId).get(thread(ticketId).size() - 1));
+        thread(ticketId).get(thread(ticketId).size() - 2));
     assertEquals(
         List.of(new RecordingReleasedBranchWorkspaces.Resolved(wrapperId, branch, "verified", null)),
         handedToCleanup(ticketId));
+    assertEquals("DONE", statusOf(ticketId), "nothing is left to release: the platform closes it");
+    assertEquals(
+        "Nothing was left to release for this ticket, so no wrapper release request will end for"
+            + " it: the platform moves it to **DONE**.",
+        thread(ticketId).get(thread(ticketId).size() - 1));
   }
 
   /**

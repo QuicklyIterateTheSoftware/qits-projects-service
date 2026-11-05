@@ -355,9 +355,12 @@ class ScheduleNeedsAPersonDoorTest {
     status(session("ada", "ada"), campaignId, "DONE")
         .statusCode(409)
         .body("message", containsString(DERIVED));
-    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
       status(session("ada", "ada"), memberId, target).statusCode(200);
     }
+    // A ticket's DONE is the platform's (qits-150): no door makes it, a person's included.
+    status(session("ada", "ada"), memberId, "DONE").statusCode(409);
+    PlatformDone.of(memberId);
     session("ada", "ada")
         .when()
         .get("/projects/api/work/" + campaignId)

@@ -88,11 +88,12 @@ public class PhasePromptsTest {
     assertEquals(
         Optional.empty(),
         prompt(ticket(EntityStatus.VERIFIED)),
-        "VERIFIED has no phase left to run: a person closes it");
+        "VERIFIED has no phase left to run: the platform closes it once the wrapper release is"
+            + " finalized");
     assertEquals(
         Optional.empty(),
         prompt(ticket(EntityStatus.DONE)),
-        "DONE is closed, and reopening it is a person's move too");
+        "DONE is closed, and final");
     assertEquals(
         Optional.empty(),
         prompt(ticket(EntityStatus.DROPPED)),
@@ -296,10 +297,18 @@ public class PhasePromptsTest {
     assertTrue(prompt.contains("leave the status where it is meanwhile"), prompt);
     assertTrue(prompt.contains("what you found and what you fixed"), prompt);
     assertTrue(prompt.contains("Call work_block only for what you cannot resolve yourself"), prompt);
-    assertTrue(prompt.contains("closing is a person's move"), prompt);
+    assertFalse(prompt.contains("closing is a person's move"), prompt);
     assertFalse(prompt.contains("you could not check"), prompt);
     assertFalse(prompt.contains("If it still occurs"), prompt);
-    assertFalse(prompt.contains("to DONE"), "an agent never closes a ticket");
+    // qits-150: the platform sets a ticket DONE once the wrapper release is finalized, and the
+    // turn says so — it tells the agent not to, never to.
+    assertTrue(
+        prompt.contains(
+            "to VERIFIED with work_status. Do not move it to DONE: the platform does, once the"
+                + " workspace's wrapper release request is finalized."),
+        prompt);
+    assertFalse(prompt.contains("move it to DONE with"), "an agent never closes a ticket");
+    assertFalse(prompt.contains("once released"), prompt);
     assertFalse(prompt.contains("REFINED"), "no route back to REFINED at all: " + prompt);
   }
 

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.api.PlatformDone;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
@@ -312,7 +313,7 @@ public class WorkDispatchControllerTest {
 
     transitionTicket(ticketId, "VERIFIED");
     pressRefused(ticketId, "FLOW", "is VERIFIED");
-    transitionTicket(ticketId, "DONE");
+    PlatformDone.of(ticketId); // a ticket's DONE is the platform's (qits-150)
     pressRefused(ticketId, "PHASE", "is DONE");
     String dropped = createTicket(projectId, "Decided against");
     transitionTicket(dropped, "DROPPED");

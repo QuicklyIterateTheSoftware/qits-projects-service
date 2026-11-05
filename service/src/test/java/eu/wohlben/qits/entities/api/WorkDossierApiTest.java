@@ -238,9 +238,11 @@ public class WorkDossierApiTest {
     String ticketId = createTicket("Ticket Dossier Unfrozen");
     String slug = addPage(ticketId, "The root cause", "as reported");
 
-    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED"}) {
       move(ticketId, target);
     }
+    // A ticket's DONE is the platform's (qits-150): no door makes it.
+    PlatformDone.of(ticketId);
 
     // Closed, and still writable: a ticket commits to no scope, so there is nothing to freeze.
     write(ticketId, slug, null, "as it turned out", 0L).then().statusCode(200);

@@ -625,7 +625,8 @@ class AgentWaitingApiTest {
     String verified = EntityFixtures.ticket(project.id());
     walk(verified, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     String done = EntityFixtures.ticket(project.id());
-    walk(done, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
+    walk(done, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
+    PlatformDone.of(done); // a ticket's DONE is the platform's (qits-150)
     String dropped = EntityFixtures.ticket(project.id());
     walk(dropped, "DROPPED");
     String epic = EntityFixtures.epic(project.id());

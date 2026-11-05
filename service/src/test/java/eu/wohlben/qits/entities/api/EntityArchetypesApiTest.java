@@ -254,11 +254,12 @@ class EntityArchetypesApiTest {
             move("DROPPED", "DROP")));
     expected.put(
         "IMPLEMENTING", List.of(move("IMPLEMENTED", "FORWARD"), move("DROPPED", "DROP")));
+    // qits-150: the quality-check step stands on both moves out of a ticket's IMPLEMENTED.
     expected.put(
         "IMPLEMENTED",
         List.of(
-            move("VERIFYING", "FORWARD"),
-            move("VERIFIED", "SKIP"),
+            move("VERIFYING", "FORWARD", "QUALITY_CHECKS"),
+            move("VERIFIED", "SKIP", "QUALITY_CHECKS"),
             move("IMPLEMENTING", "BACK"),
             move("DROPPED", "DROP")));
     expected.put(

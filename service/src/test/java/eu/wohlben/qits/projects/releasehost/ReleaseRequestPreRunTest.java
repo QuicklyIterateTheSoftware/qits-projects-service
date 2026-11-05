@@ -80,6 +80,10 @@ public class ReleaseRequestPreRunTest {
 
   @Inject ReleaseRequests releaseRequests;
 
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService entities;
+
+  @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
+
   @Inject eu.wohlben.qits.eventstream.control.DurableFunnel funnel;
 
   @Inject eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces resolutions;
@@ -805,6 +809,109 @@ public class ReleaseRequestPreRunTest {
     awaitStateIn(wrapper[0], id, "WITHDRAWN");
     assertEquals(List.of(), preRuns(id));
     assertTrue(executor.calls().isEmpty());
+  }
+
+  /**
+   * qits-150: a ticket whose wrapper branch adds nothing to main has nothing left to release, so
+   * the empty-wrapper withdrawal of the request carrying it ends its delivery — the VERIFIED ticket
+   * goes DONE, and its thread names the request and why.
+   */
+  @Test
+  public void anEmptyWrapperWithdrawalClosesTheVerifiedTicketItCarries() {
+    String[] wrapper = wrapper();
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    gitHost.gatedTree("refs/heads/" + branch, Map.of("README.md", "work"));
+    automations.answer(wrapper[1], "estate-pins", "FRESH");
+    foldChanges.empty(wrapper[0]);
+
+    String id = create(wrapper[0], branch);
+    awaitStateIn(wrapper[0], id, "WITHDRAWN");
+    String qid = request(wrapper[0], id).getString("qualifiedId");
+
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream()
+            .anyMatch(body -> body.contains("`" + qid + "`") && body.contains("adds nothing")),
+        "the thread names the request and why: " + threadOf(ticket));
+  }
+
+  /**
+   * qits-150: any other withdrawal is no ending of the delivery — the work on the branch may still
+   * be released by a later request — so the ticket stays VERIFIED.
+   */
+  @Test
+  public void anyOtherWithdrawalOfTheWrapperRequestLeavesTheTicketVerified() {
+    String[] wrapper = wrapper();
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    gitHost.gatedTree("refs/heads/" + branch, Map.of("README.md", "work"));
+    automations.answer(wrapper[1], "estate-pins", "RUNNING");
+
+    String id = create(wrapper[0], branch);
+    asMaintenance()
+        .body("{\"reason\":\"not this time\"}")
+        .post("/projects/api/repositories/" + wrapper[0] + "/release-requests/" + id + "/withdraw")
+        .then()
+        .statusCode(200)
+        .body("request.state", org.hamcrest.Matchers.equalTo("WITHDRAWN"));
+
+    for (int i = 0; i < 10; i++) {
+      sleep(); // the ending's worker would have closed it by now
+    }
+    assertEquals("VERIFIED", ticketStatus(ticket), "a withdrawal with work on it ends nothing");
+  }
+
+  private String verifiedTicket() {
+    String id =
+        entities
+            .create(
+                eu.wohlben.qits.entities.entity.Archetype.TICKET,
+                projectId,
+                eu.wohlben.qits.entities.control.EntityWrite.ticket(
+                        "Delivered", "it occurs", null, "BUG", null)
+                    .withAcceptanceCriteria(List.of("It does what it says.")),
+                "seed")
+            .entity()
+            .id;
+    for (String step : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
+      entities.transition(
+          eu.wohlben.qits.entities.entity.Archetype.TICKET,
+          id,
+          step,
+          eu.wohlben.qits.entities.control.Mover.person("seed"));
+    }
+    return id;
+  }
+
+  /** {@code ticket/<qualified id>}, from the project's slug and the ticket's number. */
+  private String wrapperBranchOf(String ticketId) {
+    String slug =
+        QuarkusTransaction.requiringNew().call(() -> Project.<Project>findById(projectId).slug);
+    long number =
+        QuarkusTransaction.requiringNew()
+            .call(() -> entities.get(eu.wohlben.qits.entities.entity.Archetype.TICKET, ticketId))
+            .number;
+    return "ticket/" + slug + "-" + number;
+  }
+
+  private String ticketStatus(String ticketId) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> entities.get(eu.wohlben.qits.entities.entity.Archetype.TICKET, ticketId))
+        .status;
+  }
+
+  private void awaitTicket(String ticketId, String status) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (System.currentTimeMillis() < deadline && !status.equals(ticketStatus(ticketId))) {
+      sleep();
+    }
+    assertEquals(status, ticketStatus(ticketId));
+  }
+
+  private List<String> threadOf(String ticketId) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> comments.listComments(ticketId).stream().map(c -> c.body).toList());
   }
 
   /** <b>Only the estate wrapper</b>: an ordinary repository's empty fold keeps qits-760's hold. */

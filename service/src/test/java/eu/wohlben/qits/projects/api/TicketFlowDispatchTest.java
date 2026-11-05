@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.api.PlatformDone;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
@@ -299,7 +300,7 @@ public class TicketFlowDispatchTest {
     transition(ticketId, "READY_FOR_DEV");
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
-    transition(ticketId, "DONE");
+    PlatformDone.of(ticketId); // a ticket's DONE is the platform's (qits-150)
 
     asAdmin("mallory")
         .body(FLOW)

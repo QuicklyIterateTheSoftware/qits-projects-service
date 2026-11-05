@@ -70,6 +70,10 @@ public class BranchDeliveryTest {
 
   @Inject WorkEntityService entities;
 
+  @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
+
+  @Inject eu.wohlben.qits.projects.entitieshost.TicketWrapperDone wrapperDone;
+
   @Inject BuildStatusListener buildListener;
 
   @Inject ReleaseRequestHeadListener headListener;
@@ -1046,6 +1050,220 @@ public class BranchDeliveryTest {
   }
 
   // ---- helpers ---------------------------------------------------------------------------------
+
+  // ---- a wrapper branch's delivery ending closes its ticket (qits-150) --------------------------
+
+  /**
+   * qits-150: the wrapper release request carrying a VERIFIED ticket's branch reaches FINALIZED —
+   * its row goes LIVE — and the platform moves the ticket to DONE, naming the request on its
+   * thread. Nobody asks for it.
+   */
+  @Test
+  public void aFinalizedWrapperReleaseClosesTheVerifiedTicketItsBranchNames() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    activeBuilds.answer(Optional.of(0));
+
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    assertEquals("VERIFIED", ticketStatus(ticket), "RELEASED is not FINALIZED: it waits");
+
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid, "LIVE@" + qid));
+
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream()
+            .anyMatch(body -> body.contains("`" + qid + "`") && body.contains("**FINALIZED**")),
+        "the thread names the request that finalized: " + threadOf(ticket));
+  }
+
+  /**
+   * qits-150: the hook is the branch's ledger row, so a branch carried on by obsolescence closes its
+   * ticket when the SUCCESSOR finalizes — the request it first joined never does, and is not named.
+   */
+  @Test
+  public void aWrapperBranchSupersededIntoASuccessorClosesItsTicketWhenTheSuccessorFinalizes() {
+    asWrapper(repoA);
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch);
+    String earlier = firstRequest(repoA);
+    String earlierQid = qualifiedIdOf(repoA, earlier);
+    redPublish(repoA, tag);
+
+    String successorTag = stageRelease();
+    String successor = create(repoA, "main");
+    assertEquals("OBSOLETE", stateOf(repoA, earlier), "the premise: superseded");
+    assertEquals("VERIFIED", ticketStatus(ticket), "an obsoleted request ends no delivery");
+    String successorQid = qualifiedIdOf(repoA, successor);
+    verdict("BuildSuccessful", repoA, mergedShaOf(repoA, successor), run("green"), null);
+    awaitState(repoA, successor, "RELEASED");
+    deploymentActive(successorTag);
+    finalization.sweep();
+    awaitState(repoA, successor, "FINALIZED");
+    awaitLastStep(branch, "LIVE");
+
+    awaitTicket(ticket, "DONE");
+    List<String> thread = threadOf(ticket);
+    assertTrue(
+        thread.stream().anyMatch(body -> body.contains("`" + successorQid + "`")),
+        "the successor is named: " + thread);
+    assertFalse(
+        thread.stream().anyMatch(body -> body.contains("`" + earlierQid + "`")),
+        "the obsoleted request is not: " + thread);
+  }
+
+  /**
+   * qits-150: a member repository's release finalizing is no wrapper release, whatever the branch is
+   * called — the ticket stays VERIFIED.
+   */
+  @Test
+  public void aMemberReleaseFinalizingClosesNoTicket() {
+    String ticket = verifiedTicket();
+    String branch = wrapperBranchOf(ticket);
+    activeBuilds.answer(Optional.of(0));
+
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitLastStep(branch, "LIVE");
+
+    pause(500);
+    assertEquals("VERIFIED", ticketStatus(ticket), "only the wrapper's release ends a ticket");
+  }
+
+  /**
+   * qits-150: the wrapper may go live before the ticket is VERIFIED. Nothing is closed then — only a
+   * VERIFIED ticket is — and the ticket goes DONE when it arrives at VERIFIED, read off the same
+   * ledger row.
+   */
+  @Test
+  public void aTicketNotYetVerifiedWhenItsWrapperGoesLiveIsClosedWhenItArrivesAtVerified() {
+    asWrapper(repoA);
+    String ticket = ticketAt("VERIFYING");
+    String branch = wrapperBranchOf(ticket);
+    activeBuilds.answer(Optional.of(0));
+
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitLastStep(branch, "LIVE");
+    pause(500);
+    assertEquals("VERIFYING", ticketStatus(ticket), "not VERIFIED yet: nothing is closed");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"target\":\"VERIFIED\"}")
+        .post("/projects/api/work/" + ticket + "/status")
+        .then()
+        .statusCode(200)
+        .body("status", org.hamcrest.Matchers.equalTo("VERIFIED"));
+
+    awaitTicket(ticket, "DONE");
+    assertTrue(
+        threadOf(ticket).stream().anyMatch(body -> body.contains("`" + qid + "`")),
+        "the request whose delivery ended is named: " + threadOf(ticket));
+  }
+
+  /**
+   * qits-150: the reconcile is the floor under both prompt paths — a ticket that reached VERIFIED
+   * by a move no door made (so nobody read its ledger row), after its wrapper went live, is closed
+   * on the next pass.
+   */
+  @Test
+  public void theReconcileClosesAVerifiedTicketWhoseWrapperIsAlreadyLive() {
+    asWrapper(repoA);
+    String ticket = ticketAt("VERIFYING");
+    String branch = wrapperBranchOf(ticket);
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch);
+    String id = firstRequest(repoA);
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitLastStep(branch, "LIVE");
+    entities.transition(Archetype.TICKET, ticket, "VERIFIED", "in-process");
+    assertEquals("VERIFIED", ticketStatus(ticket), "an in-process move reads no ledger");
+
+    wrapperDone.reconcile();
+
+    assertEquals("DONE", ticketStatus(ticket));
+  }
+
+  /** Makes {@code repoId} the project's estate wrapper ({@code PROJECT}) for this test. */
+  private void asWrapper(String repoId) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                Repository.<Repository>findById(repoId).archetype = RepositoryArchetype.PROJECT);
+  }
+
+  /** A ticket of the fixture's project walked to {@code status} in process, past every gate. */
+  private String ticketAt(String status) {
+    String id =
+        entities
+            .create(
+                Archetype.TICKET,
+                projectId,
+                EntityWrite.ticket("Delivered", "it occurs", null, "BUG", null)
+                    .withAcceptanceCriteria(List.of("It does what it says.")),
+                "seed")
+            .entity()
+            .id;
+    for (String step : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFYING", "VERIFIED")) {
+      entities.transition(
+          Archetype.TICKET,
+          id,
+          step,
+          eu.wohlben.qits.entities.control.Mover.person("seed"));
+      if (step.equals(status)) {
+        break;
+      }
+    }
+    return id;
+  }
+
+  private String verifiedTicket() {
+    return ticketAt("VERIFIED");
+  }
+
+  /** {@code ticket/<qualified id>}: the project's slug is its id in this fixture. */
+  private String wrapperBranchOf(String ticketId) {
+    long number =
+        QuarkusTransaction.requiringNew()
+            .call(() -> entities.get(Archetype.TICKET, ticketId))
+            .number;
+    return "ticket/" + projectId + "-" + number;
+  }
+
+  private String ticketStatus(String ticketId) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> entities.get(Archetype.TICKET, ticketId))
+        .status;
+  }
+
+  private void awaitTicket(String ticketId, String status) {
+    await(() -> status.equals(ticketStatus(ticketId)));
+    assertEquals(status, ticketStatus(ticketId));
+  }
+
+  private List<String> threadOf(String ticketId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                comments.listComments(ticketId).stream().map(comment -> comment.body).toList());
+  }
 
   private String base(String repoId) {
     return "/projects/api/repositories/" + repoId + "/release-requests";

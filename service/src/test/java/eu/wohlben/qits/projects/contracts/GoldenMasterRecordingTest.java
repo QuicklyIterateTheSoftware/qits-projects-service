@@ -1524,8 +1524,8 @@ class GoldenMasterRecordingTest {
             200,
             null,
             null));
-    moves(all, ProviderStates.TICKET_IN_STATUS);
-    moves(all, ProviderStates.EPIC_IN_STATUS);
+    moves(all, ProviderStates.TICKET_IN_STATUS, true);
+    moves(all, ProviderStates.EPIC_IN_STATUS, false);
     all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "PHASE"));
     // qits-887: implement runs from READY_FOR_DEV; a REFINED entity waits for a person to schedule
     // it — and since qits-1075 a person's Dispatch press is that scheduling: the recording rides a
@@ -1566,24 +1566,30 @@ class GoldenMasterRecordingTest {
     return List.copyOf(all);
   }
 
+  /**
+   * Each state's first legal move through the status door. A ticket's VERIFIED → DONE is recorded
+   * as the 409 it now answers (qits-150): the platform sets a ticket DONE when its wrapper release
+   * request is finalized, and no caller asks for it.
+   */
   private static void moves(
-      List<Interaction> all, Map<String, EntityStatus> statesByStatus) {
+      List<Interaction> all, Map<String, EntityStatus> statesByStatus, boolean tickets) {
     statesByStatus.forEach(
         (state, status) -> {
           List<EntityStateMachine.Transition> out = EntityStateMachine.transitionsFrom(status);
           if (out.isEmpty()) {
             return;
           }
+          EntityStatus target = out.get(0).to();
           all.add(
               new Interaction(
                   state,
                   "setWorkStatus",
                   "POST",
                   "/projects/api/work/{qualifiedId}/status",
-                  200,
+                  tickets && target == EntityStatus.DONE ? 409 : 200,
                   null,
                   null,
-                  "{\"target\":\"" + out.get(0).to().name() + "\"}"));
+                  "{\"target\":\"" + target.name() + "\"}"));
         });
   }
 

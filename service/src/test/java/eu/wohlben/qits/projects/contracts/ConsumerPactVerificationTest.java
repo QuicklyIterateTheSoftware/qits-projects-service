@@ -108,13 +108,25 @@ class ConsumerPactVerificationTest {
     System.setProperty("pact_do_not_track", "true");
   }
 
-  /** A pinned pact interaction this provider cannot honour, and why: the consumer must fix it. */
-  record KnownWrong(String consumer, String version, String description, String reason) {
+  /**
+   * A pinned pact interaction this provider cannot honour, and why: the consumer must fix it.
+   * {@code state}, when not null, narrows the entry to the interaction set up in that provider
+   * state — for a description a consumer reuses across several interactions (qits-150).
+   */
+  record KnownWrong(
+      String consumer, String version, String description, String state, String reason) {
+
+    KnownWrong(String consumer, String version, String description, String reason) {
+      this(consumer, version, description, null, reason);
+    }
 
     boolean names(Pact pact, Interaction interaction) {
       return consumer.equals(pact.getConsumer().getName())
           && description.equals(interaction.getDescription())
-          && String.valueOf(pact.getSource()).contains("/" + version + "/");
+          && String.valueOf(pact.getSource()).contains("/" + version + "/")
+          && (state == null
+              || interaction.getProviderStates().stream()
+                  .anyMatch(each -> state.equals(each.getName())));
     }
   }
 
@@ -122,8 +134,28 @@ class ConsumerPactVerificationTest {
    * The pinned, deployed or rollback consumer pact interactions this provider cannot honour. Empty
    * when every consumer version the gate verifies holds; an entry stays only while its version is
    * pinned, deployed or a rollback target of its consumer.
+   *
+   * <p>qits-landing-app's 2026.1104.81059 (pinned, and the pact of both its deployed versions,
+   * 2026.1104.164813 and 2026.1104.131632) moves a VERIFIED ticket to DONE through the status door
+   * from its finish and move buttons, expecting 200. Since qits-150 no caller moves a ticket to
+   * DONE — the platform does, when the wrapper release request carrying its branch is finalized —
+   * so the door answers 409 and the golden master records that. Each entry stays until the landing
+   * app stops offering the move and re-records, and that release replaces this version everywhere.
    */
-  static final List<KnownWrong> KNOWN_WRONG = List.of();
+  static final List<KnownWrong> KNOWN_WRONG =
+      List.of(
+          new KnownWrong(
+              "qits-landing-app",
+              "2026.1104.81059",
+              "finish-ticket: setWorkStatus",
+              "a verified ticket",
+              "moves a ticket to DONE; since qits-150 the platform alone sets a ticket DONE"),
+          new KnownWrong(
+              "qits-landing-app",
+              "2026.1104.81059",
+              "move-work-item: setWorkStatus",
+              "a verified ticket",
+              "moves a ticket to DONE; since qits-150 the platform alone sets a ticket DONE"));
 
   @Inject ProviderStates states;
 
