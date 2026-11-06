@@ -44,6 +44,10 @@ import java.util.stream.Stream;
  * deployed and rollback consumer version, not merely the one pinned in the pom. The directory must
  * exist when the variable is set, or this throws: a gate told to verify deployed pacts and given
  * none must fail, not pass.
+ *
+ * <p>Each pact is read through {@link ArrayContainsVariants#densify} first: a response {@code
+ * arrayContains} whose variants skip an element is verified by pact-jvm against the wrong
+ * element's rules, so it is rewritten to the variant-per-element form both verifiers agree on.
  */
 public class ClasspathPactLoader implements PactLoader {
 
@@ -112,7 +116,9 @@ public class ClasspathPactLoader implements PactLoader {
     List<Pact> pacts = new ArrayList<>();
     for (URL url : found.values()) {
       try (InputStream in = url.openStream()) {
-        String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        // pact-jvm pairs arrayContains variants by position, not by their index (qits-1897).
+        String json =
+            ArrayContainsVariants.densify(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         pacts.add(
             DefaultPactReader.INSTANCE.pactFromJson(
                 JsonParser.parseString(json).asObject(), new UrlSource(url.toString())));
