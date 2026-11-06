@@ -181,27 +181,27 @@
              The version moves with that repository rather than with the eventstream jar the rules
              judge — deliberately, since the rules name every type they judge as a string and depend
              on neither. -->
-        <qits.integrations-quarkus.version>2026.1105.105731</qits.integrations-quarkus.version>
+        <qits.integrations-quarkus.version>2026.1106.507</qits.integrations-quarkus.version>
         <!-- qits-arch-rules by its own string: qits-integrations-quarkus publishes only the modules
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1030.30851</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1106.507</qits.arch-rules.version>
         <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
              and published no db-core. -->
-        <qits.db-core.version>2026.1002.70617</qits.db-core.version>
+        <qits.db-core.version>2026.1106.507</qits.db-core.version>
 
         <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
              java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
              stamps X-Qits-Caller. Released separately from qits-arch-rules/qits-db-core above and
              pinned on its own property because it ships out of the same reactor but is consumed by
              every class that still hand-rolls an HttpClient, not only test-scoped tooling. -->
-        <qits.http-core.version>2026.1103.132907</qits.http-core.version>
+        <qits.http-core.version>2026.1106.507</qits.http-core.version>
         <!-- qits-telemetry-core (epic qits-428): the three OTLP/HTTP exporters as CDI beans whose
              header supplier carries the `qits` oidc client's current bearer, so spans, logs and
              metrics reach qits-observability at its edge host. Published by
              qits-integrations-quarkus, like qits-http-core above. -->
-        <qits.telemetry-core.version>2026.1103.201640</qits.telemetry-core.version>
+        <qits.telemetry-core.version>2026.1106.507</qits.telemetry-core.version>
 
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
@@ -220,7 +220,7 @@
              idp.MockIdp), released out of libs/qits-integrations-quarkus like qits-arch-rules and
              qits-db-core above — so the same-string policy applies the day this repo consumes a
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
-        <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
+        <qits.service-mock.version>2026.1106.507</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
              (workspaces, landing, the projects frontend, the platform-access CLI, maintenance,
              githost, artifacts, the bootstrap CLI, ci and the
