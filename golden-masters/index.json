@@ -2623,6 +2623,41 @@
       ]
     },
     {
+      "name": "a project with work to brief",
+      "slug": "a-project-with-work-to-brief",
+      "params": {
+        "epicQualifiedId": "contract-00000001-1",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketQualifiedId": "contract-00000001-2",
+        "unknownQualifiedId": "contract-00000001-999"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWorkBriefs",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work/briefs",
+          "query": {
+            "id": "{ticketQualifiedId},{epicQualifiedId},{unknownQualifiedId}"
+          },
+          "status": 200,
+          "file": "a-project-with-work-to-brief/listProjectWorkBriefs.json",
+          "frozen": {
+            "ids": [
+              "$.briefs[*].id"
+            ],
+            "instants": [
+              "$.briefs[*].updatedAt"
+            ],
+            "strings": [
+              "$.briefs[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a ready for dev epic",
       "slug": "a-ready-for-dev-epic",
       "params": {

@@ -1334,6 +1334,60 @@ public class WorkEntityDoors {
         .toList();
   }
 
+  /** The most distinct ids one briefs read takes (qits-1897); more is a 400. */
+  public static final int MAX_BRIEF_IDS = 200;
+
+  /**
+   * <b>The named work items of a project, in brief</b> (qits-1897): each value a qualified id, or
+   * several comma-separated. An id that names nothing in the project — unknown, another project's,
+   * malformed — is left out rather than refused, duplicates collapse, and the answer keeps the
+   * order the ids were first named. One query for all of them. The project is its id or its slug
+   * (a 404 for neither); more than {@link #MAX_BRIEF_IDS} distinct ids is a 400.
+   */
+  public WorkBriefs briefs(String projectIdOrSlug, List<String> requested) {
+    Set<String> named = new LinkedHashSet<>();
+    for (String value : requested == null ? List.<String>of() : requested) {
+      if (value == null) {
+        continue;
+      }
+      for (String part : value.split(",")) {
+        String trimmed = part.trim();
+        if (!trimmed.isEmpty()) {
+          named.add(trimmed.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+    if (named.size() > MAX_BRIEF_IDS) {
+      throw new BadRequestException(
+          "Too many ids: " + named.size() + " — at most " + MAX_BRIEF_IDS + " per request");
+    }
+    eu.wohlben.qits.projects.entity.Project project = ids.resolveProject(projectIdOrSlug);
+    Set<Long> numbers = new LinkedHashSet<>();
+    for (String id : named) {
+      eu.wohlben.qits.projects.entitieshost.CommitSubjectEntities.parse(id)
+          .filter(q -> q.projectSlug().equalsIgnoreCase(project.slug))
+          .ifPresent(q -> numbers.add(q.number()));
+    }
+    Map<Long, eu.wohlben.qits.entities.persistence.WorkEntityRepository.Brief> found =
+        new HashMap<>();
+    catalog.briefs(project.id, numbers).forEach(row -> found.put(row.number(), row));
+    List<WorkBriefs.WorkBrief> briefs = new ArrayList<>();
+    for (Long number : numbers) {
+      var row = found.get(number);
+      if (row != null) {
+        briefs.add(
+            new WorkBriefs.WorkBrief(
+                row.id(),
+                QualifiedEntityIds.render(project.slug, row.number()),
+                row.archetype(),
+                row.status(),
+                row.title(),
+                row.updatedAt()));
+      }
+    }
+    return new WorkBriefs(List.copyOf(briefs));
+  }
+
   private static Archetype listArchetype(String word) {
     try {
       return Archetype.valueOf(word.trim().toUpperCase(Locale.ROOT));

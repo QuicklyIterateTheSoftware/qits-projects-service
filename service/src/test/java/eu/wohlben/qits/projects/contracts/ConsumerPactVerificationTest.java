@@ -332,6 +332,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_REFINED_WORK);
   }
 
+  @State(ProviderStates.A_PROJECT_WITH_WORK_TO_BRIEF)
+  Map<String, String> aProjectWithWorkToBrief() {
+    return states.params(ProviderStates.A_PROJECT_WITH_WORK_TO_BRIEF);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_WORK_IN_EVERY_STATUS)
   Map<String, String> aProjectWithWorkInEveryStatus() {
     return states.params(ProviderStates.A_PROJECT_WITH_WORK_IN_EVERY_STATUS);

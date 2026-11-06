@@ -1,0 +1,20 @@
+{
+  "briefs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "qualifiedId": "contract-00000001-2",
+      "archetype": "TICKET",
+      "status": "REPORTED",
+      "title": "Show a referenced item's status beside its link",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-00000001-1",
+      "archetype": "EPIC",
+      "status": "REFINED",
+      "title": "Brief the work items a page references",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

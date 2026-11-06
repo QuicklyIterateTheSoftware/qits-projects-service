@@ -31,6 +31,11 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * (qits-1821), a short plain-text lead for the desk's cards, null on every other archetype. {@link
  * WorkEntityDoors#list} is the implementation,
  * shared with {@code GET /projects/{projectId}/entities}. A read: {@code qits:agent}, unbound.
+ *
+ * <p>{@code GET …/work/briefs?id=qits-12&id=qits-14} (qits-1897) is the same family's read of a few
+ * named items, in brief ({@link WorkBriefs}): what a page holding references to work items asks to
+ * label them, in one call and one query rather than one {@code getWork} each. {@link
+ * WorkEntityDoors#briefs} is the implementation.
  */
 @Path("/projects/{project}/work")
 @Produces(MediaType.APPLICATION_JSON)
@@ -93,5 +98,42 @@ public class ProjectWorkController {
           String tag) {
     return new WorkList(
         doors.list(project, archetype, status, parent, outcome, supersededBy, tag));
+  }
+
+  @GET
+  @Path("/briefs")
+  @Operation(
+      operationId = "listProjectWorkBriefs",
+      summary = "Read a project's work items in brief, by qualified id",
+      description =
+          "The named work items of the project, of any archetype, each as its id, qualified id,"
+              + " archetype, status, title and updatedAt — no description, impetus or excerpt."
+              + " Name each item with a repeated id parameter (id=qits-12&id=qits-14), or several"
+              + " comma-separated in one. An id that names nothing in the project — unknown,"
+              + " another project's, or malformed — is left out rather than refused; duplicates"
+              + " collapse, and the answer keeps the order the ids were first named. No ids answers"
+              + " an empty list. The project is its id or its slug.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The named work items, in brief",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = WorkBriefs.class)))
+  @APIResponse(
+      responseCode = "400",
+      description = "More than " + WorkEntityDoors.MAX_BRIEF_IDS + " distinct ids")
+  @APIResponse(responseCode = "404", description = "No such project")
+  public WorkBriefs briefs(
+      @PathParam("project") String project,
+      @Parameter(
+              description =
+                  "A qualified id (qits-12), repeated for each item; a value may also hold several"
+                      + " comma-separated. At most "
+                      + WorkEntityDoors.MAX_BRIEF_IDS
+                      + " distinct ids.")
+          @QueryParam("id")
+          List<String> id) {
+    return doors.briefs(project, id);
   }
 }

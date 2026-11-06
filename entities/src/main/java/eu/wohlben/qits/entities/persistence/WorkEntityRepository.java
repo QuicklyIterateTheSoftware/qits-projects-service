@@ -314,6 +314,42 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
+   * <b>The briefs of a project's rows under the given numbers</b> (qits-1897): id, number,
+   * archetype, status, title and {@code updatedAt}, in ONE query against {@code
+   * uq_entity_project_number} — never one lookup per number, and no description read. A number
+   * naming no row of the project is simply absent; the answer's order is the database's, so the
+   * caller orders it. An empty input answers empty without asking ({@code in ()} is a syntax error
+   * in postgres).
+   */
+  public List<Brief> briefsByProjectAndNumbers(String projectId, Collection<Long> numbers) {
+    if (numbers == null || numbers.isEmpty()) {
+      return List.of();
+    }
+    return getEntityManager()
+        .createQuery(
+            "select e.id, e.number, e.archetype, e.status, e.title, e.updatedAt"
+                + " from WorkEntity e where e.projectId = ?1 and e.number in ?2",
+            Object[].class)
+        .setParameter(1, projectId)
+        .setParameter(2, numbers)
+        .getResultStream()
+        .map(
+            c ->
+                new Brief(
+                    (String) c[0],
+                    (Long) c[1],
+                    (Archetype) c[2],
+                    (String) c[3],
+                    (String) c[4],
+                    (Instant) c[5]))
+        .toList();
+  }
+
+  /** One row of {@link #briefsByProjectAndNumbers}: what a reference to a work item shows. */
+  public record Brief(
+      String id, long number, Archetype archetype, String status, String title, Instant updatedAt) {}
+
+  /**
    * The row holding {@code slug} within {@code slugScope}, or empty. At most one, because {@code
    * uq_entity_slug_scope_slug} says so — that constraint is today's three slug constraints
    * expressed once (see {@link WorkEntity#slugScope}).

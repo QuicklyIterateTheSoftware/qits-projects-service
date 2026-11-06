@@ -79,6 +79,19 @@ public class EntityCatalogService {
   }
 
   /**
+   * <b>The briefs of a project's rows under the given numbers</b> (qits-1897), one query for all of
+   * them; a number naming nothing is absent. Held through a cutover like every list read here.
+   */
+  public List<WorkEntityRepository.Brief> briefs(String projectId, Collection<Long> numbers) {
+    if (numbers == null || numbers.isEmpty()) {
+      return List.of();
+    }
+    return reads.hold(
+        "work briefs of a project",
+        () -> entities.briefsByProjectAndNumbers(projectId, numbers));
+  }
+
+  /**
    * The named rows, keyed by id, with whatever edge each has. An id that names nothing is simply
    * absent from the answer — this is a read, and deciding what an unknown id means belongs to the
    * caller that supplied it.

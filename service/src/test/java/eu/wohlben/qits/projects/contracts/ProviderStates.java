@@ -67,6 +67,7 @@ public class ProviderStates {
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
   public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
+  public static final String A_PROJECT_WITH_WORK_TO_BRIEF = "a project with work to brief";
   public static final String A_PROJECT_WITH_NO_WORK = "a project with no work";
   /**
    * A project's ideas (qits-1387): one QUEUED by the epic it inspired, one it enables, and one
@@ -555,6 +556,7 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
+    states.put(A_PROJECT_WITH_WORK_TO_BRIEF, this::aProjectWithWorkToBrief);
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(A_PROJECT_WHOSE_WORK_HAS_WORKSPACES, this::aProjectWhoseWorkHasWorkspaces);
     states.put(THREE_REPORTED_TICKETS, this::threeReportedTickets);
@@ -1164,6 +1166,36 @@ public class ProviderStates {
     work.transition(Archetype.TICKET, second, "REFINED", SEEDER);
     walk(Archetype.TICKET, done, EntityStatus.DONE);
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A REFINED epic and a REPORTED ticket, named by qualified id, plus a qualified id of the same
+   * project naming nothing (qits-1897): the briefs read answers the two in the order they are named
+   * and leaves the third out. {@code ticketQualifiedId} and {@code epicQualifiedId} name the two,
+   * {@code unknownQualifiedId} the miss.
+   */
+  private Setup aProjectWithWorkToBrief() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_WORK_TO_BRIEF);
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Brief the work items a page references", "Seeded work.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    String ticket = ticket(project, "Show a referenced item's status beside its link");
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    return new Setup(
+        params(
+            "projectId",
+            project.id,
+            "epicQualifiedId",
+            qualified(project, epic),
+            "ticketQualifiedId",
+            qualified(project, ticket),
+            "unknownQualifiedId",
+            eu.wohlben.qits.projects.api.QualifiedEntityIds.render(project.slug, 999)),
+        List.of(token));
   }
 
   /**

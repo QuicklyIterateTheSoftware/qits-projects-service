@@ -3663,6 +3663,47 @@ components:
           type: string
           description: what is in the way — required when blocking; lands on the entity's
             thread
+    WorkBrief:
+      type: object
+      description: "One work item, in brief."
+      required:
+      - id
+      - qualifiedId
+      - archetype
+      - status
+      - title
+      - updatedAt
+      properties:
+        id:
+          type: string
+          description: The entity's UUID.
+        qualifiedId:
+          type: string
+          description: "<project-slug>-<number>, e.g. qits-12."
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+          description: The item's archetype.
+          type: string
+        status:
+          type: string
+          description: The status word as stored.
+        title:
+          type: string
+          description: The label.
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+          description: When the item was last written.
+          type: string
+    WorkBriefs:
+      description: "The work items a caller named, each in brief, in the order the\
+        \ ids were first named. An id that names nothing in the project — unknown,\
+        \ another project's, or malformed — is left out."
+      type: object
+      properties:
+        briefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkBrief"
     WorkChildCreate:
       description: "A new child: the child archetype's create schema (FEATURE under\
         \ an epic, TASK under a feature) without archetype, parent and project, which\
@@ -6393,6 +6434,54 @@ paths:
           description: "An archetype, a status, an outcome or a tag naming none"
         "404":
           description: "No such project, no such parent, or no such supersededBy entity"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:agent
+  /projects/api/projects/{project}/work/briefs:
+    get:
+      summary: "Read a project's work items in brief, by qualified id"
+      description: "The named work items of the project, of any archetype, each as\
+        \ its id, qualified id, archetype, status, title and updatedAt — no description,\
+        \ impetus or excerpt. Name each item with a repeated id parameter (id=qits-12&id=qits-14),\
+        \ or several comma-separated in one. An id that names nothing in the project\
+        \ — unknown, another project's, or malformed — is left out rather than refused;\
+        \ duplicates collapse, and the answer keeps the order the ids were first named.\
+        \ No ids answers an empty list. The project is its id or its slug."
+      operationId: listProjectWorkBriefs
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      - description: "A qualified id (qits-12), repeated for each item; a value may\
+          \ also hold several comma-separated. At most 200 distinct ids."
+        name: id
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        "200":
+          description: "The named work items, in brief"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkBriefs"
+        "400":
+          description: More than 200 distinct ids
+        "404":
+          description: No such project
         "401":
           description: Not Authorized
         "403":

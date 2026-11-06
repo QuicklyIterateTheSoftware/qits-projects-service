@@ -270,6 +270,19 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // A page's references labelled in one read (qits-1897): two items named in an order of
+          // the caller's choosing, and a qualified id naming nothing, which the answer leaves out.
+          // Comma-separated in one id: the index records a query as one value per name, so a
+          // repeated id would keep only its last.
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_WORK_TO_BRIEF,
+              "listProjectWorkBriefs",
+              "GET",
+              "/projects/api/projects/{projectId}/work/briefs"
+                  + "?id={ticketQualifiedId},{epicQualifiedId},{unknownQualifiedId}",
+              200,
+              null,
+              null),
           // The CLI's `qits work list --superseded-by`: the two items dropped in favour of one.
           new Interaction(
               ProviderStates.AN_ITEM_THAT_OTHER_ITEMS_NAME_AS_THEIR_SUPERSEDED_BY,
