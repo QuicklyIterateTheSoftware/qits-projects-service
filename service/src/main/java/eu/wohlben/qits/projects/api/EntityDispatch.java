@@ -222,6 +222,9 @@ public class EntityDispatch {
 
   @Inject RunningItems runningItems;
 
+  /** What holds an item's implementation back (qits-1903): its unmet needs. */
+  @Inject UnmetNeeds unmetNeeds;
+
   /** The agent variant's guide-hash, stated in every dispatched turn (qits-1734). */
   @Inject DevelopmentGuideService guide;
 
@@ -442,7 +445,8 @@ public class EntityDispatch {
     boolean flowRuns = nextPhase != null || (lifecycle && isRefined(entity));
     // blocked is what the entity reads as (qits-895); dispatchable reads the EXPLICIT flag alone,
     // because a derived block — an agent waiting for a person — never refuses a press. A tag
-    // reserving the work for a person refuses every press (qits-634), so it is not dispatchable.
+    // reserving the work for a person refuses every press (qits-634), so it is not dispatchable;
+    // nor is a condition, nor an item whose unmet needs hold its implementation (qits-1903).
     EntityBlockState block = EntityBlockState.of(entity);
     return new EntityDispatchStateDto(
         entity.id,
@@ -450,7 +454,11 @@ public class EntityDispatch {
         entity.status,
         nextPhase,
         block.blocked(),
-        flowRuns && !entity.blocked && !isReservedForHuman(entity),
+        flowRuns
+            && !entity.blocked
+            && !isReservedForHuman(entity)
+            && !isCondition(entity)
+            && unmetNeeds.holding(entity).isEmpty(),
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
         entity.preApprovedBy,
         block.source(),
@@ -533,6 +541,8 @@ public class EntityDispatch {
       throw blockedRefusal(entity);
     }
     refuseReserved(entity);
+    refuseCondition(entity);
+    refuseUnmetNeeds(entity);
     return located(entity, Phase.IMPLEMENT);
   }
 
@@ -667,7 +677,7 @@ public class EntityDispatch {
    * after the refusals every press makes, so a blocked or finished row still answers its own
    * sentence first.
    */
-  private static void requirePhase(WorkEntity entity, String requiredPhase) {
+  private void requirePhase(WorkEntity entity, String requiredPhase) {
     refuseCampaign(entity);
     String phase = phaseOrRefuse(entity).word();
     if (requiredPhase != null && !requiredPhase.equals(phase)) {
@@ -719,7 +729,7 @@ public class EntityDispatch {
    * blocked. The ticket door's two sentences, kept word for word for a ticket — a person reads them
    * — and said of an epic in the same words with its own noun.
    */
-  private static Phase phaseOrRefuse(WorkEntity entity) {
+  private Phase phaseOrRefuse(WorkEntity entity) {
     if (!nextPhaseAware(entity)) {
       throw new DispatchRefused(
           409,
@@ -744,6 +754,8 @@ public class EntityDispatch {
       throw blockedRefusal(entity);
     }
     refuseReserved(entity);
+    refuseCondition(entity);
+    refuseUnmetNeeds(entity);
     return PhasePrompts.phaseOf(entity)
         .orElseThrow(
             () ->
@@ -795,6 +807,52 @@ public class EntityDispatch {
   /** Whether {@code entity} carries {@link WorkTag#RESERVED_FOR_HUMAN} (qits-634). */
   static boolean isReservedForHuman(WorkEntity entity) {
     return entity.tags != null && entity.tags.contains(WorkTag.RESERVED_FOR_HUMAN);
+  }
+
+  /**
+   * The refusal a press on an entity tagged {@link WorkTag#CONDITION} answers (qits-1903), whatever
+   * its status and whoever pressed: a condition is what other work waits for, not work of its own,
+   * so no agent is put on it.
+   */
+  private void refuseCondition(WorkEntity entity) {
+    if (!isCondition(entity)) {
+      return;
+    }
+    throw new DispatchRefused(
+        409,
+        capitalised(noun(entity))
+            + " "
+            + nameOf(entity)
+            + " is tagged "
+            + WorkTag.CONDITION.display()
+            + ": other work waits for it, and it is not work of its own. A person or an agent"
+            + " moves its status; no agent is dispatched onto it.");
+  }
+
+  /** Whether {@code entity} carries {@link WorkTag#CONDITION} (qits-1903). */
+  static boolean isCondition(WorkEntity entity) {
+    return entity.tags != null && entity.tags.contains(WorkTag.CONDITION);
+  }
+
+  /**
+   * The refusal a press answers on an entity at REFINED or READY_FOR_DEV whose needs are not all met
+   * (qits-1903), naming each with the status it must reach and the one it holds: its implementation
+   * waits for them. Refine and verify are never held ({@link UnmetNeeds#gates}).
+   */
+  private void refuseUnmetNeeds(WorkEntity entity) {
+    List<eu.wohlben.qits.entities.control.NeedRef> unmet = unmetNeeds.holding(entity);
+    if (unmet.isEmpty()) {
+      return;
+    }
+    throw new DispatchRefused(
+        409,
+        capitalised(noun(entity))
+            + " "
+            + nameOf(entity)
+            + " needs "
+            + UnmetNeeds.describe(unmet)
+            + ", so its implementation does not start yet. Dispatch it once those are met, or"
+            + " change its needs.");
   }
 
   /**
@@ -859,6 +917,10 @@ public class EntityDispatch {
               + " is not the delivery desk's to start — a campaign is started by a person pressing"
               + " dispatch on it, and its executor dispatches its members.");
     }
+    // Before the slot count (qits-1903): a condition, or an item its needs hold, would not run
+    // whatever the slots, and the sentence that names why is the one the desk acts on.
+    refuseCondition(entity);
+    refuseUnmetNeeds(entity);
     List<WorkEntity> running = runningBesides(entity);
     if (running.size() >= delivery.maxRunning()) {
       throw new DispatchRefused(

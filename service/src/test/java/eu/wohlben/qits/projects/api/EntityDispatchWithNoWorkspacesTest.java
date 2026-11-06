@@ -131,6 +131,98 @@ public class EntityDispatchWithNoWorkspacesTest {
         .body("status", equalTo("REPORTED"));
   }
 
+  // --- needs and conditions (qits-1903): refused before the port is asked for -----------------
+
+  /** A person, for the scheduling REFINED → READY_FOR_DEV (qits-887). */
+  private RequestSpecification asPerson() {
+    return asAdmin()
+        .cookie(
+            eu.wohlben.qits.projects.security.PersonCheck.SESSION_COOKIE,
+            eu.wohlben.qits.projects.security.FakeSessionIntrospection.admin("mallory"));
+  }
+
+  private String project(String name) {
+    return asAdmin()
+        .body(new ProjectController.CreateProjectRequest(name, null, null, null, ProjectRequests.DNS))
+        .when()
+        .post("/projects/api/projects")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("project.id");
+  }
+
+  private String ticket(String projectId, String title) {
+    String id = WorkRequests.ticket(this::asAdmin, projectId, title, "BUG", "something occurs here");
+    patch(id, Map.of("acceptanceCriteria", eu.wohlben.qits.entities.api.TestCriteria.CRITERIA));
+    return id;
+  }
+
+  private void patch(String id, Map<String, Object> body) {
+    asAdmin()
+        .contentType("application/merge-patch+json")
+        .body(body)
+        .when()
+        .patch("/projects/api/work/" + id)
+        .then()
+        .statusCode(200);
+  }
+
+  private void move(String id, String target) {
+    WorkRequests.status(this::asPerson, id, target).then().statusCode(200);
+  }
+
+  private io.restassured.response.ValidatableResponse press(String id) {
+    return asAdmin()
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + id + "/dispatch")
+        .then();
+  }
+
+  /**
+   * An unmet need at READY_FOR_DEV is the press's 409, decided before the port is asked for — so
+   * even an assembly with no workspaces answers the need, not the 503; met, the press goes on to
+   * the 503; and at REPORTED the need never stood in the way.
+   */
+  @Test
+  public void anUnmetNeedRefusesBeforeThePortAndAMetOrAReportedOneReachesIt() {
+    assertThePortIsAbsent();
+    String projectId = project("No Workspaces Needs");
+    String waiting = ticket(projectId, "Waits");
+    String needed = ticket(projectId, "First");
+    patch(waiting, Map.of("needs", java.util.List.of(Map.of("item", needed, "status", "REFINED"))));
+
+    press(waiting)
+        .statusCode(503)
+        .body("message", containsString("No workspaces context is configured"));
+
+    move(waiting, "REFINED");
+    move(waiting, "READY_FOR_DEV");
+    press(waiting)
+        .statusCode(409)
+        .body("message", containsString(" at REFINED (now REPORTED), so its implementation does"))
+        .body("message", containsString("Dispatch it once those are met, or change its needs."));
+
+    move(needed, "REFINED");
+    press(waiting)
+        .statusCode(503)
+        .body("message", containsString("No workspaces context is configured"));
+  }
+
+  /** A condition is refused before the port is asked for, too. */
+  @Test
+  public void aConditionIsRefusedBeforeThePort() {
+    assertThePortIsAbsent();
+    String projectId = project("No Workspaces Condition");
+    String condition = ticket(projectId, "Bootstrap test node");
+    patch(condition, Map.of("tags", java.util.List.of("CONDITION")));
+
+    press(condition)
+        .statusCode(409)
+        .body("message", containsString(" is tagged condition: other work waits for it"));
+  }
+
   /** The premise of every assertion here, so a config override that stopped working says so. */
   private void assertThePortIsAbsent() {
     assertFalse(

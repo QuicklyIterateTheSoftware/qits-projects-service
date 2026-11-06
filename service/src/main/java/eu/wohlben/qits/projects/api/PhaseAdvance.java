@@ -281,6 +281,9 @@ public class PhaseAdvance {
 
   @Inject EntityCommentService comments;
 
+  /** What holds an item's implementation back (qits-1903): its unmet needs. */
+  @Inject UnmetNeeds unmetNeeds;
+
   /** The move into IMPLEMENTING a delivered implement turn makes — see the class javadoc. */
   @Inject WorkEntityService lifecycle;
 
@@ -429,6 +432,14 @@ public class PhaseAdvance {
    * transition. The stamp on this comment is then the same string the transition's audit row
    * carries, and it keeps this bean out of the request context entirely.
    *
+   * <p><b>A condition and an item its needs hold deliver no turn</b> (qits-1903). An entity tagged
+   * {@link WorkTag#CONDITION} is not work of its own, so no move of it starts a phase, as with
+   * {@link WorkTag#RESERVED_FOR_HUMAN}. An entity entering REFINED or READY_FOR_DEV with a need not
+   * met is held there: no turn, no scheduling of a pre-approval, one log line naming the needs.
+   * <b>Nothing re-wakes it when the need is met</b>, and that is intended: the move of the needed
+   * item is published as {@code WorkNeedMet}, and the delivery desk's backlog picks the held item up
+   * on its next pass — the desk, not this bean, decides what runs next.
+   *
    * @param entity the moved row <b>as it is after the move</b> — a campaign, a feature and a task
    *     return at once (qits-763); for a ticket or an epic the new status is the input
    *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
@@ -485,6 +496,23 @@ public class PhaseAdvance {
       LOG.debugf(
           "%s %s is tagged %s, so no turn is delivered for the phase its status (%s) starts",
           entity.archetype, entity.id, WorkTag.RESERVED_FOR_HUMAN.display(), entity.status);
+      return;
+    }
+    if (EntityDispatch.isCondition(entity)) {
+      // A condition other work waits for (qits-1903): not work of its own, so no agent is handed
+      // the phase its status starts — a person or an agent moves it, like a reserved item.
+      LOG.debugf(
+          "%s %s is tagged %s, so no turn is delivered for the phase its status (%s) starts",
+          entity.archetype, entity.id, WorkTag.CONDITION.display(), entity.status);
+      return;
+    }
+    List<eu.wohlben.qits.entities.control.NeedRef> unmet = unmetNeeds.holding(entity);
+    if (!unmet.isEmpty()) {
+      // Its needs hold the implementation (qits-1903): REFINED schedules nothing and READY_FOR_DEV
+      // starts nothing while one is unmet. Nothing re-wakes it — the desk's backlog does (javadoc).
+      LOG.infof(
+          "%s %s needs %s, so no turn is delivered for the phase its status (%s) starts",
+          entity.archetype, entity.id, UnmetNeeds.describe(unmet), entity.status);
       return;
     }
     if (EntityStateMachine.isStartedMove(statusOf(statusBefore), statusOf(entity.status))) {
