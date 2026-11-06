@@ -228,8 +228,8 @@ public class DevelopmentGuideControllerTest {
         markdown.contains("A request created right after a commit, before the\nbranch's push"),
         "qits-1751: a fresh source missing on the git host is waited for, not rejected");
     assertTrue(
-        markdown.contains("Close finished work: a campaign, epic or feature whose children are all"),
-        "qits-1757: the desk closes finished work straight to DONE");
+        markdown.contains("Close finished work: an epic or feature whose children are all"),
+        "qits-1757: the desk closes finished work straight to DONE; qits-1904 dropped the campaign");
     assertTrue(markdown.contains("Never\nschedule finished work to walk it."), markdown);
     assertTrue(
         markdown.contains(
@@ -253,9 +253,35 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1751_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1819_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1819_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_1899_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
+  }
+
+  /**
+   * qits-1904: the desk variant closes an epic or feature alone, the campaign having never used
+   * this bullet (qits-650's derived status); an unedited row holding the text qits-1909 shipped
+   * rolls forward on boot.
+   */
+  @Test
+  public void theDeskVariantClosesOnlyEpicsAndFeatures() {
+    assertFalse(
+        DevelopmentGuideDefaults.DESK_GUIDE.contains("a campaign, epic or feature"),
+        DevelopmentGuideDefaults.DESK_GUIDE);
+    assertTrue(
+        DevelopmentGuideDefaults.QITS_1899_DESK_GUIDE.contains(
+            "Close finished work: a campaign, epic or feature"),
+        "a kept-only-for-migration part must never be edited");
+
+    String key = DevelopmentGuideDefaults.key("desk");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_1899_DESK_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(
+        read("desk").getString("markdown").contains("Close finished work: an epic or feature"));
   }
 
   /**
@@ -311,13 +337,51 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1774_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
         DevelopmentGuideDefaults.QITS_1724_PREVIOUS_DEVELOPMENT_FLOW.contains(
             "qits wait release-request <request id>"),
         "the qits-1724 text is the one before qits wait branch existed");
+  }
+
+  /**
+   * qits-1904: ordering is needs now that it exists (qits-1903) — dependsOn, campaign ordering and
+   * milestones are gone. The flow gains a new paragraph under "A branch per work item", and a
+   * block is for a ticket or an epic alike, a campaign never having blocked through this door. An
+   * unedited row holding the text qits-1909 shipped rolls forward on boot.
+   */
+  @Test
+  public void theFlowSpeaksNeedsForOrdering() {
+    String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
+    assertTrue(flow.contains("**Ordering is needs.**"), flow);
+    assertTrue(
+        flow.contains(
+            "needs: [{\"item\": \"<qualified id>\", \"status\": \"<STATUS>\"}]"),
+        flow);
+    assertTrue(flow.contains("a ticket tagged `condition`"), flow);
+    assertTrue(flow.contains("for a ticket or an epic alike, and say what is in the way"), flow);
+    assertFalse(flow.contains("for a ticket, an epic or a campaign alike"), flow);
+
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW.contains(
+            "**Ordering is needs.**"),
+        "a kept-only-for-migration part must never be edited");
+    assertTrue(
+        DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW.contains(
+            "for a ticket, an epic or a campaign alike, and say what is in the way"),
+        "a kept-only-for-migration part must never be edited");
+
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(
+        key, withText(part, DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains("**Ordering is needs.**"));
   }
 
   /**
@@ -331,7 +395,8 @@ public class DevelopmentGuideControllerTest {
         DevelopmentGuideDefaults.DEVELOPMENT_FLOW.contains(
             "`qits release-request regenerate --kind <kind>`"));
     for (String previous : DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY)) {
-      if (previous.equals(DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW)) {
+      if (previous.equals(DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW)
+          || previous.equals(DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW)) {
         continue; // shipped after qits-1816, so it carries qits-1816's paragraph by right
       }
       assertFalse(previous.contains("A red automation"), "a previous text was rewritten");

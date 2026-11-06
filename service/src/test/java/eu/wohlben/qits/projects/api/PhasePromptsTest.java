@@ -646,13 +646,15 @@ public class PhasePromptsTest {
         }) {
       assertTrue(turn.contains(tool), "the refine phase is told to write with " + tool + ": " + turn);
     }
-    assertTrue(turn.contains("each task naming one repository and its dependsOn links"), turn);
+    assertTrue(
+        turn.contains("each task naming one repository and, in needs, what it waits for"),
+        turn);
     assertTrue(turn.contains("Do not implement anything"), turn);
     assertTrue(turn.contains("move it to REFINED with work_status, which freezes the scope"), turn);
   }
 
   /**
-   * The epic implement turn: the frozen brief with corrections on the thread, dependsOn order,
+   * The epic implement turn: the frozen brief with corrections on the thread, needs order,
    * implementingAt as each starts and implementedAt as each lands (work_update) — each moving the
    * task's own status (qits-763) — a task verified on its own with work_status, released per
    * repository, no integration, and the claim to IMPLEMENTED — which carries every unmarked task.
@@ -664,7 +666,8 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("work_details: its tree and dossier are the brief"), turn);
     assertTrue(turn.contains("Both are read-only now"), turn);
     assertTrue(turn.contains("work_comment_create as the work goes"), turn);
-    assertTrue(turn.contains("in dependsOn order"), turn);
+    assertTrue(
+        turn.contains("Work the tasks in needs order, each only once its needs are met"), turn);
     assertTrue(turn.contains("work_update its implementingAt to now when you start one"), turn);
     assertTrue(turn.contains("its implementedAt as it lands"), turn);
     assertTrue(turn.contains("each moves its status"), turn);
@@ -676,7 +679,7 @@ public class PhasePromptsTest {
     assertTrue(
         turn.contains("When every task is marked, move the epic to IMPLEMENTED with work_status"),
         turn);
-    assertTrue(turn.contains("carries any unmarked task to IMPLEMENTED"), turn);
+    assertTrue(turn.contains("carrying any unmarked task to IMPLEMENTED"), turn);
   }
 
   /**
