@@ -1512,6 +1512,13 @@ components:
         unmetMilestones:
           type: integer
           format: int32
+        needs:
+          type: array
+          items:
+            $ref: "#/components/schemas/NeedRef"
+        unmetNeeds:
+          type: integer
+          format: int32
     EntityTransition:
       type: object
       properties:
@@ -2328,6 +2335,23 @@ components:
           $ref: "#/components/schemas/ReleaseRequestDto"
         to:
           $ref: "#/components/schemas/ReleaseRequestDto"
+    NeedRef:
+      type: object
+      properties:
+        id:
+          type: string
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        status:
+          type: string
+        currentStatus:
+          type: string
+        met:
+          type: boolean
     NewAttachment:
       type: object
       properties:
@@ -3566,6 +3590,13 @@ components:
         unmetMilestones:
           type: integer
           format: int32
+        needs:
+          type: array
+          items:
+            $ref: "#/components/schemas/NeedRef"
+        unmetNeeds:
+          type: integer
+          format: int32
     UUID:
       type: string
       format: uuid
@@ -3683,7 +3714,15 @@ components:
             \ a task."
         dependsOn:
           type: string
-          description: "A sibling dependency, by qualified id or UUID."
+          description: "Retired (qits-1903): any value is a 400 — name what this waits\
+            \ for in needs."
+          deprecated: true
+        needs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkNeedWrite"
+          description: "What the child waits for (qits-1903): each entry a work item\
+            \ of the same project and the status it must reach."
     WorkChildren:
       description: "A work entity's direct children, in membership order."
       type: object
@@ -3805,8 +3844,9 @@ components:
           description: "A task's repository, in the task's project."
         dependsOn:
           type: string
-          description: "A feature's or task's sibling dependency, by qualified id\
-            \ or UUID."
+          description: "Retired (qits-1903): any value is a 400 — name what this waits\
+            \ for in needs."
+          deprecated: true
         acceptanceCriteria:
           type: array
           items:
@@ -3822,11 +3862,19 @@ components:
             $ref: "#/components/schemas/WorkTag"
           description: "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks\
             \ work an agent cannot complete — a person does it, and no agent is dispatched\
-            \ onto it."
+            \ onto it. CONDITION marks a condition other work waits for, not work\
+            \ of its own; no agent is dispatched onto it."
         relatedTo:
           type: string
           description: "An issue's one related work item of the same project, by qualified\
             \ id or UUID."
+        needs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkNeedWrite"
+          description: "What an epic, a ticket, a feature or a task waits for (qits-1903):\
+            \ each entry a work item of the same project and the status it must reach.\
+            \ Refused on an issue and a campaign."
     WorkCriterionApproval:
       description: A person's yes on an APPROVAL criterion.
       type: object
@@ -4075,6 +4123,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MilestoneRef"
+    WorkNeedWrite:
+      type: object
+      description: "This work waits until item reaches status: met once the item is\
+        \ at or past it on the walk; a DROPPED need is met by DROPPED alone."
+      required:
+      - item
+      - status
+      properties:
+        item:
+          type: string
+          description: "The needed work item of the same project — an epic, a ticket,\
+            \ a feature or a task — by qualified id or UUID; never the item itself."
+        status:
+          type: string
+          description: "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,\
+            \ VERIFYING, VERIFIED, DONE or DROPPED."
     WorkOutcome:
       type: string
       enum:
@@ -4120,11 +4184,10 @@ components:
           type: string
           description: "A task's repository, in the task's project. Cannot be cleared."
         dependsOn:
-          type:
-          - string
-          - "null"
-          description: "A feature's or task's sibling dependency, by qualified id\
-            \ or UUID; null clears it."
+          type: string
+          description: "Retired (qits-1903): any value is a 400 — name what this waits\
+            \ for in needs."
+          deprecated: true
         implementedAt:
           description: A feature's or task's implemented marker (ISO-8601 instant);
             null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
@@ -4183,9 +4246,21 @@ components:
           description: "The work's tags, on every archetype, the whole set: RESERVED_FOR_HUMAN\
             \ marks work an agent cannot complete — a person does it and moves its\
             \ status by hand, and no agent is dispatched onto it (say why in the description).\
-            \ Editable at every status, outside every scope freeze; an empty array\
+            \ CONDITION marks a condition other work waits for, not work of its own\
+            \ (say what closes it in the description); no agent is dispatched onto\
+            \ it. Editable at every status, outside every scope freeze; an empty array\
             \ or null clears them. An unknown tag is a 400 naming the legal ones.\
             \ A transition never changes them."
+        needs:
+          type:
+          - array
+          - "null"
+          items:
+            $ref: "#/components/schemas/WorkNeedWrite"
+          description: "What an epic, a ticket, a feature or a task waits for (qits-1903),\
+            \ the whole list: each entry a work item of the same project and the status\
+            \ it must reach. Editable at every status, outside every scope freeze;\
+            \ an empty array or null clears them. A transition never changes them."
     WorkPriorities:
       description: "The siblings a drop renumbered — the moved item and every one\
         \ above it — in their new order, highest first."
@@ -4278,6 +4353,7 @@ components:
       type: string
       enum:
       - RESERVED_FOR_HUMAN
+      - CONDITION
     WorkWorkspaces:
       description: The workspaces a dispatch stood on a work entity's branch.
       type: object

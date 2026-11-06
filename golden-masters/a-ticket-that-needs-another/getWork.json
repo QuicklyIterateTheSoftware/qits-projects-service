@@ -1,0 +1,48 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "archetype": "TICKET",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "number": 2,
+  "qualifiedId": "contract-00000001-2",
+  "title": "Render work ids in the list",
+  "slug": "render-work-ids-in-the-list",
+  "slugScope": "00000000-0000-4000-8000-000000000001",
+  "description": null,
+  "status": "READY_FOR_DEV",
+  "statusBefore": null,
+  "ticketType": "BUG",
+  "impetus": "Seeded work.",
+  "assignee": null,
+  "createdBy": "contract-seeder",
+  "supersededBy": null,
+  "outcome": null,
+  "repositoryId": null,
+  "implementedAt": null,
+  "implementingAt": null,
+  "dependsOn": null,
+  "parent": null,
+  "position": null,
+  "priority": null,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "changedBy": null,
+  "blocked": false,
+  "acceptanceCriteria": [
+    "It does what it says."
+  ],
+  "tags": [],
+  "milestones": [],
+  "unmetMilestones": 0,
+  "needs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-00000001-1",
+      "title": "Shared work-id renderer",
+      "archetype": "TICKET",
+      "status": "VERIFIED",
+      "currentStatus": "REFINED",
+      "met": false
+    }
+  ],
+  "unmetNeeds": 1
+}

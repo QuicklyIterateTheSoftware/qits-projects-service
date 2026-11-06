@@ -33,5 +33,7 @@
   "waitingOn": "release-request 42; ci-run 7",
   "tags": [],
   "milestones": [],
-  "unmetMilestones": 0
+  "unmetMilestones": 0,
+  "needs": [],
+  "unmetNeeds": 0
 }

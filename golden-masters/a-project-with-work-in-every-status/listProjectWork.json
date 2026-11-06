@@ -31,7 +31,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -64,7 +66,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -97,7 +101,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000005",
@@ -130,7 +136,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -163,7 +171,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000007",
@@ -196,7 +206,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -229,7 +241,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000009",
@@ -262,7 +276,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000a",
@@ -295,7 +311,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -328,7 +346,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000c",
@@ -361,7 +381,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
@@ -394,7 +416,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000e",
@@ -427,7 +451,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000f",
@@ -460,7 +486,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000010",
@@ -493,7 +521,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000011",
@@ -526,7 +556,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000012",
@@ -559,7 +591,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000013",
@@ -592,7 +626,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000014",
@@ -625,7 +661,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000015",
@@ -657,7 +695,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000016",
@@ -689,7 +729,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     }
   ]
 }

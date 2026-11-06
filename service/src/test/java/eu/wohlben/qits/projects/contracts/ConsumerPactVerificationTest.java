@@ -282,6 +282,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE);
   }
 
+  @State(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER)
+  Map<String, String> aTicketThatNeedsAnother() {
+    return states.params(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER);
+  }
+
   @State(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE)
   Map<String, String> aTicketWaitingOnAMetMilestone() {
     return states.params(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE);

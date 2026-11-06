@@ -1,0 +1,48 @@
+{
+  "children": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "archetype": "TASK",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "number": 7,
+      "qualifiedId": "contract-00000001-7",
+      "title": "Next step",
+      "slug": "next-step",
+      "slugScope": "00000000-0000-4000-8000-000000000004",
+      "description": "Seeded.",
+      "status": "READY_FOR_DEV",
+      "statusBefore": null,
+      "ticketType": null,
+      "impetus": null,
+      "assignee": null,
+      "createdBy": null,
+      "supersededBy": null,
+      "outcome": null,
+      "repositoryId": "00000000-0000-4000-8000-000000000005",
+      "implementedAt": null,
+      "implementingAt": null,
+      "dependsOn": null,
+      "parent": "00000000-0000-4000-8000-000000000004",
+      "position": 0,
+      "priority": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "changedBy": null,
+      "tags": [],
+      "milestones": [],
+      "unmetMilestones": 0,
+      "needs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "qualifiedId": "contract-00000001-5",
+          "title": "First step",
+          "archetype": "TASK",
+          "status": "IMPLEMENTED",
+          "currentStatus": "IMPLEMENTED",
+          "met": true
+        }
+      ],
+      "unmetNeeds": 0
+    }
+  ]
+}

@@ -28,5 +28,7 @@
   "changedBy": null,
   "tags": [],
   "milestones": [],
-  "unmetMilestones": 0
+  "unmetMilestones": 0,
+  "needs": [],
+  "unmetNeeds": 0
 }
