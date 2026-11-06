@@ -434,6 +434,119 @@ public class DeskDispatchTest {
         thread.get(thread.size() - 1).endsWith(" Dispatched by the delivery desk under rule `start-refined`."));
   }
 
+  // ---- needs and conditions (qits-1903) -------------------------------------------------------
+
+  /** {@code PATCH /work/{id}} with {@code needs} alone, as a person. */
+  private void needs(String id, String neededId, String status) {
+    asAdmin("setup")
+        .contentType("application/merge-patch+json")
+        .body(Map.of("needs", List.of(Map.of("item", neededId, "status", status))))
+        .when()
+        .patch("/projects/api/work/" + id)
+        .then()
+        .statusCode(200);
+  }
+
+  private void tagged(String id, String tag) {
+    asAdmin("setup")
+        .contentType("application/merge-patch+json")
+        .body(Map.of("tags", List.of(tag)))
+        .when()
+        .patch("/projects/api/work/" + id)
+        .then()
+        .statusCode(200);
+  }
+
+  private boolean dispatchable(String id) {
+    return asAdmin("dana")
+        .when()
+        .get("/projects/api/work/" + id + "/dispatch")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("state.dispatchable");
+  }
+
+  /**
+   * At READY_FOR_DEV an unmet need refuses the press with a 409 naming each need, the status it
+   * must reach and the one it holds — nothing is dispatched or moved — and once the need is met the
+   * same press dispatches the implement phase.
+   */
+  @Test
+  public void anUnmetNeedRefusesTheImplementPressAndAMetOneDispatches() {
+    String projectId = createProject("Desk Needs");
+    delivery(projectId, true, 2, false);
+    String waiting = createTicket(projectId, "Waits for the other");
+    String needed = createTicket(projectId, "Comes first");
+    needs(waiting, needed, "REFINED");
+    transition(waiting, "REFINED");
+    transition(waiting, "READY_FOR_DEV");
+    assertFalse(dispatchable(waiting), "an unmet need is not dispatchable");
+
+    DispatchRefused refusal = refused(desk(projectId), waiting, "FLOW", RULE);
+    assertEquals(409, refusal.statusCode());
+    assertEquals(
+        "Ticket "
+            + qualifiedIdOf(projectId, row(waiting))
+            + " needs "
+            + qualifiedIdOf(projectId, row(needed))
+            + " at REFINED (now REPORTED), so its implementation does not start yet. Dispatch it"
+            + " once those are met, or change its needs.",
+        refusal.getMessage());
+    assertEquals("READY_FOR_DEV", row(waiting).status);
+    assertTrue(dispatch.calls().isEmpty());
+
+    transition(needed, "REFINED");
+    assertTrue(dispatchable(waiting), "met, it is dispatchable again");
+    DispatchDoors.Pressed pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
+    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("IMPLEMENTING", row(waiting).status);
+  }
+
+  /** Needs gate implementation only: a REPORTED item with an unmet need is refined all the same. */
+  @Test
+  public void anUnmetNeedDoesNotHoldTheRefinePress() {
+    String projectId = createProject("Desk Needs Refine");
+    delivery(projectId, true, 2, false);
+    String waiting = createTicket(projectId, "Refined first");
+    String needed = createTicket(projectId, "Not even refined");
+    needs(waiting, needed, "VERIFIED");
+    assertTrue(dispatchable(waiting));
+
+    DispatchDoors.Pressed pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
+
+    assertEquals("refine", pressed.dispatch().phase());
+    assertEquals(1, dispatch.calls().size());
+  }
+
+  /** A condition is refused every press, a person's as the desk's, at any status. */
+  @Test
+  public void aConditionIsRefusedEveryPress() {
+    String projectId = createProject("Desk Condition");
+    delivery(projectId, true, 2, false);
+    String condition = createTicket(projectId, "Bootstrap test node");
+    tagged(condition, "CONDITION");
+    assertFalse(dispatchable(condition), "a condition is not dispatchable");
+    String sentence =
+        "Ticket "
+            + qualifiedIdOf(projectId, row(condition))
+            + " is tagged condition: other work waits for it, and it is not work of its own. A"
+            + " person or an agent moves its status; no agent is dispatched onto it.";
+
+    DispatchRefused byDesk = refused(desk(projectId), condition, "FLOW", RULE);
+    assertEquals(409, byDesk.statusCode());
+    assertEquals(sentence, byDesk.getMessage());
+    asAdmin("dana")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + condition + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", equalTo(sentence));
+    assertTrue(dispatch.calls().isEmpty());
+    assertEquals("REPORTED", row(condition).status);
+  }
+
   /** What the far side answers when the item's agent is already running: the turn is dropped. */
   private static WorkspaceAgentDispatch.Dispatch skippedRunning() {
     return new WorkspaceAgentDispatch.Dispatch("agent-1", 1L, null, false, "SKIPPED_RUNNING", null);

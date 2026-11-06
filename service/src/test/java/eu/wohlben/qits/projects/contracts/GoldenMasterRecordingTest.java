@@ -1416,6 +1416,11 @@ class GoldenMasterRecordingTest {
     String member = ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE;
     String projectMilestones = "/projects/api/projects/{projectId}/milestones";
     String milestone = "/projects/api/milestones/{milestoneId}";
+    // What a work item needs, item to item (qits-1903): the three reads that carry needs.
+    String needs = ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER;
+    all.add(read(needs, "getWork", "/projects/api/work/{qualifiedId}"));
+    all.add(read(needs, "listWorkChildren", "/projects/api/work/{featureQualifiedId}/children"));
+    all.add(read(needs, "listProjectWork", "/projects/api/projects/{projectId}/work"));
     for (String state : List.of(unmet, met)) {
       all.add(read(state, "listProjectMilestones", projectMilestones));
       all.add(read(state, "getMilestone", milestone));

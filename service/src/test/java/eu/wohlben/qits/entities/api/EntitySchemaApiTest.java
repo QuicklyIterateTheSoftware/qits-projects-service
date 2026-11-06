@@ -265,7 +265,7 @@ class EntitySchemaApiTest {
 
   /**
    * One project's worth of rows, one of every archetype, plus a sibling for each node so a {@code
-   * dependsOn} has something to name.
+   * needs} has something to name (and the transition schema's {@code dependsOn}, until qits-1908).
    */
   private record Rows(
       EntityFixtures.Project project,
@@ -318,6 +318,17 @@ class EntitySchemaApiTest {
       };
     }
 
+    /** An item a {@code needs} of {@code archetype} may name here (qits-1903): never itself. */
+    String neededBy(Archetype archetype) {
+      return switch (archetype) {
+        case EPIC -> ticket;
+        case TICKET -> epic;
+        case FEATURE -> siblingFeature;
+        case TASK -> siblingTask;
+        default -> throw new IllegalArgumentException("a " + archetype + " has no needs");
+      };
+    }
+
     /** The parent a node of {@code archetype} hangs under here. */
     String parentOf(Archetype archetype) {
       return archetype == Archetype.TASK ? feature : epic;
@@ -342,6 +353,8 @@ class EntitySchemaApiTest {
           return 1;
         case "tags":
           return List.of("RESERVED_FOR_HUMAN");
+        case "needs":
+          return List.of(map("item", neededBy(archetype), "status", "DONE"));
         default:
           break;
       }
@@ -417,7 +430,28 @@ class EntitySchemaApiTest {
               "type" : "string",
               "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
-            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
+          },
+          "needs" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "properties" : {
+                "item" : {
+                  "type" : "string",
+                  "pattern" : "\\\\S",
+                  "description" : "The needed work item of the same project — an epic, a ticket, a feature or a task — by qualified id or UUID; never the item itself."
+                },
+                "status" : {
+                  "type" : "string",
+                  "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+                  "description" : "The status the needed item must reach: met once it is at or past it on the walk; a DROPPED need is met by DROPPED alone."
+                }
+              },
+              "required" : [ "item", "status" ],
+              "additionalProperties" : false
+            },
+            "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
           }
         },
         "required" : [ "title", "ticketType", "impetus", "project" ],
@@ -480,7 +514,28 @@ class EntitySchemaApiTest {
               "type" : "string",
               "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
-            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
+          },
+          "needs" : {
+            "type" : [ "array", "null" ],
+            "items" : {
+              "type" : "object",
+              "properties" : {
+                "item" : {
+                  "type" : "string",
+                  "pattern" : "\\\\S",
+                  "description" : "The needed work item of the same project — an epic, a ticket, a feature or a task — by qualified id or UUID; never the item itself."
+                },
+                "status" : {
+                  "type" : "string",
+                  "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+                  "description" : "The status the needed item must reach: met once it is at or past it on the walk; a DROPPED need is met by DROPPED alone."
+                }
+              },
+              "required" : [ "item", "status" ],
+              "additionalProperties" : false
+            },
+            "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
           }
         },
         "required" : [ ],
@@ -588,10 +643,6 @@ class EntitySchemaApiTest {
             "description" : "The id of the one repository a task works in; it must be in the task's project.",
             "pattern" : "\\\\S"
           },
-          "dependsOn" : {
-            "type" : "string",
-            "description" : "The id of the sibling this one waits for — ordering, never nesting."
-          },
           "parent" : {
             "type" : "string",
             "pattern" : "\\\\S",
@@ -608,7 +659,28 @@ class EntitySchemaApiTest {
               "type" : "string",
               "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
-            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
+          },
+          "needs" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "properties" : {
+                "item" : {
+                  "type" : "string",
+                  "pattern" : "\\\\S",
+                  "description" : "The needed work item of the same project — an epic, a ticket, a feature or a task — by qualified id or UUID; never the item itself."
+                },
+                "status" : {
+                  "type" : "string",
+                  "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+                  "description" : "The status the needed item must reach: met once it is at or past it on the walk; a DROPPED need is met by DROPPED alone."
+                }
+              },
+              "required" : [ "item", "status" ],
+              "additionalProperties" : false
+            },
+            "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
           }
         },
         "required" : [ "title", "repositoryId", "parent" ],
@@ -648,10 +720,6 @@ class EntitySchemaApiTest {
             "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
             "format" : "date-time"
           },
-          "dependsOn" : {
-            "type" : [ "string", "null" ],
-            "description" : "The id of the sibling this one waits for — ordering, never nesting."
-          },
           "inspiredBy" : {
             "type" : [ "string", "null" ],
             "pattern" : "\\\\S",
@@ -667,7 +735,28 @@ class EntitySchemaApiTest {
               "type" : "string",
               "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
-            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
+            "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
+          },
+          "needs" : {
+            "type" : [ "array", "null" ],
+            "items" : {
+              "type" : "object",
+              "properties" : {
+                "item" : {
+                  "type" : "string",
+                  "pattern" : "\\\\S",
+                  "description" : "The needed work item of the same project — an epic, a ticket, a feature or a task — by qualified id or UUID; never the item itself."
+                },
+                "status" : {
+                  "type" : "string",
+                  "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+                  "description" : "The status the needed item must reach: met once it is at or past it on the walk; a DROPPED need is met by DROPPED alone."
+                }
+              },
+              "required" : [ "item", "status" ],
+              "additionalProperties" : false
+            },
+            "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
           }
         },
         "required" : [ ],

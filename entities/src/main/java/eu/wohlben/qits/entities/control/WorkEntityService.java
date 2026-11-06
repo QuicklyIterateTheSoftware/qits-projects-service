@@ -178,6 +178,9 @@ public class WorkEntityService {
    */
   @Inject Instance<TransitionAnnouncer> announcer;
 
+  /** Fires the needs a move met (qits-1903), after the move's commit. */
+  @Inject NeedService needs;
+
   /**
    * The retitle seam (qits-617), optional for the same reason: with no implementation an edit still
    * edits and announces nothing. Told by {@link #update}, after the hold, only when the title moved.
@@ -1376,12 +1379,15 @@ public class WorkEntityService {
     return memberships.structuralMembershipOf(id).orElse(null);
   }
 
-  /** One call per move, never inside the write — see {@link TransitionAnnouncer}. */
+  /**
+   * One call per move, never inside the write — see {@link TransitionAnnouncer}. The needs the move
+   * met (qits-1903) are read and fired after it, whether or not anything announces the move.
+   */
   private void announce(List<TransitionedEntity> batch) {
-    if (announcer.isUnsatisfied()) {
-      return;
+    if (!announcer.isUnsatisfied()) {
+      announcer.get().onEntitiesTransitioned(batch, Instant.now());
     }
-    announcer.get().onEntitiesTransitioned(batch, Instant.now());
+    needs.announceMet(batch);
   }
 
   /**

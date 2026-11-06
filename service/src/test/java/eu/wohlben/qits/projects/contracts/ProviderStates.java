@@ -211,6 +211,16 @@ public class ProviderStates {
       "a ticket waiting on a met milestone";
 
   /**
+   * A READY_FOR_DEV ticket that needs another ticket at VERIFIED, the other only REFINED — so one
+   * unmet need — plus an epic whose task in its second feature needs the task of its first feature
+   * at IMPLEMENTED, which it is: a met need across features (qits-1903). Params: {@code projectId},
+   * {@code qualifiedId} and {@code ticketId} (the waiting ticket), {@code neededQualifiedId} (the
+   * ticket it needs), {@code featureQualifiedId} (the second feature, whose children are the
+   * waiting task) and {@code taskQualifiedId} (the waiting task).
+   */
+  public static final String A_TICKET_THAT_NEEDS_ANOTHER = "a ticket that needs another";
+
+  /**
    * A REPORTED campaign of one REPORTED ticket whose membership waits on an unmet milestone,
    * "bootstrap test node" (one APPROVAL criterion) — set through the membership's milestones, so it
    * has no generated condition — plus a second milestone, "arm64 runner", for the set. Params:
@@ -410,6 +420,9 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
 
   @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
+
+  /** What a work item needs (qits-1903), written as the work doors write it. */
+  @Inject eu.wohlben.qits.entities.control.NeedService needs;
 
   @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
 
@@ -630,6 +643,7 @@ public class ProviderStates {
         () -> aTicketWaitingOnAMilestone(A_TICKET_WAITING_ON_A_MET_MILESTONE, true));
     states.put(
         A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE, this::aCampaignMemberWaitingOnAMilestone);
+    states.put(A_TICKET_THAT_NEEDS_ANOTHER, this::aTicketThatNeedsAnother);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
           if (!name.equals(A_VERIFIED_TICKET)) {
@@ -1971,6 +1985,52 @@ public class ProviderStates {
       params.put("authorization", PERSON_CLI_BEARER);
     }
     return new Setup(Collections.unmodifiableMap(params), List.of(token));
+  }
+
+  /** See {@link #A_TICKET_THAT_NEEDS_ANOTHER}. */
+  private Setup aTicketThatNeedsAnother() {
+    String token = token();
+    Project project = project(token, A_TICKET_THAT_NEEDS_ANOTHER);
+    String needed = ticket(project, "Shared work-id renderer");
+    String waiting = ticket(project, "Render work ids in the list");
+    String repositoryId = repository(project, "contract-service");
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Ordered plan", "Seeded work.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    String first = node(Archetype.FEATURE, epic, EntityWrite.feature("First part", "Seeded.", null));
+    String firstTask =
+        node(Archetype.TASK, first, EntityWrite.task(repositoryId, "First step", "Seeded.", null));
+    String second =
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Second part", "Seeded.", null));
+    String secondTask =
+        node(Archetype.TASK, second, EntityWrite.task(repositoryId, "Next step", "Seeded.", null));
+    needs.replace(
+        waiting,
+        List.of(
+            new eu.wohlben.qits.entities.control.NeedService.Stated(
+                qualified(project, needed), needed, "VERIFIED")));
+    needs.replace(
+        secondTask,
+        List.of(
+            new eu.wohlben.qits.entities.control.NeedService.Stated(
+                qualified(project, firstTask), firstTask, "IMPLEMENTED")));
+    walk(Archetype.TICKET, needed, EntityStatus.REFINED);
+    walk(Archetype.TICKET, waiting, EntityStatus.READY_FOR_DEV);
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
+    implemented(firstTask);
+    return new Setup(
+        params(
+            "featureQualifiedId", qualified(project, second),
+            "neededQualifiedId", qualified(project, needed),
+            "projectId", project.id,
+            "qualifiedId", qualified(project, waiting),
+            "taskQualifiedId", qualified(project, secondTask),
+            "ticketId", waiting),
+        List.of(token));
   }
 
   /** See {@link #A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE}. */

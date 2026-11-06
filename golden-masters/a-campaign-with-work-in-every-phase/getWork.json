@@ -32,5 +32,7 @@
     "contract-00000001-4"
   ],
   "milestones": [],
-  "unmetMilestones": 0
+  "unmetMilestones": 0,
+  "needs": [],
+  "unmetNeeds": 0
 }

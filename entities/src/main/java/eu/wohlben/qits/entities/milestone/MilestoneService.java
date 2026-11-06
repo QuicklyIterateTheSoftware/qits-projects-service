@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.campaign.CampaignReadiness;
 import eu.wohlben.qits.entities.campaign.CriterionKind;
 import eu.wohlben.qits.entities.campaign.CriterionPredicate;
 import eu.wohlben.qits.entities.campaign.EntityQualifier;
+import eu.wohlben.qits.entities.control.NeedRule;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.WritePatience;
@@ -756,20 +757,14 @@ public class MilestoneService {
   }
 
   /**
-   * Whether {@code current} is at or past {@code wanted} along the forward walk. DROPPED is never
-   * past anything; a DROPPED target is at a wanted DROPPED and nowhere else.
+   * Whether {@code current} is at or past {@code wanted} along the forward walk — {@link
+   * NeedRule#reached}, where the rule lives since qits-1903; kept here for its callers until
+   * qits-1908 deletes the milestones.
    */
   public static boolean reached(String current, String wanted) {
-    if (current == null || wanted == null) {
-      return false;
-    }
-    if (EntityStatus.DROPPED.name().equals(current) || EntityStatus.DROPPED.name().equals(wanted)) {
-      return current.equals(wanted);
-    }
-    int at = FORWARD.indexOf(EntityStatus.valueOf(current));
-    int want = FORWARD.indexOf(EntityStatus.valueOf(wanted));
-    return at >= 0 && want >= 0 && at >= want;
+    return NeedRule.reached(current, wanted);
   }
+
 
   /**
    * <b>Decodes a stated condition</b>, every violation listed at once in one 400, before any row is

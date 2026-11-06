@@ -181,12 +181,28 @@ class WorkEpicApiTest {
   }
 
   @Test
-  void aFeatureDependingOnNothingIsA400() {
+  void aFeatureNeedingNothingThatExistsIsA400() {
     EntityFixtures.Project project = EntityFixtures.project("Epics Project");
     String epic = WorkRequests.epic(project.id(), "E");
 
+    // The retired sibling edge (qits-1903) and a need naming nothing are both 400s.
     create(map("archetype", "FEATURE", "parent", epic, "title", "F", "dependsOn", "ghost-feature"))
-        .statusCode(400);
+        .statusCode(400)
+        .body("message", org.hamcrest.Matchers.containsString(EntityWireProperties.DEPENDS_ON_RETIRED));
+    create(
+            map(
+                "archetype",
+                "FEATURE",
+                "parent",
+                epic,
+                "title",
+                "F",
+                "needs",
+                java.util.List.of(map("item", "ghost-feature", "status", "DONE"))))
+        .statusCode(400)
+        .body(
+            org.hamcrest.Matchers.containsString(
+                "needs[0].item ghost-feature is not a work item of this project"));
   }
 
   @Test

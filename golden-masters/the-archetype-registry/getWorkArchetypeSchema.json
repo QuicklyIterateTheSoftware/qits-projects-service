@@ -58,7 +58,41 @@
           "RESERVED_FOR_HUMAN"
         ]
       },
-      "description": "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. Editable at every status, outside every scope freeze; an empty array or null clears them."
+      "description": "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
+    },
+    "needs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "The needed work item of the same project — an epic, a ticket, a feature or a task — by qualified id or UUID; never the item itself."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "REPORTED",
+              "REFINED",
+              "READY_FOR_DEV",
+              "IMPLEMENTING",
+              "IMPLEMENTED",
+              "VERIFYING",
+              "VERIFIED",
+              "DONE",
+              "DROPPED"
+            ],
+            "description": "The status the needed item must reach: met once it is at or past it on the walk; a DROPPED need is met by DROPPED alone."
+          }
+        },
+        "required": [
+          "item",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "description": "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
     }
   },
   "required": [

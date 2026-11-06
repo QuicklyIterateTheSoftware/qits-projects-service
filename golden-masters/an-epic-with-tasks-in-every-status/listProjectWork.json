@@ -31,7 +31,9 @@
       "blocked": false,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -63,7 +65,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -95,7 +99,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -127,7 +133,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000007",
@@ -159,7 +167,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -191,7 +201,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-000000000009",
@@ -223,7 +235,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000a",
@@ -255,7 +269,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -287,7 +303,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000c",
@@ -319,7 +337,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
@@ -351,7 +371,9 @@
       "changedBy": null,
       "tags": [],
       "milestones": [],
-      "unmetMilestones": 0
+      "unmetMilestones": 0,
+      "needs": [],
+      "unmetNeeds": 0
     }
   ]
 }

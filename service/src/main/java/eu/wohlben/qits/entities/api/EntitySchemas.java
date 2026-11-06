@@ -122,6 +122,13 @@ public final class EntitySchemas {
   private static final List<EntityProperty> NOT_ON_TRANSITION =
       List.of(EntityProperty.IMPLEMENTING_AT);
 
+  /**
+   * What the create and the update schemas no longer offer though the registry still permits it
+   * (qits-1903): the sibling edge {@code dependsOn}, which every write refuses with {@link
+   * EntityWireProperties#DEPENDS_ON_RETIRED}. The read field stays until qits-1908 drops it.
+   */
+  private static final List<EntityProperty> RETIRED = List.of(EntityProperty.DEPENDS_ON);
+
   private static final String DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
   private static final Pattern NON_BLANK = Pattern.compile("\\S");
@@ -144,7 +151,7 @@ public final class EntitySchemas {
     Map<String, Object> properties = new LinkedHashMap<>();
     List<String> required = new ArrayList<>();
     for (EntityWireProperties.Slot slot : writable(spec)) {
-      if (NOT_AT_CREATE.contains(slot.property())) {
+      if (NOT_AT_CREATE.contains(slot.property()) || RETIRED.contains(slot.property())) {
         continue;
       }
       properties.put(slot.wire(), slot.schema());
@@ -168,6 +175,10 @@ public final class EntitySchemas {
     }
     // The tags (qits-634): every archetype, and no registry property.
     properties.put(EntityWireProperties.TAGS, EntityWireProperties.tagsSchema());
+    // The needs (qits-1903): the four kinds with a walk, and no registry property.
+    if (EntityWireProperties.hasNeeds(archetype)) {
+      properties.put(EntityWireProperties.NEEDS, EntityWireProperties.needsSchema());
+    }
     return document(
         archetype,
         Door.CREATE,
@@ -185,7 +196,8 @@ public final class EntitySchemas {
     ArchetypeSpec spec = Archetypes.spec(archetype);
     Map<String, Object> properties = new LinkedHashMap<>();
     for (EntityWireProperties.Slot slot : writable(spec)) {
-      if (EntityWireProperties.MOVES.contains(slot.property())) {
+      if (EntityWireProperties.MOVES.contains(slot.property())
+          || RETIRED.contains(slot.property())) {
         continue;
       }
       properties.put(slot.wire(), slot.clearable() ? nullable(slot.schema()) : slot.schema());
@@ -199,6 +211,10 @@ public final class EntitySchemas {
     }
     // The tags (qits-634): every archetype, every status, and no registry property.
     properties.put(EntityWireProperties.TAGS, nullable(EntityWireProperties.tagsSchema()));
+    // The needs (qits-1903): the four kinds with a walk, every status, no registry property.
+    if (EntityWireProperties.hasNeeds(archetype)) {
+      properties.put(EntityWireProperties.NEEDS, nullable(EntityWireProperties.needsSchema()));
+    }
     return document(
         archetype,
         Door.UPDATE,
@@ -301,6 +317,10 @@ public final class EntitySchemas {
     if (name.equals(EntityWireProperties.TAGS)) {
       return tagsRefusal(value);
     }
+    if (name.equals(EntityWireProperties.NEEDS)) {
+      List<String> refused = needsShapeRefusals(value);
+      return refused.isEmpty() ? Optional.empty() : Optional.of(String.join("; ", refused));
+    }
     if (EntityWireProperties.isList(property)) {
       return listRefusal(name, value);
     }
@@ -365,6 +385,12 @@ public final class EntitySchemas {
     }
     if (name.equals(PARENT)) {
       return "parent is not taken: a " + archetype + " is a root — name its project";
+    }
+    if (name.equals(EntityWireProperties.wire(EntityProperty.DEPENDS_ON))) {
+      return EntityWireProperties.DEPENDS_ON_RETIRED;
+    }
+    if (name.equals(EntityWireProperties.NEEDS)) {
+      return needsNotPermitted(archetype);
     }
     for (EntityProperty owned : EntityTransitionService.SERVER_OWNED) {
       if (EntityWireProperties.wire(owned).equals(name)) {
@@ -529,6 +555,73 @@ public final class EntitySchemas {
             + String.join(", ", unknown)
             + " — tags must be one of "
             + legal);
+  }
+
+  /**
+   * The refusal of {@code needs} on a kind that has none (qits-1903) — an ISSUE, a CAMPAIGN — in
+   * {@code ArchetypeViolation.message()}'s words: {@code a CAMPAIGN has no needs}.
+   */
+  static String needsNotPermitted(Archetype archetype) {
+    return "a " + archetype + " has no " + EntityWireProperties.NEEDS;
+  }
+
+  /**
+   * The complaints about the SHAPE of a body's {@code needs} (qits-1903): an array of objects
+   * naming {@code item} and {@code status} and nothing else, or null. What each entry names is
+   * judged by {@code NeedService.refusals}, which only a well-shaped list reaches.
+   */
+  static List<String> needsShapeRefusals(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    String needs = EntityWireProperties.NEEDS;
+    if (!value.isArray()) {
+      return List.of(needs + " must be an array of {item, status}, or null");
+    }
+    List<String> refused = new ArrayList<>();
+    for (int i = 0; i < value.size(); i++) {
+      JsonNode entry = value.get(i);
+      if (!entry.isObject()) {
+        refused.add(needs + "[" + i + "] must be an object {item, status}");
+        continue;
+      }
+      for (Iterator<String> names = entry.fieldNames(); names.hasNext(); ) {
+        String member = names.next();
+        if (!member.equals("item") && !member.equals("status")) {
+          refused.add(
+              needs + "[" + i + "]." + member + " is not a member of a need: item and status");
+        }
+      }
+    }
+    return refused;
+  }
+
+  /** One entry of a well-shaped {@code needs}: the item and the status as the body wrote them. */
+  record NeedEntry(String item, String status) {}
+
+  /**
+   * The entries a body's {@code needs} states, already judged by {@link #needsShapeRefusals}: null
+   * when absent, empty when null or {@code []}. A value that is not text is quoted as its JSON, so
+   * the refusal names what was sent.
+   */
+  static List<NeedEntry> needs(JsonNode value) {
+    if (value == null) {
+      return null;
+    }
+    List<NeedEntry> entries = new ArrayList<>();
+    if (!value.isNull()) {
+      for (JsonNode entry : value) {
+        entries.add(new NeedEntry(word(entry.get("item")), word(entry.get("status"))));
+      }
+    }
+    return entries;
+  }
+
+  private static String word(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    return value.isTextual() ? value.textValue() : value.toString();
   }
 
   /** The tags a body states, already judged by {@link #tagsRefusal}: null when absent. */

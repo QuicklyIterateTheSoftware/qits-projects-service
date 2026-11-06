@@ -134,6 +134,7 @@ public class EventWireReflectionTest {
             EntityCommented.class,
             MilestoneMet.class,
             MilestoneUnmet.class,
+            WorkNeedMet.class,
             IdeaCreated.class,
             IdeaUpdated.class,
             IdeaArchived.class,
@@ -152,7 +153,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR, EntityCommented, MilestoneMet, MilestoneUnmet and the four idea events out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented, MilestoneMet, MilestoneUnmet, WorkNeedMet and the four idea events out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -227,6 +228,10 @@ public class EventWireReflectionTest {
     assertTrue(
         targets.contains(MilestoneUnmet.class),
         "and its opposite, which the landing app refreshes on");
+    assertTrue(
+        targets.contains(WorkNeedMet.class),
+        "WorkNeedAnnouncer publishes this (qits-1903); unregistered, a desk waiting on a need"
+            + " never wakes");
     for (Class<?> idea :
         List.of(IdeaCreated.class, IdeaUpdated.class, IdeaArchived.class, IdeaUnarchived.class)) {
       assertTrue(

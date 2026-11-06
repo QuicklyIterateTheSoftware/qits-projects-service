@@ -5348,6 +5348,98 @@
       ]
     },
     {
+      "name": "a ticket that needs another",
+      "slug": "a-ticket-that-needs-another",
+      "params": {
+        "featureQualifiedId": "contract-00000001-6",
+        "neededQualifiedId": "contract-00000001-1",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-2",
+        "taskQualifiedId": "contract-00000001-7",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-that-needs-another/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.needs[*].id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId",
+              "$.needs[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "status": 200,
+          "file": "a-ticket-that-needs-another/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].needs[*].id",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId",
+              "$.entities[*].needs[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listWorkChildren",
+          "method": "GET",
+          "path": "/projects/api/work/{featureQualifiedId}/children",
+          "status": 200,
+          "file": "a-ticket-that-needs-another/listWorkChildren.json",
+          "frozen": {
+            "ids": [
+              "$.children[*].id",
+              "$.children[*].projectId",
+              "$.children[*].slugScope",
+              "$.children[*].repositoryId",
+              "$.children[*].parent",
+              "$.children[*].needs[*].id"
+            ],
+            "instants": [
+              "$.children[*].createdAt",
+              "$.children[*].updatedAt"
+            ],
+            "strings": [
+              "$.children[*].qualifiedId",
+              "$.children[*].needs[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a ticket waiting on a met milestone",
       "slug": "a-ticket-waiting-on-a-met-milestone",
       "params": {

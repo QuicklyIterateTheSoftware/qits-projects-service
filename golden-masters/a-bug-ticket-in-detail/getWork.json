@@ -41,5 +41,7 @@
       "satisfiedAt": null
     }
   ],
-  "unmetMilestones": 1
+  "unmetMilestones": 1,
+  "needs": [],
+  "unmetNeeds": 0
 }

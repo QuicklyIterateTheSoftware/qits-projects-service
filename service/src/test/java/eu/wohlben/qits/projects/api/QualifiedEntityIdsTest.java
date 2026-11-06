@@ -67,6 +67,8 @@ class QualifiedEntityIdsTest {
         null,
         null,
         null,
+        null,
+        null,
         null);
   }
 

@@ -6,6 +6,8 @@ import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.control.NeedRule;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkTag;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -131,13 +133,22 @@ public final class EntityWireProperties {
   public static final String TAGS = "tags";
 
   /**
+   * The tags the schema's {@code enum} lists: {@code RESERVED_FOR_HUMAN} alone, though the doors
+   * accept every {@link WorkTag} — {@code CONDITION} (qits-1903) included, which the description
+   * names. qits-platform-access-monorepo's pact pins this enum at one entry ({@code qits work
+   * create|update: getWorkArchetypeSchema}), so the list widens once that consumer releases a pact
+   * that open-ends it, and not before.
+   */
+  static final List<String> SCHEMA_TAGS = List.of(WorkTag.RESERVED_FOR_HUMAN.name());
+
+  /**
    * The JSON Schema fragment of the tags: an array of {@link WorkTag} names, without the nullability
    * the update schema adds (a patch's null clears them, as an empty array does).
    */
   public static Map<String, Object> tagsSchema() {
     Map<String, Object> items = new LinkedHashMap<>();
     items.put("type", "string");
-    items.put("enum", WorkTag.words());
+    items.put("enum", SCHEMA_TAGS);
     Map<String, Object> schema = new LinkedHashMap<>();
     schema.put("type", "array");
     schema.put("items", Collections.unmodifiableMap(items));
@@ -145,8 +156,76 @@ public final class EntityWireProperties {
         "description",
         "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an"
             + " agent and a person has to do it (say why in the description); no agent is"
-            + " dispatched onto it. Editable at every status, outside every scope freeze; an empty"
-            + " array or null clears them.");
+            + " dispatched onto it. CONDITION — a condition other work waits for, not work of its"
+            + " own (say what closes it in the description); no agent is dispatched onto it, and a"
+            + " person or an agent moves its status. Editable at every status, outside every scope"
+            + " freeze; an empty array or null clears them.");
+    return Collections.unmodifiableMap(schema);
+  }
+
+  /**
+   * The wire name of what a work item needs (qits-1903): {@code [{"item", "status"}]}, "this waits
+   * until that item reaches that status" — written whole by a create and by a patch on an EPIC, a
+   * TICKET, a FEATURE and a TASK, at every status. <b>Not a registry property, so not a row of this
+   * table</b>, for {@link #TAGS}' reasons: the whole-state transition would clear it on every
+   * reshape that did not restate it. {@code EntitySchemas} adds it to those four kinds' create and
+   * update schemas; {@code dependsOn} left them with it.
+   */
+  public static final String NEEDS = "needs";
+
+  /** The archetypes a {@link #NEEDS} is written on: the work that has a walk of its own. */
+  public static boolean hasNeeds(Archetype archetype) {
+    return archetype == Archetype.EPIC
+        || archetype == Archetype.TICKET
+        || archetype == Archetype.FEATURE
+        || archetype == Archetype.TASK;
+  }
+
+  /**
+   * The 400 every write of {@code dependsOn} answers since qits-1903, on every archetype and every
+   * door: the sibling edge is retired and {@link #NEEDS} says what an item waits for.
+   */
+  public static final String DEPENDS_ON_RETIRED =
+      "dependsOn is retired: name what this waits for in needs, e.g."
+          + " \"needs\":[{\"item\":\"qits-12\",\"status\":\"VERIFIED\"}]";
+
+  /**
+   * The JSON Schema fragment of the needs: an array of {@code {item, status}}, without the
+   * nullability the update schema adds (a patch's null clears them, as an empty array does).
+   */
+  public static Map<String, Object> needsSchema() {
+    Map<String, Object> item = new LinkedHashMap<>();
+    item.put("type", "string");
+    item.put("pattern", "\\S");
+    item.put(
+        "description",
+        "The needed work item of the same project — an epic, a ticket, a feature or a task — by"
+            + " qualified id or UUID; never the item itself.");
+    Map<String, Object> status = new LinkedHashMap<>();
+    status.put("type", "string");
+    status.put("enum", NeedRule.needable());
+    status.put(
+        "description",
+        "The status the needed item must reach: met once it is at or past it on the walk; a"
+            + " DROPPED need is met by DROPPED alone.");
+    Map<String, Object> members = new LinkedHashMap<>();
+    members.put("item", Collections.unmodifiableMap(item));
+    members.put("status", Collections.unmodifiableMap(status));
+    Map<String, Object> entry = new LinkedHashMap<>();
+    entry.put("type", "object");
+    entry.put("properties", Collections.unmodifiableMap(members));
+    entry.put("required", List.of("item", "status"));
+    entry.put("additionalProperties", false);
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "array");
+    schema.put("items", Collections.unmodifiableMap(entry));
+    schema.put(
+        "description",
+        "What this work waits for, the whole list: each entry names a work item of the same"
+            + " project and the status it must reach. The desk and the dispatch hold the item at"
+            + " REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside"
+            + " every scope freeze; an empty array or null clears them. A need may not name the"
+            + " item itself, an issue, an item twice, or close a cycle.");
     return Collections.unmodifiableMap(schema);
   }
 

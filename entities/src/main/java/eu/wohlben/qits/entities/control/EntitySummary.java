@@ -20,7 +20,8 @@ import java.util.List;
  * archetype and always on the wire, null included, and so is {@code priority} (qits-753); {@code
  * tags} (qits-634) is always on the wire too, {@code []} when there are none. {@code milestones}
  * and {@code unmetMilestones} (epic qits-615) are the project listing's: what each entry waits on,
- * read for the whole project in one batch.
+ * read for the whole project in one batch. {@code needs} and {@code unmetNeeds} (qits-1903) are
+ * the same for what each entry needs, item to item, and stay beside the milestones until qits-1908.
  *
  * <p><b>{@code excerpt} is what a list says about the body instead</b> (qits-1821): a short
  * plain-text lead of the description — its first prose paragraph, inline Markdown stripped, cut at
@@ -66,7 +67,9 @@ public record EntitySummary(
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
     List<WorkTag> tags,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<MilestoneRef> milestones,
-    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<NeedRef> needs,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetNeeds) {
 
   public static EntitySummary of(TransitionedEntity e) {
     return new EntitySummary(
@@ -104,6 +107,8 @@ public record EntitySummary(
         e.waitingOn(),
         e.tags(),
         e.milestones(),
-        e.unmetMilestones());
+        e.unmetMilestones(),
+        e.needs(),
+        e.unmetNeeds());
   }
 }

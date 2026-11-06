@@ -854,6 +854,80 @@ public class PhaseAdvanceTest {
   }
 
   /**
+   * <b>Its needs hold it</b> (qits-1903): the pre-approved FLOW refine that would be scheduled and
+   * handed implement ({@link #aPreApprovedFlowRefineThatLandsRefinedIsScheduledAsThePersonAndHandedOn})
+   * lands REFINED with a need unmet, so nothing is scheduled, no turn delivered and the
+   * pre-approval kept. Meeting the need afterwards re-wakes nothing: the desk's backlog does.
+   */
+  @Test
+  public void anItemEnteringRefinedWithAnUnmetNeedDeliversNoTurn() {
+    String projectId = createProject("Advance Needs");
+    String ticketId = createTicket(projectId, "Waits for the other");
+    String needed = createTicket(projectId, "Comes first");
+    asAdmin("dana")
+        .contentType("application/merge-patch+json")
+        .body(Map.of("needs", List.of(Map.of("item", needed, "status", "REFINED"))))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REFINED");
+
+    assertEquals(List.of(), turns.calls(), "held by its need");
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals("mallory", dispatchEntities.fresh(ticketId).preApprovedBy, "not spent");
+
+    transition(needed, "REFINED");
+    assertEquals(List.of(), turns.calls(), "nothing re-wakes it; the desk's backlog picks it up");
+    assertEquals("REFINED", statusOf(ticketId));
+  }
+
+  /**
+   * <b>A condition delivers no turn</b> (qits-1903), like a reserved item: the row handed straight
+   * to the bean at READY_FOR_DEV, and a person's move of a tagged ticket through the door.
+   */
+  @Test
+  public void aConditionDeliversNoTurn() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    WorkEntity condition = new WorkEntity();
+    condition.id = "tkt-condition";
+    condition.projectId = "prj-condition";
+    condition.archetype = Archetype.TICKET;
+    condition.title = "Bootstrap test node";
+    condition.slug = "bootstrap-test-node";
+    condition.ticketType = TicketType.BUG;
+    condition.status = EntityStatus.READY_FOR_DEV.name();
+    condition.dispatchContinues = true;
+    condition.tags.add(eu.wohlben.qits.entities.entity.WorkTag.CONDITION);
+
+    advance.afterTransition(condition, null, "dana");
+
+    assertEquals(List.of(), turns.calls(), "the tag, not the status, delivered nothing");
+    assertEquals(List.of(), workspaces.lookups(), "and nothing was asked about its branch");
+
+    String projectId = createProject("Advance Condition");
+    String ticketId = createTicket(projectId, "A condition");
+    asAdmin("dana")
+        .contentType("application/merge-patch+json")
+        .body(Map.of("tags", List.of("CONDITION")))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+
+    transition(ticketId, "REFINED");
+
+    assertEquals(List.of(), turns.calls());
+    assertEquals("REFINED", statusOf(ticketId));
+  }
+
+  /**
    * <b>A gate refuses the pre-approved scheduling</b> (qits-1075): with no acceptance criteria the
    * move is refused, nothing moves and no turn is delivered, the pre-approval stays for a later
    * press, and the thread says once which gate refused and what a person can do. Handed to the
