@@ -117,6 +117,11 @@ import java.util.List;
  *     answer and an announcement
  * @param unmetMilestones how many of {@link #milestones} are not met — the work item "needs"
  *     something while it is above zero. Present exactly when {@link #milestones} is
+ * @param needs what the entity needs (qits-1903), in the order written — each needed item, the
+ *     status it must reach, the status it holds and whether that is far enough ({@link NeedRef}).
+ *     Filled on the work reads alone ({@link #withNeeds}), {@code []} when it needs nothing; null
+ *     and left off the wire on a write's answer and an announcement
+ * @param unmetNeeds how many of {@link #needs} are not met. Present exactly when {@link #needs} is
  * @param excerpt the listing's plain-text lead of {@link #description} (qits-1821, {@link
  *     DescriptionExcerpt}) — <b>never on the wire here</b>: only {@link EntitySummary} answers it,
  *     so a detail, a write's answer and an announcement keep the shape they had. Filled only by
@@ -163,6 +168,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<MilestoneRef> milestones,
     @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<NeedRef> needs,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetNeeds,
     @JsonIgnore String excerpt) {
 
   /** The tags never null: an entity without any answers {@code []}, in declaration order. */
@@ -212,6 +219,8 @@ public record TransitionedEntity(
         relatedTo,
         milestones,
         unmetMilestones,
+        needs,
+        unmetNeeds,
         excerpt);
   }
 
@@ -220,8 +229,8 @@ public record TransitionedEntity(
    * derived {@link #unmetMilestones}. Filled on the work reads only; every write's answer and every
    * announcement leaves both off the wire.
    */
-  public TransitionedEntity withMilestones(List<Milestone> needs) {
-    List<MilestoneRef> refs = MilestoneRef.of(needs);
+  public TransitionedEntity withMilestones(List<Milestone> attached) {
+    List<MilestoneRef> refs = MilestoneRef.of(attached);
     return new TransitionedEntity(
         id,
         archetype,
@@ -262,6 +271,60 @@ public record TransitionedEntity(
         relatedTo,
         refs,
         MilestoneRef.unmet(refs),
+        needs,
+        unmetNeeds,
+        excerpt);
+  }
+
+  /**
+   * The same entity carrying what it needs (qits-1903): {@link #needs} and their derived {@link
+   * #unmetNeeds}. Filled on the work reads only, beside {@link #withMilestones}; every write's
+   * answer and every announcement leaves both off the wire.
+   */
+  public TransitionedEntity withNeeds(List<NeedRef> stated) {
+    List<NeedRef> refs = stated == null ? List.of() : List.copyOf(stated);
+    return new TransitionedEntity(
+        id,
+        archetype,
+        projectId,
+        number,
+        qualifiedId,
+        title,
+        slug,
+        slugScope,
+        description,
+        status,
+        statusBefore,
+        ticketType,
+        impetus,
+        assignee,
+        createdBy,
+        supersededBy,
+        outcome,
+        repositoryId,
+        implementedAt,
+        implementingAt,
+        dependsOn,
+        parent,
+        position,
+        priority,
+        createdAt,
+        updatedAt,
+        changedBy,
+        blocked,
+        acceptanceCriteria,
+        blockSource,
+        blockReason,
+        blockedBy,
+        waitingOn,
+        inspiredBy,
+        tags,
+        heldBy,
+        relatedTo,
+        milestones,
+        unmetMilestones,
+        refs,
+        NeedRef.unmet(refs),
         excerpt);
   }
 
@@ -310,6 +373,8 @@ public record TransitionedEntity(
         relatedTo,
         milestones,
         unmetMilestones,
+        needs,
+        unmetNeeds,
         excerpt);
   }
 
@@ -379,6 +444,8 @@ public record TransitionedEntity(
         row.relatedEntityId,
         null,
         null,
+        null,
+        null,
         null);
   }
 
@@ -431,6 +498,8 @@ public record TransitionedEntity(
         read.relatedTo(),
         null,
         null,
+        null,
+        null,
         null);
   }
 
@@ -480,6 +549,8 @@ public record TransitionedEntity(
         WorkTag.ordered(row.tags),
         null,
         row.relatedEntityId,
+        null,
+        null,
         null,
         null,
         excerptOf(row));

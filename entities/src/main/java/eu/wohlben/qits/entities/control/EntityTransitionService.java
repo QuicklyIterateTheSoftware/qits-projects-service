@@ -173,6 +173,9 @@ public class EntityTransitionService {
    */
   @Inject Instance<TransitionAnnouncer> announcer;
 
+  /** Fires the needs a stated status met (qits-1903), after the commit. */
+  @Inject NeedService needs;
+
   /**
    * Re-derives the ideas the written rows name (qits-1387): a status stated here, or an archetype
    * that can no longer carry an idea, can move one.
@@ -1152,12 +1155,13 @@ public class EntityTransitionService {
 
   /** One call for the batch, never one per entity — see {@link TransitionAnnouncer}. */
   private void announce(Map<String, TransitionedEntity> written, List<TransitionedEntity> derived) {
-    if (announcer.isUnsatisfied()) {
-      return;
-    }
     List<TransitionedEntity> batch = new ArrayList<>(written.values());
     batch.addAll(derived);
-    announcer.get().onEntitiesTransitioned(List.copyOf(batch), Instant.now());
+    if (!announcer.isUnsatisfied()) {
+      announcer.get().onEntitiesTransitioned(List.copyOf(batch), Instant.now());
+    }
+    // The needs the stated statuses met (qits-1903), after the commit like the announcement.
+    needs.announceMet(batch);
   }
 
   private static Map<String, WorkEntity> index(List<WorkEntity> rows) {

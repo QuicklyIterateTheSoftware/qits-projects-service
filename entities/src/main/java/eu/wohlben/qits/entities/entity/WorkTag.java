@@ -32,7 +32,16 @@ public enum WorkTag {
    * delivers it no phase turn; the person doing the work moves its status by hand. Clearing the tag
    * lets it be dispatched again.
    */
-  RESERVED_FOR_HUMAN;
+  RESERVED_FOR_HUMAN,
+
+  /**
+   * <b>A condition other work waits for, not work of its own</b> (qits-1903) — "bootstrap test
+   * node", say. Other items name it in their {@code needs} like any other item; what closes it goes
+   * in its description. No agent is dispatched onto it (every press is a 409 naming the tag) and a
+   * status move delivers it no phase turn: a person or an agent moves its status, and the items
+   * that need it see the move. Widened into {@code ck_entity_tag_tag} by epics V40.
+   */
+  CONDITION;
 
   /** How a person reads the tag: {@code reserved for human}. */
   public String display() {
