@@ -1,9 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
-import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
-import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
@@ -27,7 +24,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
 
@@ -46,11 +42,9 @@ import org.jboss.logging.Logger;
  *   <li><b>A block</b> (409, a ticket's or an epic's alike since qits-592), before the status, for
  *       the reason the ticket door always gave: the status there is one a phase runs under, so "no
  *       phase left" would be false, and the answer that sends a reader to the thread comes first.
- *       A campaign's block is its start's business ({@code CampaignStarter}) and its executor's.
  *   <li><b>A tag reserving it for a person</b> (409, qits-634): an entity tagged {@link
  *       WorkTag#RESERVED_FOR_HUMAN} is work an agent cannot complete, so no press puts one on it — a
- *       person's, the delivery desk's or a campaign executor's (which records the sentence on the
- *       membership). Right after the block and for the block's reason: the status is one a phase
+ *       person's or the delivery desk's. Right after the block and for the block's reason: the status is one a phase
  *       runs under, and the answer that names the tag is the true one. The tag outlives every move,
  *       so a person does the work and moves its status by hand; clearing the tag lets it dispatch.
  *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
@@ -70,7 +64,7 @@ import org.jboss.logging.Logger;
  *       when the press starts implement, IMPLEMENTED → VERIFYING when it starts verify. The press is the
  *       moment that phase starts, so the platform records it in the same press rather than leaving
  *       it to anybody's hand. FLOW and PHASE alike — it is a fact about this press, not about what
- *       follows it — and so the campaign executor's press too. Made through {@link
+ *       follows it. Made through {@link
  *       WorkEntityService#transitionFrom} directly, never through a route, so {@link PhaseAdvance}
  *       does not see it and no second prompt is pushed; the move is announced (one {@code
  *       EntityTransitioned}) like any other, and its record is that event and the audit row — the
@@ -91,7 +85,7 @@ import org.jboss.logging.Logger;
  *       WorkspaceAgentDispatch.Dispatch#agentIdentity}), or {@code agent <agentId>} when it named
  *       none, written through {@code EntityDispatchService.setAssignee} with an audit row. Every
  *       successful press writes it, whatever the phase and whoever pressed — a person or the
- *       campaign executor — because it records who is on the work, which is the agent. A refused or
+ *       delivery desk — because it records who is on the work, which is the agent. A refused or
  *       failed press writes nothing.
  *   <li><b>The record</b>: the entity's thread gets one comment naming the phase, the mode and the
  *       assignee — for a running agent, whether the phase this press started was handed to it
@@ -106,8 +100,7 @@ import org.jboss.logging.Logger;
  * <p>Everything up to and including the address is decided without a write or a call out, and is
  * available on its own as {@link #precheck}, each refusal thrown as a {@link DispatchRefused}. The
  * press runs it first; from the bit onward every exception means the outcome is unknown — the bit
- * may be written, the far side may have stood a workspace up — which is the line the campaign
- * executor keeps or releases its claim on. The by-id overloads read the row fresh, in a transaction
+ * may be written, the far side may have stood a workspace up. The by-id overloads read the row fresh, in a transaction
  * of their own, so a caller that read it earlier is never handed its own stale read back.
  *
  * <h2>The bit is the whole difference between the two actions</h2>
@@ -124,7 +117,7 @@ import org.jboss.logging.Logger;
  * person must make between refine and implement (REFINED → READY_FOR_DEV, {@code PERSON_APPROVAL})
  * is made on that press's authority rather than waited for. The {@link Mover} is the door's ({@code
  * EntityMovers.of}, qits-891's one definition of a person); the by-id overload taking a name is a
- * machine, which is what the campaign executor passes.
+ * machine.
  *
  * <ul>
  *   <li><b>A person's FLOW press at REPORTED</b> writes their name onto the row ({@code
@@ -147,8 +140,7 @@ import org.jboss.logging.Logger;
  *
  * <p>A {@link Mover#isDesk() desk} mover — a {@code qits:desk} token, bound to its {@code project}
  * claim — is refused, with no side effect and before every refusal above, in this order: an item of
- * another project (403), no rule named (400), the project's loop off (409), a campaign (409: the
- * campaign path is a person's), the project at its {@code max_running} (409 naming the count, the
+ * another project (403), no rule named (400), the project's loop off (409), an issue (409), the project at its {@code max_running} (409 naming the count, the
  * limit and the running items), and a REFINED item while {@code start_refined} is off (the {@link
  * #REFINED_WAITS} 409, saying so). "Running" is an epic or a ticket of the project, not DONE or
  * DROPPED, not explicitly blocked (qits-1569), with an assignee and an ACTIVE agent ({@link
@@ -200,11 +192,6 @@ public class EntityDispatch {
   @Inject EntityCommentService comments;
 
   @Inject EntityWorkspaces workspaces;
-
-  /** A campaign's start, for the read {@link #state} answers a campaign with. */
-  @Inject CampaignStartRecordRepository starts;
-
-  @Inject ReadPatience reads;
 
   @Inject ProjectChangePublisher publisher;
 
@@ -296,22 +283,7 @@ public class EntityDispatch {
   }
 
   /**
-   * The same press by id, refused with a {@link DispatchRefused} unless the phase the row's status
-   * starts is {@code requiredPhase} — the campaign executor's door (qits-417), which starts a member
-   * at its implement phase and nothing else (READY_FOR_DEV or IMPLEMENTING since qits-887; a
-   * REFINED member is refused, it waits for a person to schedule it). The phase is decided on the row as this call
-   * reads it, fresh, so a member that moved on since the caller last looked (another press, an agent's
-   * own claim) is refused here instead of being started at whatever phase it has reached.
-   */
-  public Outcome dispatch(
-      String id, DispatchMode mode, String changedBy, String requiredPhase) {
-    WorkEntity entity = entities.fresh(id); // 404
-    requirePhase(entity, requiredPhase);
-    return dispatch(entity, mode, changedBy);
-  }
-
-  /**
-   * <b>Every refusal {@link #dispatch} would make, with no side effect</b> (qits-417): a campaign, a
+   * <b>Every refusal {@link #dispatch} would make, with no side effect</b> (qits-417): an issue, a
    * feature or a task, a block, a status that starts no phase, no workspaces context, no
    * wrapper. Nothing is written and nothing is called out to; reads only (the project and its
    * wrapper, and an epic's tree for its refs). Each refusal is a {@link DispatchRefused} carrying the
@@ -336,12 +308,6 @@ public class EntityDispatch {
     return (schedulesAtThePress(entity, mode, effective) ? checkedAsScheduled(entity) : checked(entity))
         .phase()
         .word();
-  }
-
-  /** {@link #precheck}, and a {@link DispatchRefused} unless that phase is {@code requiredPhase}. */
-  public String precheck(WorkEntity entity, String requiredPhase) {
-    requirePhase(entity, requiredPhase);
-    return precheck(entity);
   }
 
   /**
@@ -435,9 +401,6 @@ public class EntityDispatch {
   /** What a press would do now — the read behind {@code GET /work/{qualifiedId}/dispatch}. */
   public EntityDispatchStateDto state(String id) {
     WorkEntity entity = entities.get(id);
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      return campaignState(entity);
-    }
     String nextPhase = PhasePrompts.nextPhase(entity).orElse(null);
     boolean lifecycle = entity.status != null && nextPhaseAware(entity);
     // "A FLOW press would run something" (qits-1075): at REFINED a person's Dispatch schedules the
@@ -461,36 +424,6 @@ public class EntityDispatch {
             && unmetNeeds.holding(entity).isEmpty(),
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
         entity.preApprovedBy,
-        block.source(),
-        block.reason(),
-        block.blockedBy(),
-        block.waitingOn());
-  }
-
-  /**
-   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is neither DONE nor DROPPED
-   * (qits-650, {@link EntityStateMachine#campaignRuns}) and not blocked —
-   * while it runs too, since a press re-checks every waiting member — and what it would do is start
-   * it, or, once a start is active, re-check it. A campaign has no phase of its own; its block
-   * (qits-592) is reported as it stands and refuses the press, as {@code CampaignStarter} does. The
-   * mode is FLOW once it has ever been started (a campaign presses dispatch only) and null before.
-   */
-  private EntityDispatchStateDto campaignState(WorkEntity campaign) {
-    Optional<CampaignStartRecord> start =
-        reads.hold(
-            "a campaign's start",
-            () -> QuarkusTransaction.requiringNew().call(() -> starts.startOf(campaign.id)));
-    boolean active = start.map(row -> row.active).orElse(false);
-    EntityBlockState block = EntityBlockState.of(campaign);
-    return new EntityDispatchStateDto(
-        campaign.id,
-        campaign.archetype.name(),
-        campaign.status,
-        active ? "recheck" : "start",
-        block.blocked(),
-        EntityStateMachine.campaignRuns(campaign.status) && !campaign.blocked,
-        start.isPresent() ? DispatchMode.FLOW : null,
-        null,
         block.source(),
         block.reason(),
         block.blockedBy(),
@@ -536,7 +469,7 @@ public class EntityDispatch {
    * scheduling leaves it. A block is refused with the block's own sentence, as anywhere else.
    */
   private Checked checkedAsScheduled(WorkEntity entity) {
-    refuseCampaign(entity);
+    refuseIssue(entity);
     if (entity.blocked) {
       throw blockedRefusal(entity);
     }
@@ -646,7 +579,7 @@ public class EntityDispatch {
    * is gone) is not a refusal and passes through as it is.
    */
   private Checked checked(WorkEntity entity) {
-    refuseCampaign(entity);
+    refuseIssue(entity);
     return located(entity, phaseOrRefuse(entity));
   }
 
@@ -673,46 +606,13 @@ public class EntityDispatch {
   }
 
   /**
-   * A {@link DispatchRefused} unless {@code entity}'s status starts {@code requiredPhase} — decided
-   * after the refusals every press makes, so a blocked or finished row still answers its own
-   * sentence first.
+   * <b>An issue is never dispatched onto a workspace</b> (qits-1819): it has no branch, no workspace
+   * and no phase prompts — nobody works on one. This refusal is what keeps an in-process caller from
+   * ever cutting a workspace for one.
    */
-  private void requirePhase(WorkEntity entity, String requiredPhase) {
-    refuseCampaign(entity);
-    String phase = phaseOrRefuse(entity).word();
-    if (requiredPhase != null && !requiredPhase.equals(phase)) {
-      throw new DispatchRefused(
-          409,
-          capitalised(noun(entity))
-              + " "
-              + entity.id
-              + " is "
-              + entity.status
-              + ", where its "
-              + phase
-              + " phase runs; only its "
-              + requiredPhase
-              + " phase is started here.");
-    }
-  }
-
-  /**
-   * <b>A campaign is never dispatched onto a workspace</b> (qits-411, kept by qits-417 as a belt): it
-   * has no branch, no workspace and no phase prompts — it orders work that is dispatched. Its press
-   * is its start, which {@code DispatchDoors} branches to before this class is reached;
-   * this refusal is what keeps an in-process caller from ever cutting a workspace for one.
-   */
-  private static void refuseCampaign(WorkEntity entity) {
+  private static void refuseIssue(WorkEntity entity) {
     if (entity.archetype == Archetype.ISSUE) {
       throw new DispatchRefused(409, ISSUE_NOT_DISPATCHED + entity.id);
-    }
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      throw new DispatchRefused(
-          409,
-          "Campaign "
-              + entity.id
-              + " is not dispatched onto a workspace — a campaign is started by pressing dispatch"
-              + " on it, and its executor dispatches its members.");
     }
   }
 
@@ -908,14 +808,6 @@ public class EntityDispatch {
     }
     if (entity.archetype == Archetype.ISSUE) {
       throw new DispatchRefused(409, ISSUE_NOT_DISPATCHED + entity.id);
-    }
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      throw new DispatchRefused(
-          409,
-          "Campaign "
-              + entity.id
-              + " is not the delivery desk's to start — a campaign is started by a person pressing"
-              + " dispatch on it, and its executor dispatches its members.");
     }
     // Before the slot count (qits-1903): a condition, or an item its needs hold, would not run
     // whatever the slots, and the sentence that names why is the one the desk acts on.

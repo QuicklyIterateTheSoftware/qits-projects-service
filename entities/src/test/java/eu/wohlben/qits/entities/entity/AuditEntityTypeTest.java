@@ -38,11 +38,12 @@ class AuditEntityTypeTest {
 
   /**
    * The other direction, and the reason the enum is not simply replaced by {@link Archetype}: two
-   * words here name things that are not rows in {@code entity} at all. Stated so that a later reader
-   * finds the asymmetry deliberate rather than left over.
+   * words here name things that are not rows in {@code entity} at all, and a third names rows that
+   * no longer exist — CAMPAIGN, retired by qits-1899 (V41), kept so the history written about them
+   * still reads. Stated so that a later reader finds the asymmetry deliberate rather than left over.
    */
   @Test
-  void theOnlyWordsThatAreNotArchetypesAreTheTwoThatAreNotEntities() {
+  void theOnlyWordsThatAreNotArchetypesAreTheTwoThatAreNotEntitiesAndTheRetiredCampaign() {
     Set<String> archetypes =
         Arrays.stream(Archetype.values()).map(Enum::name).collect(Collectors.toSet());
     Set<String> extra =
@@ -51,7 +52,7 @@ class AuditEntityTypeTest {
             .filter(word -> !archetypes.contains(word))
             .collect(Collectors.toSet());
 
-    assertEquals(Set.of("COMMENT", "DOSSIER_PAGE"), extra);
+    assertEquals(Set.of("COMMENT", "DOSSIER_PAGE", "CAMPAIGN"), extra);
   }
 
   /**
@@ -67,7 +68,7 @@ class AuditEntityTypeTest {
             "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "COMMENT", "DOSSIER_PAGE", "ISSUE"),
         Arrays.stream(AuditEntityType.values()).map(Enum::name).collect(Collectors.toSet()));
     assertTrue(
-        Archetype.values().length == 6,
+        Archetype.values().length == 5,
         "a sixth archetype needs a migration widening ck_entity_archetype and ck_audit_entity_type"
             + " as well as a constant");
   }

@@ -4,13 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.entities.milestone.MilestoneService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
  * When a need is met (qits-1903): {@link NeedRule#reached}, the whole table of the walk and
- * DROPPED, and the delegate {@code MilestoneService.reached} keeps until qits-1908.
+ * DROPPED.
  *
  * <p><b>Plain JUnit and no Quarkus application</b> — the rule is a pure function of two words.
  */
@@ -77,10 +76,4 @@ class NeedRuleTest {
     assertFalse(NeedRule.isNeedable(null));
   }
 
-  @Test
-  void theMilestoneRuleDelegatesUntilTheMilestonesGo() {
-    assertTrue(MilestoneService.reached("VERIFIED", "IMPLEMENTED"));
-    assertFalse(MilestoneService.reached("REFINED", "VERIFIED"));
-    assertTrue(MilestoneService.reached("DROPPED", "DROPPED"));
-  }
 }

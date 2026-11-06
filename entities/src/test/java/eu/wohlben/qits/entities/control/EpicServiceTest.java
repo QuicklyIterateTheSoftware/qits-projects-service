@@ -137,12 +137,12 @@ class EpicServiceTest extends EntitiesTestSupport {
         workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t").entity();
     var feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     var task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "t");
 
     workEntities.delete(Archetype.EPIC, epic.id, "t");
@@ -166,12 +166,12 @@ class EpicServiceTest extends EntitiesTestSupport {
             .entity();
     var feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "carol");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "carol");
     var task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "carol");
 
     workEntities.delete(Archetype.EPIC, epic.id, "carol");

@@ -53,7 +53,6 @@ class ArchetypeRegistryDocumentTest {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       assertEquals(spec.depth(), served.depth(), archetype + " depth");
       assertEquals(spec.mayBeRoot(), served.mayBeRoot(), archetype + " mayBeRoot");
-      assertEquals(spec.gathers(), served.gathers(), archetype + " gathers");
       assertEquals(spec.required(), Set.copyOf(served.required()), archetype + " required");
       assertEquals(
           spec.requiredAtCreate(),
@@ -78,53 +77,6 @@ class ArchetypeRegistryDocumentTest {
           archetype == Archetype.EPIC,
           declared(archetype).permitted().contains(EntityProperty.SUPERSEDED_BY),
           archetype + " supersededBy");
-    }
-  }
-
-  @Test
-  void theCampaignIsServedAsAGatheringRootAboveTheEpic() {
-    ArchetypeRegistryDocument.DeclaredArchetype campaign = declared(Archetype.CAMPAIGN);
-    assertEquals(-1, campaign.depth());
-    assertEquals(true, campaign.mayBeRoot());
-    assertEquals(true, campaign.gathers());
-    assertEquals(List.of(EntityProperty.TITLE), campaign.required());
-    assertEquals(List.of(EntityProperty.TITLE), campaign.requiredAtCreate());
-    // A lifecycle kind, so the transition asks for its status as it does an epic's.
-    assertEquals(
-        List.of(EntityProperty.TITLE, EntityProperty.STATUS), campaign.requiredOnTransition());
-    assertEquals(
-        List.of(
-            EntityProperty.TITLE,
-            EntityProperty.SLUG,
-            EntityProperty.DESCRIPTION,
-            EntityProperty.STATUS),
-        campaign.permitted());
-    assertEquals(
-        List.of(
-            "DONE", "DROPPED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED", "REPORTED", "VERIFIED"),
-        campaign.legalStatuses());
-    // Its lifecycle elides IMPLEMENTING and VERIFYING (qits-749) and keeps READY_FOR_DEV (qits-887):
-    // the campaign walk its derived status is read on (qits-650).
-    assertEquals(
-        List.of(
-            "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
-        campaign.lifecycle());
-    // Its status is derived from its members (qits-650): every open status serves the DROP alone,
-    // DROPPED the REOPEN alone, DONE nothing — and no move names a gate.
-    for (String open : List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
-      assertEquals(
-          List.of(move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
-          campaign.transitions().get(open),
-          open);
-    }
-    assertEquals(
-        List.of(move("REPORTED", EntityStateMachine.TransitionKind.REOPEN)),
-        campaign.transitions().get("DROPPED"));
-    assertEquals(List.of(), campaign.transitions().get("DONE"));
-    assertEquals(false, campaign.transitions().containsKey("IMPLEMENTING"));
-    assertEquals(false, campaign.transitions().containsKey("VERIFYING"));
-    for (Archetype other : List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
-      assertEquals(false, declared(other).gathers(), other + " gathers");
     }
   }
 
@@ -465,12 +417,6 @@ class ArchetypeRegistryDocumentTest {
         gatesOf(both, Archetype.TICKET, "REFINED", "READY_FOR_DEV"));
     assertEquals(List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.TASK, "REFINED", "READY_FOR_DEV"));
     assertEquals(List.of(), gatesOf(both, Archetype.EPIC, "READY_FOR_DEV", "REFINED"));
-    // A campaign is served no scheduling (qits-650): its drop names no gate, and the person gate
-    // does not apply to its REFINED -> READY_FOR_DEV at all.
-    assertEquals(List.of(), gatesOf(both, Archetype.CAMPAIGN, "REFINED", "DROPPED"));
-    assertFalse(
-        new PersonApprovalGate()
-            .appliesTo(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     // With no gate handed in, nothing is named.
     assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
   }
@@ -485,7 +431,7 @@ class ArchetypeRegistryDocumentTest {
         List.of(
             new PersonApprovalGate(),
             new AcceptanceCriteriaGate(),
-            new eu.wohlben.qits.entities.campaign.ChildrenClosedGate());
+            new ChildrenClosedGate());
     int closes = 0;
     for (ArchetypeRegistryDocument.DeclaredArchetype declared :
         ArchetypeRegistryDocument.describe(shipped).archetypes()) {
@@ -501,11 +447,11 @@ class ArchetypeRegistryDocumentTest {
           }
         }
       }
-      if (declared.archetype() != Archetype.CAMPAIGN && declared.archetype() != Archetype.ISSUE) {
+      if (declared.archetype() != Archetype.ISSUE) {
         assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
       }
     }
-    // An epic's and a feature's six; a campaign is served none (qits-650).
+    // An epic's and a feature's six.
     assertEquals(12, closes);
   }
 
@@ -589,12 +535,12 @@ class ArchetypeRegistryDocumentTest {
   }
 
   /**
-   * A campaign's press is its start, and a feature or a task walks the lifecycle with no phase of
-   * its own: no phases.
+   * A feature or a task walks the lifecycle with no phase of its own, and an issue runs none: no
+   * phases.
    */
   @Test
   void aKindADispatchRunsNoPhasesOnServesNone() {
-    for (Archetype archetype : List.of(Archetype.CAMPAIGN, Archetype.FEATURE, Archetype.TASK)) {
+    for (Archetype archetype : List.of(Archetype.ISSUE, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(Map.of(), declared(archetype).phases(), archetype + "");
       assertFalse(EntityStateMachine.runsPhases(archetype), archetype + "");
     }

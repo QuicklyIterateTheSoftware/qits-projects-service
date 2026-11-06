@@ -60,17 +60,17 @@ class AcceptCascadeTest extends EntitiesTestSupport {
             .id;
     String feature =
         workEntities
-            .create(Archetype.FEATURE, epic, EntityWrite.feature("Feature", null, null), "t")
+            .create(Archetype.FEATURE, epic, EntityWrite.feature("Feature", null), "t")
             .entity()
             .id;
     String task =
         workEntities
-            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Task", null, null), "t")
+            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Task", null), "t")
             .entity()
             .id;
     String dropped =
         workEntities
-            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Dropped", null, null), "t")
+            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Dropped", null), "t")
             .entity()
             .id;
     for (String target : List.of("REFINED", "READY_FOR_DEV")) {

@@ -154,10 +154,6 @@ public class ProviderStates {
       "an epic with a verified feature whose tasks are all verified";
   public static final String AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES =
       "an implementing epic with features in mixed statuses";
-  public static final String A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC =
-      "a campaign with a done, a verified and an implementing epic";
-  public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
-      "a campaign with ordered developments";
   public static final String A_VERIFIED_EPIC = "a verified epic";
   public static final String A_VERIFIED_TICKET = "a verified ticket";
   public static final String A_PROJECT_WITH_WORK_IN_EVERY_STATUS =
@@ -167,11 +163,6 @@ public class ProviderStates {
       "a verified epic with every task implemented";
   public static final String A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED =
       "a done epic with every task implemented";
-  public static final String A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE =
-      "a campaign with work in every phase";
-  public static final String AN_EPIC_IN_TWO_CAMPAIGNS = "an epic in two campaigns";
-  public static final String THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS =
-      "the second campaign of an epic in two campaigns";
   public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
   public static final String A_TICKET_WITH_A_COMMENT = "a ticket with a comment";
 
@@ -187,28 +178,11 @@ public class ProviderStates {
    */
   public static final String A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT =
       "a ticket its agent waits on a declared wait";
-  public static final String A_CAMPAIGN_WITH_MEMBERS_TO_EDIT = "a campaign with members to edit";
   public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
   public static final String A_TICKET_WITH_A_DESIGN = "a ticket with a design";
   public static final String A_REPORTED_TICKET = "a reported ticket";
 
-  /**
-   * A REPORTED ticket waiting on one unmet milestone, "bootstrap test node", whose one group holds
-   * one APPROVAL criterion nobody approved yet (epic qits-615) — plus a second milestone of the
-   * project, "arm64 runner", met by nothing and attached to nothing, for the attach. Params: {@code
-   * projectId}, {@code ticketId}, {@code qualifiedId} (the ticket), {@code milestoneId}, {@code
-   * criterionId}, {@code otherMilestoneId} and the {@code authorization} a person's qits CLI token
-   * is presented as, for the approve from a terminal.
-   */
-  public static final String A_TICKET_WAITING_ON_AN_UNMET_MILESTONE =
-      "a ticket waiting on an unmet milestone";
 
-  /**
-   * {@link #A_TICKET_WAITING_ON_AN_UNMET_MILESTONE} after a person approved the criterion: the
-   * milestone is met, and the ticket needs nothing. The same params, less {@code authorization}.
-   */
-  public static final String A_TICKET_WAITING_ON_A_MET_MILESTONE =
-      "a ticket waiting on a met milestone";
 
   /**
    * A READY_FOR_DEV ticket that needs another ticket at VERIFIED, the other only REFINED — so one
@@ -220,15 +194,6 @@ public class ProviderStates {
    */
   public static final String A_TICKET_THAT_NEEDS_ANOTHER = "a ticket that needs another";
 
-  /**
-   * A REPORTED campaign of one REPORTED ticket whose membership waits on an unmet milestone,
-   * "bootstrap test node" (one APPROVAL criterion) — set through the membership's milestones, so it
-   * has no generated condition — plus a second milestone, "arm64 runner", for the set. Params:
-   * {@code projectId}, {@code qualifiedId} (the campaign), {@code membershipId}, {@code ticketId},
-   * {@code ticketQualifiedId}, {@code milestoneId}, {@code otherMilestoneId}.
-   */
-  public static final String A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE =
-      "a campaign member waiting on a milestone";
 
   /**
    * A project whose board has agents on it (qits-1815): a REPORTED ticket with two agents — one
@@ -272,7 +237,6 @@ public class ProviderStates {
   public static final String A_BUG_TICKET_IN_DETAIL = "a bug ticket in detail";
   public static final String AN_IMPROVEMENT_TICKET_IN_DETAIL = "an improvement ticket in detail";
   public static final String A_MAINTENANCE_TICKET_IN_DETAIL = "a maintenance ticket in detail";
-  public static final String A_CAMPAIGN_IN_DETAIL = "a campaign in detail";
 
   /** Each detail state, by the param naming the entity it focuses on. */
   public static final Map<String, String> IN_DETAIL = inDetail();
@@ -416,10 +380,6 @@ public class ProviderStates {
 
   /** The ideas the idea state seeds (qits-1387). */
   @Inject eu.wohlben.qits.entities.control.IdeaService ideas;
-
-  @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
-
-  @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
 
   /** What a work item needs (qits-1903), written as the work doors write it. */
   @Inject eu.wohlben.qits.entities.control.NeedService needs;
@@ -611,12 +571,8 @@ public class ProviderStates {
     states.put(
         AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES,
         this::anImplementingEpicWithFeaturesInMixedStatuses);
-    states.put(
-        A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-        this::aCampaignWithADoneAVerifiedAndAnImplementingEpic);
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
-    states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
     states.put(A_TICKET_OF_EVERY_TYPE, this::aTicketOfEveryType);
     states.put(
         A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
@@ -624,25 +580,13 @@ public class ProviderStates {
     states.put(
         A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
         () -> anEpicWithEveryTaskImplemented(A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED));
-    states.put(A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, this::aCampaignWithWorkInEveryPhase);
-    states.put(AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
-    states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_COMMENT, this::aTicketWithAComment);
     states.put(A_TICKET_ITS_AGENT_IS_WAITING_ON, this::aTicketItsAgentIsWaitingOn);
     states.put(
         A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT, this::aTicketItsAgentWaitsOnADeclaredWait);
-    states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
     states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
     states.put(A_TICKET_WITH_A_DESIGN, this::aTicketWithADesign);
-    states.put(
-        A_TICKET_WAITING_ON_AN_UNMET_MILESTONE,
-        () -> aTicketWaitingOnAMilestone(A_TICKET_WAITING_ON_AN_UNMET_MILESTONE, false));
-    states.put(
-        A_TICKET_WAITING_ON_A_MET_MILESTONE,
-        () -> aTicketWaitingOnAMilestone(A_TICKET_WAITING_ON_A_MET_MILESTONE, true));
-    states.put(
-        A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE, this::aCampaignMemberWaitingOnAMilestone);
     states.put(A_TICKET_THAT_NEEDS_ANOTHER, this::aTicketThatNeedsAnother);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
@@ -1288,9 +1232,9 @@ public class ProviderStates {
     String started =
         create(Archetype.EPIC, project, EntityWrite.epic("Started epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
-        node(Archetype.FEATURE, started, EntityWrite.feature("Started feature", "Seeded.", null));
+        node(Archetype.FEATURE, started, EntityWrite.feature("Started feature", "Seeded."));
     String task =
-        node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded.", null));
+        node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded."));
     work.transition(Archetype.EPIC, started, "REFINED", SEEDER);
     work.transition(Archetype.EPIC, started, "READY_FOR_DEV", Mover.person(SEEDER));
     // The tool's own path: stamps the task and its feature, and moves the epic to IMPLEMENTING.
@@ -1309,12 +1253,12 @@ public class ProviderStates {
     Project project = project(token, AN_EPIC_WITH_FEATURES_AND_TASKS);
     String repositoryId = repository(project, "contract-service");
     String epic = create(Archetype.EPIC, project, EntityWrite.epic("Nested epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String done = node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
+    String done = node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded."));
     String shippedTask =
-        node(Archetype.TASK, done, EntityWrite.task(repositoryId, "First shipped task", "Seeded.", null));
-    node(Archetype.TASK, done, EntityWrite.task(repositoryId, "Second shipped task", "Seeded.", null));
-    String open = node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
-    node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Open task", "Seeded.", null));
+        node(Archetype.TASK, done, EntityWrite.task(repositoryId, "First shipped task", "Seeded."));
+    node(Archetype.TASK, done, EntityWrite.task(repositoryId, "Second shipped task", "Seeded."));
+    String open = node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded."));
+    node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Open task", "Seeded."));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     implemented(shippedTask);
@@ -1340,7 +1284,7 @@ public class ProviderStates {
     String epic =
         create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Feature in flight", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Feature in flight", "Seeded."));
     Map<EntityStatus, String> tasks = new LinkedHashMap<>();
     for (EntityStatus status : EntityStateMachine.states()) {
       String title = status.name().charAt(0) + status.name().substring(1).toLowerCase(Locale.ROOT);
@@ -1349,7 +1293,7 @@ public class ProviderStates {
           node(
               Archetype.TASK,
               feature,
-              EntityWrite.task(repositoryId, title + " task", "Seeded.", null)));
+              EntityWrite.task(repositoryId, title + " task", "Seeded.")));
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TASK, tasks.get(EntityStatus.REPORTED), "REPORTED", SEEDER);
@@ -1400,25 +1344,24 @@ public class ProviderStates {
             epic,
             EntityWrite.feature(
                 featureVerified ? "Verified feature" : "Feature pending verification",
-                "Seeded.",
-                null));
+                "Seeded."));
     List<String> verifiedTasks = new ArrayList<>();
     for (String ordinal : List.of("First", "Second", "Third")) {
       verifiedTasks.add(
           node(
               Archetype.TASK,
               verified,
-              EntityWrite.task(repositoryId, ordinal + " verified task", "Seeded.", null)));
+              EntityWrite.task(repositoryId, ordinal + " verified task", "Seeded.")));
     }
     String open =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded."));
     String refinedTask =
-        node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
+        node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Refined task", "Seeded."));
     String started =
         node(
             Archetype.TASK,
             open,
-            EntityWrite.task(repositoryId, "Implementing task", "Seeded.", null));
+            EntityWrite.task(repositoryId, "Implementing task", "Seeded."));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(started, SEEDER);
@@ -1432,39 +1375,6 @@ public class ProviderStates {
       walk(Archetype.FEATURE, verified, EntityStatus.VERIFIED);
     }
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
-  }
-
-  /**
-   * A campaign ordering three developments: a VERIFIED epic, a REFINED epic with an open feature,
-   * and a REPORTED ticket — so it is REPORTED, its status derived from its members (qits-650); plus
-   * one IMPLEMENTED ticket outside any campaign. Recorded for the entity list and for the campaign
-   * itself (its members, in order).
-   */
-  private Setup aCampaignWithOrderedDevelopments() {
-    String token = token();
-    Project project = project(token, A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
-    String campaign =
-        work.createCampaign(project.id, "Ordered campaign", "Seeded work.", SEEDER).id;
-    String shipped = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String running = create(Archetype.EPIC, project, EntityWrite.epic("Running epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    node(Archetype.FEATURE, running, EntityWrite.feature("Running feature", "Seeded.", null));
-    String waiting = ticket(project, "Waiting ticket");
-    String standalone = ticket(project, "Standalone ticket");
-    walk(Archetype.EPIC, shipped, EntityStatus.VERIFIED);
-    work.transition(Archetype.EPIC, running, "REFINED", SEEDER);
-    walk(Archetype.TICKET, standalone, EntityStatus.IMPLEMENTED);
-    for (String member : List.of(shipped, running, waiting)) {
-      campaigns.addMember(campaign, member, null, false, SEEDER);
-    }
-    return new Setup(
-        params(
-            "campaignId",
-            campaign,
-            "campaignQualifiedId",
-            qualified(project, campaign),
-            "projectId",
-            project.id),
-        List.of(token));
   }
 
   /**
@@ -1491,40 +1401,40 @@ public class ProviderStates {
         create(
             Archetype.EPIC, project, EntityWrite.epic("Epic with mixed features", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String verifiedFeature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Verified feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Verified feature", "Seeded."));
     String verifiedTask =
         node(
             Archetype.TASK,
             verifiedFeature,
-            EntityWrite.task(repositoryId, "Verified task", "Seeded.", null));
+            EntityWrite.task(repositoryId, "Verified task", "Seeded."));
     String implementedFeature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Implemented feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Implemented feature", "Seeded."));
     String taskOfImplemented =
         node(
             Archetype.TASK,
             implementedFeature,
             EntityWrite.task(
-                repositoryId, "Verified task of an implemented feature", "Seeded.", null));
+                repositoryId, "Verified task of an implemented feature", "Seeded."));
     String refinedFeature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Refined feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Refined feature", "Seeded."));
     String refinedTask =
         node(
             Archetype.TASK,
             refinedFeature,
-            EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
+            EntityWrite.task(repositoryId, "Refined task", "Seeded."));
     String implementingFeature =
         node(
-            Archetype.FEATURE, epic, EntityWrite.feature("Implementing feature", "Seeded.", null));
+            Archetype.FEATURE, epic, EntityWrite.feature("Implementing feature", "Seeded."));
     String implementingTask =
         node(
             Archetype.TASK,
             implementingFeature,
-            EntityWrite.task(repositoryId, "Implementing task", "Seeded.", null));
+            EntityWrite.task(repositoryId, "Implementing task", "Seeded."));
     String verifyingTask =
         node(
             Archetype.TASK,
             implementingFeature,
-            EntityWrite.task(repositoryId, "Verifying task", "Seeded.", null));
+            EntityWrite.task(repositoryId, "Verifying task", "Seeded."));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(implementingTask, SEEDER);
@@ -1554,7 +1464,7 @@ public class ProviderStates {
       Project project, String repositoryId, String title, String prefix, EntityStatus target) {
     String epic = create(Archetype.EPIC, project, EntityWrite.epic(title, "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature(prefix + " feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature(prefix + " feature", "Seeded."));
     List<String> tasks = new ArrayList<>();
     for (String ordinal : List.of("First", "Second")) {
       tasks.add(
@@ -1564,8 +1474,7 @@ public class ProviderStates {
               EntityWrite.task(
                   repositoryId,
                   ordinal + " " + prefix.toLowerCase() + " task",
-                  "Seeded.",
-                  null)));
+                  "Seeded.")));
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
@@ -1579,70 +1488,14 @@ public class ProviderStates {
     return epic;
   }
 
-  /**
-   * A REFINED campaign — derived from its REFINED ticket (qits-650) — for the landing app's campaign
-   * views, with five members in this order: a DONE ticket; a DONE epic whose feature and two tasks
-   * are DONE; a VERIFIED epic whose feature and two tasks are VERIFIED; the IMPLEMENTING epic of
-   * {@link #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. The open
-   * two are added first and the finished three put in front of them — the order this state was
-   * recorded with (before qits-1805 a campaign whose only member was DONE stayed DONE; its DONE
-   * now follows its members, and the order is kept). The seeds are the same as an add in order
-   * makes: a finished predecessor seeds nothing. Recorded for the
-   * entity list, for the campaign, and for the detail page's reads of the campaign item (its
-   * {@code qualifiedId} param); the params name every member, so all answers give each member the
-   * same frozen id.
-   */
-  private Setup aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
-    String token = token();
-    Project project = project(token, A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
-    String repositoryId = repository(project, "contract-service");
-    String campaign =
-        work.createCampaign(
-                project.id,
-                "Campaign in flight",
-                "Ships two tickets and three epics, one after the other.",
-                SEEDER)
-            .id;
-    String doneTicket = ticket(project, "Done ticket");
-    String refinedTicket = ticket(project, "Refined ticket");
-    String doneEpic =
-        epicWithEverything(project, repositoryId, "Done epic", "Done", EntityStatus.DONE);
-    String verifiedEpic =
-        epicWithEverything(
-            project, repositoryId, "Verified epic", "Verified", EntityStatus.VERIFIED);
-    String implementingEpic = epicWithFeaturesInMixedStatuses(project, repositoryId);
-    walk(Archetype.TICKET, doneTicket, EntityStatus.DONE);
-    work.transition(Archetype.TICKET, refinedTicket, "REFINED", SEEDER);
-    for (String member : List.of(implementingEpic, refinedTicket)) {
-      campaigns.addMember(campaign, member, null, false, SEEDER);
-    }
-    for (String member : List.of(verifiedEpic, doneEpic, doneTicket)) {
-      campaigns.addMember(campaign, member, 0, false, SEEDER);
-    }
-    return new Setup(
-        params(
-            "campaignId", campaign,
-            "campaignQualifiedId", qualified(project, campaign),
-            "doneEpicId", doneEpic,
-            "doneTicketId", doneTicket,
-            "implementingEpicId", implementingEpic,
-            "projectId", project.id,
-            "qualifiedId",
-                eu.wohlben.qits.projects.api.QualifiedEntityIds.render(
-                    project.slug, work.find(campaign).number),
-            "refinedTicketId", refinedTicket,
-            "verifiedEpicId", verifiedEpic),
-        List.of(token));
-  }
-
   /** A VERIFIED epic with one feature and one task, ready to be moved to DONE. */
   private Setup aVerifiedEpic() {
     String token = token();
     Project project = project(token, A_VERIFIED_EPIC);
     String repositoryId = repository(project, "contract-service");
     String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
-    node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
+    String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded."));
+    node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded."));
     walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
     return new Setup(
         params("epicId", epic, "projectId", project.id, "qualifiedId", qualified(project, epic)),
@@ -1891,102 +1744,6 @@ public class ProviderStates {
         List.of(token));
   }
 
-  /**
-   * A REPORTED campaign of three members — a REFINED ticket, a REFINED epic, and a REPORTED ticket
-   * gated on the epic being VERIFIED and on an approval — plus one ticket outside it, for the
-   * membership writes of the work family (qits-970): the add (the outside ticket, by qualified id),
-   * the move, the remove, the condition (on the epic, by qualified id) and the approve. Each
-   * membership and the approval criterion are params, and the campaign is the {@code qualifiedId}.
-   */
-  private Setup aCampaignWithMembersToEdit() {
-    String token = token();
-    Project project = project(token, A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
-    String campaign =
-        work.createCampaign(project.id, "Close the quarter", "Seeded work.", PERSON).id;
-    String first = ticket(project, "Export the quarter as CSV");
-    String epic =
-        create(
-            Archetype.EPIC,
-            project,
-            EntityWrite.epic("Tax rates per country", "Seeded.")
-                .withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String last = ticket(project, "Credit notes show the wrong sign");
-    String outside = ticket(project, "Remember the last export format");
-    work.transition(Archetype.TICKET, first, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    List<String> memberships = new ArrayList<>();
-    for (String member : List.of(first, epic, last)) {
-      memberships.add(campaigns.addMember(campaign, member, null, false, PERSON).membership().id);
-    }
-    var gated =
-        campaigns.setCondition(
-            campaign,
-            memberships.get(2),
-            List.of(
-                new eu.wohlben.qits.entities.campaign.CampaignService.GroupSpec(
-                    List.of(
-                        new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
-                            null, "ENTITY_STATUS", Map.of("entityId", epic, "status", "VERIFIED")),
-                        new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
-                            null, "APPROVAL", null)))),
-            PERSON);
-    String approval =
-        gated.groups().get(0).criteria().stream()
-            .filter(c -> c.kind.name().equals("APPROVAL"))
-            .findFirst()
-            .orElseThrow()
-            .id;
-    return new Setup(
-        params(
-            "approvalCriterionId", approval,
-            "campaignId", campaign,
-            "epicId", epic,
-            "epicMembershipId", memberships.get(1),
-            "epicQualifiedId", qualified(project, epic),
-            "firstMembershipId", memberships.get(0),
-            "firstTicketId", first,
-            "lastMembershipId", memberships.get(2),
-            "lastTicketId", last,
-            "outsideTicketId", outside,
-            "outsideTicketQualifiedId", qualified(project, outside),
-            "projectId", project.id,
-            "qualifiedId", qualified(project, campaign)),
-        List.of(token));
-  }
-
-  /** See {@link #A_TICKET_WAITING_ON_AN_UNMET_MILESTONE}; {@code approved} meets the milestone. */
-  private Setup aTicketWaitingOnAMilestone(String name, boolean approved) {
-    String token = token();
-    Project project = project(token, name);
-    String ticket = ticket(project, "Bootstrap a fresh node");
-    var created =
-        milestones.create(project.id, "bootstrap test node", approvalCondition(), PERSON);
-    String milestone = created.view().milestone().id;
-    String criterion = created.view().groups().get(0).criteria().get(0).id;
-    String other =
-        milestones.create(project.id, "arm64 runner", approvalCondition(), PERSON)
-            .view()
-            .milestone()
-            .id;
-    milestones.attach(ticket, milestone);
-    Map<String, String> params = new TreeMap<>();
-    params.put("criterionId", criterion);
-    params.put("milestoneId", milestone);
-    params.put("otherMilestoneId", other);
-    params.put("projectId", project.id);
-    params.put("qualifiedId", qualified(project, ticket));
-    params.put("ticketId", ticket);
-    if (approved) {
-      milestones.approve(milestone, criterion, "Node 7 is up.", DEV_USER);
-    } else {
-      // A person approves the criterion: the CLI's approve sends their qits CLI token (qits-615),
-      // as it does for a release request's; a browser's session needs no param.
-      bearers.grantPerson(PERSON_CLI_BEARER, "dev");
-      params.put("authorization", PERSON_CLI_BEARER);
-    }
-    return new Setup(Collections.unmodifiableMap(params), List.of(token));
-  }
-
   /** See {@link #A_TICKET_THAT_NEEDS_ANOTHER}. */
   private Setup aTicketThatNeedsAnother() {
     String token = token();
@@ -2000,13 +1757,13 @@ public class ProviderStates {
             project,
             EntityWrite.epic("Ordered plan", "Seeded work.")
                 .withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String first = node(Archetype.FEATURE, epic, EntityWrite.feature("First part", "Seeded.", null));
+    String first = node(Archetype.FEATURE, epic, EntityWrite.feature("First part", "Seeded."));
     String firstTask =
-        node(Archetype.TASK, first, EntityWrite.task(repositoryId, "First step", "Seeded.", null));
+        node(Archetype.TASK, first, EntityWrite.task(repositoryId, "First step", "Seeded."));
     String second =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Second part", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Second part", "Seeded."));
     String secondTask =
-        node(Archetype.TASK, second, EntityWrite.task(repositoryId, "Next step", "Seeded.", null));
+        node(Archetype.TASK, second, EntityWrite.task(repositoryId, "Next step", "Seeded."));
     needs.replace(
         waiting,
         List.of(
@@ -2031,48 +1788,6 @@ public class ProviderStates {
             "taskQualifiedId", qualified(project, secondTask),
             "ticketId", waiting),
         List.of(token));
-  }
-
-  /** See {@link #A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE}. */
-  private Setup aCampaignMemberWaitingOnAMilestone() {
-    String token = token();
-    Project project = project(token, A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE);
-    String campaign =
-        work.createCampaign(project.id, "Ship the bootstrap", "Seeded work.", PERSON).id;
-    String ticket = ticket(project, "Bootstrap a fresh node");
-    String membership =
-        campaigns.addMember(campaign, ticket, null, false, PERSON).membership().id;
-    String milestone =
-        milestones.create(project.id, "bootstrap test node", approvalCondition(), PERSON)
-            .view()
-            .milestone()
-            .id;
-    String other =
-        milestones.create(project.id, "arm64 runner", approvalCondition(), PERSON)
-            .view()
-            .milestone()
-            .id;
-    milestones.setMembershipMilestones(campaign, membership, List.of(milestone));
-    return new Setup(
-        params(
-            "membershipId", membership,
-            "milestoneId", milestone,
-            "otherMilestoneId", other,
-            "projectId", project.id,
-            "qualifiedId", qualified(project, campaign),
-            "ticketId", ticket,
-            "ticketQualifiedId", qualified(project, ticket)),
-        List.of(token));
-  }
-
-  /** One group of one APPROVAL criterion. */
-  private static List<eu.wohlben.qits.entities.milestone.MilestoneService.GroupSpec>
-      approvalCondition() {
-    return List.of(
-        new eu.wohlben.qits.entities.milestone.MilestoneService.GroupSpec(
-            List.of(
-                new eu.wohlben.qits.entities.milestone.MilestoneService.CriterionSpec(
-                    null, "APPROVAL", Map.of()))));
   }
 
   /**
@@ -2195,11 +1910,11 @@ public class ProviderStates {
             project,
             EntityWrite.epic(done ? "Done epic" : "Verified epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded."));
     List<String> tasks = new ArrayList<>();
     for (String title : List.of("First shipped task", "Second shipped task")) {
       tasks.add(
-          node(Archetype.TASK, feature, EntityWrite.task(repositoryId, title, "Seeded.", null)));
+          node(Archetype.TASK, feature, EntityWrite.task(repositoryId, title, "Seeded.")));
     }
     // Task markers move only while the epic is READY_FOR_DEV or IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
@@ -2210,77 +1925,6 @@ public class ProviderStates {
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
-  /**
-   * A campaign whose members sit in every phase: a REFINED epic and a REFINED ticket (the board), a
-   * REPORTED ticket (the backlog) and a DONE ticket (the archive) — so it is REPORTED, derived from
-   * them (qits-650) — plus one REFINED ticket outside the campaign. Recorded for the entity list and
-   * for the campaign.
-   *
-   * <p>The params name every member, so both answers number the same entity with the same frozen
-   * id: the freezer numbers the params first, and a consumer can join the campaign's members to the
-   * list's entities.
-   */
-  private Setup aCampaignWithWorkInEveryPhase() {
-    String token = token();
-    Project project = project(token, A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
-    String campaign = work.createCampaign(project.id, "Card campaign", "Seeded work.", SEEDER).id;
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    String refined = ticket(project, "Refined ticket");
-    String reported = ticket(project, "Reported ticket");
-    String done = ticket(project, "Done ticket");
-    String outside = ticket(project, "Ticket outside the campaign");
-    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.TICKET, refined, "REFINED", SEEDER);
-    work.transition(Archetype.TICKET, outside, "REFINED", SEEDER);
-    walk(Archetype.TICKET, done, EntityStatus.DONE);
-    for (String member : List.of(epic, refined, reported, done)) {
-      campaigns.addMember(campaign, member, null, false, SEEDER);
-    }
-    return new Setup(
-        params(
-            "campaignId", campaign,
-            "campaignQualifiedId", qualified(project, campaign),
-            "doneTicketId", done,
-            "outsideTicketId", outside,
-            "projectId", project.id,
-            "refinedEpicId", epic,
-            "refinedTicketId", refined,
-            "reportedTicketId", reported),
-        List.of(token));
-  }
-
-  /**
-   * A REFINED epic that is a member of two campaigns — REFINED, both derived from it (qits-650) — and
-   * nothing else. Recorded as two
-   * states with the same seed: {@link #AN_EPIC_IN_TWO_CAMPAIGNS} for the entity list and the first
-   * campaign, {@link #THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS} for the second campaign (a
-   * state records one answer per operation).
-   *
-   * <p>Both states have the same params, which name every entity, so the freezer gives each entity
-   * the same id in all three answers and a consumer can join both campaigns' members to the list.
-   */
-  private Setup anEpicInTwoCampaigns() {
-    String token = token();
-    Project project = project(token, AN_EPIC_IN_TWO_CAMPAIGNS);
-    String first = work.createCampaign(project.id, "First campaign", "Seeded work.", SEEDER).id;
-    String second = work.createCampaign(project.id, "Second campaign", "Seeded work.", SEEDER).id;
-    String epic =
-        create(Archetype.EPIC, project, EntityWrite.epic("Epic in two campaigns", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
-    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    for (String campaign : List.of(first, second)) {
-      campaigns.addMember(campaign, epic, null, false, SEEDER);
-    }
-    return new Setup(
-        params(
-            "epicId", epic,
-            "firstCampaignId", first,
-            "firstCampaignQualifiedId", qualified(project, first),
-            "projectId", project.id,
-            "secondCampaignId", second,
-            "secondCampaignQualifiedId", qualified(project, second)),
-        List.of(token));
-  }
-
   private static Map<String, String> inDetail() {
     Map<String, String> out = new LinkedHashMap<>();
     out.put(AN_EPIC_IN_DETAIL, "epicId");
@@ -2289,7 +1933,6 @@ public class ProviderStates {
     out.put(A_BUG_TICKET_IN_DETAIL, "bugTicketId");
     out.put(AN_IMPROVEMENT_TICKET_IN_DETAIL, "improvementTicketId");
     out.put(A_MAINTENANCE_TICKET_IN_DETAIL, "maintenanceTicketId");
-    out.put(A_CAMPAIGN_IN_DETAIL, "campaignId");
     return Collections.unmodifiableMap(out);
   }
 
@@ -2309,23 +1952,21 @@ public class ProviderStates {
 
   /**
    * <b>One project's work, rich enough for the detail page of every archetype</b> (epic qits-112).
-   * The seven detail states seed this same project and differ only in {@code focus}, the param
+   * The six detail states seed this same project and differ only in {@code focus}, the param
    * whose entity the page shows; its qualified id is the {@code qualifiedId} param. Every state
    * returns every entity's id, so all of them freeze each entity to the same id.
    *
    * <ul>
-   *   <li>A campaign, REFINED, with a Markdown description and five members in order: a VERIFIED
-   *       epic, the IMPLEMENTING epic, the blocked bug, a DONE bug and the REFINED improvement — the
-   *       last waiting on the epic being VERIFIED and on an approval.
    *   <li>An IMPLEMENTING epic (Markdown description with headings, a list and code; three
    *       comments; a dossier of three pages, one inlining a figure). Its first feature is
-   *       IMPLEMENTED with both tasks IMPLEMENTED; its second depends on the first, is IMPLEMENTING,
-   *       and holds one IMPLEMENTING task and one still REFINED. Each holds its own status
-   *       (qits-763), moved by the marker doors. Each task names a repository; the second task of
-   *       each feature depends on the first.
+   *       IMPLEMENTED with both tasks IMPLEMENTED; its second is IMPLEMENTING, and holds one
+   *       IMPLEMENTING task and one still REFINED. Each holds its own status (qits-763), moved by
+   *       the marker doors. Each task names a repository. Nothing here needs anything: the needs
+   *       are {@code a ticket that needs another}'s, and the consumers pin {@code needs: []} here.
    *   <li>A BUG ticket, IMPLEMENTING, assigned and blocked (the reason lands on its thread), with a
    *       dossier of two pages. An IMPROVEMENT ticket, REFINED, with an empty dossier. A
-   *       MAINTENANCE ticket, REPORTED, with one page and no comments.
+   *       MAINTENANCE ticket, REPORTED, with one page and no comments. A second epic, VERIFIED, and
+   *       a DONE bug stand beside them.
    * </ul>
    */
   private Setup workInDetail(String state, String focus) {
@@ -2339,21 +1980,6 @@ public class ProviderStates {
     String frontend =
         projectService.createRepository(project.id, null, "billing-frontend", RepositoryArchetype.FRONTEND, "billing")
             .repository()
-            .id;
-
-    String campaign =
-        work.createCampaign(
-                project.id,
-                "Invoicing for the Q4 close",
-                """
-                Everything accounting needs before the books close on 15 December.
-
-                ## Done when
-                - the accountants can export every invoice of a quarter
-                - tax rates are right for every country we bill
-                - no open bug touches an invoice total
-                """,
-                PERSON)
             .id;
 
     String epic =
@@ -2381,8 +2007,7 @@ public class ProviderStates {
             epic,
             EntityWrite.feature(
                 "CSV export",
-                "Stream a date range of invoices as CSV, one row per line item.",
-                null));
+                "Stream a date range of invoices as CSV, one row per line item."));
     String stream =
         node(
             Archetype.TASK,
@@ -2390,8 +2015,7 @@ public class ProviderStates {
             EntityWrite.task(
                 service,
                 "Stream invoices as CSV",
-                "Add `GET /invoices/export?format=csv`. Stream the rows; do not load the range.",
-                null));
+                "Add `GET /invoices/export?format=csv`. Stream the rows; do not load the range."));
     String button =
         node(
             Archetype.TASK,
@@ -2399,16 +2023,14 @@ public class ProviderStates {
             EntityWrite.task(
                 frontend,
                 "Download button on the invoice list",
-                "A button above the list that downloads the filtered range as CSV.",
-                stream));
+                "A button above the list that downloads the filtered range as CSV."));
     String pdf =
         node(
             Archetype.FEATURE,
             epic,
             EntityWrite.feature(
                 "PDF export",
-                "Render one invoice as an A4 PDF, in the same layout as the printed one.",
-                csv));
+                "Render one invoice as an A4 PDF, in the same layout as the printed one."));
     String render =
         node(
             Archetype.TASK,
@@ -2416,8 +2038,7 @@ public class ProviderStates {
             EntityWrite.task(
                 service,
                 "Render one invoice as PDF",
-                "Render server-side; embed the fonts so the archive stays readable.",
-                null));
+                "Render server-side; embed the fonts so the archive stays readable."));
     String preview =
         node(
             Archetype.TASK,
@@ -2425,8 +2046,7 @@ public class ProviderStates {
             EntityWrite.task(
                 frontend,
                 "Preview the PDF before download",
-                "Show the rendered PDF in a dialog, with a download button.",
-                render));
+                "Show the rendered PDF in a dialog, with a download button."));
     dossierPage(
         epic,
         null,
@@ -2565,22 +2185,6 @@ public class ProviderStates {
     work.transition(Archetype.TICKET, improvement, "REFINED", SEEDER);
     walk(Archetype.TICKET, creditNotes, EntityStatus.DONE);
 
-    List<String> members = new ArrayList<>();
-    for (String member : List.of(taxes, epic, bug, creditNotes, improvement)) {
-      members.add(campaigns.addMember(campaign, member, null, false, PERSON).membership().id);
-    }
-    campaigns.setCondition(
-        campaign,
-        members.get(4),
-        List.of(
-            new eu.wohlben.qits.entities.campaign.CampaignService.GroupSpec(
-                List.of(
-                    new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
-                        null, "ENTITY_STATUS", Map.of("entityId", epic, "status", "VERIFIED")),
-                    new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
-                        null, "APPROVAL", null)))),
-        PERSON);
-
     // Threads, oldest first. The block's reason lands on the bug's thread as the last remark.
     comments.addComment(
         epic, "Accounting needs the export before the Q4 close on 15 December.", PERSON);
@@ -2604,12 +2208,8 @@ public class ProviderStates {
         "Waiting for finance to confirm the expected totals of the affected invoices.",
         AGENT);
     comments.addComment(improvement, "Per user, not per browser, please.", PERSON);
-    comments.addComment(
-        campaign, "Tax rates are verified. The export is next, then the open bug.", PERSON);
 
     Map<String, String> ids = new TreeMap<>();
-    ids.put("campaignId", campaign);
-    ids.put("campaignQualifiedId", qualified(project, campaign));
     ids.put("epicId", epic);
     ids.put("featureId", pdf);
     ids.put("taskId", button);
@@ -2617,8 +2217,8 @@ public class ProviderStates {
     ids.put("improvementTicketId", improvement);
     ids.put("maintenanceTicketId", maintenance);
     ids.put("projectId", project.id);
-    // The rest are named so every answer freezes them alike: a consumer joins a campaign's members,
-    // a task's dependsOn and a page's figure to the other answers by id.
+    // The rest are named so every answer freezes them alike: a consumer joins the listing's entries
+    // and a page's figure to the other answers by id.
     ids.put("taxesEpicId", taxes);
     ids.put("creditNoteTicketId", creditNotes);
     ids.put("csvFeatureId", csv);

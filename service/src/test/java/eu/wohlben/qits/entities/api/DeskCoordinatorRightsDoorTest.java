@@ -160,17 +160,6 @@ class DeskCoordinatorRightsDoorTest {
 
   // --- closing finished work (qits-1757) -------------------------------------------------------
 
-  private static String campaign(String projectId) {
-    return person()
-        .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "Finished already"))
-        .when()
-        .post("/projects/api/work")
-        .then()
-        .statusCode(201)
-        .extract()
-        .path("id");
-  }
-
   private static String qualifiedIdOf(String id) {
     return person().when().get("/projects/api/work/" + id).then().statusCode(200).extract().path("qualifiedId");
   }
@@ -178,8 +167,7 @@ class DeskCoordinatorRightsDoorTest {
   /**
    * The desk closes a REFINED epic whose children are all closed straight to DONE — the CLOSE move,
    * which PERSON_APPROVAL does not judge, so no start-refined stamp is needed — while an open child
-   * is a 409 naming it, and a plain agent of the same project is refused. A campaign is closed by
-   * nobody (qits-650): its DONE is derived from its members.
+   * is a 409 naming it, and a plain agent of the same project is refused.
    */
   @Test
   void theDeskClosesAnEpicWhoseChildrenAreAllClosed() {
@@ -212,11 +200,6 @@ class DeskCoordinatorRightsDoorTest {
         .body("status", equalTo("DONE"))
         .body("statusBefore", equalTo("REFINED"))
         .body("changedBy", equalTo(deskSubject(projectId)));
-
-    String campaign = campaign(projectId);
-    status(desk(projectId), campaign, "DONE")
-        .statusCode(409)
-        .body("message", containsString("derived from its members"));
   }
 
   /** A plain agent of the project: {@code qits:agent} and no desk role. */

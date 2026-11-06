@@ -2,8 +2,6 @@ package eu.wohlben.qits.projects.contracts.consumer;
 
 import eu.wohlben.qits.eventstream.contracts.EventstreamPact;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
-import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
-import eu.wohlben.qits.projects.bus.CampaignMilestoneListener;
 import eu.wohlben.qits.projects.bus.DeploymentActiveListener;
 import eu.wohlben.qits.projects.bus.DeploymentFailedListener;
 import eu.wohlben.qits.projects.bus.ReleasePipelineRunListener;
@@ -40,8 +38,6 @@ class EventstreamPactTest {
       EventstreamPact.forConsumer("qits-projects-service")
           .listeners(
               new BuildStatusListener(),
-              new CampaignCriteriaListener(),
-              new CampaignMilestoneListener(),
               new DeploymentActiveListener(),
               new DeploymentFailedListener(),
               new ReleasePipelineRunListener(),

@@ -61,65 +61,10 @@ class EntityStateMachineTest {
 
   @Test
   void theDeclarationIsExactlyTheSpecifiedGraph() {
-    // qits-650: its status is derived from its members, so every open state serves the DROP alone,
-    // DROPPED the REOPEN alone and DONE nothing.
-    for (EntityStatus open :
-        List.of(
-            EntityStatus.REPORTED,
-            EntityStatus.REFINED,
-            EntityStatus.READY_FOR_DEV,
-            EntityStatus.IMPLEMENTED,
-            EntityStatus.VERIFIED)) {
-      assertEquals(
-          List.of(new Transition(open, EntityStatus.DROPPED, TransitionKind.DROP)),
-          EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, open),
-          open.name());
-    }
-    assertEquals(List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.DONE));
-    assertEquals(
-        List.of(new Transition(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN)),
-        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.DROPPED));
-    // The elided states hold no moves at all.
-    assertEquals(
-        List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTING));
-    assertEquals(
-        List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.VERIFYING));
-    assertTrue(
-        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV)
-            .isPresent());
-    assertTrue(EntityStateMachine.isDerived(Archetype.CAMPAIGN));
-    // The walk the derived status is read on, and a member's status read on it.
-    assertEquals(
-        List.of(
-            EntityStatus.REPORTED,
-            EntityStatus.REFINED,
-            EntityStatus.READY_FOR_DEV,
-            EntityStatus.IMPLEMENTED,
-            EntityStatus.VERIFIED,
-            EntityStatus.DONE),
-        EntityStateMachine.campaignWalk());
-    assertEquals(
-        Optional.of(EntityStatus.READY_FOR_DEV),
-        EntityStateMachine.onCampaignWalk(EntityStatus.IMPLEMENTING));
-    assertEquals(
-        Optional.of(EntityStatus.IMPLEMENTED),
-        EntityStateMachine.onCampaignWalk(EntityStatus.VERIFYING));
-    assertEquals(
-        Optional.of(EntityStatus.VERIFIED), EntityStateMachine.onCampaignWalk(EntityStatus.VERIFIED));
-    assertEquals(Optional.empty(), EntityStateMachine.onCampaignWalk(EntityStatus.DROPPED));
-    // A campaign runs wherever it is neither DONE nor DROPPED.
-    for (EntityStatus state : EntityStateMachine.states(Archetype.CAMPAIGN)) {
-      assertEquals(
-          state != EntityStatus.DONE && state != EntityStatus.DROPPED,
-          EntityStateMachine.campaignRuns(state.name()),
-          state.name());
-    }
-    assertFalse(EntityStateMachine.campaignRuns(null));
-    // Every other archetype reads the machine unchanged: an epic or a feature the whole of it, a
+    // Every archetype with the walk reads the machine unchanged: an epic or a feature the whole of it, a
     // ticket or a task all of it but the CLOSE moves (qits-1757).
     for (Archetype archetype :
         List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
-      assertFalse(EntityStateMachine.isDerived(archetype), archetype.name());
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
       boolean closes = archetype == Archetype.EPIC || archetype == Archetype.FEATURE;
       for (EntityStatus state : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
@@ -157,18 +102,13 @@ class EntityStateMachineTest {
             EntityStateMachine.isClose(archetype, from, EntityStatus.DONE), archetype + " " + from);
       }
     }
-    // A campaign closes from nowhere (qits-650): its DONE is derived from its members.
-    for (EntityStatus from : closing) {
-      assertFalse(
-          EntityStateMachine.isClose(Archetype.CAMPAIGN, from, EntityStatus.DONE), from.name());
-    }
   }
 
   @Test
   void verifiedToDoneStaysTheForwardMoveAndIsNoClose() {
     for (Archetype archetype : Archetype.values()) {
-      if (EntityStateMachine.isDerived(archetype) || archetype == Archetype.ISSUE) {
-        continue; // a campaign reaches DONE by derivation alone (qits-650); an issue never does
+      if (archetype == Archetype.ISSUE) {
+        continue; // an issue never reaches DONE
       }
       List<Transition> intoDone =
           EntityStateMachine.transitionsFrom(archetype, EntityStatus.VERIFIED).stream()
@@ -218,7 +158,7 @@ class EntityStateMachineTest {
     for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
       assertTrue(EntityStateMachine.closes(archetype), archetype.name());
     }
-    assertFalse(EntityStateMachine.closes(Archetype.CAMPAIGN), "a campaign's DONE is derived");
+    assertFalse(EntityStateMachine.closes(Archetype.TICKET), "a ticket has no children");
   }
 
   @Test
@@ -271,7 +211,7 @@ class EntityStateMachineTest {
         EntityStateMachine.flowFrom(Archetype.TICKET, EntityStatus.READY_FOR_DEV),
         EntityStateMachine.flowFrom(Archetype.TICKET, EntityStatus.REFINED));
     assertEquals(
-        List.of(), EntityStateMachine.flowFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
+        List.of(), EntityStateMachine.flowFrom(Archetype.ISSUE, EntityStatus.REFINED));
     assertEquals(
         List.of(
             new EntityStateMachine.PhaseRun(

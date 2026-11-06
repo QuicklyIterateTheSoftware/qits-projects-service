@@ -65,7 +65,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * <ul>
  *   <li><b>A browser rides a person's session.</b> An interaction whose {@code qits-trigger.kind} is
  *       {@code ui} is a click in a browser, which carries a session cookie — what lets a person's
- *       door (scheduling, qits-887; a campaign criterion's approval) answer as it does for them, and
+ *       door (scheduling, qits-887) answer as it does for them, and
  *       exactly what {@link GoldenMasterRecordingTest} sends when it records the answer the consumer
  *       wrote against. Any other trigger (a CLI command, a service's schedule) calls as the plain
  *       consumer caller. A state that returns an {@code authorization} param
@@ -111,7 +111,10 @@ class ConsumerPactVerificationTest {
   /**
    * A pinned pact interaction this provider cannot honour, and why: the consumer must fix it.
    * {@code state}, when not null, narrows the entry to the interaction set up in that provider
-   * state — for a description a consumer reuses across several interactions (qits-150).
+   * state — for a description a consumer reuses across several interactions (qits-150). {@code
+   * description}, when null, names every interaction of that version set up in {@code state}: a
+   * provider state this provider retired (qits-1899), every interaction of which asks for what is
+   * gone.
    */
   record KnownWrong(
       String consumer, String version, String description, String state, String reason) {
@@ -120,15 +123,29 @@ class ConsumerPactVerificationTest {
       this(consumer, version, description, null, reason);
     }
 
+    /** Every interaction of {@code consumer}'s {@code version} set up in the retired {@code state}. */
+    static KnownWrong inRetiredState(String consumer, String version, String state) {
+      return new KnownWrong(consumer, version, null, state, RETIRED + ": the state is gone");
+    }
+
     boolean names(Pact pact, Interaction interaction) {
       return consumer.equals(pact.getConsumer().getName())
-          && description.equals(interaction.getDescription())
+          && (description == null || description.equals(interaction.getDescription()))
           && String.valueOf(pact.getSource()).contains("/" + version + "/")
           && (state == null
               || interaction.getProviderStates().stream()
                   .anyMatch(each -> state.equals(each.getName())));
     }
   }
+
+  /** The reason every qits-1899 entry below gives: campaigns, milestones and dependsOn retired. */
+  static final String RETIRED = "qits-1899: retired";
+
+  /** The landing app's rollback version that still reads campaigns, milestones and dependsOn. */
+  private static final String LANDING_ROLLBACK = "2026.1105.153734";
+
+  /** The CLI's rollback version that still reads campaigns, milestones and dependsOn. */
+  private static final String CLI_ROLLBACK = "2026.1105.225130";
 
   /**
    * The pinned, deployed or rollback consumer pact interactions this provider cannot honour. Empty
@@ -141,6 +158,21 @@ class ConsumerPactVerificationTest {
    * DONE — the platform does, when the wrapper release request carrying its branch is finalized —
    * so the door answers 409 and the golden master records that. Each entry stays until the landing
    * app stops offering the move and re-records, and that release replaces this version everywhere.
+   *
+   * <p><b>qits-1899 (qits-1908) retired campaigns, milestones and {@code dependsOn}.</b> Two
+   * consumer versions still deployed as rollback targets read them: qits-landing-app's {@value
+   * #LANDING_ROLLBACK} (the pact of its rollback 2026.1106.123813) and
+   * qits-platform-access-monorepo's {@value #CLI_ROLLBACK} (the pact of its rollback
+   * 2026.1106.125540). Every interaction they record in a state this provider no longer answers
+   * for is named by its state, and the reads they pin the retired fields in by their description
+   * — the board's and the item page's {@code milestones}, {@code unmetMilestones} and {@code
+   * dependsOn}, the members read, the registry's CAMPAIGN row and the schema's one-entry tag enum.
+   * qits-projects-frontend's 2026.1106.155548 (qits-1907, pinned once qits-maintenance's bump
+   * lands; the frontend has no deployed version of its own) still pins the CAMPAIGN row of {@code an
+   * epic in detail}'s listing (pact-jvm reads an {@code arrayContains} variant by its position, not
+   * its {@code index}, so the skipped index 0 is the CAMPAIGN row) and each kind's {@code
+   * permitted} list at its length with {@code DEPENDS_ON}; it re-records them. Each entry goes once
+   * its version is neither pinned, deployed nor a rollback target.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -155,7 +187,104 @@ class ConsumerPactVerificationTest {
               "2026.1104.81059",
               "move-work-item: setWorkStatus",
               "a verified ticket",
-              "moves a ticket to DONE; since qits-150 the platform alone sets a ticket DONE"));
+              "moves a ticket to DONE; since qits-150 the platform alone sets a ticket DONE"),
+          // qits-landing-app's rollback: the retired states, then the reads pinning retired fields.
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "a ticket waiting on an unmet milestone"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "a ticket waiting on a met milestone"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "a campaign member waiting on a milestone"),
+          KnownWrong.inRetiredState("qits-landing-app", LANDING_ROLLBACK, "a campaign in detail"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "a campaign with a done, a verified and an implementing epic"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "a campaign with ordered developments"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "a campaign with work in every phase"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app", LANDING_ROLLBACK, "an epic in two campaigns"),
+          KnownWrong.inRetiredState(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "the second campaign of an epic in two campaigns"),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "show-project-work-board: listProjectWork",
+              RETIRED + ": pins milestones and unmetMilestones on every entry, and a CAMPAIGN row"),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "show-project-work-board: listWorkMembers",
+              RETIRED + ": reads a campaign's members"),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "show-work-item: getWork",
+              RETIRED + ": pins dependsOn, milestones and unmetMilestones"),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_ROLLBACK,
+              "show-project-work: listProjectWork",
+              "a project with refined work",
+              RETIRED + ": pins milestones and unmetMilestones on every entry"),
+          // qits-platform-access-monorepo's rollback, the same way.
+          KnownWrong.inRetiredState(
+              "qits-platform-access-monorepo", CLI_ROLLBACK, "a ticket waiting on an unmet milestone"),
+          KnownWrong.inRetiredState(
+              "qits-platform-access-monorepo", CLI_ROLLBACK, "a ticket waiting on a met milestone"),
+          KnownWrong.inRetiredState(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "a campaign member waiting on a milestone"),
+          KnownWrong.inRetiredState(
+              "qits-platform-access-monorepo", CLI_ROLLBACK, "a campaign with members to edit"),
+          KnownWrong.inRetiredState(
+              "qits-platform-access-monorepo", CLI_ROLLBACK, "a campaign in detail"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "qits work create: getWorkArchetypeSchema",
+              RETIRED + ": pins the tag enum at one entry; CONDITION joined it"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "qits work update: getWorkArchetypeSchema",
+              RETIRED + ": pins the tag enum at one entry; CONDITION joined it"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "qits work details: getWork",
+              "an epic in detail",
+              RETIRED + ": pins dependsOn"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "qits work transition: getWork",
+              "a ticket with a comment",
+              RETIRED + ": pins dependsOn"),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              CLI_ROLLBACK,
+              "qits work status: listWorkArchetypes",
+              "the archetype registry",
+              RETIRED + ": pins the CAMPAIGN row of the registry"),
+          // qits-projects-frontend's qits-1907 pact, pinned once the bump lands.
+          new KnownWrong(
+              "qits-projects-frontend",
+              "2026.1106.155548",
+              "show-work-desk: listProjectWork",
+              "an epic in detail",
+              RETIRED + ": pins the CAMPAIGN row of the listing (arrayContains by position)"),
+          new KnownWrong(
+              "qits-projects-frontend",
+              "2026.1106.155548",
+              "show-work-item-actions: listWorkArchetypes",
+              "the archetype registry",
+              RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"));
 
   @Inject ProviderStates states;
 
@@ -165,6 +294,15 @@ class ConsumerPactVerificationTest {
   @BeforeEach
   void target(PactVerificationContext context, Pact pact, Interaction interaction) {
     String consumer = pact.getConsumer().getName();
+    // First, so a known-wrong interaction in a state this provider retired (qits-1899) is skipped
+    // for its reason rather than failed for the state.
+    for (KnownWrong wrong : KNOWN_WRONG) {
+      if (wrong.names(pact, interaction)) {
+        Assumptions.abort(
+            consumer + " " + wrong.version() + " '" + interaction.getDescription() + "': "
+                + wrong.reason());
+      }
+    }
     for (ProviderState state : interaction.getProviderStates()) {
       if (!states.names().contains(state.getName())) {
         fail(
@@ -191,13 +329,6 @@ class ConsumerPactVerificationTest {
                 + interaction.getDescription()
                 + "' carries no comments.references."
                 + key);
-      }
-    }
-    for (KnownWrong wrong : KNOWN_WRONG) {
-      if (wrong.names(pact, interaction)) {
-        Assumptions.abort(
-            consumer + " " + wrong.version() + " '" + interaction.getDescription() + "': "
-                + wrong.reason());
       }
     }
     context.setTarget(new HttpTestTarget(base.getHost(), base.getPort()));
@@ -272,29 +403,9 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_TICKET_WITH_A_COMMENT);
   }
 
-  @State(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT)
-  Map<String, String> aCampaignWithMembersToEdit() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
-  }
-
-  @State(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE)
-  Map<String, String> aTicketWaitingOnAnUnmetMilestone() {
-    return states.params(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE);
-  }
-
   @State(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER)
   Map<String, String> aTicketThatNeedsAnother() {
     return states.params(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER);
-  }
-
-  @State(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE)
-  Map<String, String> aTicketWaitingOnAMetMilestone() {
-    return states.params(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE)
-  Map<String, String> aCampaignMemberWaitingOnAMilestone() {
-    return states.params(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE);
   }
 
   @State(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE)
@@ -352,11 +463,6 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS);
   }
 
-  @State(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS)
-  Map<String, String> aCampaignWithOrderedDevelopments() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
-  }
-
   @State(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS)
   Map<String, String> anEpicWithTasksInEveryStatus() {
     return states.params(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS);
@@ -375,11 +481,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES)
   Map<String, String> anImplementingEpicWithFeaturesInMixedStatuses() {
     return states.params(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC)
-  Map<String, String> aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
   }
 
   @State(ProviderStates.A_VERIFIED_EPIC)
@@ -405,21 +506,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED)
   Map<String, String> aDoneEpicWithEveryTaskImplemented() {
     return states.params(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE)
-  Map<String, String> aCampaignWithWorkInEveryPhase() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
-  }
-
-  @State(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS)
-  Map<String, String> anEpicInTwoCampaigns() {
-    return states.params(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS);
-  }
-
-  @State(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS)
-  Map<String, String> theSecondCampaignOfAnEpicInTwoCampaigns() {
-    return states.params(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS);
   }
 
   @State(ProviderStates.A_PROJECT_WITH_NO_WORK)
@@ -650,11 +736,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL)
   Map<String, String> aMaintenanceTicketInDetail() {
     return states.params(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_IN_DETAIL)
-  Map<String, String> aCampaignInDetail() {
-    return states.params(ProviderStates.A_CAMPAIGN_IN_DETAIL);
   }
 
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)

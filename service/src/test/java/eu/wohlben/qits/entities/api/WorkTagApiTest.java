@@ -32,8 +32,7 @@ import org.junit.jupiter.api.Test;
  * clears them at every status and past every scope freeze, the create that takes them, the
  * listing's {@code tag=} filter, the schemas that list the vocabulary, and a transition — a move or
  * a reshape — that leaves them where they were. What a tag <em>does</em> (the dispatch refusal, the
- * phase advance skipping it) is {@code TicketFlowDispatchTest}'s, {@code CampaignExecutorTest}'s and
- * {@code PhaseAdvanceTest}'s.
+ * phase advance skipping it) is {@code TicketFlowDispatchTest}'s and {@code PhaseAdvanceTest}'s.
  */
 @QuarkusTest
 @TestSecurity(user = "dev", roles = "qits:admin")
@@ -280,21 +279,21 @@ class WorkTagApiTest {
 
   @Test
   void theCreateAndUpdateSchemasListTheTags() {
-    for (String archetype : List.of("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN")) {
+    for (String archetype : List.of("EPIC", "TICKET", "FEATURE", "TASK")) {
       given()
           .when()
           .get("/projects/api/work/archetypes/" + archetype + "/schemas/create")
           .then()
           .statusCode(200)
           .body("properties.tags.type", equalTo("array"))
-          .body("properties.tags.items.enum", contains(RESERVED));
+          .body("properties.tags.items.enum", contains(RESERVED, WorkTag.CONDITION.name()));
       given()
           .when()
           .get("/projects/api/work/archetypes/" + archetype + "/schemas/update")
           .then()
           .statusCode(200)
           .body("properties.tags.type", contains("array", "null"))
-          .body("properties.tags.items.enum", contains(RESERVED));
+          .body("properties.tags.items.enum", contains(RESERVED, WorkTag.CONDITION.name()));
       given()
           .when()
           .get("/projects/api/work/archetypes/" + archetype + "/schemas/transition")

@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 
 /**
  * <b>Rows written through the {@code /work} family</b>, for the suites that need an epic, a ticket,
- * a campaign, a feature or a task to stand on and are not about the create itself. Since qits-976
+ * a feature or a task to stand on and are not about the create itself. Since qits-976
  * deleted the per-archetype and {@code /entities} routes, {@code POST /projects/api/work} is the one
  * create door, and this is that door with the archetype filled in.
  *
@@ -63,16 +63,6 @@ public final class WorkRequests {
                 "title", title,
                 "ticketType", ticketType,
                 "impetus", impetus))
-        .path("id");
-  }
-
-  public static String campaign(String projectId, String title) {
-    return campaign(io.restassured.RestAssured::given, projectId, title);
-  }
-
-  public static String campaign(
-      Supplier<RequestSpecification> caller, String projectId, String title) {
-    return create(caller, map("archetype", "CAMPAIGN", "project", projectId, "title", title))
         .path("id");
   }
 

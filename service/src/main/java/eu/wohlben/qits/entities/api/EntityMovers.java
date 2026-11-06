@@ -23,7 +23,7 @@ import jakarta.inject.Inject;
  * AgentAccess.isBoundAgent} reads it.
  *
  * <p>The lifecycle doors build one per move ({@code WorkEntityDoors.move}, behind {@code POST
- * /work/{qualifiedId}/status} for every archetype, a campaign's included); the MCP tools and the platform's in-process callers never do — they are machines
+ * /work/{qualifiedId}/status} for every archetype); the MCP tools and the platform's in-process callers never do — they are machines
  * by construction and say so with {@link Mover#machine}.
  */
 @ApplicationScoped

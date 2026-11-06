@@ -37,8 +37,8 @@ public interface EntityFacts {
   Map<String, EntityFact> byIds(Collection<String> ids);
 
   /**
-   * The stored <b>structural</b> children of each of {@code parentIds}, as facts — a campaign's
-   * members are not its children, and a fact is always a tree edge.
+   * The stored <b>structural</b> children of each of {@code parentIds}, as facts — a fact is
+   * always a tree edge.
    */
   List<EntityFact> childrenOfAll(Collection<String> parentIds);
 

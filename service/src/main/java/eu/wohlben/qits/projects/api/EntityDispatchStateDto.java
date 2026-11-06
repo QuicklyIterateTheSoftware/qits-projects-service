@@ -27,7 +27,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *     transition: {@code FLOW} or {@code PHASE}; {@code null} for a feature or a task
  * @param preApprovedBy read-only: the person whose Dispatch press pre-approved scheduling the entity
  *     once its refine phase lands REFINED (qits-1075), or {@code null} for none (and always for a
- *     campaign, a feature or a task). Nothing a client sends writes it
+ *     feature, a task or an issue). Nothing a client sends writes it
  * @param blockSource {@code EXPLICIT}, {@code AGENT_WAITING} or {@code BOTH}; absent while not
  *     blocked
  * @param blockReason the explicit block's stated reason, else the agent-waiting sentence; absent

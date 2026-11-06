@@ -17,8 +17,8 @@ import org.eclipse.microprofile.config.ConfigProvider;
  * record's {@link #blocked}, computed at read time from the row and the clock, so nothing stores
  * "effective" and nothing has to keep it in step.
  *
- * <p><b>No gate reads this.</b> The dispatch refusal, the phase advance and the campaign executor
- * read {@link WorkEntity#blocked} alone: a derived block is something to show a person, never a
+ * <p><b>No gate reads this.</b> The dispatch refusal and the phase advance read {@link
+ * WorkEntity#blocked} alone: a derived block is something to show a person, never a
  * reason to stop work. That split is the whole point of keeping two sources rather than one flag.
  *
  * <p>The debounce is configuration ({@value #DEBOUNCE_KEY}, default 60s) read off the ambient

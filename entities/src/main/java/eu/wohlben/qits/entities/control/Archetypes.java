@@ -34,28 +34,24 @@ import java.util.stream.Collectors;
  * decisions rather than notation:
  *
  * <ul>
- *   <li><b>It is a declared number, never the enum ordinal.</b> A kind above {@code EPIC} — the
- *       campaign this model is being merged in order to allow — would have to be <em>inserted at
- *       position zero</em> of an enum whose names are in a check constraint and in every row of a
- *       table for an ordinal-derived depth to work. Declaring the number costs one field and makes
- *       that change a one-line addition.
+ *   <li><b>It is a declared number, never the enum ordinal.</b> A kind above {@code EPIC} would
+ *       have to be <em>inserted at position zero</em> of an enum whose names are in a check
+ *       constraint and in every row of a table for an ordinal-derived depth to work. Declaring the
+ *       number costs one field and makes that change a one-line addition.
  *   <li><b>Only the ORDER of the numbers matters; the values themselves mean nothing.</b> The
  *       nesting rule is "strictly less than" and there is no arithmetic on depths anywhere — no
- *       "one level down", no maximum, no count. So a campaign declares <b>-1</b> and the existing
- *       three numbers do not move. That is the choice, made here rather than left to whoever adds
- *       it: <em>renumbering</em> the estate (campaign 0, epic 1, feature 2, task 3) would be a
- *       second answer to a question every reader of this file has already been given, and would
- *       silently invalidate anything that had written 1 down as "feature". Depths are relative, and
- *       going negative upwards is how they stay so.
+ *       "one level down", no maximum, no count. A kind declared above the epic takes <b>-1</b> and
+ *       the existing three numbers do not move: depths are relative, and going negative upwards is
+ *       how they stay so.
  * </ul>
  *
  * <p><b>Nothing derives "may be a root" from depth</b>, and that separation is the same argument
  * one step on. Depth answers "what may contain what"; rootness answers "what may stand alone". They
  * agree today only by accident — the two roots happen to be the two shallowest kinds — and they come
- * apart the moment a campaign is declared above them: an epic stops being at the shallowest depth
- * and must go on being a legal root, while a campaign becomes shallowest and is one too. Deriving
- * rootness from "is the minimum depth" would revoke epic-as-root on the day the campaign lands, with
- * nothing in the diff saying so. So it is a declared flag, and widening it is one word.
+ * apart the moment a kind is declared above them: an epic stops being at the shallowest depth and
+ * must go on being a legal root. Deriving rootness from "is the minimum depth" would revoke
+ * epic-as-root on that day, with nothing in the diff saying so. So it is a declared flag, and
+ * widening it is one word.
  *
  * <h2>Three axes, because "when" is a different question from "whether"</h2>
  *
@@ -92,14 +88,11 @@ import java.util.stream.Collectors;
  *       <em>not</em> require, which is what {@code requiredAtCreate} is for.
  *   <li>A feature's create requires a title.
  *   <li>A task's create requires a title and a repository id.
- *   <li>A campaign's create (qits-411, the fifth kind and the first declared after the fold)
- *       requires a project and a title, exactly as an epic's does, and its status is minted the
- *       same way.
  * </ul>
  *
  * <p><b>The asymmetry on {@code STATUS} is deliberate and is worth naming, because it looks like an
- * oversight.</b> A ticket <em>requires</em> a status and an epic merely permits one — as do a feature,
- * a task and a campaign, for the epic's reason. The reason is what each column means at the moment
+ * oversight.</b> A ticket <em>requires</em> a status and an epic merely permits one — as do a feature
+ * and a task, for the epic's reason. The reason is what each column means at the moment
  * of the check: an epic's status is minted by the writer (every epic, feature and task starts {@code
  * REPORTED}, set by the service and never by a caller), so demanding it of a
  * candidate would fail every create before the writer had run — the same reason {@link
@@ -119,19 +112,12 @@ public final class Archetypes {
 
   /**
    * {@link EntityStatus}' nine words, as stored — <b>the one vocabulary</b> of every kind but the
-   * campaign. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
+   * issue. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
    * an epic and a ticket declared the same set from then on, a feature and a task joined them at
    * qits-763, and the served registry document carries it.
    */
   private static final Set<String> STATUSES =
       names(EntityStateMachine.states(Archetype.EPIC).toArray(EntityStatus[]::new));
-
-  /**
-   * A campaign's words: the one vocabulary less IMPLEMENTING and VERIFYING, which a campaign never enters
-   * (qits-749) — read off the state machine's campaign lifecycle rather than listed.
-   */
-  private static final Set<String> CAMPAIGN_STATUSES =
-      names(EntityStateMachine.states(Archetype.CAMPAIGN).toArray(EntityStatus[]::new));
 
   /** An issue's own words, read off the state machine (qits-1819). */
   private static final Set<String> ISSUE_STATUSES =
@@ -179,8 +165,7 @@ public final class Archetypes {
                 EntityProperty.SUPERSEDED_BY,
                 EntityProperty.ACCEPTANCE_CRITERIA,
                 EntityProperty.ASSIGNEE),
-            STATUSES,
-            false));
+            STATUSES));
 
     // A small-scoped bug or improvement. Root beside the epic, depth 0 — the two are siblings and
     // a ticket under an epic is refused by exactly that equality, which is the nesting rule doing
@@ -215,15 +200,14 @@ public final class Archetypes {
                 EntityProperty.ASSIGNEE,
                 EntityProperty.CREATED_BY,
                 EntityProperty.ACCEPTANCE_CRITERIA),
-            STATUSES,
-            false));
+            STATUSES));
 
     // A piece of a plan. Its status is the one lifecycle (qits-763), the epic's words over the epic's
     // graph, minted REPORTED by the writer and so permitted rather than required — an epic's reason.
     // It records where THIS piece stands, which is what lets one task be verified while its siblings
     // are not; what may be WRITTEN to it is still its epic's phase (EntityLifecycle judges a task by
     // the status of its feature's epic), and no phase runs on it (see isPlanPiece). Beside the status
-    // it keeps the two markers, as the history of when it got there, and a sibling dependency.
+    // it keeps the two markers, as the history of when it got there.
     registry.put(
         Archetype.FEATURE,
         new ArchetypeSpec(
@@ -237,11 +221,9 @@ public final class Archetypes {
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
-                EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT,
                 EntityProperty.IMPLEMENTING_AT),
-            STATUSES,
-            false));
+            STATUSES));
 
     // Work in one concrete repository — the only kind that names one, and the reason it is required
     // rather than permitted: a task without a repository is a feature with extra steps. Its status is
@@ -260,37 +242,9 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
                 EntityProperty.REPOSITORY_ID,
-                EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT,
                 EntityProperty.IMPLEMENTING_AT),
-            STATUSES,
-            false));
-
-    // An ordering of existing work (epic f6c67e74). Root, and ABOVE the epic at -1 so that a
-    // campaign may hold an epic, a ticket or a task by the ordinary depth rule while the three
-    // existing numbers stay exactly where they are — see "Depth" above. Rootness is the declared
-    // flag rather than "is shallowest", which is why the epic and the ticket stay roots today.
-    //
-    // Its status is the one lifecycle and, as an epic's, is minted by the writer at REPORTED
-    // (WorkEntityService.createCampaign): permitted, not required of a candidate. It carries no
-    // supersede operation, no ticket intake and no repository; a DROPPED one may name what answers
-    // for it, as every kind with a lifecycle may (isDropReference). It is the one kind that
-    // GATHERS: its children are campaign memberships, never structural edges.
-    registry.put(
-        Archetype.CAMPAIGN,
-        new ArchetypeSpec(
-            Archetype.CAMPAIGN,
-            -1,
-            true,
-            EnumSet.of(EntityProperty.TITLE),
-            EnumSet.of(EntityProperty.TITLE),
-            EnumSet.of(
-                EntityProperty.TITLE,
-                EntityProperty.SLUG,
-                EntityProperty.DESCRIPTION,
-                EntityProperty.STATUS),
-            CAMPAIGN_STATUSES,
-            true));
+            STATUSES));
 
     // One thing the desk cannot resolve (qits-1819). A root that stands alone: Nesting refuses it
     // as a parent and as a child, so its depth decides nothing. No branch, no phase, no dispatch.
@@ -309,8 +263,7 @@ public final class Archetypes {
                 EntityProperty.STATUS,
                 EntityProperty.CREATED_BY,
                 EntityProperty.RELATED_TO),
-            ISSUE_STATUSES,
-            false));
+            ISSUE_STATUSES));
 
     verify(registry);
     return Map.copyOf(registry);
@@ -381,14 +334,6 @@ public final class Archetypes {
     return spec(archetype).mayBeRoot();
   }
 
-  /**
-   * Whether this kind's children are campaign memberships rather than structural edges — {@link
-   * Archetype#CAMPAIGN} alone. See {@link ArchetypeSpec#gathers}.
-   */
-  public static boolean gathers(Archetype archetype) {
-    return spec(archetype).gathers();
-  }
-
   /** The status words legal on this kind, as stored; empty for a kind with no lifecycle. */
   public static Set<String> legalStatuses(Archetype archetype) {
     return spec(archetype).legalStatuses();
@@ -402,8 +347,8 @@ public final class Archetypes {
    * and a feature and a task answered no. They have the one lifecycle now, so that question stopped
    * telling them apart, and this is the one that does: their status records where the piece stands
    * (one task VERIFIED while a sibling is still IMPLEMENTED), but nothing is <em>run</em> on one. No
-   * agent is dispatched onto it, no refinement room opens on it, no block is raised on it, no
-   * campaign gathers it and no phase turn follows its moves — all of that is its epic's. A door
+   * agent is dispatched onto it, no refinement room opens on it, no block is raised on it and no
+   * phase turn follows its moves — all of that is its epic's. A door
    * that starts or stops work refuses on this, never on {@link #legalStatuses} being empty.
    *
    * <p>Declared rather than read off {@link #mayBeRoot}: they agree today, and the class javadoc's
@@ -433,7 +378,7 @@ public final class Archetypes {
    * <p>Three questions, asked of every candidate and all three always asked: is every required
    * property there, is every property it carries one this kind has a slot for, and — when it carries
    * a status — is that word in this kind's lifecycle. The database spells the same nine words in
-   * {@code ck_entity_status}, but cannot say that a campaign never holds IMPLEMENTING or VERIFYING.
+   * {@code ck_entity_status}, but cannot say that an issue never holds REFINED.
    *
    * <p>{@code demand} is which required set the first question is asked against — see {@link
    * Demand}. It is a parameter and has no default on purpose: a create judged by the update set
@@ -482,7 +427,7 @@ public final class Archetypes {
   /**
    * <b>A DROPPED row's {@code supersededBy}, on any kind with a lifecycle</b> (qits-248). Three drop
    * outcomes name the item that answers for the drop — the duplicate it repeats, the item that
-   * resolved it, the successor that replaced it — and a ticket, a feature, a task or a campaign is
+   * resolved it, the successor that replaced it — and a ticket, a feature or a task is
    * dropped that way as readily as an epic. So the slot every lifecycle kind has is <em>status
    * conditioned</em>: it is legal on a DROPPED row, where the move into DROPPED wrote it, and
    * nowhere else — the reopen clears it. The epic keeps the unconditional slot it always had

@@ -98,7 +98,7 @@ class EntitySchemaApiTest {
         schema("TICKET", "create").get("required"));
     assertEquals(
         json("[\"title\",\"repositoryId\",\"parent\"]"), schema("TASK", "create").get("required"));
-    assertEquals(json("[\"title\",\"project\"]"), schema("CAMPAIGN", "create").get("required"));
+    assertEquals(json("[\"title\",\"description\",\"project\"]"), schema("ISSUE", "create").get("required"));
     assertEquals(json("[\"title\",\"status\"]"), schema("EPIC", "transition").get("required"));
     assertEquals(json("[]"), schema("EPIC", "update").get("required"));
   }
@@ -172,12 +172,8 @@ class EntitySchemaApiTest {
                         Map<String, Object> less = new LinkedHashMap<>(entry);
                         less.remove(name);
                         Response refused = transition(id, less);
-                        // A campaign's status is guarded before the registry is asked: the door
-                        // refuses to move one at all, and an absent status reads as a move to none.
-                        int expected =
-                            archetype == Archetype.CAMPAIGN && name.equals("status") ? 409 : 400;
                         assertEquals(
-                            expected,
+                            400,
                             refused.statusCode(),
                             archetype + " transition without " + name + ": " + refused.asString());
                       }
@@ -265,7 +261,7 @@ class EntitySchemaApiTest {
 
   /**
    * One project's worth of rows, one of every archetype, plus a sibling for each node so a {@code
-   * needs} has something to name (and the transition schema's {@code dependsOn}, until qits-1908).
+   * needs} has something to name.
    */
   private record Rows(
       EntityFixtures.Project project,
@@ -276,7 +272,6 @@ class EntitySchemaApiTest {
       String task,
       String siblingTask,
       String ticket,
-      String campaign,
       String idea) {
 
     static Rows seed(String name) {
@@ -296,7 +291,6 @@ class EntitySchemaApiTest {
           task,
           siblingTask,
           EntityFixtures.ticket(project.id()),
-          EntityFixtures.campaign(project.id()),
           given()
               .contentType(ContentType.JSON)
               .body(map("project", project.id(), "title", "An idea"))
@@ -311,7 +305,6 @@ class EntitySchemaApiTest {
       return switch (archetype) {
         case EPIC -> epic;
         case TICKET -> ticket;
-        case CAMPAIGN -> campaign;
         case FEATURE -> feature;
         case TASK -> task;
         case ISSUE -> throw new IllegalArgumentException("an issue has no row here");
@@ -343,8 +336,6 @@ class EntitySchemaApiTest {
           return parentOf(archetype);
         case "repositoryId":
           return repository;
-        case "dependsOn":
-          return archetype == Archetype.TASK ? siblingTask : siblingFeature;
         case "membership":
           return map("parent", parentOf(archetype));
         case "inspiredBy":
@@ -428,7 +419,7 @@ class EntitySchemaApiTest {
             "type" : "array",
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN" ]
+              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -506,13 +497,13 @@ class EntitySchemaApiTest {
           },
           "priority" : {
             "type" : [ "integer", "null" ],
-            "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
+            "description" : "The ranking among siblings (a project's roots, issues excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
           },
           "tags" : {
             "type" : [ "array", "null" ],
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN" ]
+              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -657,7 +648,7 @@ class EntitySchemaApiTest {
             "type" : "array",
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN" ]
+              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -727,13 +718,13 @@ class EntitySchemaApiTest {
           },
           "priority" : {
             "type" : [ "integer", "null" ],
-            "description" : "The ranking among siblings (a project's roots, campaigns excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
+            "description" : "The ranking among siblings (a project's roots, issues excluded, or the children of one parent): higher sorts first, null after every number, then by number. Editable at every status but DONE and DROPPED, which answer 409; null clears it."
           },
           "tags" : {
             "type" : [ "array", "null" ],
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN" ]
+              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -796,10 +787,6 @@ class EntitySchemaApiTest {
             "type" : "string",
             "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.",
             "format" : "date-time"
-          },
-          "dependsOn" : {
-            "type" : "string",
-            "description" : "The id of the sibling this one waits for — ordering, never nesting."
           },
           "supersededBy" : {
             "type" : "string",

@@ -1,6 +1,5 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.api.WorkProgressController.WorkProgressAnswer;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -25,7 +24,6 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <pre>
  *   POST /work/{qualifiedId}/dispatch   {"mode":"FLOW"|"PHASE", "rule"?}  → {"dispatch": EntityDispatchDto}
- *                                        on a campaign            → {"progress": CampaignProgressDto}
  *   GET  /work/{qualifiedId}/dispatch                             → {"state": EntityDispatchStateDto}
  * </pre>
  *
@@ -80,20 +78,17 @@ public class WorkDispatchController {
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk"})
   @Operation(
       operationId = "dispatchWork",
-      summary = "Put an agent on an epic or a ticket, or start a campaign",
+      summary = "Put an agent on an epic or a ticket",
       description =
           "mode PHASE runs the one phase the entity's status starts; mode FLOW runs that phase and"
-              + " the ones after it until a status starts none. On a campaign the press is its"
-              + " start. The path names the entity by qualified id (<projectSlug>-<n>) or UUID.")
+              + " the ones after it until a status starts none. The path names the entity by qualified id (<projectSlug>-<n>) or UUID.")
   @APIResponse(
       responseCode = "200",
-      description =
-          "The dispatch made, or — for a campaign — its progress as the start press left it",
+      description = "The dispatch made",
       content =
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
-              schema =
-                  @Schema(oneOf = {WorkDispatchAnswer.class, WorkProgressAnswer.class})))
+              schema = @Schema(implementation = WorkDispatchAnswer.class)))
   @APIResponse(
       responseCode = "400",
       description = "A missing or unknown mode, or a delivery desk naming no rule")
@@ -105,18 +100,14 @@ public class WorkDispatchController {
       responseCode = "409",
       description =
           "A status that starts no phase, a feature or a task, a blocked entity, a project with no"
-              + " wrapper; for the delivery desk also its loop off, a campaign, or its cap reached")
+              + " wrapper; for the delivery desk also its loop off or its cap reached")
   public Response dispatch(
       @PathParam("qualifiedId") String qualifiedId, WorkDispatchRequest request) {
     String mode = request == null ? null : request.mode();
     String rule = request == null ? null : request.rule();
     DispatchMode.parse(mode); // the 400 first, before the entity is looked up
-    DispatchDoors.Pressed pressed =
-        doors.press(identity, ids.resolve(qualifiedId).id, mode, rule);
-    if (pressed.progress() != null) {
-      return Response.ok(new WorkProgressAnswer(pressed.progress())).build();
-    }
-    return Response.ok(new WorkDispatchAnswer(pressed.dispatch())).build();
+    EntityDispatchDto pressed = doors.press(identity, ids.resolve(qualifiedId).id, mode, rule);
+    return Response.ok(new WorkDispatchAnswer(pressed)).build();
   }
 
   @GET

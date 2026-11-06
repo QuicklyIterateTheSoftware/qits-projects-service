@@ -68,7 +68,7 @@ public final class StoryTarget {
   }
 
   /**
-   * The one create door for a root (qits-976): {@code POST} an epic, a ticket or a campaign, the
+   * The one create door for a root (qits-976): {@code POST} an epic or a ticket, the
    * archetype in the body. A node is added under its parent at {@link #workChildrenPath}.
    */
   public static final String WORK_PATH = API_PATH + "/work";

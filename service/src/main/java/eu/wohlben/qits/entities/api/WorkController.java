@@ -59,9 +59,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <p><b>{@code {qualifiedId}} is the qualified id ({@code qits-111}) or the UUID</b>, through {@link
  * EntityIdResolver#resolve}; naming nothing is a 404. <b>Every entity id in a body takes either
- * form too</b>: the create's {@code parent} and {@code dependsOn}, the patch's {@code dependsOn}, and
- * on the PUT and the bulk transition the map's keys and each entry's {@code membership.parent},
- * {@code supersededBy} and {@code dependsOn} ({@link WorkEntityDoors}). Every answer
+ * form too</b>: the create's {@code parent}, a need's {@code item}, an issue's {@code relatedTo},
+ * and on the PUT and the bulk transition the map's keys and each entry's {@code membership.parent}
+ * and {@code supersededBy} ({@link WorkEntityDoors}). Every answer
  * carries {@code qualifiedId}.
  *
  * <p><b>The roles are the routes' they mirror, method by method</b>: a read and the create, the
@@ -91,9 +91,9 @@ public class WorkController {
       description =
           "A new work entity of any archetype: the archetype, plus exactly the body GET"
               + " /projects/api/work/archetypes/{archetype}/schemas/create describes for it. A root"
-              + " (EPIC, TICKET, CAMPAIGN, ISSUE) names its project, a node (FEATURE, TASK) its parent.")
+              + " (EPIC, TICKET, ISSUE) names its project, a node (FEATURE, TASK) its parent.")
   public record WorkCreate(
-      @Schema(required = true, description = "EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE")
+      @Schema(required = true, description = "EPIC, TICKET, FEATURE, TASK or ISSUE")
           Archetype archetype,
       @Schema(description = "A root's project: its id or its slug.") String project,
       @Schema(
@@ -112,8 +112,6 @@ public class WorkController {
       @Schema(description = "Why a ticket came about. Required for a ticket.") String impetus,
       @Schema(description = "An epic's or a ticket's assignee.") String assignee,
       @Schema(description = "A task's repository, in the task's project.") String repositoryId,
-      @Schema(deprecated = true, description = "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
-          String dependsOn,
       @Schema(description = "An epic's or a ticket's acceptance criteria, in order.")
           List<String> acceptanceCriteria,
       @Schema(
@@ -136,7 +134,7 @@ public class WorkController {
               description =
                   "What an epic, a ticket, a feature or a task waits for (qits-1903): each entry"
                       + " a work item of the same project and the status it must reach. Refused on"
-                      + " an issue and a campaign.")
+                      + " an issue.")
           List<WorkNeedWrite> needs) {}
 
   /** One need as a create or a patch states it (qits-1903). */
@@ -187,8 +185,6 @@ public class WorkController {
           String assignee,
       @Schema(description = "A task's repository, in the task's project. Cannot be cleared.")
           String repositoryId,
-      @Schema(deprecated = true, description = "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
-          String dependsOn,
       @Schema(
               nullable = true,
               description =
@@ -284,8 +280,7 @@ public class WorkController {
                       + " DONE or DROPPED — one the entity's current status may move to: a"
                       + " neighbour on the walk (IMPLEMENTING has no move back, and READY_FOR_DEV"
                       + " none to REPORTED), or IMPLEMENTED from READY_FOR_DEV or VERIFIED from"
-                      + " IMPLEMENTED (the skips)."
-                      + " A campaign never moves to IMPLEMENTING or VERIFYING.")
+                      + " IMPLEMENTED (the skips).")
           String target,
       @Schema(
               nullable = true,
@@ -363,11 +358,11 @@ public class WorkController {
       operationId = "createWork",
       summary = "Create a work entity of any archetype",
       description =
-          "Files a new epic, ticket, campaign, feature or task from one body shape: the archetype"
+          "Files a new epic, ticket, issue, feature or task from one body shape: the archetype"
               + " plus the archetype's create schema (GET"
               + " /projects/api/work/archetypes/{archetype}/schemas/create). A root names its"
               + " project (id or slug), a node its parent (qualified id or UUID): a feature's parent"
-              + " is an EPIC, a task's a FEATURE. A dependency is a qualified id or a UUID. The status"
+              + " is an EPIC, a task's a FEATURE. A need's item is a qualified id or a UUID. The status"
               + " starts REPORTED. Answers the entity in the merged shape, with its qualified id.")
   @APIResponse(
       responseCode = "201",
@@ -419,7 +414,7 @@ public class WorkController {
               + " property is cleared, not left alone. It is the one-entry form of POST"
               + " /projects/api/work/transition and obeys every rule of it, so it is also how a"
               + " single entity is reshaped, reparented or superseded. Every entity id in the body"
-              + " (membership.parent, supersededBy, dependsOn) is a qualified id or a UUID. Answers"
+              + " (membership.parent, supersededBy) is a qualified id or a UUID. Answers"
               + " the entity as written, in the merged shape.")
   @APIResponse(
       responseCode = "200",
@@ -442,8 +437,15 @@ public class WorkController {
               + " work, a gated move — those go through POST /work/{qualifiedId}/status), or a"
               + " changed acceptance-criteria list from READY_FOR_DEV on")
   public TransitionedEntity put(
-      @PathParam("qualifiedId") String qualifiedId, EntityTransition state) {
-    return doors.put(identity, ids.resolve(qualifiedId), state);
+      @PathParam("qualifiedId") String qualifiedId,
+      @RequestBody(
+              required = true,
+              content =
+                  @Content(
+                      mediaType = MediaType.APPLICATION_JSON,
+                      schema = @Schema(implementation = EntityTransition.class)))
+          JsonNode state) {
+    return doors.put(identity, ids.resolve(qualifiedId), doors.entry(state));
   }
 
   @PATCH
@@ -458,7 +460,7 @@ public class WorkController {
               + " an explicit null clears it. The status is never written here — a lifecycle move"
               + " goes through POST /projects/api/work/{qualifiedId}/status, and a reshape, reparent"
               + " or supersede through PUT /projects/api/work/{qualifiedId} or POST"
-              + " /projects/api/work/transition. dependsOn is a qualified id or a UUID. An epic's,"
+              + " /projects/api/work/transition. A need's item is a qualified id or a UUID. An epic's,"
               + " feature's or task's scope follows the epic's freeze: scope edits need the epic"
               + " REPORTED, the markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves"
               + " the item's status with it. An epic's or a ticket's acceptance criteria are frozen"
@@ -516,7 +518,7 @@ public class WorkController {
       summary = "Drop a work item above or below one of its siblings",
       description =
           "Ranks the item among its siblings — the children of its parent, or for a root every"
-              + " root of its project but the campaigns — by where it was dropped: directly above or"
+              + " root of its project but the issues — by where it was dropped: directly above or"
               + " directly below one named sibling (qualified id or UUID). DONE and DROPPED siblings"
               + " take no part. The item and every open sibling above it are renumbered, strictly"
               + " descending and above every ranked sibling below, so the order reads as dropped;"
@@ -532,8 +534,8 @@ public class WorkController {
       responseCode = "400",
       description =
           "Both anchors or neither; an anchor naming no entity, naming the item itself, or naming"
-              + " no open sibling (another parent, another project, a campaign, a DONE or DROPPED"
-              + " item); or the item is a campaign")
+              + " no open sibling (another parent, another project, an issue, a DONE or DROPPED"
+              + " item); or the item is an issue")
   @APIResponse(
       responseCode = "403",
       description = "An agent ranking outside its own project; nothing is written")
@@ -558,7 +560,7 @@ public class WorkController {
       description =
           "A map of entity id to the whole state that entity is to have afterwards, validated as"
               + " one post-state, applied in one transaction and announced once. The keys and every"
-              + " id in an entry (membership.parent, supersededBy, dependsOn) are qualified ids or"
+              + " id in an entry (membership.parent, supersededBy) are qualified ids or"
               + " UUIDs; an id naming nothing is one of the violations in the 400. Answers each"
               + " entity in the merged shape, keyed as the request was.")
   @APIResponse(
@@ -594,8 +596,8 @@ public class WorkController {
                           @Schema(
                               type = SchemaType.OBJECT,
                               additionalProperties = EntityTransition.class)))
-          Map<String, EntityTransition> request) {
-    return doors.transition(identity, request);
+          Map<String, JsonNode> request) {
+    return doors.transition(identity, doors.entries(request));
   }
 
   @POST
@@ -606,9 +608,9 @@ public class WorkController {
       operationId = "setWorkStatus",
       summary = "Move a work entity through its lifecycle",
       description =
-          "Moves an epic, ticket, campaign, feature or task to the target status, by the same path"
+          "Moves an epic, ticket, issue, feature or task to the target status, by the same path"
               + " as the archetype's own transition and under its roles: an agent may move a ticket,"
-              + " a campaign, a feature or a task of its own project, a platform service"
+              + " an issue, a feature or a task of its own project, a platform service"
               + " (qits:system) one of any project, and an epic is qits:admin's, or an agent's of"
               + " its own project, which may not supersede it. The project's delivery desk"
               + " (qits:desk) moves what qits:admin-agent moves, superseding included, in its own"
@@ -672,7 +674,7 @@ public class WorkController {
       operationId = "setWorkBlocked",
       summary = "Block or unblock a work entity",
       description =
-          "Says the phase an epic's, ticket's or campaign's status starts cannot finish right now"
+          "Says the phase an epic's or ticket's status starts cannot finish right now"
               + " (or can again). The status does not move — it is the phase to resume — and the next"
               + " transition clears the block. The reason is required to block and lands on the"
               + " entity's thread.")
@@ -716,8 +718,8 @@ public class WorkController {
           "Removes the entity, its descendants and their threads, each audited; the audit log"
               + " outlives them. An epic's or a ticket's delete is qits:admin's, or the delivery"
               + " desk's (qits:desk) in its own project; a feature's or a"
-              + " task's admits an agent bound to its project and obeys its epic's freeze. A campaign"
-              + " is not deleted but dropped. The path names the entity by qualified id"
+              + " task's admits an agent bound to its project and obeys its epic's freeze. An issue"
+              + " is not deleted but moved to OBSOLETE. The path names the entity by qualified id"
               + " (<projectSlug>-<n>) or UUID.")
   @APIResponse(
       responseCode = "200",
@@ -734,7 +736,7 @@ public class WorkController {
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(
       responseCode = "409",
-      description = "A campaign, or a feature or a task whose epic is no longer REPORTED")
+      description = "An issue, or a feature or a task whose epic is no longer REPORTED")
   public WorkDeleted delete(@PathParam("qualifiedId") String qualifiedId) {
     doors.delete(identity, ids.resolve(qualifiedId));
     return new WorkDeleted(true);

@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -33,8 +32,6 @@
   "blockSource": "AGENT_WAITING",
   "blockReason": "The agent ended its turn with nothing in flight and is waiting for a person.",
   "tags": [],
-  "milestones": [],
-  "unmetMilestones": 0,
   "needs": [],
   "unmetNeeds": 0
 }

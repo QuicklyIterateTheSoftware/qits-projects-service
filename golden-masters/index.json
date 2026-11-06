@@ -7,25 +7,23 @@
       "slug": "a-bug-ticket-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-10",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-9",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -75,8 +73,7 @@
             "ids": [
               "$.id",
               "$.projectId",
-              "$.slugScope",
-              "$.milestones[*].id"
+              "$.slugScope"
             ],
             "instants": [
               "$.createdAt",
@@ -100,9 +97,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -151,28 +146,6 @@
               "$.pages[*].updatedAt"
             ],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -237,737 +210,6 @@
             ],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign in detail",
-      "slug": "a-campaign-in-detail",
-      "params": {
-        "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-1",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}",
-          "status": 200,
-          "file": "a-campaign-in-detail/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getWorkProgress",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/progress",
-          "status": 200,
-          "file": "a-campaign-in-detail/getWorkProgress.json",
-          "frozen": {
-            "ids": [
-              "$.progress.campaign.id",
-              "$.progress.members[*].membershipId",
-              "$.progress.members[*].entity.id",
-              "$.progress.members[*].waitsFor[*]",
-              "$.progress.members[*].groups[*].id",
-              "$.progress.members[*].groups[*].criteria[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.progress.campaign.qualifiedId",
-              "$.progress.campaign.heldBy[*]",
-              "$.progress.members[*].entity.qualifiedId",
-              "$.progress.members[*].groups[*].criteria[*].wouldBeSatisfiedBy"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-campaign-in-detail/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkComments",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-campaign-in-detail/listWorkComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-in-detail/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign member waiting on a milestone",
-      "slug": "a-campaign-member-waiting-on-a-milestone",
-      "params": {
-        "membershipId": "00000000-0000-4000-8000-000000000001",
-        "milestoneId": "00000000-0000-4000-8000-000000000002",
-        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
-        "projectId": "00000000-0000-4000-8000-000000000004",
-        "qualifiedId": "contract-00000001-1",
-        "ticketId": "00000000-0000-4000-8000-000000000005",
-        "ticketQualifiedId": "contract-00000001-2"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getMilestone",
-          "method": "GET",
-          "path": "/projects/api/milestones/{milestoneId}",
-          "status": 200,
-          "file": "a-campaign-member-waiting-on-a-milestone/getMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.entities[*].id",
-              "$.milestone.memberships[*].membershipId",
-              "$.milestone.memberships[*].campaignId",
-              "$.milestone.memberships[*].entityId"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].criteria[*].createdAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId",
-              "$.milestone.memberships[*].campaignQualifiedId",
-              "$.milestone.memberships[*].entityQualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{ticketQualifiedId}",
-          "status": 200,
-          "file": "a-campaign-member-waiting-on-a-milestone/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope",
-              "$.milestones[*].id"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-member-waiting-on-a-milestone/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "setWorkMemberMilestones",
-          "method": "PUT",
-          "path": "/projects/api/work/{qualifiedId}/members/{membershipId}/milestones",
-          "body": {
-            "milestoneIds": [
-              "{milestoneId}",
-              "{otherMilestoneId}"
-            ]
-          },
-          "status": 200,
-          "file": "a-campaign-member-waiting-on-a-milestone/setWorkMemberMilestones.json",
-          "frozen": {
-            "ids": [
-              "$.member.membershipId",
-              "$.member.entity.id",
-              "$.member.milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.member.entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign with a done, a verified and an implementing epic",
-      "slug": "a-campaign-with-a-done-a-verified-and-an-implementing-epic",
-      "params": {
-        "campaignId": "00000000-0000-4000-8000-000000000001",
-        "campaignQualifiedId": "contract-00000001-1",
-        "doneEpicId": "00000000-0000-4000-8000-000000000002",
-        "doneTicketId": "00000000-0000-4000-8000-000000000003",
-        "implementingEpicId": "00000000-0000-4000-8000-000000000004",
-        "projectId": "00000000-0000-4000-8000-000000000005",
-        "qualifiedId": "contract-00000001-1",
-        "refinedTicketId": "00000000-0000-4000-8000-000000000006",
-        "verifiedEpicId": "00000000-0000-4000-8000-000000000007"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].milestones[*].id",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkComments",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listWorkComments.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign with members to edit",
-      "slug": "a-campaign-with-members-to-edit",
-      "params": {
-        "approvalCriterionId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "epicId": "00000000-0000-4000-8000-000000000003",
-        "epicMembershipId": "00000000-0000-4000-8000-000000000004",
-        "epicQualifiedId": "contract-00000001-3",
-        "firstMembershipId": "00000000-0000-4000-8000-000000000005",
-        "firstTicketId": "00000000-0000-4000-8000-000000000006",
-        "lastMembershipId": "00000000-0000-4000-8000-000000000007",
-        "lastTicketId": "00000000-0000-4000-8000-000000000008",
-        "outsideTicketId": "00000000-0000-4000-8000-000000000009",
-        "outsideTicketQualifiedId": "contract-00000001-5",
-        "projectId": "00000000-0000-4000-8000-00000000000a",
-        "qualifiedId": "contract-00000001-1"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "addWorkMember",
-          "method": "POST",
-          "path": "/projects/api/work/{qualifiedId}/members",
-          "body": {
-            "entityId": "{outsideTicketQualifiedId}"
-          },
-          "status": 201,
-          "file": "a-campaign-with-members-to-edit/addWorkMember.json",
-          "frozen": {
-            "ids": [
-              "$.member.membershipId",
-              "$.member.entity.id",
-              "$.member.groups[*].id",
-              "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId",
-              "$.member.milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.member.entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "approveWorkMemberCriterion",
-          "method": "POST",
-          "path": "/projects/api/work/{qualifiedId}/members/{lastMembershipId}/criteria/{approvalCriterionId}/approve",
-          "body": {
-            "note": "Finance signed the totals off."
-          },
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/approveWorkMemberCriterion.json",
-          "frozen": {
-            "ids": [
-              "$.member.membershipId",
-              "$.member.entity.id",
-              "$.member.groups[*].id",
-              "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId",
-              "$.member.milestones[*].id"
-            ],
-            "instants": [
-              "$.member.groups[*].criteria[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.member.entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}",
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveWorkMember",
-          "method": "PUT",
-          "path": "/projects/api/work/{qualifiedId}/members/{lastMembershipId}/position",
-          "body": {
-            "position": 0
-          },
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/moveWorkMember.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "removeWorkMember",
-          "method": "DELETE",
-          "path": "/projects/api/work/{qualifiedId}/members/{lastMembershipId}",
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/removeWorkMember.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "setWorkMemberCondition",
-          "method": "PUT",
-          "path": "/projects/api/work/{qualifiedId}/members/{firstMembershipId}/condition",
-          "body": {
-            "groups": [
-              {
-                "criteria": [
-                  {
-                    "kind": "ENTITY_STATUS",
-                    "predicate": {
-                      "entityId": "{epicQualifiedId}",
-                      "status": "VERIFIED"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "status": 200,
-          "file": "a-campaign-with-members-to-edit/setWorkMemberCondition.json",
-          "frozen": {
-            "ids": [
-              "$.member.membershipId",
-              "$.member.entity.id",
-              "$.member.groups[*].id",
-              "$.member.groups[*].criteria[*].id",
-              "$.member.groups[*].criteria[*].predicate.entityId",
-              "$.member.milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.member.entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign with ordered developments",
-      "slug": "a-campaign-with-ordered-developments",
-      "params": {
-        "campaignId": "00000000-0000-4000-8000-000000000001",
-        "campaignQualifiedId": "contract-00000001-1",
-        "projectId": "00000000-0000-4000-8000-000000000002"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}",
-          "status": 200,
-          "file": "a-campaign-with-ordered-developments/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-campaign-with-ordered-developments/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].milestones[*].id"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-with-ordered-developments/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a campaign with work in every phase",
-      "slug": "a-campaign-with-work-in-every-phase",
-      "params": {
-        "campaignId": "00000000-0000-4000-8000-000000000001",
-        "campaignQualifiedId": "contract-00000001-1",
-        "doneTicketId": "00000000-0000-4000-8000-000000000002",
-        "outsideTicketId": "00000000-0000-4000-8000-000000000003",
-        "projectId": "00000000-0000-4000-8000-000000000004",
-        "refinedEpicId": "00000000-0000-4000-8000-000000000005",
-        "refinedTicketId": "00000000-0000-4000-8000-000000000006",
-        "reportedTicketId": "00000000-0000-4000-8000-000000000007"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}",
-          "status": 200,
-          "file": "a-campaign-with-work-in-every-phase/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-campaign-with-work-in-every-phase/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].milestones[*].id"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "a-campaign-with-work-in-every-phase/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         }
@@ -1344,25 +586,23 @@
       "slug": "a-feature-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-6",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-5",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -1377,7 +617,6 @@
               "$.id",
               "$.projectId",
               "$.slugScope",
-              "$.dependsOn",
               "$.parent"
             ],
             "instants": [
@@ -1403,9 +642,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -1431,8 +668,7 @@
               "$.children[*].projectId",
               "$.children[*].slugScope",
               "$.children[*].repositoryId",
-              "$.children[*].parent",
-              "$.children[*].dependsOn"
+              "$.children[*].parent"
             ],
             "instants": [
               "$.children[*].implementingAt",
@@ -1598,25 +834,23 @@
       "slug": "a-maintenance-ticket-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-12",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-11",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -1654,9 +888,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -5119,25 +4351,23 @@
       "slug": "a-task-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-5",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-4",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -5153,7 +4383,6 @@
               "$.projectId",
               "$.slugScope",
               "$.repositoryId",
-              "$.dependsOn",
               "$.parent"
             ],
             "instants": [
@@ -5180,9 +4409,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -5433,448 +4660,6 @@
             "strings": [
               "$.children[*].qualifiedId",
               "$.children[*].needs[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a ticket waiting on a met milestone",
-      "slug": "a-ticket-waiting-on-a-met-milestone",
-      "params": {
-        "criterionId": "00000000-0000-4000-8000-000000000001",
-        "milestoneId": "00000000-0000-4000-8000-000000000002",
-        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
-        "projectId": "00000000-0000-4000-8000-000000000004",
-        "qualifiedId": "contract-00000001-1",
-        "ticketId": "00000000-0000-4000-8000-000000000005"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getMilestone",
-          "method": "GET",
-          "path": "/projects/api/milestones/{milestoneId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-a-met-milestone/getMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.entities[*].id"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.satisfiedAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].satisfiedAt",
-              "$.milestone.groups[*].criteria[*].createdAt",
-              "$.milestone.groups[*].criteria[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-a-met-milestone/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope",
-              "$.milestones[*].id"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt",
-              "$.milestones[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectMilestones",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/milestones",
-          "status": 200,
-          "file": "a-ticket-waiting-on-a-met-milestone/listProjectMilestones.json",
-          "frozen": {
-            "ids": [
-              "$.milestones[*].id",
-              "$.milestones[*].projectId",
-              "$.milestones[*].groups[*].id",
-              "$.milestones[*].groups[*].criteria[*].id",
-              "$.milestones[*].entities[*].id"
-            ],
-            "instants": [
-              "$.milestones[*].createdAt",
-              "$.milestones[*].satisfiedAt",
-              "$.milestones[*].groups[*].createdAt",
-              "$.milestones[*].groups[*].satisfiedAt",
-              "$.milestones[*].groups[*].criteria[*].createdAt",
-              "$.milestones[*].groups[*].criteria[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.milestones[*].entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-ticket-waiting-on-a-met-milestone/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].milestones[*].id"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].milestones[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMilestones",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/milestones",
-          "status": 200,
-          "file": "a-ticket-waiting-on-a-met-milestone/listWorkMilestones.json",
-          "frozen": {
-            "ids": [
-              "$.milestones[*].id"
-            ],
-            "instants": [
-              "$.milestones[*].satisfiedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "a ticket waiting on an unmet milestone",
-      "slug": "a-ticket-waiting-on-an-unmet-milestone",
-      "params": {
-        "authorization": "Bearer qits_tok_contract-person-cli",
-        "criterionId": "00000000-0000-4000-8000-000000000001",
-        "milestoneId": "00000000-0000-4000-8000-000000000002",
-        "otherMilestoneId": "00000000-0000-4000-8000-000000000003",
-        "projectId": "00000000-0000-4000-8000-000000000004",
-        "qualifiedId": "contract-00000001-1",
-        "ticketId": "00000000-0000-4000-8000-000000000005"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "approveMilestoneCriterion",
-          "method": "POST",
-          "path": "/projects/api/milestones/{milestoneId}/criteria/{criterionId}/approve",
-          "headers": {
-            "Authorization": "{authorization}"
-          },
-          "body": {
-            "note": "Node 7 is up."
-          },
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/approveMilestoneCriterion.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.entities[*].id"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.satisfiedAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].satisfiedAt",
-              "$.milestone.groups[*].criteria[*].createdAt",
-              "$.milestone.groups[*].criteria[*].satisfiedAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "attachWorkMilestone",
-          "method": "PUT",
-          "path": "/projects/api/work/{qualifiedId}/milestones/{otherMilestoneId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/attachWorkMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "createMilestone",
-          "method": "POST",
-          "path": "/projects/api/projects/{projectId}/milestones",
-          "body": {
-            "displayName": "bootstrap ticket done",
-            "groups": [
-              {
-                "criteria": [
-                  {
-                    "kind": "ENTITY_STATUS",
-                    "predicate": {
-                      "entityId": "{qualifiedId}",
-                      "status": "DONE"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "status": 201,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/createMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].criteria[*].createdAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "detachWorkMilestone",
-          "method": "DELETE",
-          "path": "/projects/api/work/{qualifiedId}/milestones/{milestoneId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/detachWorkMilestone.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getMilestone",
-          "method": "GET",
-          "path": "/projects/api/milestones/{milestoneId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/getMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.entities[*].id"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].criteria[*].createdAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope",
-              "$.milestones[*].id"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectMilestones",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/milestones",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/listProjectMilestones.json",
-          "frozen": {
-            "ids": [
-              "$.milestones[*].id",
-              "$.milestones[*].projectId",
-              "$.milestones[*].groups[*].id",
-              "$.milestones[*].groups[*].criteria[*].id",
-              "$.milestones[*].entities[*].id"
-            ],
-            "instants": [
-              "$.milestones[*].createdAt",
-              "$.milestones[*].groups[*].createdAt",
-              "$.milestones[*].groups[*].criteria[*].createdAt"
-            ],
-            "strings": [
-              "$.milestones[*].entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].milestones[*].id"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMilestones",
-          "method": "GET",
-          "path": "/projects/api/work/{qualifiedId}/milestones",
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/listWorkMilestones.json",
-          "frozen": {
-            "ids": [
-              "$.milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "renameMilestone",
-          "method": "PATCH",
-          "path": "/projects/api/milestones/{milestoneId}",
-          "body": {
-            "displayName": "bootstrap test node (arm64)"
-          },
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/renameMilestone.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.entities[*].id"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].criteria[*].createdAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "setMilestoneGroups",
-          "method": "PUT",
-          "path": "/projects/api/milestones/{milestoneId}/groups",
-          "body": {
-            "groups": [
-              {
-                "criteria": [
-                  {
-                    "id": "{criterionId}",
-                    "kind": "APPROVAL",
-                    "predicate": {}
-                  }
-                ]
-              },
-              {
-                "criteria": [
-                  {
-                    "kind": "ENTITY_STATUS",
-                    "predicate": {
-                      "entityId": "{qualifiedId}",
-                      "status": "DONE"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "status": 200,
-          "file": "a-ticket-waiting-on-an-unmet-milestone/setMilestoneGroups.json",
-          "frozen": {
-            "ids": [
-              "$.milestone.id",
-              "$.milestone.projectId",
-              "$.milestone.groups[*].id",
-              "$.milestone.groups[*].criteria[*].id",
-              "$.milestone.groups[*].criteria[*].predicate.entityId",
-              "$.milestone.entities[*].id"
-            ],
-            "instants": [
-              "$.milestone.createdAt",
-              "$.milestone.groups[*].createdAt",
-              "$.milestone.groups[*].criteria[*].createdAt"
-            ],
-            "strings": [
-              "$.milestone.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -6779,25 +5564,23 @@
       "slug": "an-epic-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-2",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-1",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -6856,9 +5639,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -6883,8 +5664,7 @@
               "$.children[*].id",
               "$.children[*].projectId",
               "$.children[*].slugScope",
-              "$.children[*].parent",
-              "$.children[*].dependsOn"
+              "$.children[*].parent"
             ],
             "instants": [
               "$.children[*].implementedAt",
@@ -6955,106 +5735,6 @@
             "strings": [
               "$.assets[*].url",
               "$.assets[*].markdown"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "an-epic-in-detail/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "an epic in two campaigns",
-      "slug": "an-epic-in-two-campaigns",
-      "params": {
-        "epicId": "00000000-0000-4000-8000-000000000001",
-        "firstCampaignId": "00000000-0000-4000-8000-000000000002",
-        "firstCampaignQualifiedId": "contract-00000001-1",
-        "projectId": "00000000-0000-4000-8000-000000000003",
-        "secondCampaignId": "00000000-0000-4000-8000-000000000004",
-        "secondCampaignQualifiedId": "contract-00000001-2"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{firstCampaignQualifiedId}",
-          "status": 200,
-          "file": "an-epic-in-two-campaigns/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectWork",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/work",
-          "status": 200,
-          "file": "an-epic-in-two-campaigns/listProjectWork.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{firstCampaignQualifiedId}/members",
-          "status": 200,
-          "file": "an-epic-in-two-campaigns/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -7516,25 +6196,23 @@
       "slug": "an-improvement-ticket-in-detail",
       "params": {
         "bugTicketId": "00000000-0000-4000-8000-000000000001",
-        "campaignId": "00000000-0000-4000-8000-000000000002",
-        "campaignQualifiedId": "contract-00000001-1",
-        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-        "csvTaskId": "00000000-0000-4000-8000-000000000005",
-        "epicId": "00000000-0000-4000-8000-000000000006",
-        "featureId": "00000000-0000-4000-8000-000000000007",
-        "figureAssetId": "00000000-0000-4000-8000-000000000008",
-        "figurePageId": "00000000-0000-4000-8000-000000000009",
-        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-        "projectId": "00000000-0000-4000-8000-00000000000f",
-        "qualifiedId": "contract-00000001-11",
-        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-        "taskId": "00000000-0000-4000-8000-000000000011",
-        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+        "csvTaskId": "00000000-0000-4000-8000-000000000004",
+        "epicId": "00000000-0000-4000-8000-000000000005",
+        "featureId": "00000000-0000-4000-8000-000000000006",
+        "figureAssetId": "00000000-0000-4000-8000-000000000007",
+        "figurePageId": "00000000-0000-4000-8000-000000000008",
+        "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+        "projectId": "00000000-0000-4000-8000-00000000000e",
+        "qualifiedId": "contract-00000001-10",
+        "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+        "taskId": "00000000-0000-4000-8000-000000000010",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000011"
       },
       "dependsOn": [],
       "operations": [
@@ -7548,8 +6226,7 @@
             "ids": [
               "$.id",
               "$.projectId",
-              "$.slugScope",
-              "$.milestones[*].id"
+              "$.slugScope"
             ],
             "instants": [
               "$.createdAt",
@@ -7573,9 +6250,7 @@
               "$.entities[*].projectId",
               "$.entities[*].slugScope",
               "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn",
-              "$.entities[*].milestones[*].id"
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
@@ -7618,28 +6293,6 @@
             "ids": [],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{campaignQualifiedId}/members",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id",
-              "$.members[*].groups[*].id",
-              "$.members[*].groups[*].criteria[*].id",
-              "$.members[*].groups[*].criteria[*].predicate.entityId",
-              "$.members[*].milestones[*].id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         }
@@ -7968,62 +6621,6 @@
             "ids": [],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        }
-      ]
-    },
-    {
-      "name": "the second campaign of an epic in two campaigns",
-      "slug": "the-second-campaign-of-an-epic-in-two-campaigns",
-      "params": {
-        "epicId": "00000000-0000-4000-8000-000000000001",
-        "firstCampaignId": "00000000-0000-4000-8000-000000000002",
-        "firstCampaignQualifiedId": "contract-00000001-1",
-        "projectId": "00000000-0000-4000-8000-000000000003",
-        "secondCampaignId": "00000000-0000-4000-8000-000000000004",
-        "secondCampaignQualifiedId": "contract-00000001-2"
-      },
-      "dependsOn": [],
-      "operations": [
-        {
-          "operationId": "getWork",
-          "method": "GET",
-          "path": "/projects/api/work/{secondCampaignQualifiedId}",
-          "status": 200,
-          "file": "the-second-campaign-of-an-epic-in-two-campaigns/getWork.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId",
-              "$.heldBy[*]"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listWorkMembers",
-          "method": "GET",
-          "path": "/projects/api/work/{secondCampaignQualifiedId}/members",
-          "status": 200,
-          "file": "the-second-campaign-of-an-epic-in-two-campaigns/listWorkMembers.json",
-          "frozen": {
-            "ids": [
-              "$.members[*].membershipId",
-              "$.members[*].entity.id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.members[*].entity.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         }

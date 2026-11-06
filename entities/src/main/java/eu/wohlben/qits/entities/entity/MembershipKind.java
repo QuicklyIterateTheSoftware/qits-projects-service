@@ -8,13 +8,11 @@ package eu.wohlben.qits.entities.entity;
  *   <li>{@link #STRUCTURAL} — the tree: epic &gt; feature &gt; task. At most one per child ({@code
  *       uq_entity_membership_one_parent_per_child}, a partial unique index since V18), and its id is
  *       the child's.
- *   <li>{@link #CAMPAIGN} — a campaign gathering work that already hangs somewhere. Any number per
- *       child, at most one per (campaign, child) ({@code uq_entity_membership_campaign_child}), and
- *       its id is random. It is <em>not</em> containment: a campaign's members are not its subtree,
- *       and nothing that reads the tree ever sees one.
  * </ul>
+ *
+ * <p>The second kind, the gathering edge, was retired by qits-1899 (V41) with what it served; the
+ * column and the enum stay, so a new kind of edge is one constant and one widened check.
  */
 public enum MembershipKind {
-  STRUCTURAL,
-  CAMPAIGN
+  STRUCTURAL
 }

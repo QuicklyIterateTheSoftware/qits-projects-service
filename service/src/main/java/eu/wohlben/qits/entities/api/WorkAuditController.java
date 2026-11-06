@@ -17,7 +17,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 /**
  * <b>A work entity's change history: {@code GET /projects/api/work/{qualifiedId}/audit}</b>
  * (qits-970, epic qits-965) — the {@code /work} home of the deleted {@code GET /epics/{id}/audit}, for every
- * archetype the audit store keys: a root (epic, ticket, campaign) answers its whole subtree, a
+ * archetype the audit store keys: a root (epic, ticket, issue) answers its whole subtree, a
  * feature or a task its own rows, newest first. The log outlives the rows, so a UUID naming a
  * deleted root still answers its history ({@link WorkEntityDoors#audit}). A read: {@code
  * qits:agent} too.
@@ -37,7 +37,7 @@ public class WorkAuditController {
       operationId = "getWorkAudit",
       summary = "A work entity's change history",
       description =
-          "Newest first. A root (epic, ticket, campaign) answers its whole subtree — its features,"
+          "Newest first. A root (epic, ticket, issue) answers its whole subtree — its features,"
               + " tasks and every thread under it, deleted rows included; a feature or a task its"
               + " own rows. The path names the entity by qualified id (<projectSlug>-<n>) or UUID; a"
               + " UUID still answers after the entity is deleted.")

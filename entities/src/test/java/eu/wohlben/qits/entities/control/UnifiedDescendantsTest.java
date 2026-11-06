@@ -49,11 +49,11 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   void aListingIsDrawnInMembershipPositionOrder() {
     WorkEntity epic = epic();
     Nested a =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null), "t");
     Nested b =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null), "t");
     Nested c =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null), "t");
 
     assertEquals(
         List.of(a.entity().id, b.entity().id, c.entity().id),
@@ -64,10 +64,10 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
 
     Nested one =
         workEntities.create(
-            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null, null), "t");
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null), "t");
     Nested two =
         workEntities.create(
-            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null, null), "t");
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null), "t");
     assertEquals(
         List.of(one.entity().id, two.entity().id),
         workEntities.listChildren(Archetype.TASK, a.entity().id).stream()
@@ -85,11 +85,11 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   void removingAMiddleSiblingLeavesTheRestDenseAndInOrder() {
     WorkEntity epic = epic();
     Nested a =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null), "t");
     Nested b =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null), "t");
     Nested c =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null, null), "t");
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null), "t");
 
     workEntities.delete(Archetype.FEATURE, b.entity().id, "t");
 
@@ -102,13 +102,13 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
 
     Nested one =
         workEntities.create(
-            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null, null), "t");
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null), "t");
     Nested two =
         workEntities.create(
-            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null, null), "t");
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null), "t");
     Nested three =
         workEntities.create(
-            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Three", null, null), "t");
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Three", null), "t");
     workEntities.delete(Archetype.TASK, two.entity().id, "t");
 
     assertEquals(
@@ -129,12 +129,12 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "t");
     assertEquals(
         feature.entity().id, workEntities.nested(Archetype.TASK, task.entity().id).parentId());
@@ -150,7 +150,7 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
             .update(
                 Archetype.TASK,
                 task.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, when, false),
+                EntityWrite.nodeEdit(null, null, when, false),
                 "t")
             .entity()
             .implementedAt);
@@ -164,48 +164,6 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
                         && entry.entityId.equals(task.entity().id)
                         && entry.operation == AuditOperation.UPDATE),
         "the task's UPDATE was not filed under its epic");
-  }
-
-  /**
-   * <b>{@code dependsOn} is a column and {@link Nesting} is never consulted for it.</b>
-   *
-   * <p>The two edges are easy to conflate — both are a self-reference between two planning rows —
-   * and conflating them would be silent in the ordinary direction and wrong in this one: a feature
-   * depending on a sibling feature is exactly what the planning surface is for, while a feature
-   * <em>under</em> a feature is an illegal membership. So the negative is the assertion: the
-   * dependency is accepted, the depended-on row does not become the parent, and the same pair
-   * offered to {@code Nesting} as a membership is refused.
-   */
-  @Test
-  void nestingIsNotConsultedForADependency() {
-    WorkEntity epic = epic();
-    Nested a =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
-    Nested b =
-        workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, a.entity().id), "t");
-
-    assertEquals(a.entity().id, b.entity().dependsOnEntityId);
-    // The parent is still the epic. A dependency says "do that one first", not "part of".
-    assertEquals(epic.id, b.parentId());
-    inFreshTx(
-        () ->
-            assertEquals(
-                epic.id,
-                entityMembershipRepository.structuralMembershipOf(b.entity().id).orElseThrow().parentId,
-                "the dependency was written as a membership"));
-
-    // And had it been judged as one, it would have been refused: FEATURE cannot contain FEATURE.
-    assertFalse(Nesting.mayContain(Archetype.FEATURE, Archetype.FEATURE));
-    inFreshTx(
-        () -> {
-          var violations =
-              Nesting.check(
-                  List.of(new EntityFact(b.entity().id, Archetype.FEATURE, a.entity().id)), facts);
-          assertEquals(1, violations.size());
-          assertEquals(NestingViolation.Reason.NOT_NESTABLE, violations.get(0).reason());
-          assertNotNull(violations.get(0).message());
-        });
   }
 
   private List<Integer> positionsUnder(String parentId) {

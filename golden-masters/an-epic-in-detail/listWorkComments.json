@@ -2,8 +2,8 @@
   "entries": [
     {
       "comment": {
-        "id": "00000000-0000-4000-8000-000000000013",
-        "entityId": "00000000-0000-4000-8000-000000000006",
+        "id": "00000000-0000-4000-8000-000000000012",
+        "entityId": "00000000-0000-4000-8000-000000000005",
         "author": "dana.weber",
         "authorAgentOf": null,
         "body": "Accounting needs the export before the Q4 close on 15 December.",
@@ -14,8 +14,8 @@
     },
     {
       "comment": {
-        "id": "00000000-0000-4000-8000-000000000014",
-        "entityId": "00000000-0000-4000-8000-000000000006",
+        "id": "00000000-0000-4000-8000-000000000013",
+        "entityId": "00000000-0000-4000-8000-000000000005",
         "author": "qits-agent",
         "authorAgentOf": null,
         "body": "Refined into two features. CSV comes first: the accountants' tool imports it today. The PDF export depends on it for the column order.",
@@ -26,8 +26,8 @@
     },
     {
       "comment": {
-        "id": "00000000-0000-4000-8000-000000000015",
-        "entityId": "00000000-0000-4000-8000-000000000006",
+        "id": "00000000-0000-4000-8000-000000000014",
+        "entityId": "00000000-0000-4000-8000-000000000005",
         "author": "dana.weber",
         "authorAgentOf": null,
         "body": "Agreed. Start with the CSV export.",

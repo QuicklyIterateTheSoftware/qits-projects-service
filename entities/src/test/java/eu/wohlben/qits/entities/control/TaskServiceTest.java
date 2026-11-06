@@ -30,7 +30,7 @@ class TaskServiceTest extends EntitiesTestSupport {
     WorkEntity e =
         workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     return workEntities.create(
-        Archetype.FEATURE, e.id, EntityWrite.feature("Feature", null, null), "t");
+        Archetype.FEATURE, e.id, EntityWrite.feature("Feature", null), "t");
   }
 
   @Test
@@ -40,7 +40,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK,
             f.entity().id,
-            EntityWrite.task("repo-1", "Wire it up", "body", null),
+            EntityWrite.task("repo-1", "Wire it up", "body"),
             "alice");
     assertNotNull(task.entity().id);
     assertEquals("repo-1", task.entity().repositoryId);
@@ -53,7 +53,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.update(
             Archetype.TASK,
             task.entity().id,
-            EntityWrite.nodeEdit("Wire it up v2", "body2", null, false, null, false),
+            EntityWrite.nodeEdit("Wire it up v2", "body2", null, false),
             "bob");
     assertEquals("Wire it up v2", updated.entity().title);
     assertEquals(task.entity().createdAt, updated.entity().createdAt);
@@ -73,7 +73,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK,
             f.entity().id,
-            EntityWrite.task("repo-1", "Planning domain", null, null),
+            EntityWrite.task("repo-1", "Planning domain", null),
             "t");
     assertEquals("planning-domain", first.entity().slug);
 
@@ -81,7 +81,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK,
             f.entity().id,
-            EntityWrite.task("repo-1", "Planning   DOMAIN!", null, null),
+            EntityWrite.task("repo-1", "Planning   DOMAIN!", null),
             "t");
     assertEquals("planning-domain-2", second.entity().slug);
 
@@ -93,7 +93,7 @@ class TaskServiceTest extends EntitiesTestSupport {
             .create(
                 Archetype.TASK,
                 other.entity().id,
-                EntityWrite.task("repo-1", "Planning domain", null, null),
+                EntityWrite.task("repo-1", "Planning domain", null),
                 "t")
             .entity()
             .slug);
@@ -105,13 +105,13 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK,
             feature().entity().id,
-            EntityWrite.task("repo-1", "Planning domain", null, null),
+            EntityWrite.task("repo-1", "Planning domain", null),
             "t");
     Nested renamed =
         workEntities.update(
             Archetype.TASK,
             task.entity().id,
-            EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+            EntityWrite.nodeEdit("Renamed", null, null, false),
             "t");
     assertEquals("planning-domain", renamed.entity().slug);
   }
@@ -122,7 +122,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         NotFoundException.class,
         () ->
             workEntities.create(
-                Archetype.TASK, "no-feature", EntityWrite.task("repo-1", "T", null, null), "t"));
+                Archetype.TASK, "no-feature", EntityWrite.task("repo-1", "T", null), "t"));
   }
 
   @Test
@@ -132,78 +132,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         BadRequestException.class,
         () ->
             workEntities.create(
-                Archetype.TASK, f.entity().id, EntityWrite.task(" ", "T", null, null), "t"));
-  }
-
-  @Test
-  void dependencySetClearAndSelfCycleGuard() {
-    Nested f = feature();
-    Nested a =
-        workEntities.create(
-            Archetype.TASK, f.entity().id, EntityWrite.task("repo-1", "A", null, null), "t");
-    Nested b =
-        workEntities.create(
-            Archetype.TASK,
-            f.entity().id,
-            EntityWrite.task("repo-1", "B", null, a.entity().id),
-            "t");
-    assertEquals(a.entity().id, b.entity().dependsOnEntityId);
-
-    Nested cleared =
-        workEntities.update(
-            Archetype.TASK,
-            b.entity().id,
-            EntityWrite.nodeEdit(null, null, null, true, null, false),
-            "t");
-    assertNull(cleared.entity().dependsOnEntityId);
-
-    // Self-dependency, unknown dependency, and multi-hop cycles are all rejected.
-    assertThrows(
-        BadRequestException.class,
-        () ->
-            workEntities.update(
-                Archetype.TASK,
-                a.entity().id,
-                EntityWrite.nodeEdit(null, null, a.entity().id, false, null, false),
-                "t"));
-    assertThrows(
-        BadRequestException.class,
-        () ->
-            workEntities.update(
-                Archetype.TASK,
-                a.entity().id,
-                EntityWrite.nodeEdit(null, null, "ghost", false, null, false),
-                "t"));
-    workEntities.update(
-        Archetype.TASK,
-        b.entity().id,
-        EntityWrite.nodeEdit(null, null, a.entity().id, false, null, false),
-        "t"); // B -> A
-    assertThrows(
-        BadRequestException.class,
-        () ->
-            workEntities.update(
-                Archetype.TASK,
-                a.entity().id,
-                EntityWrite.nodeEdit(null, null, b.entity().id, false, null, false),
-                "t")); // A -> B closes cycle
-  }
-
-  @Test
-  void crossFeatureDependencyIsRejected() {
-    Nested f1 = feature();
-    Nested f2 = feature();
-    Nested inOther =
-        workEntities.create(
-            Archetype.TASK, f2.entity().id, EntityWrite.task("repo-1", "Other", null, null), "t");
-    assertThrows(
-        BadRequestException.class,
-        () ->
-            workEntities.create(
-                Archetype.TASK,
-                f1.entity().id,
-                EntityWrite.task("repo-1", "A", null, inOther.entity().id),
-                "t"));
+                Archetype.TASK, f.entity().id, EntityWrite.task(" ", "T", null), "t"));
   }
 
   @Test
@@ -211,7 +140,7 @@ class TaskServiceTest extends EntitiesTestSupport {
     Nested f = feature();
     Nested t =
         workEntities.create(
-            Archetype.TASK, f.entity().id, EntityWrite.task("repo-1", "A", null, null), "t");
+            Archetype.TASK, f.entity().id, EntityWrite.task("repo-1", "A", null), "t");
     assertNull(t.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
     workEntities.transition(Archetype.EPIC, f.parentId(), "REFINED", "t");
@@ -222,7 +151,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.update(
             Archetype.TASK,
             t.entity().id,
-            EntityWrite.nodeEdit(null, null, null, false, when, false),
+            EntityWrite.nodeEdit(null, null, when, false),
             "t");
     assertEquals(when, done.entity().implementedAt);
 
@@ -230,7 +159,7 @@ class TaskServiceTest extends EntitiesTestSupport {
         workEntities.update(
             Archetype.TASK,
             t.entity().id,
-            EntityWrite.nodeEdit(null, null, null, false, null, true),
+            EntityWrite.nodeEdit(null, null, null, true),
             "t");
     assertNull(reopened.entity().implementedAt);
   }
@@ -240,7 +169,7 @@ class TaskServiceTest extends EntitiesTestSupport {
     Nested f = feature();
     Nested t =
         workEntities.create(
-            Archetype.TASK, f.entity().id, EntityWrite.task("repo-1", "A", null, null), "alice");
+            Archetype.TASK, f.entity().id, EntityWrite.task("repo-1", "A", null), "alice");
     var entries = auditService.listForEntity(AuditEntityType.TASK, t.entity().id);
     assertEquals(1, entries.size());
     assertEquals(AuditOperation.CREATE, entries.get(0).operation);

@@ -1,6 +1,5 @@
 package eu.wohlben.qits.entities.control;
 
-import eu.wohlben.qits.entities.campaign.EntityQualifier;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -185,15 +184,6 @@ public class EntityTransitionService {
   @Inject IdeaAnnouncements ideaAnnouncements;
 
   /**
-   * Re-derives every campaign a written row is a member of (qits-650): a stated status, or an
-   * EPIC ↔ TICKET re-archetype, can move a campaign's floor.
-   */
-  @Inject CampaignStatusRecompute campaignStatus;
-
-  /** Renders the campaign a refusal names ({@code qits-412}); optional — see {@link EntityQualifier}. */
-  @Inject Instance<EntityQualifier> qualifier;
-
-  /**
    * Applies {@code requested} as one post-state and answers what was written, keyed by id in the
    * order it was stated.
    *
@@ -207,20 +197,17 @@ public class EntityTransitionService {
     Map<String, EntityTransition> stated = normalise(requested);
 
     List<IdeaChange> ideaChanges = new ArrayList<>();
-    List<TransitionedEntity> derived = new ArrayList<>();
     Map<String, TransitionedEntity> written =
         writes.hold(
             "entity transition",
             () -> {
               ideaChanges.clear();
-              derived.clear();
-              return apply(stated, changedBy, ideaChanges, derived);
+              return apply(stated, changedBy, ideaChanges);
             });
 
     // After the transaction, never inside it: the WritePatience body re-runs on a retry and an
-    // announcement in it would be made twice. The campaigns the write re-derived (qits-650) join
-    // the batch's one announcement.
-    announce(written, derived);
+    // announcement in it would be made twice.
+    announce(written);
     ideaAnnouncements.announce(ideaChanges);
     return written;
   }
@@ -267,12 +254,9 @@ public class EntityTransitionService {
   private Map<String, TransitionedEntity> apply(
       Map<String, EntityTransition> stated,
       String changedBy,
-      List<IdeaChange> ideaChanges,
-      List<TransitionedEntity> derived) {
+      List<IdeaChange> ideaChanges) {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
-    refuseLeavingCampaigns(stated, rows);
-    refuseCampaignLifecycle(stated, rows);
     refuseIssues(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
@@ -322,14 +306,6 @@ public class EntityTransitionService {
       written.put(id, TransitionedEntity.of(row, edges.get(id), statusBefore.get(id), changedBy));
     }
 
-    // Every campaign a written row is a member of, re-derived on what was just written (qits-650)
-    // — after the answer is read, so a campaign the batch also restates answers as it was stated
-    // and its derived move is announced beside it.
-    CampaignStatusRecompute.Recomputed recomputed =
-        campaignStatus.recomputeCampaignsOf(stated.keySet());
-    derived.addAll(recomputed.moved());
-    ideaChanges.addAll(recomputed.ideas());
-
     for (Map.Entry<String, TransitionedEntity> entry : written.entrySet()) {
       WorkEntity row = rows.get(entry.getKey());
       auditService.record(
@@ -353,118 +329,6 @@ public class EntityTransitionService {
   }
 
   // --- validation -----------------------------------------------------------
-
-  /**
-   * <b>A campaign member keeps an archetype a campaign may gather</b> (qits-650): an entry turning a
-   * member of a campaign into a FEATURE, a TASK or a CAMPAIGN is a 409 naming the entity and each
-   * campaign it is a member of — before any other layer is asked, so the turn into a campaign is
-   * told about the membership rather than only that this door makes no campaign. Its campaign edge
-   * is not this door's to rewrite ({@link #replaceMemberships}), and a member a campaign cannot hold
-   * would sit in it unrunnable and set its derived status. Remove it from the campaign first.
-   */
-  private void refuseLeavingCampaigns(
-      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
-    List<String> turning = new ArrayList<>();
-    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
-      WorkEntity row = rows.get(entry.getKey());
-      Archetype target = entry.getValue().archetype();
-      if (row != null && target != row.archetype && !mayBeGathered(target)) {
-        turning.add(entry.getKey());
-      }
-    }
-    if (turning.isEmpty()) {
-      return;
-    }
-    Map<String, List<String>> campaignsOf = new LinkedHashMap<>();
-    for (String id : turning) {
-      for (EntityMembership edge : memberships.campaignMembershipsOf(id)) {
-        campaignsOf.computeIfAbsent(id, ignored -> new ArrayList<>()).add(edge.parentId);
-      }
-    }
-    if (campaignsOf.isEmpty()) {
-      return;
-    }
-    Map<String, WorkEntity> campaigns =
-        index(
-            entities.listByIds(
-                campaignsOf.values().stream().flatMap(List::stream).distinct().toList()));
-    List<String> refused = new ArrayList<>();
-    for (Map.Entry<String, List<String>> member : campaignsOf.entrySet()) {
-      List<String> named =
-          member.getValue().stream()
-              .map(
-                  id ->
-                      "campaign "
-                          + (campaigns.containsKey(id)
-                              ? EntityQualifier.render(qualifier, campaigns.get(id))
-                              : id))
-              .toList();
-      refused.add(
-          member.getKey()
-              + " is a member of "
-              + String.join(", ", named)
-              + " and would become a "
-              + stated.get(member.getKey()).archetype()
-              + ", which a campaign cannot gather");
-    }
-    throw new ConflictException(
-        String.join("; ", refused) + " — remove it from the campaign first");
-  }
-
-  /** The archetypes a campaign may gather: the work that runs a phase, an EPIC or a TICKET. */
-  private static boolean mayBeGathered(Archetype archetype) {
-    return Nesting.mayContain(Archetype.CAMPAIGN, archetype) && !Archetypes.isPlanPiece(archetype);
-  }
-
-  /**
-   * <b>This door does not move a campaign through its lifecycle, change what is or is not a
-   * campaign, or make one</b> — a 409 naming every such entry, before any other layer is asked.
-   *
-   * <p>Three shapes are refused: an entry that changes the status of a {@link Archetype#CAMPAIGN}
-   * row, an entry that turns any row into a campaign or a campaign into anything else, and an entry
-   * stating a campaign for an id that names no row (the door creates nothing anyway, but a campaign
-   * is told where it IS created rather than merely that it is not). A campaign's title and
-   * description may still be edited here, with its status restated unchanged.
-   *
-   * <p>The reason is that a campaign's status is derived from its members (qits-650): its only
-   * manual moves, the drop and the reopen, are its own status door's ({@code POST
-   * /work/{qualifiedId}/status}), which also pauses the start on the drop in the same transaction;
-   * this door sets {@code row.status} directly, with no adjacency rule and no hook. A 409 and not a
-   * 400: the entry is well-formed, it has merely come to the wrong door.
-   */
-  private static void refuseCampaignLifecycle(
-      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
-    List<String> refused = new ArrayList<>();
-    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
-      String id = entry.getKey();
-      EntityTransition target = entry.getValue();
-      WorkEntity row = rows.get(id);
-      boolean toCampaign = target.archetype() == Archetype.CAMPAIGN;
-      if (row == null) {
-        if (toCampaign) {
-          refused.add(id + " states a new campaign, and this door creates no campaign");
-        }
-        continue;
-      }
-      boolean isCampaign = row.archetype == Archetype.CAMPAIGN;
-      if (isCampaign != toCampaign) {
-        refused.add(
-            id
-                + (isCampaign
-                    ? " is a campaign and would become a " + target.archetype()
-                    : " is a " + row.archetype + " and would become a campaign"));
-      } else if (isCampaign && !Objects.equals(row.status, target.status())) {
-        refused.add(
-            "campaign " + id + " would move from " + row.status + " to " + target.status());
-      }
-    }
-    if (!refused.isEmpty()) {
-      throw new ConflictException(
-          String.join("; ", refused)
-              + " — move a campaign through POST /projects/api/work/{qualifiedId}/status; create"
-              + " one through POST /projects/api/work");
-    }
-  }
 
   /**
    * <b>This door neither makes an issue nor changes one</b> (qits-1819), a 409 naming every such
@@ -787,7 +651,6 @@ public class EntityTransitionService {
     add(present, EntityProperty.SUPERSEDED_BY, target.supersededBy());
     add(present, EntityProperty.REPOSITORY_ID, target.repositoryId());
     add(present, EntityProperty.IMPLEMENTED_AT, target.implementedAt());
-    add(present, EntityProperty.DEPENDS_ON, target.dependsOn());
     if (target.acceptanceCriteria() != null && !target.acceptanceCriteria().isEmpty()) {
       present.add(EntityProperty.ACCEPTANCE_CRITERIA);
     }
@@ -988,7 +851,6 @@ public class EntityTransitionService {
       // where the target kind has a slot for it, and cleared where it has none.
       row.implementingAt = null;
     }
-    row.dependsOnEntityId = blankToNull(target.dependsOn());
     List<String> criteria =
         target.acceptanceCriteria() == null ? List.of() : List.copyOf(target.acceptanceCriteria());
     if (!criteria.equals(row.acceptanceCriteria)) {
@@ -1019,9 +881,7 @@ public class EntityTransitionService {
    *
    * <p><b>STRUCTURAL rows only, read and written.</b> A {@code parent} in an {@link
    * EntityTransition} is the tree parent, so every read here goes through the repository's
-   * structural methods and every row it deletes or inserts is a tree edge. A campaign edge of an
-   * entity this reshapes is not the caller's statement about anything and survives untouched —
-   * rewriting it would silently take the entity out of every campaign it had joined.
+   * structural methods and every row it deletes or inserts is a tree edge.
    */
   private void replaceMemberships(Map<String, EntityTransition> stated) {
     Map<String, EntityMembership> existing = edgesOf(stated.keySet());
@@ -1154,9 +1014,8 @@ public class EntityTransitionService {
   }
 
   /** One call for the batch, never one per entity — see {@link TransitionAnnouncer}. */
-  private void announce(Map<String, TransitionedEntity> written, List<TransitionedEntity> derived) {
+  private void announce(Map<String, TransitionedEntity> written) {
     List<TransitionedEntity> batch = new ArrayList<>(written.values());
-    batch.addAll(derived);
     if (!announcer.isUnsatisfied()) {
       announcer.get().onEntitiesTransitioned(List.copyOf(batch), Instant.now());
     }

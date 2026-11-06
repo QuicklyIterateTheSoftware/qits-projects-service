@@ -138,7 +138,7 @@ class GoldenMasterRecordingTest {
   private static final Map<String, String> BEARER = Map.of("Authorization", "{authorization}");
 
   static final List<Interaction> INTERACTIONS =
-      withMilestones(
+      withNeeds(
       withServiceCallers(
       withReleaseRequests(
       withWorkFamily(
@@ -332,22 +332,6 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
-              "listProjectWork",
-              "GET",
-              "/projects/api/projects/{projectId}/work",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
-              "listWorkMembers",
-              "GET",
-              "/projects/api/work/{campaignQualifiedId}/members",
-              200,
-              null,
-              null),
           // The landing app's card screenshots: one state per card case no other state covers.
           new Interaction(
               ProviderStates.A_TICKET_OF_EVERY_TYPE,
@@ -370,81 +354,6 @@ class GoldenMasterRecordingTest {
               "listProjectWork",
               "GET",
               "/projects/api/projects/{projectId}/work",
-              200,
-              null,
-              null),
-          // The params name every member, so both answers freeze an entity to the same id.
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
-              "listProjectWork",
-              "GET",
-              "/projects/api/projects/{projectId}/work",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
-              "listWorkMembers",
-              "GET",
-              "/projects/api/work/{campaignQualifiedId}/members",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "listProjectWork",
-              "GET",
-              "/projects/api/projects/{projectId}/work",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "listWorkMembers",
-              "GET",
-              "/projects/api/work/{campaignQualifiedId}/members",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "getWork",
-              "GET",
-              "/projects/api/work/{qualifiedId}",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "listWorkComments",
-              "GET",
-              "/projects/api/work/{qualifiedId}/comments",
-              200,
-              null,
-              null),
-          // One epic in two campaigns: a state records one answer per operation, so the second
-          // campaign is its own state over the same seed and params (same frozen ids).
-          new Interaction(
-              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
-              "listProjectWork",
-              "GET",
-              "/projects/api/projects/{projectId}/work",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
-              "listWorkMembers",
-              "GET",
-              "/projects/api/work/{firstCampaignQualifiedId}/members",
-              200,
-              null,
-              null),
-          new Interaction(
-              ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
-              "listWorkMembers",
-              "GET",
-              "/projects/api/work/{secondCampaignQualifiedId}/members",
               200,
               null,
               null),
@@ -928,7 +837,7 @@ class GoldenMasterRecordingTest {
   /**
    * The work family's sub-resources (qits-970): every operation recorded once at least — the
    * dossier's reads and writes (a ticket's, writable at every status; pages by slug), the epic's
-   * figures, the children, the history, a campaign's progress and membership writes, the dispatch
+   * figures, the children, the history, the dispatch
    * read, the workspaces, the refinement room and the delete. {@code getWorkDossierAssetContent}
    * serves bytes and has no golden master.
    */
@@ -1004,74 +913,6 @@ class GoldenMasterRecordingTest {
                 + "\"description\":\"Stream a date range of invoices as CSV.\"}"));
     all.add(
         read(ProviderStates.A_REPORTED_TICKET, "getWorkAudit", "/projects/api/work/{qualifiedId}/audit"));
-    all.add(
-        read(
-            ProviderStates.A_CAMPAIGN_IN_DETAIL,
-            "getWorkProgress",
-            "/projects/api/work/{qualifiedId}/progress"));
-    String members = "/projects/api/work/{qualifiedId}/members";
-    all.add(read(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, "listWorkMembers", members));
-    all.add(
-        new Interaction(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "addWorkMember",
-            "POST",
-            members,
-            201,
-            null,
-            null,
-            "{\"entityId\":\"{outsideTicketQualifiedId}\"}"));
-    all.add(
-        write(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "moveWorkMember",
-            "PUT",
-            members + "/{lastMembershipId}/position",
-            "{\"position\":0}"));
-    all.add(
-        new Interaction(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "removeWorkMember",
-            "DELETE",
-            members + "/{lastMembershipId}",
-            200,
-            null,
-            null));
-    all.add(
-        write(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "setWorkMemberCondition",
-            "PUT",
-            members + "/{firstMembershipId}/condition",
-            "{\"groups\":[{\"criteria\":[{\"kind\":\"ENTITY_STATUS\","
-                + "\"predicate\":{\"entityId\":\"{epicQualifiedId}\",\"status\":\"VERIFIED\"}}]}]}"));
-    all.add(
-        write(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "approveWorkMemberCriterion",
-            "POST",
-            members + "/{lastMembershipId}/criteria/{approvalCriterionId}/approve",
-            "{\"note\":\"Finance signed the totals off.\"}"));
-    // A campaign shown anywhere can have its description read (qits-965): every state recording a
-    // campaign's members reads the campaign itself too, by the same qualified id. The detail
-    // states that focus another entity already record getWork for it — one answer per operation —
-    // and read the campaign as "a campaign in detail", over the same seed and frozen ids.
-    all.add(
-        read(
-            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
-            "getWork",
-            "/projects/api/work/{qualifiedId}"));
-    for (Map.Entry<String, String> campaign :
-        List.of(
-            Map.entry(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, "campaignQualifiedId"),
-            Map.entry(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, "campaignQualifiedId"),
-            Map.entry(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS, "firstCampaignQualifiedId"),
-            Map.entry(
-                ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
-                "secondCampaignQualifiedId"))) {
-      all.add(
-          read(campaign.getKey(), "getWork", "/projects/api/work/{" + campaign.getValue() + "}"));
-    }
     all.add(
         read(
             ProviderStates.A_REPORTED_TICKET,
@@ -1403,102 +1244,15 @@ class GoldenMasterRecordingTest {
   }
 
   /**
-   * The milestone doors (epic qits-615): a project's list and a milestone's read in both an unmet
-   * and a met state, every write on a ticket waiting on an unmet one — the create, the rename, the
-   * condition's replace, a person's approve, the attach and the detach — and the work reads that
-   * carry {@code milestones} and {@code unmetMilestones}; and a campaign member waiting on a
-   * milestone, its members read and its milestones set.
+   * The work reads that carry {@code needs} and {@code unmetNeeds} (qits-1903), item to item: the
+   * three reads of a ticket that needs another.
    */
-  private static List<Interaction> withMilestones(List<Interaction> base) {
+  private static List<Interaction> withNeeds(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
-    String unmet = ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE;
-    String met = ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE;
-    String member = ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE;
-    String projectMilestones = "/projects/api/projects/{projectId}/milestones";
-    String milestone = "/projects/api/milestones/{milestoneId}";
-    // What a work item needs, item to item (qits-1903): the three reads that carry needs.
     String needs = ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER;
     all.add(read(needs, "getWork", "/projects/api/work/{qualifiedId}"));
     all.add(read(needs, "listWorkChildren", "/projects/api/work/{featureQualifiedId}/children"));
     all.add(read(needs, "listProjectWork", "/projects/api/projects/{projectId}/work"));
-    for (String state : List.of(unmet, met)) {
-      all.add(read(state, "listProjectMilestones", projectMilestones));
-      all.add(read(state, "getMilestone", milestone));
-      all.add(read(state, "getWork", "/projects/api/work/{qualifiedId}"));
-      all.add(read(state, "listWorkMilestones", "/projects/api/work/{qualifiedId}/milestones"));
-      all.add(read(state, "listProjectWork", "/projects/api/projects/{projectId}/work"));
-    }
-    all.add(
-        new Interaction(
-            unmet,
-            "createMilestone",
-            "POST",
-            projectMilestones,
-            201,
-            null,
-            null,
-            "{\"displayName\":\"bootstrap ticket done\",\"groups\":[{\"criteria\":["
-                + "{\"kind\":\"ENTITY_STATUS\","
-                + "\"predicate\":{\"entityId\":\"{qualifiedId}\",\"status\":\"DONE\"}}]}]}"));
-    all.add(
-        write(
-            unmet,
-            "renameMilestone",
-            "PATCH",
-            milestone,
-            "{\"displayName\":\"bootstrap test node (arm64)\"}"));
-    all.add(
-        write(
-            unmet,
-            "setMilestoneGroups",
-            "PUT",
-            milestone + "/groups",
-            "{\"groups\":["
-                + "{\"criteria\":[{\"id\":\"{criterionId}\",\"kind\":\"APPROVAL\",\"predicate\":{}}]},"
-                + "{\"criteria\":[{\"kind\":\"ENTITY_STATUS\","
-                + "\"predicate\":{\"entityId\":\"{qualifiedId}\",\"status\":\"DONE\"}}]}]}"));
-    // A person approves, from a terminal: the CLI sends their qits CLI token (the state's
-    // authorization), and the door verifies it as a person's (PersonCheck). A browser's session
-    // is the other proof, and the answer is the same.
-    all.add(
-        new Interaction(
-            unmet,
-            "approveMilestoneCriterion",
-            "POST",
-            milestone + "/criteria/{criterionId}/approve",
-            200,
-            null,
-            null,
-            "{\"note\":\"Node 7 is up.\"}",
-            BEARER));
-    all.add(
-        new Interaction(
-            unmet,
-            "attachWorkMilestone",
-            "PUT",
-            "/projects/api/work/{qualifiedId}/milestones/{otherMilestoneId}",
-            200,
-            null,
-            null));
-    all.add(
-        new Interaction(
-            unmet,
-            "detachWorkMilestone",
-            "DELETE",
-            "/projects/api/work/{qualifiedId}/milestones/{milestoneId}",
-            200,
-            null,
-            null));
-    all.add(read(member, "listWorkMembers", "/projects/api/work/{qualifiedId}/members"));
-    all.add(read(member, "getMilestone", milestone));
-    all.add(read(member, "getWork", "/projects/api/work/{ticketQualifiedId}"));
-    all.add(
-        write(
-            member,
-            "setWorkMemberMilestones",
-            "PUT",
-            "/projects/api/work/{qualifiedId}/members/{membershipId}/milestones",
-            "{\"milestoneIds\":[\"{milestoneId}\",\"{otherMilestoneId}\"]}"));
     return List.copyOf(all);
   }
 
@@ -1524,8 +1278,7 @@ class GoldenMasterRecordingTest {
    * seeded project ({@link ProviderStates#IN_DETAIL}). Each records the entity and its thread by
    * the qualified id the page's route carries, and the project's entity list, which holds every
    * child (parent, qualified id, title, archetype, status) and the shell's breadcrumbs. The epic and
-   * the tickets add their dossier — the epic its figures too — and every campaign member, and the
-   * campaign itself, add the campaign.
+   * the tickets add their dossier — the epic its figures too.
    */
   private static List<Interaction> withWorkDetail(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
@@ -1535,14 +1288,6 @@ class GoldenMasterRecordingTest {
           all.add(read(state, "listWorkComments", "/projects/api/work/{qualifiedId}/comments"));
           all.add(read(state, "listProjectWork", "/projects/api/projects/{projectId}/work"));
         });
-    for (String member :
-        List.of(
-            ProviderStates.AN_EPIC_IN_DETAIL,
-            ProviderStates.A_BUG_TICKET_IN_DETAIL,
-            ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
-            ProviderStates.A_CAMPAIGN_IN_DETAIL)) {
-      all.add(read(member, "listWorkMembers", "/projects/api/work/{campaignQualifiedId}/members"));
-    }
     for (String owner :
         List.of(
             ProviderStates.AN_EPIC_IN_DETAIL,

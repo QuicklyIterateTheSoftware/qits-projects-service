@@ -92,7 +92,7 @@ class AcceptanceCriteriaGateTest extends EntitiesTestSupport {
       assertTrue(gate.appliesTo(archetype, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
       assertFalse(gate.appliesTo(archetype, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING));
     }
-    for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK, Archetype.CAMPAIGN)) {
+    for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK, Archetype.ISSUE)) {
       assertFalse(gate.appliesTo(archetype, EntityStatus.REPORTED, EntityStatus.REFINED));
       assertFalse(gate.appliesTo(archetype, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     }
@@ -103,7 +103,7 @@ class AcceptanceCriteriaGateTest extends EntitiesTestSupport {
     String epic = create(Archetype.EPIC, CRITERIA);
     String feature =
         workEntities
-            .create(Archetype.FEATURE, epic, EntityWrite.feature("Part", null, null), "t")
+            .create(Archetype.FEATURE, epic, EntityWrite.feature("Part", null), "t")
             .entity()
             .id;
     workEntities.transition(Archetype.EPIC, epic, "REFINED", "agent");

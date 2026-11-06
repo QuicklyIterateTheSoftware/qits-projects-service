@@ -521,38 +521,11 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>A campaign's move delivers nothing and releases nothing</b> (qits-411), at every status —
-   * VERIFIED included, where an epic or a ticket would ask for its branch's release. A campaign
-   * stands in no workspace; its moves belong to its own door. Handed to the bean directly, the
-   * idiom above, because no transition door reaches this bean with a campaign today.
-   */
-  @Test
-  public void aCampaignsMoveDeliversNoTurnAndAsksForNoRelease() {
-    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
-    for (EntityStatus status : EntityStatus.values()) {
-      WorkEntity campaign = new WorkEntity();
-      campaign.id = "cmp-" + status;
-      campaign.projectId = "prj-campaign";
-      campaign.archetype = Archetype.CAMPAIGN;
-      campaign.title = "Spring";
-      campaign.slug = "spring";
-      campaign.status = status.name();
-      campaign.dispatchContinues = true;
-
-      advance.afterTransition(campaign, null, "dana");
-    }
-
-    assertEquals(List.of(), turns.calls(), "a campaign is never delivered a turn");
-    assertEquals(
-        List.of(), workspaces.lookups(), "and no workspace is looked up, so no release is asked");
-  }
-
-  /**
    * <b>A feature's and a task's move delivers nothing and releases nothing</b> (qits-763), at every
    * status — VERIFIED included, where an epic or a ticket would ask for its branch's release. They
    * hold a status of their own now, but no phase runs on a piece of a plan: the bean returns before
    * it reads a phase, so neither the prompt renderer (which has no template for them and throws) nor
-   * the workspace lookup is reached. Handed to the bean directly, the campaign case's idiom, and
+   * the workspace lookup is reached. Handed to the bean directly, and
    * asserted not to throw — a throw here is what the doors would log as a WARN on every move.
    */
   @Test

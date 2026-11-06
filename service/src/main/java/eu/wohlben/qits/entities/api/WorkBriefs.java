@@ -30,7 +30,7 @@ public record WorkBriefs(List<WorkBrief> briefs) {
    *
    * @param id the entity's UUID
    * @param qualifiedId {@code <project-slug>-<number>}
-   * @param archetype EPIC, FEATURE, TASK, TICKET, CAMPAIGN, …
+   * @param archetype EPIC, FEATURE, TASK, TICKET or ISSUE
    * @param status the status word as stored
    * @param title the label
    * @param updatedAt when the row was last written

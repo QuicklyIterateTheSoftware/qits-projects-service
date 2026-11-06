@@ -55,19 +55,19 @@ class EntityArchetypesApiTest {
         // Three named members and no collection envelope: this answers the model itself, which is
         // one thing with named parts, rather than rows that happen to be there.
         .body("entries", nullValue())
-        .body("archetypes.size()", equalTo(6))
+        .body("archetypes.size()", equalTo(5))
         .body("serverOwned.size()", equalTo(2))
         // The vocabulary travels whole, in declaration order, because a client derives a
         // violation's spelling from it rather than keeping its own table of field names.
         .body("properties[0]", equalTo("TITLE"))
         .body("properties.size()", equalTo(EntityProperty.values().length))
-        .body("properties", hasItems("SLUG", "STATUS", "TICKET_TYPE", "IMPETUS", "DEPENDS_ON"));
+        .body("properties", hasItems("SLUG", "STATUS", "TICKET_TYPE", "IMPETUS", "RELATED_TO"));
   }
 
   @Test
   void everyArchetypeAppearsWithItsDepthAndItsRootness() {
     document()
-        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN", "ISSUE"))
+        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK", "ISSUE"))
         // The two roots share a depth — which is what makes ticket-under-epic refusable by the
         // ordinary parent.depth < child.depth rule a client applies for itself.
         .body(at("EPIC") + "depth", equalTo(0))
@@ -78,33 +78,8 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "mayBeRoot", equalTo(false))
         .body(at("TASK") + "depth", equalTo(2))
         .body(at("TASK") + "mayBeRoot", equalTo(false))
-        // Above the epic and a root too (qits-411): -1 moves no other depth, and rootness is the
-        // declared flag, so the epic and the ticket stay roots beside it.
-        .body(at("CAMPAIGN") + "depth", equalTo(-1))
-        .body(at("CAMPAIGN") + "mayBeRoot", equalTo(true));
-  }
-
-  @Test
-  void onlyTheCampaignGathers() {
-    // Its children are campaign memberships, never structural — a client must not draw them as
-    // the campaign's subtree.
-    document()
-        .body(at("CAMPAIGN") + "gathers", equalTo(true))
-        .body(at("EPIC") + "gathers", equalTo(false))
-        .body(at("TICKET") + "gathers", equalTo(false))
-        .body(at("FEATURE") + "gathers", equalTo(false))
-        .body(at("TASK") + "gathers", equalTo(false))
-        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
-        // Its status is derived from its members (qits-650): the drop and the reopen alone.
-        .body(at("CAMPAIGN") + "transitions.REPORTED.to", contains("DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.READY_FOR_DEV.to", contains("DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.IMPLEMENTED.to", contains("DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DROPPED"))
-        .body(at("CAMPAIGN") + "transitions.DONE.size()", equalTo(0))
-        .body(at("CAMPAIGN") + "transitions.DROPPED.to", contains("REPORTED"))
-        .body(at("CAMPAIGN") + "transitions.DROPPED.kind", contains("REOPEN"))
-        .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
+        // A root that stands alone (qits-1819).
+        .body(at("ISSUE") + "mayBeRoot", equalTo(true));
   }
 
   @Test
@@ -343,8 +318,8 @@ class EntityArchetypesApiTest {
 
   /**
    * qits-1757: an epic and a feature serve a CLOSE to DONE from every open status they hold but
-   * VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and a ticket,
-   * a task and (qits-650, its DONE is derived) a campaign serve no CLOSE.
+   * VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and a ticket
+   * and a task serve no CLOSE.
    */
   @Test
   void theGatheringKindsServeACloseToDoneGatedByChildrenClosed() {
@@ -371,7 +346,7 @@ class EntityArchetypesApiTest {
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.kind", equalTo("FORWARD"))
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.gates", nullValue());
         });
-    for (String archetype : List.of("TICKET", "TASK", "CAMPAIGN")) {
+    for (String archetype : List.of("TICKET", "TASK")) {
       Map<String, List<Map<String, Object>>> moves =
           document().extract().path(at(archetype) + "transitions");
       moves.forEach(

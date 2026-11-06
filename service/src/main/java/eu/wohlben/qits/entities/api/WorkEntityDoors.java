@@ -1,6 +1,8 @@
 package eu.wohlben.qits.entities.api;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
 import eu.wohlben.qits.entities.control.AuditService;
@@ -81,8 +83,8 @@ import org.jboss.logging.Logger;
  * qits-965 deleted in its phase 3 (qits-976). Nothing here names a controller class.
  *
  * <p><b>Ids in bodies.</b> Every entity id a body carries — the transition map's keys, a transition
- * entry's {@code parent}, {@code supersededBy} and {@code dependsOn}, a patch's {@code dependsOn} —
- * may be a qualified id ({@code qits-7}) as well as a UUID ({@link #toIds}).
+ * entry's {@code parent} and {@code supersededBy}, a need's {@code item}, an issue's {@code
+ * relatedTo} — may be a qualified id ({@code qits-7}) as well as a UUID ({@link #toIds}).
  *
  * <p>Nothing here fires inside a write's retried body: every hint goes out after the service
  * returns, as each controller fired it before.
@@ -160,13 +162,8 @@ public class WorkEntityDoors {
 
   @Inject QualifiedEntityIds qualifiedIds;
 
-  /** A campaign's read gains {@code heldBy} from these two (qits-650). */
-  @Inject eu.wohlben.qits.entities.campaign.CampaignService campaignService;
-
-  @Inject CampaignViews campaignViews;
-
-  /** What a work item waits on (epic qits-615), put on every work read. */
-  @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
+  /** Reads a transition entry off its body, once the retired sibling edge is refused. */
+  @Inject ObjectMapper json;
 
   /** What a work item needs (qits-1903): written by the create and the patch, put on every read. */
   @Inject NeedService workNeeds;
@@ -209,25 +206,12 @@ public class WorkEntityDoors {
 
   // --- read ------------------------------------------------------------------------------------
 
-  /**
-   * The row in the merged shape, qualified, with the milestones it waits on (epic qits-615) and
-   * what it needs (qits-1903).
-   */
+  /** The row in the merged shape, qualified, with what it needs (qits-1903). */
   public TransitionedEntity read(WorkEntity row) {
     TransitionedEntity found = catalog.byIds(List.of(row.id)).get(row.id);
-    TransitionedEntity read =
-        found == null
-            ? null
-            : qualifiedIds.qualify(
-                found
-                    .withMilestones(milestones.ofEntity(row.id))
-                    .withNeeds(workNeeds.ofEntity(row.id)));
-    if (read != null && read.archetype() == Archetype.CAMPAIGN) {
-      // The members that set a campaign's derived status (qits-650), computed at read time; every
-      // other archetype leaves the field off the wire.
-      return read.withHeldBy(campaignViews.heldBy(campaignService.get(row.id)));
-    }
-    return read;
+    return found == null
+        ? null
+        : qualifiedIds.qualify(found.withNeeds(workNeeds.ofEntity(row.id)));
   }
 
   // --- create ----------------------------------------------------------------------------------
@@ -312,9 +296,6 @@ public class WorkEntityDoors {
             text(body, "assignee"),
             false,
             text(body, "repositoryId"),
-            // dependsOn is refused at create since qits-1903 (EntitySchemas.whyNotAtCreate).
-            null,
-            false,
             null,
             false,
             null,
@@ -338,7 +319,7 @@ public class WorkEntityDoors {
   private static Archetype archetypeOf(JsonNode value) {
     if (value == null || value.isNull() || !value.isTextual() || value.textValue().isBlank()) {
       throw new BadRequestException(
-          "archetype is required: EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE");
+          "archetype is required: EPIC, TICKET, FEATURE, TASK or ISSUE");
     }
     try {
       return Archetype.valueOf(value.textValue().trim().toUpperCase(Locale.ROOT));
@@ -397,7 +378,7 @@ public class WorkEntityDoors {
           workNeeds.refusals(current.projectId(), id, needs, renderIn(current.projectId()));
     }
 
-    // A dependency may be named by its qualified id as well as its UUID.
+    // An issue's related item may be named by its qualified id as well as its UUID.
     EntityWrite write = readPatch(current, body, this::entityId, needRefusals);
     requireRepositoryIn(write.repositoryId(), current.projectId());
     String changedBy = EntitiesPrincipal.changedBy(identity);
@@ -466,7 +447,7 @@ public class WorkEntityDoors {
    * {@code below}, each a qualified id or a UUID — and answers every sibling the drop renumbered,
    * in order, qualified. The order is the refusal order: the binding (403), the body and the
    * anchor (400 — both or neither named, an anchor naming nothing), then {@link
-   * EntityPriorityService}'s own (400 for a campaign or an anchor that is not an open sibling, 409
+   * EntityPriorityService}'s own (400 for an issue or an anchor that is not an open sibling, 409
    * for a closed item). The hints go out after the write and outside it, as the patch's do.
    */
   public WorkPriorities reprioritize(
@@ -523,7 +504,7 @@ public class WorkEntityDoors {
   private static EntityWrite readPatch(
       TransitionedEntity current,
       JsonNode body,
-      UnaryOperator<String> dependency,
+      UnaryOperator<String> toId,
       List<String> needRefusals) {
     if (body == null || !body.isObject()) {
       throw new BadRequestException("a merge patch must be a JSON object");
@@ -558,8 +539,9 @@ public class WorkEntityDoors {
           refused.addAll(EntitySchemas.needsShapeRefusals(value));
           refused.addAll(needRefusals);
         }
-      } else if (name.equals("dependsOn")) {
-        // The sibling edge is retired on every archetype (qits-1903): needs says what waits.
+      } else if (name.equals(EntityWireProperties.DEPENDS_ON)) {
+        // The sibling edge is retired on every archetype (qits-1903, removed by qits-1908): needs
+        // says what waits, and a body naming it is told so rather than "unknown property".
         refused.add(EntityWireProperties.DEPENDS_ON_RETIRED);
       } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
@@ -605,8 +587,6 @@ public class WorkEntityDoors {
         patchText(body, "assignee"),
         cleared(body, "assignee"),
         patchText(body, "repositoryId"),
-        dependency.apply(patchText(body, "dependsOn")),
-        cleared(body, "dependsOn"),
         implementedAt == null ? null : Instant.parse(implementedAt),
         cleared(body, "implementedAt"),
         implementingAt == null ? null : Instant.parse(implementingAt),
@@ -615,7 +595,7 @@ public class WorkEntityDoors {
         cleared(body, EntitySchemas.INSPIRED_BY))
         .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY))
         .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)))
-        .withRelatedTo(dependency.apply(patchText(body, RELATED_TO)), cleared(body, RELATED_TO));
+        .withRelatedTo(toId.apply(patchText(body, RELATED_TO)), cleared(body, RELATED_TO));
   }
 
   /** The patch's priority (qits-753): null when absent or sent as null, else the integer. */
@@ -657,7 +637,7 @@ public class WorkEntityDoors {
    * archetype's hint, then {@link PhaseAdvance}, after the move is recorded and outside its
    * transaction: a transition that rolled back speaks to nobody, and a throw in the advance must not
    * touch a move that has already been answered for. {@code PhaseAdvance} returns at once for a
-   * campaign.
+   * kind that runs no phase.
    */
   public TransitionedEntity move(SecurityIdentity identity, WorkEntity row, String target) {
     return move(identity, row, target, null, null);
@@ -1105,8 +1085,52 @@ public class WorkEntityDoors {
   }
 
   /**
+   * <b>A transition body read entry by entry</b>: each entry an {@link EntityTransition}, once the
+   * retired sibling edge is refused by name (qits-1903). {@code EntityTransition} has no slot for
+   * {@link EntityWireProperties#DEPENDS_ON} any more (qits-1908), and Jackson drops a property it
+   * has no slot for, so the refusal is asked of the body before it is read. Every entry naming it is
+   * one clause of the one 400; an entry that is not an entity at all is the 400 Jackson's own
+   * reading answers.
+   */
+  public Map<String, EntityTransition> entries(Map<String, JsonNode> body) {
+    if (body == null) {
+      return null;
+    }
+    Map<String, EntityTransition> entries = new LinkedHashMap<>();
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, JsonNode> entry : body.entrySet()) {
+      JsonNode value = entry.getValue();
+      if (value != null && value.isObject() && value.hasNonNull(EntityWireProperties.DEPENDS_ON)) {
+        refused.add(entry.getKey() + ": " + EntityWireProperties.DEPENDS_ON_RETIRED);
+        continue;
+      }
+      entries.put(entry.getKey(), entry(value));
+    }
+    if (!refused.isEmpty()) {
+      throw new BadRequestException(String.join("; ", refused));
+    }
+    return entries;
+  }
+
+  /** One entry of {@link #entries}, or the whole state of a {@code PUT}: null for a JSON null. */
+  public EntityTransition entry(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (value.isObject() && value.hasNonNull(EntityWireProperties.DEPENDS_ON)) {
+      throw new BadRequestException(EntityWireProperties.DEPENDS_ON_RETIRED);
+    }
+    try {
+      return json.treeToValue(value, EntityTransition.class);
+    } catch (JsonProcessingException e) {
+      throw new BadRequestException(
+          "a transition entry is the entity in full: " + e.getOriginalMessage());
+    }
+  }
+
+  /**
    * The request with every entity id resolved to the UUID the transition compares: the keys, and
-   * each entry's {@code parent}, {@code supersededBy} and {@code dependsOn}. A value that resolves
+   * each entry's {@code parent} and {@code supersededBy}. A value that resolves
    * to nothing is handed on unchanged, for the transition's own 400 about an id naming nothing —
    * the contract the transition door has always kept. {@code keys} is filled with UUID → the key as
    * sent, for the answer.
@@ -1121,11 +1145,6 @@ public class WorkEntityDoors {
       String earlier = keys.putIfAbsent(id, entry.getKey());
       if (earlier != null) {
         refused.add(earlier + " and " + entry.getKey() + " name the same entity");
-        continue;
-      }
-      if (entry.getValue() != null && !blank(entry.getValue().dependsOn())) {
-        // The sibling edge is retired (qits-1903); a stated one is a write of it.
-        refused.add(entry.getKey() + ": " + EntityWireProperties.DEPENDS_ON_RETIRED);
         continue;
       }
       out.put(id, withIds(entry.getValue(), resolved));
@@ -1158,7 +1177,6 @@ public class WorkEntityDoors {
         resolveOrKeep(entry.supersededBy(), resolved),
         entry.repositoryId(),
         entry.implementedAt(),
-        resolveOrKeep(entry.dependsOn(), resolved),
         entry.acceptanceCriteria(),
         entry.outcome());
   }
@@ -1215,8 +1233,7 @@ public class WorkEntityDoors {
    * root's delete — an epic's, a ticket's — is {@code qits:admin} alone, as the deleted {@code DELETE
    * /epics/{id}} and {@code DELETE /tickets/{id}} were (deleting is on no agent's surface: an agent
    * that could delete what it disagrees with could erase the record of its own mistake); a feature's
-   * and a task's admit the agent bound to its project. No door has ever deleted a campaign: it is dropped, through its status. The project
-   * is read before the write — afterwards there is no row to read it from.
+   * and a task's admit the agent bound to its project. The project is read before the write — afterwards there is no row to read it from.
    */
   public void delete(SecurityIdentity identity, WorkEntity row) {
     Archetype archetype = row.archetype;
@@ -1224,11 +1241,6 @@ public class WorkEntityDoors {
       throw new ConflictException(
           "An issue is not deleted: move it to OBSOLETE through POST"
               + " /projects/api/work/{qualifiedId}/status.");
-    }
-    if (archetype == Archetype.CAMPAIGN) {
-      throw new ConflictException(
-          "A campaign is not deleted: drop it — POST /projects/api/work/{qualifiedId}/status"
-              + " {\"target\":\"DROPPED\"}.");
     }
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
     // stay human-only. So is the project's delivery desk (qits-1596) and its qits:desk-admin (epic
@@ -1273,8 +1285,6 @@ public class WorkEntityDoors {
     List<String> childIds =
         entities.listChildren(kind, parent.id).stream().map(child -> child.entity().id).toList();
     Map<String, TransitionedEntity> found = catalog.byIds(childIds);
-    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> attached =
-        milestones.ofEntities(childIds);
     // What each child needs (qits-1903): two queries for the page, never one per child.
     Map<String, List<NeedRef>> needs = workNeeds.ofEntities(childIds);
     return qualifiedIds.qualifyEntities(
@@ -1282,10 +1292,7 @@ public class WorkEntityDoors {
             .map(found::get)
             .filter(Objects::nonNull)
             .map(
-                child ->
-                    child
-                        .withMilestones(attached.getOrDefault(child.id(), List.of()))
-                        .withNeeds(needs.getOrDefault(child.id(), List.of())))
+                child -> child.withNeeds(needs.getOrDefault(child.id(), List.of())))
             .toList());
   }
 
@@ -1293,7 +1300,7 @@ public class WorkEntityDoors {
    * A new child of {@code parent}: the create of its child kind with the parent the path names
    * (qits-970). The body is the child archetype's create schema minus {@code archetype}, {@code
    * parent} and {@code project}, which the path decides — so every rule is {@link #create}'s, and a
-   * dependency takes a qualified id there too. A kind nothing hangs under is a 409.
+   * need takes a qualified id there too. A kind nothing hangs under is a 409.
    */
   public TransitionedEntity createChild(SecurityIdentity identity, WorkEntity parent, JsonNode body) {
     Archetype kind = childKindOf(parent.archetype);
@@ -1331,8 +1338,8 @@ public class WorkEntityDoors {
   // --- the history -----------------------------------------------------------------------------
 
   /**
-   * The change history behind {@code named}, newest first (qits-970). A root — an epic, a ticket, a
-   * campaign — answers its whole subtree, every row stamped with its id as the subtree key (an epic's
+   * The change history behind {@code named}, newest first (qits-970). A root — an epic, a ticket, an
+   * issue — answers its whole subtree, every row stamped with its id as the subtree key (an epic's
    * features, tasks and every thread under it), which is what {@code GET /epics/{id}/audit} answers;
    * a feature or a task answers its own rows. The log outlives the rows, so a UUID that names no
    * entity any more is still read as a subtree key, exactly as the epic route reads it; a qualified
@@ -1427,20 +1434,13 @@ public class WorkEntityDoors {
             .filter(entity -> successorId == null || successorId.equals(entity.supersededBy()))
             .filter(entity -> tagged == null || entity.tags().contains(tagged))
             .toList();
-    // What each entry waits on (epic qits-615): two queries for the whole project, never one per
-    // entry.
-    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> attached =
-        found.isEmpty() ? Map.of() : milestones.ofProjectEntities(project);
-    // What each entry needs (qits-1903): two queries for the whole project, too.
+    // What each entry needs (qits-1903): two queries for the whole project, never one per entry.
     Map<String, List<NeedRef>> needs = found.isEmpty() ? Map.of() : workNeeds.ofProject(project);
     return qualifiedIds
         .qualifyEntities(
             found.stream()
                 .map(
-                    entity ->
-                        entity
-                            .withMilestones(attached.getOrDefault(entity.id(), List.of()))
-                            .withNeeds(needs.getOrDefault(entity.id(), List.of())))
+                    entity -> entity.withNeeds(needs.getOrDefault(entity.id(), List.of())))
                 .toList())
         .stream()
         .map(EntitySummary::of)

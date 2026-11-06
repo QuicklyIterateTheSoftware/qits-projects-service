@@ -29,7 +29,7 @@ public class ArchetypeRegistrySchemaFilter implements OASFilter {
               "phases",
               "What a dispatch press (dispatchWork) runs from each status, keyed by every status"
                   + " in lifecycle order. Empty for a kind a dispatch runs no phases on: a feature, a"
-                  + " task and a campaign (whose press is its start)."),
+                  + " task and an issue."),
           "LegalMove",
           Map.of(
               "gates",

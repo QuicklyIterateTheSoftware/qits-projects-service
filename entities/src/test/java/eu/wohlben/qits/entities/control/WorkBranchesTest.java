@@ -30,18 +30,6 @@ class WorkBranchesTest {
     assertEquals("epic/qits-1001", WorkBranches.of(row("e-1", Archetype.EPIC), "qits-1001"));
   }
 
-  /** A campaign has no branch (qits-411). */
-  @Test
-  void aCampaignHasNoBranch() {
-    IllegalArgumentException refused =
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> WorkBranches.of(row("c-1", Archetype.CAMPAIGN), "qits-7"));
-    assertEquals(
-        "campaign c-1 has no branch — a campaign orders work, it is not worked on",
-        refused.getMessage());
-  }
-
   /** No feature/* or task/* branches any more (D9): the epic's agent works on them. */
   @Test
   void aFeatureAndATaskHaveNoBranchOfTheirOwn() {

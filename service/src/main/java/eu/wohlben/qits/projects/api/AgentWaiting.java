@@ -31,8 +31,8 @@ import org.jboss.logging.Logger;
  * <h2>Where a wait counts</h2>
  *
  * <p>Only where a block could stand: {@link EntityBlocks#blockable} — a ticket or an epic at a
- * status whose phase runs (REPORTED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING), a
- * campaign on its walk short of VERIFIED, never a feature or a task. A frame about any other row is
+ * status whose phase runs (REPORTED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING), never
+ * a feature, a task or an issue. A frame about any other row is
  * answered 204 and changes nothing, as is a frame older than the row's last activity less {@code
  * qits.projects.agent-waiting.skew} — frames race, and every transition stamps that activity so one
  * sent before the move cannot re-derive a block at the new status.

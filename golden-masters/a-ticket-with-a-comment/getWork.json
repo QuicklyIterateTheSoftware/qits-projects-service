@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -31,8 +30,6 @@
     "It does what it says."
   ],
   "tags": [],
-  "milestones": [],
-  "unmetMilestones": 0,
   "needs": [],
   "unmetNeeds": 0
 }

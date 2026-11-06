@@ -64,7 +64,7 @@ public class WorkRefinementController {
               + " The room is a session of the project's front desk, asked for by the open. Refused"
               + " for a feature or a task, an entity not at REPORTED, one an ACTIVE workspace names,"
               + " a project with no wrapper, and beyond the project's refinement-sessions cap. The"
-              + " path names the entity (an epic, a ticket or a campaign) by qualified id"
+              + " path names the entity (an epic or a ticket) by qualified id"
               + " (<projectSlug>-<n>) or UUID.")
   @APIResponse(
       responseCode = "200",
