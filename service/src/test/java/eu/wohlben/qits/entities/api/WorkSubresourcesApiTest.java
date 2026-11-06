@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  * a campaign's progress and membership, the dispatch, the refinement room and the delete — each
  * reached by a qualified id in its path, and every entity id a body carries accepted as a qualified
  * id (a member's {@code entityId}, a condition's {@code predicate.entityId}, a child's {@code
- * dependsOn}). The rules behind each are the per-archetype routes' and asserted in their suites;
+ * needs}, since qits-1903 retired {@code dependsOn}). The rules behind each are the per-archetype routes' and asserted in their suites;
  * this class is about the addresses and the ids.
  *
  * <p>Fixtures are written through the older doors ({@link EntityFixtures}), never through the route
@@ -223,12 +223,22 @@ class WorkSubresourcesApiTest {
             .body("parent", equalTo(epic));
     String firstId = first.extract().path("id");
     String firstQualified = first.extract().path("qualifiedId");
+    // A child names what it needs by qualified id (qits-1903); dependsOn is retired.
     send(
             "POST",
             WORK + epicQualified + "/children",
             map("title", "Second", "dependsOn", firstQualified))
-        .statusCode(201)
-        .body("dependsOn", equalTo(firstId));
+        .statusCode(400)
+        .body("message", containsString(EntityWireProperties.DEPENDS_ON_RETIRED));
+    send(
+            "POST",
+            WORK + epicQualified + "/children",
+            map(
+                "title",
+                "Second",
+                "needs",
+                List.of(map("item", firstQualified, "status", "IMPLEMENTED"))))
+        .statusCode(201);
 
     given()
         .when()
@@ -237,7 +247,13 @@ class WorkSubresourcesApiTest {
         .statusCode(200)
         .body("children", hasSize(2))
         .body("children[0].id", equalTo(firstId))
-        .body("children[0].qualifiedId", equalTo(firstQualified));
+        .body("children[0].qualifiedId", equalTo(firstQualified))
+        .body("children[0].needs", hasSize(0))
+        .body("children[0].unmetNeeds", equalTo(0))
+        .body("children[1].needs[0].id", equalTo(firstId))
+        .body("children[1].needs[0].qualifiedId", equalTo(firstQualified))
+        .body("children[1].needs[0].met", equalTo(false))
+        .body("children[1].unmetNeeds", equalTo(1));
 
     String task =
         send(

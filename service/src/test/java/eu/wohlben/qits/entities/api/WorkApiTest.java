@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The work family's routes ({@code /projects/api/work}, qits-969) over HTTP: every entity id a body
- * carries accepted as a qualified id — the create's {@code parent} and {@code dependsOn}, the
- * patch's {@code dependsOn}, and on the PUT and the bulk transition the keys, {@code
- * membership.parent} and {@code supersededBy}. The rules behind each write are {@link
+ * carries accepted as a qualified id — the create's {@code parent} and a need's {@code item}
+ * (qits-1903), and on the PUT and the bulk transition the keys, {@code membership.parent} and
+ * {@code supersededBy}; and {@code dependsOn}, retired by qits-1903, refused on every door. The rules behind each write are {@link
  * WorkEntityDoors}' and asserted in their own suites, which address by qualified id as well: the
  * read and the listing in {@code WorkReadApiTest}, the status move in {@code WorkStatusApiTest}, the
  * patch's refusals in {@code WorkPatchApiTest}, the block in {@code EntityBlockApiTest}, the thread
@@ -45,7 +45,7 @@ class WorkApiTest {
   // --- POST /work ------------------------------------------------------------------------------
 
   @Test
-  void aCreateTakesAProjectSlugAndAParentAndADependencyByQualifiedId() {
+  void aCreateTakesAProjectSlugAndAParentAndANeedByQualifiedId() {
     EntityFixtures.Project project = EntityFixtures.project("Work Create");
 
     String epicQualified =
@@ -71,6 +71,32 @@ class WorkApiTest {
     String firstId = first.extract().path("id");
     String firstQualified = first.extract().path("qualifiedId");
 
+    String second =
+        send(
+                "POST",
+                "/projects/api/work",
+                map(
+                    "archetype",
+                    "FEATURE",
+                    "parent",
+                    epicQualified,
+                    "title",
+                    "Second",
+                    "needs",
+                    java.util.List.of(map("item", firstQualified, "status", "IMPLEMENTED"))))
+            .statusCode(201)
+            .extract()
+            .path("qualifiedId");
+    given()
+        .when()
+        .get(WORK + second)
+        .then()
+        .statusCode(200)
+        .body("needs[0].id", equalTo(firstId))
+        .body("needs[0].qualifiedId", equalTo(firstQualified))
+        .body("unmetNeeds", equalTo(1));
+
+    // The sibling edge is retired (qits-1903): a create naming it is the one 400 that says so.
     send(
             "POST",
             "/projects/api/work",
@@ -80,17 +106,17 @@ class WorkApiTest {
                 "parent",
                 epicQualified,
                 "title",
-                "Second",
+                "Third",
                 "dependsOn",
                 firstQualified))
-        .statusCode(201)
-        .body("dependsOn", equalTo(firstId));
+        .statusCode(400)
+        .body("message", containsString(EntityWireProperties.DEPENDS_ON_RETIRED));
   }
 
   // --- PATCH /work/{qualifiedId} ---------------------------------------------------------------
 
   @Test
-  void aPatchAddressesByQualifiedIdAndTakesADependencyByQualifiedId() {
+  void aPatchAddressesByQualifiedIdAndRefusesTheRetiredDependency() {
     EntityFixtures.Project project = EntityFixtures.project("Work Patch");
     String epic = EntityFixtures.epic(project.id());
     String first = EntityFixtures.feature(epic);
@@ -102,10 +128,19 @@ class WorkApiTest {
         .when()
         .patch(WORK + EntityFixtures.qualifiedId(second))
         .then()
+        .statusCode(400)
+        .body("message", containsString(EntityWireProperties.DEPENDS_ON_RETIRED));
+
+    given()
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
+        .body(map("title", "Renamed"))
+        .when()
+        .patch(WORK + EntityFixtures.qualifiedId(second))
+        .then()
         .statusCode(200)
         .body("id", equalTo(second))
         .body("title", equalTo("Renamed"))
-        .body("dependsOn", equalTo(first));
+        .body("dependsOn", nullValue());
   }
 
   // --- PUT /work/{qualifiedId} -----------------------------------------------------------------

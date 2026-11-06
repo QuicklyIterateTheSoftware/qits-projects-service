@@ -71,11 +71,7 @@ public class QualifiedEntityIds {
    * rule here is about the read, not about the writer.
    */
   public List<TransitionedEntity> qualifyEntities(List<TransitionedEntity> entities) {
-    return qualify(
-        entities,
-        TransitionedEntity::projectId,
-        TransitionedEntity::number,
-        TransitionedEntity::withQualifiedId);
+    return qualify(entities, TransitionedEntity::projectId, QualifiedEntityIds::qualifiedIn);
   }
 
   /** One transitioned entity. */
@@ -93,7 +89,11 @@ public class QualifiedEntityIds {
     }
     Map<String, String> slugs = slugsFor(entities.values(), TransitionedEntity::projectId);
     java.util.LinkedHashMap<String, TransitionedEntity> qualified = new java.util.LinkedHashMap<>();
-    entities.forEach((key, entity) -> qualified.put(key, qualified(entity, slugs)));
+    entities.forEach(
+        (key, entity) -> {
+          String slug = slugs.get(entity.projectId());
+          qualified.put(key, slug == null ? entity : qualifiedIn(entity, slug));
+        });
     return qualified;
   }
 
@@ -106,8 +106,7 @@ public class QualifiedEntityIds {
   private <T> List<T> qualify(
       List<T> rows,
       Function<T, String> projectId,
-      Function<T, Long> number,
-      java.util.function.BiFunction<T, String, T> withQualifiedId) {
+      java.util.function.BiFunction<T, String, T> inProject) {
     if (rows == null || rows.isEmpty()) {
       return rows;
     }
@@ -117,14 +116,24 @@ public class QualifiedEntityIds {
             row -> {
               String slug = slugs.get(projectId.apply(row));
               // No project row: leave it null. A decoration never throws — see the class javadoc.
-              return slug == null ? row : withQualifiedId.apply(row, render(slug, number.apply(row)));
+              return slug == null ? row : inProject.apply(row, slug);
             })
         .toList();
   }
 
-  private TransitionedEntity qualified(TransitionedEntity entity, Map<String, String> slugs) {
-    String slug = slugs.get(entity.projectId());
-    return slug == null ? entity : entity.withQualifiedId(render(slug, entity.number()));
+  /**
+   * {@code entity} told its qualified id in the project slugged {@code slug} — and each of its
+   * needs told its item's (qits-1903): a need never leaves its project, so the one slug serves.
+   */
+  private static TransitionedEntity qualifiedIn(TransitionedEntity entity, String slug) {
+    TransitionedEntity qualified = entity.withQualifiedId(render(slug, entity.number()));
+    if (qualified.needs() == null || qualified.needs().isEmpty()) {
+      return qualified;
+    }
+    return qualified.withNeeds(
+        qualified.needs().stream()
+            .map(need -> need.withQualifiedId(render(slug, need.number())))
+            .toList());
   }
 
   /** The distinct project ids of a whole collection, resolved in ONE query. */

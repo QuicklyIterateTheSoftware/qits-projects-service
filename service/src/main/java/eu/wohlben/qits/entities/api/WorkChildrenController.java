@@ -61,7 +61,16 @@ public class WorkChildrenController {
       @Schema(description = "The long-form Markdown body.") String description,
       @Schema(description = "A task's repository, in the parent's project. Required for a task.")
           String repositoryId,
-      @Schema(description = "A sibling dependency, by qualified id or UUID.") String dependsOn) {}
+      @Schema(
+              deprecated = true,
+              description =
+                  "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
+          String dependsOn,
+      @Schema(
+              description =
+                  "What the child waits for (qits-1903): each entry a work item of the same project"
+                      + " and the status it must reach.")
+          List<WorkController.WorkNeedWrite> needs) {}
 
   @GET
   @Operation(

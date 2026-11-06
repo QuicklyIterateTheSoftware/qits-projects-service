@@ -15,6 +15,8 @@ import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.Mover;
+import eu.wohlben.qits.entities.control.NeedRef;
+import eu.wohlben.qits.entities.control.NeedService;
 import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.control.SiblingPriorities;
 import eu.wohlben.qits.entities.control.TransitionGate;
@@ -166,6 +168,9 @@ public class WorkEntityDoors {
   /** What a work item waits on (epic qits-615), put on every work read. */
   @Inject eu.wohlben.qits.entities.milestone.MilestoneService milestones;
 
+  /** What a work item needs (qits-1903): written by the create and the patch, put on every read. */
+  @Inject NeedService workNeeds;
+
   /** The drop door's write (qits-753). */
   @Inject EntityPriorityService priorities;
 
@@ -204,12 +209,19 @@ public class WorkEntityDoors {
 
   // --- read ------------------------------------------------------------------------------------
 
-  /** The row in the merged shape, qualified, with the milestones it waits on (epic qits-615). */
+  /**
+   * The row in the merged shape, qualified, with the milestones it waits on (epic qits-615) and
+   * what it needs (qits-1903).
+   */
   public TransitionedEntity read(WorkEntity row) {
-    TransitionedEntity read = qualifiedIds.qualify(catalog.byIds(List.of(row.id)).get(row.id));
-    if (read != null) {
-      read = read.withMilestones(milestones.ofEntity(row.id));
-    }
+    TransitionedEntity found = catalog.byIds(List.of(row.id)).get(row.id);
+    TransitionedEntity read =
+        found == null
+            ? null
+            : qualifiedIds.qualify(
+                found
+                    .withMilestones(milestones.ofEntity(row.id))
+                    .withNeeds(workNeeds.ofEntity(row.id)));
     if (read != null && read.archetype() == Archetype.CAMPAIGN) {
       // The members that set a campaign's derived status (qits-650), computed at read time; every
       // other archetype leaves the field off the wire.
@@ -262,6 +274,16 @@ public class WorkEntityDoors {
     }
 
     List<String> refused = new ArrayList<>(EntitySchemas.createRefusals(archetype, body));
+    // What the new item needs (qits-1903): judged once its shape passed, against the project the
+    // placement named. A new item is needed by nothing, so it closes no cycle.
+    List<NeedService.Stated> needs = null;
+    if (EntityWireProperties.hasNeeds(archetype)
+        && EntitySchemas.needsShapeRefusals(body.get(EntityWireProperties.NEEDS)).isEmpty()) {
+      needs = stated(EntitySchemas.needs(body.get(EntityWireProperties.NEEDS)));
+      if (needs != null && projectId != null) {
+        refused.addAll(workNeeds.refusals(projectId, null, needs, renderIn(projectId)));
+      }
+    }
     Archetype parentKind = WorkEntityService.parentKindOf(archetype);
     if (parent != null && parent.archetype != parentKind) {
       refused.add(
@@ -290,7 +312,8 @@ public class WorkEntityDoors {
             text(body, "assignee"),
             false,
             text(body, "repositoryId"),
-            entityId(text(body, "dependsOn")),
+            // dependsOn is refused at create since qits-1903 (EntitySchemas.whyNotAtCreate).
+            null,
             false,
             null,
             false,
@@ -303,8 +326,11 @@ public class WorkEntityDoors {
     requireRepositoryIn(write.repositoryId(), projectId);
 
     Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.of(archetype));
     String id = created.entity().id;
+    if (needs != null && !needs.isEmpty()) {
+      workNeeds.replace(id, needs);
+    }
+    publisher.fire(projectId, ProjectChangeHint.Topic.of(archetype));
     return qualifiedIds.qualify(catalog.byIds(List.of(id)).get(id));
   }
 
@@ -357,11 +383,36 @@ public class WorkEntityDoors {
       EntitiesAgentAccess.requireIdeaWriter(identity);
     }
 
+    // What the item needs (qits-1903), judged with the rest of the patch so one 400 lists every
+    // complaint: the shape in readPatch, what each entry names here.
+    List<NeedService.Stated> needs = null;
+    List<String> needRefusals = List.of();
+    JsonNode stated =
+        body != null && body.isObject() ? body.get(EntityWireProperties.NEEDS) : null;
+    if (stated != null
+        && EntityWireProperties.hasNeeds(current.archetype())
+        && EntitySchemas.needsShapeRefusals(stated).isEmpty()) {
+      needs = stated(EntitySchemas.needs(stated));
+      needRefusals =
+          workNeeds.refusals(current.projectId(), id, needs, renderIn(current.projectId()));
+    }
+
     // A dependency may be named by its qualified id as well as its UUID.
-    EntityWrite write = readPatch(current, body, this::entityId);
+    EntityWrite write = readPatch(current, body, this::entityId, needRefusals);
     requireRepositoryIn(write.repositoryId(), current.projectId());
     String changedBy = EntitiesPrincipal.changedBy(identity);
+    if (needs != null && body.size() == 1) {
+      // Only the needs: they are neither scope nor a marker, so no freeze and no status refuses
+      // them (qits-1903) — and the empty entity write a lone needs would make counts as scope.
+      workNeeds.replace(id, needs);
+      epicHints.fire(current.projectId());
+      ticketHints.fire(current.projectId());
+      return qualifiedIds.qualify(current);
+    }
     Nested updated = entities.update(current.archetype(), id, write, changedBy);
+    if (needs != null) {
+      workNeeds.replace(id, needs);
+    }
     if (current.archetype() == Archetype.TASK && write.implementingAt() != null) {
       // The rest of what mark_task_implementing does (qits-1174): the feature stamped the first
       // time, and an epic still READY_FOR_DEV moved to IMPLEMENTING. The task itself is already
@@ -375,6 +426,37 @@ public class WorkEntityDoors {
     // The row the write handed back, never a re-read — see TransitionedEntity.edited for why a
     // re-read in this request answers the row as it was.
     return qualifiedIds.qualify(TransitionedEntity.edited(updated.entity(), current));
+  }
+
+  /**
+   * A body's needs as the need service judges them (qits-1903): each item resolved to its UUID
+   * where it names an entity (a qualified id or a UUID), else handed on as written, for the
+   * service's "not a work item of this project". Null for a body that names no needs.
+   */
+  private List<NeedService.Stated> stated(List<EntitySchemas.NeedEntry> entries) {
+    if (entries == null) {
+      return null;
+    }
+    List<NeedService.Stated> stated = new ArrayList<>(entries.size());
+    for (EntitySchemas.NeedEntry entry : entries) {
+      String item = entry.item();
+      String resolved = null;
+      if (item != null && !item.isBlank()) {
+        try {
+          resolved = ids.resolve(item.trim()).id;
+        } catch (NotFoundException unknown) {
+          resolved = null;
+        }
+      }
+      stated.add(new NeedService.Stated(item, resolved, entry.status()));
+    }
+    return stated;
+  }
+
+  /** How a cycle names the items of {@code projectId}: their qualified ids, else the number. */
+  private java.util.function.LongFunction<String> renderIn(String projectId) {
+    String slug = projects.slugsByIds(Set.of(projectId)).get(projectId);
+    return number -> slug == null ? String.valueOf(number) : QualifiedEntityIds.render(slug, number);
   }
 
   // --- the drop door (qits-753) -----------------------------------------------------------------
@@ -439,7 +521,10 @@ public class WorkEntityDoors {
    * complaint about it.
    */
   private static EntityWrite readPatch(
-      TransitionedEntity current, JsonNode body, UnaryOperator<String> dependency) {
+      TransitionedEntity current,
+      JsonNode body,
+      UnaryOperator<String> dependency,
+      List<String> needRefusals) {
     if (body == null || !body.isObject()) {
       throw new BadRequestException("a merge patch must be a JSON object");
     }
@@ -465,6 +550,17 @@ public class WorkEntityDoors {
       } else if (name.equals(EntityWireProperties.TAGS)) {
         // The tags (qits-634): every archetype, every status, no registry property.
         EntitySchemas.tagsRefusal(value).ifPresent(refused::add);
+      } else if (name.equals(EntityWireProperties.NEEDS)) {
+        // The needs (qits-1903): the four kinds with a walk, every status, no registry property.
+        if (!EntityWireProperties.hasNeeds(archetype)) {
+          refused.add(EntitySchemas.needsNotPermitted(archetype));
+        } else {
+          refused.addAll(EntitySchemas.needsShapeRefusals(value));
+          refused.addAll(needRefusals);
+        }
+      } else if (name.equals("dependsOn")) {
+        // The sibling edge is retired on every archetype (qits-1903): needs says what waits.
+        refused.add(EntityWireProperties.DEPENDS_ON_RETIRED);
       } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
@@ -1027,6 +1123,11 @@ public class WorkEntityDoors {
         refused.add(earlier + " and " + entry.getKey() + " name the same entity");
         continue;
       }
+      if (entry.getValue() != null && !blank(entry.getValue().dependsOn())) {
+        // The sibling edge is retired (qits-1903); a stated one is a write of it.
+        refused.add(entry.getKey() + ": " + EntityWireProperties.DEPENDS_ON_RETIRED);
+        continue;
+      }
       out.put(id, withIds(entry.getValue(), resolved));
     }
     if (!refused.isEmpty()) {
@@ -1172,13 +1273,19 @@ public class WorkEntityDoors {
     List<String> childIds =
         entities.listChildren(kind, parent.id).stream().map(child -> child.entity().id).toList();
     Map<String, TransitionedEntity> found = catalog.byIds(childIds);
-    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> needs =
+    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> attached =
         milestones.ofEntities(childIds);
+    // What each child needs (qits-1903): two queries for the page, never one per child.
+    Map<String, List<NeedRef>> needs = workNeeds.ofEntities(childIds);
     return qualifiedIds.qualifyEntities(
         childIds.stream()
             .map(found::get)
             .filter(Objects::nonNull)
-            .map(child -> child.withMilestones(needs.getOrDefault(child.id(), List.of())))
+            .map(
+                child ->
+                    child
+                        .withMilestones(attached.getOrDefault(child.id(), List.of()))
+                        .withNeeds(needs.getOrDefault(child.id(), List.of())))
             .toList());
   }
 
@@ -1322,12 +1429,18 @@ public class WorkEntityDoors {
             .toList();
     // What each entry waits on (epic qits-615): two queries for the whole project, never one per
     // entry.
-    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> needs =
+    Map<String, List<eu.wohlben.qits.entities.milestone.Milestone>> attached =
         found.isEmpty() ? Map.of() : milestones.ofProjectEntities(project);
+    // What each entry needs (qits-1903): two queries for the whole project, too.
+    Map<String, List<NeedRef>> needs = found.isEmpty() ? Map.of() : workNeeds.ofProject(project);
     return qualifiedIds
         .qualifyEntities(
             found.stream()
-                .map(entity -> entity.withMilestones(needs.getOrDefault(entity.id(), List.of())))
+                .map(
+                    entity ->
+                        entity
+                            .withMilestones(attached.getOrDefault(entity.id(), List.of()))
+                            .withNeeds(needs.getOrDefault(entity.id(), List.of())))
                 .toList())
         .stream()
         .map(EntitySummary::of)

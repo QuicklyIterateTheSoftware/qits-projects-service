@@ -112,7 +112,7 @@ public class WorkController {
       @Schema(description = "Why a ticket came about. Required for a ticket.") String impetus,
       @Schema(description = "An epic's or a ticket's assignee.") String assignee,
       @Schema(description = "A task's repository, in the task's project.") String repositoryId,
-      @Schema(description = "A feature's or task's sibling dependency, by qualified id or UUID.")
+      @Schema(deprecated = true, description = "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
           String dependsOn,
       @Schema(description = "An epic's or a ticket's acceptance criteria, in order.")
           List<String> acceptanceCriteria,
@@ -124,12 +124,40 @@ public class WorkController {
       @Schema(
               description =
                   "The work's tags, on every archetype: RESERVED_FOR_HUMAN marks work an agent"
-                      + " cannot complete — a person does it, and no agent is dispatched onto it.")
+                      + " cannot complete — a person does it, and no agent is dispatched onto it."
+                      + " CONDITION marks a condition other work waits for, not work of its own; no"
+                      + " agent is dispatched onto it.")
           List<WorkTag> tags,
       @Schema(
               description =
                   "An issue's one related work item of the same project, by qualified id or UUID.")
-          String relatedTo) {}
+          String relatedTo,
+      @Schema(
+              description =
+                  "What an epic, a ticket, a feature or a task waits for (qits-1903): each entry"
+                      + " a work item of the same project and the status it must reach. Refused on"
+                      + " an issue and a campaign.")
+          List<WorkNeedWrite> needs) {}
+
+  /** One need as a create or a patch states it (qits-1903). */
+  @Schema(
+      name = "WorkNeedWrite",
+      description =
+          "This work waits until item reaches status: met once the item is at or past it on the"
+              + " walk; a DROPPED need is met by DROPPED alone.")
+  public record WorkNeedWrite(
+      @Schema(
+              required = true,
+              description =
+                  "The needed work item of the same project — an epic, a ticket, a feature or a"
+                      + " task — by qualified id or UUID; never the item itself.")
+          String item,
+      @Schema(
+              required = true,
+              description =
+                  "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED,"
+                      + " DONE or DROPPED.")
+          String status) {}
 
   /**
    * The documentation of the patch's body, and only that: the body itself is read as a {@link
@@ -159,11 +187,7 @@ public class WorkController {
           String assignee,
       @Schema(description = "A task's repository, in the task's project. Cannot be cleared.")
           String repositoryId,
-      @Schema(
-              nullable = true,
-              description =
-                  "A feature's or task's sibling dependency, by qualified id or UUID; null clears"
-                      + " it.")
+      @Schema(deprecated = true, description = "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
           String dependsOn,
       @Schema(
               nullable = true,
@@ -213,10 +237,20 @@ public class WorkController {
                   "The work's tags, on every archetype, the whole set: RESERVED_FOR_HUMAN marks"
                       + " work an agent cannot complete — a person does it and moves its status by"
                       + " hand, and no agent is dispatched onto it (say why in the description)."
+                      + " CONDITION marks a condition other work waits for, not work of its own (say"
+                      + " what closes it in the description); no agent is dispatched onto it."
                       + " Editable at every status, outside every scope freeze; an empty array or"
                       + " null clears them. An unknown tag is a 400 naming the legal ones. A"
                       + " transition never changes them.")
-          List<WorkTag> tags) {}
+          List<WorkTag> tags,
+      @Schema(
+              nullable = true,
+              description =
+                  "What an epic, a ticket, a feature or a task waits for (qits-1903), the whole"
+                      + " list: each entry a work item of the same project and the status it must"
+                      + " reach. Editable at every status, outside every scope freeze; an empty"
+                      + " array or null clears them. A transition never changes them.")
+          List<WorkNeedWrite> needs) {}
 
   /**
    * The drop door's body (qits-753): exactly one anchor. Read as a record because neither member
