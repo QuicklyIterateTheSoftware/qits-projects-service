@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -32,8 +31,6 @@
   ],
   "waitingOn": "release-request 42; ci-run 7",
   "tags": [],
-  "milestones": [],
-  "unmetMilestones": 0,
   "needs": [],
   "unmetNeeds": 0
 }

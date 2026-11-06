@@ -21,7 +21,6 @@
       "repositoryId": null,
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": null,
       "position": null,
       "priority": null,
@@ -30,8 +29,6 @@
       "changedBy": null,
       "blocked": false,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [],
       "unmetNeeds": 0
     },
@@ -56,7 +53,6 @@
       "repositoryId": null,
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": null,
       "position": null,
       "priority": null,
@@ -65,8 +61,6 @@
       "changedBy": null,
       "blocked": false,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [
         {
           "id": "00000000-0000-4000-8000-000000000003",
@@ -101,7 +95,6 @@
       "repositoryId": null,
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": null,
       "position": null,
       "priority": null,
@@ -110,8 +103,6 @@
       "changedBy": null,
       "blocked": false,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [],
       "unmetNeeds": 0
     },
@@ -136,7 +127,6 @@
       "repositoryId": null,
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 0,
       "priority": null,
@@ -144,8 +134,6 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [],
       "unmetNeeds": 0
     },
@@ -170,7 +158,6 @@
       "repositoryId": "00000000-0000-4000-8000-000000000007",
       "implementedAt": "2026-01-01T00:00:00Z",
       "implementingAt": null,
-      "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000005",
       "position": 0,
       "priority": null,
@@ -178,8 +165,6 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [],
       "unmetNeeds": 0
     },
@@ -204,7 +189,6 @@
       "repositoryId": null,
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000004",
       "position": 1,
       "priority": null,
@@ -212,8 +196,6 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [],
       "unmetNeeds": 0
     },
@@ -238,7 +220,6 @@
       "repositoryId": "00000000-0000-4000-8000-000000000007",
       "implementedAt": null,
       "implementingAt": null,
-      "dependsOn": null,
       "parent": "00000000-0000-4000-8000-000000000008",
       "position": 0,
       "priority": null,
@@ -246,8 +227,6 @@
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
       "tags": [],
-      "milestones": [],
-      "unmetMilestones": 0,
       "needs": [
         {
           "id": "00000000-0000-4000-8000-000000000006",

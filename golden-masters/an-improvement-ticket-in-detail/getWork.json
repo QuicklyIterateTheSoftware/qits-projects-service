@@ -1,12 +1,12 @@
 {
-  "id": "00000000-0000-4000-8000-00000000000b",
+  "id": "00000000-0000-4000-8000-00000000000a",
   "archetype": "TICKET",
-  "projectId": "00000000-0000-4000-8000-00000000000f",
-  "number": 11,
-  "qualifiedId": "contract-00000001-11",
+  "projectId": "00000000-0000-4000-8000-00000000000e",
+  "number": 10,
+  "qualifiedId": "contract-00000001-10",
   "title": "Remember the last export format",
   "slug": "remember-the-last-export-format",
-  "slugScope": "00000000-0000-4000-8000-00000000000f",
+  "slugScope": "00000000-0000-4000-8000-00000000000e",
   "description": "Keep the chosen export format per user and preselect it next time.",
   "status": "REFINED",
   "statusBefore": null,
@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -31,14 +30,6 @@
     "It does what it says."
   ],
   "tags": [],
-  "milestones": [
-    {
-      "id": "00000000-0000-4000-8000-000000000013",
-      "displayName": "Before \"Remember the last export format\" in \"Invoicing for the Q4 close\"",
-      "satisfiedAt": null
-    }
-  ],
-  "unmetMilestones": 1,
   "needs": [],
   "unmetNeeds": 0
 }
