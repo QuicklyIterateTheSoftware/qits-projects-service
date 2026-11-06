@@ -22,9 +22,8 @@ import org.hibernate.annotations.CreationTimestamp;
  * NeedRule.reached} and never latched. One row per pair, so an item needs another once; between the
  * needs of one item it is AND only. Cascaded with either end.
  *
- * <p>Mapped like {@code WorkMilestone}, deliberately outside the {@code milestone} package, which
- * the contract step of epic qits-1899 deletes. Written whole by the work doors, never by a
- * transition — see V40's header.
+ * <p>A composite key, {@link Key}. Written whole by the work doors, never by a transition — see
+ * V40's header.
  */
 @Entity
 @Table(name = "work_need")

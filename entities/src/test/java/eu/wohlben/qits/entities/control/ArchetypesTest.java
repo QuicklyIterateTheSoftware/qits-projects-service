@@ -74,16 +74,16 @@ class ArchetypesTest {
   }
 
   @Test
-  void rootnessIsDeclaredAndTodayItIsTheTwoRootsAndTheCampaign() {
+  void rootnessIsDeclaredAndTodayItIsTheTwoRootsAndTheIssue() {
     assertTrue(Archetypes.mayBeRoot(Archetype.EPIC));
     assertTrue(Archetypes.mayBeRoot(Archetype.TICKET));
-    assertTrue(Archetypes.mayBeRoot(Archetype.CAMPAIGN));
+    assertTrue(Archetypes.mayBeRoot(Archetype.ISSUE));
     assertFalse(Archetypes.mayBeRoot(Archetype.FEATURE));
     assertFalse(Archetypes.mayBeRoot(Archetype.TASK));
   }
 
   @Test
-  void epicTicketAndCampaignDeclareTheOneLifecycleAndNothingElseHasOne() {
+  void everyKindButTheIssueDeclaresTheOneLifecycle() {
     var six = EntityStateMachine.states().stream().map(Enum::name).collect(Collectors.toSet());
     assertEquals(
         Set.of(
@@ -102,12 +102,6 @@ class ArchetypesTest {
     // A feature and a task hold the same nine since qits-763 and qits-887 — one lifecycle, whatever the kind.
     assertEquals(six, Archetypes.legalStatuses(Archetype.FEATURE));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TASK));
-    // A campaign never enters IMPLEMENTING or VERIFYING (qits-749), and keeps READY_FOR_DEV
-    // (qits-887): its words are the rest.
-    var campaign = new java.util.HashSet<>(six);
-    campaign.remove("IMPLEMENTING");
-    campaign.remove("VERIFYING");
-    assertEquals(campaign, Archetypes.legalStatuses(Archetype.CAMPAIGN));
   }
 
   @Test
@@ -117,42 +111,13 @@ class ArchetypesTest {
     assertTrue(Archetypes.isPlanPiece(Archetype.TASK));
     assertFalse(Archetypes.isPlanPiece(Archetype.EPIC));
     assertFalse(Archetypes.isPlanPiece(Archetype.TICKET));
-    assertFalse(Archetypes.isPlanPiece(Archetype.CAMPAIGN));
+    assertFalse(Archetypes.isPlanPiece(Archetype.ISSUE));
     // And they carry the slot, permitted rather than required: the writer mints it, as an epic's.
     for (Archetype piece : List.of(Archetype.FEATURE, Archetype.TASK)) {
       assertTrue(Archetypes.spec(piece).permits(EntityProperty.STATUS));
       assertFalse(Archetypes.spec(piece).required().contains(EntityProperty.STATUS));
       assertFalse(Archetypes.spec(piece).requiredAtCreate().contains(EntityProperty.STATUS));
     }
-  }
-
-  // ---- the campaign (qits-411) -----------------------------------------------------------------
-
-  @Test
-  void theCampaignIsDeclaredAboveTheEpicAtMinusOneAndNoOtherDepthMoved() {
-    ArchetypeSpec spec = Archetypes.spec(Archetype.CAMPAIGN);
-    assertEquals(Archetype.CAMPAIGN, spec.archetype());
-    assertEquals(-1, Archetypes.depth(Archetype.CAMPAIGN));
-    // The existing three numbers are the decision ("Depth" in Archetypes): they do not move.
-    assertEquals(0, Archetypes.depth(Archetype.EPIC));
-    assertEquals(0, Archetypes.depth(Archetype.TICKET));
-    assertEquals(1, Archetypes.depth(Archetype.FEATURE));
-    assertEquals(2, Archetypes.depth(Archetype.TASK));
-  }
-
-  @Test
-  void theCampaignRequiresATitleAndPermitsTheEpicsWordsWithoutSupersede() {
-    ArchetypeSpec spec = Archetypes.spec(Archetype.CAMPAIGN);
-    assertEquals(Set.of(EntityProperty.TITLE), spec.required());
-    // The status is minted by the writer at REPORTED, as an epic's is — not required of a candidate.
-    assertEquals(Set.of(EntityProperty.TITLE), spec.requiredAtCreate());
-    assertEquals(
-        Set.of(
-            EntityProperty.TITLE,
-            EntityProperty.SLUG,
-            EntityProperty.DESCRIPTION,
-            EntityProperty.STATUS),
-        spec.permitted());
   }
 
   // ---- why a drop closed the work (qits-248) ---------------------------------------------------
@@ -199,53 +164,14 @@ class ArchetypesTest {
     assertEquals(List.of(), Archetypes.validate(ticket, Demand.ON_UPDATE));
   }
 
-  @Test
-  void onlyTheCampaignGathers() {
-    for (Archetype archetype : Archetype.values()) {
-      assertEquals(
-          archetype == Archetype.CAMPAIGN,
-          Archetypes.gathers(archetype),
-          archetype + " gathers");
-      assertEquals(Archetypes.gathers(archetype), Archetypes.spec(archetype).gathers());
-    }
-  }
-
-  @Test
-  void aCampaignCarryingATicketsIntakeIsRefusedRatherThanHavingItDropped() {
-    List<ArchetypeViolation> violations =
-        Archetypes.validate(
-            new EntityState(
-                Archetype.CAMPAIGN,
-                EntityStatus.REPORTED.name(),
-                properties(EntityProperty.TITLE, EntityProperty.IMPETUS)),
-            Demand.AT_CREATE);
-
-    assertEquals(1, violations.size(), () -> violations.toString());
-    assertEquals(EntityProperty.IMPETUS, violations.get(0).property());
-    assertEquals(ArchetypeViolation.Reason.NOT_PERMITTED, violations.get(0).reason());
-  }
-
   // ---- what a well-formed candidate looks like -------------------------------------------------
 
   @Test
-  void theFiveWellFormedCandidatesPassAtEitherMoment() {
+  void theFourWellFormedCandidatesPassAtEitherMoment() {
     for (Demand demand : Demand.values()) {
       assertEquals(List.of(), Archetypes.validate(epic(EntityStatus.REPORTED.name()), demand), demand.name());
       assertEquals(
           List.of(), Archetypes.validate(ticket(EntityStatus.REPORTED.name()), demand), demand.name());
-      assertEquals(
-          List.of(),
-          Archetypes.validate(
-              new EntityState(
-                  Archetype.CAMPAIGN, EntityStatus.REPORTED.name(), properties(EntityProperty.TITLE)),
-              demand),
-          demand.name());
-      // Status-less, as a candidate is before the writer mints REPORTED.
-      assertEquals(
-          List.of(),
-          Archetypes.validate(
-              EntityState.of(Archetype.CAMPAIGN, properties(EntityProperty.TITLE)), demand),
-          demand.name());
       assertEquals(
           List.of(),
           Archetypes.validate(

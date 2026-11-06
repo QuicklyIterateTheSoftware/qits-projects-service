@@ -26,8 +26,7 @@ import java.util.Set;
  *   FORWARD one step right, BACK one step left (below DONE, and never out of IMPLEMENTING), the two
  *   SKIPs over an "-ING" status, DROP from every open state to DROPPED, DROPPED REOPENs to
  *   REPORTED, and — for an epic or a feature only — CLOSE from every open state short of VERIFIED
- *   straight to DONE (qits-1757). A campaign is moved by hand only by its DROP and REOPEN: its
- *   status is derived from its members (qits-650).
+ *   straight to DONE (qits-1757).
  *
  *   starts phase:  REPORTED → refine,  READY_FOR_DEV and IMPLEMENTING → implement,
  *                  IMPLEMENTED and VERIFYING → verify;  REFINED (it waits for a person), VERIFIED,
@@ -65,10 +64,7 @@ import java.util.Set;
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to
  * support; a done development that later turns out wrong is a <em>new</em> ticket or epic, which may
- * refer to the done one. Below DONE the walk stays reversible. A campaign's DONE is the one
- * exception in effect, not in this registry: it is derived and follows its members (qits-1805,
- * {@code CampaignStatusRecompute}), while the manual transitions are unchanged — no exit from DONE
- * is served, to a campaign or to anything else.
+ * refer to the done one. Below DONE the walk stays reversible.
  *
  * <p><b>DROPPED is off the walk.</b> It is reachable (DROP) from every state that is still open —
  * REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED — because a decision not to do the work can
@@ -77,28 +73,11 @@ import java.util.Set;
  * what it is for again, which is the refine phase.
  *
  * <p><b>An epic or a feature may CLOSE straight to DONE</b> (qits-1757) from every open
- * state short of VERIFIED — finished work that was never walked: every child it gathers is closed
+ * state short of VERIFIED — finished work that was never walked: every child it holds is closed
  * already, and scheduling it to walk it would be a scheduling act about nothing. Whether the
  * children are closed, and who may make the move, is the {@code CHILDREN_CLOSED} gate's to judge;
  * this class only says the move exists, and only for {@link #closes} archetypes. VERIFIED → DONE is
  * not a CLOSE: it stays the walk's FORWARD, ungated, so each target is still reached by one move.
- *
- * <p><b>A campaign walks the same machine with IMPLEMENTING and VERIFYING elided</b> (qits-749). A
- * campaign enters neither — its press starts it — so for that archetype the two are taken out and
- * its lifecycle is <em>the walk with the elided states removed</em>: REPORTED → REFINED →
- * READY_FOR_DEV → IMPLEMENTED → VERIFIED → DONE (qits-887, decision 19 — a campaign's
- * READY_FOR_DEV says it is ready for development, not that it runs). A kept state's FORWARD (or a
- * SKIP that lands on the same state) goes to the next kept state, its BACK to the previous kept
- * state, and DROP/REOPEN are unchanged; however many elided states sit side by side, the gap closes.
- * It is derived from {@link #TRANSITIONS}, never declared a second time — see {@link
- * #transitionsFrom(Archetype, EntityStatus)}.
- *
- * <p><b>A campaign's status is derived from its members, and only its DROP and REOPEN are moves</b>
- * (qits-650). The walk above is the vocabulary the derivation speaks ({@link #campaignWalk}, {@link
- * #onCampaignWalk}) — {@code CampaignStatusRecompute} sets the word directly, the way a cascade does
- * — while {@link #transitionsFrom(Archetype, EntityStatus)} serves a campaign nothing but a DROP from
- * every open state and the REOPEN out of DROPPED: those two are a person's decision about the
- * campaign itself, and every other word is a statement about its members that nobody asks for.
  *
  * <p><b>The declaration checks itself.</b> The class initialiser refuses a {@link #TRANSITIONS} entry
  * whose kind does not match its ends (a FORWARD that is not the next step on the walk, a DROP that
@@ -250,9 +229,8 @@ public final class EntityStateMachine {
           EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING);
 
   /**
-   * The archetypes a dispatch runs phases on: the two the dispatch door puts an agent on. A
-   * campaign has a lifecycle but its press is its start (its executor dispatches its members), and
-   * a feature or a task walks the lifecycle with no phase of its own (qits-763): its work runs in
+   * The archetypes a dispatch runs phases on: the two the dispatch door puts an agent on. A feature
+   * or a task walks the lifecycle with no phase of its own (qits-763): its work runs in
    * its epic's dispatch. Read by the dispatch door and the served registry alike.
    */
   private static final Set<Archetype> PHASE_ARCHETYPES = EnumSet.of(Archetype.EPIC, Archetype.TICKET);
@@ -261,33 +239,11 @@ public final class EntityStateMachine {
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
 
   /**
-   * The states an archetype's lifecycle elides from the walk; absent means none. A campaign keeps
-   * READY_FOR_DEV (qits-887, decision 19) and elides the two "-ING" statuses.
-   */
-  private static final Map<Archetype, Set<EntityStatus>> ELIDED =
-      Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
-
-  /**
    * The archetypes served the {@link TransitionKind#CLOSE} moves (qits-1757): the ones whose
    * children are structural — an epic its features, a feature its tasks — so "every child is
-   * closed" can be true of them. A ticket and a task have none and close by the walk alone; a
-   * campaign's DONE is derived from its members (qits-650) and never asked for.
+   * closed" can be true of them. A ticket and a task have none and close by the walk alone.
    */
   private static final Set<Archetype> CLOSES = EnumSet.of(Archetype.EPIC, Archetype.FEATURE);
-
-  /**
-   * The archetypes whose status is derived rather than moved (qits-650): a campaign alone. Their
-   * served moves are the DROP and the REOPEN only — see {@link #transitionsFrom(Archetype,
-   * EntityStatus)}.
-   */
-  private static final Set<Archetype> DERIVED = EnumSet.of(Archetype.CAMPAIGN);
-
-  /**
-   * Where a started campaign stops running (qits-650): DONE and DROPPED. Every other status runs —
-   * the word is derived from the members and says nothing about whether the plan may proceed.
-   */
-  private static final Set<EntityStatus> CAMPAIGN_STOPS =
-      EnumSet.of(EntityStatus.DONE, EntityStatus.DROPPED);
 
   static {
     verify();
@@ -349,15 +305,14 @@ public final class EntityStateMachine {
     return Optional.of(isTerminal(from) ? refused + ": " + finality(from) : refused);
   }
 
-  // --- per archetype (a campaign elides IMPLEMENTING and VERIFYING) ------------------------------
+  // --- per archetype ----------------------------------------------------------------------------
 
   /** The states {@code archetype}'s lifecycle holds, in lifecycle order. */
   public static List<EntityStatus> states(Archetype archetype) {
     if (archetype == Archetype.ISSUE) {
       return ISSUE_STATES;
     }
-    Set<EntityStatus> elided = elided(archetype);
-    return LIFECYCLE.stream().filter(state -> !elided.contains(state)).toList();
+    return LIFECYCLE;
   }
 
   /** The status a new row of {@code archetype} starts at. */
@@ -366,70 +321,20 @@ public final class EntityStateMachine {
   }
 
   /**
-   * The legal moves out of {@code from} for {@code archetype}: {@link #transitionsFrom(EntityStatus)}
-   * read over <em>the walk with the archetype's elided states removed</em>. A kept state that has a
-   * FORWARD (or a SKIP landing on the same place) moves FORWARD to the next kept state; a SKIP to a
-   * kept state further on stays a SKIP; one that has a BACK moves BACK to the previous kept state;
-   * DROP and REOPEN are unchanged. So however many elided states sit next to each other, the walk
-   * stays closed over the gap. Empty for a state the archetype does not hold. A CLOSE is kept for an
-   * archetype in {@link #CLOSES} and taken out for every other (qits-1757). The order (FORWARD,
-   * SKIP, BACK, CLOSE, DROP/REOPEN) is kept. An archetype whose status is {@linkplain #isDerived
-   * derived} keeps its DROP and REOPEN alone (qits-650).
+   * The legal moves out of {@code from} for {@code archetype}: {@link #transitionsFrom(EntityStatus)},
+   * with a CLOSE kept for an archetype in {@link #CLOSES} and taken out for every other
+   * (qits-1757). Empty for a state the archetype does not hold. The order (FORWARD, SKIP, BACK,
+   * CLOSE, DROP/REOPEN) is kept.
    */
   public static List<Transition> transitionsFrom(Archetype archetype, EntityStatus from) {
     if ((archetype == Archetype.ISSUE) != ISSUE_STATES.contains(from)) {
       return List.of();
     }
-    if (isDerived(archetype)) {
-      return walkedFrom(archetype, from).stream()
-          .filter(
-              move -> move.kind() == TransitionKind.DROP || move.kind() == TransitionKind.REOPEN)
-          .toList();
-    }
-    return walkedFrom(archetype, from);
-  }
-
-  /** {@link #transitionsFrom(Archetype, EntityStatus)} before the derived archetypes' filter. */
-  private static List<Transition> walkedFrom(Archetype archetype, EntityStatus from) {
-    Set<EntityStatus> elided = elided(archetype);
-    if (elided.isEmpty()) {
-      return closes(archetype)
-          ? transitionsFrom(from)
-          : transitionsFrom(from).stream()
-              .filter(move -> move.kind() != TransitionKind.CLOSE)
-              .toList();
-    }
-    if (elided.contains(from)) {
-      return List.of();
-    }
-    List<EntityStatus> kept = WALK.stream().filter(state -> !elided.contains(state)).toList();
-    int at = kept.indexOf(from);
-    EntityStatus next = at >= 0 && at + 1 < kept.size() ? kept.get(at + 1) : null;
-    EntityStatus previous = at > 0 ? kept.get(at - 1) : null;
-    List<Transition> moves = new ArrayList<>();
-    for (Transition move : transitionsFrom(from)) {
-      Transition collapsed =
-          switch (move.kind()) {
-            case FORWARD -> next == null ? null : new Transition(from, next, TransitionKind.FORWARD);
-            case SKIP ->
-                elided.contains(move.to()) || next == null
-                    ? null
-                    : move.to() == next
-                        ? new Transition(from, next, TransitionKind.FORWARD)
-                        : move;
-            case BACK ->
-                previous == null ? null : new Transition(from, previous, TransitionKind.BACK);
-            case CLOSE -> closes(archetype) && !elided.contains(move.to()) ? move : null;
-            case DROP, REOPEN, SETTLE -> elided.contains(move.to()) ? null : move;
-          };
-      if (collapsed != null && !moves.contains(collapsed)) {
-        moves.add(collapsed);
-      }
-    }
-    // FORWARD before SKIP before BACK before CLOSE before DROP/REOPEN, as the declaration orders
-    // them.
-    moves.sort((a, b) -> Integer.compare(rank(a.kind()), rank(b.kind())));
-    return List.copyOf(moves);
+    return closes(archetype)
+        ? transitionsFrom(from)
+        : transitionsFrom(from).stream()
+            .filter(move -> move.kind() != TransitionKind.CLOSE)
+            .toList();
   }
 
   /** Whether {@code from → to} is a legal move for {@code archetype}. */
@@ -444,45 +349,6 @@ public final class EntityStateMachine {
     }
     String refused = "cannot move from " + from + " to " + to;
     return Optional.of(isTerminal(from) ? refused + ": " + finality(from) : refused);
-  }
-
-  private static Set<EntityStatus> elided(Archetype archetype) {
-    return ELIDED.getOrDefault(archetype, Set.of());
-  }
-
-  /**
-   * Whether {@code archetype}'s status is derived (qits-650) — a campaign's, from its members —
-   * so the only moves a door may make of it are its DROP and REOPEN.
-   */
-  public static boolean isDerived(Archetype archetype) {
-    return DERIVED.contains(archetype);
-  }
-
-  /**
-   * <b>The campaign walk</b> (qits-650): {@code REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTED <
-   * VERIFIED < DONE} — a campaign's lifecycle without DROPPED, in order. The vocabulary its derived
-   * status is the lowest member of.
-   */
-  public static List<EntityStatus> campaignWalk() {
-    return states(Archetype.CAMPAIGN).stream().filter(state -> state != OFF_WALK).toList();
-  }
-
-  /**
-   * A member's status read on the {@link #campaignWalk} (qits-650): its own word when the walk has
-   * it, else the last campaign word it has achieved — IMPLEMENTING counts as READY_FOR_DEV and
-   * VERIFYING as IMPLEMENTED (a status records what was achieved). Empty for DROPPED, which is on
-   * no walk and is not counted.
-   */
-  public static Optional<EntityStatus> onCampaignWalk(EntityStatus status) {
-    if (status == null || isOffWalk(status)) {
-      return Optional.empty();
-    }
-    Set<EntityStatus> elided = elided(Archetype.CAMPAIGN);
-    int at = WALK.indexOf(status);
-    while (at > 0 && elided.contains(WALK.get(at))) {
-      at--;
-    }
-    return Optional.of(WALK.get(at));
   }
 
   /** Whether {@code archetype} is served the CLOSE moves — see {@link #CLOSES}. */
@@ -608,7 +474,7 @@ public final class EntityStateMachine {
    * scheduling, so a flow that lands REFINED is scheduled (REFINED → READY_FOR_DEV) as that person
    * and carries on with READY_FOR_DEV's runs — and a person's press <em>at</em> REFINED schedules
    * and starts implement. So the flow from REPORTED is refine, implement, verify, and from REFINED
-   * implement, verify. A machine's press (an agent, the campaign executor) carries no pre-approval
+   * implement, verify. A machine's press (an agent) carries no pre-approval
    * and still stops at REFINED; that, like an agent blocking the entity, is not in the data.
    * {@link #phaseRunFrom} — what one press starts — is unchanged: REFINED starts no phase of its own.
    */
@@ -631,33 +497,16 @@ public final class EntityStateMachine {
   }
 
   /**
-   * Whether {@code status} is {@code milestone} or beyond it on the walk. False for a state off the
+   * Whether {@code status} is {@code mark} or beyond it on the walk. False for a state off the
    * walk (DROPPED), which is neither behind nor beyond anything.
    */
-  public static boolean isAtOrPast(EntityStatus status, EntityStatus milestone) {
+  public static boolean isAtOrPast(EntityStatus status, EntityStatus mark) {
     int at = WALK.indexOf(status);
-    int of = WALK.indexOf(milestone);
+    int of = WALK.indexOf(mark);
     if (of < 0) {
-      throw new IllegalArgumentException(milestone + " is not on the walk");
+      throw new IllegalArgumentException(mark + " is not on the walk");
     }
     return at >= of;
-  }
-
-  /**
-   * Whether a started campaign at {@code statusWord} runs (qits-650): it is neither DONE nor DROPPED
-   * — see {@link #CAMPAIGN_STOPS}. Its start, its block and this are the three things that decide
-   * whether it runs; the derived word itself decides nothing else.
-   */
-  public static boolean campaignRuns(String statusWord) {
-    return statusWord != null
-        && CAMPAIGN_STOPS.stream().noneMatch(status -> status.name().equals(statusWord));
-  }
-
-  /** The statuses a started campaign runs at, in lifecycle order — see {@link #campaignRuns}. */
-  public static List<EntityStatus> campaignRunStatuses() {
-    return states(Archetype.CAMPAIGN).stream()
-        .filter(status -> !CAMPAIGN_STOPS.contains(status))
-        .toList();
   }
 
   /** Whether {@code status} is off the walk — DROPPED. */
@@ -740,24 +589,6 @@ public final class EntityStateMachine {
       for (EntityStatus start : WALK) {
         if (PHASES.get(start) == phase && WALK.indexOf(end) <= WALK.indexOf(start)) {
           throw new IllegalStateException(phase + " ends in " + end + ", not past " + start);
-        }
-      }
-    }
-    for (Archetype archetype : PHASE_ARCHETYPES) {
-      if (ELIDED.containsKey(archetype)) {
-        throw new IllegalStateException(archetype + " runs phases, so it may elide no state");
-      }
-    }
-    for (Archetype archetype : ELIDED.keySet()) {
-      for (EntityStatus state : states(archetype)) {
-        List<Transition> moves = transitionsFrom(archetype, state);
-        if (isTerminal(state) != moves.isEmpty()) {
-          throw new IllegalStateException(archetype + ": " + state + " is a dead end or has exits");
-        }
-        for (Transition move : moves) {
-          if (!states(archetype).contains(move.to())) {
-            throw new IllegalStateException(archetype + ": " + move + " leaves its lifecycle");
-          }
         }
       }
     }

@@ -440,7 +440,7 @@ public class PhaseAdvance {
    * item is published as {@code WorkNeedMet}, and the delivery desk's backlog picks the held item up
    * on its next pass — the desk, not this bean, decides what runs next.
    *
-   * @param entity the moved row <b>as it is after the move</b> — a campaign, a feature and a task
+   * @param entity the moved row <b>as it is after the move</b> — a feature, a task and an issue
    *     return at once (qits-763); for a ticket or an epic the new status is the input
    *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param statusBefore the status it moved from, read only to tell the platform's "phase started"
@@ -451,11 +451,6 @@ public class PhaseAdvance {
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(WorkEntity entity, String statusBefore, String changedBy) {
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      // A campaign stands in no workspace: its moves deliver no turn and release no branch. What a
-      // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
-      return;
-    }
     if (Archetypes.runsNoPhase(entity.archetype)) {
       // A feature or a task holds a status of its own since qits-763 but runs no phase: its moves
       // record where that piece stands, and the turn, the workspace and the release are its epic's.
@@ -527,7 +522,7 @@ public class PhaseAdvance {
       // REFINED → READY_FOR_DEV is a person's approval (qits-887), not a phase hand-off. Without
       // this arm an entity whose last press was FLOW, with its refine workspace still standing,
       // would be handed its implement turn the moment somebody schedules it. Starting the work is
-      // the press — a person's, or a campaign executor's — and never the scheduling itself.
+      // the press — a person's, or the delivery desk's — and never the scheduling itself.
       LOG.debugf(
           "%s %s was scheduled (%s → %s); scheduling starts nothing, so no turn is delivered",
           entity.archetype, entity.id, statusBefore, entity.status);
@@ -768,13 +763,6 @@ public class PhaseAdvance {
    * <p><b>A gate's refusal moves nothing and keeps the pre-approval</b>, and the thread says which
    * gate and what a person can do about it — the run has stopped and a reader must not have to
    * guess why. Never throws, for {@link #afterTransition}'s reason.
-   *
-   * <p><b>The race with a campaign</b>: a member scheduled here stands at READY_FOR_DEV for the
-   * moment between this move and the hand-off's move into IMPLEMENTING, and the campaign executor
-   * claims READY_FOR_DEV members — the {@code EntityTransitioned} this move announces even asks it
-   * to look. That window is exactly the one a person's READY_FOR_DEV press already opens (it too
-   * schedules nothing it does not then start), and the executor treats an unclaimed IMPLEMENTING
-   * member as started by hand and leaves it alone, so no new guard is added here.
    */
   private void scheduleOnThePreApproval(WorkEntity entity, String changedBy) {
     String person = entity.preApprovedBy;

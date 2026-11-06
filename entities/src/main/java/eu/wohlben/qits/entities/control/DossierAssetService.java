@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
  * page save: it scans the body for this epic's asset URLs, rewrites the page's rows in
  * {@code dossier_page_asset}, and deletes any asset of the epic no page names any more. Reference
  * counting, not a sweeper — so a dossier is self-contained at every instant, with no
- * seal-at-a-milestone step that can fail to run. Deleting a page runs the same path with an empty
+ * seal-at-the-end step that can fail to run. Deleting a page runs the same path with an empty
  * body.
  */
 @ApplicationScoped

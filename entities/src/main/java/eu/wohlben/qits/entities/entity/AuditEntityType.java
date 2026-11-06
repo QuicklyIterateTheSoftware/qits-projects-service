@@ -40,9 +40,10 @@ public enum AuditEntityType {
   TICKET,
 
   /**
-   * An {@link Archetype#CAMPAIGN} row of {@link WorkEntity}, a root like an epic: its rows carry
-   * the campaign's own id in {@link AuditEntry#epicId}. Permitted by {@code ck_audit_entity_type}
-   * from V17, the migration that admitted the archetype itself.
+   * A CAMPAIGN row of {@link WorkEntity}, a root like an epic: its rows carry the campaign's own id
+   * in {@link AuditEntry#epicId}. Permitted by {@code ck_audit_entity_type} from V17. The archetype
+   * itself was retired by qits-1899 (V41) and no row of it exists any more; the word stays here so
+   * the history written about those rows still reads.
    */
   CAMPAIGN,
 
@@ -51,7 +52,7 @@ public enum AuditEntityType {
 
   /**
    * An {@link EntityComment}, on an entity of any archetype. Its rows carry the subtree key of the
-   * entity it is on: that entity's own id for a root (a ticket, an epic, a campaign), the epic's for
+   * entity it is on: that entity's own id for a root (a ticket, an epic), the epic's for
    * a feature or a task — so an epic's history includes what was said on its tasks' threads.
    *
    * <p>It was {@code TICKET_COMMENT} until V20, which rewrote the rows already written; a comment on

@@ -24,7 +24,7 @@ import java.util.List;
  * {@code <slug>-<number>}, so {@code <id>-…} names one work item's branches only.
  *
  * <p>Only a ticket and an epic have a branch. A feature or a task is worked on by its epic's agent,
- * and a campaign orders work rather than being worked on (qits-411).
+ * and nobody works on an issue.
  *
  * <p>A <b>pure derivation</b>: no repository, no query. The caller renders the qualified id and
  * hands it in, because the project's slug is not on the row.
@@ -51,11 +51,6 @@ public final class WorkBranches {
         switch (entity.archetype) {
           case TICKET -> "ticket/";
           case EPIC -> "epic/";
-          case CAMPAIGN ->
-              throw new IllegalArgumentException(
-                  "campaign "
-                      + entity.id
-                      + " has no branch — a campaign orders work, it is not worked on");
           case ISSUE ->
               throw new IllegalArgumentException(
                   "issue " + entity.id + " has no branch: nobody works on an issue");

@@ -75,8 +75,8 @@ import org.jboss.logging.Logger;
  * of a pass for one window's sake: a window that fails to close or record is logged and the rest go
  * on.
  *
- * <p>Gated to {@link LaunchMode#NORMAL} and {@code off} in {@code %test}, the {@code
- * CampaignExecutor} idiom: the suite calls {@link #sweep()} directly.
+ * <p>Gated to {@link LaunchMode#NORMAL} and {@code off} in {@code %test}, the idiom
+ * every sweep here follows: the suite calls {@link #sweep()} directly.
  */
 @ApplicationScoped
 public class DeskTriggerSweep {

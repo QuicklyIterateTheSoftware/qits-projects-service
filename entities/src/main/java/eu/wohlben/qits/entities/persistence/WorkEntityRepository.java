@@ -68,7 +68,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
             "select e.id, e.projectId, e.archetype, e.number, e.title, e.slug, e.slugScope,"
                 + " e.status, e.blocked, e.ticketType, e.impetus, e.assignee, e.createdBy,"
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
-                + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
+                + " e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
                 + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority,"
                 + " substring(e.description, 1, 2000)"
@@ -128,19 +128,18 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.repositoryId = (String) c[14];
     row.implementedAt = (Instant) c[15];
     row.implementingAt = (Instant) c[16];
-    row.dependsOnEntityId = (String) c[17];
-    row.createdAt = (Instant) c[18];
-    row.updatedAt = (Instant) c[19];
-    row.preApprovedBy = (String) c[20];
-    row.blockedBy = (String) c[21];
-    row.blockedReason = (String) c[22];
-    row.agentWaitingSince = (Instant) c[23];
-    row.agentWaitingCause = (String) c[24];
-    row.agentWaitingOn = (String) c[25];
-    row.outcome = (WorkOutcome) c[26];
-    row.inspiredByIdeaId = (String) c[27];
-    row.priority = (Integer) c[28];
-    row.descriptionLead = (String) c[29];
+    row.createdAt = (Instant) c[17];
+    row.updatedAt = (Instant) c[18];
+    row.preApprovedBy = (String) c[19];
+    row.blockedBy = (String) c[20];
+    row.blockedReason = (String) c[21];
+    row.agentWaitingSince = (Instant) c[22];
+    row.agentWaitingCause = (String) c[23];
+    row.agentWaitingOn = (String) c[24];
+    row.outcome = (WorkOutcome) c[25];
+    row.inspiredByIdeaId = (String) c[26];
+    row.priority = (Integer) c[27];
+    row.descriptionLead = (String) c[28];
     return row;
   }
 
@@ -188,16 +187,15 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
 
   /**
    * <b>A project's roots that take part in an order</b> (qits-753): every row with no STRUCTURAL
-   * edge above it, campaigns excluded — the epics and tickets a board draws as siblings of one
+   * edge above it, issues excluded — the epics and tickets a board draws as siblings of one
    * another. Managed rows, for the drop door that renumbers them in the caller's transaction.
    */
   public List<WorkEntity> listOrderedRoots(String projectId) {
     return find(
-            "from WorkEntity e where e.projectId = ?1 and e.archetype not in (?2, ?4) and not exists"
-                + " (select m.id from EntityMembership m where m.childId = e.id and m.kind = ?3)"
+            "from WorkEntity e where e.projectId = ?1 and e.archetype <> ?3 and not exists"
+                + " (select m.id from EntityMembership m where m.childId = e.id and m.kind = ?2)"
                 + " order by e.createdAt, e.id",
             projectId,
-            Archetype.CAMPAIGN,
             MembershipKind.STRUCTURAL,
             Archetype.ISSUE)
         .list();
@@ -231,72 +229,6 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
             "select e.status from WorkEntity e where e.inspiredByIdeaId = ?1", String.class)
         .setParameter(1, ideaId)
         .getResultList();
-  }
-
-  /**
-   * <b>The statuses of a campaign's members</b>, one per membership (qits-650) — all {@code
-   * CampaignStatusRecompute} needs, read as values rather than as managed rows, so what it sees is
-   * the database (this write's own changes included: the query auto-flushes the rows it touches)
-   * and never an older copy the session happens to hold.
-   */
-  public List<String> campaignMemberStatuses(String campaignId) {
-    return getEntityManager()
-        .createQuery(
-            "select e.status from EntityMembership m, WorkEntity e"
-                + " where m.parentId = ?1 and m.kind = ?2 and e.id = m.childId",
-            String.class)
-        .setParameter(1, campaignId)
-        .setParameter(2, MembershipKind.CAMPAIGN)
-        .getResultList();
-  }
-
-  /**
-   * The ids of the campaigns {@code memberIds} have joined, each once, in id order (qits-650) — the
-   * order {@code CampaignStatusRecompute} locks them in. The empty guard is {@link #listByIds}'.
-   */
-  public List<String> campaignIdsGathering(Collection<String> memberIds) {
-    if (memberIds == null || memberIds.isEmpty()) {
-      return List.of();
-    }
-    return getEntityManager()
-        .createQuery(
-            "select distinct m.parentId from EntityMembership m"
-                + " where m.childId in ?1 and m.kind = ?2 order by m.parentId",
-            String.class)
-        .setParameter(1, memberIds)
-        .setParameter(2, MembershipKind.CAMPAIGN)
-        .getResultList();
-  }
-
-  /**
-   * Every campaign whose status is still derived — every one but a DROPPED campaign, a DONE one
-   * included (qits-1805: its DONE follows its members) — in id order: what the boot reconcile walks
-   * (qits-650).
-   */
-  public List<String> campaignIdsStillDerived() {
-    return getEntityManager()
-        .createQuery(
-            "select e.id from WorkEntity e where e.archetype = ?1"
-                + " and (e.status is null or e.status not in ?2) order by e.id",
-            String.class)
-        .setParameter(1, Archetype.CAMPAIGN)
-        .setParameter(2, List.of("DROPPED"))
-        .getResultList();
-  }
-
-  /**
-   * The rows whose {@code depends_on_entity_id} points at {@code entityId} — {@code
-   * FeatureRepository.listDependents}' and {@code TaskRepository.listDependents}' question, asked
-   * once now that the two columns are one.
-   *
-   * <p>It is reached only from a delete, which clears each dependent's pointer in-service so the
-   * clear gets its own UPDATE audit row rather than happening invisibly under the FK's {@code on
-   * delete set null}. No read path calls it, which is why {@code ReadPatience} does not wrap it: it
-   * runs inside an open transaction, where a retry would re-run on a connection already marked
-   * rollback-only.
-   */
-  public List<WorkEntity> listDependents(String entityId) {
-    return find("dependsOnEntityId", OLDEST_FIRST, entityId).list();
   }
 
   /**

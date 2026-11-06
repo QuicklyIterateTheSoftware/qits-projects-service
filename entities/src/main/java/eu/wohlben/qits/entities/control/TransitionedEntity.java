@@ -8,8 +8,6 @@ import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.WorkTag;
-import eu.wohlben.qits.entities.milestone.Milestone;
-import eu.wohlben.qits.entities.milestone.MilestoneRef;
 import java.time.Instant;
 import java.util.List;
 
@@ -71,7 +69,6 @@ import java.util.List;
  * @param implementedAt the implemented marker, or null
  * @param implementingAt the implementing marker of a feature or a task — when its implementation was
  *     started (qits-749) — or null. Kept once {@code implementedAt} is set, which ranks over it
- * @param dependsOn the sibling ordering edge, or null. Never nesting
  * @param parent what it is part of now, or null for a root
  * @param position where among its siblings it sits, or null for a root. Dense and zero-based
  * @param priority the ranking among its siblings (qits-753): higher sorts first, null — nobody
@@ -84,7 +81,7 @@ import java.util.List;
  * @param blocked whether the phase the entity's status starts is stuck — the EFFECTIVE block
  *     (qits-895, {@link EntityBlockState}): {@code entity.blocked}, the explicit block, OR an agent
  *     session that has stood waiting for a person past the debounce. On
- *     every archetype with a lifecycle (a ticket since qits-548, an epic and a campaign since
+ *     every archetype with a lifecycle (a ticket since qits-548, an epic since
  *     qits-592, when the block door stopped being a ticket's alone). <b>Null, and left off the wire,
  *     for a feature and a task</b>: they hold a status since qits-763 but run no phase of their own
  *     ({@code Archetypes.isPlanPiece}), so a {@code false} there would claim a flag nothing can
@@ -106,17 +103,6 @@ import java.util.List;
  * @param inspiredBy the idea the work was inspired by, or null and left off the wire
  * @param tags the tags (qits-634), in declaration order — {@code []} when it has none, on every
  *     archetype and always on the wire. A transition never changes them
- * @param heldBy a campaign's members that set its derived status (qits-650) — the qualified ids of
- *     the members not DROPPED whose status, read on the campaign walk, is the campaign's. Computed
- *     at read time and filled only on a campaign's entity read ({@link #withHeldBy}); empty while
- *     the campaign is DONE or DROPPED or has no members. Null and left off the wire everywhere
- *     else, every other archetype included
- * @param milestones the milestones the entity waits on (epic qits-615), in the order attached —
- *     each its id, its name and since when it is met. Filled on the work reads alone ({@link
- *     #withMilestones}), {@code []} when it waits on none; null and left off the wire on a write's
- *     answer and an announcement
- * @param unmetMilestones how many of {@link #milestones} are not met — the work item "needs"
- *     something while it is above zero. Present exactly when {@link #milestones} is
  * @param needs what the entity needs (qits-1903), in the order written — each needed item, the
  *     status it must reach, the status it holds and whether that is far enough ({@link NeedRef}).
  *     Filled on the work reads alone ({@link #withNeeds}), {@code []} when it needs nothing; null
@@ -149,7 +135,6 @@ public record TransitionedEntity(
     String repositoryId,
     Instant implementedAt,
     Instant implementingAt,
-    String dependsOn,
     String parent,
     Integer position,
     Integer priority,
@@ -164,10 +149,7 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn,
     @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
     List<WorkTag> tags,
-    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> heldBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo,
-    @JsonInclude(JsonInclude.Include.NON_NULL) List<MilestoneRef> milestones,
-    @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetMilestones,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<NeedRef> needs,
     @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetNeeds,
     @JsonIgnore String excerpt) {
@@ -177,108 +159,9 @@ public record TransitionedEntity(
     tags = WorkTag.ordered(tags);
   }
 
-  /** The same entity carrying {@code members}, a campaign's {@link #heldBy} (qits-650). */
-  public TransitionedEntity withHeldBy(List<String> members) {
-    return new TransitionedEntity(
-        id,
-        archetype,
-        projectId,
-        number,
-        qualifiedId,
-        title,
-        slug,
-        slugScope,
-        description,
-        status,
-        statusBefore,
-        ticketType,
-        impetus,
-        assignee,
-        createdBy,
-        supersededBy,
-        outcome,
-        repositoryId,
-        implementedAt,
-        implementingAt,
-        dependsOn,
-        parent,
-        position,
-        priority,
-        createdAt,
-        updatedAt,
-        changedBy,
-        blocked,
-        acceptanceCriteria,
-        blockSource,
-        blockReason,
-        blockedBy,
-        waitingOn,
-        inspiredBy,
-        tags,
-        members == null ? null : List.copyOf(members),
-        relatedTo,
-        milestones,
-        unmetMilestones,
-        needs,
-        unmetNeeds,
-        excerpt);
-  }
-
-  /**
-   * The same entity carrying what it waits on (epic qits-615): {@link #milestones} and their
-   * derived {@link #unmetMilestones}. Filled on the work reads only; every write's answer and every
-   * announcement leaves both off the wire.
-   */
-  public TransitionedEntity withMilestones(List<Milestone> attached) {
-    List<MilestoneRef> refs = MilestoneRef.of(attached);
-    return new TransitionedEntity(
-        id,
-        archetype,
-        projectId,
-        number,
-        qualifiedId,
-        title,
-        slug,
-        slugScope,
-        description,
-        status,
-        statusBefore,
-        ticketType,
-        impetus,
-        assignee,
-        createdBy,
-        supersededBy,
-        outcome,
-        repositoryId,
-        implementedAt,
-        implementingAt,
-        dependsOn,
-        parent,
-        position,
-        priority,
-        createdAt,
-        updatedAt,
-        changedBy,
-        blocked,
-        acceptanceCriteria,
-        blockSource,
-        blockReason,
-        blockedBy,
-        waitingOn,
-        inspiredBy,
-        tags,
-        heldBy,
-        relatedTo,
-        refs,
-        MilestoneRef.unmet(refs),
-        needs,
-        unmetNeeds,
-        excerpt);
-  }
-
   /**
    * The same entity carrying what it needs (qits-1903): {@link #needs} and their derived {@link
-   * #unmetNeeds}. Filled on the work reads only, beside {@link #withMilestones}; every write's
+   * #unmetNeeds}. Filled on the work reads only; every write's
    * answer and every announcement leaves both off the wire.
    */
   public TransitionedEntity withNeeds(List<NeedRef> stated) {
@@ -304,7 +187,6 @@ public record TransitionedEntity(
         repositoryId,
         implementedAt,
         implementingAt,
-        dependsOn,
         parent,
         position,
         priority,
@@ -319,10 +201,7 @@ public record TransitionedEntity(
         waitingOn,
         inspiredBy,
         tags,
-        heldBy,
         relatedTo,
-        milestones,
-        unmetMilestones,
         refs,
         NeedRef.unmet(refs),
         excerpt);
@@ -354,7 +233,6 @@ public record TransitionedEntity(
         repositoryId,
         implementedAt,
         implementingAt,
-        dependsOn,
         parent,
         position,
         priority,
@@ -369,10 +247,7 @@ public record TransitionedEntity(
         waitingOn,
         inspiredBy,
         tags,
-        heldBy,
         relatedTo,
-        milestones,
-        unmetMilestones,
         needs,
         unmetNeeds,
         excerpt);
@@ -381,7 +256,7 @@ public record TransitionedEntity(
   /**
    * The row and its edge, read back — a <b>read</b>, so {@link #statusBefore} and {@link
    * #changedBy} are null: nothing moved. {@code edge} is the row's <b>structural</b> edge — the
-   * tree parent and the position under it, never a campaign membership — and null for a root, which
+   * tree parent and the position under it — and null for a root, which
    * is a statement and not an omission — see {@code EntityFact.parentId}.
    *
    * <p><b>{@code qualifiedId} is left null here and that is deliberate</b>, not an oversight: see
@@ -425,7 +300,6 @@ public record TransitionedEntity(
         row.repositoryId,
         row.implementedAt,
         row.implementingAt,
-        row.dependsOnEntityId,
         before.parent(),
         before.position(),
         row.priority,
@@ -440,10 +314,7 @@ public record TransitionedEntity(
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
-        null,
         row.relatedEntityId,
-        null,
-        null,
         null,
         null,
         null);
@@ -479,7 +350,6 @@ public record TransitionedEntity(
         read.repositoryId(),
         read.implementedAt(),
         read.implementingAt(),
-        read.dependsOn(),
         read.parent(),
         read.position(),
         read.priority(),
@@ -494,10 +364,7 @@ public record TransitionedEntity(
         read.waitingOn(),
         read.inspiredBy(),
         read.tags(),
-        null,
         read.relatedTo(),
-        null,
-        null,
         null,
         null,
         null);
@@ -532,7 +399,6 @@ public record TransitionedEntity(
         row.repositoryId,
         row.implementedAt,
         row.implementingAt,
-        row.dependsOnEntityId,
         edge == null ? null : edge.parentId,
         edge == null ? null : edge.position,
         row.priority,
@@ -547,10 +413,7 @@ public record TransitionedEntity(
         block == null ? null : block.waitingOn(),
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
-        null,
         row.relatedEntityId,
-        null,
-        null,
         null,
         null,
         excerptOf(row));
@@ -570,7 +433,7 @@ public record TransitionedEntity(
   /**
    * The excerpt of a ticket or an epic read off a listing row ({@link WorkEntity#descriptionLead}),
    * and null for every other kind — a card shows a lead for the work a person files and refines, not
-   * for the pieces of a plan or a campaign — and for every managed row, which carries no lead.
+   * for the pieces of a plan — and for every managed row, which carries no lead.
    */
   private static String excerptOf(WorkEntity row) {
     return row.archetype == Archetype.TICKET || row.archetype == Archetype.EPIC

@@ -22,7 +22,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * <b>The one definition of "a person" in this service</b> (qits-891): the caller is somebody
  * holding {@code qits:admin} <em>and this process has verified that for itself</em>, rather than
  * believing a header. Every door whose decision only a person may make asks here — today the
- * release-request approve and decline and the campaign APPROVAL criterion; qits-887 (the
+ * release-request approve and decline; qits-887 (the
  * READY_FOR_DEV approval) and qits-897 (the pre-run override) must reuse it rather than growing a
  * second spelling.
  *
@@ -110,7 +110,7 @@ public class PersonCheck {
   /**
    * <b>A person, or the project's delivery desk</b> (qits-1596): the doors whose decision was a
    * person's alone and that the desk now makes in its own project as the coordinator would — the
-   * automations waiver, the upstream override, a campaign criterion's approval. Answers the actor
+   * automations waiver, the upstream override. Answers the actor
    * recorded: the verified person's name ({@link #verifiedAdmin()}), else the desk's token subject,
    * under the same proof {@link ApproverCheck#desk} reads for an approval ({@code desk-delivery},
    * {@code qits:agent} and {@code qits:desk} in its own groups, no foreign {@code clients/…} group, a

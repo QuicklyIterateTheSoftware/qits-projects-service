@@ -95,7 +95,7 @@ class WorkPriorityApiTest {
             .path("entities");
     List<Map<String, Object>> roots = new ArrayList<>();
     for (Map<String, Object> e : entities) {
-      if (e.get("parent") == null && !"CAMPAIGN".equals(e.get("archetype"))) {
+      if (e.get("parent") == null && !"ISSUE".equals(e.get("archetype"))) {
         roots.add(e);
       }
     }
@@ -183,7 +183,7 @@ class WorkPriorityApiTest {
 
   @Test
   void theUpdateSchemaOfEveryArchetypeListsAClearablePriority() {
-    for (String archetype : List.of("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN")) {
+    for (String archetype : List.of("EPIC", "TICKET", "FEATURE", "TASK")) {
       given()
           .when()
           .get("/projects/api/work/archetypes/" + archetype + "/schemas/update")
@@ -200,7 +200,6 @@ class WorkPriorityApiTest {
     String b = WorkRequests.epic(projectId, "Second");
     String c = ticket(projectId, "Third");
     String d = ticket(projectId, "Fourth");
-    WorkRequests.campaign(projectId, "Not a sibling");
     patch(a, priority(2)).statusCode(200);
     String qa = qualified(a);
     String qb = qualified(b);
@@ -255,7 +254,6 @@ class WorkPriorityApiTest {
     String a = ticket(projectId, "Root ticket");
     String epic = WorkRequests.epic(projectId, "An epic");
     String feature = WorkRequests.feature(epic, "A child");
-    String campaign = WorkRequests.campaign(projectId, "A campaign");
     String elsewhere = ticket(project("Priority Elsewhere"), "Another project's");
     String closed = ticket(projectId, "Closed");
     WorkRequests.status(closed, "DROPPED").then().statusCode(200);
@@ -265,7 +263,7 @@ class WorkPriorityApiTest {
     drop(a, Map.of("below", "nothing-999999"))
         .statusCode(400)
         .body("message", containsString("names no entity"));
-    for (String notASibling : List.of(feature, campaign, elsewhere, closed)) {
+    for (String notASibling : List.of(feature, elsewhere, closed)) {
       drop(a, Map.of("below", notASibling))
           .statusCode(400)
           .body("message", containsString("not a reorderable sibling"));
@@ -273,7 +271,6 @@ class WorkPriorityApiTest {
     drop(feature, Map.of("below", a))
         .statusCode(400)
         .body("message", containsString("not a reorderable sibling"));
-    drop(campaign, Map.of("below", a)).statusCode(400).body("message", containsString("campaign"));
     given().when().get("/projects/api/work/" + a).then().body("priority", nullValue());
   }
 

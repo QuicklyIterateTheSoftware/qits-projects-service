@@ -155,12 +155,12 @@ class EntityNumbersTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("The feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The feature", null), "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "The task", null, null),
+            EntityWrite.task("repo-1", "The task", null),
             "t");
     WorkEntity ticket =
         workEntities
@@ -208,9 +208,9 @@ class EntityNumbersTest extends EntitiesTestSupport {
         workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     workEntities.create(
-        Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "Task", null, null), "t");
+        Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "Task", null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
     workEntities.transition(Archetype.EPIC, epic.id, "SUPERSEDED", "t");
@@ -235,7 +235,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
         workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     long before = numberOf(feature.entity().id);
 
     long after = numbers.next("proj-1");

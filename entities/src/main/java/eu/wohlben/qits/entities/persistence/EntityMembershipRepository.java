@@ -26,15 +26,9 @@ import java.util.Optional;
  * #childrenOfAll} a level at a time. Every read here is bulk by shape for that last reason: a merged
  * tree walked one node per query is the one performance mistake this model makes easy.
  *
- * <p><b>Every tree read is STRUCTURAL-only, and says so in its query</b> (V18). The table carries
- * campaign edges too, and a campaign's members are not its children: a subtree delete that followed
- * one would delete work the campaign merely gathers, a reshape that rewrote one would wipe it, and a
- * listing that drew one would show a ticket as part of something it is not part of. So the tree
- * methods keep their names and gain a kind filter, the one whose old meaning ("the membership")
- * stopped being singular is renamed to {@link #structuralMembershipOf}, and the campaign reads are
- * separate methods — {@link #campaignMembers}, {@link #campaignMembershipsOf}, {@link
- * #campaignMaxPosition}, {@link #campaignCloseGapAfter} — so no caller asking about the tree can see
- * a CAMPAIGN row by accident.
+ * <p><b>Every tree read is STRUCTURAL-only, and says so in its query</b> (V18). STRUCTURAL is the
+ * one kind of edge since qits-1899 retired the other (V41); the filter stays, so a second kind of
+ * edge added later cannot leak into a tree read.
  */
 @ApplicationScoped
 public class EntityMembershipRepository
@@ -43,8 +37,6 @@ public class EntityMembershipRepository
   private static final Sort IN_ORDER = Sort.by("position").and("id");
 
   private static final MembershipKind TREE = MembershipKind.STRUCTURAL;
-
-  private static final MembershipKind GATHERED = MembershipKind.CAMPAIGN;
 
   // --- the tree: STRUCTURAL edges only -------------------------------------------------------------
 
@@ -58,8 +50,7 @@ public class EntityMembershipRepository
    *
    * <p>At most one, and the database says so ({@code uq_entity_membership_one_parent_per_child}, a
    * partial unique index over STRUCTURAL rows since V18), so this returns an {@link Optional} rather
-   * than a list. Renamed from {@code membershipOf} when campaign edges arrived, so that no caller
-   * kept asking "the membership" of a row that may now have several.
+   * than a list.
    */
   public Optional<EntityMembership> structuralMembershipOf(String childId) {
     return find("childId = ?1 and kind = ?2", childId, TREE).firstResultOptional();
@@ -97,39 +88,6 @@ public class EntityMembershipRepository
    */
   public void closeGapAfter(String parentId, int position) {
     closeGapAfter(parentId, position, TREE);
-  }
-
-  // --- campaigns: CAMPAIGN edges only --------------------------------------------------------------
-
-  /** A campaign's members, in the order it runs them — position, then id. */
-  public List<EntityMembership> campaignMembers(String campaignId) {
-    return find("parentId = ?1 and kind = ?2", IN_ORDER, campaignId, GATHERED).list();
-  }
-
-  /**
-   * The members of every campaign in {@code campaignIds}, in one query — a project's campaign listing
-   * counts them without a query per campaign. The empty guard is {@link #childrenOfAll}'s.
-   */
-  public List<EntityMembership> campaignMembersOfAll(Collection<String> campaignIds) {
-    if (campaignIds == null || campaignIds.isEmpty()) {
-      return List.of();
-    }
-    return find("parentId in ?1 and kind = ?2", IN_ORDER, campaignIds, GATHERED).list();
-  }
-
-  /** Every campaign {@code childId} has joined, one edge per campaign, in (position, id) order. */
-  public List<EntityMembership> campaignMembershipsOf(String childId) {
-    return find("childId = ?1 and kind = ?2", IN_ORDER, childId, GATHERED).list();
-  }
-
-  /** The last member position in use in {@code campaignId}, or {@code -1} for an empty campaign. */
-  public int campaignMaxPosition(String campaignId) {
-    return maxPosition(campaignId, GATHERED);
-  }
-
-  /** {@link #closeGapAfter}'s rule over one campaign's members. */
-  public void campaignCloseGapAfter(String campaignId, int position) {
-    closeGapAfter(campaignId, position, GATHERED);
   }
 
   // --- shared --------------------------------------------------------------------------------------

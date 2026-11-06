@@ -33,7 +33,6 @@ class WorkReadApiTest {
   private String feature;
   private String task;
   private String ticket;
-  private String campaign;
 
   @BeforeEach
   void seed() {
@@ -43,14 +42,13 @@ class WorkReadApiTest {
     feature = EntityFixtures.feature(epic);
     task = EntityFixtures.task(feature, repository);
     ticket = EntityFixtures.ticket(project.id());
-    campaign = EntityFixtures.campaign(project.id());
   }
 
   @Test
   void everyArchetypeReadsByUuidAndByQualifiedId() {
     Map<String, String> archetypes =
         Map.of(
-            epic, "EPIC", feature, "FEATURE", task, "TASK", ticket, "TICKET", campaign, "CAMPAIGN");
+            epic, "EPIC", feature, "FEATURE", task, "TASK", ticket, "TICKET");
     archetypes.forEach(
         (id, archetype) -> {
           String qualified =
@@ -118,18 +116,18 @@ class WorkReadApiTest {
         .get(path)
         .then()
         .statusCode(200)
-        .body("entities.id", contains(epic, feature, task, ticket, campaign))
+        .body("entities.id", contains(epic, feature, task, ticket))
         .body("entities.qualifiedId", not(org.hamcrest.Matchers.hasItem(nullValue())));
     // The project by its id answers the same list.
     given()
         .get("/projects/api/projects/" + project.id() + "/work")
         .then()
-        .body("entities.id", contains(epic, feature, task, ticket, campaign));
+        .body("entities.id", contains(epic, feature, task, ticket));
   }
 
   /**
    * qits-1821: a ticket's and an epic's entry leads with an {@code excerpt} of the description, a
-   * feature's, a task's and a campaign's answers it null even with a body — and no entry carries
+   * feature's and a task's answers it null even with a body — and no entry carries
    * the {@code description} itself, which the listing never answers.
    */
   @Test
@@ -137,17 +135,16 @@ class WorkReadApiTest {
     describe(ticket, "## Root cause\n\nThe **listing** drops the `description` column.\n\nMore.");
     describe(feature, "The part's own body.");
     describe(task, "The step's own body.");
-    describe(campaign, "The order's own body.");
 
     String path = "/projects/api/projects/" + project.slug() + "/work";
     given()
         .get(path)
         .then()
         .statusCode(200)
-        .body("entities.id", contains(epic, feature, task, ticket, campaign))
+        .body("entities.id", contains(epic, feature, task, ticket))
         .body(
             "entities.excerpt",
-            contains(null, null, null, "The listing drops the description column.", null))
+            contains(null, null, null, "The listing drops the description column."))
         .body("entities", everyItem(hasKey("excerpt")))
         .body("entities", everyItem(not(hasKey("description"))));
 
@@ -199,7 +196,7 @@ class WorkReadApiTest {
     given()
         .get(path + "?status=REPORTED")
         .then()
-        .body("entities.id", equalTo(List.of(epic, feature, task, campaign)));
+        .body("entities.id", equalTo(List.of(epic, feature, task)));
     given()
         .get(path + "?archetype=TASK&status=REPORTED")
         .then()

@@ -34,15 +34,12 @@ import java.util.Set;
  *       V4's "nothing joins the two tables and nothing should" said as a rule instead of as prose.
  *   <li><b>A root has no membership, and whether a kind may be one is declared</b> rather than read
  *       off the depths. See {@link Archetypes} for the argument; the short version is that a
- *       campaign declared above the epics would make the epic no longer shallowest while leaving it
+ *       kind declared above the epics would make the epic no longer shallowest while leaving it
  *       very much a root.
  * </ul>
  *
  * <p><b>It judges the tree, and only the tree.</b> Every {@link EntityFact} is a STRUCTURAL edge
- * (V18); a campaign's memberships are not facts here. A structural edge under a kind that
- * {@linkplain Archetypes#gathers gathers} is refused as {@link NestingViolation.Reason#NOT_STRUCTURAL}
- * — a campaign's members hang somewhere else and are merely ordered by it. A CAMPAIGN edge is
- * judged by {@link #mayContain} and the campaign's own rules, never by {@link #check}.
+ * (V18).
  *
  * <h2>Why it is a post-state and not a pair</h2>
  *
@@ -156,22 +153,6 @@ public final class Nesting {
               parent.id(),
               parent.archetype(),
               NestingViolation.Reason.NOT_NESTABLE));
-      return;
-    }
-
-    // A kind that gathers (a campaign) has campaign memberships beneath it and never a structural
-    // child. Every fact here is a structural edge — EntityFacts reads the tree and nothing else — so
-    // one naming a gathering parent is a ticket hung in the tree under a campaign. It comes after the
-    // depth rule, which such a parent (declared shallowest of all) passes for everything but another
-    // of its own kind — and that one stays NOT_NESTABLE, the more basic complaint.
-    if (Archetypes.gathers(parent.archetype())) {
-      violations.add(
-          new NestingViolation(
-              subject.id(),
-              subject.archetype(),
-              parent.id(),
-              parent.archetype(),
-              NestingViolation.Reason.NOT_STRUCTURAL));
       return;
     }
 

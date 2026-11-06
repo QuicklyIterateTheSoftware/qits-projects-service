@@ -251,7 +251,7 @@ class IdeaServiceTest extends EntitiesTestSupport {
         work.create(
                 Archetype.FEATURE,
                 epic.id,
-                EntityWrite.feature("A feature", null, null).withInspiredBy(idea.id, false),
+                EntityWrite.feature("A feature", null).withInspiredBy(idea.id, false),
                 "t")
             .entity();
     assertEquals(idea.id, feature.inspiredByIdeaId);

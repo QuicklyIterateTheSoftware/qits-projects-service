@@ -14,10 +14,8 @@ import java.util.Optional;
  * {@code qits} CLI token). An agent's bearer, a service client, asserted identity headers, an MCP
  * tool and every in-process caller are machines and are refused.
  *
- * <p><b>Every archetype that is moved rather than derived</b>, so a piece's own scheduling is
- * covered too (the piece rule refuses it first anyway). A campaign is not judged: since qits-650 its
- * status is derived from its members, every one of which needed its own person's scheduling, and it
- * has no REFINED → READY_FOR_DEV move to judge. A schedule's cascade is judged once, on the entity
+ * <p><b>Every archetype</b>, so a piece's own scheduling is covered too (the piece rule refuses it
+ * first anyway). A schedule's cascade is judged once, on the entity
  * that moves. Unscheduling (READY_FOR_DEV →
  * REFINED) is a BACK move and is never judged.
  *
@@ -40,8 +38,7 @@ public class PersonApprovalGate implements TransitionGate {
 
   @Override
   public boolean appliesTo(Archetype archetype, EntityStatus from, EntityStatus to) {
-    return !EntityStateMachine.isDerived(archetype)
-        && from == EntityStatus.REFINED
+    return from == EntityStatus.REFINED
         && to == EntityStatus.READY_FOR_DEV;
   }
 

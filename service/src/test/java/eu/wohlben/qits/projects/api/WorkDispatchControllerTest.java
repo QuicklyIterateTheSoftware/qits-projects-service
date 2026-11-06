@@ -72,9 +72,6 @@ public class WorkDispatchControllerTest {
   /** The row read the dispatch path itself uses, fresh and patient — for reading a number back. */
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
 
-  /** The press itself, for the campaign executor's in-process door. */
-  @Inject EntityDispatch entityDispatch;
-
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -91,46 +88,6 @@ public class WorkDispatchControllerTest {
     QuarkusTransaction.requiringNew()
         .run(() -> projectIds.forEach(id -> ReleaseRequest.delete("projectId = ?1", id)));
     projectIds.clear();
-  }
-
-  // ---- a campaign's press is its start (qits-417) ----------------------------------------------
-
-  /**
-   * A campaign is never dispatched onto a workspace: its press is its start, which a DROPPED
-   * campaign refuses (qits-650: it runs at every other status), and its read answers the campaign's
-   * own state. The start itself is {@code campaignhost/CampaignExecutorTest}'s.
-   */
-  @Test
-  void aCampaignsPressIsItsStartAndItsReadSaysSo() {
-    String projectId = createProject("Dispatch Campaign");
-    String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
-    workEntities.transition(
-        eu.wohlben.qits.entities.entity.Archetype.CAMPAIGN,
-        campaignId,
-        "DROPPED",
-        "setup",
-        eu.wohlben.qits.entities.control.DropOutcome.of(
-            eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO, null));
-
-    asAdmin("dana")
-        .body(Map.of("mode", "FLOW"))
-        .when()
-        .post("/projects/api/work/" + campaignId + "/dispatch")
-        .then()
-        .statusCode(409)
-        .body("message", containsString("neither DONE nor DROPPED"));
-    asAdmin("dana")
-        .when()
-        .get("/projects/api/work/" + campaignId + "/dispatch")
-        .then()
-        .statusCode(200)
-        .body("state.archetype", equalTo("CAMPAIGN"))
-        .body("state.status", equalTo("DROPPED"))
-        .body("state.nextPhase", equalTo("start"))
-        .body("state.dispatchable", equalTo(false))
-        .body("state.mode", nullValue());
-
-    assertEquals(List.of(), dispatch.calls(), "no agent was dispatched onto a campaign");
   }
 
   // ---- fixtures ------------------------------------------------------------------------------
@@ -1044,26 +1001,6 @@ public class WorkDispatchControllerTest {
         new WorkspaceAgentDispatch.Dispatch("agent-52", 52L, null, false, "SCHEDULED", "ws-agent-52"));
     assertEquals("implement", press(ticketId, "PHASE"));
     assertEquals("ws-agent-52", assigneeOf(ticketId), "the implement press's agent, not mallory");
-  }
-
-  /**
-   * <b>The campaign executor's press writes it the same way</b>: its door is the by-id overload with
-   * the implement phase required, and the row records the agent, not the executor.
-   */
-  @Test
-  public void anExecutorsPressMakesTheDispatchedAgentTheAssignee() {
-    String projectId = createProject("Dispatch Executor Assignee");
-    String ticketId = createTicket(projectId, "Executor ticket");
-    transitionTicket(ticketId, "REFINED");
-    transitionTicket(ticketId, "READY_FOR_DEV");
-    dispatch.willAnswer(
-        new WorkspaceAgentDispatch.Dispatch("agent-63", 63L, null, true, "SCHEDULED", "ws-agent-63"));
-
-    EntityDispatch.Outcome outcome =
-        entityDispatch.dispatch(ticketId, DispatchMode.FLOW, "campaign c-1", "implement");
-
-    assertEquals("ws-agent-63", outcome.entity().assignee);
-    assertEquals("ws-agent-63", assigneeOf(ticketId));
   }
 
   /**

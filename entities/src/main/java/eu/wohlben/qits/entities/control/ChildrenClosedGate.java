@@ -1,8 +1,5 @@
-package eu.wohlben.qits.entities.campaign;
+package eu.wohlben.qits.entities.control;
 
-import eu.wohlben.qits.entities.control.EntityStateMachine;
-import eu.wohlben.qits.entities.control.Mover;
-import eu.wohlben.qits.entities.control.TransitionGate;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.EntityStatus;
@@ -31,9 +28,7 @@ import java.util.stream.Collectors;
  * tasks). <b>Only the direct child's own status is read</b>, and it must be DONE or DROPPED —
  * VERIFIED is not closed. Nothing deeper is read, and nothing needs to be: a DONE child has no open
  * descendant (qits-1685's downward cascade closed them). <b>An item with no children is
- * refused</b>: "every child is closed" says nothing of an empty one, and its close is the walk. A
- * campaign is not judged here at all since qits-650: its DONE is derived from its members ({@code
- * control/CampaignStatusRecompute}) and it is served no CLOSE.
+ * refused</b>: "every child is closed" says nothing of an empty one, and its close is the walk.
  *
  * <p><b>Who may close</b>: a person a door verified, or the project's own delivery desk ({@link
  * Mover#isDesk}, bound to the row's project). Every other machine — an agent's {@code qits:agent},

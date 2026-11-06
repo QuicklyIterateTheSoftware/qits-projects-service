@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.campaign.EntityQualifier;
+import eu.wohlben.qits.entities.control.EntityQualifier;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ProjectService;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -11,8 +11,8 @@ import org.jboss.logging.Logger;
 
 /**
  * <b>The {@code entities} module's {@link EntityQualifier} port, answered from {@code domain}'s
- * project table</b> — {@link QualifiedEntityIds}' rendering, for a sentence {@code CampaignService}
- * writes down (a state-at-start evidence summary, a refusal naming a member).
+ * project table</b> — {@link QualifiedEntityIds}' rendering, for a sentence the {@code entities}
+ * module writes down (a refusal naming the children still open, {@code ChildrenClosedGate}).
  *
  * <p><b>Its own transaction, always.</b> The caller is inside an {@code epics} write, and the two
  * datasources are local and non-XA: Narayana enlists one such resource per transaction, so the slug

@@ -187,9 +187,9 @@ public class DeskDispatchTest {
     delivery(projectId, true, 2, false);
     String ticketId = createTicket(projectId, "For the desk");
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
 
-    assertEquals("refine", pressed.dispatch().phase());
+    assertEquals("refine", pressed.phase());
     assertEquals(1, dispatch.calls().size());
     assertNull(
         row(ticketId).preApprovedBy,
@@ -234,14 +234,12 @@ public class DeskDispatchTest {
     assertTrue(dispatch.calls().isEmpty());
   }
 
-  /** The loop off is a 409 naming the declaration, and comes before the campaign's. */
+  /** The loop off is a 409 naming the declaration. */
   @Test
   public void aDeskWhoseLoopIsOffIsRefused409() {
     String projectId = createProject("Desk Loop Off");
     String ticketId = createTicket(projectId, "Loop off");
-    String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
-
-    for (String id : List.of(ticketId, campaignId)) {
+    for (String id : List.of(ticketId)) {
       DispatchRefused refusal = refused(desk(projectId), id, "FLOW", RULE);
       assertEquals(409, refusal.statusCode());
       assertEquals(
@@ -249,19 +247,6 @@ public class DeskDispatchTest {
               + " .config/qits/project.yml).",
           refusal.getMessage());
     }
-    assertTrue(dispatch.calls().isEmpty());
-  }
-
-  /** A campaign is a 409: the campaign path is a person's, never the desk's. */
-  @Test
-  public void aDeskIsRefusedACampaign() {
-    String projectId = createProject("Desk Campaign");
-    delivery(projectId, true, 2, false);
-    String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
-
-    DispatchRefused refusal = refused(desk(projectId), campaignId, "FLOW", RULE);
-    assertEquals(409, refusal.statusCode());
-    assertTrue(refusal.getMessage().contains("not the delivery desk's to start"), refusal.getMessage());
     assertTrue(dispatch.calls().isEmpty());
   }
 
@@ -422,9 +407,9 @@ public class DeskDispatchTest {
     assertTrue(phase.getMessage().contains(EntityDispatch.REFINED_WAITS), phase.getMessage());
     assertEquals("REFINED", row(ticketId).status);
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
 
-    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("implement", pressed.phase());
     assertEquals("IMPLEMENTING", row(ticketId).status);
     assertEquals(
         "delivery desk (start-refined, .config/qits/project.yml)", row(ticketId).preApprovedBy);
@@ -498,8 +483,8 @@ public class DeskDispatchTest {
 
     transition(needed, "REFINED");
     assertTrue(dispatchable(waiting), "met, it is dispatchable again");
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
-    assertEquals("implement", pressed.dispatch().phase());
+    EntityDispatchDto pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
+    assertEquals("implement", pressed.phase());
     assertEquals("IMPLEMENTING", row(waiting).status);
   }
 
@@ -513,9 +498,9 @@ public class DeskDispatchTest {
     needs(waiting, needed, "VERIFIED");
     assertTrue(dispatchable(waiting));
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
+    EntityDispatchDto pressed = doors.press(desk(projectId), waiting, "FLOW", RULE);
 
-    assertEquals("refine", pressed.dispatch().phase());
+    assertEquals("refine", pressed.phase());
     assertEquals(1, dispatch.calls().size());
   }
 
@@ -567,9 +552,9 @@ public class DeskDispatchTest {
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
 
-    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("implement", pressed.phase());
     assertEquals("IMPLEMENTING", row(ticketId).status);
     assertEquals(1, turns.calls().size(), "the dropped implement turn is handed on once");
     assertEquals(ticketId, turns.lastCall().workId());
@@ -596,9 +581,9 @@ public class DeskDispatchTest {
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.COULD_NOT, "qits-workspaces is unreachable");
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", "start-refined");
 
-    assertEquals("implement", pressed.dispatch().phase());
+    assertEquals("implement", pressed.phase());
     assertEquals("IMPLEMENTING", row(ticketId).status);
     assertEquals(1, turns.calls().size());
     List<String> thread = threadOf(ticketId);
@@ -623,9 +608,9 @@ public class DeskDispatchTest {
     delivery(projectId, true, 2, true);
     String ticketId = createTicket(projectId, "All the way, on the declaration");
 
-    DispatchDoors.Pressed pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
 
-    assertEquals("refine", pressed.dispatch().phase());
+    assertEquals("refine", pressed.phase());
     assertEquals(EntityDispatch.DESK_PRE_APPROVAL, row(ticketId).preApprovedBy);
   }
 

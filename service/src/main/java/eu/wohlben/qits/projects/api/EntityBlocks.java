@@ -10,14 +10,13 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
-import eu.wohlben.qits.projects.campaignhost.CampaignExecutor;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.Locale;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * <b>Blocking and unblocking an entity with a lifecycle — a ticket, an epic or a campaign: the
+ * <b>Blocking and unblocking an entity with a phase — a ticket or an epic: the
  * refusal, the write and the remark, once for every door.</b>
  *
  * <p>A block says the phase the entity's <em>current</em> status starts cannot finish right now. It
@@ -43,8 +42,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * starts from it, and {@link #requireBlockable} asks exactly that question rather than re-listing
  * the three statuses a phase runs under — so a fourth phase, or a status moving off the line,
  * changes one switch and this refusal follows it. It asks {@code phaseOf} and not {@code
- * startedBy}: the question is whether a phase runs, not what its agent is told, and a campaign has
- * phases and no turns to render. The entities module cannot hold the rule at all: it has no idea a
+ * startedBy}: the question is whether a phase runs, not what its agent is told. The entities module cannot hold the rule at all: it has no idea a
  * phase exists and depends on {@code domain} nowhere, which is what keeps it liftable. {@code
  * WorkEntityService.setBlocked} therefore writes the row and judges nothing, and says so.
  *
@@ -81,15 +79,6 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * which is merely a remark. The comment is also what makes the refusals worth ordering: both run
  * before either write, so an entity refused has had nothing written on it.
  *
- * <h2>A campaign's unblock is followed by an executor pass</h2>
- *
- * <p>A blocked campaign claims no new member ({@code CampaignExecutor}'s steps 1 and 3), and the
- * latches that arrived meanwhile stay latched with nobody acting on them — their observers already
- * fired and stood down. The periodic sweep would find them within an interval, but it runs only in
- * {@code NORMAL} launch mode and an unblock is a person saying "go on now", so the unblock asks for
- * the same pass a start press does, {@code CampaignExecutor.sweep(campaignId)}, after the row is
- * written. It never throws; a member it cannot try is the sweep's to retry.
- *
  * <h2>A ticket's or an epic's agents are told, after the write (qits-614, qits-617)</h2>
  *
  * <p>The agent sessions working a ticket or an epic are named {@code <status square> <qualified id>
@@ -98,7 +87,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * module records again on purpose, for the comment) does not rename anything twice. It runs after
  * {@code setBlocked} has returned, i.e. after its own transaction committed, so no target is ever
  * told about a value a rollback undid; and it never throws, so an unreachable workspace costs a
- * marker and never the block. A campaign is not told anything: no session works one.
+ * marker and never the block.
  */
 @ApplicationScoped
 public class EntityBlocks {
@@ -106,9 +95,6 @@ public class EntityBlocks {
   @Inject EntityCommentService thread;
 
   @Inject WorkEntityService entities;
-
-  /** The pass after a campaign's unblock — see the class javadoc. */
-  @Inject CampaignExecutor executor;
 
   /** The agents working a ticket or an epic, told the flag moved — see the class javadoc. */
   @Inject AgentEntitySignals agents;
@@ -183,9 +169,6 @@ public class EntityBlocks {
     WorkEntity written =
         entities.setBlocked(
             entity.archetype, entity.id, blocked, blocked ? stated : null, changedBy);
-    if (!blocked && written.archetype == Archetype.CAMPAIGN) {
-      executor.sweep(written.id);
-    }
     if (was != EntityBlockState.of(written).blocked()) {
       // Ticket and epic only, never throws — AgentEntitySignals filters and swallows both.
       agents.changed(written);
@@ -202,8 +185,7 @@ public class EntityBlocks {
    * refusal is about the kind, and it must say so — "a REFINED task starts no phase" would read as a
    * status a caller could move away from. The second is REFINED — it waits for a person to schedule
    * it (qits-887) — VERIFIED and DONE — the work is over and what is left is a person's judgement —
-   * and DROPPED, where the work was decided against and no phase will ever run again. A campaign
-   * runs no phase but its executor, so it is asked by status instead ({@link #campaignBlockable}).
+   * and DROPPED, where the work was decided against and no phase will ever run again.
    *
    * <p>The message names what is missing rather than the status alone, because "409" on an entity
    * that plainly exists leaves the caller guessing whether the block was rejected or the entity was.
@@ -252,21 +234,7 @@ public class EntityBlocks {
     if (Archetypes.runsNoPhase(entity.archetype)) {
       return false;
     }
-    // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by
-    // status rather than through phaseOf: a campaign runs at every status but DONE and DROPPED
-    // (qits-650), and those are where a block can stand.
-    return entity.archetype == Archetype.CAMPAIGN
-        ? campaignBlockable(entity.status)
-        : PhasePrompts.phaseOf(entity).isPresent();
-  }
-
-  /**
-   * Whether a campaign at {@code status} may be blocked: wherever it runs, which since qits-650 is
-   * every status but DONE and DROPPED ({@link EntityStateMachine#campaignRuns}) — its status is
-   * derived from its members, so a VERIFIED campaign is one whose members are still to be closed.
-   */
-  private static boolean campaignBlockable(String status) {
-    return EntityStateMachine.campaignRuns(status);
+    return PhasePrompts.phaseOf(entity).isPresent();
   }
 
   /**

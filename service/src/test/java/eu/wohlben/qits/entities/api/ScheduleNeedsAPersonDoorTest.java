@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 /**
  * <b>Scheduling needs a person, at the REST status door</b> (qits-887, qits-937): REFINED →
  * READY_FOR_DEV through {@code POST /work/{id}/status} — since qits-976 the one status door, for an
- * epic, a ticket and a campaign alike — is made only by a caller qits-891's {@link PersonCheck}
+ * epic and a ticket alike — is made only by a caller qits-891's {@link PersonCheck}
  * verified — a browser session this service introspects, or a person's {@code
  * qits} CLI bearer — and it is recorded under the proof's name. An agent's bearer, a service client's
  * and asserted identity headers (alone, or beside a machine bearer) are a 409 naming the gate, or the
@@ -130,27 +130,6 @@ class ScheduleNeedsAPersonDoorTest {
     return id;
   }
 
-  /** A campaign gathering {@code memberId}: its status is derived from the member's (qits-650). */
-  private static String campaignOf(String projectId, String memberId) {
-    String id =
-        session("ada", "ada")
-            .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "The order"))
-            .when()
-            .post("/projects/api/work")
-            .then()
-            .statusCode(201)
-            .extract()
-            .path("id");
-    session("ada", "ada")
-        .body(Map.of("entityId", memberId))
-        .when()
-        .post("/projects/api/work/" + id + "/members")
-        .then()
-        .statusCode(201);
-    return id;
-  }
-
-  private static final String DERIVED = "derived from its members";
 
   private static ValidatableResponse status(RequestSpecification caller, String id, String target) {
     return caller
@@ -185,42 +164,6 @@ class ScheduleNeedsAPersonDoorTest {
         .statusCode(200)
         .body("status", equalTo("READY_FOR_DEV"))
         .body("changedBy", equalTo("ada"));
-    // A campaign is scheduled by nobody (qits-650): its status is derived from its members.
-    String campaignId = campaignOf(projectId, refined(projectId, "TICKET"));
-    stillRefined(campaignId);
-    status(session("mallory", "ada"), campaignId, "READY_FOR_DEV")
-        .statusCode(409)
-        .body("message", containsString(DERIVED))
-        .body("message", org.hamcrest.Matchers.not(containsString("PERSON_APPROVAL")));
-  }
-
-  /**
-   * A campaign is READY_FOR_DEV when its members are (qits-942), and since qits-650 it gets there by
-   * itself: its own move is a 409 for anybody, and a person's scheduling of its last REFINED member
-   * moves it.
-   */
-  @Test
-  void aCampaignIsReadyForDevOnceItsMembersAre() {
-    String projectId = project("Campaign members scheduled");
-    String memberId = refined(projectId, "TICKET");
-    String campaignId = campaignOf(projectId, memberId);
-
-    status(session("ada", "ada"), campaignId, "READY_FOR_DEV")
-        .statusCode(409)
-        .body("message", containsString(DERIVED));
-    status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
-        .statusCode(409)
-        .body("message", containsString(DERIVED))
-        .body("message", org.hamcrest.Matchers.not(containsString(REFUSAL)));
-    stillRefined(campaignId);
-
-    status(session("ada", "ada"), memberId, "READY_FOR_DEV").statusCode(200);
-    session("ada", "ada")
-        .when()
-        .get("/projects/api/work/" + campaignId)
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("READY_FOR_DEV"));
   }
 
   @Test
@@ -264,10 +207,6 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(agent(projectId)), id, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
-    String campaignId = campaignOf(projectId, refined(projectId, "TICKET"));
-    status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
-        .statusCode(409)
-        .body("message", containsString(DERIVED));
     // An agent reaches an epic's status door of its own project since qits-1174, and meets the
     // same gate there.
     status(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV")
@@ -306,8 +245,7 @@ class ScheduleNeedsAPersonDoorTest {
   /**
    * CLOSE straight to DONE is no scheduling: PERSON_APPROVAL never judges it. An agent's bearer is
    * refused by CHILDREN_CLOSED alone, naming no scheduling gate, and a person closes the REFINED epic
-   * whose one feature is dropped under the session's name. A campaign closes by nobody's hand
-   * (qits-650): it is DONE once its members are.
+   * whose one feature is dropped under the session's name.
    */
   @Test
   void aCloseIsNotJudgedByPersonApproval() {
@@ -349,24 +287,6 @@ class ScheduleNeedsAPersonDoorTest {
         .body("status", equalTo("DONE"))
         .body("statusBefore", equalTo("REFINED"))
         .body("changedBy", equalTo("ada"));
-
-    String memberId = refined(projectId, "TICKET");
-    String campaignId = campaignOf(projectId, memberId);
-    status(session("ada", "ada"), campaignId, "DONE")
-        .statusCode(409)
-        .body("message", containsString(DERIVED));
-    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED")) {
-      status(session("ada", "ada"), memberId, target).statusCode(200);
-    }
-    // A ticket's DONE is the platform's (qits-150): no door makes it, a person's included.
-    status(session("ada", "ada"), memberId, "DONE").statusCode(409);
-    PlatformDone.of(memberId);
-    session("ada", "ada")
-        .when()
-        .get("/projects/api/work/" + campaignId)
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("DONE"));
   }
 
 

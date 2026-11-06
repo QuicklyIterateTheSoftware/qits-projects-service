@@ -65,7 +65,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * <ul>
  *   <li><b>A browser rides a person's session.</b> An interaction whose {@code qits-trigger.kind} is
  *       {@code ui} is a click in a browser, which carries a session cookie — what lets a person's
- *       door (scheduling, qits-887; a campaign criterion's approval) answer as it does for them, and
+ *       door (scheduling, qits-887) answer as it does for them, and
  *       exactly what {@link GoldenMasterRecordingTest} sends when it records the answer the consumer
  *       wrote against. Any other trigger (a CLI command, a service's schedule) calls as the plain
  *       consumer caller. A state that returns an {@code authorization} param
@@ -165,6 +165,15 @@ class ConsumerPactVerificationTest {
   @BeforeEach
   void target(PactVerificationContext context, Pact pact, Interaction interaction) {
     String consumer = pact.getConsumer().getName();
+    // First, so a known-wrong interaction in a state this provider retired (qits-1899) is skipped
+    // for its reason rather than failed for the state.
+    for (KnownWrong wrong : KNOWN_WRONG) {
+      if (wrong.names(pact, interaction)) {
+        Assumptions.abort(
+            consumer + " " + wrong.version() + " '" + interaction.getDescription() + "': "
+                + wrong.reason());
+      }
+    }
     for (ProviderState state : interaction.getProviderStates()) {
       if (!states.names().contains(state.getName())) {
         fail(
@@ -191,13 +200,6 @@ class ConsumerPactVerificationTest {
                 + interaction.getDescription()
                 + "' carries no comments.references."
                 + key);
-      }
-    }
-    for (KnownWrong wrong : KNOWN_WRONG) {
-      if (wrong.names(pact, interaction)) {
-        Assumptions.abort(
-            consumer + " " + wrong.version() + " '" + interaction.getDescription() + "': "
-                + wrong.reason());
       }
     }
     context.setTarget(new HttpTestTarget(base.getHost(), base.getPort()));
@@ -272,29 +274,9 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_TICKET_WITH_A_COMMENT);
   }
 
-  @State(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT)
-  Map<String, String> aCampaignWithMembersToEdit() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
-  }
-
-  @State(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE)
-  Map<String, String> aTicketWaitingOnAnUnmetMilestone() {
-    return states.params(ProviderStates.A_TICKET_WAITING_ON_AN_UNMET_MILESTONE);
-  }
-
   @State(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER)
   Map<String, String> aTicketThatNeedsAnother() {
     return states.params(ProviderStates.A_TICKET_THAT_NEEDS_ANOTHER);
-  }
-
-  @State(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE)
-  Map<String, String> aTicketWaitingOnAMetMilestone() {
-    return states.params(ProviderStates.A_TICKET_WAITING_ON_A_MET_MILESTONE);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE)
-  Map<String, String> aCampaignMemberWaitingOnAMilestone() {
-    return states.params(ProviderStates.A_CAMPAIGN_MEMBER_WAITING_ON_A_MILESTONE);
   }
 
   @State(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE)
@@ -352,11 +334,6 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS);
   }
 
-  @State(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS)
-  Map<String, String> aCampaignWithOrderedDevelopments() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
-  }
-
   @State(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS)
   Map<String, String> anEpicWithTasksInEveryStatus() {
     return states.params(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS);
@@ -375,11 +352,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES)
   Map<String, String> anImplementingEpicWithFeaturesInMixedStatuses() {
     return states.params(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC)
-  Map<String, String> aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
   }
 
   @State(ProviderStates.A_VERIFIED_EPIC)
@@ -405,21 +377,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED)
   Map<String, String> aDoneEpicWithEveryTaskImplemented() {
     return states.params(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE)
-  Map<String, String> aCampaignWithWorkInEveryPhase() {
-    return states.params(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
-  }
-
-  @State(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS)
-  Map<String, String> anEpicInTwoCampaigns() {
-    return states.params(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS);
-  }
-
-  @State(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS)
-  Map<String, String> theSecondCampaignOfAnEpicInTwoCampaigns() {
-    return states.params(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS);
   }
 
   @State(ProviderStates.A_PROJECT_WITH_NO_WORK)
@@ -650,11 +607,6 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL)
   Map<String, String> aMaintenanceTicketInDetail() {
     return states.params(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL);
-  }
-
-  @State(ProviderStates.A_CAMPAIGN_IN_DETAIL)
-  Map<String, String> aCampaignInDetail() {
-    return states.params(ProviderStates.A_CAMPAIGN_IN_DETAIL);
   }
 
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)

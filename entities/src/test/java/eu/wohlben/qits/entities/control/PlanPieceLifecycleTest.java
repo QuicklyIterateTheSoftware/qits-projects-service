@@ -56,17 +56,17 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
             .entity();
     String feature =
         workEntities
-            .create(Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t")
+            .create(Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t")
             .entity()
             .id;
     String task =
         workEntities
-            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Task", null, null), "t")
+            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Task", null), "t")
             .entity()
             .id;
     String sibling =
         workEntities
-            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Sibling", null, null), "t")
+            .create(Archetype.TASK, feature, EntityWrite.task("repo-1", "Sibling", null), "t")
             .entity()
             .id;
     return new Plan(epic.id, feature, task, sibling);
@@ -313,7 +313,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     workEntities.update(
         Archetype.FEATURE,
         plan.feature(),
-        EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+        EntityWrite.nodeEdit(null, null, WHEN, false),
         "person");
 
     assertEquals("IMPLEMENTED", status(Archetype.FEATURE, plan.feature()));
@@ -332,7 +332,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
     workEntities.update(Archetype.TASK, plan.sibling(), EntityWrite.implementedAt(WHEN), "agent");
 
-    EntityWrite clear = EntityWrite.nodeEdit(null, null, null, false, null, true);
+    EntityWrite clear = EntityWrite.nodeEdit(null, null, null, true);
     workEntities.update(Archetype.TASK, plan.task(), clear, "person");
     workEntities.update(Archetype.TASK, plan.sibling(), clear, "person");
 

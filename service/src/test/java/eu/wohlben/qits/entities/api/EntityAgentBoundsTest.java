@@ -181,7 +181,7 @@ class EntityAgentBoundsTest {
     String featureId =
         workEntities
             .create(
-                Archetype.FEATURE, epicId, EntityWrite.feature("The own part", null, null), "seed")
+                Archetype.FEATURE, epicId, EntityWrite.feature("The own part", null), "seed")
             .entity()
             .id;
     String taskId =
@@ -189,7 +189,7 @@ class EntityAgentBoundsTest {
             .create(
                 Archetype.TASK,
                 featureId,
-                EntityWrite.task(OWN_REPO, "The own step", null, null),
+                EntityWrite.task(OWN_REPO, "The own step", null),
                 "seed")
             .entity()
             .id;
@@ -377,9 +377,17 @@ class EntityAgentBoundsTest {
     return JsonNodeFactory.instance.objectNode().put("title", title);
   }
 
+  /** The wire shape of a transition entry: the body the door reads (qits-1908). */
+  private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+      new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+
+  private static JsonNode wire(EntityTransition entry) {
+    return JSON.valueToTree(entry);
+  }
+
   /** An epic restated as itself, with a new title — the smallest legal whole post-state. */
-  private static EntityTransition epicRenamedTo(String title) {
-    return new EntityTransition(
+  private static JsonNode epicRenamedTo(String title) {
+    return wire(new EntityTransition(
         Archetype.EPIC,
         new EntityTransition.Membership(null, null),
         title,
@@ -391,14 +399,13 @@ class EntityAgentBoundsTest {
         null,
         null,
         null,
-        null,
-        null);
+        null));
   }
 
   /** A feature restated as itself, hanging under {@code parent}. */
   /** A feature under {@code parent}, stated REPORTED: a transition mints no status (qits-763). */
-  private static EntityTransition featureUnder(String parent, String title) {
-    return new EntityTransition(
+  private static JsonNode featureUnder(String parent, String title) {
+    return wire(new EntityTransition(
         Archetype.FEATURE,
         new EntityTransition.Membership(parent, null),
         title,
@@ -410,8 +417,7 @@ class EntityAgentBoundsTest {
         null,
         null,
         null,
-        null,
-        null);
+        null));
   }
 
   private static void refused(Executable call) {
@@ -944,7 +950,7 @@ class EntityAgentBoundsTest {
   /** Every id and every parent inside the agent's own project: the batch goes through. */
   @Test
   void aBatchWhollyInsideItsOwnProjectGoesThrough() {
-    Map<String, EntityTransition> request = new LinkedHashMap<>();
+    Map<String, JsonNode> request = new LinkedHashMap<>();
     request.put(rows.epicId(), epicRenamedTo("The own plan, restated"));
     request.put(rows.featureId(), featureUnder(rows.epicId(), "The own part, restated"));
 
@@ -962,7 +968,7 @@ class EntityAgentBoundsTest {
    */
   @Test
   void aBatchReachingAnotherProjectIsRefusedWithNothingWritten() {
-    Map<String, EntityTransition> request = new LinkedHashMap<>();
+    Map<String, JsonNode> request = new LinkedHashMap<>();
     request.put(rows.epicId(), epicRenamedTo("Would have been renamed"));
     request.put(rows.foreignEpicId(), epicRenamedTo("Would have been renamed too"));
 
@@ -981,7 +987,7 @@ class EntityAgentBoundsTest {
    */
   @Test
   void aBatchHangingAnOwnEntityUnderAForeignParentIsRefused() {
-    Map<String, EntityTransition> request =
+    Map<String, JsonNode> request =
         Map.of(rows.featureId(), featureUnder(rows.foreignEpicId(), "The own part"));
 
     refused(() -> work(AGENT).transition(request));
@@ -998,7 +1004,7 @@ class EntityAgentBoundsTest {
    */
   @Test
   void anIdNamingNothingFallsThroughToTheOrdinary400() {
-    Map<String, EntityTransition> request =
+    Map<String, JsonNode> request =
         Map.of("no-such-entity", epicRenamedTo("A ghost"));
 
     BadRequestException refusal =
@@ -1118,11 +1124,6 @@ class EntityAgentBoundsTest {
   void theSignOffsAndTheCommentDeleteAreRefusedAtTheDoor() {
     asForwardedAgent()
         .delete("/projects/api/work/no-such-entity/comments/no-such-comment")
-        .then()
-        .statusCode(403);
-    asForwardedAgent()
-        .body(Map.of())
-        .post("/projects/api/work/no-such-entity/members/no-such-member/criteria/no-such/approve")
         .then()
         .statusCode(403);
     asForwardedAgent().post("/projects/api/work/no-such-entity/dispatch").then().statusCode(403);

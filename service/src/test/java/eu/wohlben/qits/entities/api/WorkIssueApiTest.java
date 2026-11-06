@@ -279,24 +279,9 @@ class WorkIssueApiTest {
   }
 
   @Test
-  void aCampaignDoesNotGatherAnIssueAndNothingHangsUnderOne() {
+  void nothingHangsUnderAnIssue() {
     String projectId = project("issue-alone");
     String id = issue(projectId);
-    String campaign =
-        person()
-            .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "C"))
-            .when()
-            .post("/projects/api/work")
-            .then()
-            .statusCode(201)
-            .extract()
-            .path("id");
-    person()
-        .body(Map.of("entityId", id))
-        .when()
-        .post("/projects/api/work/" + campaign + "/members")
-        .then()
-        .statusCode(org.hamcrest.Matchers.greaterThanOrEqualTo(400));
     person()
         .body(Map.of("title", "child"))
         .when()

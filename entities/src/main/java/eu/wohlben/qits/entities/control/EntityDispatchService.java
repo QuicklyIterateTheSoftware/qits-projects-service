@@ -48,8 +48,7 @@ public class EntityDispatchService {
    * {@link #get}, read in a transaction of its own (qits-417) — so what it answers is what is
    * committed now, never a row an earlier read in the same request or request context left in that
    * context's session. The by-id dispatch reads through here: it decides a phase from the status, and
-   * a caller that looked at the row earlier (the campaign executor's own checks) must not be handed
-   * that earlier look back.
+   * a caller that looked at the row earlier must not be handed that earlier look back.
    */
   public WorkEntity fresh(String id) {
     return reads.hold(
@@ -128,11 +127,11 @@ public class EntityDispatchService {
   /**
    * Record who is on the row now (qits-887): the agent a press just put there, by the identity its
    * own calls carry. Written on every successful press whatever the phase, and the same for a
-   * person's press and the campaign executor's — the assignee is the agent, never whoever pressed.
+   * person's press and the desk's — the assignee is the agent, never whoever pressed.
    * Audited as an UPDATE of the row, {@link #setDispatchContinues}' way, under the caller.
    *
    * <p>Refused on a kind that has no assignee ({@link Archetypes} permits it on the two kinds a
-   * press is made on, the epic and the ticket): a campaign, a feature and a task are never
+   * press is made on, the epic and the ticket): a feature, a task and an issue are never
    * dispatched, so a write here on one is a caller's mistake and not a value to store.
    */
   public WorkEntity setAssignee(String id, String assignee, String changedBy) {

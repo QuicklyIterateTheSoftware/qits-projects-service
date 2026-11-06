@@ -152,7 +152,6 @@ class WorkNeedApiTest {
                     "dev")
                 .entity()
                 .id);
-    String campaign = EntityFixtures.qualifiedId(EntityFixtures.campaign(project.id()));
 
     String body =
         patch(
@@ -161,7 +160,6 @@ class WorkNeedApiTest {
                     need("nope-999", "DONE"),
                     need(elsewhere, "DONE"),
                     need(issue, "DONE"),
-                    need(campaign, "DONE"),
                     need(ticketQualified, "DONE"),
                     need(needed, "SHIPPED"),
                     need(needed, "OPEN"),
@@ -177,13 +175,10 @@ class WorkNeedApiTest {
             "needs[2].item "
                 + issue
                 + " is an ISSUE; only an epic, a ticket, a feature or a task can be needed",
-            "needs[3].item "
-                + campaign
-                + " is a CAMPAIGN; only an epic, a ticket, a feature or a task can be needed",
-            "needs[4].item " + ticketQualified + " is this item itself",
-            "needs[5].status SHIPPED is not a status of the walk (REPORTED, REFINED,"
+            "needs[3].item " + ticketQualified + " is this item itself",
+            "needs[4].status SHIPPED is not a status of the walk (REPORTED, REFINED,"
                 + " READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE) or DROPPED",
-            "needs[6].status OPEN is not a status of the walk",
+            "needs[5].status OPEN is not a status of the walk",
             "needs names " + needed + " twice")) {
       assertTrue(body.contains(sentence), sentence + " in " + body);
     }
@@ -210,14 +205,23 @@ class WorkNeedApiTest {
   }
 
   @Test
-  void anIssueAndACampaignHaveNoNeeds() {
+  void anIssueHasNoNeedsAndACampaignIsNoArchetype() {
     EntityFixtures.Project project = EntityFixtures.project("Needs Refused Kinds");
     String needed = EntityFixtures.qualifiedId(EntityFixtures.ticket(project.id()));
-    String campaign = EntityFixtures.campaign(project.id());
+    String issue =
+        entities
+            .create(
+                Archetype.ISSUE,
+                project.id(),
+                EntityWrite.epic("A question", "Who owns the lease?"),
+                "dev")
+            .entity()
+            .id;
 
-    patch(campaign, needs(need(needed, "DONE")))
+    patch(issue, needs(need(needed, "DONE")))
         .statusCode(400)
-        .body(containsString("a CAMPAIGN has no needs"));
+        .body(containsString("a ISSUE has no needs"));
+    // The campaign is retired (qits-1908): a create naming it names no archetype.
     given()
         .contentType(ContentType.JSON)
         .body(
@@ -234,7 +238,7 @@ class WorkNeedApiTest {
         .post("/projects/api/work")
         .then()
         .statusCode(400)
-        .body(containsString("a CAMPAIGN has no needs"));
+        .body(containsString("Unknown archetype: CAMPAIGN"));
   }
 
   // --- every status, every kind ----------------------------------------------------------------

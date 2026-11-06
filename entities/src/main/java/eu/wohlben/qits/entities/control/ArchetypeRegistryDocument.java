@@ -104,13 +104,9 @@ public record ArchetypeRegistryDocument(
    *     and beside it, never instead of it
    * @param lifecycle the lifecycle's states in order — the walk REPORTED → … → DONE, then DROPPED
    *     ({@link EntityStateMachine#states}); empty for a kind with no lifecycle
-   * @param gathers whether this kind's children are <b>campaign memberships, never structural</b>
-   *     — true for {@code CAMPAIGN} alone. A client must not draw a gathering row's children as
-   *     its subtree: they hang somewhere else as well, and this row only orders them
    * @param phases what a dispatch press runs from each status, keyed by <b>every</b> status in
    *     {@link #lifecycle} order — {@link DispatchPhases}. Empty for a kind a dispatch runs no phases
-   *     on: a feature or a task (a lifecycle, but no phase of its own) and a campaign (its press is
-   *     its start). Read off {@link EntityStateMachine#phaseRunFrom} and {@link EntityStateMachine#flowFrom}, which the
+   *     on: a feature or a task (a lifecycle, but no phase of its own) and an issue. Read off {@link EntityStateMachine#phaseRunFrom} and {@link EntityStateMachine#flowFrom}, which the
    *     dispatch door and the FLOW hand-off follow, so the served phases and the run ones are one
    *     declaration
    */
@@ -118,7 +114,6 @@ public record ArchetypeRegistryDocument(
       Archetype archetype,
       int depth,
       boolean mayBeRoot,
-      boolean gathers,
       List<EntityProperty> required,
       List<EntityProperty> requiredAtCreate,
       List<EntityProperty> requiredOnTransition,
@@ -205,7 +200,6 @@ public record ArchetypeRegistryDocument(
               archetype,
               spec.depth(),
               spec.mayBeRoot(),
-              spec.gathers(),
               inVocabularyOrder(spec.required()),
               inVocabularyOrder(spec.requiredAtCreate()),
               inVocabularyOrder(requiredOnTransition(spec)),

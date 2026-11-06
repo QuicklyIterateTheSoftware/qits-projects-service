@@ -22,8 +22,8 @@ import java.util.Optional;
  * reported together in one 409, so a caller fixes everything in one round trip.
  *
  * <p>{@link #appliesTo} is a pure function of the move, because the registry asks it with no row in
- * hand; {@link #refusal} reads the row, and may read beyond it — a campaign gate reading its members
- * (qits-942) injects what it needs, since gates are beans.
+ * hand; {@link #refusal} reads the row, and may read beyond it — {@code CHILDREN_CLOSED}
+ * reading the children injects what it needs, since gates are beans.
  */
 public interface TransitionGate {
 

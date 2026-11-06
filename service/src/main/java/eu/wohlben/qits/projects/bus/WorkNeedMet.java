@@ -7,7 +7,7 @@ import java.util.UUID;
 /**
  * <b>A work item's need came to be met</b> (qits-1903): a transition moved the needed item to (or
  * past) the status an item waits for. Published by {@link WorkNeedAnnouncer} after the transition
- * has committed, durably, through the outbox, exactly as {@link MilestoneMet} is — one event per
+ * has committed, durably, through the outbox — one event per
  * need that flips from unmet to met. Nothing is published when a need goes unmet again, nor when a
  * needs write names an item that is already met: a write is not something reaching its status.
  *

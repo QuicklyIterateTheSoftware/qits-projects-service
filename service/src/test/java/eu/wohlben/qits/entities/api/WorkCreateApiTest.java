@@ -189,19 +189,6 @@ class WorkCreateApiTest {
   }
 
   @Test
-  void aCampaignIsARootInItsProject() {
-    EntityFixtures.Project project = EntityFixtures.project("Create Campaign");
-
-    create(map("archetype", "CAMPAIGN", "project", project.slug(), "title", "The order"))
-        .statusCode(201)
-        .body("archetype", equalTo("CAMPAIGN"))
-        .body("status", equalTo("REPORTED"));
-    create(map("archetype", "CAMPAIGN", "parent", "anything", "title", "The order"))
-        .statusCode(400)
-        .body("message", containsString("parent is not taken"));
-  }
-
-  @Test
   void aPlacementNamingNothingIsA404() {
     create(map("archetype", "EPIC", "project", "no-such-project", "title", "t")).statusCode(404);
     create(map("archetype", "FEATURE", "parent", "no-such-epic", "title", "t")).statusCode(404);

@@ -24,7 +24,7 @@ import org.jboss.logging.Logger;
  * <p>Nothing is written on the thread about the delivery: the turn is itself caused by a comment,
  * and a comment about it would double every thread. What happened is logged and nothing else.
  *
- * <p>The executor propagates no context ({@code CampaignExecutor}'s shape): no request context, no
+ * <p>The executor propagates no context: no request context, no
  * transaction, no causation scope. The task opens no transaction — the port is an HTTP hop.
  */
 @ApplicationScoped

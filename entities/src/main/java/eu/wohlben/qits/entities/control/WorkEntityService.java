@@ -1,7 +1,5 @@
 package eu.wohlben.qits.entities.control;
 
-import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
-import eu.wohlben.qits.entities.milestone.MilestoneService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -52,7 +50,7 @@ import java.util.stream.Collectors;
  *       refusals ({@code "impetus is required"}) are read off its {@code requiredAtCreate}, so the
  *       registry and the 400 a caller reads cannot drift apart.
  *   <li>{@link Kind}, below, answers the rest — the words a refusal is phrased in, what a kind hangs
- *       under, which kind's phase freezes its scope and what its dependency is called on the wire.
+ *       under and which kind's phase freezes its scope.
  *       One row per archetype, in {@link #KINDS}. (It also said whether a kind had a comment thread,
  *       until qits-551 gave every kind one.)
  * </ul>
@@ -112,9 +110,6 @@ public class WorkEntityService {
   /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
   @Inject EntityNumbers numbers;
 
-  /** A campaign's start — read by the pause hook in {@link #move}, nothing else here. */
-  @Inject CampaignStartRecordRepository campaignStarts;
-
   /**
    * The idea rules on {@code inspiredBy} (qits-1387): which kinds may carry one, and that it names
    * an idea of the row's own project.
@@ -129,15 +124,6 @@ public class WorkEntityService {
 
   /** Hands the idea changes those recomputes made on, after the hold. */
   @Inject IdeaAnnouncements ideaAnnouncements;
-
-  /**
-   * Re-derives every campaign a moved or deleted member has joined, inside the same write
-   * (qits-650) — and a reopened campaign itself.
-   */
-  @Inject CampaignStatusRecompute campaignStatus;
-
-  /** Drops the generated conditions of the campaign memberships a delete takes away (qits-615). */
-  @Inject MilestoneService milestoneService;
 
   /**
    * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
@@ -218,15 +204,8 @@ public class WorkEntityService {
    * @param parent the kind a row of it hangs under, or null for a root
    * @param freezeOwner the kind whose status freezes this one's scope — itself for an epic, the epic
    *     above for a feature and a task, nobody for a ticket
-   * @param dependencyField what the sibling dependency is called on the wire, for its refusals; null
-   *     for a kind with none
    */
-  record Kind(
-      Archetype archetype,
-      String noun,
-      Archetype parent,
-      Archetype freezeOwner,
-      String dependencyField) {
+  record Kind(Archetype archetype, String noun, Archetype parent, Archetype freezeOwner) {
 
     boolean isRoot() {
       return parent == null;
@@ -266,25 +245,13 @@ public class WorkEntityService {
 
   private static Map<Archetype, Kind> declare() {
     Map<Archetype, Kind> kinds = new EnumMap<>(Archetype.class);
-    kinds.put(Archetype.EPIC, new Kind(Archetype.EPIC, "Epic", null, Archetype.EPIC, null));
-    kinds.put(Archetype.TICKET, new Kind(Archetype.TICKET, "Ticket", null, null, null));
-    // A root with no freeze owner — its title and description stay editable at every status, as a
-    // ticket's do — and no sibling dependency. It is the fifth kind (qits-411).
-    kinds.put(Archetype.CAMPAIGN, new Kind(Archetype.CAMPAIGN, "Campaign", null, null, null));
-    // A root with no freeze owner and no sibling dependency, as a campaign is (qits-1819).
-    kinds.put(Archetype.ISSUE, new Kind(Archetype.ISSUE, "Issue", null, null, null));
+    kinds.put(Archetype.EPIC, new Kind(Archetype.EPIC, "Epic", null, Archetype.EPIC));
+    kinds.put(Archetype.TICKET, new Kind(Archetype.TICKET, "Ticket", null, null));
+    // A root with no freeze owner, as a ticket is (qits-1819).
+    kinds.put(Archetype.ISSUE, new Kind(Archetype.ISSUE, "Issue", null, null));
     kinds.put(
-        Archetype.FEATURE,
-        new Kind(
-            Archetype.FEATURE,
-            "Feature",
-            Archetype.EPIC,
-            Archetype.EPIC,
-            "dependsOnFeatureId"));
-    kinds.put(
-        Archetype.TASK,
-        new Kind(
-            Archetype.TASK, "Task", Archetype.FEATURE, Archetype.EPIC, "dependsOnTaskId"));
+        Archetype.FEATURE, new Kind(Archetype.FEATURE, "Feature", Archetype.EPIC, Archetype.EPIC));
+    kinds.put(Archetype.TASK, new Kind(Archetype.TASK, "Task", Archetype.FEATURE, Archetype.EPIC));
     for (Archetype archetype : Archetype.values()) {
       if (!kinds.containsKey(archetype)) {
         throw new IllegalStateException("No WorkEntityService.Kind declared for " + archetype);
@@ -354,7 +321,7 @@ public class WorkEntityService {
   }
 
   /**
-   * <b>The audit subtree key of a row</b>: its own id for a root (an epic, a ticket, a campaign), its
+   * <b>The audit subtree key of a row</b>: its own id for a root (an epic, a ticket, an issue), its
    * epic's for a feature or a task. The key the rows' own audit entries carry, offered to the
    * writers beside this service — a comment — so what is said about a node lands in its root's
    * history too.
@@ -444,7 +411,7 @@ public class WorkEntityService {
    *
    * <p>Before the wrap: a root's project id, then every property the registry's {@code
    * requiredAtCreate} demands, in {@link #INTAKE_ORDER}, then the type word. Inside it: the parent
-   * (a 404 in the parent's own noun), the owner's scope freeze, the dependency's scope, the row, the
+   * (a 404 in the parent's own noun), the owner's scope freeze, the row, the
    * registry at {@link Demand#AT_CREATE}, the membership edge and the nesting rule, the audit row.
    *
    * <p>A lifecycle kind starts {@link EntityStatus#REPORTED}; a kind that may carry {@link
@@ -471,9 +438,6 @@ public class WorkEntityService {
             WorkEntity owner = ownerAbove(kind, parent);
             if (owner != null) {
               EntityLifecycle.requireReported(owner);
-            }
-            if (write.dependsOn() != null) {
-              requireDependencyUnder(kind, write.dependsOn(), under);
             }
             projectId = parent.projectId;
             rootId = owner != null ? owner.id : ancestor(parent.id, kind(parent.archetype).depth());
@@ -502,25 +466,6 @@ public class WorkEntityService {
         });
     ideaAnnouncements.announce(ideaChanges);
     return made;
-  }
-
-  /**
-   * <b>A new campaign in {@code projectId}</b> — the create behind {@code POST
-   * /projects/{projectId}/campaigns}, and the one door a campaign is born through (the MIMO door
-   * refuses to make one; see {@link EntityTransitionService}).
-   *
-   * <p>It is {@link #create} at {@link Archetype#CAMPAIGN} and nothing else, so it inherits every
-   * rule an epic's create has: the slug minted once from the title by {@link Slugs#slugify} in the
-   * project's root slug scope (shared with epics and tickets), the number from {@code
-   * entity_number_sequence}, the status minted {@link EntityStatus#REPORTED} by the writer, the
-   * registry judged at {@link Demand#AT_CREATE}, and one audit row. Named rather than left to a
-   * caller's {@code create(CAMPAIGN, …)} so the surfaces that make one say what they make.
-   */
-  public WorkEntity createCampaign(
-      String projectId, String title, String description, String changedBy) {
-    return create(
-            Archetype.CAMPAIGN, projectId, EntityWrite.campaign(title, description), changedBy)
-        .entity();
   }
 
   /**
@@ -554,7 +499,6 @@ public class WorkEntityService {
     row.impetus = write.impetus();
     row.assignee = blankToNull(write.assignee());
     row.repositoryId = write.repositoryId();
-    row.dependsOnEntityId = write.dependsOn();
     List<String> criteria = AcceptanceCriteria.require(write.acceptanceCriteria());
     if (criteria != null) {
       row.acceptanceCriteria.addAll(criteria);
@@ -667,16 +611,6 @@ public class WorkEntityService {
     }
     if (write.touchesCriteria()) {
       writeCriteria(kind, row, write.acceptanceCriteria());
-    }
-    if (write.clearDependsOn()) {
-      row.dependsOnEntityId = null;
-    } else if (write.dependsOn() != null) {
-      if (write.dependsOn().equals(id)) {
-        throw new BadRequestException("A " + kind.word() + " cannot depend on itself");
-      }
-      requireDependencyUnder(kind, write.dependsOn(), parentId);
-      requireNoCycle(kind, id, write.dependsOn());
-      row.dependsOnEntityId = write.dependsOn();
     }
     // The idea the work was inspired by (qits-1387): neither scope nor a marker, so editable at
     // every status. Both the idea it left and the one it names now are re-derived below.
@@ -1121,12 +1055,6 @@ public class WorkEntityService {
     if (expected != null && !expected.name().equals(row.status)) {
       return null;
     }
-    if (archetype == Archetype.CAMPAIGN) {
-      // The campaign row first (qits-417), re-read under its lock, and only then the start row the
-      // pause hook below updates: the order CampaignService.start takes the same two rows in, so a
-      // pause racing a start press serialises on this row instead of deadlocking on the pair.
-      entities.getEntityManager().refresh(row, LockModeType.PESSIMISTIC_WRITE);
-    }
     String statusBefore = row.status;
     EntityStatus to = targetStatus(kind, row, target);
     requireSupersedable(kind, row, target);
@@ -1164,15 +1092,6 @@ public class WorkEntityService {
       row.outcome = null;
       row.supersededByEntityId = null;
     }
-    if (archetype == Archetype.CAMPAIGN && to == EntityStatus.DROPPED) {
-      // The pause hook (qits-413): a campaign dropped by hand — the one manual move into a status it
-      // does not run at, since qits-650 derives every other word — stops its executor, in this very
-      // transaction, so no claim can land between the move and the pause. The UPDATE takes the row
-      // lock the executor's claim waits on; a campaign never started has no row and nothing
-      // happens. Resuming is a new start press after the reopen — reopening is not enough. A
-      // derived move into DONE pauses the same way, in CampaignStatusRecompute.
-      campaignStarts.pause(row.id);
-    }
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity moved = settled(row);
     audit(moved, moved.id, AuditOperation.UPDATE, changedBy);
@@ -1196,17 +1115,6 @@ public class WorkEntityService {
       inspiring.add(child.row().inspiredByIdeaId);
     }
     List<IdeaChange> ideas = new ArrayList<>(ideaStatus.recompute(inspiring, changedBy));
-    // The campaigns the moved row is a member of are re-derived in this transaction (qits-650); a
-    // reopened campaign is re-derived itself, at once — its REPORTED was a person's, the floor its
-    // members set is what it then is. Each derived change joins the move's one announcement.
-    CampaignStatusRecompute.Recomputed derived =
-        archetype == Archetype.CAMPAIGN
-            ? (EntityStatus.DROPPED.name().equals(statusBefore)
-                ? campaignStatus.recompute(List.of(moved.id))
-                : CampaignStatusRecompute.Recomputed.none())
-            : campaignStatus.recomputeCampaignsOf(List.of(moved.id));
-    batch.addAll(derived.moved());
-    ideas.addAll(derived.ideas());
     return new Moved(
         new Transition(moved, successor, statusBefore), List.copyOf(batch), List.copyOf(ideas));
   }
@@ -1461,8 +1369,7 @@ public class WorkEntityService {
    * The status a transition {@code target} lands on: the word itself, or {@link EntityStatus#DROPPED}
    * for the {@linkplain #SUPERSEDE supersede} operation of a kind that has it — judged against the
    * lifecycle graph from the row's status. A word naming neither is a 409, and so is asking it of a
-   * kind with no lifecycle, and so is IMPLEMENTING or VERIFYING for a campaign, which enters
-   * neither.
+   * kind with no lifecycle.
    */
   private static EntityStatus targetStatus(Kind kind, WorkEntity row, String target) {
     if (!kind.hasLifecycle()) {
@@ -1475,23 +1382,6 @@ public class WorkEntityService {
             : EntityLifecycle.parse(target)
                 .orElseThrow(
                     () -> new ConflictException("Unknown " + kind.word() + " status: " + target));
-    EntityStatus from = EntityStatus.valueOf(row.status);
-    if (EntityStateMachine.isDerived(kind.archetype())
-        && !EntityStateMachine.isTerminal(from)
-        && !EntityStateMachine.allows(kind.archetype(), from, to)) {
-      // A campaign's status is derived from its members (qits-650): its DROP and its REOPEN are the
-      // only moves anybody makes of it. DONE keeps the machine's own finality sentence below.
-      throw new ConflictException(
-          "Campaign "
-              + row.id
-              + " cannot move from "
-              + from
-              + " to "
-              + to
-              + " by hand: a campaign's status is derived from its members — the lowest status"
-              + " among those not DROPPED. Only a drop (to DROPPED) and a reopen (DROPPED to"
-              + " REPORTED) are moved by hand; move its members instead.");
-    }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;
   }
@@ -1590,9 +1480,7 @@ public class WorkEntityService {
    * is free again. The <em>root's</em> slug is the exception: its scope is the project, where the old
    * row still holds it, so the successor mints the next free one exactly as a hand-created row would.
    * The markers reset and every copied feature and task is REPORTED (nothing is implemented in a
-   * draft) and {@code dependsOn} is
-   * remapped to the new ids — in a second pass, because a dependency may point at a sibling copied
-   * after it. The memberships are copied with the rows, in the source's order and re-numbered dense
+   * draft). The memberships are copied with the rows, in the source's order and re-numbered dense
    * from zero, so the successor's plan is drawn in the order the discarded one was.
    *
    * <p><b>ONE number allocation for the whole copied tree</b> rather than one per row, taken in the
@@ -1636,13 +1524,8 @@ public class WorkEntityService {
       copiedParent.put(node.id, copy.id);
       byLevel.computeIfAbsent(source.levelOf(node.id), level -> new ArrayList<>()).add(copy);
     }
-    // Second pass: every copy exists now, so a pointer can be remapped whichever way it points.
-    for (WorkEntity node : preOrder) {
-      WorkEntity target = copies.get(node.dependsOnEntityId);
-      copies.get(node.id).dependsOnEntityId = (target == null) ? null : target.id;
-    }
-
-    // Audited after the remap so each snapshot is the finished row; settled() flushes the batch.
+    // Audited once every copy exists, so each snapshot is the finished row; settled() flushes the
+    // batch.
     WorkEntity successor = settled(successorRow);
     audit(successor, successor.id, AuditOperation.CREATE, changedBy);
     byLevel.keySet().stream()
@@ -1659,8 +1542,7 @@ public class WorkEntityService {
   /**
    * A fresh row carrying {@code source}'s content under {@code parentId} at {@code position}, and
    * the edge that puts it there. The slug is kept, both markers reset, the status is REPORTED — a
-   * piece of a draft, as its new epic is (qits-763) — and {@code dependsOn} is left for the second
-   * pass. The edge's id is the child's, V10's rule. The tags (qits-634) are carried, as the
+   * piece of a draft, as its new epic is (qits-763). The edge's id is the child's, V10's rule. The tags (qits-634) are carried, as the
    * successor root's are.
    */
   private WorkEntity copyUnder(WorkEntity source, String parentId, int position, long number) {
@@ -1695,12 +1577,6 @@ public class WorkEntityService {
    * through a cutover ({@link WritePatience}), so a retry never leaves half a cascade behind:
    *
    * <ol>
-   *   <li>siblings of the same kind that depend on it lose the pointer, each audited — in-service
-   *       rather than the FK's SET NULL, which would leave no trace;
-   *   <li>every campaign membership of the row or a descendant goes and its gap is closed, so every
-   *       campaign it was gathered into stays dense — the FK would cascade the edges away but leave
-   *       the holes. The subtree is the <em>structural</em> one: a campaign's own members are not
-   *       below it, so deleting a campaign removes its edges (by the cascade) and none of its work;
    *   <li>every comment on the row or a descendant goes, each with a DELETE audit row under the
    *       root's key — <em>before</em> any row does, because the audit write flushes, and a row
    *       already gone would have cascaded its comments away with no trace (qits-551: every kind has
@@ -1718,12 +1594,10 @@ public class WorkEntityService {
   public void delete(Archetype archetype, String id, String changedBy) {
     Kind kind = kind(archetype);
     List<IdeaChange> ideaChanges = new ArrayList<>(1);
-    CampaignStatusRecompute.Recomputed[] derived = {CampaignStatusRecompute.Recomputed.none()};
     writes.run(
         kind.label("delete"),
         () -> {
           ideaChanges.clear();
-          derived[0] = CampaignStatusRecompute.Recomputed.none();
           WorkEntity row = lookup(archetype, id);
           EntityMembership edge =
               kind.isRoot() ? null : memberships.structuralMembershipOf(id).orElse(null);
@@ -1734,23 +1608,7 @@ public class WorkEntityService {
           }
           String rootId = owner == null ? id : owner.id;
 
-          for (WorkEntity dependent : entities.listDependents(id)) {
-            if (dependent.archetype != archetype) {
-              continue;
-            }
-            dependent.dependsOnEntityId = null;
-            audit(dependent, rootId, AuditOperation.UPDATE, changedBy);
-          }
-
           Subtree subtree = subtreeOf(id);
-          // Before any row goes: a query here auto-flushes, and a row already deleted would have
-          // cascaded its campaign edges away and left their gaps behind.
-          List<String> leftCampaigns = leaveCampaigns(id, subtree);
-          if (row.archetype == Archetype.CAMPAIGN) {
-            // Its own memberships go by the cascade; their generated conditions must not linger on
-            // the member entities as needs nobody waits on any more (epic qits-615).
-            milestoneService.dropGeneratedConditionsIn(memberships.campaignMembers(id));
-          }
           List<String> threaded = new ArrayList<>();
           threaded.add(id);
           threaded.addAll(subtree.rows().keySet());
@@ -1784,41 +1642,8 @@ public class WorkEntityService {
           // The work is gone, so every idea it named is re-derived without it (qits-1387).
           entities.getEntityManager().flush();
           ideaChanges.addAll(ideaStatus.recompute(inspiring, changedBy));
-          // And every campaign it was a member of, without it (qits-650).
-          derived[0] = campaignStatus.recompute(leftCampaigns);
         });
     ideaAnnouncements.announce(ideaChanges);
-    campaignStatus.announce(derived[0]);
-  }
-
-  /**
-   * Removes every CAMPAIGN edge whose child is {@code id} or one of its descendants, closing each
-   * campaign's gap as it goes. <b>Highest position first</b>: {@code campaignCloseGapAfter} is a bulk
-   * update the session does not see, so an edge still to be removed must never be one a previous
-   * close has already shifted — and removing from the top down means no close ever touches one.
-   */
-  private List<String> leaveCampaigns(String id, Subtree subtree) {
-    List<String> gone = new ArrayList<>();
-    gone.add(id);
-    gone.addAll(subtree.rows().keySet());
-    List<EntityMembership> edges = new ArrayList<>();
-    for (String member : gone) {
-      edges.addAll(memberships.campaignMembershipsOf(member));
-    }
-    edges.sort(
-        java.util.Comparator.comparingInt((EntityMembership edge) -> edge.position).reversed());
-    // The campaign rows before their membership rows (qits-650): CampaignService's order, so this
-    // delete and an add to the same campaign queue on the campaign row instead of deadlocking.
-    campaignStatus.lock(edges.stream().map(edge -> edge.parentId).toList());
-    // Before the edges go: their waits cascade with them (epic qits-615).
-    milestoneService.dropGeneratedConditionsIn(edges);
-    List<String> campaigns = new ArrayList<>();
-    for (EntityMembership edge : edges) {
-      memberships.delete(edge);
-      memberships.campaignCloseGapAfter(edge.parentId, edge.position);
-      campaigns.add(edge.parentId);
-    }
-    return campaigns;
   }
 
   // --- the tree -------------------------------------------------------------------------------------
@@ -1982,10 +1807,7 @@ public class WorkEntityService {
   /**
    * The edge that makes {@code row} part of {@code parentId}, appended at the end of the parent's
    * children, then judged by {@link Nesting} over the post-state it produces. <b>A structural edge's
-   * id is the child's</b>, V10's rule: an edge's identity is the end of it that can only be in one (a
-   * campaign edge, which a child may have several of, takes a random id instead). {@code
-   * dependsOn} is never handed to the nesting rule — a dependency is a sibling ordering edge, and
-   * containment is what {@code Nesting} is about.
+   * id is the child's</b>, V10's rule: an edge's identity is the end of it that can only be in one.
    */
   private void attach(String parentId, WorkEntity row) {
     EntityMembership edge = new EntityMembership();
@@ -2000,41 +1822,6 @@ public class WorkEntityService {
     if (!violations.isEmpty()) {
       throw new BadRequestException(
           violations.stream().map(NestingViolation::message).collect(Collectors.joining("; ")));
-    }
-  }
-
-  /** A dependency must be a sibling: a row of the same kind under the same parent. */
-  private void requireDependencyUnder(Kind kind, String dependencyId, String parentId) {
-    WorkEntity dependency = entities.findById(dependencyId);
-    if (dependency == null
-        || dependency.archetype != kind.archetype()
-        || !java.util.Objects.equals(parentId, parentOf(dependencyId))) {
-      throw new BadRequestException(
-          "Unknown or out-of-"
-              + kind(kind.parent()).word()
-              + " "
-              + kind.dependencyField()
-              + ": "
-              + dependencyId);
-    }
-  }
-
-  /**
-   * Rejects a dependency edge that would close a cycle, by walking the target's chain over {@code
-   * depends_on_entity_id} — never over a membership.
-   */
-  private void requireNoCycle(Kind kind, String id, String targetId) {
-    Set<String> visited = new HashSet<>();
-    String cursor = targetId;
-    while (cursor != null) {
-      if (cursor.equals(id)) {
-        throw new BadRequestException(kind.dependencyField() + " would create a dependency cycle");
-      }
-      if (!visited.add(cursor)) {
-        break; // a pre-existing cycle elsewhere in the chain — stop rather than loop forever
-      }
-      WorkEntity next = entities.findById(cursor);
-      cursor = (next == null) ? null : next.dependsOnEntityId;
     }
   }
 

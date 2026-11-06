@@ -43,8 +43,7 @@ import java.util.Optional;
  *       never written by a caller at any door, so they have no wire slot to describe.
  *   <li><b>The wire name is the camelCase of the constant</b> — {@code TICKET_TYPE} is {@code
  *       ticketType} — derived rather than written down, which is also how {@code EntityTransition}
- *       spells every one of them. The legacy per-archetype doors' names ({@code type}, {@code
- *       dependsOnFeatureId}) are theirs and are not in here.
+ *       spells every one of them. The legacy per-archetype doors' names ({@code type}) are theirs and are not in here.
  *   <li><b>A value is a string by default</b>; the ticket type is its enum, the two task markers
  *       (implemented, implementing) a {@code date-time}, and the three properties an empty value would defeat — title, impetus,
  *       repository — carry the pattern {@code \S}. The status carries the lifecycle's words. The
@@ -117,7 +116,7 @@ public final class EntityWireProperties {
     schema.put("type", "integer");
     schema.put(
         "description",
-        "The ranking among siblings (a project's roots, campaigns excluded, or the children of one"
+        "The ranking among siblings (a project's roots, issues excluded, or the children of one"
             + " parent): higher sorts first, null after every number, then by number. Editable at"
             + " every status but DONE and DROPPED, which answer 409; null clears it.");
     return Collections.unmodifiableMap(schema);
@@ -133,13 +132,12 @@ public final class EntityWireProperties {
   public static final String TAGS = "tags";
 
   /**
-   * The tags the schema's {@code enum} lists: {@code RESERVED_FOR_HUMAN} alone, though the doors
-   * accept every {@link WorkTag} — {@code CONDITION} (qits-1903) included, which the description
-   * names. qits-platform-access-monorepo's pact pins this enum at one entry ({@code qits work
-   * create|update: getWorkArchetypeSchema}), so the list widens once that consumer releases a pact
-   * that open-ends it, and not before.
+   * The tags the schema's {@code enum} lists: every {@link WorkTag}, in declaration order — {@code
+   * CONDITION} (qits-1903) joined {@code RESERVED_FOR_HUMAN} in qits-1908, once
+   * qits-platform-access-monorepo's pact (qits-1905) stopped pinning the enum at one entry.
    */
-  static final List<String> SCHEMA_TAGS = List.of(WorkTag.RESERVED_FOR_HUMAN.name());
+  static final List<String> SCHEMA_TAGS =
+      java.util.Arrays.stream(WorkTag.values()).map(WorkTag::name).toList();
 
   /**
    * The JSON Schema fragment of the tags: an array of {@link WorkTag} names, without the nullability
@@ -169,7 +167,7 @@ public final class EntityWireProperties {
    * TICKET, a FEATURE and a TASK, at every status. <b>Not a registry property, so not a row of this
    * table</b>, for {@link #TAGS}' reasons: the whole-state transition would clear it on every
    * reshape that did not restate it. {@code EntitySchemas} adds it to those four kinds' create and
-   * update schemas; {@code dependsOn} left them with it.
+   * update schemas.
    */
   public static final String NEEDS = "needs";
 
@@ -182,7 +180,14 @@ public final class EntityWireProperties {
   }
 
   /**
-   * The 400 every write of {@code dependsOn} answers since qits-1903, on every archetype and every
+   * The wire name the retired sibling edge had (qits-1903 refused every write of it, qits-1908
+   * removed it). No schema offers it and no read answers it; it is named only so a body still
+   * carrying it is answered {@link #DEPENDS_ON_RETIRED} rather than "unknown property".
+   */
+  public static final String DEPENDS_ON = "dependsOn";
+
+  /**
+   * The 400 every write of {@link #DEPENDS_ON} answers since qits-1903, on every archetype and every
    * door: the sibling edge is retired and {@link #NEEDS} says what an item waits for.
    */
   public static final String DEPENDS_ON_RETIRED =
@@ -285,11 +290,6 @@ public final class EntityWireProperties {
             "The implementing marker, an ISO-8601 instant: when the implementation was started."
                 + " Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING; history once"
                 + " implementedAt is set, so it is never cleared."));
-    row(
-        table,
-        EntityProperty.DEPENDS_ON,
-        true,
-        text("The id of the sibling this one waits for — ordering, never nesting."));
     row(
         table,
         EntityProperty.ACCEPTANCE_CRITERIA,
