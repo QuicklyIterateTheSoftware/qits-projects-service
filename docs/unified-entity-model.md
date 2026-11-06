@@ -493,8 +493,31 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 | --- | --- | --- | --- | --- | --- |
 | `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the eight `EntityStatus` words (six until V22 added IMPLEMENTING and V23 VERIFYING; was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
 | `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the eight `EntityStatus` words (six until V22 and V23; the enum was `TicketStatus` until V15) |
-| `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
-| `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
+| `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
+| `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
+
+(`DEPENDS_ON` left both rows with qits-1908; the `CAMPAIGN` row of qits-411 and the `ISSUE` row of
+qits-1819 are in "Ordering: needs" below and in `Archetypes` itself.)
+
+## Ordering: needs (qits-1903), and what it retired (qits-1908)
+
+Campaigns and milestones were retired by qits-1899, together with `dependsOn`: ordering between
+work items is one mechanism, **an item needs another item at a status**. `needs: [{item, status}]`
+on an EPIC, a TICKET, a FEATURE or a TASK is a set of `work_need` rows (epics V40), written whole
+by the create, the child create and the patch, at every status and outside every scope freeze — not
+a registry property, so the whole-state transition never clears it. A need is met when the needed
+item is at or past the status on the walk (`NeedRule.reached`; DROPPED is met by DROPPED alone),
+read live and never latched; the dispatch press refuses an item at REFINED or READY_FOR_DEV while a
+need is unmet, and the first move that meets one publishes `WorkNeedMet`. A condition that is not
+work of its own is an item tagged `CONDITION`. A body still naming `dependsOn` is answered the
+retirement 400.
+
+V41 deleted the CAMPAIGN rows with what hung off them and restated `ck_entity_archetype` and
+`ck_entity_membership_kind` without CAMPAIGN; the retired tables and columns (`milestone*`,
+`work_milestone`, `campaign_membership_milestone`, `campaign_start`, the membership run record,
+`depends_on_entity_id`) are unmapped, and dropped by the next migration, one release later.
+`ck_audit_entity_type` keeps CAMPAIGN: the audit log is history. The sections below that describe
+the campaign and `dependsOn` are the record of what was built and why, not of what runs.
 
 **There are two required sets, not one.** `required` is what a row of a kind must carry at every
 moment of its life; `requiredAtCreate` is what intake demands of a row being born, and it is the
@@ -594,7 +617,7 @@ FEATURE and TASK descendant; the edges go with the FK's `on delete cascade`.
 `deleteRecordsAuditForWholeSubtreeAndSurvivesDeletion` pass with their assertions unchanged, which
 is the oracle this cutover was steered by.
 
-### `Nesting` judges every new membership, and NEVER a `dependsOn`
+### `Nesting` judges every new membership, and NEVER an ordering edge
 
 `control/StoredEntityFacts` is the `EntityFacts` implementation over the two repositories — bulk by
 shape, two queries per question, a row with no edge answering as a root rather than as an absence —
@@ -605,9 +628,8 @@ on the edge they have just written.
 self-reference between two planning rows) and conflating them would be silent in the ordinary
 direction and wrong in the interesting one: a feature depending on a sibling feature is what the
 planning surface is *for*, while a feature *under* a feature is an illegal membership.
-`UnifiedDescendantsTest.nestingIsNotConsultedForADependency` is the negative that pins it — the
-dependency is accepted, the depended-on row does **not** become the parent, and the same pair offered
-to `Nesting` as a membership comes back `NOT_NESTABLE`.
+`UnifiedDescendantsTest.nestingIsNotConsultedForADependency` pinned it until qits-1908 retired
+`dependsOn`; its successor, `needs`, is a table of its own (`work_need`) that `Nesting` never reads.
 
 ### There is NO feature/task mirror, and that is a decision
 
@@ -1399,7 +1421,7 @@ expressible.
 
 Everything below was open and is now settled.
 
-### 1. `CAMPAIGN` goes to depth **-1**; the existing depths do not move
+### 1. `CAMPAIGN` goes to depth **-1**; the existing depths do not move (retired, qits-1908)
 
 Depths are **relative and only their order matters**. The nesting rule is "strictly less than" and
 there is no arithmetic on depths anywhere — no "one level down", no maximum, no count — so a kind
@@ -1500,7 +1522,10 @@ containment — a listing, a subtree delete, the nesting rule, a reshape — can
 as its children. A delete closes the gaps its row and subtree leave in every campaign they had
 joined. `Nesting` refuses a STRUCTURAL edge under a kind that gathers as `NOT_STRUCTURAL`.
 
-**The campaign edge's own rules (V19, qits-413)** live in `campaign/CampaignService`, not in
+**Retired (qits-1908, V41).** The CAMPAIGN kind, its index and its reads went with the campaigns;
+every edge is STRUCTURAL, and the filter stays so a later kind cannot leak into a tree read.
+
+**The campaign edge's own rules (V19, qits-413)** lived in `campaign/CampaignService`, not in
 `Nesting`: a campaign edge is not containment and never goes through `Nesting.check`. A member must
 be a kind a campaign may hold (`Nesting.mayContain(CAMPAIGN, …)`, which refuses a campaign in a
 campaign) **and** have a lifecycle (`Archetypes.legalStatuses`), so an epic or a ticket of the
@@ -2079,7 +2104,7 @@ IMPLEMENTED still stamps `implementedAt` on everything unmarked and keeps `imple
 history. Consumers rank `implementedAt` over `implementingAt`. A PATCH may set the marker and may
 not clear it; a transition entry neither states nor clears it where the target kind has a slot.
 
-**A campaign never enters IMPLEMENTING or VERIFYING** — REFINED is what running means for one — so
+**A campaign never entered IMPLEMENTING or VERIFYING** (until qits-1908 retired it) — REFINED is what running means for one — so
 either move is a 409 there. Its lifecycle is the same machine with both elided
 (`EntityStateMachine.transitionsFrom(Archetype, …)`, derived, never declared twice): the moves into
 and out of them go, each skip is a campaign FORWARD step (REFINED → IMPLEMENTED, IMPLEMENTED →
@@ -2143,7 +2168,7 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
   DROP. There is no READY_FOR_DEV → REPORTED (it falls out of one-step BACK).
 - **The task markers** move while the epic is READY_FOR_DEV or IMPLEMENTING (`requireBeingImplemented`),
   and the first `implementingAt` marker moves a READY_FOR_DEV epic to IMPLEMENTING.
-- **A campaign keeps READY_FOR_DEV** (decision 19) and still elides IMPLEMENTING and VERIFYING. Its
+- **A campaign kept READY_FOR_DEV** (decision 19, until qits-1908 retired the campaign) and still elides IMPLEMENTING and VERIFYING. Its
   lifecycle is now derived as *the walk with the elided states removed* — FORWARD to the next kept
   state, BACK to the previous kept one, DROP/REOPEN unchanged — rather than by closing one SKIP over
   one elided state, which would have left two adjacent elided states unbridgeable. A campaign walks

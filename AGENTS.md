@@ -229,7 +229,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   archetype has one (see "One thread per entity" under "Tickets").
   On the `service` side the wire is archetype-free: the `/work` family below is the only REST
   surface over the entity table, every rule behind it lives in `entities/api/WorkEntityDoors` (and
-  `CampaignDoors`, `DispatchDoors` for what is campaign- or dispatch-shaped), and the archetype is a
+  `DispatchDoors` for what is dispatch-shaped), and the archetype is a
   field of the body and the answer rather than a segment of the path. The per-archetype routes
   (`/epics`, `/tickets`, `/features`, `/tasks`, `/campaigns`, `/ticket-comments`, the
   `/projects/{projectId}/epics|tickets|campaigns|entities` listings) and the whole `/entities` family
@@ -241,12 +241,12 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   refinement room down before the status lands), then the archetype's hint, then `PhaseAdvance`
   after the move is recorded and outside its transaction — is now `WorkEntityDoors.move`, behind
   `POST /work/{qualifiedId}/status`. `RetiredEntityDoorsTest` sweeps every deleted route (the 68 of
-  qits-976 plus the five qits-399 removed) and asserts each answers 404 against real rows with
+  qits-976, the five qits-399 removed, and the 17 campaign and milestone doors qits-1908 removed) and
+  asserts each answers 404 against real rows with
   nothing written; a 404 there turning into anything else is a route coming back.
 
   **`ISSUE` is one thing the delivery desk cannot resolve on its own, for a person (qits-1819, epics
-  V37).** A root that stands alone: `Archetypes.standsAlone` keeps it out of every nesting and every
-  campaign, and `Archetypes.runsNoPhase` keeps it from dispatch, block and phase turns. It has no
+  V37).** A root that stands alone: `Archetypes.standsAlone` keeps it out of every nesting, and `Archetypes.runsNoPhase` keeps it from dispatch, block and phase turns. It has no
   branch, is not ranked and is not backlog (`api/RunningItems` reads epics and tickets). Its statuses
   are its own, `OPEN`, then `RESOLVED` or `OBSOLETE`, in `EntityStateMachine` beside the one lifecycle
   and sharing no word with it. `title` and `description` are required, the description at most
@@ -267,7 +267,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   (`/work/archetypes…`) and `ProjectWorkController` (`/projects/{project}/work`, id or slug). Every
   `{qualifiedId}` also takes the UUID. Every rule lives in `entities/api/WorkEntityDoors`, which
   names no controller or schema. Every entity id in a body takes a qualified id too (the
-  transition's keys, `membership.parent`, `supersededBy`, `dependsOn`; the patch's `dependsOn`), and
+  transition's keys, `membership.parent`, `supersededBy`; a need's `item`), and
   the bulk answer is keyed exactly as the request was — this was `WorkEntityDoors.Surface.WORK`
   while the `/entities` controllers shared the doors on the UUID-only fork, and with them gone the
   fork went too. `PUT /work/{qualifiedId}` is the one-entry PUT-shaped transition (absent clears)
@@ -288,30 +288,20 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   | `/epics/{id}/dossier-assets[/{assetId}/content]` | `POST`/`GET /work/{q}/dossier-assets`, `GET …/{assetId}/content` | `WorkDossierAssetController` |
   | `/epics/{id}/features`, `/features/{id}/tasks` | `GET`/`POST /work/{q}/children` | `WorkChildrenController` |
   | `/epics/{id}/audit` | `GET /work/{q}/audit` | `WorkAuditController` |
-  | `GET /campaigns/{id}/progress` | `GET /work/{q}/progress` | `WorkProgressController` |
-  | `GET /campaigns/{id}` (its members), `/campaigns/{id}/members…` (add, position, remove, condition, criteria approve) | `GET`/`POST /work/{q}/members`, `PUT …/{membershipId}/position`, `DELETE …/{membershipId}`, `PUT …/{membershipId}/condition`, `POST …/{membershipId}/criteria/{criterionId}/approve` | `WorkMembersController` |
+  | `GET /campaigns/{id}/progress`, `/campaigns/{id}/members…` | gone with campaigns (qits-1908) | — |
   | `/entities/{id}/dispatch` | `GET`/`POST /work/{q}/dispatch` | `projects.api.WorkDispatchController` |
   | `/entities/{id}/refinement` | `GET`/`POST /work/{q}/refinement` | `projects.api.WorkRefinementController` |
   | `DELETE /epics/{id}`, `/tickets/{id}`, `/features/{id}`, `/tasks/{id}` | `DELETE /work/{q}` | `WorkController.delete` |
   | the `workspaces` field `GET /epics/{id}` and `GET /tickets/{id}` decorate (the merged shape has none) | `GET /work/{q}/workspaces` | `projects.api.WorkWorkspacesController` |
 
   The rules moved into shared beans both families called, and which the `/work` controllers alone
-  call now — `CampaignDoors` (every campaign door; since qits-976 also the home of the
-  `ConditionGroup`/`ConditionCriterion` records and `toGroupSpecs` that `CampaignController` used to
-  hold; qits-1174 removed them, since only the retired MCP tool used them),
-  `DispatchDoors` (the press and its campaign branch, and `DispatchMode.parse`),
-  `DossierAssetContent` (the sandbox headers), and `WorkEntityDoors.delete`/`children`/`createChild`/
-  `audit` — or were already one service (`DossierService`, `RefinementService`). A campaign's
-  transition is `WorkEntityDoors.move` like any other archetype's (`CampaignDoors.transition` went
-  with `CampaignController`), and `DispatchedWorkspaces` keeps only `referencing(WorkEntity)`, the
-  read behind `GET /work/{q}/workspaces`. Every entity id in a body takes a qualified id:
-  a member's `entityId`, an `ENTITY_STATUS` criterion's `predicate.entityId`, a child's
-  `dependsOn`. Roles mirror the route replaced; the delete admits `qits:agent` at the method for a
-  feature's or task's delete and refuses it an epic's or a ticket's inside the door, as the
-  per-archetype deletes it replaced did, and no door deletes a campaign (a 409: drop it).
-  A campaign's transition and its create need no new route (`…/status`, `POST /work`), and its
-  project listing is `GET /projects/{project}/work?archetype=CAMPAIGN` — without the summary's
-  `started`/`active`/member count, which `…/progress` and `…/members` answer per campaign.
+  call now — `DispatchDoors` (the press and `DispatchMode.parse`), `DossierAssetContent` (the
+  sandbox headers), and `WorkEntityDoors.delete`/`children`/`createChild`/`audit` — or were already
+  one service (`DossierService`, `RefinementService`). `DispatchedWorkspaces` keeps only
+  `referencing(WorkEntity)`, the read behind `GET /work/{q}/workspaces`. Every entity id in a body
+  takes a qualified id: a child's or a patch's need `item`. Roles mirror the route replaced; the
+  delete admits `qits:agent` at the method for a feature's or task's delete and refuses it an epic's
+  or a ticket's inside the door, as the per-archetype deletes it replaced did.
 
   **The dossier's `{page}` is the page's SLUG, with the page id accepted as a fallback.** The slug is
   minted from the title at create and never re-derived, it is unique per owner, and it is what the
@@ -319,7 +309,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   entity's — so one key serves the reader that holds an address and the one that holds a link. The
   id still resolves (slug first, then id, and only a page of *this* owner), the way
   `{qualifiedId}` still takes a UUID, so a caller migrating off the epic half's id addressing is
-  not broken. An archetype with no dossier (feature, task, campaign) is a 404; only an EPIC's
+  not broken. An archetype with no dossier (feature, task, issue) is a 404; only an EPIC's
   dossier inlines figures, so `dossier-assets` is a 404 for any other. The figure's `url` and
   `markdown` keep the stored `/epics/{epicId}/dossier-assets/{assetId}/content` shape: that string
   is in page bodies and is what `DossierAssetService`'s reference count parses, so it is **data, not
@@ -875,15 +865,7 @@ write** (user ruling, 2026-09-12):
   qits-idp client token that is its `sub`, the bare client id (e.g. `dev-qits-maintenance`), never
   blank. `AgentReadAccessTest` pins the five routes' role lists; `EntityAgentBoundsTest` drives a
   `qits:system` caller through all five in a project it has no tie to.
-- **The campaign build doors take it too (qits-413), bound the same way** — the campaign resolved
-  first, its project checked by `EntitiesAgentAccess`: the campaign's create (`POST /work`), its
-  transition (`POST /work/{qualifiedId}/status`) and the four membership writes on
-  `WorkMembersController` (`POST /work/{qualifiedId}/members`, `PUT
-  …/members/{membershipId}/position`, `DELETE …/members/{membershipId}`, `PUT
-  …/members/{membershipId}/condition`). **`POST …/criteria/{criterionId}/approve` is `qits:admin`
-  alone** — an approval is the sign-off on a gated member — and `AgentReadAccessTest` pins both
-  (`CAMPAIGN_AGENT_WRITES`, and approve in `ADMIN_ONLY_WRITES`). The role is only the first filter:
-  approve then requires `security/PersonCheck` (the release-request approve and decline require
+- **The person doors** require `security/PersonCheck` (the release-request approve and decline require
   `security/ApproverCheck`, which counts PersonCheck's proof as `person`) — the
   one definition of a person (qits-891): a `qits-session` cookie this service introspects at idp
   itself, or a person's `qits` CLI bearer (`credential_type=cli`, no `context_kind`, no `clients/…`
@@ -923,7 +905,7 @@ bound to its project, except a commit or a push and a change to its own rights:
   roles. The resource is read first, so an unknown id is still a 404.
 - **Person doors**: `PersonCheck.requireAdminOrDesk(projectId)` answers a verified person's name,
   else the desk's token subject under `ApproverCheck.desk`'s proof, else 403 — the automations
-  waiver, the upstream override and a campaign criterion's approval record the desk as actor.
+  waiver and the upstream override record the desk as actor.
 - **Kept as the owner's**: scheduling (REFINED → READY_FOR_DEV) and which approvals the desk
   gives. `PERSON_APPROVAL` passes a desk `Mover` only under the dispatch path's `start_refined`
   stamp, for its own project's row, and the desk's approver holds `desk` alone, never `agent`, so
@@ -2009,58 +1991,30 @@ deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`,
 `POST /work/{qualifiedId}/status` (a person, or a dispatched agent's claim, qits-394 — an agent
 bound to the epic's project, never to SUPERSEDED; it was `POST /epics/{id}/transition` until
 qits-976) and the central server's `work_status`, which calls that route. Both go through
-`refinementhost/EntityResolutions` and are followed by `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
-on.
+`refinementhost/EntityResolutions` and are followed by `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE.**
 
 **READY_FOR_DEV is a person's scheduling decision (qits-887, epics V25).** REFINED starts no phase any
 more: it waits until a person schedules the entity (REFINED → READY_FOR_DEV), and implement runs from
 READY_FOR_DEV. Unscheduling is READY_FOR_DEV → REFINED, until the work starts; once IMPLEMENTING the
-way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until somebody schedules it. A
-campaign keeps READY_FOR_DEV and elides only IMPLEMENTING and VERIFYING — its lifecycle is the walk with
-the elided states removed (`EntityStateMachine.states(CAMPAIGN)`), and the vocabulary its derived
-status is read on.
+way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until somebody schedules it.
 
-**A campaign's status is derived from its members — the one exception to "a status is asked for"
-(qits-650).** `entities/control/CampaignStatusRecompute` is the rule and its one writer: each member's
-status is read on the campaign walk `REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTED < VERIFIED <
-DONE` (`EntityStateMachine.onCampaignWalk`: IMPLEMENTING counts as READY_FOR_DEV, VERIFYING as
-IMPLEMENTED — the last word achieved), DROPPED members are not counted, and the lowest is the
-campaign's; no members is REPORTED, every member DROPPED is DROPPED. **A campaign at DROPPED is
-never recomputed** — DROPPED (a person's or derived) is sticky — and the reopen recomputes at once.
-**A campaign's DONE is derived and follows its members (qits-1805)**: an add of an open member, a
-remove, or a dropped member's reopen that lowers the floor moves a DONE campaign to the new floor as
-an ordinary derived change (no manual exit from DONE is served). It is recomputed **in the writer's transaction** by every writer: a member's move on
-the status door (`WorkEntityService.move`, every cascade included) and on the bulk door
-(`EntityTransitionService`, a status or an EPIC ↔ TICKET re-archetype), `CampaignService.addMember`
-and `removeMember`, and a member's delete (`WorkEntityService.leaveCampaigns`); and at boot by
-`startup/CampaignStatusReconcile`, every campaign not DROPPED (DONE included), each drift one WARN. A derived
-change writes `statusBefore`, is audited as `CampaignStatusRecompute.CHANGED_BY` (`system`), is
-announced as an `EntityTransitioned` (joining the move's one batch on the two status doors), **keeps
-the campaign's blocks**, and runs **no pause hook — except a derived move into DONE or DROPPED, which
-pauses the start** (a finished or dropped campaign runs nothing, and a reopen must not resume a run
-nobody pressed; a derived move out of DONE resumes nothing). The lock is the campaign row, `PESSIMISTIC_WRITE`, every campaign of a write in id
-order: `CampaignService` takes the campaign row and then membership rows, a member's move holds the
-member's row and then asks for the campaign row, the recompute locks no member and no membership,
-and a delete takes its campaigns' rows **before** it removes their edges — so nothing waits in a
-cycle (`CampaignStatusRecomputeTest` races a member's move against an add).
-
-**The status door makes two campaign moves only: into DROPPED, and the reopen DROPPED → REPORTED.**
-Every other is a 409 saying the status is derived from its members, and the served registry lists
-only those two (`EntityStateMachine.isDerived`, which keeps a derived archetype's DROP and REOPEN
-alone). `MEMBERS_SCHEDULED` is gone; `PERSON_APPROVAL` and `CHILDREN_CLOSED` do not apply to a
-campaign; the bulk door still refuses a campaign's status change, and refuses turning a campaign
-member into a FEATURE, a TASK or a CAMPAIGN with a 409 naming the campaign. **Running no longer
-depends on the word**: a campaign runs while its start is active, it is not blocked, and it is neither
-DONE nor DROPPED (`EntityStateMachine.campaignRuns`) — the start press (`CampaignService.start`,
-`CampaignStarter`), the dispatch read (`EntityDispatch.campaignState`), the executor's claim and
-sweep, and the block door all read it. The pause hook fires on the manual drop and on a derived DONE
-or DROPPED; every other derived move leaves the start as it is. Membership is editable while the
-campaign is not DROPPED, DONE included (qits-1805) — adding a REPORTED member to an IMPLEMENTED or a
-DONE campaign is how it drops back to REPORTED; the start press and an approval stay refused at DONE. **Who sets the floor is read, never stored**: `heldBy` — the qualified ids of
-the non-DROPPED members whose mapped status is the campaign's, empty while it is DONE or DROPPED or
-empty — on the campaign's entity read (`GET /work/{q}`, a campaign only; the field is absent on every
-other archetype) and on its progress read (`CampaignProgressCampaignDto`), and `holdsStatus` on each
-member of `GET /work/{q}/members` (`CampaignMemberDto`).
+**Ordering: needs (qits-1903).** Campaigns, milestones and `dependsOn` were retired by qits-1899
+(qits-1908, epics V41); an item's order is what it needs. `needs: [{item, status}]` on an EPIC, a
+TICKET, a FEATURE or a TASK says "this waits until that item of the same project reaches that status
+on the walk" (`work_need`, epics V40, `control/NeedService`). It is written whole by the create, the
+child create and the patch, at every status and outside every scope freeze — like the tags, and for
+their reason it is not a registry property, so a transition never clears it. Whether a need is met is
+read live (`control/NeedRule.reached`: at or past the status, DROPPED met by DROPPED alone) and never
+latched; the reads carry `needs[]` and `unmetNeeds`. The dispatch press refuses an item at REFINED or
+READY_FOR_DEV with an unmet need (409), and `PhaseAdvance` delivers it no turn there; nothing re-wakes
+it when the need is met — the move of the needed item publishes `WorkNeedMet`, and the delivery
+desk's backlog picks it up. A condition that is not work of its own is an item tagged `CONDITION`,
+which no press dispatches. A body still naming `dependsOn` is answered the retirement 400
+(`EntityWireProperties.DEPENDS_ON_RETIRED`), not "unknown property". The retired tables and columns
+(`milestone*`, `work_milestone`, `campaign_membership_milestone`, `campaign_start`, the membership run
+record, `entity.depends_on_entity_id`) are unmapped and dropped by the migration after V41, one
+release later (see "Expand/contract" under "Schema changes"). `AuditEntityType.CAMPAIGN` stays, so
+the history written about the 15 retired campaigns still reads.
 
 **Acceptance criteria are an epic's and a ticket's ordered list of short statements (qits-934,
 epics V26).** `EntityProperty.ACCEPTANCE_CRITERIA`, `acceptanceCriteria` on the wire, permitted on
@@ -2096,31 +2050,29 @@ from before READY_FOR_DEV, or when a gate applies — after its 400s, so DONE-is
 first. Restating the status a row holds passes, at READY_FOR_DEV too.
 
 **Closing finished work straight to DONE (qits-1757): the CLOSE kind and `CHILDREN_CLOSED`.** An
-EPIC or a FEATURE (`EntityStateMachine.closes`; a CAMPAIGN no longer since qits-650, its DONE is
-derived) has a CLOSE move `X → DONE` from every open
+EPIC or a FEATURE (`EntityStateMachine.closes`) has a CLOSE move `X → DONE` from every open
 status it holds short of VERIFIED; VERIFIED → DONE stays the ungated FORWARD, so each target is still
 reached by exactly one move (`verify()` checks it per archetype). A TICKET or TASK serves no CLOSE —
 the archetype-less `transitionsFrom(from)` is the declaration and does list them, so a door asks the
-archetype-aware reading. `campaign/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges the CLOSE moves
+archetype-aware reading. `control/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges the CLOSE moves
 only (`EntityStateMachine.isClose`, never VERIFIED → DONE, which the PUT door would otherwise start
 refusing): every direct child — an epic's or feature's STRUCTURAL children — must be DONE or
 DROPPED (VERIFIED is open), at least one child must exist, and the mover must be a person or the
 delivery desk of the row's own project; a machine (`qits:agent`, `qits:system`) is a 409. Nothing
 derives an epic or a feature from its children: the close is asked for, and the gate only says
-whether it is true. **The one exception is a campaign, whose status is derived from its members**
-(qits-650, above); every other status stays asked for. The move emits the usual one `EntityTransitioned`
+whether it is true; every status is asked for. The move emits the usual one `EntityTransitioned`
 (`statusBefore`, DONE, `changedBy`), with no kind on the event.
 
 **Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
 READY_FOR_DEV, for every archetype, unless the `control/Mover` is a person — and the entities module
 never decides that. `entities/api/EntityMovers` builds the Mover at the REST lifecycle door
 (`WorkEntityDoors.move` behind `POST /work/{qualifiedId}/status`, every archetype's one status door
-since qits-976 deleted the per-archetype transitions and `CampaignController.transition`) from
+since qits-976 deleted the per-archetype transitions) from
 `security/PersonCheck` alone (`verifiedAdmin(SecurityIdentity)`, the identity-taking twin of qits-891's check): a person
 under the proof's name — which is also the move's `changedBy` — and a machine otherwise. Asserted
 `X-Qits-*` headers, an agent's or a service client's bearer, and headers beside a machine bearer are
 machines. The central server (through the REST doors) and every in-process caller (`PhaseAdvance`, `EntityDispatch`,
-`TicketUnattendedGateTickets`, the campaign executor) pass `Mover.machine`, and
+`TicketUnattendedGateTickets`) pass `Mover.machine`, and
 `WorkEntityService.transition(…, String changedBy)` IS a machine, so a door that forgets to say who
 moves fails closed. Unscheduling is a BACK move and anybody's. In the suite a person is the
 `qits-session` cookie of `FakeSessionIntrospection` beside the request, as a browser sends it;
@@ -2148,16 +2100,16 @@ READY_FOR_DEV (qits-887 — a piece is never scheduled or unscheduled on its own
 epic), and any move to IMPLEMENTED (an epic's or a feature's own) carries everything still before
 IMPLEMENTED there.
 VERIFYING and VERIFIED leave the tasks alone — a task is verified on its own — and nothing derives a
-parent's status from its children (a campaign's from its members is the one exception, qits-650). Each carried child joins the move's one `EntityTransitioned`. **No
+parent's status from its children. Each carried child joins the move's one `EntityTransitioned`. **No
 phase machinery**: `Archetypes.isPlanPiece` is the question every phase door asks now that "has
 status words" no longer tells the kinds apart — `PhaseAdvance` returns at once, `PhasePrompts.phaseOf`
-answers empty, and dispatch, refinement rooms, blocks, campaign membership and agent signals refuse
+answers empty, and dispatch, refinement rooms, blocks and agent signals refuse
 or skip a feature and a task explicitly; `blocked` stays off their reads.
 
 **The freeze is enforced in the services, per field rather than per endpoint, and it is reversible
 now — below DONE; a DONE epic's scope is frozen for good.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
 the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
-create, update or delete, `dependsOn` included, and every epic-owned dossier write) need `REPORTED`
+create, update or delete, and every epic-owned dossier write) need `REPORTED`
 (`requireReported`); the task markers (implemented, and since qits-749 implementing) need
 `READY_FOR_DEV` or `IMPLEMENTING` (`requireBeingImplemented`, which was `requireRefined`; REFINED left
 the pair with qits-887 — an unscheduled epic is not being implemented). Those two rules reject
@@ -2168,7 +2120,7 @@ status: it removes the row rather than editing a frozen scope, and the audit log
 **Superseding is an operation, not a status.** A transition asking for `SUPERSEDED`
 (`WorkEntityService.SUPERSEDE`) lands the epic `DROPPED` with `superseded_by_entity_id` pointing at a
 successor draft — a new `REPORTED` epic with the old title, description and feature/task tree, fresh
-ids, implemented markers reset, `dependsOn*` remapped. A `REPORTED` epic cannot be superseded (edit
+ids, implemented markers reset. A `REPORTED` epic cannot be superseded (edit
 it or drop it). Features and tasks keep their slugs, because the new epic and its features are new
 scopes; the successor *epic's* slug cannot, so it mints the next free suffix like any other create.
 The agent door refuses `SUPERSEDED`: an operation on a plan is a person's, from the board.
@@ -2205,7 +2157,7 @@ what a PHASE press runs, `flow` what a FLOW press chains until a status starts n
 `EntityStateMachine.phaseRunFrom`/`flowFrom` (`runsPhases`, `endOf`), which the dispatch door and
 the phase prompts' forward claims read too, so the page and the agent cannot disagree. A missing or
 unknown mode is a 400; a feature or a task is a 409 (no phase of its own); a blocked ticket or epic is a
-409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
+409 naming the block; no workspaces context is a 503; a
 project with no wrapper is a 409.
 
 **A person's Dispatch pre-approves the scheduling (qits-1075), so one press goes REPORTED →
@@ -2218,7 +2170,7 @@ gate runs, and the audit row and `EntityTransitioned` name that person — clear
 the implement turn to the same session (the FLOW arm's own `handOff`, so it ends IMPLEMENTING). A
 gate refusal moves nothing, keeps the flag and says so once on the thread. A person's FLOW press
 **at** REFINED is the scheduling itself (same gates, a refusal is the press's 409) and then a
-READY_FOR_DEV press. A machine's press (an agent, `qits:admin-agent` headers, the campaign executor)
+READY_FOR_DEV press. A machine's press (an agent, `qits:admin-agent` headers)
 and a PHASE press at REFINED keep the 409; a PHASE press clears a pending pre-approval, a machine's
 press never touches it (the delivery desk's under `start_refined` is the one exception, below), and any move to DROPPED clears it (`WorkEntityService.move`,
 `EntityTransitionService`). So the registry's `flow` describes a person's press: REPORTED runs
@@ -2234,8 +2186,7 @@ desk, with no side effect and before every other refusal, in this order: an item
 (403 "The delivery desk may dispatch only the items of its own project."), no rule (400 "The
 delivery desk names the rule it dispatches under."), the project's `delivery_enabled` false (409
 "The delivery loop is off for this project (front_desk.delivery.enabled in
-.config/qits/project.yml)."), a campaign (409 — `DispatchDoors` never sends a desk down the campaign
-path), the project at `delivery_max_running` (409 naming the count, the limit and the running
+.config/qits/project.yml)."), an issue (409), the project at `delivery_max_running` (409 naming the count, the limit and the running
 qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, not explicitly blocked
 (qits-1569: the row's `blocked` flag only — a derived agent-waiting block keeps its slot, because
 that agent is in-flight work), with an assignee and an ACTIVE agent from
@@ -2265,7 +2216,7 @@ nothing; a desk press never writes over or clears a person's pre-approval.
 
 **The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
 (declaration only: `entity.assignee` is on every row), and every successful press — refine, implement
-or verify, a person's or the campaign executor's — writes it through
+or verify, a person's or the delivery desk's — writes it through
 `EntityDispatchService.setAssignee` (audited) to the `agentIdentity` qits-workspaces answers on the
 dispatch (`WorkspaceAgentDispatch.Dispatch.agentIdentity`: the commissioned client id, or the
 workspace token's subject on a runner), **never the person who pressed**. When the far side names
@@ -2273,22 +2224,19 @@ none — null before a fresh workspace is commissioned, absent from an older qit
 `workspace <workspaceRowId>` (`Dispatch.assignee()`). The press's answer carries it as `assignee`
 and its thread comment names it; a refused or failed press writes nothing.
 
-**Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic, a campaign —
+**Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic —
 through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`
 starts no phase or the kind is a feature or a task, the reason on the entity's own thread), behind `POST
 `/work/{qualifiedId}/blocked` (UUID or qualified id), which the central server's `work_block` and
 `work_unblock` call (the ticket-only `POST /tickets/{id}/blocked` and `/entities/{id}/blocked`
 went with qits-976).
-Every transition clears the flag — a campaign's derived status change (qits-650) excepted, which
-clears no block. A blocked campaign's executor claims no new member (running ones
-are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the merged shape for every lifecycle kind and on the campaign DTOs
-(`CampaignDtos`).
+Every transition clears the flag; `blocked` is on the merged shape for every kind that runs a
+phase.
 
 **BLOCKED has two sources and one effective flag (qits-895, epics V28).** `entity.blocked` is the
 EXPLICIT block — set only by the doors above, which now also keep `blocked_by`/`blocked_reason` (the
 thread is still where the blocker is said) — and the only one any gate reads: `EntityDispatch`'s
-refusals and the state read's `dispatchable`, `PhaseAdvance`, `CampaignStarter` and
-`CampaignExecutor`'s claim and sweep SQL. The DERIVED block is an agent session waiting for a
+refusals and the state read's `dispatchable`, and `PhaseAdvance`. The DERIVED block is an agent session waiting for a
 person: `POST /work/{qualifiedId}/agent-waiting` (`WorkAgentWaitingController` → `api/AgentWaiting`
 → `entities/control/AgentWaitingService`, `qits:system` alone, `{waiting, cause, sessionId, at}`,
 always 204 for a known entity) records `agent_waiting_since`/`_cause`/`agent_activity_at` with one
@@ -2301,7 +2249,7 @@ value**, computed at read time by `entities/control/EntityBlockState` (explicit 
 for `qits.projects.agent-waiting.debounce`, 60s), with three NON_NULL scalars beside it —
 `blockSource` (`EXPLICIT`/`AGENT_WAITING`/`BOTH`), `blockReason` (the stated reason, else a fixed
 sentence) and `blockedBy` — on `TransitionedEntity`, `EntitySummary`, `EntityBlock`,
-`EntityDispatchStateDto`, and the campaign DTOs. An explicit
+and `EntityDispatchStateDto`. An explicit
 unblock clears the derived wait too and counts as a change whenever the effective value was true.
 `AgentWaiting.sweep` (every `qits.projects.agent-waiting.sweep-interval`, NORMAL mode only — the
 suite calls it) announces each wait as it crosses the debounce: the archetype's hint and
@@ -2320,36 +2268,14 @@ unconditionally, with no coupling to `agentWaitingSince`; `EntityBlockState.agen
 still derives a block only when `agentWaitingSince != null`, `waitingOn` is null and the debounce has
 passed — so a non-null `waitingOn` keeps derived blocking off exactly as it always did, whatever
 `waiting` says. `waitingOn` (NON_NULL, no debounce) is on `TransitionedEntity`, `EntitySummary` and
-`EntityDispatchStateDto`. A frame that starts, changes or ends it is announced at once. The campaign
-DTOs do not carry it yet.
+`EntityDispatchStateDto`. A frame that starts, changes or ends it is announced at once.
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
-it means "outcome unknown". **On a CAMPAIGN the press is its start** — the branch is in
-`DispatchDoors.press`, to `campaignhost/CampaignStarter`, answering `{"progress":
-CampaignProgressDto}` — the wrapper `GET /work/{qualifiedId}/progress` answers (qits-418);
-`EntityDispatch` itself still refuses a campaign. The members are then claimed and dispatched by
-`campaignhost/CampaignExecutor`, whose javadoc carries the at-most-once argument and the lock order.
-**It claims only scheduled members (qits-887)**: READY_FOR_DEV. A REFINED member is not claimed and
-its membership says `CampaignExecutor.WAITING_FOR_SCHEDULE` (written once, shown on the progress like
-any refusal, cleared by the claim); an unclaimed IMPLEMENTING member was started by hand and is
-never claimed, with nothing written. The scheduling move is an `EntityTransitioned`, and
-`CampaignCriteriaListener`'s retry arm hands the moved member's satisfied, unclaimed memberships back
-to the executor, so a scheduled member is dispatched without waiting for the sweep.
-The progress read stores nothing: `entities/api/CampaignProgress` derives every member's state,
-`waitsFor` and each criterion's `wouldBeSatisfiedBy`/`satisfiable`/`reason` from the rows
-`CampaignService.progress` reads, and `campaignhost/CampaignEvaluatorHealth` adds whether the event
-stream is connected and the catch-up sweep's census, so a waiting campaign can be told from a deaf
-one — and whether the criteria consumer itself is getting through its frames
-(`CampaignCriteriaConsumerHealth`: `consumerFailing`, `lastError`, `lastErrorAt`, plus the
-consumer's `watermarkAt`), folded into `stalled` too. Connected and sweeping is not listening: on
-2026-09-27 `bus/CampaignCriteriaListener` failed on every frame while this read said `connected:
-true, stalled: false`, because it touched the `epics` datasource inside the library's claim
-transaction, which has already enlisted `eventstream` — two non-XA resources, which Narayana
-refuses (`ARJUNA016045 … Enlisted connection used without active transaction`). **A durable
-listener's database work runs in its own `QuarkusTransaction.requiringNew()`**, as every other
-consumption here already did; `CampaignCriteriaClaimSeamTest` drives the library's real
-`DurableFunnel.offer` so the claim around the listener is never a stand-in again.
+it means "outcome unknown". **A durable listener's database work runs in its own
+`QuarkusTransaction.requiringNew()`**: the library's claim transaction has already enlisted
+`eventstream`, and a second non-XA resource in it is refused (`ARJUNA016045 … Enlisted connection
+used without active transaction`, measured on 2026-09-27).
 
 Five things are rules rather than details:
 
@@ -2365,9 +2291,9 @@ Five things are rules rather than details:
   the branch whichever mode started the run, and so does the IMPLEMENTED note about a release still
   standing open — see "Tickets", which argues both, for an epic exactly as for a ticket.
 - **Prompts are per archetype, the phase is not.** `PhasePrompts.render(archetype, phase, entity)`:
-  an epic's refine turn writes the description, the feature/task tree (with `dependsOn`) and the
+  an epic's refine turn writes the description, the feature/task tree (each piece with its `needs`) and the
   dossier and ends with `work_status` to REFINED (the freeze); its implement turn works the tasks
-  in `dependsOn` order, marks each with `work_update` (`implementingAt`) as it starts and
+  in needs order, marks each with `work_update` (`implementingAt`) as it starts and
   (`implementedAt`) as it lands, releases every touched
   repository, does **not** integrate the workspace, and ends with `work_status` to IMPLEMENTED
   only once every task is marked; its verify turn confirms live on the platform and ends at
@@ -3112,7 +3038,7 @@ is the whole of it:
 - **The listener lives here and not in `bus/`**, deliberately: it is the feature's own seam, and it
   knows no source by name. Like every durable consumer here it does its `projects` work in a
   `QuarkusTransaction.requiringNew()` of its own — the claim transaction already holds the
-  `eventstream` connection (`CampaignCriteriaListener`'s javadoc). A source that cannot read a
+  `eventstream` connection (`ARJUNA016045`, see "A durable listener's database work" above). A source that cannot read a
   payload is a WARN and contributes nothing; a database failure throws and the frame stays owed.
 - **What is dropped**: a project with `delivery_enabled` false (only admission is gated — an
   already open window is still closed and delivered), and a trigger whose `cause` equals a non-null
@@ -3764,7 +3690,7 @@ opened before V58 is a session room like every other.
   `AgentDaemonRegistry.SESSIONS_CAPABILITY` = 3): after the credentials on `hello`; on every change —
   a room opened, ensured, stopped or discarded (`RefinementService`), its entity moved, blocked,
   unblocked or retitled (`api/AgentEntitySignals` → `RefinementSessions.entityChanged`, with the
-  announced facts; a campaign's room is told too); and every `qits.projects.desk.sessions-resend-interval`
+  announced facts); and every `qits.projects.desk.sessions-resend-interval`
   for every capable connected desk (`pushAll`). **The credential goes first**: the open mints the
   room's token (which sends `sessionCredentials`) before it stamps demand and pushes, and the hello
   sends credentials before sessions. A room whose token could not be minted is still listed; the
@@ -3800,12 +3726,8 @@ refinement open`, pinning `technicalProcessId`); it goes when that consumer rele
 it. `stop-container`, `recreate-container` and `active-process` are gone and answer 404
 (`RefinementContainersRetiredTest`). `EntityResolutions` still calls `discard`.
 
-**The open is the same for a campaign as for an epic** — the qits-411 refusal is gone; a campaign
-takes the REPORTED and dispatch refusals an epic does. Its room's scope is the campaign and its
-REPORTED members; **nothing server-side composes a room's prompt** (the SPA's draft does, and the
-session's surface brief), so naming the members is the prompt's job. Designs and prompt images work
-for it; the dossier inline door stays epic-only, so it has none, like a ticket. No branch, no
-container placement and no 502 are on the open.
+**Nothing server-side composes a room's prompt** (the SPA's draft does, and the session's surface
+brief). No branch, no container placement and no 502 are on the open.
 
 **`RefinementDto`** carries `sessionId`, `commandId`, `deskStatus` (the desk's `FrontDeskState`
 word: QUEUED, PROVISIONING, RUNNING, STOPPED, FAILED, UNAVAILABLE, ABSENT, through the port
@@ -3863,11 +3785,11 @@ an evicted id answers the 404 the frontend reads as "expired".
 
 Tests: `RefinementSessionsComposeTest` (pure), `RefinementSessionsTest` (the frame on hello and on
 every change, capability gating, credential-first ordering, the report, the doors, the desk demand,
-a campaign's room, the cap), `RefinementTokenTest`, `EpicResolutionCleanupTest`.
+the cap), `RefinementTokenTest`, `EpicResolutionCleanupTest`.
 
 ### The refine action, for any archetype (qits-395)
 
-**Opening a refinement room is one action for an epic, a ticket or a campaign**, beside the dispatch
+**Opening a refinement room is one action for an epic or a ticket**, beside the dispatch
 door and deliberately not part of it (`projects/api/WorkRefinementController` → `RefinementService
 .findOrCreate`; it was `EntityRefinementController` at `/entities/{id}/refinement` until qits-976):
 
@@ -3902,7 +3824,7 @@ Concurrency, decided:
   open — is **not** refused by the dispatch door today.
 
 `work_dossier_inline` and the REST inline door stay **epic-only** — dossier assets are epic-owned by
-epics V8's decision — so a ticket's or a campaign's room has sketches and designs but no inline door.
+epics V8's decision — so a ticket's room has sketches and designs but no inline door.
 **No surface key moved**: every room's session runs as `epic.chat`, whose rename is the separate
 four-repository sequence `AgentSurfaceDefaults` describes.
 
@@ -4213,12 +4135,11 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   order, and so does an equal JSON number in an `id` or `…Id` member, listed under `frozen.numbers`
   (written only where there is one). `a ticket with a design` records the `qits work design` doors
   this way (qits-1174). **The `/work` operations are recorded** — `getWork`,
-  `listWorkComments`, `listProjectWork`, `listWorkArchetypes`, `setWorkStatus`, `listWorkMembers`
-  (by a `campaignQualifiedId`-style param the campaign states gained), `listWorkDossier`,
+  `listWorkComments`, `listProjectWork`, `listWorkArchetypes`, `setWorkStatus`, `listWorkDossier`,
   `listWorkDossierAssets`, `dispatchWork` and the rest of the family. Until qits-976 each was a twin
   (`WORK_TWINS`) of an old operation recorded in the same state; the old operationIds
   (`getEntity`, `listEntityComments`, `listProjectEntities`, `listArchetypes`, `moveEntityStatus`,
-  `getCampaign`, `listEpicDossierPages`, `listTicketDossierPages`, `listEpicDossierAssets`,
+  `listEpicDossierPages`, `listTicketDossierPages`, `listEpicDossierAssets`,
   `dispatchEntity`, `transitionEpic`, `transitionTicket`) went with their routes, and so did their
   golden-master files — a consumer pact still naming one is a pact against a route that answers
   404. An instant inside a longer string — an
