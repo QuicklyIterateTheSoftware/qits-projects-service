@@ -606,6 +606,35 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
+   * qits-1899: an unedited brief from before it rolls to the current, which skips an item waiting
+   * on an unmet milestone and tells the desk to link a waiting item rather than block it.
+   */
+  @Test
+  public void anUneditedQits1899PreBriefIsMigrated() {
+    stage(AgentSurfaceDefaults.QITS_1899_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the brief before qits-1899 is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("milestone not met yet"), after);
+    assertTrue(after.contains("give the waiting item a milestone on the"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1899: an edit of the brief from before it is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1899PreBriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1899_PRE_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.
    */
