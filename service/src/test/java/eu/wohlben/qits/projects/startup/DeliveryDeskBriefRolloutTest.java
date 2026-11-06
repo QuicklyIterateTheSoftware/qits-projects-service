@@ -606,8 +606,8 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
-   * qits-1899: an unedited brief from before it rolls to the current, which skips an item waiting
-   * on an unmet milestone and tells the desk to link a waiting item rather than block it.
+   * qits-1899's early rollout (qits-1909): an unedited brief from before it rolls to the current,
+   * which speaks needs rather than a milestone and names the condition tag.
    */
   @Test
   public void anUneditedQits1899PreBriefIsMigrated() {
@@ -618,15 +618,52 @@ public class DeliveryDeskBriefRolloutTest {
 
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
-    assertTrue(after.contains("milestone not met yet"), after);
-    assertTrue(after.contains("give the waiting item a milestone on the"), after);
+    assertTrue(after.contains("whose NEEDS column names an item not yet at its status"), after);
+    assertTrue(after.contains("set needs on the waiting item"), after);
+    assertFalse(after.contains("milestone not met yet"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
-  /** qits-1899: an edit of the brief from before it is the owner's too. */
+  /** qits-1899's early rollout (qits-1909): an edit of the brief from before it is the owner's too. */
   @Test
   public void anOwnerEditedQits1899PreBriefIsLeftAlone() {
     String edited = AgentSurfaceDefaults.QITS_1899_PRE_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
+   * qits-1904: an unedited brief from qits-1909's rollout — the one that spoke a milestone, before
+   * needs existed — rolls to the current one, which speaks needs and the condition tag, and closes
+   * only an epic or feature.
+   */
+  @Test
+  public void anUneditedQits1899BriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_1899_DELIVERY_DESK_PROMPT.contains(
+            "milestone not met yet (qits work list shows it)"),
+        "the qits-1899 (qits-1909) text is the one before needs existed");
+    stage(AgentSurfaceDefaults.QITS_1899_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the brief qits-1909 shipped is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("whose NEEDS column names an item not yet at its status"), after);
+    assertTrue(after.contains("set needs on the waiting item"), after);
+    assertTrue(after.contains("Close finished work: an epic or feature"), after);
+    assertFalse(after.contains("names a milestone"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-1904: an edit of the brief qits-1909 shipped is the owner's too. */
+  @Test
+  public void anOwnerEditedQits1899BriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_1899_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
     stage(edited);
 
     assertFalse(rollout.rollOut(), "an edit is the owner's");

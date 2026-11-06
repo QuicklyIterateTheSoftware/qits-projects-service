@@ -388,7 +388,7 @@ final class PhasePrompts {
   /**
    * <b>REFINE</b> for an epic, run while it is {@link EntityStatus#REPORTED}. A plan is three
    * things: a description that argues the change, a feature/task tree (one repository per task,
-   * {@code dependsOn} where order matters), and a dossier holding the paths, names and exact values
+   * {@code needs} where order matters), and a dossier holding the paths, names and exact values
    * the implement phase builds from. The claim to REFINED freezes all three ({@code
    * EntityLifecycle.requireReported}), which the turn says because the claim is bigger than a
    * ticket's; the thread stays writable after the freeze. Like a ticket's, the claim ends the run
@@ -404,10 +404,11 @@ final class PhasePrompts {
         + epic.slug
         + ", id "
         + epic.id
-        + "). Read it and its dossier (work_details, work_dossier_list). Investigate the code it"
-        + " touches. Make the description argue the change (work_update). Break the work into"
-        + " features and tasks (work_create), each task naming one repository and its dependsOn"
-        + " links. Put paths, names and exact values in the dossier (work_dossier_put). Record decisions and open questions on its thread with"
+        + "). Read it and its dossier (work_details, work_dossier_list) and investigate the code"
+        + " it touches. Make the description argue the change (work_update). Break the work into"
+        + " features and tasks (work_create), each task naming one repository and its needs."
+        + " Put paths, names and exact values in the dossier"
+        + " (work_dossier_put). Record decisions and open questions on its thread with"
         + " work_comment_create. Do not implement anything: the implement phase is a separate"
         + " session that starts from what you write. Write its acceptanceCriteria with work_update:"
         + " short checkable statements, each one line, at most one '.', fewer than 20 spaces. When"
@@ -421,7 +422,7 @@ final class PhasePrompts {
   /**
    * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#READY_FOR_DEV} or {@link
    * EntityStatus#IMPLEMENTING}. The tree and dossier are frozen, so corrections go on the thread.
-   * Tasks in {@code dependsOn} order, each marked with {@code implementingAt} as it starts and
+   * Tasks in {@code needs} order, each marked with {@code implementingAt} as it starts and
    * {@code implementedAt} as it lands ({@code work_update}) so a run that dies halfway leaves a true
    * record — since qits-763 each marker moves the task's own status too; landed means released and
    * deployed, one release request per repository. A task confirmed live may be verified on its own
@@ -440,16 +441,17 @@ final class PhasePrompts {
         + epic.id
         + "). Read it with work_details: its tree and dossier are the brief. Both are read-only now:"
         + " record progress and corrections on its thread with work_comment_create as the work"
-        + " goes. Work the tasks in dependsOn order: work_update its implementingAt to now when you"
+        + " goes. Work the tasks in needs order, each only once its needs are met:"
+        + " work_update its implementingAt to now when you"
         + " start one, and its implementedAt as it lands; each moves its status. Landed means"
         + " released and deployed, through a release request per repository, not merged and not"
         + " green. Verify a task on its own: once it is live, move it to VERIFIED (work_status)."
         + commitSubjects(q)
         + " Do not integrate the"
-        + " workspace, because verification runs here next. When every task is marked, move the"
+        + " workspace: verification runs here next. When every task is marked, move the"
         + " epic to "
         + end(Phase.IMPLEMENT)
-        + " with work_status; that move carries any unmarked task to IMPLEMENTED. If you cannot get"
+        + " with work_status, carrying any unmarked task to IMPLEMENTED. If you cannot get"
         + " there, call work_block with what is missing.";
   }
 
