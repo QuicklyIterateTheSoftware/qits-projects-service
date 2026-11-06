@@ -61,8 +61,8 @@ components:
       properties:
         container:
           $ref: "#/components/schemas/ContainerView"
-          type: object
           description: "The project's front desk, as this service last observed it."
+          type: object
     AgentDocumentSurfaceDto:
       type: object
       properties:
@@ -356,8 +356,8 @@ components:
       - FAST_FORWARD
       - UNRELATED_RESET
     BranchDeliveries:
-      type: object
       description: Where one branch stands in each repository of its project.
+      type: object
       properties:
         branch:
           type: string
@@ -418,8 +418,8 @@ components:
           description: "RELEASED and LIVE: the tag"
         changedAt:
           $ref: "#/components/schemas/Instant"
-          type: string
           description: When the step was written
+          type: string
     BranchDto:
       type: object
       properties:
@@ -707,14 +707,14 @@ components:
             \ the retired ones."
     CollectTagsRequest:
       type: object
-      required:
-      - pins
       properties:
         dryRun:
           type: boolean
         pins:
           $ref: "#/components/schemas/TagCollectionPinSources"
           type: object
+      required:
+      - pins
     CommentDto:
       type: object
       properties:
@@ -1103,8 +1103,8 @@ components:
         html:
           type: string
     DeskTriggerEvent:
-      type: object
       description: One item a desk trigger source admitted into a window.
+      type: object
       properties:
         source:
           type: string
@@ -1137,16 +1137,16 @@ components:
             \ other sources"
         eventId:
           $ref: "#/components/schemas/UUID"
-          type: string
           description: The bus event that carried it
+          type: string
         occurredAt:
           $ref: "#/components/schemas/Instant"
-          type: string
           description: When it happened
+          type: string
     DeskTriggerMessage:
-      type: object
       description: "One desk trigger window of the project: what it collected, the\
         \ message it became and how its delivery to the delivery desk went."
+      type: object
       properties:
         id:
           $ref: "#/components/schemas/UUID"
@@ -1155,25 +1155,25 @@ components:
           description: "OPEN, OWED, DELIVERED, QUEUED or FAILED"
         openedAt:
           $ref: "#/components/schemas/Instant"
-          type: string
           description: When the first trigger opened the window
+          type: string
         closesAt:
           $ref: "#/components/schemas/Instant"
-          type: string
           description: When it stops admitting; set at the open and never moved
+          type: string
         closedAt:
+          description: When it was closed and its message rendered; null while OPEN
           type:
           - string
           - "null"
-          description: When it was closed and its message rendered; null while OPEN
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
         acceptedAt:
+          description: When the desk's daemon took the message; null until it did
           type:
           - string
           - "null"
-          description: When the desk's daemon took the message; null until it did
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
@@ -1215,16 +1215,16 @@ components:
             $ref: "#/components/schemas/DeskTriggerEvent"
           description: "The lines it collected, by admittedAt then itemRef"
     DeskTriggerMessages:
-      type: object
       description: "A project's desk trigger messages, newest first by openedAt."
+      type: object
       properties:
         messages:
           type: array
           items:
             $ref: "#/components/schemas/DeskTriggerMessage"
     DiscardResponse:
-      type: object
       description: "A refinement room's teardown, done."
+      type: object
       properties:
         success:
           type: boolean
@@ -1755,8 +1755,8 @@ components:
           type: string
           description: Why it fell back. Empty when it did not.
     Idea:
-      type: object
       description: "An idea of a project. Its status is derived, never written."
+      type: object
       properties:
         id:
           type: string
@@ -1778,12 +1778,12 @@ components:
           description: The one idea of the same project enabling this one.
         status:
           type: string
+          description: "PLANNED (no counted work names it), QUEUED (some does, not\
+            \ all DONE) or DONE (every counted item DONE). DROPPED work is not counted."
           enum:
           - PLANNED
           - QUEUED
           - DONE
-          description: "PLANNED (no counted work names it), QUEUED (some does, not\
-            \ all DONE) or DONE (every counted item DONE). DROPPED work is not counted."
         archived:
           type: boolean
         archiveReason:
@@ -1810,18 +1810,16 @@ components:
         updatedAt:
           $ref: "#/components/schemas/Instant"
     IdeaArchive:
+      description: Why the idea is archived.
       type: object
       required:
       - reason
-      description: Why the idea is archived.
       properties:
         reason:
           type: string
     IdeaCreate:
-      type: object
-      required:
-      - title
       description: A new idea.
+      type: object
       properties:
         project:
           type: string
@@ -1840,10 +1838,12 @@ components:
           type: string
           description: The one idea of the same project enabling this one; it must
             not itself be enabled by another.
+      required:
+      - title
     IdeaDetail:
-      type: object
       description: "One idea, with the work it inspired, the ideas it enables, and\
         \ the idea enabling it."
+      type: object
       properties:
         id:
           type: string
@@ -1860,11 +1860,11 @@ components:
           - string
           - "null"
         enabledByIdea:
+          description: "The enabling idea in brief, so a client can say when it is\
+            \ archived; null when enabledBy is."
           type:
           - object
           - "null"
-          description: "The enabling idea in brief, so a client can say when it is\
-            \ archived; null when enabledBy is."
           anyOf:
           - $ref: "#/components/schemas/IdeaRef"
           - type: "null"
@@ -1923,20 +1923,20 @@ components:
         archetype:
           $ref: "#/components/schemas/Archetype"
     IdeaList:
-      type: object
       description: "A project's ideas: priority descending, null last, then oldest\
         \ first."
+      type: object
       properties:
         ideas:
           type: array
           items:
             $ref: "#/components/schemas/Idea"
     IdeaPatch:
-      type: object
       description: "A JSON merge patch (RFC 7396) of one idea: title, description,\
         \ enabledBy, priority. An absent property is left alone; null clears description,\
         \ enabledBy or priority. The status is derived and the archive has its own\
         \ doors."
+      type: object
       properties:
         title:
           type: string
@@ -1958,9 +1958,9 @@ components:
             \ on an idea that is neither archived nor DONE (else 409). PUT /projects/api/ideas/{id}/priority\
             \ ranks by drop instead."
     IdeaPriorities:
-      type: object
       description: "The ideas a drop renumbered — the moved idea and every rankable\
         \ idea above it — in their new order, highest first."
+      type: object
       properties:
         items:
           type: array
@@ -1988,9 +1988,9 @@ components:
         archived:
           type: boolean
     IdeaReprioritize:
-      type: object
       description: "Where a dropped idea now sits among its project's rankable ideas:\
         \ directly above or directly below one of them. Exactly one of above and below."
+      type: object
       properties:
         above:
           type: string
@@ -2120,24 +2120,24 @@ components:
           items:
             $ref: "#/components/schemas/ConflictedPath"
     MilestoneAnswer:
-      type: object
       description: One milestone.
+      type: object
       properties:
         milestone:
           $ref: "#/components/schemas/MilestoneDto"
     MilestoneApproval:
-      type: object
       description: A person's yes on an APPROVAL criterion.
+      type: object
       properties:
         note:
           type: string
           description: "Why, optionally."
     MilestoneCreate:
+      description: "A new milestone: its name and its condition."
       type: object
       required:
       - displayName
       - groups
-      description: "A new milestone: its name and its condition."
       properties:
         displayName:
           type: string
@@ -2148,8 +2148,8 @@ components:
             $ref: "#/components/schemas/MilestoneGroupSpec"
           description: At least one group of at least one criterion.
     MilestoneCriterionDto:
-      type: object
       description: One AND'd criterion of a milestone.
+      type: object
       properties:
         id:
           type: string
@@ -2170,8 +2170,6 @@ components:
           $ref: "#/components/schemas/CriterionApprovalDto"
     MilestoneCriterionSpec:
       type: object
-      required:
-      - kind
       description: "One criterion of a milestone, as stated."
       properties:
         id:
@@ -2186,9 +2184,11 @@ components:
           additionalProperties: {}
           description: "The kind's predicate; an ENTITY_STATUS predicate's entityId\
             \ takes a qualified id or a UUID. APPROVAL takes {}."
+      required:
+      - kind
     MilestoneDto:
-      type: object
       description: "A milestone, its condition and what waits on it."
+      type: object
       properties:
         id:
           type: string
@@ -2240,10 +2240,10 @@ components:
           items:
             $ref: "#/components/schemas/MilestoneCriterionSpec"
     MilestoneGroups:
+      description: A milestone's whole condition.
       type: object
       required:
       - groups
-      description: A milestone's whole condition.
       properties:
         groups:
           type: array
@@ -2251,8 +2251,8 @@ components:
             $ref: "#/components/schemas/MilestoneGroupSpec"
           description: At least one group of at least one criterion.
     MilestoneList:
-      type: object
       description: "A project's milestones, oldest first."
+      type: object
       properties:
         milestones:
           type: array
@@ -2288,10 +2288,10 @@ components:
         satisfiedAt:
           $ref: "#/components/schemas/Instant"
     MilestoneRename:
+      description: A milestone's new name.
       type: object
       required:
       - displayName
-      description: A milestone's new name.
       properties:
         displayName:
           type: string
@@ -2330,10 +2330,6 @@ components:
           $ref: "#/components/schemas/ReleaseRequestDto"
     NewAttachment:
       type: object
-      required:
-      - label
-      - source
-      - dataBase64
       properties:
         mimeType:
           type: string
@@ -2346,6 +2342,10 @@ components:
         dataBase64:
           type: string
           pattern: \S
+      required:
+      - label
+      - source
+      - dataBase64
     NewDesign:
       type: object
       required:
@@ -2407,9 +2407,9 @@ components:
         detail:
           type: string
     ProcessResponse:
-      type: object
       description: "A refinement room and a technical process id, already settled:\
         \ ensure-container's answer, kept for the consumers that still call that door."
+      type: object
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
@@ -2462,16 +2462,16 @@ components:
         delivery:
           $ref: "#/components/schemas/ProjectDeliveryDto"
     ProjectReleaseRequest:
-      type: object
       description: "One release request, as getReleaseRequest answers it."
+      type: object
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
     ProjectWorkWorkspaces:
-      type: object
       description: "The workspaces a dispatch stood on each of a project's tickets\
         \ and epics: one entry per entity that has any, in the project listing's tree\
         \ order."
+      type: object
       properties:
         workspaces:
           type: array
@@ -2618,9 +2618,9 @@ components:
             $ref: "#/components/schemas/ReleasePhaseDto"
         gates:
           type: array
-          deprecated: true
           items:
             $ref: "#/components/schemas/ReleasePipelineGateDto"
+          deprecated: true
     ReleasePipelineGateDto:
       type: object
       properties:
@@ -2758,9 +2758,9 @@ components:
             $ref: "#/components/schemas/ApprovalRequirementDto"
         gates:
           type: array
-          deprecated: true
           items:
             $ref: "#/components/schemas/ReleaseGateDto"
+          deprecated: true
         automations:
           type: array
           items:
@@ -2920,14 +2920,14 @@ components:
         reason:
           type: string
     RepositoryBackupResetRequest:
-      type: object
       description: Why the backup twin's main may be replaced.
+      type: object
       properties:
         reason:
           type: string
     RepositoryBackupResets:
-      type: object
       description: "A repository's backup twin resets, newest first."
+      type: object
       properties:
         resets:
           type: array
@@ -3063,7 +3063,6 @@ components:
           $ref: "#/components/schemas/ReleaseRequestDto"
         placement:
           $ref: "#/components/schemas/PlacementDto"
-          type: object
           description: "Where the branch landed (epic qits-1580, the soft feature\
             \ freeze). Once the repository's active request holds as many counted\
             \ sources as the threshold in force, it is frozen. Counted are branches\
@@ -3078,6 +3077,7 @@ components:
             \ PRESENT where it is. outcome is CREATED, JOINED or PRESENT, queued says\
             \ the answering request is queued, and detail is one sentence saying where\
             \ the branch went."
+          type: object
     Response22:
       type: object
       properties:
@@ -3102,7 +3102,6 @@ components:
           $ref: "#/components/schemas/ReleaseRequestDto"
         placement:
           $ref: "#/components/schemas/PlacementDto"
-          type: object
           description: "Where the branch landed (epic qits-1580). An explicit join\
             \ overrides the soft feature freeze: a request frozen at its threshold\
             \ admits any branch named onto it here (a feature, a bug fix or a maintenance\
@@ -3110,6 +3109,7 @@ components:
             \ saying it joined a frozen request explicitly. From RELEASED on no join\
             \ is accepted: the 409 says the request is released and names the repository's\
             \ next unreleased request by qualified id, if there is one."
+          type: object
     Response26:
       type: object
       properties:
@@ -3610,10 +3610,10 @@ components:
         reason:
           type: string
     WorkAgentWaitingReport:
+      description: Whether the agent session working an entity is waiting for a person.
       type: object
       required:
       - waiting
-      description: Whether the agent session working an entity is waiting for a person.
       properties:
         waiting:
           type: boolean
@@ -3637,24 +3637,24 @@ components:
           description: "When the session stamped the frame, epoch milliseconds; absent\
             \ reads as now. A frame older than the entity's last activity is ignored"
     WorkAudit:
-      type: object
       description: "A work entity's change history, newest first."
+      type: object
       properties:
         entries:
           type: array
           items:
             $ref: "#/components/schemas/AuditEntryDto"
     WorkBlockAnswer:
-      type: object
       description: A work entity's block flag as the write left it.
+      type: object
       properties:
         block:
           $ref: "#/components/schemas/EntityBlock"
     WorkBlockRequest:
+      description: "What the block flag should become, and why."
       type: object
       required:
       - blocked
-      description: "What the block flag should become, and why."
       properties:
         blocked:
           type: boolean
@@ -3664,12 +3664,12 @@ components:
           description: what is in the way — required when blocking; lands on the entity's
             thread
     WorkChildCreate:
-      type: object
-      required:
-      - title
       description: "A new child: the child archetype's create schema (FEATURE under\
         \ an epic, TASK under a feature) without archetype, parent and project, which\
         \ the path decides."
+      type: object
+      required:
+      - title
       properties:
         title:
           type: string
@@ -3685,38 +3685,38 @@ components:
           type: string
           description: "A sibling dependency, by qualified id or UUID."
     WorkChildren:
-      type: object
       description: "A work entity's direct children, in membership order."
+      type: object
       properties:
         children:
           type: array
           items:
             $ref: "#/components/schemas/TransitionedEntity"
     WorkCommentAnswer:
-      type: object
       description: One comment on a work entity's thread.
+      type: object
       properties:
         comment:
           $ref: "#/components/schemas/CommentDto"
     WorkCommentCreate:
+      description: A remark for a work entity's thread.
       type: object
       required:
       - body
-      description: A remark for a work entity's thread.
       properties:
         body:
           type: string
-          pattern: \S
           description: "The remark, Markdown."
+          pattern: \S
     WorkCommentDeleted:
-      type: object
       description: The comment is gone.
+      type: object
       properties:
         success:
           type: boolean
     WorkCommentList:
-      type: object
       description: "A work entity's thread, oldest first."
+      type: object
       properties:
         entries:
           type: array
@@ -3728,20 +3728,20 @@ components:
         comment:
           $ref: "#/components/schemas/CommentDto"
     WorkCommentPatch:
-      type: object
-      required:
-      - body
       description: "A JSON merge patch (RFC 7396) of one comment. body is the only\
         \ property and is required: it replaces the text, and may not be null or blank.\
         \ id, entityId, author, authorAgentOf, createdAt, updatedAt and editable are\
         \ server-owned; any other property is refused as unknown."
+      type: object
+      required:
+      - body
       properties:
         body:
           type: string
           description: "The remark as it should now read, Markdown."
     WorkConditionCriterion:
-      type: object
       description: One criterion of a member's condition.
+      type: object
       properties:
         id:
           type: string
@@ -3756,26 +3756,26 @@ components:
           description: The kind's predicate; an ENTITY_STATUS predicate's entityId
             takes a qualified id or a UUID.
     WorkConditionGroup:
-      type: object
       description: One OR'd group of a member's condition.
+      type: object
       properties:
         criteria:
           type: array
           items:
             $ref: "#/components/schemas/WorkConditionCriterion"
     WorkCreate:
-      type: object
-      required:
-      - archetype
       description: "A new work entity of any archetype: the archetype, plus exactly\
         \ the body GET /projects/api/work/archetypes/{archetype}/schemas/create describes\
         \ for it. A root (EPIC, TICKET, CAMPAIGN, ISSUE) names its project, a node\
         \ (FEATURE, TASK) its parent."
+      type: object
+      required:
+      - archetype
       properties:
         archetype:
           $ref: "#/components/schemas/Archetype"
-          type: string
           description: "EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE"
+          type: string
         project:
           type: string
           description: "A root's project: its id or its slug."
@@ -3828,29 +3828,29 @@ components:
           description: "An issue's one related work item of the same project, by qualified\
             \ id or UUID."
     WorkCriterionApproval:
-      type: object
       description: A person's yes on an APPROVAL criterion.
+      type: object
       properties:
         note:
           type: string
           description: "Why, optionally."
     WorkDeleted:
-      type: object
       description: The entity and its subtree are gone.
+      type: object
       properties:
         success:
           type: boolean
     WorkDispatchAnswer:
-      type: object
       description: The dispatch a press made.
+      type: object
       properties:
         dispatch:
           $ref: "#/components/schemas/EntityDispatchDto"
     WorkDispatchRequest:
+      description: Which of the two dispatch actions to press.
       type: object
       required:
       - mode
-      description: Which of the two dispatch actions to press.
       properties:
         mode:
           type: string
@@ -3862,23 +3862,23 @@ components:
             \ start-refined, resume-orphaned). Required for a qits:desk caller, ignored\
             \ for anyone else."
     WorkDispatchState:
-      type: object
       description: What a press would start now.
+      type: object
       properties:
         state:
           $ref: "#/components/schemas/EntityDispatchStateDto"
     WorkDossier:
-      type: object
       description: "A work entity's dossier pages, in position order."
+      type: object
       properties:
         pages:
           type: array
           items:
             $ref: "#/components/schemas/DossierPageDto"
     WorkDossierAssetEntry:
-      type: object
       description: "One inlined figure: what it is, the URL and markdown line that\
         \ render it, and the pages that name it."
+      type: object
       properties:
         id:
           type: string
@@ -3899,23 +3899,23 @@ components:
         createdAt:
           $ref: "#/components/schemas/Instant"
     WorkDossierAssetInline:
+      description: A figure of the entity's refinement to copy into its dossier.
       type: object
       required:
       - sourceId
       - kind
-      description: A figure of the entity's refinement to copy into its dossier.
       properties:
         sourceId:
           type: string
-          pattern: \S
           description: The sketch's or the design's id.
+          pattern: \S
         kind:
           type: string
-          pattern: \S
           description: IMAGE (a sketch) or DESIGN
+          pattern: \S
     WorkDossierAssetInlined:
-      type: object
       description: "What was inlined, and the markdown line that renders it."
+      type: object
       properties:
         id:
           type: string
@@ -3930,47 +3930,45 @@ components:
         markdown:
           type: string
     WorkDossierAssetList:
-      type: object
       description: "The figures a dossier inlines, by label."
+      type: object
       properties:
         assets:
           type: array
           items:
             $ref: "#/components/schemas/WorkDossierAssetEntry"
     WorkDossierPageCreate:
+      description: "A new page, appended to the dossier."
       type: object
       required:
       - title
-      description: "A new page, appended to the dossier."
       properties:
         title:
           type: string
-          pattern: \S
           description: The title; the slug is minted from it.
+          pattern: \S
         body:
           type: string
           description: The Markdown body.
     WorkDossierPageDeleted:
-      type: object
       description: The page is gone.
+      type: object
       properties:
         success:
           type: boolean
     WorkDossierPageMove:
+      description: Where a page should now sit.
       type: object
       required:
       - position
-      description: Where a page should now sit.
       properties:
         position:
           type: integer
           format: int32
           description: "The new position, 0-based."
     WorkDossierPageWrite:
-      type: object
-      required:
-      - version
       description: "A retitle, a rewrite, or both — with the version the writer read."
+      type: object
       properties:
         title:
           type: string
@@ -3982,6 +3980,8 @@ components:
           type: integer
           format: int64
           description: The version read before the write; a stale one is a 409.
+      required:
+      - version
     WorkEntityWorkspaces:
       type: object
       description: The workspaces a dispatch stood on one ticket's or epic's branch.
@@ -3998,24 +3998,24 @@ components:
             $ref: "#/components/schemas/WorkspaceReferenceDto"
           description: "Its workspaces, live and resolved alike; never empty."
     WorkList:
-      type: object
       description: "A project's work entities, in tree order."
+      type: object
       properties:
         entities:
           type: array
           items:
             $ref: "#/components/schemas/EntitySummary"
     WorkMemberAdd:
+      description: An entity to gather into the campaign.
       type: object
       required:
       - entityId
-      description: An entity to gather into the campaign.
       properties:
         entityId:
           type: string
-          pattern: \S
           description: "The entity to gather, by qualified id (<projectSlug>-<n>)\
             \ or UUID."
+          pattern: \S
         position:
           type: integer
           format: int32
@@ -4025,32 +4025,32 @@ components:
           description: Whether it joins already running; omitted lets the service
             decide from its status and its workspace.
     WorkMemberAnswer:
-      type: object
       description: One membership of a campaign.
+      type: object
       properties:
         member:
           $ref: "#/components/schemas/CampaignMemberDto"
     WorkMemberCondition:
-      type: object
       description: "A member's whole condition: groups OR'd, criteria in a group AND'd."
+      type: object
       properties:
         groups:
           type: array
           items:
             $ref: "#/components/schemas/WorkConditionGroup"
     WorkMemberList:
-      type: object
       description: "A campaign's members, in campaign order."
+      type: object
       properties:
         members:
           type: array
           items:
             $ref: "#/components/schemas/CampaignMemberDto"
     WorkMemberMilestones:
+      description: "The milestones a membership waits on, by id, whole."
       type: object
       required:
       - milestoneIds
-      description: "The milestones a membership waits on, by id, whole."
       properties:
         milestoneIds:
           type: array
@@ -4058,18 +4058,18 @@ components:
             type: string
           description: Existing milestones of the campaign's project.
     WorkMemberMove:
+      description: Where a membership should now sit.
       type: object
       required:
       - position
-      description: Where a membership should now sit.
       properties:
         position:
           type: integer
           format: int32
           description: "The new position, 0-based."
     WorkMilestoneList:
-      type: object
       description: "The milestones a work entity waits on, in the order attached."
+      type: object
       properties:
         milestones:
           type: array
@@ -4085,13 +4085,13 @@ components:
       - INVALID
       - WONT_DO
     WorkPatch:
-      type: object
       description: "A JSON merge patch (RFC 7396) of one work entity. An absent property\
         \ is left as it is; an explicit null clears it. At least one property must\
         \ be named. status, archetype, membership, supersededBy and blocked are refused\
         \ with the door that moves them; slug and createdBy are server-owned; any\
         \ other property is refused as unknown. A property the entity's archetype\
         \ has no slot for is refused (impetus on an epic)."
+      type: object
       properties:
         title:
           type: string
@@ -4126,26 +4126,26 @@ components:
           description: "A feature's or task's sibling dependency, by qualified id\
             \ or UUID; null clears it."
         implementedAt:
-          type:
-          - string
-          - "null"
           description: A feature's or task's implemented marker (ISO-8601 instant);
             null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
             Setting it moves the item's status to IMPLEMENTED; clearing it takes an
             IMPLEMENTED item back to IMPLEMENTING (or READY_FOR_DEV when it was never
             marked implementing).
+          type:
+          - string
+          - "null"
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
         implementingAt:
           $ref: "#/components/schemas/Instant"
-          type: string
           description: "A feature's or task's implementing marker (ISO-8601 instant):\
             \ when its implementation was started. Cannot be cleared. Moves only while\
             \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
             \ status to IMPLEMENTING when it is not already there or further. On a\
             \ task it also stamps the task's feature the first time, and moves an\
             \ epic still READY_FOR_DEV to IMPLEMENTING."
+          type: string
         acceptanceCriteria:
           type:
           - array
@@ -4187,9 +4187,9 @@ components:
             \ or null clears them. An unknown tag is a 400 naming the legal ones.\
             \ A transition never changes them."
     WorkPriorities:
-      type: object
       description: "The siblings a drop renumbered — the moved item and every one\
         \ above it — in their new order, highest first."
+      type: object
       properties:
         items:
           type: array
@@ -4205,21 +4205,21 @@ components:
           type: integer
           format: int32
     WorkProgressAnswer:
-      type: object
       description: "A campaign's progress, derived on the read."
+      type: object
       properties:
         progress:
           $ref: "#/components/schemas/CampaignProgressDto"
     WorkRefinementAnswer:
-      type: object
       description: A work entity's refinement room; null on a read that found none.
+      type: object
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
     WorkReprioritize:
-      type: object
       description: "Where a dropped work item now sits among its siblings: directly\
         \ above or directly below one of them. Exactly one of above and below."
+      type: object
       properties:
         above:
           type: string
@@ -4230,11 +4230,11 @@ components:
           description: "The sibling the item now sits directly below, by qualified\
             \ id or UUID."
     WorkStatusMove:
+      description: "A lifecycle move: the status to move to, and — for a move into\
+        \ DROPPED — why the work is closed and what answers for it."
       type: object
       required:
       - target
-      description: "A lifecycle move: the status to move to, and — for a move into\
-        \ DROPPED — why the work is closed and what answers for it."
       properties:
         target:
           type: string
@@ -4245,9 +4245,6 @@ components:
             \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
             \ IMPLEMENTING or VERIFYING."
         outcome:
-          type:
-          - string
-          - "null"
           description: "Why the work is closed: required with a move into DROPPED\
             \ and refused with any other move. DUPLICATE — another item asks for the\
             \ same thing; RESOLVED_ELSEWHERE — another item's change resolved it;\
@@ -4255,6 +4252,9 @@ components:
             \ by itself; INVALID — it never was a problem; WONT_DO — a decision was\
             \ taken not to do it (scratch and probe items too). Reopening (DROPPED\
             \ to REPORTED) clears it."
+          type:
+          - string
+          - "null"
           anyOf:
           - $ref: "#/components/schemas/WorkOutcome"
           - type: "null"
@@ -4279,8 +4279,8 @@ components:
       enum:
       - RESERVED_FOR_HUMAN
     WorkWorkspaces:
-      type: object
       description: The workspaces a dispatch stood on a work entity's branch.
+      type: object
       properties:
         workspaces:
           type: array
@@ -4315,16 +4315,16 @@ components:
           description: "Its wrapper branch, ticket/<qualified id>"
         verdict:
           type: string
-          enum:
-          - NO_REQUEST
-          - IN_FLIGHT
-          - CLOSING
-          - UNPROVEN
           description: "NO_REQUEST (no wrapper, no ledger row, or a PUSHED row naming\
             \ no request), IN_FLIGHT (the row names a request whose delivery has not\
             \ ended), CLOSING (LIVE, or withdrawn as the empty wrapper: the platform\
             \ moves the ticket to DONE) or UNPROVEN (the row ended without the ledger\
             \ proving an ending: only the git host can still close it)"
+          enum:
+          - NO_REQUEST
+          - IN_FLIGHT
+          - CLOSING
+          - UNPROVEN
         step:
           type:
           - string
@@ -4358,9 +4358,9 @@ components:
           - "null"
           description: "The row's version (RELEASED, LIVE)"
     WrapperClosings:
-      type: object
       description: "Every VERIFIED ticket of a project, with where its wrapper closing\
         \ stands."
+      type: object
       properties:
         closings:
           type: array
@@ -4907,6 +4907,7 @@ paths:
           type: string
       - description: Only the ideas at this status.
         schema:
+          type: string
           enum:
           - PLANNED
           - QUEUED
@@ -5746,9 +5747,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                type: array
-                items:
-                  type: string
+                type: string
         "401":
           description: Not Authorized
         "403":
@@ -6812,9 +6811,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                type: array
-                items:
-                  type: string
+                type: string
         "401":
           description: Not Authorized
         "403":
@@ -9024,9 +9021,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/TechnicalProcessFrame"
+                $ref: "#/components/schemas/TechnicalProcessFrame"
         "401":
           description: Not Authorized
         "403":
