@@ -647,7 +647,7 @@ public class PhasePromptsTest {
       assertTrue(turn.contains(tool), "the refine phase is told to write with " + tool + ": " + turn);
     }
     assertTrue(
-        turn.contains("each task naming one repository and, in needs, what it waits for"),
+        turn.contains("each task naming one repository and its needs"),
         turn);
     assertTrue(turn.contains("Do not implement anything"), turn);
     assertTrue(turn.contains("move it to REFINED with work_status, which freezes the scope"), turn);

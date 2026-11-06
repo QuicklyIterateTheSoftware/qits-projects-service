@@ -388,7 +388,7 @@ final class PhasePrompts {
   /**
    * <b>REFINE</b> for an epic, run while it is {@link EntityStatus#REPORTED}. A plan is three
    * things: a description that argues the change, a feature/task tree (one repository per task,
-   * {@code dependsOn} where order matters), and a dossier holding the paths, names and exact values
+   * {@code needs} where order matters), and a dossier holding the paths, names and exact values
    * the implement phase builds from. The claim to REFINED freezes all three ({@code
    * EntityLifecycle.requireReported}), which the turn says because the claim is bigger than a
    * ticket's; the thread stays writable after the freeze. Like a ticket's, the claim ends the run
@@ -406,9 +406,9 @@ final class PhasePrompts {
         + epic.id
         + "). Read it and its dossier (work_details, work_dossier_list) and investigate the code"
         + " it touches. Make the description argue the change (work_update). Break the work into"
-        + " features and tasks (work_create), each task naming one repository and, in needs, what"
-        + " it waits for. Put paths, names and exact values in the dossier"
-        + " (work_dossier_put). Record decisions on its thread with"
+        + " features and tasks (work_create), each task naming one repository and its needs."
+        + " Put paths, names and exact values in the dossier"
+        + " (work_dossier_put). Record decisions and open questions on its thread with"
         + " work_comment_create. Do not implement anything: the implement phase is a separate"
         + " session that starts from what you write. Write its acceptanceCriteria with work_update:"
         + " short checkable statements, each one line, at most one '.', fewer than 20 spaces. When"
