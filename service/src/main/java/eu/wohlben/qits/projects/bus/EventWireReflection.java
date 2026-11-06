@@ -117,7 +117,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  *
  * <p>{@link MilestoneMet} and {@link MilestoneUnmet} (epic qits-615) are published by {@link
  * MilestoneAnnouncer}, one line each: every field is a flat scalar. {@code MilestoneMet} is also
- * bound on the way in, by {@link CampaignMilestoneListener}.
+ * bound on the way in, by {@link CampaignMilestoneListener}. {@link WorkNeedMet} (qits-1903) is
+ * published by {@link WorkNeedAnnouncer}, one line: every field is a flat scalar.
  *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
@@ -151,6 +152,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       EntityCommented.class,
       MilestoneMet.class,
       MilestoneUnmet.class,
+      WorkNeedMet.class,
       IdeaCreated.class,
       IdeaUpdated.class,
       IdeaArchived.class,
