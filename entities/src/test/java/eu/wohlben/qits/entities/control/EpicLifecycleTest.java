@@ -268,18 +268,18 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested done =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Shipped in June", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Shipped in June", null), "t");
     Nested open =
         workEntities.create(
             Archetype.FEATURE,
             epic.id,
-            EntityWrite.feature("Finished by the declaration", null, null),
+            EntityWrite.feature("Finished by the declaration", null),
             "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             open.entity().id,
-            EntityWrite.task("repo-1", "Loose end", null, null),
+            EntityWrite.task("repo-1", "Loose end", null),
             "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
@@ -287,7 +287,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     workEntities.update(
         Archetype.FEATURE,
         done.entity().id,
-        EntityWrite.nodeEdit(null, null, null, false, june, false),
+        EntityWrite.nodeEdit(null, null, june, false),
         "t");
 
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "alice");
@@ -305,7 +305,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("The one feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The one feature", null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "t");
@@ -315,14 +315,14 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         ConflictException.class,
         () ->
             workEntities.create(
-                Archetype.FEATURE, epic.id, EntityWrite.feature("Late scope", null, null), "t"));
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Late scope", null), "t"));
     assertThrows(
         ConflictException.class,
         () ->
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                EntityWrite.nodeEdit(null, null, null, true),
                 "t"));
     // Adjacent-only: not back to the draft in one jump, not to where it already is, not to DONE.
     for (String target : List.of("REPORTED", "IMPLEMENTED", "DONE")) {
@@ -453,33 +453,33 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity old = epic();
     Nested a =
         workEntities.create(
-            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", "body A", null), "t");
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", "body A"), "t");
     Nested b =
         workEntities.create(
-            Archetype.FEATURE, old.id, EntityWrite.feature("Feature B", null, a.entity().id), "t");
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature B", null), "t");
     Nested t1 =
         workEntities.create(
             Archetype.TASK,
             a.entity().id,
-            EntityWrite.task("repo-1", "Task one", "body 1", null),
+            EntityWrite.task("repo-1", "Task one", "body 1"),
             "t");
     Nested t2 =
         workEntities.create(
             Archetype.TASK,
             a.entity().id,
-            EntityWrite.task("repo-2", "Task two", null, t1.entity().id),
+            EntityWrite.task("repo-2", "Task two", null),
             "t");
     workEntities.transition(Archetype.EPIC, old.id, "REFINED", "t");
     workEntities.transition(Archetype.EPIC, old.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.update(
         Archetype.FEATURE,
         a.entity().id,
-        EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+        EntityWrite.nodeEdit(null, null, WHEN, false),
         "t");
     workEntities.update(
         Archetype.TASK,
         t1.entity().id,
-        EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+        EntityWrite.nodeEdit(null, null, WHEN, false),
         "t");
 
     var result =
@@ -518,15 +518,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals("body A", copyA.entity().description);
     // The marker resets — nothing is implemented in a draft.
     assertNull(copyA.entity().implementedAt);
-    // The dependency points at the copy, never back at the old tree.
-    assertEquals(copyA.entity().id, copyB.entity().dependsOnEntityId);
 
     List<Nested> tasks = workEntities.listChildren(Archetype.TASK, copyA.entity().id);
     assertEquals(List.of("task-one", "task-two"), tasks.stream().map(x -> x.entity().slug).toList());
     assertEquals("repo-1", tasks.get(0).entity().repositoryId);
     assertEquals("repo-2", tasks.get(1).entity().repositoryId);
     assertNull(tasks.get(0).entity().implementedAt);
-    assertEquals(tasks.get(0).entity().id, tasks.get(1).entity().dependsOnEntityId);
     assertNotEquals(t2.entity().id, tasks.get(1).entity().id);
 
     // The old tree is untouched: it is the record of what was discarded.
@@ -540,9 +537,9 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity old = epic();
     Nested a =
         workEntities.create(
-            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", null, null), "t");
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", null), "t");
     workEntities.create(
-        Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Task one", null, null), "t");
+        Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Task one", null), "t");
     workEntities.transition(Archetype.EPIC, old.id, "REFINED", "t");
 
     WorkEntity successor =
@@ -577,12 +574,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
@@ -600,14 +597,14 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         ConflictException.class,
         () ->
             workEntities.create(
-                Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null, null), "t"));
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null), "t"));
     assertThrows(
         ConflictException.class,
         () ->
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                EntityWrite.nodeEdit("Renamed", null, null, false),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -615,7 +612,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit(null, null, null, true, null, false),
+                EntityWrite.nodeEdit(null, null, null, false),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -626,7 +623,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.create(
                 Archetype.TASK,
                 feature.entity().id,
-                EntityWrite.task("repo-1", "Another", null, null),
+                EntityWrite.task("repo-1", "Another", null),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -634,7 +631,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.TASK,
                 task.entity().id,
-                EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                EntityWrite.nodeEdit("Renamed", null, null, false),
                 "t"));
     assertThrows(
         ConflictException.class, () -> workEntities.delete(Archetype.TASK, task.entity().id, "t"));
@@ -646,13 +643,13 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     assertThrows(
         ConflictException.class,
         () ->
             workEntities.create(
-                Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null, null), "t"));
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null), "t"));
 
     workEntities.transition(Archetype.EPIC, epic.id, "REPORTED", "t");
 
@@ -662,11 +659,11 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity()
             .title);
-    workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null, null), "t");
+    workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null), "t");
     workEntities.update(
         Archetype.FEATURE,
         feature.entity().id,
-        EntityWrite.nodeEdit("Renamed too", null, null, false, null, false),
+        EntityWrite.nodeEdit("Renamed too", null, null, false),
         "t");
     assertEquals(2, workEntities.listChildren(Archetype.FEATURE, epic.id).size());
     // And the markers are closed again — they move only at READY_FOR_DEV or IMPLEMENTING.
@@ -677,7 +674,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
                 workEntities.update(
                     Archetype.FEATURE,
                     feature.entity().id,
-                    EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                    EntityWrite.nodeEdit(null, null, WHEN, false),
                     "t"));
     assertTrue(refused.getMessage().contains("READY_FOR_DEV"), refused.getMessage());
   }
@@ -687,12 +684,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "t");
 
     // Nothing ships from a draft — neither setting the marker nor clearing it.
@@ -702,7 +699,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                EntityWrite.nodeEdit(null, null, WHEN, false),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -710,7 +707,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                EntityWrite.nodeEdit(null, null, null, true),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -718,7 +715,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.TASK,
                 task.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                EntityWrite.nodeEdit(null, null, WHEN, false),
                 "t"));
     assertThrows(
         ConflictException.class,
@@ -726,7 +723,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.TASK,
                 task.entity().id,
-                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                EntityWrite.nodeEdit(null, null, null, true),
                 "t"));
   }
 
@@ -744,12 +741,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   private Nested plannedTask(WorkEntity epic) {
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Task", null, null),
+            EntityWrite.task("repo-1", "Task", null),
             "t");
     return task;
   }
@@ -790,10 +787,10 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity draft = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, draft.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, draft.id, EntityWrite.feature("Feature", null), "t");
     Nested task =
         workEntities.create(
-            Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "T", null, null), "t");
+            Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "T", null), "t");
     assertThrows(
         ConflictException.class, () -> workEntities.markImplementing(task.entity().id, "agent"));
 
@@ -828,7 +825,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK,
             marked.parentId(),
-            EntityWrite.task("repo-1", "Skipped the mark", null, null),
+            EntityWrite.task("repo-1", "Skipped the mark", null),
             "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
@@ -851,7 +848,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     Nested task = plannedTask(epic);
     Nested other =
         workEntities.create(
-            Archetype.TASK, task.parentId(), EntityWrite.task("repo-1", "Other", null, null), "t");
+            Archetype.TASK, task.parentId(), EntityWrite.task("repo-1", "Other", null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", "t");
@@ -883,37 +880,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(EntityStatus.IMPLEMENTED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
   }
 
-  /**
-   * qits-650: a campaign's status is derived from its members, so no word of its walk is a manual
-   * move — IMPLEMENTING and VERIFYING included — and only its drop and its reopen are.
-   */
-  @Test
-  void aCampaignIsMovedByHandOnlyByItsDropAndReopen() {
-    WorkEntity campaign = workEntities.createCampaign("proj-1", "Ordering", null, "t");
-
-    for (String target :
-        List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED")) {
-      ConflictException refused =
-          assertThrows(
-              ConflictException.class,
-              () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, target, Mover.person("t")),
-              target);
-      assertTrue(refused.getMessage().contains("derived from its members"), refused.getMessage());
-    }
-    assertEquals(
-        EntityStatus.REPORTED.name(), workEntities.get(Archetype.CAMPAIGN, campaign.id).status);
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "DROPPED", "t", TestDrops.WONT_DO);
-    assertEquals(
-        EntityStatus.REPORTED.name(),
-        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REPORTED", "t").entity().status);
-  }
-
   @Test
   void oneCallCannotMixScopeAndMarkers() {
     WorkEntity epic = epic();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
     // No phase allows both, so the pair is refused whichever phase the epic is in.
@@ -923,7 +895,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             workEntities.update(
                 Archetype.FEATURE,
                 feature.entity().id,
-                EntityWrite.nodeEdit("Renamed", null, null, false, WHEN, false),
+                EntityWrite.nodeEdit("Renamed", null, WHEN, false),
                 "t"));
   }
 
@@ -938,12 +910,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
       WorkEntity epic = epic();
       Nested feature =
           workEntities.create(
-              Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+              Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
       Nested task =
           workEntities.create(
               Archetype.TASK,
               feature.entity().id,
-              EntityWrite.task("repo-1", "Task", null, null),
+              EntityWrite.task("repo-1", "Task", null),
               "t");
       workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
       for (String target : walk) {
@@ -961,14 +933,14 @@ class EpicLifecycleTest extends EntitiesTestSupport {
           ConflictException.class,
           () ->
               workEntities.create(
-                  Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null, null), "t"));
+                  Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null), "t"));
       assertThrows(
           ConflictException.class,
           () ->
               workEntities.update(
                   Archetype.FEATURE,
                   feature.entity().id,
-                  EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                  EntityWrite.nodeEdit("Renamed", null, null, false),
                   "t"));
       assertThrows(
           ConflictException.class,
@@ -976,7 +948,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
               workEntities.update(
                   Archetype.FEATURE,
                   feature.entity().id,
-                  EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                  EntityWrite.nodeEdit(null, null, WHEN, false),
                   "t"));
       assertThrows(
           ConflictException.class,
@@ -987,7 +959,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
               workEntities.update(
                   Archetype.TASK,
                   task.entity().id,
-                  EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                  EntityWrite.nodeEdit(null, null, WHEN, false),
                   "t"));
       assertThrows(
           ConflictException.class,
@@ -1000,7 +972,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     for (String target : List.of("REFINED", "DROPPED")) {
       WorkEntity epic = epic();
       workEntities.create(
-          Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+          Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null), "t");
       workEntities.transition(
           Archetype.EPIC, epic.id, target, Mover.person("t"), TestDrops.of(target));
       // Deleting removes the row rather than editing a frozen scope; the audit log outlives it.

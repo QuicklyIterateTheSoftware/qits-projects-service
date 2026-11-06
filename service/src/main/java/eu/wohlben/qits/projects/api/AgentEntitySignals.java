@@ -58,9 +58,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>Only a ticket and an epic</h2>
  *
- * <p>A campaign has a status and a block too (qits-592), but no agent session works a campaign — its
- * executor dispatches its members, each into a workspace of its own — so there is nobody whose name
- * to change. A feature and a task hold a status of their own since qits-763, and their moves are
+ * <p>A feature and a task hold a status of their own since qits-763, and their moves are
  * announced like any other, but no session is named after them — their agent works the epic.
  * The filter is here, once, so no trigger has to know it.
  *
@@ -93,7 +91,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
 
   /**
    * Tell every agent working {@code entity} its title, status and blocked flag as they stand on it.
-   * A no-op for anything but a ticket or an epic — and a campaign, whose refinement room alone is told. <b>Never throws.</b> The flag is the EFFECTIVE
+   * A no-op for anything but a ticket or an epic. <b>Never throws.</b> The flag is the EFFECTIVE
    * block (qits-895, {@code EntityBlockState}) — the explicit one, or the session itself standing
    * idle past the debounce — so the name pales while either holds; {@link AgentWaiting} calls this
    * when a derived block starts or ends. <b>The block's source rides beside the flag</b> —
@@ -172,15 +170,10 @@ public class AgentEntitySignals implements RetitleAnnouncer {
       boolean blocked,
       String blockSource,
       String blockedBy) {
-    if (archetype != Archetype.TICKET
-        && archetype != Archetype.EPIC
-        && archetype != Archetype.CAMPAIGN) {
+    if (archetype != Archetype.TICKET && archetype != Archetype.EPIC) {
       return;
     }
-    if (archetype != Archetype.CAMPAIGN) {
-      tellTheWorkspace(id, archetype, title, status, blocked, blockSource, blockedBy);
-    }
-    // A campaign has a refinement room too since epic qits-770, but no dispatched agent of its own.
+    tellTheWorkspace(id, archetype, title, status, blocked, blockSource, blockedBy);
     try {
       refinementSessions.entityChanged(id, title, status, blocked, blockSource);
     } catch (RuntimeException e) {

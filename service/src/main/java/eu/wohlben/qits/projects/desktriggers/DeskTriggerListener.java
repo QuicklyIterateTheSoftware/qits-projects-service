@@ -53,7 +53,7 @@ import org.jboss.logging.Logger;
  *
  * <p>The library runs {@link #onFrame} inside its claim transaction, which already holds a
  * connection of the {@code eventstream} datasource, and Narayana refuses a second non-XA resource in
- * one transaction ({@code CampaignCriteriaListener}'s javadoc has the measurement). So the frame's
+ * one transaction ({@code ARJUNA016045}, measured in qits-416). So the frame's
  * whole {@code projects} work — the sources' reads, the checks, the admits — runs in {@link
  * QuarkusTransaction#requiringNew()}, which suspends the claim. A failure there throws out of
  * {@code onFrame} and the frame stays owed; the redelivery admits nothing twice, because a repeat

@@ -30,7 +30,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The refinement lifecycle: find-or-create keyed by entity (an epic, a ticket or a campaign), the
+ * The refinement lifecycle: find-or-create keyed by entity (an epic or a ticket), the
  * session's demand (ensure, stop), discard, and the row projection the status strip reads.
  *
  * <p><b>Every room is a session room</b> (epic qits-770): one more session of the project's front
@@ -93,7 +93,7 @@ public class RefinementService {
   // ---- find or create ----------------------------------------------------------------------
 
   /**
-   * The refinement of {@code entityId} — an epic, a ticket or a campaign — created if it has none,
+   * The refinement of {@code entityId} — an epic or a ticket — created if it has none,
    * and its session asked for. Creation needs the entity itself — its archetype and status gate the
    * open — so an unknown id 404s here and nothing is half-made.
    *
@@ -102,8 +102,7 @@ public class RefinementService {
    * <ol>
    *   <li><b>A piece of a plan</b> — a feature or a task is a <b>409</b>. It holds a status since
    *       qits-763, but no phase runs on it, and its scope is its epic's: the room to open is the
-   *       epic's. A campaign is refined like an epic (epic qits-770): its room's scope is the
-   *       campaign and its REPORTED members.
+   *       epic's. An issue runs no phase either, and is refused the same way.
    *   <li><b>Not REPORTED</b> — a <b>409</b> naming the status. Refinement is the REPORTED phase and
    *       scope is editable only there ({@code EntityLifecycle.requireReported}), for every
    *       archetype; a room on a frozen scope would be a room whose every write is refused.
@@ -140,15 +139,13 @@ public class RefinementService {
     }
     WorkEntity entity = entities.get(entityId); // 404, of any archetype
     String noun = nounOf(entity);
-    if (entity.archetype != Archetype.EPIC
-        && entity.archetype != Archetype.TICKET
-        && entity.archetype != Archetype.CAMPAIGN) {
+    if (entity.archetype != Archetype.EPIC && entity.archetype != Archetype.TICKET) {
       throw new DomainException(
           409,
           "A "
               + noun
-              + " runs no phase of its own, so it is not refined on its own — only an epic, a"
-              + " ticket or a campaign opens a refinement. Refine the epic it belongs to.");
+              + " runs no phase of its own, so it is not refined on its own — only an epic or a"
+              + " ticket opens a refinement. Refine the epic it belongs to.");
     }
     // The merged row stores the status word, so REPORTED is compared by name against the column.
     if (!EntityStatus.REPORTED.name().equals(entity.status)) {

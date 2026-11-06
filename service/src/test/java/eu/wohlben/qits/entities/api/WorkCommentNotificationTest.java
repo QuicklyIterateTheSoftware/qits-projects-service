@@ -95,9 +95,9 @@ class WorkCommentNotificationTest {
     otherTicket =
         create(Archetype.TICKET, projectId, EntityWrite.ticket("Agent A's own", "it occurs", null, "BUG", null));
     epic = create(Archetype.EPIC, projectId, EntityWrite.epic("The plan", "the pitch"));
-    WorkEntity feature = create(Archetype.FEATURE, epic.id, EntityWrite.feature("A part", null, null));
+    WorkEntity feature = create(Archetype.FEATURE, epic.id, EntityWrite.feature("A part", null));
     task =
-        create(Archetype.TASK, feature.id, EntityWrite.task(repositoryId, "A step", null, null));
+        create(Archetype.TASK, feature.id, EntityWrite.task(repositoryId, "A step", null));
   }
 
   @AfterEach

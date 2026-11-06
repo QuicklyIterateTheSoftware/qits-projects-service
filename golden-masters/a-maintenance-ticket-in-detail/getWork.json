@@ -1,12 +1,12 @@
 {
-  "id": "00000000-0000-4000-8000-00000000000c",
+  "id": "00000000-0000-4000-8000-00000000000b",
   "archetype": "TICKET",
-  "projectId": "00000000-0000-4000-8000-00000000000f",
-  "number": 12,
-  "qualifiedId": "contract-00000001-12",
+  "projectId": "00000000-0000-4000-8000-00000000000e",
+  "number": 11,
+  "qualifiedId": "contract-00000001-11",
   "title": "Release request for billing-service is stuck",
   "slug": "release-request-for-billing-service-is-stuck",
-  "slugScope": "00000000-0000-4000-8000-00000000000f",
+  "slugScope": "00000000-0000-4000-8000-00000000000e",
   "description": null,
   "status": "REPORTED",
   "statusBefore": null,
@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -31,8 +30,6 @@
     "It does what it says."
   ],
   "tags": [],
-  "milestones": [],
-  "unmetMilestones": 0,
   "needs": [],
   "unmetNeeds": 0
 }

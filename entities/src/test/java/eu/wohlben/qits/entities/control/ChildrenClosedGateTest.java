@@ -1,17 +1,10 @@
-package eu.wohlben.qits.entities.campaign;
+package eu.wohlben.qits.entities.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.entities.control.EntitiesTestSupport;
-import eu.wohlben.qits.entities.control.EntityStateMachine;
-import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.Mover;
-import eu.wohlben.qits.entities.control.PersonApprovalGate;
-import eu.wohlben.qits.entities.control.TestDrops;
-import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -27,7 +20,7 @@ import org.junit.jupiter.api.Test;
  * — from every open status it holds but VERIFIED, when every direct child is DONE or DROPPED and a
  * person or the project's delivery desk makes the move. An open child is named in the 409, an item
  * with no children is refused, VERIFIED is not closed, and VERIFIED → DONE stays the walk's ungated
- * FORWARD. A campaign is served no CLOSE since qits-650: its DONE is derived from its members.
+ * FORWARD.
  */
 @QuarkusTest
 class ChildrenClosedGateTest extends EntitiesTestSupport {
@@ -37,31 +30,10 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
   private static final Mover PERSON = Mover.person(WHO);
 
   @Inject WorkEntityService workEntities;
-  @Inject CampaignService campaigns;
 
   private final ChildrenClosedGate gate = new ChildrenClosedGate();
 
   // --- every open status ---------------------------------------------------------------------------
-
-  /** A campaign's DONE is derived from its members (qits-650): it has no CLOSE to judge. */
-  @Test
-  void aCampaignIsNeverClosedByHand() {
-    WorkEntity done = done(ticket("Done member"));
-    WorkEntity campaign = campaignOf(done);
-    assertEquals("DONE", status(campaign), "an all-DONE membership derives DONE on its own");
-
-    WorkEntity open = workEntities.createCampaign(PROJECT, "Still open", null, WHO);
-    campaigns.addMember(open.id, ticket("Open member").id, null, false, WHO);
-    ConflictException refusal =
-        assertThrows(
-            ConflictException.class,
-            () -> workEntities.transition(Archetype.CAMPAIGN, open.id, "DONE", PERSON));
-    assertTrue(refusal.getMessage().contains("derived from its members"), refusal.getMessage());
-    assertFalse(refusal.getMessage().contains(ChildrenClosedGate.NAME), refusal.getMessage());
-    for (EntityStatus from : EntityStatus.values()) {
-      assertFalse(gate.appliesTo(Archetype.CAMPAIGN, from, EntityStatus.DONE), "from " + from);
-    }
-  }
 
   @Test
   void anEpicClosesFromEveryOpenStatusButVerified() {
@@ -333,15 +305,6 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
 
   // --- fixtures ------------------------------------------------------------------------------------
 
-  /** A REPORTED campaign holding {@code members} in order. */
-  private WorkEntity campaignOf(WorkEntity... members) {
-    WorkEntity campaign = workEntities.createCampaign(PROJECT, "The order", null, WHO);
-    for (WorkEntity member : members) {
-      campaigns.addMember(campaign.id, member.id, null, false, WHO);
-    }
-    return campaign;
-  }
-
   private WorkEntity done(WorkEntity ticket) {
     return walk(ticket, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
   }
@@ -369,13 +332,13 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
 
   private WorkEntity feature(WorkEntity epic, String title) {
     return workEntities
-        .create(Archetype.FEATURE, epic.id, EntityWrite.feature(title, null, null), WHO)
+        .create(Archetype.FEATURE, epic.id, EntityWrite.feature(title, null), WHO)
         .entity();
   }
 
   private WorkEntity task(WorkEntity feature, String title) {
     return workEntities
-        .create(Archetype.TASK, feature.id, EntityWrite.task("repo-1", title, null, null), WHO)
+        .create(Archetype.TASK, feature.id, EntityWrite.task("repo-1", title, null), WHO)
         .entity();
   }
 

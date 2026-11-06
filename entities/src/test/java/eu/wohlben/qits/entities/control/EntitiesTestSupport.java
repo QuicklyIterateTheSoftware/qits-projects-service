@@ -69,8 +69,6 @@ public abstract class EntitiesTestSupport {
               workEntityRepository.deleteAll();
               // After the work naming them (qits-1387); enabled_by is set null by its own FK.
               ideaRepository.deleteAll();
-              // Milestones (V38) hang off no entity; their groups, criteria and waits cascade.
-              epicsEntityManager.createNativeQuery("delete from milestone").executeUpdate();
               // The allocator's counters go with the rows they numbered. In production a number is
               // NEVER reused, which is exactly why this line is needed here: without it the counter
               // survives the wipe and the next test's first epic is numbered by however many rows

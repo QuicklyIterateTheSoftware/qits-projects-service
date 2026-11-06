@@ -38,7 +38,6 @@ public class WorkRefinementControllerTest {
   @Inject RecordingWorkspaceAgentDispatch workspaces;
 
 
-  @Inject eu.wohlben.qits.entities.control.WorkEntityService campaigns;
 
 
   @BeforeEach
@@ -182,39 +181,6 @@ public class WorkRefinementControllerTest {
         .get("/projects/api/projects/" + projectId + "/refinements")
         .then()
         .body("refinements.size()", equalTo(0));
-  }
-
-  /**
-   * A campaign is refined like an epic since epic qits-770 (the qits-411 refusal is gone): its room
-   * is a session of the desk, and a campaign past REPORTED is refused as an epic would be.
-   */
-  @Test
-  public void aCampaignOpensARoomAndAFrozenOneIsRefused() {
-    String projectId = createProject("Refine Campaign");
-    String campaignId =
-        campaigns.createCampaign(projectId, "Spring cleaning", null, "dana").id;
-
-    open(campaignId).then().statusCode(200).body("refinement.entityId", equalTo(campaignId));
-    asAdmin()
-        .when()
-        .get("/projects/api/projects/" + projectId + "/refinements")
-        .then()
-        .body("refinements.size()", equalTo(1));
-
-    String frozen = campaigns.createCampaign(projectId, "Summer cleaning", null, "dana").id;
-    // Its status is derived from its members (qits-650): one REFINED member makes it REFINED.
-    String member = createTicket(projectId, "Decided already");
-    transition(member, "REFINED");
-    asAdmin()
-        .body(java.util.Map.of("entityId", member))
-        .when()
-        .post("/projects/api/work/" + frozen + "/members")
-        .then()
-        .statusCode(201);
-    open(frozen)
-        .then()
-        .statusCode(409)
-        .body("message", containsString("only a REPORTED campaign can be refined"));
   }
 
   @Test

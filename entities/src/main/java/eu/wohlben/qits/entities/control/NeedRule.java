@@ -7,8 +7,7 @@ import java.util.List;
 /**
  * <b>When a need is met</b> (qits-1903): the one comparison every reader of a need makes — the
  * work reads' {@code met}, the dispatch gate, the phase advance's hold and {@code WorkNeedMet}'s
- * flip. Moved here from {@code MilestoneService.reached}, which delegates to it until qits-1908
- * deletes the milestones.
+ * flip.
  */
 public final class NeedRule {
 

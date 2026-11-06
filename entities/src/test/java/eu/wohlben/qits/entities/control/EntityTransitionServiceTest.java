@@ -14,7 +14,6 @@ import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.EntityStatus;
-import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
@@ -28,7 +27,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -84,19 +82,19 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.FEATURE,
             epic.id,
-            EntityWrite.feature("The part", "a part of the plan", null),
+            EntityWrite.feature("The part", "a part of the plan"),
             WHO);
     Nested staying =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "Stays", null, null),
+            EntityWrite.task("repo-1", "Stays", null),
             WHO);
     Nested moving =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-2", "Moves", null, null),
+            EntityWrite.task("repo-2", "Moves", null),
             WHO);
 
     Map<String, TransitionedEntity> after =
@@ -158,12 +156,12 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null), WHO);
     Nested task =
         workEntities.create(
             Archetype.TASK,
             feature.entity().id,
-            EntityWrite.task("repo-1", "The work", null, null),
+            EntityWrite.task("repo-1", "The work", null),
             WHO);
 
     BadRequestException refusal =
@@ -186,7 +184,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             null,
                             null, // no repository id, which a TASK requires
-                            null,
                             null,
                             null)),
                     WHO));
@@ -220,13 +217,13 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested one =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("First", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("First", null), WHO);
     Nested two =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Second", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Second", null), WHO);
     Nested three =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Third", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Third", null), WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
@@ -408,7 +405,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             null,
             null,
             null,
-            null,
             CRITERIA);
     ConflictException refusal =
         assertThrows(
@@ -451,7 +447,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
               target.name(),
               TicketType.BUG,
               "it occurs",
-              null,
               null,
               null,
               null,
@@ -583,10 +578,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested promoted =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Becomes an epic", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Becomes an epic", null), WHO);
     Nested child =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Goes under it", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Goes under it", null), WHO);
 
     transitions.transition(
         stated(
@@ -613,7 +608,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null), WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -727,7 +722,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             null,
                             null,
-                            null,
                             null)),
                     WHO));
     assertTrue(refusal.getMessage().contains("has no impetus"), refusal.getMessage());
@@ -812,7 +806,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The part", null), WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -827,7 +821,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             "The part",
                             null,
                             "IN_PROGRESS", // layer one: no lifecycle spells this word
-                            null,
                             null,
                             null,
                             null,
@@ -858,10 +851,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     Nested moving =
         workEntities.create(
-            Archetype.FEATURE, here.id, EntityWrite.feature("Shared name", null, null), WHO);
+            Archetype.FEATURE, here.id, EntityWrite.feature("Shared name", null), WHO);
     Nested resident =
         workEntities.create(
-            Archetype.FEATURE, there.id, EntityWrite.feature("Shared name", null, null), WHO);
+            Archetype.FEATURE, there.id, EntityWrite.feature("Shared name", null), WHO);
     assertEquals(moving.entity().slug, resident.entity().slug, "two epics may each hold this slug — that is the trap");
 
     BadRequestException refusal =
@@ -897,7 +890,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Really a bug", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Really a bug", null), WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
@@ -911,7 +904,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                     EntityStatus.REPORTED.name(),
                     TicketType.BUG,
                     null, // no impetus: the column allows it and an update may not demand it
-                    null,
                     null,
                     null,
                     null,
@@ -939,7 +931,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Really a bug", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Really a bug", null), WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -955,7 +947,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             "REFINING", // a retired epic word, in no lifecycle any more
                             null, // and no ticket type
-                            null,
                             null,
                             null,
                             null,
@@ -997,11 +988,11 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested a =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), WHO);
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null), WHO);
     Nested b =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, null), WHO);
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null), WHO);
     Nested c =
-        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null, null), WHO);
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null), WHO);
 
     transitions.transition(stated(c.entity().id, featureEntry(epic.id, 0, "C")), WHO);
     inFreshTx(
@@ -1029,10 +1020,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested one =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("First", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("First", null), WHO);
     Nested two =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Second", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Second", null), WHO);
 
     Instant before = Instant.now();
     transitions.transition(
@@ -1066,7 +1057,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested feature =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Lifted", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Lifted", null), WHO);
 
     transitions.transition(
         stated(
@@ -1101,10 +1092,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .entity();
     Nested staying =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Stays", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Stays", null), WHO);
     Nested leaving =
         workEntities.create(
-            Archetype.FEATURE, epic.id, EntityWrite.feature("Leaves", null, null), WHO);
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Leaves", null), WHO);
 
     transitions.transition(
         stated(
@@ -1121,163 +1112,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertEquals(
         leaving.entity().id, ticketLog.get(0).epicId, "a ticket carries its own id as the subtree key");
     assertNotNull(ticketLog.get(0).snapshot);
-  }
-
-  // --- a campaign's lifecycle is not this door's (qits-411) ----------------
-
-  private static final String CAMPAIGN_DOORS =
-      "move a campaign through POST /projects/api/work/{qualifiedId}/status; create one through"
-          + " POST /projects/api/work";
-
-  @Test
-  void aCampaignsStatusIsNotMovedThroughThisDoor() {
-    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Spring", null, WHO);
-
-    ConflictException refusal =
-        assertThrows(
-            ConflictException.class,
-            () ->
-                transitions.transition(
-                    stated(campaign.id, campaignEntry("Spring", null, EntityStatus.REFINED)), WHO));
-    assertEquals(409, refusal.statusCode());
-    assertTrue(refusal.getMessage().contains("campaign " + campaign.id), refusal.getMessage());
-    assertTrue(refusal.getMessage().contains(CAMPAIGN_DOORS), refusal.getMessage());
-
-    inFreshTx(
-        () ->
-            assertEquals(EntityStatus.REPORTED.name(), entities.findById(campaign.id).status));
-    assertTrue(announcer.batches().isEmpty(), "a refused transition announces nothing");
-  }
-
-  @Test
-  void nothingBecomesACampaignAndACampaignBecomesNothingElseThroughThisDoor() {
-    WorkEntity epic =
-        workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("To be gathered", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
-            .entity();
-    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Summer", null, WHO);
-
-    ConflictException intoCampaign =
-        assertThrows(
-            ConflictException.class,
-            () ->
-                transitions.transition(
-                    stated(epic.id, campaignEntry("To be gathered", null, EntityStatus.REPORTED)),
-                    WHO));
-    assertTrue(
-        intoCampaign.getMessage().contains(epic.id + " is a EPIC and would become a campaign"),
-        intoCampaign.getMessage());
-
-    ConflictException outOfCampaign =
-        assertThrows(
-            ConflictException.class,
-            () ->
-                transitions.transition(
-                    stated(campaign.id, epicEntry("Summer", null, null, EntityStatus.REPORTED)),
-                    WHO));
-    assertTrue(
-        outOfCampaign.getMessage().contains(campaign.id + " is a campaign and would become a EPIC"),
-        outOfCampaign.getMessage());
-    assertTrue(outOfCampaign.getMessage().contains(CAMPAIGN_DOORS), outOfCampaign.getMessage());
-
-    inFreshTx(
-        () -> {
-          assertEquals(Archetype.EPIC, entities.findById(epic.id).archetype);
-          assertEquals(Archetype.CAMPAIGN, entities.findById(campaign.id).archetype);
-        });
-  }
-
-  @Test
-  void aCampaignIsNotCreatedThroughThisDoor() {
-    ConflictException refusal =
-        assertThrows(
-            ConflictException.class,
-            () ->
-                transitions.transition(
-                    stated("new-campaign", campaignEntry("Autumn", null, EntityStatus.REPORTED)),
-                    WHO));
-    assertTrue(refusal.getMessage().contains("new-campaign states a new campaign"), refusal.getMessage());
-    assertTrue(refusal.getMessage().contains(CAMPAIGN_DOORS), refusal.getMessage());
-    inFreshTx(() -> assertNull(entities.findById("new-campaign")));
-  }
-
-  @Test
-  void aCampaignsTitleAndDescriptionMayBeEditedHereWithItsStatusRestated() {
-    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Winter", null, WHO);
-
-    Map<String, TransitionedEntity> written =
-        transitions.transition(
-            stated(
-                campaign.id, campaignEntry("Winter, renamed", "the order", EntityStatus.REPORTED)),
-            WHO);
-
-    assertEquals("Winter, renamed", written.get(campaign.id).title());
-    inFreshTx(
-        () -> {
-          WorkEntity stored = entities.findById(campaign.id);
-          assertEquals("Winter, renamed", stored.title);
-          assertEquals("the order", stored.description);
-          assertEquals(EntityStatus.REPORTED.name(), stored.status);
-          assertEquals(Archetype.CAMPAIGN, stored.archetype);
-        });
-  }
-
-  // --- a campaign edge is not the tree (qits-412) --------------------------
-
-  /**
-   * <b>A reshape rewrites the tree and nothing else.</b> A feature that a campaign gathers is moved
-   * to another epic; its structural edge moves, and its CAMPAIGN edge — inserted directly, since no
-   * door writes one yet — survives with the same id, parent and position. Were {@code
-   * replaceMemberships} to read or delete edges of every kind, the reshape would silently take the
-   * feature out of the campaign.
-   */
-  @Test
-  void aReshapeLeavesTheCampaignEdgesOfWhatItMovesStanding() {
-    WorkEntity here =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
-    WorkEntity there =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
-    Nested feature =
-        workEntities.create(
-            Archetype.FEATURE, here.id, EntityWrite.feature("Gathered", null, null), WHO);
-    WorkEntity campaign = workEntities.createCampaign(PROJECT, "The order", null, WHO);
-    String campaignEdge = gather(campaign.id, feature.entity().id);
-
-    transitions.transition(
-        stated(feature.entity().id, featureEntry(there.id, 0, "Gathered")), WHO);
-
-    inFreshTx(
-        () -> {
-          assertEquals(
-              there.id,
-              memberships.structuralMembershipOf(feature.entity().id).orElseThrow().parentId,
-              "the tree edge moved");
-          List<EntityMembership> gathered = memberships.campaignMembershipsOf(feature.entity().id);
-          assertEquals(1, gathered.size(), "the campaign edge survived the reshape");
-          assertEquals(campaignEdge, gathered.get(0).id);
-          assertEquals(campaign.id, gathered.get(0).parentId);
-          assertEquals(0, gathered.get(0).position);
-          assertEquals(MembershipKind.CAMPAIGN, gathered.get(0).kind);
-          assertTrue(childIdsOf(campaign.id).isEmpty(), "a campaign has no structural children");
-          assertEquals(List.of(feature.entity().id), childIdsOf(there.id));
-          assertTrue(childIdsOf(here.id).isEmpty());
-        });
-  }
-
-  /** A CAMPAIGN edge from {@code campaignId} to {@code childId}, appended, committed; its id. */
-  private String gather(String campaignId, String childId) {
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () -> {
-              EntityMembership edge = new EntityMembership();
-              edge.id = UUID.randomUUID().toString();
-              edge.kind = MembershipKind.CAMPAIGN;
-              edge.parentId = campaignId;
-              edge.childId = childId;
-              edge.position = memberships.campaignMaxPosition(campaignId) + 1;
-              memberships.persist(edge);
-              return edge.id;
-            });
   }
 
   // --- why a stated DROPPED was closed (qits-248) ----------------------------
@@ -1304,7 +1138,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         "it came up",
         null,
         supersededBy,
-        null,
         null,
         null,
         null,
@@ -1478,26 +1311,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         null,
-        null,
         acceptanceCriteria);
-  }
-
-  private static EntityTransition campaignEntry(
-      String title, String description, EntityStatus status) {
-    return new EntityTransition(
-        Archetype.CAMPAIGN,
-        null,
-        title,
-        description,
-        status == null ? null : status.name(),
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
   }
 
   private static EntityTransition ticketEntry(String title, String impetus) {
@@ -1513,7 +1327,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         null,
-        null,
         null);
   }
 
@@ -1525,7 +1338,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         title,
         null,
         "REPORTED",
-        null,
         null,
         null,
         null,
@@ -1549,7 +1361,6 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         repositoryId,
-        null,
         null,
         null);
   }

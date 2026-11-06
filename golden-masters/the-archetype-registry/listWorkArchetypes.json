@@ -12,7 +12,6 @@
     "REPOSITORY_ID",
     "IMPLEMENTED_AT",
     "IMPLEMENTING_AT",
-    "DEPENDS_ON",
     "ACCEPTANCE_CRITERIA",
     "RELATED_TO"
   ],
@@ -25,7 +24,6 @@
       "archetype": "EPIC",
       "depth": 0,
       "mayBeRoot": true,
-      "gathers": false,
       "required": [
         "TITLE"
       ],
@@ -363,7 +361,6 @@
       "archetype": "TICKET",
       "depth": 0,
       "mayBeRoot": true,
-      "gathers": false,
       "required": [
         "TITLE",
         "STATUS",
@@ -673,7 +670,6 @@
       "archetype": "FEATURE",
       "depth": 1,
       "mayBeRoot": false,
-      "gathers": false,
       "required": [
         "TITLE"
       ],
@@ -690,8 +686,7 @@
         "DESCRIPTION",
         "STATUS",
         "IMPLEMENTED_AT",
-        "IMPLEMENTING_AT",
-        "DEPENDS_ON"
+        "IMPLEMENTING_AT"
       ],
       "legalStatuses": [
         "DONE",
@@ -873,7 +868,6 @@
       "archetype": "TASK",
       "depth": 2,
       "mayBeRoot": false,
-      "gathers": false,
       "required": [
         "TITLE",
         "REPOSITORY_ID"
@@ -894,8 +888,7 @@
         "STATUS",
         "REPOSITORY_ID",
         "IMPLEMENTED_AT",
-        "IMPLEMENTING_AT",
-        "DEPENDS_ON"
+        "IMPLEMENTING_AT"
       ],
       "legalStatuses": [
         "DONE",
@@ -1032,90 +1025,9 @@
       "phases": {}
     },
     {
-      "archetype": "CAMPAIGN",
-      "depth": -1,
-      "mayBeRoot": true,
-      "gathers": true,
-      "required": [
-        "TITLE"
-      ],
-      "requiredAtCreate": [
-        "TITLE"
-      ],
-      "requiredOnTransition": [
-        "TITLE",
-        "STATUS"
-      ],
-      "permitted": [
-        "TITLE",
-        "SLUG",
-        "DESCRIPTION",
-        "STATUS"
-      ],
-      "legalStatuses": [
-        "DONE",
-        "DROPPED",
-        "IMPLEMENTED",
-        "READY_FOR_DEV",
-        "REFINED",
-        "REPORTED",
-        "VERIFIED"
-      ],
-      "transitions": {
-        "REPORTED": [
-          {
-            "to": "DROPPED",
-            "kind": "DROP"
-          }
-        ],
-        "REFINED": [
-          {
-            "to": "DROPPED",
-            "kind": "DROP"
-          }
-        ],
-        "READY_FOR_DEV": [
-          {
-            "to": "DROPPED",
-            "kind": "DROP"
-          }
-        ],
-        "IMPLEMENTED": [
-          {
-            "to": "DROPPED",
-            "kind": "DROP"
-          }
-        ],
-        "VERIFIED": [
-          {
-            "to": "DROPPED",
-            "kind": "DROP"
-          }
-        ],
-        "DONE": [],
-        "DROPPED": [
-          {
-            "to": "REPORTED",
-            "kind": "REOPEN"
-          }
-        ]
-      },
-      "lifecycle": [
-        "REPORTED",
-        "REFINED",
-        "READY_FOR_DEV",
-        "IMPLEMENTED",
-        "VERIFIED",
-        "DONE",
-        "DROPPED"
-      ],
-      "phases": {}
-    },
-    {
       "archetype": "ISSUE",
       "depth": 0,
       "mayBeRoot": true,
-      "gathers": false,
       "required": [
         "TITLE",
         "DESCRIPTION"

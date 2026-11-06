@@ -26,10 +26,9 @@ import org.junit.jupiter.api.Test;
 /**
  * The work family's sub-resources ({@code /projects/api/work/{qualifiedId}/…}, qits-970) over HTTP:
  * the dossier (pages by slug, the id as a fallback), the epic's figures, the children, the history,
- * a campaign's progress and membership, the dispatch, the refinement room and the delete — each
- * reached by a qualified id in its path, and every entity id a body carries accepted as a qualified
- * id (a member's {@code entityId}, a condition's {@code predicate.entityId}, a child's {@code
- * needs}, since qits-1903 retired {@code dependsOn}). The rules behind each are the per-archetype routes' and asserted in their suites;
+ * the dispatch, the refinement room and the delete — each reached by a qualified id in its path, and
+ * every entity id a body carries accepted as a qualified id (a child's {@code needs}, since qits-1903
+ * retired {@code dependsOn}). The rules behind each are the per-archetype routes' and asserted in their suites;
  * this class is about the addresses and the ids.
  *
  * <p>Fixtures are written through the older doors ({@link EntityFixtures}), never through the route
@@ -129,7 +128,6 @@ class WorkSubresourcesApiTest {
   void anArchetypeWithNoDossierIsNotFound() {
     EntityFixtures.Project project = EntityFixtures.project("Work No Dossier");
     String feature = EntityFixtures.feature(EntityFixtures.epic(project.id()));
-    String campaign = EntityFixtures.campaign(project.id());
 
     given()
         .when()
@@ -137,7 +135,6 @@ class WorkSubresourcesApiTest {
         .then()
         .statusCode(404)
         .body("message", containsString("has no dossier"));
-    given().when().get(WORK + EntityFixtures.qualifiedId(campaign) + "/dossier").then().statusCode(404);
     given()
         .when()
         .get(WORK + EntityFixtures.qualifiedId(feature) + "/dossier-assets")
@@ -342,121 +339,13 @@ class WorkSubresourcesApiTest {
   // --- the delete ------------------------------------------------------------------------------
 
   @Test
-  void anEntityIsDeletedByQualifiedIdAndACampaignIsNot() {
+  void anEntityIsDeletedByQualifiedId() {
     EntityFixtures.Project project = EntityFixtures.project("Work Delete");
     String ticket = EntityFixtures.ticket(project.id());
-    String campaign = EntityFixtures.campaign(project.id());
     String qualified = EntityFixtures.qualifiedId(ticket);
 
     send("DELETE", WORK + qualified, null).statusCode(200).body("success", equalTo(true));
     given().when().get(WORK + ticket).then().statusCode(404);
-    send("DELETE", WORK + EntityFixtures.qualifiedId(campaign), null)
-        .statusCode(409)
-        .body("message", containsString("drop it"));
-  }
-
-  // --- a campaign ------------------------------------------------------------------------------
-
-  @Test
-  void aCampaignsMembersAreWrittenByQualifiedIds() {
-    EntityFixtures.Project project = EntityFixtures.project("Work Members");
-    String campaign = EntityFixtures.campaign(project.id());
-    String first = EntityFixtures.ticket(project.id());
-    String second = EntityFixtures.ticket(project.id());
-    String members = WORK + EntityFixtures.qualifiedId(campaign) + "/members";
-
-    String firstMembership =
-        send("POST", members, map("entityId", EntityFixtures.qualifiedId(first)))
-            .statusCode(201)
-            .body("member.entity.id", equalTo(first))
-            .extract()
-            .path("member.membershipId");
-    String secondMembership =
-        send("POST", members, map("entityId", second))
-            .statusCode(201)
-            .extract()
-            .path("member.membershipId");
-    send("POST", members, map("entityId", project.slug() + "-99999")).statusCode(404);
-
-    given()
-        .when()
-        .get(members)
-        .then()
-        .statusCode(200)
-        .body("members", hasSize(2))
-        .body("members[0].membershipId", equalTo(firstMembership));
-
-    send("PUT", members + "/" + secondMembership + "/position", map("position", 0))
-        .statusCode(200)
-        .body("members[0].membershipId", equalTo(secondMembership));
-
-    // A condition naming its target by qualified id is stored by UUID.
-    send(
-            "PUT",
-            members + "/" + firstMembership + "/condition",
-            Map.of(
-                "groups",
-                List.of(
-                    Map.of(
-                        "criteria",
-                        List.of(
-                            Map.of(
-                                "kind",
-                                "ENTITY_STATUS",
-                                "predicate",
-                                Map.of(
-                                    "entityId",
-                                    EntityFixtures.qualifiedId(second),
-                                    "status",
-                                    "VERIFIED")),
-                            Map.of("kind", "APPROVAL"))))))
-        .statusCode(200)
-        .body("member.groups[0].criteria[0].predicate.entityId", equalTo(second));
-
-    String approval =
-        given()
-            .when()
-            .get(members)
-            .then()
-            .extract()
-            .path("members.find { it.membershipId == '" + firstMembership + "' }.groups[0].criteria.find { it.kind == 'APPROVAL' }.id");
-    // Approve is a person's: asserted headers alone are refused, a session is a person.
-    send(
-            "POST",
-            members + "/" + firstMembership + "/criteria/" + approval + "/approve",
-            map("note", "ok"))
-        .statusCode(403);
-    given()
-        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dana"))
-        .contentType(ContentType.JSON)
-        .body(map("note", "Signed off."))
-        .when()
-        .post(members + "/" + firstMembership + "/criteria/" + approval + "/approve")
-        .then()
-        .statusCode(200)
-        .body("member.membershipId", equalTo(firstMembership));
-
-    send("DELETE", members + "/" + secondMembership, null)
-        .statusCode(409); // the first member's criterion targets it
-    send(
-            "PUT",
-            members + "/" + firstMembership + "/condition",
-            Map.of("groups", List.of()))
-        .statusCode(200);
-    send("DELETE", members + "/" + secondMembership, null)
-        .statusCode(200)
-        .body("members", hasSize(1))
-        .body("members[0].membershipId", equalTo(firstMembership));
-
-    given()
-        .when()
-        .get(WORK + EntityFixtures.qualifiedId(campaign) + "/progress")
-        .then()
-        .statusCode(200)
-        .body("progress", notNullValue());
-    // Members and progress are a campaign's.
-    given().when().get(WORK + EntityFixtures.qualifiedId(first) + "/members").then().statusCode(404);
-    given().when().get(WORK + EntityFixtures.qualifiedId(first) + "/progress").then().statusCode(404);
   }
 
   // --- the dispatch and the refinement room ----------------------------------------------------

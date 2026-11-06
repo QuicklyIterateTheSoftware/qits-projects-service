@@ -37,7 +37,7 @@ public record ProjectChangeHint(String projectId, Topic topic) {
 
     /**
      * <b>The topic a write about an entity of {@code archetype} redraws</b> — {@link #TICKETS} for a
-     * ticket, {@link #EPICS} for every other archetype (an epic, a feature, a task, a campaign).
+     * ticket, {@link #EPICS} for every other archetype (an epic, a feature, a task, an issue).
      * Read by the writers that address an entity of any kind, a comment above all (qits-551), so
      * the rule the two topics split on is stated once.
      */

@@ -115,29 +115,6 @@ class EntityBlockApiTest {
     thread(epic).body("entries", hasSize(2)).body("entries[1].comment.body", equalTo("Unblocked."));
   }
 
-  /** A campaign, the same way: its read and its project's listing carry the flag. */
-  @Test
-  void aCampaignIsBlockedAndUnblocked() {
-    EntityFixtures.Project project = EntityFixtures.project("Block Campaign");
-    String campaign = EntityFixtures.campaign(project.id());
-
-    setBlocked(campaign, true, "an operator has to widen the runner pool first")
-        .statusCode(200)
-        .body("block.archetype", equalTo("CAMPAIGN"))
-        .body("block.blocked", equalTo(true));
-    blocked(campaign, true);
-    given()
-        .queryParam("archetype", "campaign")
-        .get("/projects/api/projects/" + project.id() + "/work")
-        .then()
-        .body("entities[0].blocked", equalTo(true));
-    thread(campaign)
-        .body("entries[0].comment.body", containsString("widen the runner pool"));
-
-    setBlocked(campaign, false, "it was widened").statusCode(200).body("block.blocked", equalTo(false));
-    blocked(campaign, false);
-  }
-
   /** Absent and blank are one 400, and nothing is written — neither the flag nor the thread. */
   @Test
   void blockingWithNoStatedBlockerIsA400() {
@@ -222,41 +199,6 @@ class EntityBlockApiTest {
         .body("message", not(containsString("no phase left to start")));
   }
 
-  /** A blocked campaign reads not dispatchable, and its start press is a 409 naming the block. */
-  @Test
-  void aBlockedCampaignIsNotStarted() {
-    EntityFixtures.Project project = EntityFixtures.project("Block Dispatch Campaign");
-    String campaign = EntityFixtures.campaign(project.id());
-    setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
-
-    given()
-        .get("/projects/api/work/" + campaign + "/dispatch")
-        .then()
-        .statusCode(200)
-        .body("state.blocked", equalTo(true))
-        .body("state.dispatchable", equalTo(false));
-    given()
-        .contentType(ContentType.JSON)
-        .body(map("mode", "FLOW"))
-        .when()
-        .post("/projects/api/work/" + campaign + "/dispatch")
-        .then()
-        .statusCode(409)
-        .body("message", containsString("Campaign " + campaign + " is blocked"));
-    given()
-        .get("/projects/api/work/" + campaign + "/progress")
-        .then()
-        .statusCode(200)
-        .body("progress.campaign.start", org.hamcrest.Matchers.nullValue());
-
-    setBlocked(campaign, false, null).statusCode(200);
-    given()
-        .get("/projects/api/work/" + campaign + "/dispatch")
-        .then()
-        .body("state.blocked", equalTo(false))
-        .body("state.dispatchable", equalTo(true));
-  }
-
   /**
    * The agents working an epic are told when — and only when — the door CHANGES the flag
    * (qits-614): an idempotent re-block or re-unblock still writes its comment and tells nobody.
@@ -299,18 +241,6 @@ class EntityBlockApiTest {
     assertEquals("The ticket", only.title());
     assertEquals("REPORTED", only.status());
     assertEquals(true, only.blocked());
-  }
-
-  /** No agent session works a campaign, so a campaign's block tells nobody. */
-  @Test
-  void aCampaignsBlockTellsNoAgent() {
-    EntityFixtures.Project project = EntityFixtures.project("Block Tells Campaign");
-    String campaign = EntityFixtures.campaign(project.id());
-
-    setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
-    setBlocked(campaign, false, null).statusCode(200);
-
-    assertEquals(List.of(), agents.calls());
   }
 
   /**

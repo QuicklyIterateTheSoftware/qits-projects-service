@@ -189,7 +189,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /**
    * <b>One column for one lifecycle</b>: every archetype holds one of {@link EntityStatus}' eight
    * words — an {@link Archetype#EPIC}, a {@link Archetype#TICKET}, a {@link Archetype#FEATURE} and a
-   * {@link Archetype#TASK} the whole set, a campaign the set less the two "-ING" words. Not null since
+   * {@link Archetype#TASK} the whole set (an {@link Archetype#ISSUE} holds its own three). Not null since
    * epics V24 (qits-763), which gave the features and tasks that held none until then the status
    * their markers and their epic implied. (Until qits-392 an epic held words of its own, {@code
    * EpicStatus}; epics V15 backfilled them.)
@@ -205,14 +205,13 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>The phase this entity's status starts cannot finish right now.</b> On every kind with a
-   * lifecycle — a {@link Archetype#TICKET}, and since qits-592 an {@link Archetype#EPIC} and a
-   * {@link Archetype#CAMPAIGN} — and false on a feature and a task, which hold a status (qits-763)
-   * but run no phase of their own to block.
+   * lifecycle — a {@link Archetype#TICKET}, and since qits-592 an {@link Archetype#EPIC} — and false
+   * on a feature and a task, which hold a status (qits-763) but run no phase of their own to block.
    *
    * <p><b>It is the EXPLICIT block, and the only one a gate reads</b> (qits-895). An answer's
    * {@code blocked} is the effective value — this OR an agent session that has stood waiting for a
    * person past the debounce ({@link #agentWaitingSince}, {@code EntityBlockState}) — but the
-   * dispatch refusal, the phase advance and the campaign executor read this column alone, so a
+   * dispatch refusal and the phase advance read this column alone, so a
    * derived block never stops work. Who set it and why are {@link #blockedBy} and {@link
    * #blockedReason}.
    *
@@ -444,19 +443,6 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public Instant implementingAt;
 
   /**
-   * <b>One sibling-dependency edge for what were two</b>: a feature's {@code depends_on_feature_id}
-   * and a task's {@code depends_on_task_id}. Self-FK with {@code on delete set null}.
-   *
-   * <p><b>This is not nesting and must never be validated as nesting.</b> A dependency says "do
-   * that one first"; a membership says "this one is part of that one". They point in unrelated
-   * directions and have unrelated cycle rules — a dependency cycle is a real error the services
-   * already check for, while a membership cycle cannot occur at all under the depth rule. The
-   * parent/child relation is {@link EntityMembership} and nothing in this class.
-   */
-  @Column(name = "depends_on_entity_id")
-  public String dependsOnEntityId;
-
-  /**
    * <b>The idea this work was inspired by</b> (qits-1387, epics V33): an {@link Idea} of the same
    * project, or null. Every archetype may carry one (qits-1792), and a reshape carries it onto the
    * new kind like the slug; it is deliberately <em>not</em> a registry property, because the
@@ -480,7 +466,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /**
    * <b>The ranking among its siblings</b> (qits-753, epics V34): higher sorts first, and a null —
    * "nobody ranked it", what every older row holds — after every number. The siblings are a
-   * project's roots (epics and tickets together, campaigns excluded) or the children of one
+   * project's roots (epics and tickets together) or the children of one
    * STRUCTURAL parent; ties and nulls fall back to {@link #number}, then {@link #id} ({@code
    * control/SiblingPriorities#ORDER}).
    *

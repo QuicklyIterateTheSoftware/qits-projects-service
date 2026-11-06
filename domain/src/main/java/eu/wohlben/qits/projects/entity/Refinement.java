@@ -17,7 +17,7 @@ import java.util.UUID;
  * One entity's refinement room — the row behind the projects SPA's refining route. Since epic
  * qits-770 every room is a <b>session</b> in its project's front desk, keyed by the entity id (V58);
  * the per-room containers, their branches and commissioned clients are retired (qits-1316, V59). The
- * entity is an epic, a ticket or a campaign.
+ * entity is an epic or a ticket.
  *
  * <p><b>Keyed by entity, addressed by row id.</b> An entity has at most one refinement (the unique
  * constraint on {@code entity_id} is what makes find-or-create race-safe), and every URL — lifecycle

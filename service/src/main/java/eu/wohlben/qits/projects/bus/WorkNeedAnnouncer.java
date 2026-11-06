@@ -23,8 +23,8 @@ import org.jboss.logging.Logger;
  * Here the qualified ids are rendered, which {@code entities} cannot: the slug is {@code domain}'s.
  *
  * <p><b>Durable, never fire-and-forget</b>: {@code QitsEventBus.publish} attempts the PUT inline and
- * leaves the event to its outbox when qits-events is not there, exactly as {@link
- * MilestoneAnnouncer} publishes {@link MilestoneMet}. It never throws into the caller.
+ * leaves the event to its outbox when qits-events is not there, as every announcer here does. It
+ * never throws into the caller.
  *
  * <p>{@code @DefaultBean}, like every announcer here: the suite's {@code RecordingWorkNeedAnnouncer}
  * overrides {@link #publish} alone, so no test reaches the bus.

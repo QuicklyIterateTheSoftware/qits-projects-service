@@ -38,8 +38,8 @@ import java.util.Optional;
  * start from {@link #nextPhase} (served by {@code GET /work/{qualifiedId}/dispatch}) and never re-derives
  * it. The words are per archetype — a ticket is refined into its description, an epic into a
  * feature/task tree and a dossier — so {@link #render} takes the archetype, and a kind with no
- * templates (a campaign, and a feature or a task, which hold a status since qits-763 but run no
- * phase) is an {@link IllegalStateException} there rather than a ticket's words handed to something
+ * templates (a feature or a task, which hold a status since qits-763 but run no phase, and an
+ * issue) is an {@link IllegalStateException} there rather than a ticket's words handed to something
  * else.
  *
  * <h2>The template rule (qits-592)</h2>
@@ -219,9 +219,6 @@ final class PhasePrompts {
           case FEATURE, TASK, ISSUE ->
               throw new IllegalStateException(
                   "A " + archetype + " runs no phase of its own, so it has no phase prompts");
-          case CAMPAIGN ->
-              throw new IllegalStateException(
-                  "A CAMPAIGN starts through its executor, so it has no phase prompts");
         };
     return FLOW_BRIEF_POINTER + " " + DeskBrief.hashNote(agentHash) + " " + phaseTurn;
   }

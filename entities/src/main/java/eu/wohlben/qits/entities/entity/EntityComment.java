@@ -15,7 +15,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 /**
  * One remark on a {@link WorkEntity} of any archetype — the writable log beside the plan. A ticket's
- * thread is the people saying what they found; an epic's, feature's, task's or campaign's is where a
+ * thread is the people saying what they found; an epic's, feature's or task's is where a
  * finding goes once the scope and the dossier are frozen (qits-551), because the plan is the thing
  * the freeze protects and the thread is not the plan. {@code entityId} is a real intra-module FK
  * (cascade-deleted with the entity).

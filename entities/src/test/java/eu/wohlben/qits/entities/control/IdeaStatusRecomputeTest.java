@@ -200,7 +200,6 @@ class IdeaStatusRecomputeTest extends EntitiesTestSupport {
                 null,
                 null,
                 null,
-                null,
                 eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO)),
         "t");
     assertEquals(IdeaStatus.PLANNED, statusOf(idea));

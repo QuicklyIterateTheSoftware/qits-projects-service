@@ -71,11 +71,6 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.WorkDossierAssetController.class,
           eu.wohlben.qits.entities.api.WorkChildrenController.class,
           eu.wohlben.qits.entities.api.WorkAuditController.class,
-          eu.wohlben.qits.entities.api.WorkProgressController.class,
-          eu.wohlben.qits.entities.api.WorkMembersController.class,
-          eu.wohlben.qits.entities.api.ProjectMilestonesController.class,
-          eu.wohlben.qits.entities.api.MilestoneController.class,
-          eu.wohlben.qits.entities.api.WorkMilestonesController.class,
           eu.wohlben.qits.entities.api.IdeaController.class,
           WorkDispatchController.class,
           WorkRefinementController.class,
@@ -146,8 +141,7 @@ class AgentReadAccessTest {
           // The create, the patch, the status move and the block, the bulk transition and its
           // one-entity form (PUT, the PUT-shaped transition at the entity's address), and the
           // thread's comment and edit (qits-969). The status door admits the agent because a
-          // ticket's and a campaign's moves are on its surface (transition_ticket, the campaign
-          // tools). An EPIC's move is admitted too since qits-1174 (transition_epic's claim), bound
+          // ticket's moves are on its surface (transition_ticket). An EPIC's move is admitted too since qits-1174 (transition_epic's claim), bound
           // to the agent's project and refused SUPERSEDED in the door's body.
           "WorkController.create",
           "WorkController.put",
@@ -192,38 +186,6 @@ class AgentReadAccessTest {
       Set.of("ProjectController.createRepository", "ProjectController.ensureAgentConfigRepository");
 
   /**
-   * <b>The campaign build doors an agent reaches</b> (qits-413): the four membership writes — each bound to the agent's own project by {@code
-   * EntitiesAgentAccess}, the campaign resolved first. A group of its own because the argument is
-   * the epic's ruling rather than an existing MCP tool (the {@code repository} server's campaign
-   * tools, qits-414, serve the same writes). {@code WorkMembersController.approve} is not here and must
-   * not arrive: an approval is a person's sign-off, which is why it is in {@link #ADMIN_ONLY_WRITES}.
-   */
-  private static final Set<String> CAMPAIGN_AGENT_WRITES =
-      Set.of(
-          // The campaign's create is WorkController.create and its transition
-          // WorkController.setStatus, both above.
-          "WorkMembersController.add",
-          "WorkMembersController.move",
-          "WorkMembersController.remove",
-          "WorkMembersController.setCondition");
-
-  /**
-   * <b>The milestone writes an agent reaches</b> (epic qits-615): create, rename and edit a
-   * milestone, attach and detach it on a work entity, and set what a campaign membership waits on —
-   * each bound to the agent's own project by {@code EntitiesAgentAccess} (the milestone's, the
-   * entity's, the campaign's), read first. {@code MilestoneController.approve} is not here and must
-   * not arrive: an approval is a person's sign-off, in {@link #ADMIN_ONLY_WRITES}.
-   */
-  private static final Set<String> MILESTONE_AGENT_WRITES =
-      Set.of(
-          "ProjectMilestonesController.create",
-          "MilestoneController.rename",
-          "MilestoneController.setGroups",
-          "WorkMilestonesController.attach",
-          "WorkMilestonesController.detach",
-          "WorkMembersController.setMilestones");
-
-  /**
    * <b>The refinement design writes an agent reaches</b> (qits-1174): adding and rewriting a design,
    * what the retired {@code put_design} MCP tool did. Bound to the project of the refinement's entity
    * by {@code EntitiesAgentAccess}. The delete is not here: no tool ever deleted a design.
@@ -239,10 +201,8 @@ class AgentReadAccessTest {
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
       union(
-          union(
-              union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
-              CAMPAIGN_AGENT_WRITES),
-          union(DESIGN_AGENT_WRITES, MILESTONE_AGENT_WRITES));
+          union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
+          DESIGN_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a
@@ -264,10 +224,6 @@ class AgentReadAccessTest {
           // desk's) decision about a forge copy (qits-1885).
           "RepositoryController.backupReset",
           "WorkCommentController.delete",
-          // Approving a campaign criterion is the sign-off on a gated member (qits-413).
-          "WorkMembersController.approve",
-          // Approving a milestone's criterion is the same sign-off (epic qits-615).
-          "MilestoneController.approve",
           // Standing a workspace or a refinement room up is a person's press, on either family.
           "WorkDispatchController.dispatch",
           "WorkRefinementController.open",

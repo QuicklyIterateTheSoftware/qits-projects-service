@@ -17,8 +17,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * The <b>wire contract</b> of {@link WorkNeedMet} (qits-1903), pinned at the source — {@link
- * MilestoneEventsContractTest}'s shape, for the same reason: no jar carries the record, so a
+ * The <b>wire contract</b> of {@link WorkNeedMet} (qits-1903), pinned at the source: no jar
+ * carries the record, so a
  * consumer (the delivery desk's {@code qits wait --event WorkNeedMet --when 'qualifiedId=…
  * allMet=true'}) selects it by these field names. <b>Renaming a field here is a change over
  * there.</b>

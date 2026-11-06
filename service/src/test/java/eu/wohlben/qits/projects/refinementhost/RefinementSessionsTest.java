@@ -53,8 +53,8 @@ import org.junit.jupiter.api.Test;
  * doors, the real registry and a stub control socket: the {@code sessions} frame on hello and on
  * every change (open, ensure, stop, discard, a move, a block, a retitle), never below capability 3
  * and always after the room's credential; the {@code sessionReport} written back onto the rows; the
- * desk wanted for a room ({@link eu.wohlben.qits.projects.deskhost.RefinementDemand}); a campaign's
- * room; and the per-project cap.
+ * desk wanted for a room ({@link eu.wohlben.qits.projects.deskhost.RefinementDemand}); and the
+ * per-project cap.
  */
 @QuarkusTest
 @TestSecurity(user = "dev", roles = "qits:admin")
@@ -500,22 +500,6 @@ class RefinementSessionsTest {
     assertTrue(last().find(epicId).isEmpty(), "the key leaves the list, which stops it");
     assertFalse(refinementTokens.isLive(tokenId), "the room's token is revoked");
     assertEquals(FrontDeskDesired.STOPPED, desk().desired);
-  }
-
-  @Test
-  void aCampaignOpensARoomLikeAnEpic() {
-    createProject("Sessions Campaign");
-    String campaignId = WorkRequests.campaign(projectId, "Quarter Close");
-
-    open(campaignId)
-        .then()
-        .statusCode(200)
-        .body("refinement.entityId", equalTo(campaignId))
-        .body("refinement.branch", nullValue());
-    Refinement room = QuarkusTransaction.requiringNew().call(() -> rooms.findByEntity(campaignId))
-        .orElseThrow();
-    opened.add(room.id);
-    assertTrue(sessions.wantsRunning(room, Instant.now()));
   }
 
   @Test

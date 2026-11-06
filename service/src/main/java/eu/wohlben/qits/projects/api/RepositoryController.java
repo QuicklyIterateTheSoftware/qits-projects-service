@@ -541,7 +541,7 @@ public class RepositoryController {
 
   /**
    * Renames a repository — the only operation on this platform that changes a repository's public
-   * identity, and the phase-2 prerequisite the rename campaign is ordered after.
+   * identity, and the phase-2 prerequisite the rename effort is ordered after.
    *
    * <p><b>PATCH and not PUT</b>, because the body is one field of the repository rather than a
    * replacement for it: {@code PUT /{repoId}/main-branch} is a sub-resource whose whole state is the

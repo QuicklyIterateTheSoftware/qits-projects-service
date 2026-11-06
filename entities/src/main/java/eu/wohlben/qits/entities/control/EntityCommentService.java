@@ -15,8 +15,8 @@ import java.util.UUID;
  * <b>An entity's thread</b>, of any archetype: its comments, oldest first, each write audited under
  * the entity's subtree key.
  *
- * <p>It was {@code TicketCommentService} until qits-551, and ticket-only: an epic, a feature, a
- * task and a campaign had no thread, so an agent implementing a REFINED epic — whose scope and
+ * <p>It was {@code TicketCommentService} until qits-551, and ticket-only: an epic, a feature and a
+ * task had no thread, so an agent implementing a REFINED epic — whose scope and
  * dossier are frozen — had nowhere to write what it found but a chat reply nobody reads again. The
  * dossier freeze stays; the thread is the writable log beside it. A comment is still not an
  * archetype of the merged model — no slug, no number, no membership, a table of its own — which is
@@ -30,7 +30,7 @@ import java.util.UUID;
  *
  * <p><b>Audit rows carry the entity's subtree key</b> — the {@code epicId} argument of {@code
  * AuditService.record}, the root a change hangs under rather than a foreign key to an epic: the
- * entity's own id for a root (a ticket, an epic, a campaign), the epic's for a feature or a task
+ * entity's own id for a root (a ticket, an epic), the epic's for a feature or a task
  * ({@link WorkEntityService#auditRootOf}). So an epic's history includes what was said on its tasks,
  * and still answers after they are deleted.
  *

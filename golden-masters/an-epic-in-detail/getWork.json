@@ -1,12 +1,12 @@
 {
-  "id": "00000000-0000-4000-8000-000000000006",
+  "id": "00000000-0000-4000-8000-000000000005",
   "archetype": "EPIC",
-  "projectId": "00000000-0000-4000-8000-00000000000f",
-  "number": 2,
-  "qualifiedId": "contract-00000001-2",
+  "projectId": "00000000-0000-4000-8000-00000000000e",
+  "number": 1,
+  "qualifiedId": "contract-00000001-1",
   "title": "Export invoices for the accountants",
   "slug": "export-invoices-for-the-accountants",
-  "slugScope": "00000000-0000-4000-8000-00000000000f",
+  "slugScope": "00000000-0000-4000-8000-00000000000e",
   "description": "## Why\nAccounting copies every invoice into their tool by hand, about 400 a quarter.\n\n## What\n- a **CSV export** of a date range, in the column order the tool imports\n- a **PDF export** of one invoice, for the audit folder\n\n## Example\n```\nGET /billing/api/invoices/export?from=2026-10-01&to=2026-12-31&format=csv\n```\n",
   "status": "IMPLEMENTING",
   "statusBefore": null,
@@ -19,7 +19,6 @@
   "repositoryId": null,
   "implementedAt": null,
   "implementingAt": null,
-  "dependsOn": null,
   "parent": null,
   "position": null,
   "priority": null,
@@ -31,8 +30,6 @@
     "It does what it says."
   ],
   "tags": [],
-  "milestones": [],
-  "unmetMilestones": 0,
   "needs": [],
   "unmetNeeds": 0
 }

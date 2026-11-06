@@ -150,31 +150,17 @@ class WorkStatusApiTest {
     statusOf(feature, "REFINED");
   }
 
-  /** The epic and the campaign move through the same door, for a person. */
+  /** The epic moves through the same door, for a person. */
   @Test
-  void anAdminMovesAnEpicAndACampaign() {
+  void anAdminMovesAnEpic() {
     EntityFixtures.Project project = EntityFixtures.project("Status Epic");
     String epic = EntityFixtures.epic(project.id());
-    String campaign = EntityFixtures.campaign(project.id());
 
     move(epic, "REFINED")
         .statusCode(200)
         .body("status", equalTo("REFINED"))
         .body("statusBefore", equalTo("REPORTED"));
     statusOf(epic, "REFINED");
-
-    // A campaign's status is derived from its members (qits-650): its drop and reopen are the only
-    // moves, every other one a 409 saying so.
-    move(campaign, "REFINED")
-        .statusCode(409)
-        .body("message", containsString("derived from its members"));
-    statusOf(campaign, "REPORTED");
-    move(campaign, "DROPPED").statusCode(200).body("status", equalTo("DROPPED"));
-    move(campaign, "REPORTED")
-        .statusCode(200)
-        .body("status", equalTo("REPORTED"))
-        .body("statusBefore", equalTo("DROPPED"));
-    statusOf(campaign, "REPORTED");
   }
 
   /**

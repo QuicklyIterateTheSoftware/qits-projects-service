@@ -77,7 +77,7 @@ public class EntityTransitionAnnouncer implements TransitionAnnouncer {
 
   /**
    * The agents half: one signal per ticket and epic in the batch, in batch order. A feature, a task
-   * and a campaign have no session named after them and are skipped here, before any read.
+   * and an issue have no session named after them and are skipped here, before any read.
    */
   private void signal(List<TransitionedEntity> entities) {
     for (TransitionedEntity entity : entities) {

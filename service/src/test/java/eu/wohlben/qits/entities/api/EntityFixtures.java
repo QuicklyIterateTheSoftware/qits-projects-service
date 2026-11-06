@@ -66,10 +66,6 @@ final class EntityFixtures {
     return TestCriteria.give(WorkRequests.ticket(projectId, "The ticket", "BUG", "it occurs"));
   }
 
-  static String campaign(String projectId) {
-    return WorkRequests.campaign(projectId, "The order");
-  }
-
   static String feature(String epicId) {
     return WorkRequests.feature(epicId, "The part");
   }

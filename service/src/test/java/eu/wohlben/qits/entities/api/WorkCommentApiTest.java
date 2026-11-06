@@ -93,12 +93,12 @@ class WorkCommentApiTest {
             .entity();
     feature =
         entities
-            .create(Archetype.FEATURE, epic.id, EntityWrite.feature("A part", null, null), "t")
+            .create(Archetype.FEATURE, epic.id, EntityWrite.feature("A part", null), "t")
             .entity();
     task =
         entities
             .create(
-                Archetype.TASK, feature.id, EntityWrite.task(repositoryId, "A step", null, null), "t")
+                Archetype.TASK, feature.id, EntityWrite.task(repositoryId, "A step", null), "t")
             .entity();
   }
 

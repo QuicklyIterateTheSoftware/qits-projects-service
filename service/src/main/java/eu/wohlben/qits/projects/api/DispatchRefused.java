@@ -8,9 +8,9 @@ import eu.wohlben.qits.projects.error.DomainException;
  * no workspaces context, no wrapper — and nothing else. No bit was written, no workspace was asked
  * for, no comment was posted.
  *
- * <p>A subtype rather than a message, so the campaign executor can tell "refused, nothing happened —
- * release the claim and say why" from "the call out failed or something after it did — the outcome
- * is unknown, keep the claim" without parsing a sentence. A plain {@link DomainException} thrown by a
+ * <p>A subtype rather than a message, so an in-process caller can tell "refused, nothing happened"
+ * from "the call out failed or something after it did — the outcome is unknown" without parsing a
+ * sentence. A plain {@link DomainException} thrown by a
  * dispatch — the port's 502/503 included — is the second case. Over REST it answers exactly as the
  * {@link DomainException} it is, with its own status and message.
  */

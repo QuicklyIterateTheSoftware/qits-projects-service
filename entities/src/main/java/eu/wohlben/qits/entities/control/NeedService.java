@@ -26,7 +26,7 @@ import org.jboss.logging.Logger;
 
 /**
  * <b>What a work item needs</b> (qits-1903, epic qits-1899): "item B needs item A at a status",
- * the one ordering mechanism once dependsOn, campaign ordering and milestones are gone. The rows are
+ * the one ordering mechanism between work items (qits-1899). The rows are
  * {@link WorkNeed} (epics V40); whether one is met is read off the needed item's status at the time
  * it is asked ({@link NeedRule#reached}) and never latched.
  *

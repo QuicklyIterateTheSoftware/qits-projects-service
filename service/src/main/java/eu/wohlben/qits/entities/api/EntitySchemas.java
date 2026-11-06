@@ -122,13 +122,6 @@ public final class EntitySchemas {
   private static final List<EntityProperty> NOT_ON_TRANSITION =
       List.of(EntityProperty.IMPLEMENTING_AT);
 
-  /**
-   * What the create and the update schemas no longer offer though the registry still permits it
-   * (qits-1903): the sibling edge {@code dependsOn}, which every write refuses with {@link
-   * EntityWireProperties#DEPENDS_ON_RETIRED}. The read field stays until qits-1908 drops it.
-   */
-  private static final List<EntityProperty> RETIRED = List.of(EntityProperty.DEPENDS_ON);
-
   private static final String DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
   private static final Pattern NON_BLANK = Pattern.compile("\\S");
@@ -151,7 +144,7 @@ public final class EntitySchemas {
     Map<String, Object> properties = new LinkedHashMap<>();
     List<String> required = new ArrayList<>();
     for (EntityWireProperties.Slot slot : writable(spec)) {
-      if (NOT_AT_CREATE.contains(slot.property()) || RETIRED.contains(slot.property())) {
+      if (NOT_AT_CREATE.contains(slot.property())) {
         continue;
       }
       properties.put(slot.wire(), slot.schema());
@@ -196,8 +189,7 @@ public final class EntitySchemas {
     ArchetypeSpec spec = Archetypes.spec(archetype);
     Map<String, Object> properties = new LinkedHashMap<>();
     for (EntityWireProperties.Slot slot : writable(spec)) {
-      if (EntityWireProperties.MOVES.contains(slot.property())
-          || RETIRED.contains(slot.property())) {
+      if (EntityWireProperties.MOVES.contains(slot.property())) {
         continue;
       }
       properties.put(slot.wire(), slot.clearable() ? nullable(slot.schema()) : slot.schema());
@@ -386,7 +378,7 @@ public final class EntitySchemas {
     if (name.equals(PARENT)) {
       return "parent is not taken: a " + archetype + " is a root — name its project";
     }
-    if (name.equals(EntityWireProperties.wire(EntityProperty.DEPENDS_ON))) {
+    if (name.equals(EntityWireProperties.DEPENDS_ON)) {
       return EntityWireProperties.DEPENDS_ON_RETIRED;
     }
     if (name.equals(EntityWireProperties.NEEDS)) {
@@ -558,8 +550,8 @@ public final class EntitySchemas {
   }
 
   /**
-   * The refusal of {@code needs} on a kind that has none (qits-1903) — an ISSUE, a CAMPAIGN — in
-   * {@code ArchetypeViolation.message()}'s words: {@code a CAMPAIGN has no needs}.
+   * The refusal of {@code needs} on a kind that has none (qits-1903) — an ISSUE — in {@code
+   * ArchetypeViolation.message()}'s words: {@code a ISSUE has no needs}.
    */
   static String needsNotPermitted(Archetype archetype) {
     return "a " + archetype + " has no " + EntityWireProperties.NEEDS;

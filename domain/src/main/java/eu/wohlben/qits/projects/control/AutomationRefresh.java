@@ -337,7 +337,7 @@ public class AutomationRefresh {
    * the claim was marked rollback-only, the refresh went out with {@code changed=null} (carry-over
    * lost, an extra automation run) and the frame came back every 30 seconds until it collided with
    * the sweep — the double {@code preRun=DONE} of 2026-10-10. {@link QuarkusTransaction#requiringNew}
-   * suspends the claim for the read, which is the rule {@code CampaignCriteriaListener} states
+   * suspends the claim for the read, which is the rule every durable listener here keeps
    * (qits-416): the claim never spans a second datasource. A failure is a WARN, not a DEBUG: it
    * costs a run and loses a carry-over, and that is worth seeing.
    */

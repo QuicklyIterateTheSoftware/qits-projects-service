@@ -2,8 +2,7 @@ package eu.wohlben.qits.entities.entity;
 
 /**
  * The lifecycle of every archetype — {@link Archetype#EPIC}, {@link Archetype#TICKET}, and since
- * qits-763 {@link Archetype#FEATURE} and {@link Archetype#TASK} alike (a campaign holds the same
- * words less the two "-ING" ones). Stored as the enum name in {@link WorkEntity#status}, spelled by {@code
+ * qits-763 {@link Archetype#FEATURE} and {@link Archetype#TASK} alike. Stored as the enum name in {@link WorkEntity#status}, spelled by {@code
  * ck_entity_status} (epics V15), and moved only through a transition — see {@code EntityLifecycle}
  * for the guards and {@code EntityStateMachine} for which moves are legal.
  *
@@ -93,7 +92,7 @@ public enum EntityStatus {
   /**
    * A person scheduled it (qits-887): implement runs. Reached from {@link #REFINED} only, and
    * unscheduled back to it until the work starts; there is no move back to {@link #REPORTED}. The
-   * dispatch press (or a campaign's executor) moves it on to {@link #IMPLEMENTING}.
+   * dispatch press moves it on to {@link #IMPLEMENTING}.
    */
   READY_FOR_DEV,
 

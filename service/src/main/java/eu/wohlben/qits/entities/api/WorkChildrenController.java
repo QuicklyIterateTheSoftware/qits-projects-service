@@ -30,7 +30,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p>{@code {qualifiedId}} is the parent's qualified id or UUID ({@link EntityIdResolver#resolve}).
  * The answers are the merged shape every {@code /work} read answers, qualified. The add is {@code
  * POST /work}'s create of the child kind with the parent the path names ({@link
- * WorkEntityDoors#createChild}), so a dependency takes a qualified id and every refusal is the
+ * WorkEntityDoors#createChild}), so a need takes a qualified id and every refusal is the
  * create's. The roles are the two edges': both admit {@code qits:agent}, the add bound to the
  * parent's project.
  */
@@ -61,11 +61,6 @@ public class WorkChildrenController {
       @Schema(description = "The long-form Markdown body.") String description,
       @Schema(description = "A task's repository, in the parent's project. Required for a task.")
           String repositoryId,
-      @Schema(
-              deprecated = true,
-              description =
-                  "Retired (qits-1903): any value is a 400 — name what this waits for in needs.")
-          String dependsOn,
       @Schema(
               description =
                   "What the child waits for (qits-1903): each entry a work item of the same project"
@@ -117,7 +112,7 @@ public class WorkChildrenController {
       description =
           "An agent outside its own project, or a plain agent (qits:agent without the desk roles)"
               + " naming inspiredBy; nothing is written")
-  @APIResponse(responseCode = "404", description = "No entity, repository or dependency")
+  @APIResponse(responseCode = "404", description = "No entity or repository")
   @APIResponse(
       responseCode = "409",
       description = "A kind nothing hangs under, or a parent whose plan is frozen")

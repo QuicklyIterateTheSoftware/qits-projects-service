@@ -23,7 +23,7 @@ import java.util.Set;
  * <p>On an edit, <b>a null value leaves the property as it is</b>, and the nullable properties that
  * can be emptied carry a {@code clear*} flag beside them: true empties it, whatever the value says.
  * That is the pairing the ticket, feature and task edits always had, so a retitle cannot silently
- * unassign a ticket, drop its body, un-ship a feature or lose a dependency. On a create the flags
+ * unassign a ticket, drop its body or un-ship a feature. On a create the flags
  * mean nothing and the values are the new row's.
  *
  * <p><b>The acceptance criteria (qits-887) are a list and take no flag</b>: null leaves them alone,
@@ -51,8 +51,6 @@ public record EntityWrite(
     String assignee,
     boolean clearAssignee,
     String repositoryId,
-    String dependsOn,
-    boolean clearDependsOn,
     Instant implementedAt,
     boolean clearImplementedAt,
     Instant implementingAt,
@@ -76,8 +74,6 @@ public record EntityWrite(
       String assignee,
       boolean clearAssignee,
       String repositoryId,
-      String dependsOn,
-      boolean clearDependsOn,
       Instant implementedAt,
       boolean clearImplementedAt,
       Instant implementingAt,
@@ -97,8 +93,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -126,8 +120,6 @@ public record EntityWrite(
       String assignee,
       boolean clearAssignee,
       String repositoryId,
-      String dependsOn,
-      boolean clearDependsOn,
       Instant implementedAt,
       boolean clearImplementedAt,
       Instant implementingAt,
@@ -146,8 +138,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -173,8 +163,6 @@ public record EntityWrite(
       String assignee,
       boolean clearAssignee,
       String repositoryId,
-      String dependsOn,
-      boolean clearDependsOn,
       Instant implementedAt,
       boolean clearImplementedAt,
       Instant implementingAt,
@@ -191,8 +179,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -206,35 +192,29 @@ public record EntityWrite(
   /** An epic: its title and its long-form spine. */
   public static EntityWrite epic(String title, String description) {
     return new EntityWrite(
-        title, description, false, null, false, null, null, false, null, null, false, null, false,
+        title, description, false, null, false, null, null, false, null, null, false,
         null, null, null, false);
-  }
-
-  /** A campaign: a title and a description, the same two words an epic is written in. */
-  public static EntityWrite campaign(String title, String description) {
-    return epic(title, description);
   }
 
   /** A ticket's intake: the impetus and the type are what a report consists of. */
   public static EntityWrite ticket(
       String title, String impetus, String description, String type, String assignee) {
     return new EntityWrite(
-        title, description, false, impetus, false, type, assignee, false, null, null, false, null,
+        title, description, false, impetus, false, type, assignee, false, null, null,
         false, null, null, null, false);
   }
 
-  /** A feature under an epic, optionally depending on a sibling. */
-  public static EntityWrite feature(String title, String description, String dependsOn) {
+  /** A feature under an epic. */
+  public static EntityWrite feature(String title, String description) {
     return new EntityWrite(
-        title, description, false, null, false, null, null, false, null, dependsOn, false, null,
+        title, description, false, null, false, null, null, false, null, null,
         false, null, null, null, false);
   }
 
-  /** A task under a feature: the work in one repository, optionally depending on a sibling. */
-  public static EntityWrite task(
-      String repositoryId, String title, String description, String dependsOn) {
+  /** A task under a feature: the work in one repository. */
+  public static EntityWrite task(String repositoryId, String title, String description) {
     return new EntityWrite(
-        title, description, false, null, false, null, null, false, repositoryId, dependsOn, false,
+        title, description, false, null, false, null, null, false, repositoryId,
         null, false, null, null, null, false);
   }
 
@@ -260,20 +240,16 @@ public record EntityWrite(
         null,
         null,
         false,
-        null,
-        false,
         null, null, null, false);
   }
 
   /**
-   * An edit of a plan node — a feature or a task, which take the same edit: words, the sibling
-   * dependency and the implemented marker, the last two with their clear flags.
+   * An edit of a plan node — a feature or a task, which take the same edit: words and the
+   * implemented marker, with its clear flag.
    */
   public static EntityWrite nodeEdit(
       String title,
       String description,
-      String dependsOn,
-      boolean clearDependsOn,
       Instant implementedAt,
       boolean clearImplementedAt) {
     return new EntityWrite(
@@ -286,8 +262,6 @@ public record EntityWrite(
         null,
         false,
         null,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         null, null, null, false);
@@ -295,7 +269,7 @@ public record EntityWrite(
 
   /** Only the implemented marker, stamped — what {@code mark_task_implemented} writes. */
   public static EntityWrite implementedAt(Instant at) {
-    return nodeEdit(null, null, null, false, at, false);
+    return nodeEdit(null, null, at, false);
   }
 
   /**
@@ -304,7 +278,7 @@ public record EntityWrite(
    */
   public static EntityWrite implementingAt(Instant at) {
     return new EntityWrite(
-        null, null, false, null, false, null, null, false, null, null, false, null, false, at,
+        null, null, false, null, false, null, null, false, null, null, false, at,
         null, null, false);
   }
 
@@ -314,7 +288,7 @@ public record EntityWrite(
    */
   public static EntityWrite inspiration(String ideaId, boolean clear) {
     return new EntityWrite(
-        null, null, false, null, false, null, null, false, null, null, false, null, false, null,
+        null, null, false, null, false, null, null, false, null, null, false, null,
         null, ideaId, clear);
   }
 
@@ -334,8 +308,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -365,8 +337,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -396,8 +366,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -427,8 +395,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -458,8 +424,6 @@ public record EntityWrite(
         assignee,
         clearAssignee,
         repositoryId,
-        dependsOn,
-        clearDependsOn,
         implementedAt,
         clearImplementedAt,
         implementingAt,
@@ -522,8 +486,6 @@ public record EntityWrite(
         || assignee != null
         || clearAssignee
         || repositoryId != null
-        || dependsOn != null
-        || clearDependsOn
         || (!touchesMarker() && !touchesCriteria() && !touchesInspiration() && !touchesPriority()
             && !touchesTags());
   }

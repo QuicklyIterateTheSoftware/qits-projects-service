@@ -181,6 +181,35 @@ public class RetiredEntityDoorsTest {
           new Route("POST", "/tickets/{ticket}/dispatch-agent"),
           new Route("POST", "/refinements"));
 
+  /**
+   * The campaign and milestone doors qits-1908 (epic qits-1899) removed, with the members and the
+   * progress of a campaign: ordering is an item's {@code needs} since qits-1903.
+   */
+  static final List<Route> RETIRED_BY_QITS_1908 =
+      List.of(
+          // WorkMembersController
+          new Route("GET", "/work/{ticket}/members"),
+          new Route("POST", "/work/{ticket}/members"),
+          new Route("PUT", "/work/{ticket}/members/{membership}/position"),
+          new Route("DELETE", "/work/{ticket}/members/{membership}"),
+          new Route("PUT", "/work/{ticket}/members/{membership}/condition"),
+          new Route("PUT", "/work/{ticket}/members/{membership}/milestones"),
+          new Route("POST", "/work/{ticket}/members/{membership}/criteria/{criterion}/approve"),
+          // WorkProgressController
+          new Route("GET", "/work/{ticket}/progress"),
+          // ProjectMilestonesController
+          new Route("GET", "/projects/{project}/milestones"),
+          new Route("POST", "/projects/{project}/milestones"),
+          // MilestoneController
+          new Route("GET", "/milestones/{milestone}"),
+          new Route("PATCH", "/milestones/{milestone}"),
+          new Route("PUT", "/milestones/{milestone}/groups"),
+          new Route("POST", "/milestones/{milestone}/criteria/{criterion}/approve"),
+          // WorkMilestonesController
+          new Route("GET", "/work/{ticket}/milestones"),
+          new Route("PUT", "/work/{ticket}/milestones/{milestone}"),
+          new Route("DELETE", "/work/{ticket}/milestones/{milestone}"));
+
   @Inject RecordingWorkspaceAgentDispatch dispatch;
   @Inject WorkEntityService entities;
   @Inject EntityCommentService comments;
@@ -215,12 +244,12 @@ public class RetiredEntityDoorsTest {
         entities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("A plan", null), "seed").entity().id;
     String feature =
         entities
-            .create(Archetype.FEATURE, epic, EntityWrite.feature("A part", null, null), "seed")
+            .create(Archetype.FEATURE, epic, EntityWrite.feature("A part", null), "seed")
             .entity()
             .id;
     String task =
         entities
-            .create(Archetype.TASK, feature, EntityWrite.task(REPO, "A step", null, null), "seed")
+            .create(Archetype.TASK, feature, EntityWrite.task(REPO, "A step", null), "seed")
             .entity()
             .id;
     String ticket =
@@ -230,11 +259,6 @@ public class RetiredEntityDoorsTest {
                 PROJECT,
                 EntityWrite.ticket("A ticket", "something occurs", null, "BUG", null),
                 "seed")
-            .entity()
-            .id;
-    String campaign =
-        entities
-            .create(Archetype.CAMPAIGN, PROJECT, EntityWrite.campaign("An order", null), "seed")
             .entity()
             .id;
     String comment = comments.addComment(ticket, "a note", "seed").id;
@@ -248,7 +272,9 @@ public class RetiredEntityDoorsTest {
             Map.entry("feature", feature),
             Map.entry("task", task),
             Map.entry("ticket", ticket),
-            Map.entry("campaign", campaign),
+            // The campaign rows are gone (qits-1908); a path naming one names a ticket instead.
+            Map.entry("campaign", ticket),
+            Map.entry("milestone", "no-such-milestone"),
             Map.entry("comment", comment),
             Map.entry("epicPage", epicPage.id),
             Map.entry("ticketPage", ticketPage.slug),
@@ -301,6 +327,7 @@ public class RetiredEntityDoorsTest {
     List<String> wrong = new ArrayList<>();
     List<Route> all = new ArrayList<>(DELETED);
     all.addAll(RETIRED_EARLIER);
+    all.addAll(RETIRED_BY_QITS_1908);
     for (Route route : all) {
       int status = press(route).statusCode();
       if (status != 404) {
@@ -310,7 +337,7 @@ public class RetiredEntityDoorsTest {
     assertTrue(wrong.isEmpty(), "every deleted route must answer 404: " + wrong);
 
     // Nothing was written: every row reads back through /work as the seed left it.
-    for (String row : List.of("epic", "feature", "task", "ticket", "campaign")) {
+    for (String row : List.of("epic", "feature", "task", "ticket")) {
       asAdmin()
           .when()
           .get("/projects/api/work/" + rows.get(row))
@@ -352,12 +379,6 @@ public class RetiredEntityDoorsTest {
         .then()
         .statusCode(200)
         .body("children.size()", equalTo(1));
-    asAdmin()
-        .when()
-        .get("/projects/api/work/" + rows.get("campaign") + "/members")
-        .then()
-        .statusCode(200)
-        .body("members.size()", equalTo(0));
     asAdmin()
         .when()
         .get("/projects/api/work/" + rows.get("epic") + "/refinement")

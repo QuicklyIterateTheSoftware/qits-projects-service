@@ -273,7 +273,6 @@ components:
       - TICKET
       - FEATURE
       - TASK
-      - CAMPAIGN
       - ISSUE
     ArchetypeRegistryDocument:
       type: object
@@ -435,215 +434,6 @@ components:
         behind:
           type: integer
           format: int32
-    CampaignCriterionProgressDto:
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        seeded:
-          type: boolean
-        satisfied:
-          type: boolean
-        wouldBeSatisfiedBy:
-          type: string
-        satisfiable:
-          type: boolean
-        reason:
-          type: string
-        evidence:
-          $ref: "#/components/schemas/CriterionEvidenceDto"
-        approval:
-          $ref: "#/components/schemas/CriterionApprovalDto"
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-    CampaignDispatchDto:
-      type: object
-      properties:
-        workspaceId:
-          type: string
-        branch:
-          type: string
-        agentLaunch:
-          type: string
-    CampaignEvaluatorDto:
-      type: object
-      properties:
-        connected:
-          type: boolean
-        lastSweepCompletedAt:
-          $ref: "#/components/schemas/Instant"
-        stalled:
-          type: boolean
-        consumerFailing:
-          type: boolean
-        lastError:
-          type: string
-        lastErrorAt:
-          $ref: "#/components/schemas/Instant"
-        watermarkAt:
-          $ref: "#/components/schemas/Instant"
-    CampaignGroupProgressDto:
-      type: object
-      properties:
-        id:
-          type: string
-        satisfied:
-          type: boolean
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignCriterionProgressDto"
-    CampaignMemberDto:
-      type: object
-      properties:
-        membershipId:
-          type: string
-        position:
-          type: integer
-          format: int32
-        entity:
-          $ref: "#/components/schemas/CampaignMemberEntityDto"
-        claimedAt:
-          $ref: "#/components/schemas/Instant"
-        joinedRunning:
-          type: boolean
-        dispatchedAt:
-          $ref: "#/components/schemas/Instant"
-        dispatch:
-          $ref: "#/components/schemas/CampaignDispatchDto"
-        dispatchRefusal:
-          type: string
-        dispatchRefusedAt:
-          $ref: "#/components/schemas/Instant"
-        dispatchError:
-          type: string
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/CriterionGroupDto"
-        holdsStatus:
-          type: boolean
-        milestones:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneRef"
-    CampaignMemberEntityDto:
-      type: object
-      properties:
-        id:
-          type: string
-        archetype:
-          type: string
-        qualifiedId:
-          type: string
-        title:
-          type: string
-        status:
-          type: string
-        blocked:
-          type: boolean
-        blockSource:
-          type: string
-        blockReason:
-          type: string
-        blockedBy:
-          type: string
-        tags:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkTag"
-    CampaignMemberProgressDto:
-      type: object
-      properties:
-        membershipId:
-          type: string
-        position:
-          type: integer
-          format: int32
-        entity:
-          $ref: "#/components/schemas/CampaignMemberEntityDto"
-        state:
-          $ref: "#/components/schemas/CampaignMemberState"
-        waitsFor:
-          type: array
-          items:
-            type: string
-        joinedRunning:
-          type: boolean
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignGroupProgressDto"
-        dispatchedAt:
-          $ref: "#/components/schemas/Instant"
-        dispatch:
-          $ref: "#/components/schemas/CampaignDispatchDto"
-        dispatchRefusal:
-          type: string
-        dispatchRefusedAt:
-          $ref: "#/components/schemas/Instant"
-        dispatchError:
-          type: string
-    CampaignMemberState:
-      type: string
-      enum:
-      - DROPPED
-      - DONE
-      - DISPATCH_FAILED
-      - JOINED_RUNNING
-      - RUNNING
-      - REFUSED
-      - READY
-      - WAITING
-    CampaignProgressCampaignDto:
-      type: object
-      properties:
-        id:
-          type: string
-        qualifiedId:
-          type: string
-        title:
-          type: string
-        status:
-          type: string
-        blocked:
-          type: boolean
-        start:
-          $ref: "#/components/schemas/CampaignStartDto"
-        blockSource:
-          type: string
-        blockReason:
-          type: string
-        blockedBy:
-          type: string
-        heldBy:
-          type: array
-          items:
-            type: string
-    CampaignProgressDto:
-      type: object
-      properties:
-        campaign:
-          $ref: "#/components/schemas/CampaignProgressCampaignDto"
-        evaluator:
-          $ref: "#/components/schemas/CampaignEvaluatorDto"
-        members:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignMemberProgressDto"
-    CampaignStartDto:
-      type: object
-      properties:
-        firstStartedAt:
-          $ref: "#/components/schemas/Instant"
-        startedAt:
-          $ref: "#/components/schemas/Instant"
-        startedBy:
-          type: string
-        active:
-          type: boolean
     CapabilityReportRequest:
       type: object
       properties:
@@ -956,49 +746,6 @@ components:
           type: string
           description: "The header value, verbatim. Write-only: no door answers it\
             \ back."
-    CriterionApprovalDto:
-      type: object
-      properties:
-        approvedBy:
-          type: string
-        note:
-          type: string
-    CriterionDto:
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        predicate:
-          type: object
-          additionalProperties: {}
-        seeded:
-          type: boolean
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-        evidence:
-          $ref: "#/components/schemas/CriterionEvidenceDto"
-        approval:
-          $ref: "#/components/schemas/CriterionApprovalDto"
-    CriterionEvidenceDto:
-      type: object
-      properties:
-        eventId:
-          type: string
-        signature:
-          type: string
-        summary:
-          type: string
-    CriterionGroupDto:
-      type: object
-      properties:
-        id:
-          type: string
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/CriterionDto"
     DeclaredArchetype:
       type: object
       properties:
@@ -1008,8 +755,6 @@ components:
           type: integer
           format: int32
         mayBeRoot:
-          type: boolean
-        gathers:
           type: boolean
         required:
           type: array
@@ -1052,8 +797,7 @@ components:
             $ref: "#/components/schemas/DispatchPhases"
           description: "What a dispatch press (dispatchWork) runs from each status,\
             \ keyed by every status in lifecycle order. Empty for a kind a dispatch\
-            \ runs no phases on: a feature, a task and a campaign (whose press is\
-            \ its start)."
+            \ runs no phases on: a feature, a task and an issue."
     DeclineReleaseRequest:
       type: object
       required:
@@ -1428,7 +1172,6 @@ components:
       - REPOSITORY_ID
       - IMPLEMENTED_AT
       - IMPLEMENTING_AT
-      - DEPENDS_ON
       - ACCEPTANCE_CRITERIA
       - RELATED_TO
     EntitySummary:
@@ -1475,8 +1218,6 @@ components:
           $ref: "#/components/schemas/Instant"
         implementingAt:
           $ref: "#/components/schemas/Instant"
-        dependsOn:
-          type: string
         parent:
           type: string
         position:
@@ -1505,13 +1246,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkTag"
-        milestones:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneRef"
-        unmetMilestones:
-          type: integer
-          format: int32
         needs:
           type: array
           items:
@@ -1544,8 +1278,6 @@ components:
           type: string
         implementedAt:
           $ref: "#/components/schemas/Instant"
-        dependsOn:
-          type: string
         acceptanceCriteria:
           type: array
           items:
@@ -2126,196 +1858,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
-    MilestoneAnswer:
-      description: One milestone.
-      type: object
-      properties:
-        milestone:
-          $ref: "#/components/schemas/MilestoneDto"
-    MilestoneApproval:
-      description: A person's yes on an APPROVAL criterion.
-      type: object
-      properties:
-        note:
-          type: string
-          description: "Why, optionally."
-    MilestoneCreate:
-      description: "A new milestone: its name and its condition."
-      type: object
-      required:
-      - displayName
-      - groups
-      properties:
-        displayName:
-          type: string
-          description: "What it is called, e.g. \"bootstrap test node\"."
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneGroupSpec"
-          description: At least one group of at least one criterion.
-    MilestoneCriterionDto:
-      description: One AND'd criterion of a milestone.
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        predicate:
-          type: object
-          additionalProperties: {}
-        seeded:
-          type: boolean
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-        evidence:
-          $ref: "#/components/schemas/CriterionEvidenceDto"
-        approval:
-          $ref: "#/components/schemas/CriterionApprovalDto"
-    MilestoneCriterionSpec:
-      type: object
-      description: "One criterion of a milestone, as stated."
-      properties:
-        id:
-          type: string
-          description: "An existing criterion's id, to keep its latch; omitted states\
-            \ a new one."
-        kind:
-          type: string
-          description: "ENTITY_STATUS, DEPLOYMENT_ACTIVE, SCM_RELEASE or APPROVAL"
-        predicate:
-          type: object
-          additionalProperties: {}
-          description: "The kind's predicate; an ENTITY_STATUS predicate's entityId\
-            \ takes a qualified id or a UUID. APPROVAL takes {}."
-      required:
-      - kind
-    MilestoneDto:
-      description: "A milestone, its condition and what waits on it."
-      type: object
-      properties:
-        id:
-          type: string
-        projectId:
-          type: string
-        displayName:
-          type: string
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-        met:
-          type: boolean
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneGroupDto"
-        entities:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneWorkDto"
-        memberships:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneMembershipDto"
-    MilestoneGroupDto:
-      type: object
-      description: One OR'd group of a milestone's condition.
-      properties:
-        id:
-          type: string
-        position:
-          type: integer
-          format: int32
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneCriterionDto"
-    MilestoneGroupSpec:
-      type: object
-      description: "One OR'd group of a milestone, as stated."
-      properties:
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneCriterionSpec"
-    MilestoneGroups:
-      description: A milestone's whole condition.
-      type: object
-      required:
-      - groups
-      properties:
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneGroupSpec"
-          description: At least one group of at least one criterion.
-    MilestoneList:
-      description: "A project's milestones, oldest first."
-      type: object
-      properties:
-        milestones:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneDto"
-    MilestoneMembershipDto:
-      type: object
-      description: A campaign membership waiting on a milestone.
-      properties:
-        membershipId:
-          type: string
-        campaignId:
-          type: string
-        campaignQualifiedId:
-          type: string
-        campaignTitle:
-          type: string
-        entityId:
-          type: string
-        entityQualifiedId:
-          type: string
-        claimedAt:
-          $ref: "#/components/schemas/Instant"
-        generatedCondition:
-          type: boolean
-    MilestoneRef:
-      type: object
-      properties:
-        id:
-          type: string
-        displayName:
-          type: string
-        satisfiedAt:
-          $ref: "#/components/schemas/Instant"
-    MilestoneRename:
-      description: A milestone's new name.
-      type: object
-      required:
-      - displayName
-      properties:
-        displayName:
-          type: string
-    MilestoneWorkDto:
-      type: object
-      description: A work entity waiting on a milestone.
-      properties:
-        id:
-          type: string
-        qualifiedId:
-          type: string
-        archetype:
-          type: string
-        title:
-          type: string
-        status:
-          type: string
     MoveReleaseRequestSource:
       type: object
       required:
@@ -3541,8 +3083,6 @@ components:
           $ref: "#/components/schemas/Instant"
         implementingAt:
           $ref: "#/components/schemas/Instant"
-        dependsOn:
-          type: string
         parent:
           type: string
         position:
@@ -3577,19 +3117,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkTag"
-        heldBy:
-          type: array
-          items:
-            type: string
         relatedTo:
           type: string
-        milestones:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneRef"
-        unmetMilestones:
-          type: integer
-          format: int32
         needs:
           type: array
           items:
@@ -3753,11 +3282,6 @@ components:
           type: string
           description: "A task's repository, in the parent's project. Required for\
             \ a task."
-        dependsOn:
-          type: string
-          description: "Retired (qits-1903): any value is a 400 — name what this waits\
-            \ for in needs."
-          deprecated: true
         needs:
           type: array
           items:
@@ -3819,42 +3343,18 @@ components:
         body:
           type: string
           description: "The remark as it should now read, Markdown."
-    WorkConditionCriterion:
-      description: One criterion of a member's condition.
-      type: object
-      properties:
-        id:
-          type: string
-          description: "An existing criterion's id, to keep its latch; omitted mints\
-            \ one."
-        kind:
-          type: string
-          description: "ENTITY_STATUS, APPROVAL, …"
-        predicate:
-          type: object
-          additionalProperties: {}
-          description: The kind's predicate; an ENTITY_STATUS predicate's entityId
-            takes a qualified id or a UUID.
-    WorkConditionGroup:
-      description: One OR'd group of a member's condition.
-      type: object
-      properties:
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkConditionCriterion"
     WorkCreate:
       description: "A new work entity of any archetype: the archetype, plus exactly\
         \ the body GET /projects/api/work/archetypes/{archetype}/schemas/create describes\
-        \ for it. A root (EPIC, TICKET, CAMPAIGN, ISSUE) names its project, a node\
-        \ (FEATURE, TASK) its parent."
+        \ for it. A root (EPIC, TICKET, ISSUE) names its project, a node (FEATURE,\
+        \ TASK) its parent."
       type: object
       required:
       - archetype
       properties:
         archetype:
           $ref: "#/components/schemas/Archetype"
-          description: "EPIC, TICKET, FEATURE, TASK, CAMPAIGN or ISSUE"
+          description: "EPIC, TICKET, FEATURE, TASK or ISSUE"
           type: string
         project:
           type: string
@@ -3883,11 +3383,6 @@ components:
         repositoryId:
           type: string
           description: "A task's repository, in the task's project."
-        dependsOn:
-          type: string
-          description: "Retired (qits-1903): any value is a 400 — name what this waits\
-            \ for in needs."
-          deprecated: true
         acceptanceCriteria:
           type: array
           items:
@@ -3915,14 +3410,7 @@ components:
             $ref: "#/components/schemas/WorkNeedWrite"
           description: "What an epic, a ticket, a feature or a task waits for (qits-1903):\
             \ each entry a work item of the same project and the status it must reach.\
-            \ Refused on an issue and a campaign."
-    WorkCriterionApproval:
-      description: A person's yes on an APPROVAL criterion.
-      type: object
-      properties:
-        note:
-          type: string
-          description: "Why, optionally."
+            \ Refused on an issue."
     WorkDeleted:
       description: The entity and its subtree are gone.
       type: object
@@ -4094,76 +3582,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntitySummary"
-    WorkMemberAdd:
-      description: An entity to gather into the campaign.
-      type: object
-      required:
-      - entityId
-      properties:
-        entityId:
-          type: string
-          description: "The entity to gather, by qualified id (<projectSlug>-<n>)\
-            \ or UUID."
-          pattern: \S
-        position:
-          type: integer
-          format: int32
-          description: "Where it goes, 0-based; omitted appends."
-        inFlight:
-          type: boolean
-          description: Whether it joins already running; omitted lets the service
-            decide from its status and its workspace.
-    WorkMemberAnswer:
-      description: One membership of a campaign.
-      type: object
-      properties:
-        member:
-          $ref: "#/components/schemas/CampaignMemberDto"
-    WorkMemberCondition:
-      description: "A member's whole condition: groups OR'd, criteria in a group AND'd."
-      type: object
-      properties:
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkConditionGroup"
-    WorkMemberList:
-      description: "A campaign's members, in campaign order."
-      type: object
-      properties:
-        members:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignMemberDto"
-    WorkMemberMilestones:
-      description: "The milestones a membership waits on, by id, whole."
-      type: object
-      required:
-      - milestoneIds
-      properties:
-        milestoneIds:
-          type: array
-          items:
-            type: string
-          description: Existing milestones of the campaign's project.
-    WorkMemberMove:
-      description: Where a membership should now sit.
-      type: object
-      required:
-      - position
-      properties:
-        position:
-          type: integer
-          format: int32
-          description: "The new position, 0-based."
-    WorkMilestoneList:
-      description: "The milestones a work entity waits on, in the order attached."
-      type: object
-      properties:
-        milestones:
-          type: array
-          items:
-            $ref: "#/components/schemas/MilestoneRef"
     WorkNeedWrite:
       type: object
       description: "This work waits until item reaches status: met once the item is\
@@ -4224,11 +3642,6 @@ components:
         repositoryId:
           type: string
           description: "A task's repository, in the task's project. Cannot be cleared."
-        dependsOn:
-          type: string
-          description: "Retired (qits-1903): any value is a 400 — name what this waits\
-            \ for in needs."
-          deprecated: true
         implementedAt:
           description: A feature's or task's implemented marker (ISO-8601 instant);
             null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
@@ -4320,12 +3733,6 @@ components:
         priority:
           type: integer
           format: int32
-    WorkProgressAnswer:
-      description: "A campaign's progress, derived on the read."
-      type: object
-      properties:
-        progress:
-          $ref: "#/components/schemas/CampaignProgressDto"
     WorkRefinementAnswer:
       description: A work entity's refinement room; null on a read that found none.
       type: object
@@ -4358,8 +3765,7 @@ components:
             \ VERIFYING, VERIFIED, DONE or DROPPED — one the entity's current status\
             \ may move to: a neighbour on the walk (IMPLEMENTING has no move back,\
             \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
-            \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
-            \ IMPLEMENTING or VERIFYING."
+            \ or VERIFIED from IMPLEMENTED (the skips)."
         outcome:
           description: "Why the work is closed: required with a move into DROPPED\
             \ and refused with any other move. DUPLICATE — another item asks for the\
@@ -5312,191 +4718,6 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
-  /projects/api/milestones/{milestoneId}:
-    patch:
-      summary: Rename a milestone
-      description: "Changes its displayName and nothing else: no criterion, latch\
-        \ or date moves, and no event is sent. A bound agent renames only in its own\
-        \ project."
-      operationId: renameMilestone
-      parameters:
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MilestoneRename"
-          application/merge-patch+json:
-            schema:
-              $ref: "#/components/schemas/MilestoneRename"
-        required: true
-      responses:
-        "200":
-          description: The milestone renamed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneAnswer"
-        "400":
-          description: No name
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: No milestone with this id
-        "401":
-          description: Not Authorized
-      tags:
-      - Milestone Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-    get:
-      summary: Read one milestone
-      description: "The milestone with its groups and criteria — each with createdAt\
-        \ and satisfiedAt, a criterion with its evidence or approval — whether it\
-        \ is met and since when, the work entities that wait on it (qualified id,\
-        \ title, status) and the campaign memberships it gates."
-      operationId: getMilestone
-      parameters:
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The milestone
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneAnswer"
-        "404":
-          description: No milestone with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Milestone Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/milestones/{milestoneId}/criteria/{criterionId}/approve:
-    post:
-      summary: A person's yes on a milestone's APPROVAL criterion
-      description: "qits:admin, and then a person this service verified itself; the\
-        \ name recorded is the proof's. The milestone's own project's delivery desk\
-        \ (qits:desk, its own delivery token) may approve too, recorded under its\
-        \ token subject. Sends MilestoneMet when the approval makes the milestone\
-        \ hold. Refused when the criterion is not APPROVAL or is already approved."
-      operationId: approveMilestoneCriterion
-      parameters:
-      - name: criterionId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MilestoneApproval"
-        required: true
-      responses:
-        "200":
-          description: The milestone with the criterion approved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneAnswer"
-        "403":
-          description: Neither a verified person nor this milestone's project's delivery
-            desk
-        "404":
-          description: "No milestone, or no such criterion on it"
-        "409":
-          description: "Not an APPROVAL, or already approved"
-        "401":
-          description: Not Authorized
-        "400":
-          description: Bad Request
-      tags:
-      - Milestone Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:desk
-  /projects/api/milestones/{milestoneId}/groups:
-    put:
-      summary: Replace a milestone's condition
-      description: "PUT semantics: every group and criterion. A criterion restating\
-        \ an existing id with the same kind and predicate keeps its latch; a changed\
-        \ or new one starts unlatched, its floor moved to now; an omitted one is deleted.\
-        \ A milestone that stops holding loses its satisfiedAt and MilestoneUnmet\
-        \ is sent; one that comes to hold sends MilestoneMet. A bound agent edits\
-        \ only in its own project. Groups are OR'd and the criteria in a group AND'd;\
-        \ the milestone is met while one group holds. Kinds: ENTITY_STATUS {entityId\
-        \ (qualified id or UUID of a work entity of the same project), status}, DEPLOYMENT_ACTIVE,\
-        \ SCM_RELEASE, APPROVAL {} (a person's approve). ENTITY_STATUS latches from\
-        \ the current state at once when its target already stands at or past the\
-        \ status (evidence CURRENT_STATE). DEPLOYMENT_ACTIVE and SCM_RELEASE latch\
-        \ only on events that happen after the criterion was made: a deployment or\
-        \ a release from before it never meets it."
-      operationId: setMilestoneGroups
-      parameters:
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MilestoneGroups"
-        required: true
-      responses:
-        "200":
-          description: The milestone as the edit left it
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneAnswer"
-        "400":
-          description: "No groups, an empty group, a predicate the service cannot\
-            \ read, a restated id that is not this milestone's, or an ENTITY_STATUS\
-            \ target outside the project"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: No milestone with this id
-        "401":
-          description: Not Authorized
-      tags:
-      - Milestone Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
@@ -6362,94 +5583,6 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:desk
-  /projects/api/projects/{project}/milestones:
-    get:
-      summary: List a project's milestones
-      description: "Every milestone of the project, oldest first, each whole: its\
-        \ groups and criteria with their dates, whether it is met and since when,\
-        \ and what waits on it. The project is its id or its slug. met=false lists\
-        \ the unmet ones only — what work still needs — and met=true the met ones."
-      operationId: listProjectMilestones
-      parameters:
-      - name: project
-        in: path
-        required: true
-        schema:
-          type: string
-      - description: Only the met (true) or the unmet (false) milestones.
-        name: met
-        in: query
-        schema:
-          type: boolean
-      responses:
-        "200":
-          description: The milestones
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneList"
-        "404":
-          description: No such project
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Project Milestones Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-    post:
-      summary: Create a milestone
-      description: "A new milestone of the project, named and with its whole condition.\
-        \ A bound agent creates only in its own project. Groups are OR'd and the criteria\
-        \ in a group AND'd; the milestone is met while one group holds. Kinds: ENTITY_STATUS\
-        \ {entityId (qualified id or UUID of a work entity of the same project), status},\
-        \ DEPLOYMENT_ACTIVE, SCM_RELEASE, APPROVAL {} (a person's approve). ENTITY_STATUS\
-        \ latches from the current state at once when its target already stands at\
-        \ or past the status (evidence CURRENT_STATE). DEPLOYMENT_ACTIVE and SCM_RELEASE\
-        \ latch only on events that happen after the criterion was made: a deployment\
-        \ or a release from before it never meets it."
-      operationId: createMilestone
-      parameters:
-      - name: project
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MilestoneCreate"
-        required: true
-      responses:
-        "201":
-          description: "The milestone as written, latched from the current state"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MilestoneAnswer"
-        "400":
-          description: "No name, no groups, an empty group, a predicate the service\
-            \ cannot read, or an ENTITY_STATUS target outside the project"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: No such project
-        "401":
-          description: Not Authorized
-      tags:
-      - Project Milestones Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
   /projects/api/projects/{project}/work:
     get:
       summary: List a project's work of every archetype
@@ -9203,11 +8336,11 @@ paths:
   /projects/api/work:
     post:
       summary: Create a work entity of any archetype
-      description: "Files a new epic, ticket, campaign, feature or task from one body\
+      description: "Files a new epic, ticket, issue, feature or task from one body\
         \ shape: the archetype plus the archetype's create schema (GET /projects/api/work/archetypes/{archetype}/schemas/create).\
         \ A root names its project (id or slug), a node its parent (qualified id or\
-        \ UUID): a feature's parent is an EPIC, a task's a FEATURE. A dependency is\
-        \ a qualified id or a UUID. The status starts REPORTED. Answers the entity\
+        \ UUID): a feature's parent is an EPIC, a task's a FEATURE. A need's item\
+        \ is a qualified id or a UUID. The status starts REPORTED. Answers the entity\
         \ in the merged shape, with its qualified id."
       operationId: createWork
       requestBody:
@@ -9324,10 +8457,9 @@ paths:
       summary: "State several work entities in full, as one post-state"
       description: "A map of entity id to the whole state that entity is to have afterwards,\
         \ validated as one post-state, applied in one transaction and announced once.\
-        \ The keys and every id in an entry (membership.parent, supersededBy, dependsOn)\
-        \ are qualified ids or UUIDs; an id naming nothing is one of the violations\
-        \ in the 400. Answers each entity in the merged shape, keyed as the request\
-        \ was."
+        \ The keys and every id in an entry (membership.parent, supersededBy) are\
+        \ qualified ids or UUIDs; an id naming nothing is one of the violations in\
+        \ the 400. Answers each entity in the merged shape, keyed as the request was."
       operationId: transitionWork
       requestBody:
         content:
@@ -9374,9 +8506,8 @@ paths:
         \ property — and an absent property is cleared, not left alone. It is the\
         \ one-entry form of POST /projects/api/work/transition and obeys every rule\
         \ of it, so it is also how a single entity is reshaped, reparented or superseded.\
-        \ Every entity id in the body (membership.parent, supersededBy, dependsOn)\
-        \ is a qualified id or a UUID. Answers the entity as written, in the merged\
-        \ shape."
+        \ Every entity id in the body (membership.parent, supersededBy) is a qualified\
+        \ id or a UUID. Answers the entity as written, in the merged shape."
       operationId: putWork
       parameters:
       - name: qualifiedId
@@ -9423,13 +8554,14 @@ paths:
         \ is left unchanged and an explicit null clears it. The status is never written\
         \ here — a lifecycle move goes through POST /projects/api/work/{qualifiedId}/status,\
         \ and a reshape, reparent or supersede through PUT /projects/api/work/{qualifiedId}\
-        \ or POST /projects/api/work/transition. dependsOn is a qualified id or a\
-        \ UUID. An epic's, feature's or task's scope follows the epic's freeze: scope\
-        \ edits need the epic REPORTED, the markers need it READY_FOR_DEV or IMPLEMENTING,\
-        \ and a marker moves the item's status with it. An epic's or a ticket's acceptance\
-        \ criteria are frozen from READY_FOR_DEV on, where a changed list is refused\
-        \ and the same list restated passes. The tags are editable at every status,\
-        \ outside every freeze. Answers the entity in the merged shape."
+        \ or POST /projects/api/work/transition. A need's item is a qualified id or\
+        \ a UUID. An epic's, feature's or task's scope follows the epic's freeze:\
+        \ scope edits need the epic REPORTED, the markers need it READY_FOR_DEV or\
+        \ IMPLEMENTING, and a marker moves the item's status with it. An epic's or\
+        \ a ticket's acceptance criteria are frozen from READY_FOR_DEV on, where a\
+        \ changed list is refused and the same list restated passes. The tags are\
+        \ editable at every status, outside every freeze. Answers the entity in the\
+        \ merged shape."
       operationId: patchWork
       parameters:
       - name: qualifiedId
@@ -9521,8 +8653,8 @@ paths:
         \ the audit log outlives them. An epic's or a ticket's delete is qits:admin's,\
         \ or the delivery desk's (qits:desk) in its own project; a feature's or a\
         \ task's admits an agent bound to its project and obeys its epic's freeze.\
-        \ A campaign is not deleted but dropped. The path names the entity by qualified\
-        \ id (<projectSlug>-<n>) or UUID."
+        \ An issue is not deleted but moved to OBSOLETE. The path names the entity\
+        \ by qualified id (<projectSlug>-<n>) or UUID."
       operationId: deleteWork
       parameters:
       - name: qualifiedId
@@ -9543,8 +8675,7 @@ paths:
         "404":
           description: No entity with this id
         "409":
-          description: "A campaign, or a feature or a task whose epic is no longer\
-            \ REPORTED"
+          description: "An issue, or a feature or a task whose epic is no longer REPORTED"
         "401":
           description: Not Authorized
       tags:
@@ -9598,8 +8729,8 @@ paths:
   /projects/api/work/{qualifiedId}/audit:
     get:
       summary: A work entity's change history
-      description: "Newest first. A root (epic, ticket, campaign) answers its whole\
-        \ subtree — its features, tasks and every thread under it, deleted rows included;\
+      description: "Newest first. A root (epic, ticket, issue) answers its whole subtree\
+        \ — its features, tasks and every thread under it, deleted rows included;\
         \ a feature or a task its own rows. The path names the entity by qualified\
         \ id (<projectSlug>-<n>) or UUID; a UUID still answers after the entity is\
         \ deleted."
@@ -9634,10 +8765,10 @@ paths:
   /projects/api/work/{qualifiedId}/blocked:
     post:
       summary: Block or unblock a work entity
-      description: "Says the phase an epic's, ticket's or campaign's status starts\
-        \ cannot finish right now (or can again). The status does not move — it is\
-        \ the phase to resume — and the next transition clears the block. The reason\
-        \ is required to block and lands on the entity's thread."
+      description: Says the phase an epic's or ticket's status starts cannot finish
+        right now (or can again). The status does not move — it is the phase to resume
+        — and the next transition clears the block. The reason is required to block
+        and lands on the entity's thread.
       operationId: setWorkBlocked
       parameters:
       - name: qualifiedId
@@ -9745,7 +8876,7 @@ paths:
           description: "An agent outside its own project, or a plain agent (qits:agent\
             \ without the desk roles) naming inspiredBy; nothing is written"
         "404":
-          description: "No entity, repository or dependency"
+          description: No entity or repository
         "409":
           description: "A kind nothing hangs under, or a parent whose plan is frozen"
         "401":
@@ -9963,11 +9094,10 @@ paths:
         - qits:desk-admin
         - qits:agent
     post:
-      summary: "Put an agent on an epic or a ticket, or start a campaign"
+      summary: Put an agent on an epic or a ticket
       description: mode PHASE runs the one phase the entity's status starts; mode
-        FLOW runs that phase and the ones after it until a status starts none. On
-        a campaign the press is its start. The path names the entity by qualified
-        id (<projectSlug>-<n>) or UUID.
+        FLOW runs that phase and the ones after it until a status starts none. The
+        path names the entity by qualified id (<projectSlug>-<n>) or UUID.
       operationId: dispatchWork
       parameters:
       - name: qualifiedId
@@ -9983,14 +9113,11 @@ paths:
         required: true
       responses:
         "200":
-          description: "The dispatch made, or — for a campaign — its progress as the\
-            \ start press left it"
+          description: The dispatch made
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: "#/components/schemas/WorkDispatchAnswer"
-                - $ref: "#/components/schemas/WorkProgressAnswer"
+                $ref: "#/components/schemas/WorkDispatchAnswer"
         "400":
           description: "A missing or unknown mode, or a delivery desk naming no rule"
         "403":
@@ -10000,7 +9127,7 @@ paths:
         "409":
           description: "A status that starts no phase, a feature or a task, a blocked\
             \ entity, a project with no wrapper; for the delivery desk also its loop\
-            \ off, a campaign, or its cap reached"
+            \ off or its cap reached"
         "401":
           description: Not Authorized
       tags:
@@ -10373,448 +9500,16 @@ paths:
         - qits:admin-agent
         - qits:desk-admin
         - qits:agent
-  /projects/api/work/{qualifiedId}/members:
-    get:
-      summary: A campaign's members
-      description: "Every membership in campaign order: the entity it gathers, its\
-        \ run record and its condition. The path names the campaign by qualified id\
-        \ (<projectSlug>-<n>) or UUID."
-      operationId: listWorkMembers
-      parameters:
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The members
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberList"
-        "404":
-          description: No campaign with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-    post:
-      summary: Gather an entity into a campaign
-      description: "Adds a membership — at position, or at the end — for an entity\
-        \ named by qualified id or UUID. A bound agent adds only in its own project."
-      operationId: addWorkMember
-      parameters:
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkMemberAdd"
-        required: true
-      responses:
-        "201":
-          description: The membership as written
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberAnswer"
-        "400":
-          description: No entityId
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No campaign, or no entity, with this id"
-        "409":
-          description: "The entity cannot join: already a member, a feature or a task,\
-            \ a DROPPED campaign"
-        "401":
-          description: Not Authorized
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/members/{membershipId}:
-    delete:
-      summary: Remove a membership from its campaign
-      description: "Refused once the member was claimed, and while another member's\
-        \ criterion targets it. Answers the members that remain."
-      operationId: removeWorkMember
-      parameters:
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The members that remain
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberList"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No campaign, or no such membership on it"
-        "409":
-          description: "Claimed, or targeted by another member"
-        "401":
-          description: Not Authorized
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/members/{membershipId}/condition:
-    put:
-      summary: Replace a membership's condition
-      description: "PUT semantics: the whole condition, groups OR'd and criteria in\
-        \ a group AND'd; an empty list waits on nothing. A criterion restating an\
-        \ existing id keeps its latch. An ENTITY_STATUS predicate's entityId takes\
-        \ a qualified id or a UUID."
-      operationId: setWorkMemberCondition
-      parameters:
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkMemberCondition"
-        required: true
-      responses:
-        "200":
-          description: The member with its condition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberAnswer"
-        "400":
-          description: A criterion the service cannot read
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No campaign, or no such membership on it"
-        "401":
-          description: Not Authorized
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/members/{membershipId}/criteria/{criterionId}/approve:
-    post:
-      summary: A person's yes on a member's APPROVAL criterion
-      description: "qits:admin, and then a person this service verified itself; the\
-        \ name recorded is the proof's. The campaign's own project's delivery desk\
-        \ (qits:desk, its own delivery token) may approve too, recorded under its\
-        \ token subject. Refused when the criterion is not APPROVAL, is already satisfied,\
-        \ or the campaign is DONE or DROPPED."
-      operationId: approveWorkMemberCriterion
-      parameters:
-      - name: criterionId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkCriterionApproval"
-        required: true
-      responses:
-        "200":
-          description: The member with the criterion satisfied
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberAnswer"
-        "403":
-          description: Neither a verified person nor this campaign's project's delivery
-            desk
-        "404":
-          description: "No campaign, membership or criterion"
-        "409":
-          description: "Not an APPROVAL, already satisfied, or closed"
-        "401":
-          description: Not Authorized
-        "400":
-          description: Bad Request
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:desk
-  /projects/api/work/{qualifiedId}/members/{membershipId}/milestones:
-    put:
-      summary: Set the milestones a membership waits on
-      description: "PUT semantics: the membership is dispatched once every listed\
-        \ milestone is met, and an empty list waits on nothing. Each must be an existing\
-        \ milestone of the campaign's project; the member entity is attached to each,\
-        \ so it shows what it needs. A milestone left off stays attached to the member\
-        \ entity — except the membership's generated condition (the one PUT …/condition\
-        \ edits), which is detached from it and deleted once nothing waits on it.\
-        \ Refused once the member was claimed (a claim freezes it) and at a DROPPED\
-        \ campaign. A bound agent edits only in its own project."
-      operationId: setWorkMemberMilestones
-      parameters:
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkMemberMilestones"
-        required: true
-      responses:
-        "200":
-          description: The member with its milestones
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberAnswer"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No campaign, no such membership on it, or no such milestone"
-        "409":
-          description: "Claimed, a DROPPED campaign, or a milestone of another project"
-        "401":
-          description: Not Authorized
-        "400":
-          description: Bad Request
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/members/{membershipId}/position:
-    put:
-      summary: Move a membership within its campaign
-      description: Answers the members as the move left them.
-      operationId: moveWorkMember
-      parameters:
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkMemberMove"
-        required: true
-      responses:
-        "200":
-          description: "The members, in their new order"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMemberList"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No campaign, or no such membership on it"
-        "401":
-          description: Not Authorized
-        "400":
-          description: Bad Request
-      tags:
-      - Work Members Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/milestones:
-    get:
-      summary: The milestones a work entity waits on
-      description: "Each its id, its displayName and since when it is met (satisfiedAt,\
-        \ null while it is not). The entity needs something while any is unmet."
-      operationId: listWorkMilestones
-      parameters:
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The milestones
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMilestoneList"
-        "404":
-          description: No entity with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Work Milestones Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-  /projects/api/work/{qualifiedId}/milestones/{milestoneId}:
-    delete:
-      summary: A work entity no longer waits on a milestone
-      description: "The milestone itself stays, and so does every campaign membership\
-        \ waiting on it. Answers what the entity waits on now. A bound agent detaches\
-        \ only in its own project."
-      operationId: detachWorkMilestone
-      parameters:
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The milestones it waits on now
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMilestoneList"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No entity with this id, or it does not wait on this milestone"
-        "401":
-          description: Not Authorized
-      tags:
-      - Work Milestones Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
-    put:
-      summary: A work entity waits on a milestone
-      description: Idempotent. The milestone must be of the entity's project. Answers
-        what the entity waits on now. A bound agent attaches only in its own project.
-      operationId: attachWorkMilestone
-      parameters:
-      - name: milestoneId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The milestones it waits on now
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkMilestoneList"
-        "403":
-          description: An agent outside its own project
-        "404":
-          description: "No entity, or no milestone, with this id"
-        "409":
-          description: The milestone is of another project
-        "401":
-          description: Not Authorized
-      tags:
-      - Work Milestones Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
   /projects/api/work/{qualifiedId}/priority:
     put:
       summary: Drop a work item above or below one of its siblings
       description: "Ranks the item among its siblings — the children of its parent,\
-        \ or for a root every root of its project but the campaigns — by where it\
-        \ was dropped: directly above or directly below one named sibling (qualified\
-        \ id or UUID). DONE and DROPPED siblings take no part. The item and every\
-        \ open sibling above it are renumbered, strictly descending and above every\
-        \ ranked sibling below, so the order reads as dropped; nothing below the drop\
-        \ is written. Answers the renumbered siblings in order."
+        \ or for a root every root of its project but the issues — by where it was\
+        \ dropped: directly above or directly below one named sibling (qualified id\
+        \ or UUID). DONE and DROPPED siblings take no part. The item and every open\
+        \ sibling above it are renumbered, strictly descending and above every ranked\
+        \ sibling below, so the order reads as dropped; nothing below the drop is\
+        \ written. Answers the renumbered siblings in order."
       operationId: reprioritizeWork
       parameters:
       - name: qualifiedId
@@ -10838,7 +9533,7 @@ paths:
         "400":
           description: "Both anchors or neither; an anchor naming no entity, naming\
             \ the item itself, or naming no open sibling (another parent, another\
-            \ project, a campaign, a DONE or DROPPED item); or the item is a campaign"
+            \ project, an issue, a DONE or DROPPED item); or the item is an issue"
         "403":
           description: An agent ranking outside its own project; nothing is written
         "404":
@@ -10856,41 +9551,6 @@ paths:
         - qits:desk-admin
         - qits:agent
         - qits:system
-  /projects/api/work/{qualifiedId}/progress:
-    get:
-      summary: How a campaign is doing
-      description: "Every member's derived state, what it waits for, each criterion\
-        \ judged (the sentence that would latch it, whether it still can, its evidence),\
-        \ and whether the criteria evaluator is listening. The path names the campaign\
-        \ by qualified id (<projectSlug>-<n>) or UUID."
-      operationId: getWorkProgress
-      parameters:
-      - name: qualifiedId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkProgressAnswer"
-        "404":
-          description: No campaign with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Work Progress Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:admin-agent
-        - qits:desk-admin
-        - qits:agent
   /projects/api/work/{qualifiedId}/refinement:
     post:
       summary: Open (or find) a work entity's refinement room
@@ -10898,8 +9558,8 @@ paths:
         \ answers the first. The room is a session of the project's front desk, asked\
         \ for by the open. Refused for a feature or a task, an entity not at REPORTED,\
         \ one an ACTIVE workspace names, a project with no wrapper, and beyond the\
-        \ project's refinement-sessions cap. The path names the entity (an epic, a\
-        \ ticket or a campaign) by qualified id (<projectSlug>-<n>) or UUID."
+        \ project's refinement-sessions cap. The path names the entity (an epic or\
+        \ a ticket) by qualified id (<projectSlug>-<n>) or UUID."
       operationId: startWorkRefinement
       parameters:
       - name: qualifiedId
@@ -10968,18 +9628,18 @@ paths:
   /projects/api/work/{qualifiedId}/status:
     post:
       summary: Move a work entity through its lifecycle
-      description: "Moves an epic, ticket, campaign, feature or task to the target\
-        \ status, by the same path as the archetype's own transition and under its\
-        \ roles: an agent may move a ticket, a campaign, a feature or a task of its\
-        \ own project, a platform service (qits:system) one of any project, and an\
-        \ epic is qits:admin's, or an agent's of its own project, which may not supersede\
-        \ it. The project's delivery desk (qits:desk) moves what qits:admin-agent\
-        \ moves, superseding included, in its own project only; its scheduling (REFINED\
-        \ to READY_FOR_DEV) is a person's, or the dispatch press's under start_refined.\
-        \ A feature or a task moves only once its epic is past REPORTED, and its scheduling\
-        \ (to READY_FOR_DEV, or back) is the epic's. Nobody moves a ticket to DONE:\
-        \ the platform does, once the wrapper release request carrying its branch\
-        \ is finalized. Answers the entity in the merged shape, with statusBefore."
+      description: "Moves an epic, ticket, issue, feature or task to the target status,\
+        \ by the same path as the archetype's own transition and under its roles:\
+        \ an agent may move a ticket, an issue, a feature or a task of its own project,\
+        \ a platform service (qits:system) one of any project, and an epic is qits:admin's,\
+        \ or an agent's of its own project, which may not supersede it. The project's\
+        \ delivery desk (qits:desk) moves what qits:admin-agent moves, superseding\
+        \ included, in its own project only; its scheduling (REFINED to READY_FOR_DEV)\
+        \ is a person's, or the dispatch press's under start_refined. A feature or\
+        \ a task moves only once its epic is past REPORTED, and its scheduling (to\
+        \ READY_FOR_DEV, or back) is the epic's. Nobody moves a ticket to DONE: the\
+        \ platform does, once the wrapper release request carrying its branch is finalized.\
+        \ Answers the entity in the merged shape, with statusBefore."
       operationId: setWorkStatus
       parameters:
       - name: qualifiedId
@@ -11069,4 +9729,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1102.154652
+  version: 2026.1106.143353

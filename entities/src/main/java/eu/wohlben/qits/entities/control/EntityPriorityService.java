@@ -25,7 +25,7 @@ import java.util.Objects;
  * and writes the answer back.
  *
  * <p><b>Siblings</b> are the children of the item's STRUCTURAL parent, or — for a root — every root
- * of the project but its campaigns (epics and tickets are one backlog). DONE and DROPPED rows are
+ * of the project but its issues (epics and tickets are one backlog). DONE and DROPPED rows are
  * neither moved nor counted.
  *
  * <p>No audit row and no announcement: a ranking is the board's arrangement, not a fact about the
@@ -71,7 +71,7 @@ public class EntityPriorityService {
   /**
    * Moves {@code itemId} directly {@code placement} {@code anchorId} among its siblings and answers
    * every sibling at and above it with its new priority, in order. Both ids are UUIDs; the caller
-   * resolved them. The refusals, in order: the item names nothing (404), the item is a campaign
+   * resolved them. The refusals, in order: the item names nothing (404), the item is an issue
    * (400), the item is closed (409), the anchor names nothing, is the item, or is not an open
    * sibling (400).
    */
@@ -87,9 +87,9 @@ public class EntityPriorityService {
       throw new NotFoundException("Entity not found: " + itemId);
     }
     String noun = WorkEntityService.nounOf(item.archetype);
-    if (item.archetype == Archetype.CAMPAIGN || item.archetype == Archetype.ISSUE) {
+    if (item.archetype == Archetype.ISSUE) {
       throw new BadRequestException(
-          noun + " " + item.id + " takes no part in an order: campaigns and issues are not ranked"
+          noun + " " + item.id + " takes no part in an order: issues are not ranked"
               + " among the project's roots");
     }
     requireRankable(noun, item);
@@ -104,7 +104,6 @@ public class EntityPriorityService {
     }
     String parentId = parentOf(item.id);
     if (!item.projectId.equals(anchor.projectId)
-        || anchor.archetype == Archetype.CAMPAIGN
         || anchor.archetype == Archetype.ISSUE
         || !Objects.equals(parentId, parentOf(anchor.id))
         || !SiblingPriorities.isRankable(anchor.status)) {
@@ -113,8 +112,8 @@ public class EntityPriorityService {
               + anchor.id
               + " is not a reorderable sibling of "
               + item.id
-              + ": it must hang under the same parent (or be a root of the same project, not a"
-              + " campaign) and be neither DONE nor DROPPED");
+              + ": it must hang under the same parent (or be a root of the same project, not an"
+              + " issue) and be neither DONE nor DROPPED");
     }
 
     Map<String, WorkEntity> open = new LinkedHashMap<>();

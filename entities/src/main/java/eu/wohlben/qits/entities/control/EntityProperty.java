@@ -15,16 +15,14 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
  * over these words, a violation names one of them, and a caller can put the message on the
  * offending field instead of on the form.
  *
- * <p><b>These are properties, not columns, and the difference shows up twice.</b> {@link
- * #IMPLEMENTED_AT} covers what were {@code feature.implemented_on} and {@code task.implemented_at},
- * and {@link #DEPENDS_ON} covers what were {@code depends_on_feature_id} and {@code
- * depends_on_task_id}; each pair was one property spelled twice because it lived in two tables.
+ * <p><b>These are properties, not columns.</b> {@link #IMPLEMENTED_AT} covers what were {@code
+ * feature.implemented_on} and {@code task.implemented_at}: one property spelled twice because it
+ * lived in two tables.
  *
  * <p><b>Nesting is not in here.</b> Whether a row may hang under another is not a property of the
  * row — it is a fact about a pair — so the parent/child rule is {@code Nesting}'s and never a
- * required-property check. {@link #DEPENDS_ON} is in here and is <em>not</em> that rule: a
- * dependency is a sibling ordering edge, and treating it as containment is the misreading the
- * column's own javadoc warns about.
+ * required-property check. Neither is ordering: an item's needs ({@code NeedService}) are written
+ * outside the registry, like tags, so a transition never clears them.
  */
 public enum EntityProperty {
 
@@ -95,13 +93,6 @@ public enum EntityProperty {
    * mirroring {@link #IMPLEMENTED_AT}.
    */
   IMPLEMENTING_AT,
-
-  /**
-   * {@code entity.depends_on_entity_id} — the merge of {@code depends_on_feature_id} and {@code
-   * depends_on_task_id}. A <b>sibling ordering</b> edge and never containment; a STRUCTURAL {@code
-   * EntityMembership} is the relation that is containment, and {@link Nesting} is what judges it.
-   */
-  DEPENDS_ON,
 
   /**
    * {@code entity_acceptance_criterion} (epics V26, qits-887): the ordered list of short Markdown

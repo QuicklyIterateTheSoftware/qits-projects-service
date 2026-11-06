@@ -27,8 +27,8 @@ public enum WorkTag {
   /**
    * <b>The work cannot be completed by an agent: a person has to do it.</b> Why — a credential only
    * a person holds, a decision only the owner can make, hardware nobody wired up — goes in the
-   * item's description, not in the tag. No agent is dispatched onto it (the press, the delivery desk
-   * and a campaign's executor are all refused with a 409 naming the tag), and a status move
+   * item's description, not in the tag. No agent is dispatched onto it (the press and the delivery desk
+   * are both refused with a 409 naming the tag), and a status move
    * delivers it no phase turn; the person doing the work moves its status by hand. Clearing the tag
    * lets it be dispatched again.
    */
