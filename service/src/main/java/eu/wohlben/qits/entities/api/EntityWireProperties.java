@@ -133,13 +133,22 @@ public final class EntityWireProperties {
   public static final String TAGS = "tags";
 
   /**
+   * The tags the schema's {@code enum} lists: {@code RESERVED_FOR_HUMAN} alone, though the doors
+   * accept every {@link WorkTag} — {@code CONDITION} (qits-1903) included, which the description
+   * names. qits-platform-access-monorepo's pact pins this enum at one entry ({@code qits work
+   * create|update: getWorkArchetypeSchema}), so the list widens once that consumer releases a pact
+   * that open-ends it, and not before.
+   */
+  static final List<String> SCHEMA_TAGS = List.of(WorkTag.RESERVED_FOR_HUMAN.name());
+
+  /**
    * The JSON Schema fragment of the tags: an array of {@link WorkTag} names, without the nullability
    * the update schema adds (a patch's null clears them, as an empty array does).
    */
   public static Map<String, Object> tagsSchema() {
     Map<String, Object> items = new LinkedHashMap<>();
     items.put("type", "string");
-    items.put("enum", WorkTag.words());
+    items.put("enum", SCHEMA_TAGS);
     Map<String, Object> schema = new LinkedHashMap<>();
     schema.put("type", "array");
     schema.put("items", Collections.unmodifiableMap(items));

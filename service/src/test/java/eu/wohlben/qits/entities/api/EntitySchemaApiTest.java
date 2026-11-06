@@ -428,7 +428,7 @@ class EntitySchemaApiTest {
             "type" : "array",
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -512,7 +512,7 @@ class EntitySchemaApiTest {
             "type" : [ "array", "null" ],
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -657,7 +657,7 @@ class EntitySchemaApiTest {
             "type" : "array",
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
@@ -733,7 +733,7 @@ class EntitySchemaApiTest {
             "type" : [ "array", "null" ],
             "items" : {
               "type" : "string",
-              "enum" : [ "RESERVED_FOR_HUMAN", "CONDITION" ]
+              "enum" : [ "RESERVED_FOR_HUMAN" ]
             },
             "description" : "The work's tags, the whole set: RESERVED_FOR_HUMAN — the work cannot be completed by an agent and a person has to do it (say why in the description); no agent is dispatched onto it. CONDITION — a condition other work waits for, not work of its own (say what closes it in the description); no agent is dispatched onto it, and a person or an agent moves its status. Editable at every status, outside every scope freeze; an empty array or null clears them."
           },
