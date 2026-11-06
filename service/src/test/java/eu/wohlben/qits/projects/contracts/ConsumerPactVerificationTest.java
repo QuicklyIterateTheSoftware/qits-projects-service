@@ -275,6 +275,12 @@ class ConsumerPactVerificationTest {
           // qits-projects-frontend's qits-1907 pact, pinned once the bump lands.
           new KnownWrong(
               "qits-projects-frontend",
+              "2026.1106.181420",
+              "show-work-item-actions: listWorkArchetypes",
+              "the archetype registry",
+              RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"),
+          new KnownWrong(
+              "qits-projects-frontend",
               "2026.1106.155548",
               "show-work-desk: listProjectWork",
               "an epic in detail",
@@ -282,12 +288,6 @@ class ConsumerPactVerificationTest {
           new KnownWrong(
               "qits-projects-frontend",
               "2026.1106.155548",
-              "show-work-item-actions: listWorkArchetypes",
-              "the archetype registry",
-              RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"),
-          new KnownWrong(
-              "qits-projects-frontend",
-              "2026.1106.181420",
               "show-work-item-actions: listWorkArchetypes",
               "the archetype registry",
               RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"));
