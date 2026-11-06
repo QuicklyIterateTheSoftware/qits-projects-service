@@ -173,6 +173,15 @@ class ConsumerPactVerificationTest {
    * its {@code index}, so the skipped index 0 is the CAMPAIGN row) and each kind's {@code
    * permitted} list at its length with {@code DEPENDS_ON}; it re-records them. Each entry goes once
    * its version is neither pinned, deployed nor a rollback target.
+   *
+   * <p>qits-githost-frontend's 2026.1106.155106 (pinned, and also deployed inside
+   * qits-githost-service 2026.1106.164015) and qits-projects-frontend's 2026.1106.155548 (pinned)
+   * carry {@code @qits/ui-components}' {@code WORK_BRIEFS} block, whose query lost its provider-state
+   * generator: it sends the golden master's example ids as a literal query instead of the state's
+   * generated ids ({@code @qits/ui-components} 2026.1106.153549 {@code masters.ts}
+   * {@code queryFromParams}), so the briefs answer comes back empty. qits-1897 fixes the library and
+   * re-records both. Each entry stays until its version is neither pinned, deployed nor a rollback
+   * target.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -284,7 +293,24 @@ class ConsumerPactVerificationTest {
               "2026.1106.155548",
               "show-work-item-actions: listWorkArchetypes",
               "the archetype registry",
-              RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"));
+              RETIRED + ": pins each kind's permitted list at its length with DEPENDS_ON"),
+          // qits-1897: @qits/ui-components' WORK_BRIEFS block lost its query generator.
+          new KnownWrong(
+              "qits-githost-frontend",
+              "2026.1106.155106",
+              "show-work-brief: listProjectWorkBriefs",
+              "a project with work to brief",
+              "sends the golden master's example ids as a literal query instead of the state's"
+                  + " generated ids (@qits/ui-components 2026.1106.153549 masters.ts"
+                  + " queryFromParams), so the briefs answer is empty"),
+          new KnownWrong(
+              "qits-projects-frontend",
+              "2026.1106.155548",
+              "show-work-brief: listProjectWorkBriefs",
+              "a project with work to brief",
+              "sends the golden master's example ids as a literal query instead of the state's"
+                  + " generated ids (@qits/ui-components 2026.1106.153549 masters.ts"
+                  + " queryFromParams), so the briefs answer is empty"));
 
   @Inject ProviderStates states;
 
