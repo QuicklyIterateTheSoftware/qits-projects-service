@@ -1,10 +1,11 @@
 package eu.wohlben.qits.projects.control;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
  * Which run one qits-ci run was fired to replace — asked of qits-ci for a run this service holds
- * no ledger row for (ticket qits-556).
+ * no ledger row for (ticket qits-556) — and, since qits-1920, which outputs a red run found stale.
  *
  * <p><b>Why the ledger cannot answer it alone.</b> qits-ci announces {@code BuildSuccessful} /
  * {@code BuildFailed} for terminal runs only, and a run it <em>auto-retried</em> (an infrastructure
@@ -26,4 +27,16 @@ public interface CiRunLineage {
 
   /** The run {@code runId} re-fires, or empty where it is none or could not be asked. */
   Optional<String> retryOfRunId(String runId);
+
+  /**
+   * The output kinds a red run's QA found stale (qits-1920): the {@code stale outputs: <kind>}
+   * highlights ({@link StaleOutputs#HIGHLIGHT}) of its {@value StaleOutputs#REPORT_KIND} report,
+   * off qits-ci's {@code GET /ci/api/runs/{runId}/reports} ({@code listRunReports}), in their order.
+   *
+   * <p>The same contract as {@link #retryOfRunId}: <b>every non-answer is an empty list</b> — no
+   * such report, a 404, an unconfigured port, an unreachable qits-ci, an unreadable body — and it
+   * never throws. The caller's sentence then reads exactly as it did before qits-1920. Called once
+   * per red verdict, before the gate transaction opens.
+   */
+  List<String> staleOutputKinds(String runId);
 }

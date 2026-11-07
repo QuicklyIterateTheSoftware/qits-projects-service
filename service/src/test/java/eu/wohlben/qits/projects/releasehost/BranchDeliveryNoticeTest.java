@@ -89,6 +89,8 @@ public class BranchDeliveryNoticeTest {
 
   @Inject BranchDeliveryNotices notices;
 
+  @Inject FakeCiRunLineage lineage;
+
   @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
 
   private String projectId;
@@ -114,6 +116,7 @@ public class BranchDeliveryNoticeTest {
     automations.reset();
     deploymentRequests.reset();
     agents.reset();
+    lineage.reset();
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "queued");
     unique = UUID.randomUUID().toString().substring(0, 8);
@@ -163,6 +166,7 @@ public class BranchDeliveryNoticeTest {
   @AfterEach
   void drop() {
     agents.reset();
+    lineage.reset();
     turns.reset();
     automations.reset();
     deploymentRequests.reset();
@@ -226,6 +230,69 @@ public class BranchDeliveryNoticeTest {
     notices.deliverOwed();
     assertEquals(2, turns.calls().size(), "the same fold is told once");
     assertEquals(3, recordedOf(id).size());
+  }
+
+  /**
+   * qits-1920: a red run whose QA found stale outputs says which, and how to regenerate them — in
+   * the request's detail and in the branch owner's fyi. The reports are read once, for that run.
+   */
+  @Test
+  public void aRedRunWithStaleOutputsNamesThemInTheDetailAndTheFyi() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    String merged = mergedShaOf(id);
+    String red = run();
+    lineage.stale(red, "cli-tapes", "screenshot-baselines");
+
+    verdict(merged, red, null);
+    awaitState(id, "REJECTED");
+    awaitTold(1);
+
+    ReleaseRequest row =
+        QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.<ReleaseRequest>findById(id));
+    String note =
+        "stale outputs: cli-tapes — regenerate with: qits release-request regenerate --project "
+            + projectId
+            + " --repository "
+            + row.repoName
+            + " --kind cli-tapes; stale outputs: screenshot-baselines — regenerate with: qits"
+            + " release-request regenerate --project "
+            + projectId
+            + " --repository "
+            + row.repoName
+            + " --kind screenshot-baselines";
+    assertEquals("Run " + red + " finished FAILED for " + merged + "; " + note, row.detail);
+    assertEquals(
+        List.of(
+            new Spoken(
+                "work-a",
+                "fyi: your " + a + " failed its build in " + row.qualifiedId + ": " + note)),
+        turns.calls());
+    assertTrue(lineage.reportsAsked().contains(red), "the red run's reports were read");
+  }
+
+  /** qits-1920: reports that cannot be read leave both sentences exactly as they were. */
+  @Test
+  public void aRedRunWhoseReportsCannotBeReadSaysWhatItAlwaysSaid() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    String merged = mergedShaOf(id);
+    String red = run();
+    lineage.stale(red, "cli-tapes");
+    lineage.failing(true);
+
+    verdict(merged, red, null);
+    awaitState(id, "REJECTED");
+    awaitTold(1);
+
+    ReleaseRequest row =
+        QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.<ReleaseRequest>findById(id));
+    assertEquals("Run " + red + " finished FAILED for " + merged, row.detail);
+    assertEquals(
+        List.of(new Spoken("work-a", "fyi: your " + a + " failed its build in " + row.qualifiedId)),
+        turns.calls());
   }
 
   @Test

@@ -315,8 +315,9 @@ public class AutomationGateTest {
   }
 
   /**
-   * qits-1178: a kind QA checks (DEFERRED) is listed on the request with its sentence, holds nothing
-   * back and is no check of the gate — exactly like a kind that does not apply.
+   * qits-1178: a kind QA checks (DEFERRED) is listed on the request with its sentence and holds
+   * nothing back. Since qits-1920 the gate lists it as a DEFERRED check naming the regenerate
+   * command, and its passing sentence names what QA checks.
    */
   @Test
   public void aDeferredKindIsListedWithItsSentenceAndHoldsNothing() {
@@ -330,9 +331,24 @@ public class AutomationGateTest {
     assertEquals("checked by QA", before.getString("automations[1].detail"));
     assertEquals("PASSED", gateState(before, "AUTOMATIONS"));
     assertEquals(
-        List.of("Entity diagram"),
+        List.of("Entity diagram", "Screenshot baselines"),
         before.getList("qualityGates.find { it.kind == 'automations' }.checks.name"),
-        "a kind QA checks is no check of the gate");
+        "a kind QA checks is a check of the gate");
+    assertEquals(
+        List.of("PASSED", "DEFERRED"),
+        before.getList("qualityGates.find { it.kind == 'automations' }.checks.state"));
+    assertEquals(
+        "checked by QA: regenerate with qits release-request regenerate --project "
+            + projectId
+            + " --repository "
+            + plainName
+            + " --kind "
+            + SCREENSHOTS
+            + " if QA reports it stale",
+        before.getString("qualityGates.find { it.kind == 'automations' }.checks[1].detail"));
+    assertEquals(
+        "QA checks: " + SCREENSHOTS,
+        before.getString("qualityGates.find { it.kind == 'automations' }.detail"));
 
     verdict(plainRepoId, merged);
     awaitState(plainRepoId, id, "RELEASED");

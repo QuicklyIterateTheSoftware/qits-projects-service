@@ -22,11 +22,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * phase, the active runs, one run's lineage, and the two asks a release request makes of its runs.
  * Every client here calls with an {@link IdpCiBearer} that presents a fixed machine token — the only
  * credential these hops send (qits-1332); it is not part of the contract.
+ *
+ * <p>The {@code listRunReports} row (qits-1920) — a red run's stale outputs, read before its
+ * rejection — stays pending until the pinned qits-ci golden masters record the state {@value
+ * #STALE_OUTPUTS}; until then no pact interaction is written for it.
  */
 final class CiContract {
 
   static final String PROVIDER = "qits-ci-service";
   static final String APP = "qits-ci";
+
+  /** qits-ci's state for the stale-outputs read (qits-1920), pending its recording. */
+  static final String STALE_OUTPUTS = "a failed qa run with stale outputs";
 
   private CiContract() {}
 
@@ -135,6 +142,23 @@ final class CiContract {
                   assertTrue(
                       ci(new HttpCiRunLineage(RowClients.clients()), base).retryOfRunId(p.get("runId")).isPresent()),
               "GET /ci/api/runs/{runId} answering 200 with retryOfRunId set"),
+          row(
+              "listRunReports",
+              STALE_OUTPUTS,
+              "GET",
+              "/ci/api/runs/{runId}/reports",
+              Map.of(),
+              null,
+              List.of("$.reports[*].kind", "$.reports[*].highlights[*].text"),
+              200,
+              Trigger.event("BuildFailed"),
+              (base, p) ->
+                  assertTrue(
+                      ci(new HttpCiRunLineage(RowClients.clients()), base)
+                          .staleOutputKinds(p.get("runId"))
+                          .contains("cli-tapes")),
+              "GET /ci/api/runs/{runId}/reports answering 200 with a stale-outputs report whose"
+                  + " highlights read stale outputs: cli-tapes"),
           row(
               "getReleasePhase",
               "a repository that declares a release phase",

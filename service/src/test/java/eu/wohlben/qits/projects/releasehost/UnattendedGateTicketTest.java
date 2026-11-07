@@ -116,6 +116,9 @@ public class UnattendedGateTicketTest {
 
   @Inject AutomationLedger automationLedger;
 
+  /** What qits-ci says a red run found stale (qits-1920); reset on both sides of each test. */
+  @Inject FakeCiRunLineage lineage;
+
   /** The kind the automation cases fail; its fake run id is {@code run-<kind>}. */
   private static final String SCREENSHOTS = "screenshot-baselines";
 
@@ -130,6 +133,7 @@ public class UnattendedGateTicketTest {
     merger.reset();
     agents.reset();
     automations.reset();
+    lineage.reset();
     repoId = "gate-ticket-repo-" + UUID.randomUUID();
     projectId = "gate-ticket-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -160,6 +164,7 @@ public class UnattendedGateTicketTest {
   void dropTheFixturesRequests() {
     agents.reset();
     automations.reset();
+    lineage.reset();
     List<String> ids =
         QuarkusTransaction.requiringNew()
             .call(
@@ -213,6 +218,39 @@ public class UnattendedGateTicketTest {
         body.contains(BackingBranches.qualifiedIdOf(id)), "and the request that stopped");
     assertTrue(body.contains("FAILED"), body);
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  /**
+   * qits-1920: a red run whose QA found stale outputs names them, with the regenerate command, in
+   * the ticket's "gate's own words" — the request's detail, verbatim.
+   */
+  @Test
+  public void aRedGateWithStaleOutputsNamesThemOnTheTicket() {
+    String id = create("maintenance/dependencies", ROBOT);
+    String merged = mergedShaOf(id);
+    String runId = "run-" + UUID.randomUUID();
+    lineage.stale(runId, "cli-tapes");
+
+    verdict("BuildFailed", merged, runId, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    String note =
+        "stale outputs: cli-tapes — regenerate with: qits release-request regenerate --project "
+            + projectId
+            + " --repository "
+            + REPO_NAME
+            + " --kind cli-tapes";
+    assertEquals(
+        "Run " + runId + " finished FAILED for " + merged + "; " + note,
+        request(id).getString("detail"));
+    String ticketId = awaitTicketOn(id);
+    String body =
+        given().get("/projects/api/work/" + ticketId).then().statusCode(200).extract()
+            .path("description");
+    assertTrue(
+        body.contains("**The gate's own words:** Run " + runId + " finished FAILED for " + merged
+            + "; " + note),
+        body);
   }
 
   /**
@@ -1025,6 +1063,10 @@ public class UnattendedGateTicketTest {
   }
 
   private void verdict(String name, String sha, String extra) {
+    verdict(name, sha, "run-" + UUID.randomUUID(), extra);
+  }
+
+  private void verdict(String name, String sha, String runId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -1034,8 +1076,8 @@ public class UnattendedGateTicketTest {
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
-                + "\",\"runId\":\"run-"
-                + UUID.randomUUID()
+                + "\",\"runId\":\""
+                + runId
                 + "\""
                 + extra
                 + "}",

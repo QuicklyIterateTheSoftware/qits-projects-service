@@ -156,6 +156,12 @@
             "state": "PENDING",
             "detail": "RUNNING",
             "runId": "bump-00000000-0000-4000-8000-000000000004"
+          },
+          {
+            "name": "Screenshot baselines",
+            "state": "DEFERRED",
+            "detail": "checked by QA: regenerate with qits release-request regenerate --project 00000000-0000-4000-8000-000000000001 --repository contract-suite-app --kind screenshot-baselines if QA reports it stale",
+            "runId": null
           }
         ],
         "runId": null,

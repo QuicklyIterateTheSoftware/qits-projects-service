@@ -340,8 +340,30 @@ public class BranchDeliveries {
    * sha is news and the same one again is not (qits-1725); every branch {@code row} carries.
    */
   public void failed(ReleaseRequest row, Failure failure, String runId, String foldAttempt) {
+    failed(row, failure, runId, foldAttempt, null);
+  }
+
+  /**
+   * The same, with what the red run said beyond its verdict (qits-1920): {@code buildNote} rides
+   * the step in process ({@link BranchDeliveryStep#buildNote}) so the branch's {@code fyi} names
+   * the stale outputs; null says nothing more, exactly as before.
+   */
+  public void failed(
+      ReleaseRequest row, Failure failure, String runId, String foldAttempt, String buildNote) {
     for (String branch : carriedBranchesOf(row)) {
-      step(row, branch, Step.FAILED, null, null, foldAttempt, failure.name(), runId, null, false);
+      step(
+          row,
+          branch,
+          Step.FAILED,
+          null,
+          null,
+          foldAttempt,
+          failure.name(),
+          runId,
+          null,
+          false,
+          null,
+          buildNote);
     }
   }
 
@@ -357,7 +379,18 @@ public class BranchDeliveries {
     String foldAttempt = FoldAttempt.ofConflicts(conflicts);
     for (String branch : carriedBranchesOf(row)) {
       step(
-          row, branch, Step.CONFLICTED, null, null, foldAttempt, null, null, null, false, conflicts);
+          row,
+          branch,
+          Step.CONFLICTED,
+          null,
+          null,
+          foldAttempt,
+          null,
+          null,
+          null,
+          false,
+          conflicts,
+          null);
     }
   }
 
@@ -674,6 +707,7 @@ public class BranchDeliveries {
         runId,
         version,
         onlyFromPrevious,
+        null,
         null);
   }
 
@@ -689,7 +723,8 @@ public class BranchDeliveries {
       String runId,
       String version,
       boolean onlyFromPrevious,
-      List<BackingBranchMerger.Conflict> conflicts) {
+      List<BackingBranchMerger.Conflict> conflicts,
+      String buildNote) {
     if (row == null) {
       return;
     }
@@ -720,7 +755,8 @@ public class BranchDeliveries {
               version,
               null,
               Instant.now(),
-              conflicts),
+              conflicts,
+              buildNote),
           onlyFromPrevious,
           previousId);
     } catch (RuntimeException e) {
@@ -790,7 +826,8 @@ public class BranchDeliveries {
             taken.version(),
             everywhere(ledger.stepsOf(taken.projectId(), taken.branch())),
             taken.changedAt(),
-            taken.conflicts());
+            taken.conflicts(),
+            taken.buildNote());
     for (BranchDeliveryStepListener listener : listeners) {
       try {
         listener.onStep(written);

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.CiRunLineage;
+import eu.wohlben.qits.projects.control.StaleOutputs;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.net.URI;
@@ -13,6 +14,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -26,6 +29,11 @@ import org.jboss.logging.Logger;
  * non-200, unreachable, an unreadable body — is {@code Optional.empty()}: the retry walk stops there,
  * which is what it did before this port existed. A 404 is logged at DEBUG because it is ordinary (a
  * run qits-ci has since collected); everything else at WARN, since it silently costs a re-arm.
+ *
+ * <p>Since qits-1920 it also reads a red run's reports, {@code GET /ci/api/runs/{runId}/reports}
+ * ({@code listRunReports}), for the {@code stale outputs: <kind>} highlights of its {@value
+ * StaleOutputs#REPORT_KIND} summary, under the same rules: every failure is an empty list, a 404 at
+ * DEBUG and the rest at WARN, and the rejection then reads as it did before.
  */
 @ApplicationScoped
 @DefaultBean
@@ -98,6 +106,69 @@ public class HttpCiRunLineage implements CiRunLineage {
     } catch (Exception e) {
       LOG.warnf("Could not read run %s from qits-ci; the retry chain stops there: %s", runId, e);
       return Optional.empty();
+    }
+  }
+
+  @Override
+  public List<String> staleOutputKinds(String runId) {
+    if (runId == null || runId.isBlank() || ciUrl.isEmpty() || ciUrl.get().isBlank()) {
+      return List.of();
+    }
+    try {
+      Optional<String> authorization = bearer.authorization();
+      if (authorization.isEmpty()) {
+        LOG.warnf("Not reading run %s's reports from qits-ci: %s", runId, IdpCiBearer.MISSING);
+        return List.of();
+      }
+      HttpRequest request =
+          HttpRequest.newBuilder(
+                  URI.create(
+                      ciUrl.get()
+                          + "/ci/api/runs/"
+                          + URLEncoder.encode(runId, StandardCharsets.UTF_8)
+                          + "/reports"))
+              .timeout(Duration.ofSeconds(3))
+              .header("Authorization", authorization.get())
+              .GET()
+              .build();
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() == 404) {
+        LOG.debugf("qits-ci knows no run %s; its rejection names no stale outputs", runId);
+        return List.of();
+      }
+      if (response.statusCode() != 200) {
+        LOG.warnf(
+            "qits-ci answered %d for run %s's reports; its rejection names no stale outputs",
+            response.statusCode(),
+            runId);
+        return List.of();
+      }
+      JsonNode reports = MAPPER.readTree(response.body()).path("reports");
+      if (!reports.isArray()) {
+        LOG.warnf("qits-ci answered no reports[] for run %s; its rejection names no stale outputs",
+            runId);
+        return List.of();
+      }
+      List<String> kinds = new ArrayList<>();
+      for (JsonNode report : reports) {
+        if (!StaleOutputs.REPORT_KIND.equals(report.path("kind").asText(null))) {
+          continue;
+        }
+        for (JsonNode highlight : report.path("highlights")) {
+          String kind = StaleOutputs.kindOf(highlight.path("text").asText(null));
+          if (kind != null && !kinds.contains(kind)) {
+            kinds.add(kind);
+          }
+        }
+      }
+      return List.copyOf(kinds);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return List.of();
+    } catch (Exception e) {
+      LOG.warnf("Could not read run %s's reports from qits-ci; its rejection names no stale"
+          + " outputs: %s", runId, e);
+      return List.of();
     }
   }
 }

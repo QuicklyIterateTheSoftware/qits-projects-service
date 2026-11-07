@@ -127,4 +127,48 @@ class HttpCiRunLineageTest {
         Optional.empty(), against(startServer(), TestCiBearers.none()).retryOfRunId("run-b"));
     assertEquals(List.of(), paths, "nothing may be sent without the bearer");
   }
+
+  // ---- qits-1920: a red run's stale outputs, off listRunReports --------------------------------
+
+  @Test
+  void readsTheStaleKindsOffTheStaleOutputsReport() throws IOException {
+    body.set(
+        "{\"runId\":\"run-b\",\"reports\":["
+            + "{\"kind\":\"test-results\",\"highlights\":[{\"text\":\"stale outputs: nope\"}]},"
+            + "{\"kind\":\"stale-outputs\",\"highlights\":["
+            + "{\"severity\":\"bad\",\"text\":\"stale outputs: cli-tapes\"},"
+            + "{\"severity\":\"info\",\"text\":\"regenerate with: qits release-request\"},"
+            + "{\"severity\":\"bad\",\"text\":\"stale outputs: entity-diagram\"},"
+            + "{\"severity\":\"bad\",\"text\":\"stale outputs: cli-tapes\"}]}]}");
+    HttpCiRunLineage lineage = against(startServer());
+
+    assertEquals(List.of("cli-tapes", "entity-diagram"), lineage.staleOutputKinds("run-b"));
+    assertEquals(List.of("/ci/api/runs/run-b/reports"), paths);
+    assertEquals(List.of(TestCiBearers.TOKEN), roles, "the machine bearer and nothing else");
+  }
+
+  @Test
+  void aRunWithNoStaleOutputsReportNamesNothing() throws IOException {
+    body.set("{\"runId\":\"run-b\",\"reports\":[{\"kind\":\"coverage\",\"highlights\":[]}]}");
+    assertEquals(List.of(), against(startServer()).staleOutputKinds("run-b"));
+  }
+
+  @Test
+  void everyFailedReportsReadNamesNothing() throws IOException {
+    String base = startServer();
+    status.set(404);
+    assertEquals(List.of(), against(base).staleOutputKinds("run-gone"));
+    status.set(503);
+    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    status.set(200);
+    body.set("not json");
+    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    body.set("{\"reports\":\"nope\"}");
+    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    assertEquals(List.of(), against(null).staleOutputKinds("run-b"));
+    assertEquals(List.of(), against(base, TestCiBearers.none()).staleOutputKinds("run-b"));
+    server.stop(0);
+    server = null;
+    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+  }
 }
