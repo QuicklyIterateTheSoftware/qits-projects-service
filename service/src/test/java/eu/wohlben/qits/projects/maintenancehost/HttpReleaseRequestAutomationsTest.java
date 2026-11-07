@@ -214,6 +214,46 @@ class HttpReleaseRequestAutomationsTest {
   }
 
   /**
+   * qits-1919: an attended request accepts DEFERRED and an unattended one does not, so the far side
+   * pre-runs the kinds QA checks where nobody would press the re-run door. Everything else in the
+   * body is the same trigger.
+   */
+  @Test
+  void anUnattendedRequestDoesNotAcceptDeferred() throws Exception {
+    String base = startServer();
+
+    for (boolean unattended : List.of(false, true)) {
+      against(base)
+          .request(
+              "qits-landing-app",
+              "rr-1",
+              "qits-landing-app-rr-7",
+              "release/qits-landing-app-rr-7",
+              FOLD,
+              null,
+              null,
+              List.of("ticket/x"),
+              null,
+              unattended);
+    }
+
+    JsonNode attended = MAPPER.readTree(received.get(0).body());
+    JsonNode unattended = MAPPER.readTree(received.get(1).body());
+    assertEquals(List.of("WAITING", "NOT_APPLICABLE", "DEFERRED"), words(attended.get("accepts")));
+    assertEquals(List.of("WAITING", "NOT_APPLICABLE"), words(unattended.get("accepts")));
+    ((com.fasterxml.jackson.databind.node.ObjectNode) attended).remove("accepts");
+    ((com.fasterxml.jackson.databind.node.ObjectNode) unattended).remove("accepts");
+    assertEquals(attended, unattended, "the flag changes what is accepted and nothing else");
+  }
+
+  private static List<String> words(JsonNode accepts) {
+    assertTrue(accepts.isArray(), "a list of words, not a flag");
+    List<String> words = new java.util.ArrayList<>();
+    accepts.forEach(word -> words.add(word.asText()));
+    return words;
+  }
+
+  /**
    * WAITING, NOT_APPLICABLE with its reason, and a word this side has never heard of are all read
    * back as they were sent — the vocabulary is the far side's, and an unknown word is a hold the
    * ledger decides, never a parse failure here.

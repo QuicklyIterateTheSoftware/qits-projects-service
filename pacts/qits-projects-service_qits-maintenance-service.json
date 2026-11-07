@@ -8,6 +8,396 @@
         "references": {
           "qits-call": {
             "app": "qits-maintenance-service",
+            "operationId": "triggerReleaseRequestAutomations"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "AutomationRefresh.attempt (unattended)"
+          }
+        }
+      },
+      "description": "AutomationRefresh.attempt (unattended): triggerReleaseRequestAutomations",
+      "key": "ab8b1911",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request with automations",
+          "params": {
+            "backingBranch": "release/contract-service-rr-1",
+            "branch": "feature/export",
+            "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "kind": "screenshot-baselines",
+            "qualifiedId": "contract-service-rr-1",
+            "repoName": "contract-service",
+            "repositoryId": "00000000-0000-4000-8000-000000000001",
+            "requestId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "accepts": [
+              "WAITING",
+              "NOT_APPLICABLE"
+            ],
+            "backingBranch": "release/contract-service-rr-1",
+            "changedSincePrevious": null,
+            "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "previousFoldSha": null,
+            "qualifiedId": "contract-service-rr-1",
+            "repository": "contract-service",
+            "sourceBranches": [
+              "feature/export"
+            ],
+            "workItem": null
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.backingBranch": {
+              "dataType": "STRING",
+              "expression": "${backingBranch}",
+              "type": "ProviderState"
+            },
+            "$.foldSha": {
+              "dataType": "STRING",
+              "expression": "${foldSha}",
+              "type": "ProviderState"
+            },
+            "$.qualifiedId": {
+              "dataType": "STRING",
+              "expression": "${qualifiedId}",
+              "type": "ProviderState"
+            },
+            "$.repository": {
+              "dataType": "STRING",
+              "expression": "${repoName}",
+              "type": "ProviderState"
+            },
+            "$.sourceBranches[0]": {
+              "dataType": "STRING",
+              "expression": "${branch}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/maintenance/api/release-requests/${requestId}/automations",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.backingBranch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foldSha": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.qualifiedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repository": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sourceBranches[0]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/maintenance/api/release-requests/00000000-0000-4000-8000-000000000002/automations"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "automations": [
+              {
+                "branch": "maintenance/automations/dependency-bump/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000003",
+                "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "dependency-bump",
+                "label": "Dependency bump",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/entity-diagram/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000004",
+                "detail": "committed the regenerated output",
+                "failure": null,
+                "kind": "entity-diagram",
+                "label": "Entity diagram",
+                "resultSha": "0123456789abcdef0123456789abcdef01234567",
+                "runIds": [
+                  "run-contract-3"
+                ],
+                "state": "COMMITTED",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/estate-pins/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000005",
+                "detail": "fresh: nothing to regenerate at this fold",
+                "failure": null,
+                "kind": "estate-pins",
+                "label": "Estate pins",
+                "resultSha": null,
+                "runIds": [],
+                "state": "FRESH",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "branch": "maintenance/automations/screenshot-baselines/00000000-0000-4000-8000-000000000002",
+                "bumpId": "00000000-0000-4000-8000-000000000006",
+                "detail": "the screenshot baselines run failed at step 2 (exit 1): 3 screenshots differ",
+                "failure": {
+                  "excerpt": "3 screenshots differ from their baselines",
+                  "exitCode": 1,
+                  "image": "qits/build-images/node-docker-base:2026.1.1",
+                  "stepIndex": 2
+                },
+                "kind": "screenshot-baselines",
+                "label": "Screenshot baselines",
+                "resultSha": null,
+                "runIds": [
+                  "run-contract-1",
+                  "run-contract-2"
+                ],
+                "state": "FAILED",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "requestId": "00000000-0000-4000-8000-000000000002"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.automations": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "ignore-order",
+                  "min": 1
+                }
+              ]
+            },
+            "$.automations[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].branch": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.automations[*].bumpId": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.automations[*].detail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].failure.excerpt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].failure.exitCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.automations[*].failure.image": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].failure.stepIndex": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.automations[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].label": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].resultSha": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.automations[*].runIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.automations[*].runIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.automations[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.foldSha": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requestId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-maintenance-service",
             "operationId": "listReleaseRequestAutomations"
           },
           "qits-trigger": {

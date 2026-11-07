@@ -31,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * null ({@link #AUTOMATIONS_NULLABLE}, qits-1516): the recorded state holds a row for every kind it
  * seeded, but the provider also lists each kind with no row — NOT_APPLICABLE at the fold, since the
  * trigger accepts that word — with all three null, wherever it sorts among the others.
+ *
+ * <p>The trigger has two rows (qits-1919): an attended request accepts {@code DEFERRED}, and an
+ * unattended one does not, so qits-maintenance pre-runs the kinds QA checks where nobody would press
+ * the re-run door.
  */
 final class MaintenanceContract {
 
@@ -186,6 +190,45 @@ final class MaintenanceContract {
                             null,
                             List.of(p.get("branch")),
                             null)
+                        .orElseThrow();
+                assertFalse(answer.automations().isEmpty());
+              },
+              "POST .../release-requests/{requestId}/automations answering 200 with requestId,"
+                  + " foldSha and automations[] (one with a failure object)")
+              .withNullable(AUTOMATIONS_NULLABLE),
+          // qits-1919: an unattended request's trigger, which leaves DEFERRED out of accepts so the
+          // far side pre-runs the kinds QA checks. Its own row because it is its own body; the
+          // trigger names it apart, since (description, state) must not repeat.
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "triggerReleaseRequestAutomations",
+              "a release request with automations",
+              "POST",
+              "/maintenance/api/release-requests/{requestId}/automations",
+              Map.of(),
+              json(
+                  "{\"repository\":\"{repoName}\",\"foldSha\":\"{foldSha}\",\"previousFoldSha\":null,"
+                      + "\"changedSincePrevious\":null,\"sourceBranches\":[\"{branch}\"],"
+                      + "\"workItem\":null,\"accepts\":[\"WAITING\",\"NOT_APPLICABLE\"],"
+                      + "\"backingBranch\":\"{backingBranch}\",\"qualifiedId\":\"{qualifiedId}\"}"),
+              AUTOMATIONS,
+              200,
+              Trigger.schedule("AutomationRefresh.attempt (unattended)"),
+              (base, p) -> {
+                ReleaseRequestAutomations.Answer answer =
+                    automations(base)
+                        .request(
+                            p.get("repoName"),
+                            p.get("requestId"),
+                            p.get("qualifiedId"),
+                            p.get("backingBranch"),
+                            p.get("foldSha"),
+                            null,
+                            null,
+                            List.of(p.get("branch")),
+                            null,
+                            true)
                         .orElseThrow();
                 assertFalse(answer.automations().isEmpty());
               },

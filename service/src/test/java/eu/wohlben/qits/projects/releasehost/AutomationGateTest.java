@@ -800,6 +800,49 @@ public class AutomationGateTest {
     assertNotEquals(firstFold, secondFold);
   }
 
+  /** A person's request is attended: its trigger accepts DEFERRED, as every trigger did (qits-1919). */
+  @Test
+  public void anAttendedRequestTriggersAttended() {
+    String id = create(plainRepoId, "work");
+
+    List<FakeReleaseRequestAutomations.Asked> asks = automations.askedAbout(id);
+    assertFalse(asks.isEmpty(), "it did ask");
+    assertTrue(asks.stream().noneMatch(FakeReleaseRequestAutomations.Asked::unattended), asks.toString());
+  }
+
+  /**
+   * qits-1919: <b>the robot's request triggers unattended</b>, so qits-maintenance pre-runs the kinds
+   * QA would otherwise leave to a person's {@code regenerate} — and the reading is taken at each
+   * trigger, never remembered: once a person joins, the fold their branch causes triggers attended.
+   */
+  @Test
+  public void anUnattendedRequestTriggersUnattendedUntilAPersonJoins() {
+    gitHost.gatedTree("refs/heads/joined", Map.of("JOINED.md", "joined"));
+    String id = create(plainRepoId, "work", "dev-qits-maintenance");
+    String firstFold = mergedShaOf(plainRepoId, id);
+    assertTrue(request(plainRepoId, id).getBoolean("unattended"), "the premise: a machine asked");
+
+    List<FakeReleaseRequestAutomations.Asked> robots = automations.askedAbout(id);
+    assertFalse(robots.isEmpty(), "it did ask");
+    assertTrue(robots.stream().allMatch(FakeReleaseRequestAutomations.Asked::unattended), robots.toString());
+
+    given()
+        .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"joined\"}")
+        .post(base(plainRepoId) + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+    awaitFoldToMove(plainRepoId, id, firstFold);
+    String secondFold = mergedShaOf(plainRepoId, id);
+    assertFalse(request(plainRepoId, id).getBoolean("unattended"), "the premise: ada reads it");
+
+    List<FakeReleaseRequestAutomations.Asked> asks = automations.askedAbout(id);
+    FakeReleaseRequestAutomations.Asked refold = asks.get(asks.size() - 1);
+    assertEquals(secondFold, refold.foldSha());
+    assertFalse(refold.unattended(), "a person joined, so the next fold's trigger is attended");
+  }
+
   // -----------------------------------------------------------------------------------------
   // Driving it
   // -----------------------------------------------------------------------------------------
