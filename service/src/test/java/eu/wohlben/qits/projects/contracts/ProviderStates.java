@@ -321,6 +321,54 @@ public class ProviderStates {
   public static final String A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY =
       "a repository whose backup twin holds unrelated history";
 
+  // qits-1934: every remaining operation of the openapi gets a recorded answer.
+
+  /** A slug no project holds yet, {@code contract-<token>}: what the project create door takes. */
+  public static final String A_PROJECT_SLUG_THAT_NAMES_NO_PROJECT =
+      "a project slug that names no project";
+
+  /**
+   * A project whose front desk can be asked for: the edge's domain is configured, so the desk's
+   * spec composes, and qits-system (the suite's fake) queues the lease the ensure asks for.
+   */
+  public static final String A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED =
+      "a project whose front desk can be leased";
+
+  /**
+   * A refinement id no room holds: fixed, never random, because the refusal names it unfrozen
+   * inside its message.
+   */
+  public static final String NO_REFINEMENT_WITH_THE_GIVEN_ID = "no refinement with the given id";
+
+  /** A REPORTED ticket's refinement room holding a saved prompt draft, and nothing else. */
+  public static final String A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT =
+      "a refinement room with a prompt draft";
+
+  /** contract-service whose main's {@code repository.yml} already says {@code archived: true}. */
+  public static final String A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED =
+      "a repository whose main already says it is archived";
+
+  /** contract-service with one recorded reset of its backup twin, between two fixed shas. */
+  public static final String A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET =
+      "a repository whose backup twin was reset";
+
+  /** contract-service holding {@code main} and {@code feature/export}, seeded commits. */
+  public static final String A_REPOSITORY_WITH_A_SECOND_BRANCH =
+      "a repository with a second branch";
+
+  /** A technical process id no process holds: fixed, as the refinement's is. */
+  public static final String NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID =
+      "no technical process with the given id";
+
+  /** The refinement id {@link #NO_REFINEMENT_WITH_THE_GIVEN_ID} names. */
+  static final String UNKNOWN_REFINEMENT_ID = "987654321";
+
+  /** The process id {@link #NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID} names. */
+  static final String UNKNOWN_TECHNICAL_PROCESS_ID = "19340000-0000-4000-8000-000000000404";
+
+  /** The domain {@link #A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED} configures for the edge. */
+  private static final String FRONT_DESK_DOMAIN = "contract.example.test";
+
   /** The released branch's name, fixed: the read door is addressed by it. */
   static final String RELEASED_BRANCH = "ticket/qits-9001";
 
@@ -515,6 +563,38 @@ public class ProviderStates {
   /** This service's own listener, which the fake daemon dials as a real one dials the edge. */
   @Inject io.quarkus.vertx.http.HttpServer httpServer;
 
+  // qits-1934's states.
+
+  /** The desk doors' far side: qits-system's lease doors and the idp's desk tokens, both fakes. */
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.targethost.FakeSystemLeases>
+      systemLeases;
+
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.deskhost.FakeFrontDeskTokens>
+      frontDeskTokens;
+
+  @Inject eu.wohlben.qits.projects.deskhost.FrontDesks frontDesks;
+
+  /** The processes pull, push and sync start, waited on by {@link #cleanUp()}. */
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.control.TechnicalProcessRegistry>
+      processes;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementPromptDrafts drafts;
+
+  /** Slugs a state handed the create door, whose projects {@link #cleanUp()} deletes again. */
+  private final List<String> createdSlugs = new ArrayList<>();
+
+  /** The project whose desk a state let be leased, removed by {@link #cleanUp()}. */
+  private String leasedDesk;
+
+  /** Repositories a door may start a background git walk on, settled by {@link #cleanUp()}. */
+  private final List<String> settleRepos = new ArrayList<>();
+
+  /** Repositories whose backup reset rows a state wrote, deleted by {@link #cleanUp()}. */
+  private final List<String> seededResets = new ArrayList<>();
+
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
   /** Release requests and CI verdicts the states wrote, removed again by {@link #cleanUp()}. */
@@ -642,6 +722,16 @@ public class ProviderStates {
     states.put(
         A_REPOSITORY_WHOSE_BACKUP_TWIN_HOLDS_UNRELATED_HISTORY,
         this::aRepositoryWhoseBackupTwinHoldsUnrelatedHistory);
+    states.put(A_PROJECT_SLUG_THAT_NAMES_NO_PROJECT, this::aProjectSlugThatNamesNoProject);
+    states.put(A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED, this::aProjectWhoseFrontDeskCanBeLeased);
+    states.put(NO_REFINEMENT_WITH_THE_GIVEN_ID, this::noRefinementWithTheGivenId);
+    states.put(A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT, this::aRefinementRoomWithAPromptDraft);
+    states.put(
+        A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED,
+        this::aRepositoryWhoseMainAlreadySaysItIsArchived);
+    states.put(A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET, this::aRepositoryWhoseBackupTwinWasReset);
+    states.put(A_REPOSITORY_WITH_A_SECOND_BRANCH, this::aRepositoryWithASecondBranch);
+    states.put(NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID, this::noTechnicalProcessWithTheGivenId);
   }
 
   /** Every state name this provider answers for. */
@@ -670,9 +760,13 @@ public class ProviderStates {
       frontDeskDaemon.close();
       frontDeskDaemon = null;
     }
+    settleProcesses();
     SeededGit.deleteAll();
     deleteBackupTwins();
     bearers.reset();
+    removeLeasedDesk();
+    deleteCreatedProjects();
+    deleteSeededResets();
     if (fakesTouched) {
       fakesTouched = false;
       releaseDecisions.get().reset();
@@ -1100,6 +1194,8 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_REPOSITORY_EXISTS);
     var created = projectService.createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE);
+    // The pull, push and sync doors start a git walk in the background: cleanUp waits it out.
+    settleRepos.add(created.repository().id);
     return new Setup(
         params(
             "projectId", project.id,
@@ -1816,13 +1912,16 @@ public class ProviderStates {
                 "SKETCH",
                 java.util.Base64.getEncoder().encodeToString(FIGURE_PNG))
             .id;
+    // The room is a sequence param (qits-1934): its prompt-attachment doors are addressed by it.
     return new Setup(
         params(
             "epicId", epic,
             "projectId", project.id,
             "qualifiedId", qualified(project, epic),
+            "refinementId", Long.toString(room),
             "sketchId", sketch),
-        List.of(token));
+        List.of(token),
+        List.of("refinementId"));
   }
 
   /**
@@ -3841,6 +3940,250 @@ public class ProviderStates {
         // A twin left behind is litter in the temp directory, never a failed state.
       }
     }
+  }
+
+  // --- qits-1934: every remaining operation recorded -------------------------------------------
+
+  /**
+   * Seeds nothing: {@code slug} is {@code contract-<token>}, a slug no project holds, for the
+   * create door. The project the door creates is deleted again by {@link #cleanUp()}.
+   */
+  private Setup aProjectSlugThatNamesNoProject() {
+    String token = token();
+    String slug = "contract-" + token;
+    createdSlugs.add(slug);
+    return new Setup(params("slug", slug), List.of(token));
+  }
+
+  /**
+   * A project, with the edge's domain configured for the desk's spec and qits-system's lease fake
+   * and the desk token fake fresh: the ensure door creates the desk and its lease answers QUEUED.
+   * The pinned daemon version moves with every bump, so it is a unique token. {@link #cleanUp()}
+   * removes the desk and resets both fakes and the domain.
+   */
+  private Setup aProjectWhoseFrontDeskCanBeLeased() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED);
+    systemLeases.get().reset();
+    frontDeskTokens.get().reset();
+    agentContainers.domainOverride(FRONT_DESK_DOMAIN);
+    leasedDesk = project.id;
+    List<String> tokens = new ArrayList<>(List.of(token));
+    String version = agentContainers.imageVersion();
+    if (version != null && !version.isBlank()) {
+      tokens.add(version);
+    }
+    return new Setup(params("projectId", project.id), tokens);
+  }
+
+  /** {@link #UNKNOWN_REFINEMENT_ID}: deliberately not a sequence param, it is no room's. */
+  private Setup noRefinementWithTheGivenId() {
+    return new Setup(params("refinementId", UNKNOWN_REFINEMENT_ID), List.of());
+  }
+
+  /**
+   * A REPORTED ticket whose refinement room holds one saved prompt draft: its content a small
+   * well-formed JSON document, no serialized prompt. The room is the {@code refinementId} sequence
+   * param, as in {@link #aTicketWithADesign}.
+   */
+  private Setup aRefinementRoomWithAPromptDraft() {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT);
+    String ticket =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                    "Export invoices as CSV",
+                    "The accountants copy every invoice by hand at the quarter's close.",
+                    "Add a CSV export to the invoice list.",
+                    "IMPROVEMENT",
+                    null)
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    long room = refinements.findOrCreate(ticket).id;
+    drafts.save(
+        room,
+        "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"text\":\"Add the CSV export.\"}]}",
+        null);
+    return new Setup(
+        params(
+            "projectId", project.id,
+            "qualifiedId", qualified(project, ticket),
+            "refinementId", Long.toString(room),
+            "ticketId", ticket),
+        List.of(token),
+        List.of("refinementId"));
+  }
+
+  /**
+   * {@link #aRepositoryExists}'s repository, whose main's {@code .config/qits/repository.yml}
+   * already says {@code archived: true} (the release git host fake, staged for this repository
+   * alone): the archive door answers 200 {@code unchanged} and opens nothing.
+   */
+  private Setup aRepositoryWhoseMainAlreadySaysItIsArchived() {
+    String token = token();
+    Project project = project(token, A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED);
+    String repoId =
+        projectService
+            .createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE)
+            .repository()
+            .id;
+    releaseGitHost
+        .get()
+        .gatedTreeFor(
+            repoId,
+            "refs/heads/main",
+            Map.of(".config/qits/repository.yml", "repository:\n  archived: true\n"));
+    return new Setup(
+        params("projectId", project.id, "repositoryId", repoId, "repoName", "contract-service"),
+        List.of(token));
+  }
+
+  /**
+   * {@link #aRepositoryExists}'s repository with one {@code repository_backup_reset} row: an
+   * UNRELATED_RESET between two fixed shas, decided by {@code dev} at a fixed instant. Deleted by
+   * {@link #cleanUp()}.
+   */
+  private Setup aRepositoryWhoseBackupTwinWasReset() {
+    String token = token();
+    Project project = project(token, A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET);
+    String repoId =
+        projectService
+            .createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE)
+            .repository()
+            .id;
+    seededResets.add(repoId);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var reset = new eu.wohlben.qits.projects.entity.RepositoryBackupReset();
+              reset.id = UUID.randomUUID().toString();
+              reset.repositoryId = repoId;
+              reset.decidedBy = DEV_USER;
+              reset.decidedAt = SEEDED_AT;
+              reset.reason = "The forge seeded the twin with a README commit of its own.";
+              reset.kind = eu.wohlben.qits.projects.entity.BackupResetKind.UNRELATED_RESET;
+              reset.twinShaBefore = madeUpSha(1885);
+              reset.pushedSha = madeUpSha(1886);
+              reset.persist();
+            });
+    return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  /**
+   * contract-service holding two branches pushed by {@link SeededGit} — {@code main} and {@code
+   * feature/export}, one seeded commit each — with its mirror cloned afresh from them: the branch
+   * delete and the main-branch doors' repository.
+   */
+  private Setup aRepositoryWithASecondBranch() {
+    String token = token();
+    Project project = project(token, A_REPOSITORY_WITH_A_SECOND_BRANCH);
+    String repoId =
+        projectService
+            .createRepository(project.id, null, "contract-service", RepositoryArchetype.SERVICE)
+            .repository()
+            .id;
+    try {
+      SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+      repo.write(Map.of("README.md", "# contract-service\n\nInvoices.\n"));
+      repo.commit(1, "Import the invoice service");
+      repo.branch("feature/export", "main");
+      repo.write(Map.of("src/export.txt", "CSV export\n"));
+      repo.commit(2, "Add the CSV export");
+      repo.checkout("main");
+      repo.push("main", "feature/export");
+      // The mirror cloned afresh from what was just pushed: the branch delete pushes from it.
+      goCold(repoId);
+      mirrors.of(repoId).refreshNow();
+    } catch (Exception e) {
+      throw new IllegalStateException("Could not seed the repository's two branches", e);
+    }
+    return new Setup(
+        params("projectId", project.id, "repositoryId", repoId, "branch", "feature/export"),
+        List.of(token));
+  }
+
+  /** {@link #UNKNOWN_TECHNICAL_PROCESS_ID}, which no process holds. */
+  private Setup noTechnicalProcessWithTheGivenId() {
+    return new Setup(params("technicalProcessId", UNKNOWN_TECHNICAL_PROCESS_ID), List.of());
+  }
+
+  /**
+   * Waits for every git walk the pull, push and sync doors started on a state's repository to
+   * settle, so none outlives its state into the next one. A walk that never settles is a failure.
+   */
+  private void settleProcesses() {
+    if (settleRepos.isEmpty()) {
+      return;
+    }
+    List<String> repos = List.copyOf(settleRepos);
+    settleRepos.clear();
+    if (!processes.isResolvable()) {
+      return;
+    }
+    var registry = processes.get();
+    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
+    for (String repoId : repos) {
+      while (registry
+          .activeForRepository(repoId)
+          .flatMap(registry::find)
+          .filter(process -> !process.isTerminal())
+          .isPresent()) {
+        if (System.nanoTime() > deadline) {
+          throw new IllegalStateException(
+              "The git walk on repository " + repoId + " did not settle within 60s");
+        }
+        try {
+          Thread.sleep(50);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+      }
+    }
+  }
+
+  /** Removes the desk {@link #aProjectWhoseFrontDeskCanBeLeased} let be leased, and its fakes. */
+  private void removeLeasedDesk() {
+    if (leasedDesk == null) {
+      return;
+    }
+    String projectId = leasedDesk;
+    leasedDesk = null;
+    try {
+      frontDesks.removeDesk(projectId);
+    } finally {
+      agentContainers.domainOverride(null);
+      systemLeases.get().reset();
+      frontDeskTokens.get().reset();
+    }
+  }
+
+  /** Deletes the projects the create door made from {@link #aProjectSlugThatNamesNoProject}. */
+  private void deleteCreatedProjects() {
+    if (createdSlugs.isEmpty()) {
+      return;
+    }
+    List<String> slugs = List.copyOf(createdSlugs);
+    createdSlugs.clear();
+    for (String slug : slugs) {
+      projectService.findBySlug(slug).ifPresent(project -> projectService.delete(project.id));
+    }
+  }
+
+  /** Deletes the reset rows {@link #aRepositoryWhoseBackupTwinWasReset} wrote. */
+  private void deleteSeededResets() {
+    if (seededResets.isEmpty()) {
+      return;
+    }
+    List<String> repos = List.copyOf(seededResets);
+    seededResets.clear();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                eu.wohlben.qits.projects.entity.RepositoryBackupReset.delete(
+                    "repositoryId in ?1", repos));
   }
 
   // --- seeding ---------------------------------------------------------------------------------

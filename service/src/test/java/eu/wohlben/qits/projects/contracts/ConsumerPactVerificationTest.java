@@ -876,4 +876,45 @@ class ConsumerPactVerificationTest {
   Map<String, String> theDevelopmentGuideShips() {
     return states.params(ProviderStates.THE_DEVELOPMENT_GUIDE_SHIPS);
   }
+
+  // qits-1934: the states every remaining operation is recorded on.
+  @State(ProviderStates.A_PROJECT_SLUG_THAT_NAMES_NO_PROJECT)
+  Map<String, String> aProjectSlugThatNamesNoProject() {
+    return states.params(ProviderStates.A_PROJECT_SLUG_THAT_NAMES_NO_PROJECT);
+  }
+
+  @State(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED)
+  Map<String, String> aProjectWhoseFrontDeskCanBeLeased() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED);
+  }
+
+  @State(ProviderStates.NO_REFINEMENT_WITH_THE_GIVEN_ID)
+  Map<String, String> noRefinementWithTheGivenId() {
+    return states.params(ProviderStates.NO_REFINEMENT_WITH_THE_GIVEN_ID);
+  }
+
+  @State(ProviderStates.A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT)
+  Map<String, String> aRefinementRoomWithAPromptDraft() {
+    return states.params(ProviderStates.A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED)
+  Map<String, String> aRepositoryWhoseMainAlreadySaysItIsArchived() {
+    return states.params(ProviderStates.A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET)
+  Map<String, String> aRepositoryWhoseBackupTwinWasReset() {
+    return states.params(ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WITH_A_SECOND_BRANCH)
+  Map<String, String> aRepositoryWithASecondBranch() {
+    return states.params(ProviderStates.A_REPOSITORY_WITH_A_SECOND_BRANCH);
+  }
+
+  @State(ProviderStates.NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID)
+  Map<String, String> noTechnicalProcessWithTheGivenId() {
+    return states.params(ProviderStates.NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID);
+  }
 }
