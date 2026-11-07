@@ -87,6 +87,121 @@
         "references": {
           "qits-call": {
             "app": "qits-ci-service",
+            "operationId": "listRunReports"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "event": "BuildFailed",
+            "kind": "event"
+          }
+        }
+      },
+      "description": "BuildFailed: listRunReports",
+      "key": "151d67bf",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a failed qa run with stale outputs",
+          "params": {
+            "releaseRequestId": "00000000-0000-4000-8000-000000000001",
+            "reportId": "00000000-0000-4000-8000-000000000002",
+            "repositoryId": "00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000004",
+            "staleOutputsReportId": "00000000-0000-4000-8000-000000000005"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/ci/api/runs/${runId}/reports",
+            "type": "ProviderState"
+          }
+        },
+        "method": "GET",
+        "path": "/ci/api/runs/00000000-0000-4000-8000-000000000004/reports"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "reports": [
+              {
+                "highlights": [
+                  {
+                    "text": "stale outputs: cli-tapes"
+                  }
+                ],
+                "kind": "stale-outputs"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.reports": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.reports[*].highlights": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.reports[*].highlights[*].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.reports[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-ci-service",
             "operationId": "getReleasePhase"
           },
           "qits-trigger": {
