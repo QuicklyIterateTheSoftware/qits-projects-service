@@ -33,14 +33,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @ApplicationScoped
 public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations {
 
-  /** One trigger, exactly as the port declares it. */
+  /**
+   * One trigger, exactly as the port declares it — {@code unattended} as the caller said it
+   * (qits-1919), false from the overloads that do not say.
+   */
   public record Asked(
       String repositoryName,
       String requestId,
       String foldSha,
       String previousFoldSha,
       List<String> changedSincePrevious,
-      List<String> sourceBranches) {}
+      List<String> sourceBranches,
+      boolean unattended) {}
 
   /** One re-run ask. */
   public record Rerun(String repositoryName, String requestId, String kind) {}
@@ -168,6 +172,36 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
       List<String> changedSincePrevious,
       List<String> sourceBranches,
       String workItem) {
+    return ask(
+        repositoryName, requestId, foldSha, previousFoldSha, changedSincePrevious, sourceBranches,
+        false);
+  }
+
+  @Override
+  public Optional<Answer> request(
+      String repositoryName,
+      String requestId,
+      String qualifiedId,
+      String backingBranch,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      String workItem,
+      boolean unattended) {
+    return ask(
+        repositoryName, requestId, foldSha, previousFoldSha, changedSincePrevious, sourceBranches,
+        unattended);
+  }
+
+  private Optional<Answer> ask(
+      String repositoryName,
+      String requestId,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      boolean unattended) {
     asked.add(
         new Asked(
             repositoryName,
@@ -175,7 +209,8 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
             foldSha,
             previousFoldSha,
             changedSincePrevious == null ? null : List.copyOf(changedSincePrevious),
-            List.copyOf(sourceBranches)));
+            List.copyOf(sourceBranches),
+            unattended));
     return reachable ? Optional.of(answerAt(repositoryName, requestId, foldSha)) : Optional.empty();
   }
 

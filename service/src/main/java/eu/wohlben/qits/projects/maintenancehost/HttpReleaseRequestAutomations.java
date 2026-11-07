@@ -40,7 +40,7 @@ import org.jboss.logging.Logger;
  *   POST {maintenance-url}/maintenance/api/release-requests/&lt;requestId&gt;/automations
  *   {"repository":"qits-landing-app","foldSha":"&lt;sha&gt;","previousFoldSha":"&lt;sha&gt;"|null,
  *    "changedSincePrevious":["src/app/x.ts"]|null,"sourceBranches":["ticket/x"],"workItem":null,
- *    "accepts":["WAITING","NOT_APPLICABLE","DEFERRED"],
+ *    "accepts":["WAITING","NOT_APPLICABLE","DEFERRED"],   (unattended: ["WAITING","NOT_APPLICABLE"])
  *    "backingBranch":"release/qits-landing-app-rr-7","qualifiedId":"qits-landing-app-rr-7"}
  *   -&gt; 200 {"requestId":"…","foldSha":"&lt;sha&gt;",
  *           "automations":[{"kind":"screenshot-baselines","label":"Screenshot baselines",
@@ -66,6 +66,14 @@ import org.jboss.logging.Logger;
  * moving (the request holds, PENDING), and NOT_APPLICABLE and DEFERRED hold nothing; any other
  * word this side has never heard of is still parsed as a plain string and reads as UNKNOWN — a hold,
  * never a parse failure.
+ *
+ * <p><b>An unattended request does not accept {@code DEFERRED}</b> (qits-1919), and sends {@link
+ * #UNATTENDED_ACCEPTS} instead. A deferred kind is one QA reports stale and a person then regenerates
+ * by pressing {@code release-request regenerate}; on a request whose participants are all machines
+ * nobody presses it, so the gate went red and an unattended-gate ticket was filed for output the
+ * platform could have written itself. Left out of {@code accepts}, the far side pre-runs the kind as
+ * it did before qits-1180, and QA finds it fresh. Whether the request is unattended is read at each
+ * trigger, so a person or an agent joining makes the next fold accept DEFERRED again.
  *
  * <p><b>The repository travels by NAME</b>, because qits-maintenance's catalogue resolves it through
  * its name index — the caller reads one out of the alias table it already owns. The re-run sends it
@@ -120,9 +128,17 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
   /**
    * The state words the trigger tells qits-maintenance this side reads — see the class javadoc. A
    * constant rather than configuration: it is a statement about this code, not about a deployment.
+   * Sent for an attended request, where a person regenerates what QA reports stale.
    */
   static final List<String> ACCEPTS =
       List.of("WAITING", AutomationLedger.NOT_APPLICABLE, AutomationLedger.DEFERRED);
+
+  /**
+   * {@link #ACCEPTS} without {@code DEFERRED}, sent for an <b>unattended</b> request (qits-1919):
+   * nobody there presses the re-run door after QA, so it takes the pre-run of the kinds QA checks
+   * instead — see the class javadoc.
+   */
+  static final List<String> UNATTENDED_ACCEPTS = List.of("WAITING", AutomationLedger.NOT_APPLICABLE);
 
   /** How long a connect may take — qits-maintenance is a sibling service on the same network. */
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
@@ -198,6 +214,31 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       List<String> changedSincePrevious,
       List<String> sourceBranches,
       String workItem) {
+    return request(
+        repositoryName,
+        requestId,
+        qualifiedId,
+        backingBranch,
+        foldSha,
+        previousFoldSha,
+        changedSincePrevious,
+        sourceBranches,
+        workItem,
+        false);
+  }
+
+  @Override
+  public Optional<Answer> request(
+      String repositoryName,
+      String requestId,
+      String qualifiedId,
+      String backingBranch,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      String workItem,
+      boolean unattended) {
     if (!configured()) {
       return Optional.empty();
     }
@@ -229,7 +270,7 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
         body.put("qualifiedId", qualifiedId);
       }
       ArrayNode accepts = body.putArray("accepts");
-      ACCEPTS.forEach(accepts::add);
+      (unattended ? UNATTENDED_ACCEPTS : ACCEPTS).forEach(accepts::add);
       HttpResponse<String> response =
           send(
               base(requestId),

@@ -1780,7 +1780,11 @@ started four release builds for one change. Now:
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
-  string the ledger reads as UNKNOWN — a hold, never a parse failure.
+  string the ledger reads as UNKNOWN — a hold, never a parse failure. An **attended** request also
+  accepts `DEFERRED` (qits-1178): a kind QA checks instead, which a person regenerates after QA says
+  stale. An **unattended** one (`isUnattended`, every participant a machine) does not (qits-1919):
+  nobody would press `regenerate`, so the far side pre-runs the kind instead. It is read at each
+  trigger, so a person or agent joining makes the next fold accept `DEFERRED` again.
 - **On the wire** (additive): `ReleaseRequestDto.preRun = {state}` — `PENDING`, `RUNNING` (a kind
   REQUESTED, RUNNING, or COMMITTED and not yet folded), `FAILED`, `PASSED`, `WAIVED`; the automations
   list carries `WAITING` as it came; the pipeline's QA phase reads `WAITING_FOR_PRE_RUN` (no run) on a

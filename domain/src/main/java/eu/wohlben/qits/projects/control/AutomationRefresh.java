@@ -124,6 +124,13 @@ public class AutomationRefresh {
   @Inject Instance<ReleaseRequestAutomations> automations;
 
   /**
+   * Asked whether a request is unattended at each trigger (qits-1919). {@link ReleaseRequests}
+   * injects this class too; CDI's client proxies resolve the cycle, as they do for its {@code
+   * ReleaseFinalization}, and the rule stays in the one place the gate tickets read it.
+   */
+  @Inject ReleaseRequests releaseRequests;
+
+  /**
    * Everything this refresh needs out of the database, read once.
    *
    * @param repoName the repository as the catalogue names it — the address the port takes, and the
@@ -132,6 +139,8 @@ public class AutomationRefresh {
    *     or not
    * @param branches the branches this request releases — its named sources in the order they were
    *     put on it, without the default branch and the automations' own
+   * @param unattended whether every participant is a machine at this read (qits-1919), which makes
+   *     the trigger leave DEFERRED out of what it accepts
    */
   private record Facts(
       String requestId,
@@ -141,7 +150,8 @@ public class AutomationRefresh {
       String repoName,
       boolean wrapper,
       String foldSha,
-      List<String> branches) {}
+      List<String> branches,
+      boolean unattended) {}
 
   /**
    * Whether the automation gate is on at all: an implementation exists and says it has somewhere to
@@ -304,7 +314,10 @@ public class AutomationRefresh {
             previous,
             changed,
             facts.branches(),
-            null);
+            null,
+            // Read at this ask, never remembered: a participant joining since the last fold makes
+            // this one attended again (qits-1919).
+            facts.unattended());
     if (answer.isEmpty()) {
       unknown(facts, previous, "qits-maintenance could not be asked about them");
       return;
@@ -477,6 +490,7 @@ public class AutomationRefresh {
         repoName,
         approvalPolicy.isEstateWrapper(row.repoId),
         row.mergedSha,
-        branches);
+        branches,
+        releaseRequests.isUnattended(row));
   }
 }

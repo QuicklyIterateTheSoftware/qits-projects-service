@@ -6620,8 +6620,11 @@ public class ReleaseRequests {
    * <p>A request with no participant at all is <b>not</b> unattended. It is an unattributed call,
    * made by something this service could not name, and inventing an owner for it either way is a
    * guess — so it keeps the behaviour it always had.
+   *
+   * <p>Package-visible because {@link AutomationRefresh} reads it at each trigger, where an
+   * unattended request takes the pre-run of the kinds QA checks (qits-1919).
    */
-  private boolean isUnattended(ReleaseRequest row) {
+  boolean isUnattended(ReleaseRequest row) {
     return isUnattended(participants.principalsOf(row.id));
   }
 

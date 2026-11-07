@@ -230,6 +230,39 @@ public interface ReleaseRequestAutomations {
   }
 
   /**
+   * The same trigger, also saying whether the request is <b>unattended</b> (qits-1919): every
+   * participant a machine, so nobody will press the re-run door after QA reports a kind's output
+   * stale. An unattended request does not accept {@code DEFERRED}, which makes the far side pre-run
+   * the kinds QA checks rather than leave them to QA. It is the caller's reading at <b>this</b> ask,
+   * so a person or an agent joining later makes the next fold's trigger accept {@code DEFERRED}
+   * again. An implementation that does not tell the far side falls back to {@link
+   * #request(String, String, String, String, String, String, List, List, String)}, the attended
+   * trigger.
+   */
+  default Optional<Answer> request(
+      String repositoryName,
+      String requestId,
+      String qualifiedId,
+      String backingBranch,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      String workItem,
+      boolean unattended) {
+    return request(
+        repositoryName,
+        requestId,
+        qualifiedId,
+        backingBranch,
+        foldSha,
+        previousFoldSha,
+        changedSincePrevious,
+        sourceBranches,
+        workItem);
+  }
+
+  /**
    * The read a held request sweeps: where the kinds that have rows at {@code foldSha} stand. A kind
    * with no row there is simply not listed. Empty when the read could not be made.
    */
