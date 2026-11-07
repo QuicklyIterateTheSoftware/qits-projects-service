@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import eu.wohlben.qits.projects.control.ReleaseGates;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -53,12 +54,19 @@ class AutomationsGateTest {
     assertEquals("run-screenshots", answer.checks().get(1).runId());
   }
 
-  /** NOT_APPLICABLE and DEFERRED (qits-1178) are listed on the request and are no check here. */
+  /**
+   * NOT_APPLICABLE (qits-1178) is listed on the request and is no check here. DEFERRED is listed as
+   * a DEFERRED check with the regenerate command, and the gate still passes (qits-1920).
+   */
   @Test
-  void aKindThatDoesNotApplyOrThatQaChecksIsNoCheck() {
+  void aKindThatDoesNotApplyIsNoCheckAndOneQaChecksIsADeferredCheck() {
+    ReleaseRequest row = request();
+    row.projectId = "qits";
+    row.repoName = "qits-landing-app";
     GateEvaluation answer =
         gate.evaluate(
-            subject(
+            new GateSubject(
+                row,
                 configured(),
                 notRequired(),
                 automations(
@@ -67,10 +75,64 @@ class AutomationsGateTest {
                     automation("screenshots", "Screenshot baselines", "DEFERRED", "checked by QA"),
                     automation("diagram", "Entity diagram", "NOT_APPLICABLE", "no entities")),
                 List.of(),
+                null,
+                GateSubject.Deployment.NOT_ASKED));
+    assertEquals(ReleaseGates.State.PASSED, answer.state());
+    assertEquals(
+        List.of("Estate pins", "Screenshot baselines"),
+        answer.checks().stream().map(GateCheck::name).toList());
+    assertEquals(
+        List.of("PASSED", "DEFERRED"), answer.checks().stream().map(GateCheck::state).toList());
+    assertEquals(
+        "checked by QA: regenerate with qits release-request regenerate --project qits --repository"
+            + " qits-landing-app --kind screenshots if QA reports it stale",
+        answer.checks().get(1).detail());
+    assertEquals("QA checks: screenshots", answer.detail());
+  }
+
+  /** A row with no address pair names the kind alone (qits-1920). */
+  @Test
+  void aDeferredCheckWithNoAddressNamesTheKindAlone() {
+    GateEvaluation answer =
+        gate.evaluate(
+            subject(
+                configured(),
+                notRequired(),
+                automations(
+                    ReleaseGates.State.PASSED,
+                    automation("cli-tapes", "CLI tapes", "DEFERRED", null),
+                    automation("screenshots", "Screenshots", "WAIVED", null)),
+                List.of(),
                 null));
     assertEquals(
-        List.of("Estate pins"), answer.checks().stream().map(GateCheck::name).toList());
-    assertNull(answer.detail());
+        "checked by QA: regenerate with qits release-request regenerate --kind cli-tapes if QA"
+            + " reports it stale",
+        answer.checks().get(0).detail());
+    assertEquals(
+        "A person waived the automations for this fold. QA checks: cli-tapes", answer.detail());
+  }
+
+  /** DEFERRED is its own check word, never PASSED (qits-1920). */
+  @Test
+  void deferredIsNeverPassed() {
+    assertEquals("DEFERRED", AutomationsGate.checkState("DEFERRED"));
+  }
+
+  /** A pending gate whose only listed kind QA checks still waits for the automations to answer. */
+  @Test
+  void aDeferredKindIsNoPreRunKindToWaitFor() {
+    assertEquals(
+        "Waiting for the automations to answer",
+        gate.evaluate(
+                subject(
+                    configured(),
+                    notRequired(),
+                    automations(
+                        ReleaseGates.State.PENDING,
+                        automation("cli-tapes", "CLI tapes", "DEFERRED", null)),
+                    List.of(),
+                    null))
+            .detail());
   }
 
   @Test

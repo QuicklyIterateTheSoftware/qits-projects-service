@@ -3556,6 +3556,7 @@
             "strings": [
               "$.request.automations[*].runId",
               "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].checks[*].detail",
               "$.request.qualityGates[*].detail",
               "$.request.qualityGates[*].checks[*].name"
             ],

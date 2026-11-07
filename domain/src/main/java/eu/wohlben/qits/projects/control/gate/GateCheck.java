@@ -5,7 +5,7 @@ package eu.wohlben.qits.projects.control.gate;
  *
  * @param name what a page prints for it
  * @param state the gate vocabulary: {@code PENDING}, {@code PASSED}, {@code FAILED}, {@code
- *     UNKNOWN}
+ *     UNKNOWN}; and {@code DEFERRED} on an automation QA checks, which holds nothing (qits-1920)
  * @param detail one sentence, or null
  * @param runId the qits-ci run behind it, or null
  */
