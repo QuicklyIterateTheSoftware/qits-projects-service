@@ -58,6 +58,21 @@ class TicketUnattendedGateTicketsWordingTest {
         TicketUnattendedGateTickets.comment(red));
   }
 
+  /** qits-1920: the stale outputs a red run found ride the gate's own words, body and comment. */
+  @Test
+  void aRedCiRunWithStaleOutputsCarriesThemInTheGatesOwnWords() {
+    String detail =
+        "Run run-1 finished FAILED for abc123; stale outputs: cli-tapes — regenerate with: qits"
+            + " release-request regenerate --project project-1 --repository demo-service --kind"
+            + " cli-tapes";
+    Rejection red = rejection(null, "run-1", detail);
+    assertTrue(
+        TicketUnattendedGateTickets.body(red)
+            .contains("\n**The gate's own words:** " + detail + "\n\n"),
+        TicketUnattendedGateTickets.body(red));
+    assertTrue(TicketUnattendedGateTickets.comment(red).endsWith("\n\n> " + detail));
+  }
+
   @Test
   void aFailedAutomationSaysSoAndNamesTheWaysOut() {
     String detail = "Screenshot baselines failed at abc123; push, re-run, or waive this fold";

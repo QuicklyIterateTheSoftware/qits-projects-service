@@ -723,6 +723,37 @@ public class ReleaseRequestFlowTest {
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
   }
 
+  /**
+   * qits-1920: the rejecting run's QA found stale outputs, so the detail names them and how to
+   * regenerate them. This repository has no public name, so the command names the kind alone. A
+   * red run whose reports name nothing reads exactly as it always did.
+   */
+  @Test
+  public void aRedRunWithStaleOutputsNamesThemInTheDetail() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("stale");
+    lineage.stale(red, "cli-tapes");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    assertEquals(
+        "Run "
+            + red
+            + " finished FAILED for "
+            + merged
+            + "; stale outputs: cli-tapes — regenerate with: qits release-request regenerate"
+            + " --kind cli-tapes",
+        detailOf(id));
+    assertTrue(lineage.reportsAsked().contains(red), "the rejecting run's reports were read");
+
+    String plain = run("plain");
+    verdict("BuildFailed", merged, plain, red, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    assertEquals("Run " + plain + " finished FAILED for " + merged, detailOf(id));
+  }
+
   // ---- qits-1731: a retried rejection is PENDING while its run builds ---------------------------
 
   /**

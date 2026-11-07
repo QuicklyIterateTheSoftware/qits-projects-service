@@ -42,6 +42,11 @@ import java.util.List;
  *     branches a conflict names as its {@code head}, of the paths it names. Never on the event
  *     ({@code BranchDeliveryChangedAnnouncer} maps the other components field by field) and never
  *     in the ledger; null on every other step, and on a step built without it
+ * @param buildNote {@code FAILED} with failure {@code CI} only, and <b>in process only</b> like
+ *     {@code conflicts} (qits-1920): what the red run said beyond its verdict — the stale outputs
+ *     it found and how to regenerate them ({@link StaleOutputs#note}) — which {@link
+ *     BranchDeliveryNotices} appends to the {@code fyi}. Null where the run said nothing more or
+ *     could not be asked, and on every other step
  */
 public record BranchDeliveryStep(
     String projectId,
@@ -60,7 +65,48 @@ public record BranchDeliveryStep(
     String version,
     String everywhere,
     Instant changedAt,
-    List<BackingBranchMerger.Conflict> conflicts) {
+    List<BackingBranchMerger.Conflict> conflicts,
+    String buildNote) {
+
+  /** A step with no build note: every step but a red CI run's {@code FAILED}. */
+  public BranchDeliveryStep(
+      String projectId,
+      String repoId,
+      String repository,
+      String branch,
+      String requestId,
+      String qualifiedId,
+      String foldSha,
+      String foldAttempt,
+      String step,
+      String previousRequestId,
+      String previousQualifiedId,
+      String failure,
+      String runId,
+      String version,
+      String everywhere,
+      Instant changedAt,
+      List<BackingBranchMerger.Conflict> conflicts) {
+    this(
+        projectId,
+        repoId,
+        repository,
+        branch,
+        requestId,
+        qualifiedId,
+        foldSha,
+        foldAttempt,
+        step,
+        previousRequestId,
+        previousQualifiedId,
+        failure,
+        runId,
+        version,
+        everywhere,
+        changedAt,
+        conflicts,
+        null);
+  }
 
   /** A step with no conflicts: every step but {@code CONFLICTED}, and every reader of the event. */
   public BranchDeliveryStep(
@@ -97,6 +143,7 @@ public record BranchDeliveryStep(
         version,
         everywhere,
         changedAt,
+        null,
         null);
   }
 }

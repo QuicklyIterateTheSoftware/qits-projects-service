@@ -14,11 +14,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @DefaultBean} HTTP adapter ({@link FakeActiveBuilds}' arrangement). Knows no run by default —
  * "not a retry" — which is what every test that never stages a gap needs. A test stages the runs
  * qits-ci auto-retried with {@link #retried}, or makes every lookup throw with {@link #failing}.
+ * Since qits-1920 it also answers which outputs a red run found stale: none by default, a test
+ * stages them with {@link #stale}; {@link #failing} makes that read throw too.
  */
 @ApplicationScoped
 public class FakeCiRunLineage implements CiRunLineage {
 
   private final Map<String, String> parents = new ConcurrentHashMap<>();
+  private final Map<String, List<String>> stale = new ConcurrentHashMap<>();
+  private final List<String> reportsAsked = new CopyOnWriteArrayList<>();
   private final List<String> asked = new CopyOnWriteArrayList<>();
   private final AtomicBoolean failing = new AtomicBoolean();
 
@@ -36,9 +40,21 @@ public class FakeCiRunLineage implements CiRunLineage {
     return List.copyOf(asked);
   }
 
+  /** qits-ci's reports for {@code runId} name {@code kinds} stale (qits-1920). */
+  public void stale(String runId, String... kinds) {
+    stale.put(runId, List.of(kinds));
+  }
+
+  /** The runs whose reports were read, in order. */
+  public List<String> reportsAsked() {
+    return List.copyOf(reportsAsked);
+  }
+
   public void reset() {
     parents.clear();
     asked.clear();
+    stale.clear();
+    reportsAsked.clear();
     failing.set(false);
   }
 
@@ -49,5 +65,14 @@ public class FakeCiRunLineage implements CiRunLineage {
       throw new IllegalStateException("qits-ci could not be reached");
     }
     return Optional.ofNullable(parents.get(runId));
+  }
+
+  @Override
+  public List<String> staleOutputKinds(String runId) {
+    reportsAsked.add(runId);
+    if (failing.get()) {
+      throw new IllegalStateException("qits-ci could not be reached");
+    }
+    return stale.getOrDefault(runId, List.of());
   }
 }

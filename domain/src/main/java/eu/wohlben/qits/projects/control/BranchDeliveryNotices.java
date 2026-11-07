@@ -42,8 +42,10 @@ import org.jboss.logging.Logger;
  *
  * <ul>
  *   <li><b>FAILED</b> with failure {@code CI} or {@code AUTOMATION}: {@code fyi: your <branch>
- *       failed its build in <qualifiedId>}. A {@code RELEASE} failure is no build of the branch's
- *       and is not said, as qits-1672 did not say it.
+ *       failed its build in <qualifiedId>}, and for a red CI run whose QA found stale outputs
+ *       (qits-1920) {@code : stale outputs: <kind> — regenerate with: <command>} after it ({@link
+ *       BranchDeliveryStep#buildNote}). A {@code RELEASE} failure is no build of the branch's and
+ *       is not said, as qits-1672 did not say it.
  *   <li><b>MOVED</b>: {@code fyi: your <branch> moved from <previousQualifiedId> to <qualifiedId>}.
  *   <li><b>CONFLICTED</b> (qits-1725): {@code fyi: your <branch> conflicts in <qualifiedId> on
  *       <paths>} — only to a branch some conflict names as its {@code head} ({@code
@@ -169,7 +171,17 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
 
   /** {@code fyi: your <branch> failed its build in <qualifiedId>}. */
   public static String failedText(String branch, String qualifiedId) {
-    return "fyi: your " + branch + " failed its build in " + qualifiedId;
+    return failedText(branch, qualifiedId, null);
+  }
+
+  /**
+   * The same, then {@code : <buildNote>} where the red run said more (qits-1920) — {@code fyi: your
+   * <branch> failed its build in <qualifiedId>: stale outputs: <kind> — regenerate with:
+   * <command>}. A null or blank note is the sentence above, unchanged.
+   */
+  public static String failedText(String branch, String qualifiedId, String buildNote) {
+    String text = "fyi: your " + branch + " failed its build in " + qualifiedId;
+    return buildNote == null || buildNote.isBlank() ? text : text + ": " + buildNote;
   }
 
   /** {@code fyi: your <branch> moved from <previousQualifiedId> to <qualifiedId>}. */
@@ -301,7 +313,7 @@ public class BranchDeliveryNotices implements BranchDeliveryStepListener {
         owe(
             step,
             failedKey(step.requestId(), step.foldSha(), step.repoId(), step.branch()),
-            failedText(step.branch(), step.qualifiedId()));
+            failedText(step.branch(), step.qualifiedId(), step.buildNote()));
       }
       case "MOVED" -> {
         if (step.previousRequestId() == null
