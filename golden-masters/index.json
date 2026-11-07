@@ -981,6 +981,63 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "deleteFrontDesk",
+          "method": "DELETE",
+          "path": "/projects/api/projects/{projectId}/agent-container",
+          "status": 204,
+          "file": "a-project-exists/deleteFrontDesk.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "deleteProject",
+          "method": "DELETE",
+          "path": "/projects/api/projects/{projectId}",
+          "status": 200,
+          "file": "a-project-exists/deleteProject.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "ensureAgentConfigRepository",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/agent-config-repository",
+          "status": 201,
+          "file": "a-project-exists/ensureAgentConfigRepository.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getFrontDesk",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/agent-container",
+          "status": 200,
+          "file": "a-project-exists/getFrontDesk.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getProject",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}",
@@ -1012,6 +1069,94 @@
               "$.entries[*].project.slug"
             ],
             "listFilteredTo": "$.entries"
+          }
+        },
+        {
+          "operationId": "reconcileProject",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/reconcile",
+          "status": 200,
+          "file": "a-project-exists/reconcileProject.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "stopFrontDesk",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/agent-container/stop",
+          "status": 200,
+          "file": "a-project-exists/stopFrontDesk.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "updateProject",
+          "method": "PUT",
+          "path": "/projects/api/projects/{projectId}",
+          "body": {
+            "name": "Contract project",
+            "description": "Renamed by the contract."
+          },
+          "status": 200,
+          "file": "a-project-exists/updateProject.json",
+          "frozen": {
+            "ids": [
+              "$.project.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.project.slug"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a project slug that names no project",
+      "slug": "a-project-slug-that-names-no-project",
+      "params": {
+        "slug": "contract-00000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "createProject",
+          "method": "POST",
+          "path": "/projects/api/projects",
+          "body": {
+            "name": "Contract project",
+            "slug": "{slug}",
+            "description": "Created by the contract.",
+            "dns": {
+              "domain": "example.test.eu",
+              "type": "A",
+              "value": "203.0.113.9"
+            }
+          },
+          "status": 200,
+          "file": "a-project-slug-that-names-no-project/createProject.json",
+          "frozen": {
+            "ids": [
+              "$.project.id",
+              "$.wrapper.id",
+              "$.wrapper.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.project.slug",
+              "$.wrapper.name",
+              "$.wrapper.cloneUrl"
+            ],
+            "listFilteredTo": null
           }
         }
       ]
@@ -1080,6 +1225,33 @@
             "strings": [
               "$.messages[*].message",
               "$.messages[*].events[*].itemRef"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a project whose front desk can be leased",
+      "slug": "a-project-whose-front-desk-can-be-leased",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "ensureFrontDesk",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/agent-container/ensure",
+          "status": 200,
+          "file": "a-project-whose-front-desk-can-be-leased/ensureFrontDesk.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.container.queuedAt"
+            ],
+            "strings": [
+              "$.container.pinnedDaemonVersion"
             ],
             "listFilteredTo": null
           }
@@ -1476,6 +1648,23 @@
               "$.entries[*].repository.name",
               "$.entries[*].repository.cloneUrl"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "reconcileProjectRepositories",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/repositories/reconcile",
+          "status": 200,
+          "file": "a-project-with-one-repository/reconcileProjectRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.projectId",
+              "$.wrapperRepositoryId",
+              "$.entries[*].repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -2158,6 +2347,47 @@
             "strings": [
               "$.message"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refinement room with a prompt draft",
+      "slug": "a-refinement-room-with-a-prompt-draft",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-1",
+        "refinementId": "1",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "deleteRefinementPromptDraft",
+          "method": "DELETE",
+          "path": "/projects/api/refinements/{refinementId}/prompt-draft",
+          "status": 204,
+          "file": "a-refinement-room-with-a-prompt-draft/deleteRefinementPromptDraft.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getRefinementPromptDraft",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/prompt-draft",
+          "status": 200,
+          "file": "a-refinement-room-with-a-prompt-draft/getRefinementPromptDraft.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.draft.updatedAt"
+            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -4138,11 +4368,116 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "backupSyncRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/backup-sync",
+          "status": 202,
+          "file": "a-repository-exists/backupSyncRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "deleteRepository",
+          "method": "DELETE",
+          "path": "/projects/api/repositories/{repositoryId}",
+          "status": 200,
+          "file": "a-repository-exists/deleteRepository.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getRepository",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}",
           "status": 200,
           "file": "a-repository-exists/getRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repository.id",
+              "$.repository.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getRepositoryActiveProcess",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/active-process",
+          "status": 200,
+          "file": "a-repository-exists/getRepositoryActiveProcess.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getRepositorySyncStatus",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/sync-status",
+          "status": 200,
+          "file": "a-repository-exists/getRepositorySyncStatus.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "pullRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/pull",
+          "status": 200,
+          "file": "a-repository-exists/pullRepository.json",
+          "frozen": {
+            "ids": [
+              "$.technicalProcessId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "pushRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/push",
+          "status": 200,
+          "file": "a-repository-exists/pushRepository.json",
+          "frozen": {
+            "ids": [
+              "$.technicalProcessId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "renameRepository",
+          "method": "PATCH",
+          "path": "/projects/api/repositories/{repositoryId}",
+          "body": {
+            "name": "contract-api"
+          },
+          "status": 200,
+          "file": "a-repository-exists/renameRepository.json",
           "frozen": {
             "ids": [
               "$.repository.id",
@@ -4165,6 +4500,34 @@
             "ids": [
               "$.repositoryId"
             ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "syncRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/sync",
+          "status": 200,
+          "file": "a-repository-exists/syncRepository.json",
+          "frozen": {
+            "ids": [
+              "$.technicalProcessId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "unarchiveRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/unarchive",
+          "status": 200,
+          "file": "a-repository-exists/unarchiveRepository.json",
+          "frozen": {
+            "ids": [],
             "instants": [],
             "strings": [],
             "listFilteredTo": null
@@ -4201,6 +4564,59 @@
             "instants": [
               "$.decidedAt"
             ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository whose backup twin was reset",
+      "slug": "a-repository-whose-backup-twin-was-reset",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryBackupResets",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/backup-resets",
+          "status": 200,
+          "file": "a-repository-whose-backup-twin-was-reset/listRepositoryBackupResets.json",
+          "frozen": {
+            "ids": [
+              "$.resets[*].repositoryId"
+            ],
+            "instants": [
+              "$.resets[*].decidedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository whose main already says it is archived",
+      "slug": "a-repository-whose-main-already-says-it-is-archived",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repoName": "contract-service",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "archiveRepository",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/archive",
+          "status": 200,
+          "file": "a-repository-whose-main-already-says-it-is-archived/archiveRepository.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
             "strings": [],
             "listFilteredTo": null
           }
@@ -4270,6 +4686,55 @@
               "$.requests[*].mergedToMainAt"
             ],
             "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository with a second branch",
+      "slug": "a-repository-with-a-second-branch",
+      "params": {
+        "branch": "feature/export",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "deleteRepositoryBranch",
+          "method": "DELETE",
+          "path": "/projects/api/repositories/{repositoryId}/branches",
+          "query": {
+            "branch": "{branch}"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-second-branch/deleteRepositoryBranch.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setRepositoryMainBranch",
+          "method": "PUT",
+          "path": "/projects/api/repositories/{repositoryId}/main-branch",
+          "body": {
+            "branch": "{branch}"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-second-branch/setRepositoryMainBranch.json",
+          "frozen": {
+            "ids": [
+              "$.repository.id",
+              "$.repository.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.repository.cloneUrl"
+            ],
             "listFilteredTo": null
           }
         }
@@ -4813,6 +5278,41 @@
           }
         },
         {
+          "operationId": "addRefinementPromptAttachment",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/prompt-attachments",
+          "body": {
+            "label": "Pasted screenshot",
+            "source": "PASTE",
+            "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+          },
+          "status": 201,
+          "file": "a-ticket-with-a-design/addRefinementPromptAttachment.json",
+          "frozen": {
+            "ids": [
+              "$.id"
+            ],
+            "instants": [
+              "$.createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "deleteRefinementDesign",
+          "method": "DELETE",
+          "path": "/projects/api/refinements/{refinementId}/designs/{designId}",
+          "status": 204,
+          "file": "a-ticket-with-a-design/deleteRefinementDesign.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "discardRefinement",
           "method": "POST",
           "path": "/projects/api/refinements/{refinementId}/discard",
@@ -4877,6 +5377,31 @@
           }
         },
         {
+          "operationId": "getRefinement",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}",
+          "status": 200,
+          "file": "a-ticket-with-a-design/getRefinement.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.deskBase"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getRefinementDesign",
           "method": "GET",
           "path": "/projects/api/refinements/{refinementId}/designs/{designId}",
@@ -4920,6 +5445,31 @@
           }
         },
         {
+          "operationId": "listProjectRefinements",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/refinements",
+          "status": 200,
+          "file": "a-ticket-with-a-design/listProjectRefinements.json",
+          "frozen": {
+            "ids": [
+              "$.refinements[*].entityId",
+              "$.refinements[*].epicId",
+              "$.refinements[*].projectId",
+              "$.refinements[*].repositoryId"
+            ],
+            "instants": [
+              "$.refinements[*].createdAt"
+            ],
+            "strings": [
+              "$.refinements[*].deskBase"
+            ],
+            "numbers": [
+              "$.refinements[*].id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listRefinementDesigns",
           "method": "GET",
           "path": "/projects/api/refinements/{refinementId}/designs",
@@ -4932,6 +5482,24 @@
             "instants": [
               "$.designs[*].createdAt",
               "$.designs[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "saveRefinementPromptDraft",
+          "method": "PUT",
+          "path": "/projects/api/refinements/{refinementId}/prompt-draft",
+          "body": {
+            "content": "{\"type\":\"doc\",\"content\":[]}"
+          },
+          "status": 200,
+          "file": "a-ticket-with-a-design/saveRefinementPromptDraft.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.draft.updatedAt"
             ],
             "strings": [],
             "listFilteredTo": null
@@ -5811,10 +6379,45 @@
         "epicId": "00000000-0000-4000-8000-000000000001",
         "projectId": "00000000-0000-4000-8000-000000000002",
         "qualifiedId": "contract-00000001-1",
+        "refinementId": "1",
         "sketchId": "00000000-0000-4000-8000-000000000003"
       },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "deleteRefinementPromptAttachment",
+          "method": "DELETE",
+          "path": "/projects/api/refinements/{refinementId}/prompt-attachments/{sketchId}",
+          "status": 204,
+          "file": "an-epic-with-a-sketch-to-inline/deleteRefinementPromptAttachment.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getRefinementPromptAttachmentContent",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/prompt-attachments/{sketchId}/content",
+          "status": 200,
+          "responseHeaders": {
+            "Content-Type": "image/png",
+            "Cache-Control": "no-cache"
+          },
+          "file": null,
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "responseHeaders": [
+              "Content-Type",
+              "Cache-Control"
+            ],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "inlineWorkDossierAsset",
           "method": "POST",
@@ -5834,6 +6437,45 @@
               "$.url",
               "$.markdown"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRefinementPromptAttachments",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/prompt-attachments",
+          "status": 200,
+          "file": "an-epic-with-a-sketch-to-inline/listRefinementPromptAttachments.json",
+          "frozen": {
+            "ids": [
+              "$.attachments[*].id"
+            ],
+            "instants": [
+              "$.attachments[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "replaceRefinementPromptAttachment",
+          "method": "PUT",
+          "path": "/projects/api/refinements/{refinementId}/prompt-attachments/{sketchId}",
+          "body": {
+            "label": "Export data flow, revised",
+            "source": "SKETCH",
+            "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+          },
+          "status": 200,
+          "file": "an-epic-with-a-sketch-to-inline/replaceRefinementPromptAttachment.json",
+          "frozen": {
+            "ids": [
+              "$.id"
+            ],
+            "instants": [
+              "$.createdAt"
+            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -6488,6 +7130,29 @@
       ]
     },
     {
+      "name": "no refinement with the given id",
+      "slug": "no-refinement-with-the-given-id",
+      "params": {
+        "refinementId": "987654321"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "streamRefinementEvents",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/events",
+          "status": 404,
+          "file": "no-refinement-with-the-given-id/streamRefinementEvents.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "no repository with the given id",
       "slug": "no-repository-with-the-given-id",
       "params": {
@@ -6507,6 +7172,29 @@
             "strings": [
               "$.message"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "no technical process with the given id",
+      "slug": "no-technical-process-with-the-given-id",
+      "params": {
+        "technicalProcessId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "streamTechnicalProcessEvents",
+          "method": "GET",
+          "path": "/projects/api/technical-processes/{technicalProcessId}/events",
+          "status": 404,
+          "file": "no-technical-process-with-the-given-id/streamTechnicalProcessEvents.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         }

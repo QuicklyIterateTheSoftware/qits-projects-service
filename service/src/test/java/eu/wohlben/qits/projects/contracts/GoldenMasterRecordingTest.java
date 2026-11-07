@@ -193,6 +193,10 @@ class GoldenMasterRecordingTest {
    */
   private static final Map<String, String> BEARER = Map.of("Authorization", "{authorization}");
 
+  /** A one-pixel PNG, base64: the bytes a pasted prompt attachment sends. */
+  private static final String TINY_PNG =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
   static final List<Interaction> INTERACTIONS =
       withNeeds(
       withServiceCallers(
@@ -445,6 +449,188 @@ class GoldenMasterRecordingTest {
               "GET",
               "/projects/api/projects/{projectId}/release-requests",
               200,
+              null,
+              null),
+          // A project's own doors (qits-1934): created under a free slug, renamed, re-asserted,
+          // deleted, and its qits-agent-config minted.
+          new Interaction(
+              ProviderStates.A_PROJECT_SLUG_THAT_NAMES_NO_PROJECT,
+              "createProject",
+              "POST",
+              "/projects/api/projects",
+              200,
+              null,
+              null,
+              "{\"name\":\"Contract project\",\"slug\":\"{slug}\","
+                  + "\"description\":\"Created by the contract.\","
+                  + "\"dns\":{\"domain\":\"example.test.eu\",\"type\":\"A\","
+                  + "\"value\":\"203.0.113.9\"}}"),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "updateProject",
+              "PUT",
+              "/projects/api/projects/{projectId}",
+              200,
+              null,
+              null,
+              "{\"name\":\"Contract project\",\"description\":\"Renamed by the contract.\"}"),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "reconcileProject",
+              "POST",
+              "/projects/api/projects/{projectId}/reconcile",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "deleteProject",
+              "DELETE",
+              "/projects/api/projects/{projectId}",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "ensureAgentConfigRepository",
+              "POST",
+              "/projects/api/projects/{projectId}/agent-config-repository",
+              201,
+              null,
+              null),
+          // The project's front desk (qits-767): absent, so read, stopped and deleted as nothing;
+          // asked for where its lease can be queued.
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "getFrontDesk",
+              "GET",
+              "/projects/api/projects/{projectId}/agent-container",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "stopFrontDesk",
+              "POST",
+              "/projects/api/projects/{projectId}/agent-container/stop",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_EXISTS,
+              "deleteFrontDesk",
+              "DELETE",
+              "/projects/api/projects/{projectId}/agent-container",
+              204,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_CAN_BE_LEASED,
+              "ensureFrontDesk",
+              "POST",
+              "/projects/api/projects/{projectId}/agent-container/ensure",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY,
+              "reconcileProjectRepositories",
+              "POST",
+              "/projects/api/projects/{projectId}/repositories/reconcile",
+              200,
+              null,
+              null),
+          // A repository's own doors (qits-1934). Pull, push and sync answer their process at
+          // once; the state waits the git walk out before the next one.
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "renameRepository",
+              "PATCH",
+              "/projects/api/repositories/{repositoryId}",
+              200,
+              null,
+              null,
+              "{\"name\":\"contract-api\"}"),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "deleteRepository",
+              "DELETE",
+              "/projects/api/repositories/{repositoryId}",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "getRepositoryActiveProcess",
+              "GET",
+              "/projects/api/repositories/{repositoryId}/active-process",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "getRepositorySyncStatus",
+              "GET",
+              "/projects/api/repositories/{repositoryId}/sync-status",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "backupSyncRepository",
+              "POST",
+              "/projects/api/repositories/{repositoryId}/backup-sync",
+              202,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "pullRepository",
+              "POST",
+              "/projects/api/repositories/{repositoryId}/pull",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "pushRepository",
+              "POST",
+              "/projects/api/repositories/{repositoryId}/push",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_EXISTS,
+              "syncRepository",
+              "POST",
+              "/projects/api/repositories/{repositoryId}/sync",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_WITH_A_SECOND_BRANCH,
+              "setRepositoryMainBranch",
+              "PUT",
+              "/projects/api/repositories/{repositoryId}/main-branch",
+              200,
+              null,
+              null,
+              "{\"branch\":\"{branch}\"}"),
+          new Interaction(
+              ProviderStates.A_REPOSITORY_WITH_A_SECOND_BRANCH,
+              "deleteRepositoryBranch",
+              "DELETE",
+              "/projects/api/repositories/{repositoryId}/branches?branch={branch}",
+              200,
+              null,
+              null),
+          // A process stream checks its id before it streams, so an unknown one is a finite 404.
+          new Interaction(
+              ProviderStates.NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID,
+              "streamTechnicalProcessEvents",
+              "GET",
+              "/projects/api/technical-processes/{technicalProcessId}/events",
+              404,
               null,
               null),
           new Interaction(
@@ -1077,6 +1263,89 @@ class GoldenMasterRecordingTest {
             200,
             null,
             null));
+    // The room's own reads and its prompt (qits-1934): the room by its id and its project, a
+    // design deleted, the draft saved, and the stream's refusal of a room that does not exist.
+    String refinement = "/projects/api/refinements/{refinementId}";
+    all.add(read(design, "getRefinement", refinement));
+    all.add(
+        read(design, "listProjectRefinements", "/projects/api/projects/{projectId}/refinements"));
+    all.add(
+        new Interaction(
+            design,
+            "deleteRefinementDesign",
+            "DELETE",
+            designs + "/{designId}",
+            204,
+            null,
+            null));
+    all.add(
+        write(
+            design,
+            "saveRefinementPromptDraft",
+            "PUT",
+            refinement + "/prompt-draft",
+            "{\"content\":\"{\\\"type\\\":\\\"doc\\\",\\\"content\\\":[]}\"}"));
+    all.add(
+        new Interaction(
+            design,
+            "addRefinementPromptAttachment",
+            "POST",
+            refinement + "/prompt-attachments",
+            201,
+            null,
+            null,
+            "{\"label\":\"Pasted screenshot\",\"source\":\"PASTE\","
+                + "\"dataBase64\":\"" + TINY_PNG + "\"}"));
+    String draft = ProviderStates.A_REFINEMENT_ROOM_WITH_A_PROMPT_DRAFT;
+    all.add(read(draft, "getRefinementPromptDraft", refinement + "/prompt-draft"));
+    all.add(
+        new Interaction(
+            draft,
+            "deleteRefinementPromptDraft",
+            "DELETE",
+            refinement + "/prompt-draft",
+            204,
+            null,
+            null));
+    String sketch = ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE;
+    String attachments = refinement + "/prompt-attachments";
+    all.add(read(sketch, "listRefinementPromptAttachments", attachments));
+    all.add(
+        write(
+            sketch,
+            "replaceRefinementPromptAttachment",
+            "PUT",
+            attachments + "/{sketchId}",
+            "{\"label\":\"Export data flow, revised\",\"source\":\"SKETCH\","
+                + "\"dataBase64\":\"" + TINY_PNG + "\"}"));
+    all.add(
+        new Interaction(
+            sketch,
+            "deleteRefinementPromptAttachment",
+            "DELETE",
+            attachments + "/{sketchId}",
+            204,
+            null,
+            null));
+    // The sketch's bytes: no golden file, its type and caching are the record.
+    all.add(
+        Interaction.bytes(
+            sketch,
+            "getRefinementPromptAttachmentContent",
+            attachments + "/{sketchId}/content",
+            200,
+            "Content-Type",
+            "Cache-Control"));
+    // The stream reaches the room before it streams, so an unknown one is a finite 404.
+    all.add(
+        new Interaction(
+            ProviderStates.NO_REFINEMENT_WITH_THE_GIVEN_ID,
+            "streamRefinementEvents",
+            "GET",
+            refinement + "/events",
+            404,
+            null,
+            null));
     // `qits work unblock` (qits-1174): the blocked bug, freed.
     all.add(
         write(
@@ -1306,6 +1575,28 @@ class GoldenMasterRecordingTest {
             null,
             "{\"reason\":\"The forge seeded the twin with a README commit of its own.\"}",
             BEARER));
+    // The resets `qits repositories backup-reset` made, as the repository's history lists them.
+    all.add(
+        read(
+            ProviderStates.A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET,
+            "listRepositoryBackupResets",
+            "/projects/api/repositories/{repositoryId}/backup-resets"));
+    // `qits repositories archive` and `unarchive` (qits-1784), where main already says what is
+    // asked: 200 unchanged, nothing opened. A 202 would open a release request inside the call.
+    all.add(
+        write(
+            ProviderStates.A_REPOSITORY_WHOSE_MAIN_ALREADY_SAYS_IT_IS_ARCHIVED,
+            "archiveRepository",
+            "POST",
+            "/projects/api/repositories/{repositoryId}/archive",
+            null));
+    all.add(
+        write(
+            ProviderStates.A_REPOSITORY_EXISTS,
+            "unarchiveRepository",
+            "POST",
+            "/projects/api/repositories/{repositoryId}/unarchive",
+            null));
     return List.copyOf(all);
   }
 

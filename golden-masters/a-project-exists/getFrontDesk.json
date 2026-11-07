@@ -1,0 +1,13 @@
+{
+  "container": {
+    "runtimeStatus": "ABSENT",
+    "daemonConnected": false,
+    "daemonVersion": null,
+    "pinnedDaemonVersion": null,
+    "daemonVersionStale": false,
+    "failureDetail": null,
+    "targetId": null,
+    "lifecycle": "ON_DEMAND",
+    "queuedAt": null
+  }
+}

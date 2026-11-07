@@ -1,0 +1,16 @@
+{
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "wrapperRepositoryId": "00000000-0000-4000-8000-000000000002",
+  "branch": "main",
+  "entries": [
+    {
+      "path": "components/contract-service/contract-service",
+      "name": "contract-service",
+      "repositoryId": "00000000-0000-4000-8000-000000000003",
+      "archetype": "SERVICE",
+      "component": "contract-service",
+      "outcome": "KEPT",
+      "warning": null
+    }
+  ]
+}

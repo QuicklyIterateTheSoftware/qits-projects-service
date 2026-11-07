@@ -1,0 +1,9 @@
+{
+  "outcome": "unchanged",
+  "archived": true,
+  "branch": null,
+  "commit": null,
+  "releaseRequestId": null,
+  "qualifiedId": null,
+  "detail": "main already says repository.archived: true; nothing was opened."
+}

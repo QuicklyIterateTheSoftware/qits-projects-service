@@ -1,0 +1,20 @@
+{
+  "project": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "Contract project",
+    "slug": "contract-00000001",
+    "description": "Renamed by the contract.",
+    "dns": {
+      "domain": "example.test.eu",
+      "type": "A",
+      "value": "203.0.113.9"
+    },
+    "frontDeskLifecycle": "ON_DEMAND",
+    "delivery": {
+      "enabled": false,
+      "maxRunning": 2,
+      "startRefined": false,
+      "approves": []
+    }
+  }
+}

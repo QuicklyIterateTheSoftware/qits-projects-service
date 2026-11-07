@@ -1,0 +1,13 @@
+{
+  "container": {
+    "runtimeStatus": "QUEUED",
+    "daemonConnected": false,
+    "daemonVersion": null,
+    "pinnedDaemonVersion": "00000001",
+    "daemonVersionStale": false,
+    "failureDetail": "no target has a free DESK slot",
+    "targetId": null,
+    "lifecycle": "ON_DEMAND",
+    "queuedAt": "2026-01-01T00:00:00Z"
+  }
+}

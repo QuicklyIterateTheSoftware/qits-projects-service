@@ -1,0 +1,13 @@
+{
+  "resets": [
+    {
+      "repositoryId": "00000000-0000-4000-8000-000000000002",
+      "kind": "UNRELATED_RESET",
+      "twinShaBefore": "000000000000000000000000000000000000075d",
+      "pushedSha": "000000000000000000000000000000000000075e",
+      "decidedBy": "dev",
+      "decidedAt": "2026-01-01T00:00:00Z",
+      "reason": "The forge seeded the twin with a README commit of its own."
+    }
+  ]
+}
