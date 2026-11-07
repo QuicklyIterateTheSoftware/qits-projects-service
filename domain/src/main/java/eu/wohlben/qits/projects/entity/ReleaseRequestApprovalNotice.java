@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.entity;
 
+import eu.wohlben.qits.db.exposure.Technical;
 import eu.wohlben.qits.eventstream.Uncaused;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
@@ -26,6 +27,11 @@ import java.util.Objects;
 @Table(name = "release_request_approval_notice")
 @IdClass(ReleaseRequestApprovalNotice.Key.class)
 @Uncaused
+@Technical(
+    reason =
+        "Once-per-(request, fold, requirement, state) dedupe ledger behind the"
+            + " ApprovalRequirementChanged announcement; the requirement itself is exposed as the"
+            + " release request's approvalRequirements.")
 public class ReleaseRequestApprovalNotice extends PanacheEntityBase {
 
   /** The states announced. VOID: a re-fold left the requirement behind. */

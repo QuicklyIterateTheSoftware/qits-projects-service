@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.dto;
 
+import eu.wohlben.qits.db.exposure.Exposes;
+import eu.wohlben.qits.projects.entity.StoredGateSet;
 import java.time.Instant;
 import java.util.List;
 
@@ -193,6 +195,10 @@ import java.util.List;
  * through {@code POST …/sources/move}, with who moved it and why. See {@link
  * ReleaseRequestSourceMoveDto}. Empty where nothing moved. Never null.
  */
+// The gates and approval requirements a list or single read shows are drawn from the stored gate
+// set (qits-1201) through ReleaseGates.forDisplay, which unwraps a Map<String, Stored> the
+// bytecode inference does not follow (qits-1945).
+@Exposes(StoredGateSet.class)
 public record ReleaseRequestDto(
     String id,
     String qualifiedId,

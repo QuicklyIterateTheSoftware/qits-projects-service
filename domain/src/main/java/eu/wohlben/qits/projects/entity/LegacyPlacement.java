@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.entity;
 
+import eu.wohlben.qits.db.exposure.Technical;
 import eu.wohlben.qits.eventstream.Uncaused;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
@@ -21,6 +22,11 @@ import java.util.UUID;
 @Entity
 @Table(name = "legacy_placement")
 @Uncaused
+@Technical(
+    reason =
+        "Migration leftover of the retired front-desk runner (V62, qits-1481): lets a desk's first"
+            + " lease adopt the old container and volume, then is deleted; nothing reads it but that"
+            + " adoption.")
 public class LegacyPlacement extends PanacheEntityBase {
 
   /** The project, {@code FrontDesk.projectId}. */

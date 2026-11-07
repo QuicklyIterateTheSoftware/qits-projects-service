@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.entity;
 
+import eu.wohlben.qits.db.exposure.Technical;
 import eu.wohlben.qits.eventstream.Uncaused;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
@@ -29,6 +30,11 @@ import java.time.Instant;
 @Entity
 @Table(name = "branch_delivery_notice")
 @Uncaused
+@Technical(
+    reason =
+        "Outbox and once-per-fold dedupe ledger for the messages sent to a branch's owning agent;"
+            + " the message itself reaches the agent, and the desk-trigger sweep reads the row only"
+            + " to tell whether anyone was told.")
 public class BranchDeliveryNotice extends PanacheEntityBase {
 
   /**
