@@ -45,7 +45,7 @@
                 "agentId": "00000000-0000-4000-8000-0000000000a1",
                 "repositoryId": "00000000-0000-4000-8000-000000000013",
                 "workId": "00000000-0000-4000-8000-000000000001",
-                "wrapperBranch": "ticket/contract-00000001-10"
+                "wrapperBranch": "ticket/contract-00000001-9"
               }
             ]
           },
@@ -135,21 +135,21 @@
         }
       },
       "description": "DeskTriggerSweep.sweep: listAgents",
-      "key": "8bca83d0",
+      "key": "706d2dc4",
       "pending": false,
       "providerStates": [
         {
           "name": "a project with agents needing attention",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "bugTicketQualifiedId": "contract-00000001-10",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "improvementTicketQualifiedId": "contract-00000001-11",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
+            "bugTicketQualifiedId": "contract-00000001-9",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "improvementTicketQualifiedId": "contract-00000001-10",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
             "repositoryId": "00000000-0000-4000-8000-000000000013",
-            "taskId": "00000000-0000-4000-8000-000000000011"
+            "taskId": "00000000-0000-4000-8000-000000000010"
           }
         }
       ],
@@ -282,13 +282,13 @@
         }
       },
       "description": "ReleaseRequests.resolveWorkspacesOnReleasedBranches: resolveReleasedBranch",
-      "key": "21e7ec83",
+      "key": "5db1fcb9",
       "pending": false,
       "providerStates": [
         {
           "name": "an agent owning a released branch",
           "params": {
-            "branch": "ticket/contract-00000001-10",
+            "branch": "ticket/contract-00000001-9",
             "repositoryId": "00000000-0000-4000-8000-000000000013",
             "sha": "0123456789abcdef0123456789abcdef01234567",
             "version": "2026.101.120000"
@@ -298,7 +298,7 @@
       "request": {
         "body": {
           "content": {
-            "branch": "ticket/contract-00000001-10",
+            "branch": "ticket/contract-00000001-9",
             "commit": "0123456789abcdef0123456789abcdef01234567",
             "result": "released as 2026.101.120000",
             "target": "2026.101.120000"
@@ -690,7 +690,7 @@
         }
       },
       "description": "dispatchWork: dispatchAgent",
-      "key": "58069bf6",
+      "key": "f8215948",
       "pending": false,
       "providerStates": [
         {
@@ -698,8 +698,8 @@
           "params": {
             "repositoryId": "00000000-0000-4000-8000-000000000014",
             "ticketId": "00000000-0000-4000-8000-000000000001",
-            "ticketQualifiedId": "contract-00000001-10",
-            "wrapperBranch": "ticket/contract-00000001-10"
+            "ticketQualifiedId": "contract-00000001-9",
+            "wrapperBranch": "ticket/contract-00000001-9"
           }
         }
       ],
@@ -707,14 +707,14 @@
         "body": {
           "content": {
             "entityBlocked": false,
-            "entityId": "contract-00000001-10",
+            "entityId": "contract-00000001-9",
             "entityStatus": "REFINED",
             "entityTitle": "Fix it",
             "instruction": "implement",
             "repositoryId": "00000000-0000-4000-8000-000000000014",
             "ticketId": "00000000-0000-4000-8000-000000000001",
             "workId": "00000000-0000-4000-8000-000000000001",
-            "wrapperBranch": "ticket/contract-00000001-10"
+            "wrapperBranch": "ticket/contract-00000001-9"
           },
           "contentType": "application/json",
           "encoded": false
@@ -933,19 +933,19 @@
                   "agentId": "00000000-0000-4000-8000-0000000000a1",
                   "branches": [
                     {
-                      "branch": "ticket/contract-00000001-10-totals",
+                      "branch": "ticket/contract-00000001-9-totals",
                       "repositoryId": "00000000-0000-4000-8000-000000000015"
                     }
                   ],
                   "createdAt": "2026-01-01T00:00:00Z",
-                  "entityId": "contract-00000001-10",
+                  "entityId": "contract-00000001-9",
                   "removedAt": "2026-01-01T00:00:00Z",
                   "repositoryId": "00000000-0000-4000-8000-000000000013",
                   "runState": "RUNNING",
                   "state": "ACTIVE",
                   "workId": "00000000-0000-4000-8000-000000000001",
                   "workspaceRowId": 1,
-                  "wrapperBranch": "ticket/contract-00000001-10"
+                  "wrapperBranch": "ticket/contract-00000001-9"
                 }
               }
             ]
