@@ -135,7 +135,7 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
-        <qits.eventstream.version>2026.1106.12426</qits.eventstream.version>
+        <qits.eventstream.version>2026.1107.192805</qits.eventstream.version>
         <qits.githost-events.version>2026.1106.52935</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -186,10 +186,10 @@
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1106.507</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1107.205842</qits.arch-rules.version>
         <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
              and published no db-core. -->
-        <qits.db-core.version>2026.1106.507</qits.db-core.version>
+        <qits.db-core.version>2026.1107.191249</qits.db-core.version>
 
         <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
              java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
@@ -238,7 +238,7 @@
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1107.13534</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1106.232321</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1107.140028</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1107.32045</qits.platform-access-monorepo-pacts-qits-projects-service.version>
+        <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1107.202817</qits.platform-access-monorepo-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1106.221716</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
