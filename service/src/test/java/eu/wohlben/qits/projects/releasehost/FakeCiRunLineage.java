@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import eu.wohlben.qits.projects.control.CiRunLineage;
+import eu.wohlben.qits.projects.control.UncoveredOperations;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 import java.util.Map;
@@ -15,13 +16,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * "not a retry" — which is what every test that never stages a gap needs. A test stages the runs
  * qits-ci auto-retried with {@link #retried}, or makes every lookup throw with {@link #failing}.
  * Since qits-1920 it also answers which outputs a red run found stale: none by default, a test
- * stages them with {@link #stale}; {@link #failing} makes that read throw too.
+ * stages them with {@link #stale}; {@link #failing} makes that read throw too. Since qits-1940 the
+ * same read answers the operations no golden master covers, staged with {@link #uncovered}.
  */
 @ApplicationScoped
 public class FakeCiRunLineage implements CiRunLineage {
 
   private final Map<String, String> parents = new ConcurrentHashMap<>();
   private final Map<String, List<String>> stale = new ConcurrentHashMap<>();
+  private final Map<String, UncoveredOperations> uncovered = new ConcurrentHashMap<>();
   private final List<String> reportsAsked = new CopyOnWriteArrayList<>();
   private final List<String> asked = new CopyOnWriteArrayList<>();
   private final AtomicBoolean failing = new AtomicBoolean();
@@ -45,6 +48,11 @@ public class FakeCiRunLineage implements CiRunLineage {
     stale.put(runId, List.of(kinds));
   }
 
+  /** qits-ci's reports for {@code runId} count {@code count} uncovered operations (qits-1940). */
+  public void uncovered(String runId, int count, String... names) {
+    uncovered.put(runId, new UncoveredOperations(count, List.of(names)));
+  }
+
   /** The runs whose reports were read, in order. */
   public List<String> reportsAsked() {
     return List.copyOf(reportsAsked);
@@ -54,6 +62,7 @@ public class FakeCiRunLineage implements CiRunLineage {
     parents.clear();
     asked.clear();
     stale.clear();
+    uncovered.clear();
     reportsAsked.clear();
     failing.set(false);
   }
@@ -68,11 +77,11 @@ public class FakeCiRunLineage implements CiRunLineage {
   }
 
   @Override
-  public List<String> staleOutputKinds(String runId) {
+  public RunFindings findings(String runId) {
     reportsAsked.add(runId);
     if (failing.get()) {
       throw new IllegalStateException("qits-ci could not be reached");
     }
-    return stale.getOrDefault(runId, List.of());
+    return new RunFindings(stale.getOrDefault(runId, List.of()), uncovered.get(runId));
   }
 }

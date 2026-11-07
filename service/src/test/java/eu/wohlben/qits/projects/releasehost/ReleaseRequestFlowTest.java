@@ -754,6 +754,38 @@ public class ReleaseRequestFlowTest {
     assertEquals("Run " + plain + " finished FAILED for " + merged, detailOf(id));
   }
 
+  /**
+   * qits-1940: the rejecting run's QA also counted operations no golden master covers, read off the
+   * same reports, so the detail names them after the stale outputs. A count of zero adds nothing.
+   */
+  @Test
+  public void aRedRunWithUncoveredOperationsNamesThemAfterTheStaleOutputs() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("uncovered");
+    lineage.stale(red, "cli-tapes");
+    lineage.uncovered(red, 3, "listRunReports", "GET /ci/api/runs/{runId}");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    assertEquals(
+        "Run "
+            + red
+            + " finished FAILED for "
+            + merged
+            + "; stale outputs: cli-tapes — regenerate with: qits release-request regenerate"
+            + " --kind cli-tapes; uncovered operations: 3 — listRunReports, GET"
+            + " /ci/api/runs/{runId} and 1 more — add a golden-master state for each",
+        detailOf(id));
+
+    String covered = run("covered");
+    lineage.uncovered(covered, 0);
+    verdict("BuildFailed", merged, covered, red, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    assertEquals("Run " + covered + " finished FAILED for " + merged, detailOf(id));
+  }
+
   // ---- qits-1731: a retried rejection is PENDING while its run builds ---------------------------
 
   /**

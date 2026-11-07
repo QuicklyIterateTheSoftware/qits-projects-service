@@ -5,7 +5,8 @@ import java.util.Optional;
 
 /**
  * Which run one qits-ci run was fired to replace — asked of qits-ci for a run this service holds
- * no ledger row for (ticket qits-556) — and, since qits-1920, which outputs a red run found stale.
+ * no ledger row for (ticket qits-556) — and, since qits-1920, what a red run's QA reports found:
+ * stale outputs and, since qits-1940, operations no golden master covers.
  *
  * <p><b>Why the ledger cannot answer it alone.</b> qits-ci announces {@code BuildSuccessful} /
  * {@code BuildFailed} for terminal runs only, and a run it <em>auto-retried</em> (an infrastructure
@@ -29,14 +30,32 @@ public interface CiRunLineage {
   Optional<String> retryOfRunId(String runId);
 
   /**
-   * The output kinds a red run's QA found stale (qits-1920): the {@code stale outputs: <kind>}
-   * highlights ({@link StaleOutputs#HIGHLIGHT}) of its {@value StaleOutputs#REPORT_KIND} report,
-   * off qits-ci's {@code GET /ci/api/runs/{runId}/reports} ({@code listRunReports}), in their order.
+   * What a red run's QA reports found (qits-1920, widened by qits-1940), off qits-ci's {@code GET
+   * /ci/api/runs/{runId}/reports} ({@code listRunReports}) — <b>one call for both findings</b>, so
+   * the request this client makes (and the consumer pact row that pins it) is the one qits-1920
+   * recorded.
    *
-   * <p>The same contract as {@link #retryOfRunId}: <b>every non-answer is an empty list</b> — no
-   * such report, a 404, an unconfigured port, an unreachable qits-ci, an unreadable body — and it
-   * never throws. The caller's sentence then reads exactly as it did before qits-1920. Called once
-   * per red verdict, before the gate transaction opens.
+   * <p>The same contract as {@link #retryOfRunId}: <b>every non-answer is {@link
+   * RunFindings#NONE}</b> — no such report, a 404, an unconfigured port, an unreachable qits-ci, an
+   * unreadable body — and it never throws. The caller's sentence then reads exactly as it did before
+   * qits-1920. Called once per red verdict, before the gate transaction opens.
    */
-  List<String> staleOutputKinds(String runId);
+  RunFindings findings(String runId);
+
+  /**
+   * One run's reports, read for the rejection.
+   *
+   * @param staleKinds the {@code stale outputs: <kind>} highlights ({@link StaleOutputs#HIGHLIGHT})
+   *     of its {@value StaleOutputs#REPORT_KIND} report, in their order, without repeats
+   * @param uncovered its {@value UncoveredOperations#REPORT_KIND} report, or null where it has none
+   */
+  record RunFindings(List<String> staleKinds, UncoveredOperations uncovered) {
+
+    /** Nothing found, or nothing could be asked. */
+    public static final RunFindings NONE = new RunFindings(List.of(), null);
+
+    public RunFindings {
+      staleKinds = staleKinds == null ? List.of() : List.copyOf(staleKinds);
+    }
+  }
 }

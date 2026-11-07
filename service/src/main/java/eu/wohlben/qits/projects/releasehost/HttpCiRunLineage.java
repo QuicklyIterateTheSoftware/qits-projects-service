@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.CiRunLineage;
 import eu.wohlben.qits.projects.control.StaleOutputs;
+import eu.wohlben.qits.projects.control.UncoveredOperations;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.net.URI;
@@ -33,7 +34,9 @@ import org.jboss.logging.Logger;
  * <p>Since qits-1920 it also reads a red run's reports, {@code GET /ci/api/runs/{runId}/reports}
  * ({@code listRunReports}), for the {@code stale outputs: <kind>} highlights of its {@value
  * StaleOutputs#REPORT_KIND} summary, under the same rules: every failure is an empty list, a 404 at
- * DEBUG and the rest at WARN, and the rejection then reads as it did before.
+ * DEBUG and the rest at WARN, and the rejection then reads as it did before. Since qits-1940 the
+ * same response is also read for its {@value UncoveredOperations#REPORT_KIND} report — the same one
+ * request, so its consumer pact row is unchanged — and {@link #findings} answers both at once.
  */
 @ApplicationScoped
 @DefaultBean
@@ -110,15 +113,15 @@ public class HttpCiRunLineage implements CiRunLineage {
   }
 
   @Override
-  public List<String> staleOutputKinds(String runId) {
+  public RunFindings findings(String runId) {
     if (runId == null || runId.isBlank() || ciUrl.isEmpty() || ciUrl.get().isBlank()) {
-      return List.of();
+      return RunFindings.NONE;
     }
     try {
       Optional<String> authorization = bearer.authorization();
       if (authorization.isEmpty()) {
         LOG.warnf("Not reading run %s's reports from qits-ci: %s", runId, IdpCiBearer.MISSING);
-        return List.of();
+        return RunFindings.NONE;
       }
       HttpRequest request =
           HttpRequest.newBuilder(
@@ -133,42 +136,49 @@ public class HttpCiRunLineage implements CiRunLineage {
               .build();
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() == 404) {
-        LOG.debugf("qits-ci knows no run %s; its rejection names no stale outputs", runId);
-        return List.of();
+        LOG.debugf("qits-ci knows no run %s; its rejection names no findings", runId);
+        return RunFindings.NONE;
       }
       if (response.statusCode() != 200) {
         LOG.warnf(
-            "qits-ci answered %d for run %s's reports; its rejection names no stale outputs",
+            "qits-ci answered %d for run %s's reports; its rejection names no findings",
             response.statusCode(),
             runId);
-        return List.of();
+        return RunFindings.NONE;
       }
       JsonNode reports = MAPPER.readTree(response.body()).path("reports");
       if (!reports.isArray()) {
-        LOG.warnf("qits-ci answered no reports[] for run %s; its rejection names no stale outputs",
+        LOG.warnf("qits-ci answered no reports[] for run %s; its rejection names no findings",
             runId);
-        return List.of();
+        return RunFindings.NONE;
       }
       List<String> kinds = new ArrayList<>();
+      UncoveredOperations uncovered = null;
       for (JsonNode report : reports) {
-        if (!StaleOutputs.REPORT_KIND.equals(report.path("kind").asText(null))) {
-          continue;
-        }
-        for (JsonNode highlight : report.path("highlights")) {
-          String kind = StaleOutputs.kindOf(highlight.path("text").asText(null));
-          if (kind != null && !kinds.contains(kind)) {
-            kinds.add(kind);
+        String reportKind = report.path("kind").asText(null);
+        if (StaleOutputs.REPORT_KIND.equals(reportKind)) {
+          for (JsonNode highlight : report.path("highlights")) {
+            String kind = StaleOutputs.kindOf(highlight.path("text").asText(null));
+            if (kind != null && !kinds.contains(kind)) {
+              kinds.add(kind);
+            }
           }
+        } else if (UncoveredOperations.REPORT_KIND.equals(reportKind) && uncovered == null) {
+          List<String> texts = new ArrayList<>();
+          for (JsonNode highlight : report.path("highlights")) {
+            texts.add(highlight.path("text").asText(null));
+          }
+          uncovered = UncoveredOperations.of(texts);
         }
       }
-      return List.copyOf(kinds);
+      return new RunFindings(kinds, uncovered);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return List.of();
+      return RunFindings.NONE;
     } catch (Exception e) {
-      LOG.warnf("Could not read run %s's reports from qits-ci; its rejection names no stale"
-          + " outputs: %s", runId, e);
-      return List.of();
+      LOG.warnf("Could not read run %s's reports from qits-ci; its rejection names no findings:"
+          + " %s", runId, e);
+      return RunFindings.NONE;
     }
   }
 }
