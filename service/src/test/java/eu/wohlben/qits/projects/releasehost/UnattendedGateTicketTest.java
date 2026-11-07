@@ -222,7 +222,8 @@ public class UnattendedGateTicketTest {
 
   /**
    * qits-1920: a red run whose QA found stale outputs names them, with the regenerate command, in
-   * the ticket's "gate's own words" — the request's detail, verbatim.
+   * the ticket's "gate's own words" — the request's detail, verbatim. Since qits-1940 the operations
+   * no golden master covers follow them there.
    */
   @Test
   public void aRedGateWithStaleOutputsNamesThemOnTheTicket() {
@@ -230,6 +231,7 @@ public class UnattendedGateTicketTest {
     String merged = mergedShaOf(id);
     String runId = "run-" + UUID.randomUUID();
     lineage.stale(runId, "cli-tapes");
+    lineage.uncovered(runId, 1, "getRun");
 
     verdict("BuildFailed", merged, runId, ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
@@ -239,7 +241,8 @@ public class UnattendedGateTicketTest {
             + projectId
             + " --repository "
             + REPO_NAME
-            + " --kind cli-tapes";
+            + " --kind cli-tapes; uncovered operations: 1 — getRun — add a golden-master state for"
+            + " each";
     assertEquals(
         "Run " + runId + " finished FAILED for " + merged + "; " + note,
         request(id).getString("detail"));

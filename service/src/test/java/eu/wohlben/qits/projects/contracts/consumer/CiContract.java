@@ -155,7 +155,8 @@ final class CiContract {
               (base, p) ->
                   assertTrue(
                       ci(new HttpCiRunLineage(RowClients.clients()), base)
-                          .staleOutputKinds(p.get("runId"))
+                          .findings(p.get("runId"))
+                          .staleKinds()
                           .contains("cli-tapes")),
               "GET /ci/api/runs/{runId}/reports answering 200 with a stale-outputs report whose"
                   + " highlights read stale outputs: cli-tapes"),

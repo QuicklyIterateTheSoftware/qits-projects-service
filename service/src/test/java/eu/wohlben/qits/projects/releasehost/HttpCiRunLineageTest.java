@@ -2,6 +2,8 @@ package eu.wohlben.qits.projects.releasehost;
 
 import com.sun.net.httpserver.HttpServer;
 import eu.wohlben.qits.http.QitsHttpClients;
+import eu.wohlben.qits.projects.control.CiRunLineage;
+import eu.wohlben.qits.projects.control.UncoveredOperations;
 import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -142,7 +144,7 @@ class HttpCiRunLineageTest {
             + "{\"severity\":\"bad\",\"text\":\"stale outputs: cli-tapes\"}]}]}");
     HttpCiRunLineage lineage = against(startServer());
 
-    assertEquals(List.of("cli-tapes", "entity-diagram"), lineage.staleOutputKinds("run-b"));
+    assertEquals(List.of("cli-tapes", "entity-diagram"), lineage.findings("run-b").staleKinds());
     assertEquals(List.of("/ci/api/runs/run-b/reports"), paths);
     assertEquals(List.of(TestCiBearers.TOKEN), roles, "the machine bearer and nothing else");
   }
@@ -150,25 +152,51 @@ class HttpCiRunLineageTest {
   @Test
   void aRunWithNoStaleOutputsReportNamesNothing() throws IOException {
     body.set("{\"runId\":\"run-b\",\"reports\":[{\"kind\":\"coverage\",\"highlights\":[]}]}");
-    assertEquals(List.of(), against(startServer()).staleOutputKinds("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(startServer()).findings("run-b"));
   }
 
   @Test
   void everyFailedReportsReadNamesNothing() throws IOException {
     String base = startServer();
     status.set(404);
-    assertEquals(List.of(), against(base).staleOutputKinds("run-gone"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(base).findings("run-gone"));
     status.set(503);
-    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(base).findings("run-b"));
     status.set(200);
     body.set("not json");
-    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(base).findings("run-b"));
     body.set("{\"reports\":\"nope\"}");
-    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
-    assertEquals(List.of(), against(null).staleOutputKinds("run-b"));
-    assertEquals(List.of(), against(base, TestCiBearers.none()).staleOutputKinds("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(base).findings("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(null).findings("run-b"));
+    assertEquals(
+        CiRunLineage.RunFindings.NONE, against(base, TestCiBearers.none()).findings("run-b"));
     server.stop(0);
     server = null;
-    assertEquals(List.of(), against(base).staleOutputKinds("run-b"));
+    assertEquals(CiRunLineage.RunFindings.NONE, against(base).findings("run-b"));
+  }
+
+  /**
+   * qits-1940: the golden-master coverage report rides the same response, and the same one request,
+   * as the stale outputs; both findings come back from that read.
+   */
+  @Test
+  void readsBothFindingsOffOneResponse() throws IOException {
+    body.set(
+        "{\"runId\":\"run-b\",\"reports\":["
+            + "{\"kind\":\"stale-outputs\",\"highlights\":["
+            + "{\"severity\":\"bad\",\"text\":\"stale outputs: cli-tapes\"}]},"
+            + "{\"kind\":\"test-results\",\"highlights\":[{\"text\":\"uncovered operations: 7\"}]},"
+            + "{\"kind\":\"golden-master-coverage\",\"highlights\":["
+            + "{\"severity\":\"bad\",\"text\":\"uncovered operations: 2\"},"
+            + "{\"severity\":\"bad\",\"text\":\"uncovered: getRun\"},"
+            + "{\"severity\":\"bad\",\"text\":\"uncovered: POST /ci/api/runs/rerun\"}]}]}");
+    HttpCiRunLineage lineage = against(startServer());
+
+    assertEquals(
+        new CiRunLineage.RunFindings(
+            List.of("cli-tapes"),
+            new UncoveredOperations(2, List.of("getRun", "POST /ci/api/runs/rerun"))),
+        lineage.findings("run-b"));
+    assertEquals(List.of("/ci/api/runs/run-b/reports"), paths, "one request for both");
   }
 }

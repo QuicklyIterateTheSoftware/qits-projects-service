@@ -272,6 +272,35 @@ public class BranchDeliveryNoticeTest {
     assertTrue(lineage.reportsAsked().contains(red), "the red run's reports were read");
   }
 
+  /**
+   * qits-1940: a red run whose QA counted uncovered operations names them in the request's detail
+   * and in the branch owner's fyi, alone where nothing was stale.
+   */
+  @Test
+  public void aRedRunWithUncoveredOperationsNamesThemInTheDetailAndTheFyi() {
+    String a = ticket("a");
+    agents.stage(agent(), "work-a", wrapperId, a);
+    String id = create(a, PERSON);
+    String merged = mergedShaOf(id);
+    String red = run();
+    lineage.uncovered(red, 1, "createWork");
+
+    verdict(merged, red, null);
+    awaitState(id, "REJECTED");
+    awaitTold(1);
+
+    ReleaseRequest row =
+        QuarkusTransaction.requiringNew().call(() -> ReleaseRequest.<ReleaseRequest>findById(id));
+    String note = "uncovered operations: 1 — createWork — add a golden-master state for each";
+    assertEquals("Run " + red + " finished FAILED for " + merged + "; " + note, row.detail);
+    assertEquals(
+        List.of(
+            new Spoken(
+                "work-a",
+                "fyi: your " + a + " failed its build in " + row.qualifiedId + ": " + note)),
+        turns.calls());
+  }
+
   /** qits-1920: reports that cannot be read leave both sentences exactly as they were. */
   @Test
   public void aRedRunWhoseReportsCannotBeReadSaysWhatItAlwaysSaid() {

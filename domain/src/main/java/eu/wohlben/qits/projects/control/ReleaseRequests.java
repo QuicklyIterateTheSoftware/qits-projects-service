@@ -441,8 +441,8 @@ public class ReleaseRequests {
   @Inject BuildStatusLedger ledger;
 
   /**
-   * What a red run found stale (qits-1920), asked of qits-ci once per red verdict before the gate
-   * transaction opens — see {@link #staleOutputsOf}. Absent is "nothing more to say".
+   * What a red run's reports found (qits-1920, qits-1940), asked of qits-ci once per red verdict
+   * before the gate transaction opens — see {@link #findingsOf}. Absent is "nothing more to say".
    */
   @Inject Instance<CiRunLineage> ciRuns;
 
@@ -5792,7 +5792,7 @@ public class ReleaseRequests {
    * newest verdict of the request's own at its fold, when that is not a success and no newer QA run
    * of its own is building the fold again. Null otherwise — which is nearly every evaluation. It
    * decides nothing: the gate transaction reads it all again under the row lock, and only names
-   * what {@link #staleOutputsOf} found where it rejects on this same run.
+   * what {@link #findingsOf} found where it rejects on this same run.
    */
   private String redRunToReject(ReleaseRequest row) {
     CommitBuildStatusDto newest =
@@ -5808,22 +5808,36 @@ public class ReleaseRequests {
   }
 
   /**
-   * The output kinds {@code runId}'s QA found stale (qits-1920), asked of qits-ci outside any
-   * transaction. Every non-answer is an empty list — no port, a port that broke its no-throw
-   * contract — so the rejection reads exactly as it did before.
+   * What {@code runId}'s QA reports found (qits-1920, widened by qits-1940): the outputs it found
+   * stale and the operations no golden master covers, asked of qits-ci outside any transaction in
+   * one read. Every non-answer is {@link CiRunLineage.RunFindings#NONE} — no port, a port that broke
+   * its no-throw contract — so the rejection reads exactly as it did before.
    */
-  List<String> staleOutputsOf(String runId) {
+  CiRunLineage.RunFindings findingsOf(String runId) {
     if (ciRuns == null || !ciRuns.isResolvable()) {
-      return List.of();
+      return CiRunLineage.RunFindings.NONE;
     }
     try {
-      List<String> kinds = ciRuns.get().staleOutputKinds(runId);
-      return kinds == null ? List.of() : kinds;
+      CiRunLineage.RunFindings findings = ciRuns.get().findings(runId);
+      return findings == null ? CiRunLineage.RunFindings.NONE : findings;
     } catch (RuntimeException e) {
-      LOG.warnf("Could not read what run %s found stale; its rejection names nothing more: %s",
+      LOG.warnf("Could not read what run %s's reports found; its rejection names nothing more: %s",
           runId, e.toString());
-      return List.of();
+      return CiRunLineage.RunFindings.NONE;
     }
+  }
+
+  /**
+   * {@link StaleOutputs#note} and {@link UncoveredOperations#note} joined with {@code ; }, either
+   * alone where the other is null, and null where both are.
+   */
+  static String findingsNote(ReleaseRequest row, CiRunLineage.RunFindings findings) {
+    String stale = StaleOutputs.note(row.projectId, row.repoName, findings.staleKinds());
+    String uncovered = UncoveredOperations.note(findings.uncovered());
+    if (stale == null) {
+      return uncovered;
+    }
+    return uncovered == null ? stale : stale + "; " + uncovered;
   }
 
   /** Package-private so the suite can drive one evaluation without the worker or the sweep. */
@@ -5889,7 +5903,8 @@ public class ReleaseRequests {
                         .orElse(null));
     String gatedRepo = gated == null ? null : gated[0];
     String redRunRead = gated == null ? null : gated[1];
-    List<String> staleKinds = redRunRead == null ? List.of() : staleOutputsOf(redRunRead);
+    CiRunLineage.RunFindings findings =
+        redRunRead == null ? CiRunLineage.RunFindings.NONE : findingsOf(redRunRead);
     List<ReleasedSibling> releasesInFlight =
         gatedRepo == null ? List.of() : inFlightReleasesOf(gatedRepo, id);
     // Filled INSIDE the gate transaction and acted on outside it: a ticket write is another module's
@@ -6184,12 +6199,13 @@ public class ReleaseRequests {
                     // leaves it null — that is the whole discrimination.
                     row.rejectingRunId = red.runId();
                     row.rejectingGate = null;
-                    // What the run found stale, read before this transaction (qits-1920), and only
-                    // where it was read for this very run: the request's detail, its gate ticket
-                    // and the branch's fyi all name the kinds and how to regenerate them.
+                    // What the run's reports found, read before this transaction (qits-1920), and
+                    // only where it was read for this very run: the request's detail, its gate
+                    // ticket and the branch's fyi all name the stale kinds and how to regenerate
+                    // them, and the operations no golden master covers (qits-1940).
                     String staleNote =
                         redRunRead != null && redRunRead.equals(red.runId())
-                            ? StaleOutputs.note(row.projectId, row.repoName, staleKinds)
+                            ? findingsNote(row, findings)
                             : null;
                     deliveries.failed(row, BranchDeliveries.Failure.CI, red.runId(), null, staleNote);
                     row.detail =
