@@ -1,0 +1,46 @@
+{
+  "harnesses": [
+    {
+      "harness": "CLAUDE",
+      "imageVersion": "2026.101.0",
+      "harnessVersion": "2.1.0 (Claude Code)",
+      "models": [
+        "opus",
+        "sonnet",
+        "haiku"
+      ],
+      "modelsEnumerated": false,
+      "effortSupported": true,
+      "effortLevels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "authenticated": true,
+      "authDetail": "Signed in.",
+      "probeFailed": false,
+      "probeDetail": "",
+      "reportedBy": "contract-daemon",
+      "reportedAt": "2026-01-01T00:00:00Z",
+      "shipped": false,
+      "otherImageVersions": []
+    },
+    {
+      "harness": "KIMI",
+      "imageVersion": "",
+      "harnessVersion": "",
+      "models": [],
+      "modelsEnumerated": false,
+      "effortSupported": false,
+      "effortLevels": [],
+      "authenticated": false,
+      "authDetail": "No container has reported; nobody has checked whether this harness is signed in.",
+      "probeFailed": false,
+      "probeDetail": "",
+      "reportedBy": "",
+      "reportedAt": null,
+      "shipped": true,
+      "otherImageVersions": []
+    }
+  ]
+}

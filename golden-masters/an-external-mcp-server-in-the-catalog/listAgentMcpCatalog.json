@@ -1,0 +1,21 @@
+{
+  "entries": [
+    {
+      "key": "weather",
+      "displayName": "Weather",
+      "url": "https://mcp.weather.example.test/sse",
+      "headerName": "Authorization",
+      "credentialKey": "env.WEATHER_TOKEN",
+      "allowedTools": [
+        "forecast"
+      ],
+      "attachedBy": []
+    }
+  ],
+  "reservedKeys": [
+    "repository",
+    "observability",
+    "actions",
+    "qits"
+  ]
+}

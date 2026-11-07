@@ -1,0 +1,23 @@
+{
+  "surface": "project.work",
+  "harness": "CLAUDE",
+  "model": "",
+  "effort": "",
+  "remoteControl": true,
+  "permissionMode": "SKIP_PERMISSIONS",
+  "activityTracking": true,
+  "systemPrompt": "",
+  "initialPrompt": "",
+  "mcpServers": [
+    {
+      "server": "qits",
+      "narrowProject": false,
+      "narrowRepository": false,
+      "narrowWorkspace": false,
+      "readOnly": false,
+      "allowedTools": []
+    }
+  ],
+  "externalMcpServers": [],
+  "shipped": false
+}

@@ -198,6 +198,7 @@ class GoldenMasterRecordingTest {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
   static final List<Interaction> INTERACTIONS =
+      withAgentConfiguration(
       withNeeds(
       withServiceCallers(
       withReleaseRequests(
@@ -666,7 +667,7 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null)))))));
+              null))))))));
 
   /**
    * The landing app's release-request pages (epic qits-112): every read the detail page makes, in
@@ -1596,6 +1597,88 @@ class GoldenMasterRecordingTest {
             "unarchiveRepository",
             "POST",
             "/projects/api/repositories/{repositoryId}/unarchive",
+            null));
+    return List.copyOf(all);
+  }
+
+  /**
+   * The estate-wide agent configuration (qits-1934): the capability catalogue and a container's
+   * report into it, the document a container is created with, the surfaces with one saved and one
+   * revision trail, and the external MCP catalog and its credentials, every write on each.
+   */
+  private static List<Interaction> withAgentConfiguration(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    String capabilities = ProviderStates.A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES;
+    all.add(
+        write(
+            capabilities,
+            "reportAgentCapabilities",
+            "PUT",
+            "/projects/api/agent-capabilities",
+            ProviderStates.CAPABILITY_REPORT));
+    all.add(read(capabilities, "getAgentCapabilities", "/projects/api/agent-capabilities"));
+    String surfaces = ProviderStates.EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT;
+    all.add(read(surfaces, "getAgentConfiguration", "/projects/api/agent-configuration"));
+    all.add(read(surfaces, "listAgentSurfaces", "/projects/api/agent-surfaces"));
+    all.add(read(surfaces, "getAgentSurface", "/projects/api/agent-surfaces/{surface}"));
+    all.add(
+        write(
+            surfaces,
+            "updateAgentSurface",
+            "PUT",
+            "/projects/api/agent-surfaces/{surface}",
+            "{\"harness\":\"CLAUDE\",\"model\":\"opus\",\"effort\":\"high\","
+                + "\"remoteControl\":true,\"permissionMode\":\"SKIP_PERMISSIONS\","
+                + "\"activityTracking\":true,"
+                + "\"systemPrompt\":\"You are the contract's work desk.\","
+                + "\"initialPrompt\":\"\","
+                + "\"mcpServers\":[{\"server\":\"qits\",\"narrowProject\":true,"
+                + "\"narrowRepository\":false,\"narrowWorkspace\":false,\"readOnly\":false}],"
+                + "\"externalMcpServers\":[]}"));
+    all.add(
+        read(
+            ProviderStates.AN_AGENT_SURFACE_WITH_A_SAVED_REVISION,
+            "listAgentSurfaceRevisions",
+            "/projects/api/agent-surfaces/{surface}/revisions"));
+    String mcp = ProviderStates.AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG;
+    all.add(read(mcp, "listAgentMcpCatalog", "/projects/api/agent-mcp-catalog"));
+    all.add(read(mcp, "getAgentMcpCatalogEntry", "/projects/api/agent-mcp-catalog/{catalogKey}"));
+    all.add(
+        write(
+            mcp,
+            "saveAgentMcpCatalogEntry",
+            "PUT",
+            "/projects/api/agent-mcp-catalog/{catalogKey}",
+            "{\"displayName\":\"Weather service\","
+                + "\"url\":\"https://mcp.weather.example.test/mcp\","
+                + "\"headerName\":\"Authorization\",\"credentialKey\":\"env.WEATHER_TOKEN\","
+                + "\"allowedTools\":[\"forecast\",\"alerts\"]}"));
+    all.add(
+        new Interaction(
+            mcp,
+            "deleteAgentMcpCatalogEntry",
+            "DELETE",
+            "/projects/api/agent-mcp-catalog/{catalogKey}",
+            204,
+            null,
+            null));
+    all.add(
+        read(mcp, "listAgentMcpCredentials", "/projects/api/agent-mcp-catalog/credentials"));
+    all.add(
+        write(
+            mcp,
+            "setAgentMcpCredential",
+            "PUT",
+            "/projects/api/agent-mcp-catalog/credentials/{credentialKey}",
+            "{\"value\":\"Bearer contract-placeholder-rotated\"}"));
+    all.add(
+        new Interaction(
+            mcp,
+            "deleteAgentMcpCredential",
+            "DELETE",
+            "/projects/api/agent-mcp-catalog/credentials/{credentialKey}",
+            204,
+            null,
             null));
     return List.copyOf(all);
   }

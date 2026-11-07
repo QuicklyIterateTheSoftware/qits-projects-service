@@ -1,0 +1,11 @@
+{
+  "key": "weather",
+  "displayName": "Weather",
+  "url": "https://mcp.weather.example.test/sse",
+  "headerName": "Authorization",
+  "credentialKey": "env.WEATHER_TOKEN",
+  "allowedTools": [
+    "forecast"
+  ],
+  "attachedBy": []
+}

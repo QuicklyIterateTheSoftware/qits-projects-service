@@ -917,4 +917,24 @@ class ConsumerPactVerificationTest {
   Map<String, String> noTechnicalProcessWithTheGivenId() {
     return states.params(ProviderStates.NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID);
   }
+
+  @State(ProviderStates.A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES)
+  Map<String, String> aContainerReportedItsHarnessCapabilities() {
+    return states.params(ProviderStates.A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES);
+  }
+
+  @State(ProviderStates.EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT)
+  Map<String, String> everyAgentSurfaceAtItsShippedDefault() {
+    return states.params(ProviderStates.EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT);
+  }
+
+  @State(ProviderStates.AN_AGENT_SURFACE_WITH_A_SAVED_REVISION)
+  Map<String, String> anAgentSurfaceWithASavedRevision() {
+    return states.params(ProviderStates.AN_AGENT_SURFACE_WITH_A_SAVED_REVISION);
+  }
+
+  @State(ProviderStates.AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG)
+  Map<String, String> anExternalMcpServerInTheCatalog() {
+    return states.params(ProviderStates.AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG);
+  }
 }

@@ -1,0 +1,23 @@
+{
+  "surface": "project.work",
+  "harness": "CLAUDE",
+  "model": "opus",
+  "effort": "high",
+  "remoteControl": true,
+  "permissionMode": "SKIP_PERMISSIONS",
+  "activityTracking": true,
+  "systemPrompt": "You are the contract's work desk.",
+  "initialPrompt": "",
+  "mcpServers": [
+    {
+      "server": "qits",
+      "narrowProject": true,
+      "narrowRepository": false,
+      "narrowWorkspace": false,
+      "readOnly": false,
+      "allowedTools": []
+    }
+  ],
+  "externalMcpServers": [],
+  "shipped": false
+}

@@ -360,6 +360,62 @@ public class ProviderStates {
   public static final String NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID =
       "no technical process with the given id";
 
+  /**
+   * The capability catalogue holding one report (qits-1934): a CLAUDE container on the fixed image
+   * {@link #CAPABILITY_IMAGE_VERSION}, as {@link #CAPABILITY_REPORT} says, and no KIMI report, so
+   * KIMI answers its shipped fallback. The table is cleared first: it is estate-wide.
+   */
+  public static final String A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES =
+      "a container reported its harness capabilities";
+
+  /**
+   * Every agent surface at its shipped default, as a boot leaves the store (qits-1934): every
+   * surface row, built-in attachment and revision cleared and seeded afresh, and the MCP catalog,
+   * its attachments and its credentials empty. Param {@code surface}, {@code project.work}.
+   */
+  public static final String EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT =
+      "every agent surface at its shipped default";
+
+  /**
+   * {@link #EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT}, then {@code project.work} saved once by the
+   * seeder, its boot revision dropped: its trail is that one save. Param {@code surface}.
+   */
+  public static final String AN_AGENT_SURFACE_WITH_A_SAVED_REVISION =
+      "an agent surface with a saved revision";
+
+  /**
+   * One external MCP server in an otherwise empty catalog (qits-1934): the credential {@code
+   * env.WEATHER_TOKEN} set to a placeholder, and the entry {@code weather} presenting it as its
+   * Authorization header, attached by no surface. Params {@code catalogKey}, {@code credentialKey}.
+   */
+  public static final String AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG =
+      "an external MCP server in the catalog";
+
+  /** The image a {@link #A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES} report names: fixed. */
+  static final String CAPABILITY_IMAGE_VERSION = "2026.101.0";
+
+  /** The report {@link #A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES} records, as a daemon sends it. */
+  static final String CAPABILITY_REPORT =
+      "{\"reportedBy\":\"contract-daemon\",\"imageVersion\":\""
+          + CAPABILITY_IMAGE_VERSION
+          + "\",\"capabilities\":[{\"harness\":\"CLAUDE\","
+          + "\"harnessVersion\":\"2.1.0 (Claude Code)\","
+          + "\"models\":[\"opus\",\"sonnet\",\"haiku\"],\"modelsEnumerated\":false,"
+          + "\"effortSupported\":true,\"effortLevels\":[\"low\",\"medium\",\"high\"],"
+          + "\"authenticated\":true,\"authDetail\":\"Signed in.\","
+          + "\"probeFailed\":false,\"probeDetail\":\"\"}]}";
+
+  /** The surface the agent-surface states name. */
+  static final String CONTRACT_SURFACE = "project.work";
+
+  /** The catalog entry and credential {@link #AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG} holds. */
+  static final String CONTRACT_MCP_KEY = "weather";
+
+  static final String CONTRACT_MCP_CREDENTIAL = "env.WEATHER_TOKEN";
+
+  /** Not a secret: the placeholder value the catalog state's credential holds. */
+  static final String CONTRACT_MCP_CREDENTIAL_VALUE = "Bearer contract-placeholder";
+
   /** The refinement id {@link #NO_REFINEMENT_WITH_THE_GIVEN_ID} names. */
   static final String UNKNOWN_REFINEMENT_ID = "987654321";
 
@@ -583,6 +639,36 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementPromptDrafts drafts;
 
+  /** The estate-wide agent configuration tables the agent states reset (qits-1934). */
+  @Inject eu.wohlben.qits.projects.control.AgentCapabilityCatalogueService capabilityCatalogue;
+
+  @Inject eu.wohlben.qits.projects.control.AgentMcpCatalogService mcpCatalog;
+
+  @Inject eu.wohlben.qits.projects.control.AgentMcpCredentialStore mcpCredentials;
+
+  @Inject eu.wohlben.qits.projects.startup.AgentSurfaceSeed surfaceSeed;
+
+  @Inject eu.wohlben.qits.projects.persistence.AgentHarnessCapabilityRepository capabilityRows;
+
+  @Inject eu.wohlben.qits.projects.persistence.AgentMcpCatalogEntryRepository mcpEntryRows;
+
+  @Inject eu.wohlben.qits.projects.persistence.AgentMcpCredentialRepository mcpCredentialRows;
+
+  @Inject
+  eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository
+      externalAttachmentRows;
+
+  @Inject
+  eu.wohlben.qits.projects.persistence.AgentSurfaceMcpAttachmentRepository builtInAttachmentRows;
+
+  @Inject eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRepository surfaceRows;
+
+  @Inject
+  eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRevisionRepository revisionRows;
+
+  /** Whether a state reset the agent configuration, which {@link #cleanUp()} then resets again. */
+  private boolean agentConfigurationTouched;
+
   /** Slugs a state handed the create door, whose projects {@link #cleanUp()} deletes again. */
   private final List<String> createdSlugs = new ArrayList<>();
 
@@ -732,6 +818,13 @@ public class ProviderStates {
     states.put(A_REPOSITORY_WHOSE_BACKUP_TWIN_WAS_RESET, this::aRepositoryWhoseBackupTwinWasReset);
     states.put(A_REPOSITORY_WITH_A_SECOND_BRANCH, this::aRepositoryWithASecondBranch);
     states.put(NO_TECHNICAL_PROCESS_WITH_THE_GIVEN_ID, this::noTechnicalProcessWithTheGivenId);
+    states.put(
+        A_CONTAINER_REPORTED_ITS_HARNESS_CAPABILITIES,
+        this::aContainerReportedItsHarnessCapabilities);
+    states.put(
+        EVERY_AGENT_SURFACE_AT_ITS_SHIPPED_DEFAULT, this::everyAgentSurfaceAtItsShippedDefault);
+    states.put(AN_AGENT_SURFACE_WITH_A_SAVED_REVISION, this::anAgentSurfaceWithASavedRevision);
+    states.put(AN_EXTERNAL_MCP_SERVER_IN_THE_CATALOG, this::anExternalMcpServerInTheCatalog);
   }
 
   /** Every state name this provider answers for. */
@@ -767,6 +860,10 @@ public class ProviderStates {
     removeLeasedDesk();
     deleteCreatedProjects();
     deleteSeededResets();
+    if (agentConfigurationTouched) {
+      agentConfigurationTouched = false;
+      resetAgentConfiguration();
+    }
     if (fakesTouched) {
       fakesTouched = false;
       releaseDecisions.get().reset();
@@ -4107,6 +4204,82 @@ public class ProviderStates {
   /** {@link #UNKNOWN_TECHNICAL_PROCESS_ID}, which no process holds. */
   private Setup noTechnicalProcessWithTheGivenId() {
     return new Setup(params("technicalProcessId", UNKNOWN_TECHNICAL_PROCESS_ID), List.of());
+  }
+
+  private Setup aContainerReportedItsHarnessCapabilities() {
+    resetAgentConfiguration();
+    agentConfigurationTouched = true;
+    eu.wohlben.qits.projects.api.AgentCapabilityController.CapabilityReportRequest report;
+    try {
+      report =
+          new com.fasterxml.jackson.databind.ObjectMapper()
+              .readValue(
+                  CAPABILITY_REPORT,
+                  eu.wohlben.qits.projects.api.AgentCapabilityController.CapabilityReportRequest
+                      .class);
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("The seeded capability report does not parse", e);
+    }
+    capabilityCatalogue.record(report.reportedBy(), report.imageVersion(), report.reports());
+    return new Setup(params(), List.of());
+  }
+
+  private Setup everyAgentSurfaceAtItsShippedDefault() {
+    resetAgentConfiguration();
+    agentConfigurationTouched = true;
+    return new Setup(params("surface", CONTRACT_SURFACE), List.of());
+  }
+
+  private Setup anAgentSurfaceWithASavedRevision() {
+    resetAgentConfiguration();
+    agentConfigurationTouched = true;
+    // The boot seed's revision goes, so the trail is this one save and its order cannot tie.
+    QuarkusTransaction.requiringNew()
+        .run(() -> revisionRows.delete("surfaceKey", CONTRACT_SURFACE));
+    surfaceConfigurations.save(
+        CONTRACT_SURFACE,
+        eu.wohlben.qits.projects.control.AgentSurfaceDefaults.shippedDefault(CONTRACT_SURFACE),
+        SEEDER);
+    return new Setup(params("surface", CONTRACT_SURFACE), List.of());
+  }
+
+  private Setup anExternalMcpServerInTheCatalog() {
+    resetAgentConfiguration();
+    agentConfigurationTouched = true;
+    mcpCredentials.set(CONTRACT_MCP_CREDENTIAL, CONTRACT_MCP_CREDENTIAL_VALUE, SEEDER);
+    mcpCatalog.save(
+        CONTRACT_MCP_KEY,
+        "Weather",
+        "https://mcp.weather.example.test/sse",
+        "Authorization",
+        CONTRACT_MCP_CREDENTIAL,
+        List.of("forecast"),
+        SEEDER);
+    return new Setup(
+        params("catalogKey", CONTRACT_MCP_KEY, "credentialKey", CONTRACT_MCP_CREDENTIAL),
+        List.of());
+  }
+
+  /**
+   * The estate-wide agent configuration as a boot leaves it, whatever a test stored before: no
+   * capability report, an empty MCP catalog with no credentials, and every surface's row, built-in
+   * attachments and revisions written afresh by the boot seed. The development guide's rows share
+   * the surface table and are left alone: {@link #THE_DEVELOPMENT_GUIDE_SHIPS} owns them.
+   */
+  private void resetAgentConfiguration() {
+    List<String> guide = eu.wohlben.qits.projects.control.DevelopmentGuideDefaults.KEYS;
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              capabilityRows.deleteAll();
+              externalAttachmentRows.deleteAll();
+              mcpEntryRows.deleteAll();
+              mcpCredentialRows.deleteAll();
+              builtInAttachmentRows.delete("surfaceKey not in ?1", guide);
+              revisionRows.delete("surfaceKey not in ?1", guide);
+              surfaceRows.delete("surfaceKey not in ?1", guide);
+            });
+    surfaceSeed.seed();
   }
 
   /**

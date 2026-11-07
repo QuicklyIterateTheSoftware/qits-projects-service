@@ -1,0 +1,11 @@
+{
+  "revisions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "surface": "project.work",
+      "changedBy": "contract-seeder",
+      "changedAt": "2026-01-01T00:00:00Z",
+      "snapshot": "{\"surface\":\"project.work\",\"harness\":\"CLAUDE\",\"model\":\"\",\"effort\":\"\",\"remoteControl\":true,\"permissionMode\":\"SKIP_PERMISSIONS\",\"activityTracking\":true,\"systemPrompt\":\"\",\"initialPrompt\":\"\",\"mcpServers\":[{\"server\":\"qits\",\"narrowProject\":false,\"narrowRepository\":false,\"narrowWorkspace\":false,\"readOnly\":false,\"allowedTools\":[]}],\"externalMcpServers\":[],\"shipped\":false}"
+    }
+  ]
+}

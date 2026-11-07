@@ -299,6 +299,68 @@
       ]
     },
     {
+      "name": "a container reported its harness capabilities",
+      "slug": "a-container-reported-its-harness-capabilities",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getAgentCapabilities",
+          "method": "GET",
+          "path": "/projects/api/agent-capabilities",
+          "status": 200,
+          "file": "a-container-reported-its-harness-capabilities/getAgentCapabilities.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.harnesses[*].reportedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "reportAgentCapabilities",
+          "method": "PUT",
+          "path": "/projects/api/agent-capabilities",
+          "body": {
+            "reportedBy": "contract-daemon",
+            "imageVersion": "2026.101.0",
+            "capabilities": [
+              {
+                "harness": "CLAUDE",
+                "harnessVersion": "2.1.0 (Claude Code)",
+                "models": [
+                  "opus",
+                  "sonnet",
+                  "haiku"
+                ],
+                "modelsEnumerated": false,
+                "effortSupported": true,
+                "effortLevels": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "authenticated": true,
+                "authDetail": "Signed in.",
+                "probeFailed": false,
+                "probeDetail": ""
+              }
+            ]
+          },
+          "status": 200,
+          "file": "a-container-reported-its-harness-capabilities/reportAgentCapabilities.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a declined release request",
       "slug": "a-declined-release-request",
       "params": {
@@ -5941,6 +6003,33 @@
       ]
     },
     {
+      "name": "an agent surface with a saved revision",
+      "slug": "an-agent-surface-with-a-saved-revision",
+      "params": {
+        "surface": "project.work"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listAgentSurfaceRevisions",
+          "method": "GET",
+          "path": "/projects/api/agent-surfaces/{surface}/revisions",
+          "status": 200,
+          "file": "an-agent-surface-with-a-saved-revision/listAgentSurfaceRevisions.json",
+          "frozen": {
+            "ids": [
+              "$.revisions[*].id"
+            ],
+            "instants": [
+              "$.revisions[*].changedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an approved release request",
       "slug": "an-approved-release-request",
       "params": {
@@ -6591,6 +6680,125 @@
       ]
     },
     {
+      "name": "an external MCP server in the catalog",
+      "slug": "an-external-mcp-server-in-the-catalog",
+      "params": {
+        "catalogKey": "weather",
+        "credentialKey": "env.WEATHER_TOKEN"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "deleteAgentMcpCatalogEntry",
+          "method": "DELETE",
+          "path": "/projects/api/agent-mcp-catalog/{catalogKey}",
+          "status": 204,
+          "file": "an-external-mcp-server-in-the-catalog/deleteAgentMcpCatalogEntry.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "deleteAgentMcpCredential",
+          "method": "DELETE",
+          "path": "/projects/api/agent-mcp-catalog/credentials/{credentialKey}",
+          "status": 204,
+          "file": "an-external-mcp-server-in-the-catalog/deleteAgentMcpCredential.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getAgentMcpCatalogEntry",
+          "method": "GET",
+          "path": "/projects/api/agent-mcp-catalog/{catalogKey}",
+          "status": 200,
+          "file": "an-external-mcp-server-in-the-catalog/getAgentMcpCatalogEntry.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listAgentMcpCatalog",
+          "method": "GET",
+          "path": "/projects/api/agent-mcp-catalog",
+          "status": 200,
+          "file": "an-external-mcp-server-in-the-catalog/listAgentMcpCatalog.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listAgentMcpCredentials",
+          "method": "GET",
+          "path": "/projects/api/agent-mcp-catalog/credentials",
+          "status": 200,
+          "file": "an-external-mcp-server-in-the-catalog/listAgentMcpCredentials.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.credentials[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "saveAgentMcpCatalogEntry",
+          "method": "PUT",
+          "path": "/projects/api/agent-mcp-catalog/{catalogKey}",
+          "body": {
+            "displayName": "Weather service",
+            "url": "https://mcp.weather.example.test/mcp",
+            "headerName": "Authorization",
+            "credentialKey": "env.WEATHER_TOKEN",
+            "allowedTools": [
+              "forecast",
+              "alerts"
+            ]
+          },
+          "status": 200,
+          "file": "an-external-mcp-server-in-the-catalog/saveAgentMcpCatalogEntry.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setAgentMcpCredential",
+          "method": "PUT",
+          "path": "/projects/api/agent-mcp-catalog/credentials/{credentialKey}",
+          "body": {
+            "value": "Bearer contract-placeholder-rotated"
+          },
+          "status": 200,
+          "file": "an-external-mcp-server-in-the-catalog/setAgentMcpCredential.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an implemented epic",
       "slug": "an-implemented-epic",
       "params": {
@@ -7031,6 +7239,90 @@
             "instants": [
               "$.deliveries[*].changedAt"
             ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "every agent surface at its shipped default",
+      "slug": "every-agent-surface-at-its-shipped-default",
+      "params": {
+        "surface": "project.work"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getAgentConfiguration",
+          "method": "GET",
+          "path": "/projects/api/agent-configuration",
+          "status": 200,
+          "file": "every-agent-surface-at-its-shipped-default/getAgentConfiguration.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.generatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getAgentSurface",
+          "method": "GET",
+          "path": "/projects/api/agent-surfaces/{surface}",
+          "status": 200,
+          "file": "every-agent-surface-at-its-shipped-default/getAgentSurface.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listAgentSurfaces",
+          "method": "GET",
+          "path": "/projects/api/agent-surfaces",
+          "status": 200,
+          "file": "every-agent-surface-at-its-shipped-default/listAgentSurfaces.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "updateAgentSurface",
+          "method": "PUT",
+          "path": "/projects/api/agent-surfaces/{surface}",
+          "body": {
+            "harness": "CLAUDE",
+            "model": "opus",
+            "effort": "high",
+            "remoteControl": true,
+            "permissionMode": "SKIP_PERMISSIONS",
+            "activityTracking": true,
+            "systemPrompt": "You are the contract's work desk.",
+            "initialPrompt": "",
+            "mcpServers": [
+              {
+                "server": "qits",
+                "narrowProject": true,
+                "narrowRepository": false,
+                "narrowWorkspace": false,
+                "readOnly": false
+              }
+            ],
+            "externalMcpServers": []
+          },
+          "status": 200,
+          "file": "every-agent-surface-at-its-shipped-default/updateAgentSurface.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
             "strings": [],
             "listFilteredTo": null
           }
