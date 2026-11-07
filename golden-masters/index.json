@@ -5608,6 +5608,31 @@
           }
         },
         {
+          "operationId": "getWorkDossierAssetContent",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/dossier-assets/{figureAssetId}/content",
+          "status": 200,
+          "responseHeaders": {
+            "Content-Type": "image/png",
+            "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=3600"
+          },
+          "file": null,
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "responseHeaders": [
+              "Content-Type",
+              "Content-Security-Policy",
+              "X-Content-Type-Options",
+              "Cache-Control"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getWorkDossierPage",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}/dossier/data-flow",
@@ -6415,6 +6440,21 @@
           "path": "/projects/api/projects/{projectId}/repositories/by-name/{repoName}",
           "status": 404,
           "file": "no-project-with-the-given-id/resolveRepositoryName.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "streamProjectEvents",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/events",
+          "status": 404,
+          "file": "no-project-with-the-given-id/streamProjectEvents.json",
           "frozen": {
             "ids": [],
             "instants": [],

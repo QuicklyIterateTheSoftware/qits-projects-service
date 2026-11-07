@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -72,6 +73,12 @@ class GoldenMasterRecordingTest {
    *     bearer a door judges. Values are templates expanded from the state's params as a path's
    *     are, and recorded unexpanded as the index's {@code headers}. An interaction that sends one
    *     is a machine's call and carries no person's session
+   * @param responseHeaders null for a JSON answer (or none), the common case. Otherwise the answer
+   *     is bytes, not JSON (qits-1934): no golden file is written, the index records {@code "file":
+   *     null}, and these response headers — exactly the ones named, valued as answered — are what
+   *     the recording holds instead, as the index's {@code responseHeaders} and {@code
+   *     frozen.responseHeaders}. The shape is qits-githost's, which qits-integrations' {@code
+   *     GoldenMasters} reads
    */
   record Interaction(
       String state,
@@ -82,7 +89,56 @@ class GoldenMasterRecordingTest {
       String listFilteredTo,
       String sortedBy,
       String requestBody,
-      Map<String, String> headers) {
+      Map<String, String> headers,
+      List<String> responseHeaders) {
+
+    /** A JSON answer (or none). */
+    Interaction(
+        String state,
+        String operationId,
+        String method,
+        String path,
+        int status,
+        String listFilteredTo,
+        String sortedBy,
+        String requestBody,
+        Map<String, String> headers) {
+      this(
+          state,
+          operationId,
+          method,
+          path,
+          status,
+          listFilteredTo,
+          sortedBy,
+          requestBody,
+          headers,
+          null);
+    }
+
+    /**
+     * A read whose answer is bytes, not JSON — a figure's content (qits-1934): recorded body-less,
+     * by its status and the named response headers.
+     */
+    static Interaction bytes(
+        String state, String operationId, String path, int status, String... responseHeaders) {
+      return new Interaction(
+          state,
+          operationId,
+          "GET",
+          path,
+          status,
+          null,
+          null,
+          null,
+          Map.of(),
+          List.of(responseHeaders));
+    }
+
+    /** Whether the answer is recorded body-less: bytes, not JSON. */
+    boolean bodyless() {
+      return responseHeaders != null;
+    }
 
     /** No headers beyond what a browser sends. */
     Interaction(
@@ -404,6 +460,16 @@ class GoldenMasterRecordingTest {
               "backupSyncProject",
               "POST",
               "/projects/api/projects/{projectId}/repositories/backup-sync",
+              404,
+              null,
+              null),
+          // The subscribe looks the project up first, so an unknown one is a finite 404, not an
+          // endless stream (qits-1934).
+          new Interaction(
+              ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID,
+              "streamProjectEvents",
+              "GET",
+              "/projects/api/projects/{projectId}/events",
               404,
               null,
               null),
@@ -1301,6 +1367,17 @@ class GoldenMasterRecordingTest {
             ProviderStates.AN_EPIC_IN_DETAIL,
             "listWorkDossierAssets",
             "/projects/api/work/{qualifiedId}/dossier-assets"));
+    // The figure's bytes: no golden file, the sandboxing headers are the contract (qits-1934).
+    all.add(
+        Interaction.bytes(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            "getWorkDossierAssetContent",
+            "/projects/api/work/{qualifiedId}/dossier-assets/{figureAssetId}/content",
+            200,
+            "Content-Type",
+            "Content-Security-Policy",
+            "X-Content-Type-Options",
+            "Cache-Control"));
     return List.copyOf(all);
   }
 
@@ -1433,9 +1510,19 @@ class GoldenMasterRecordingTest {
     Map<String, Map<String, ObjectNode>> indexOperations = new TreeMap<>();
 
     committedParams = committedParams(dir.resolve("index.json"));
-    Set<String> takesBody = operationsTakingABody();
+    Map<String, Boolean> takesBody = operationsTakingABody();
     for (Interaction interaction : INTERACTIONS) {
-      if ((interaction.requestBody() != null) != takesBody.contains(interaction.operationId())) {
+      // By method and path, not operationId: a third of the operations declare none (qits-1934).
+      String template = operation(takesBody.keySet(), interaction.method(), interaction.path());
+      if (template == null) {
+        failures.add(
+            interaction.method()
+                + " "
+                + interaction.path()
+                + " ("
+                + interaction.operationId()
+                + ") matches no operation of the openapi.");
+      } else if ((interaction.requestBody() != null) != takesBody.get(template)) {
         failures.add(
             interaction.operationId()
                 + (interaction.requestBody() != null
@@ -1481,7 +1568,13 @@ class GoldenMasterRecordingTest {
         operation.set("body", JSON.readTree(interaction.requestBody()));
       }
       operation.put("status", interaction.status());
-      operation.put("file", file);
+      if (interaction.bodyless()) {
+        // No file for an answer that is bytes, not JSON (qits-1934): its headers are the record.
+        operation.set("responseHeaders", recorded.headers());
+        operation.putNull("file");
+      } else {
+        operation.put("file", file);
+      }
       ObjectNode frozen = operation.putObject("frozen");
       frozen.set("ids", strings(recorded.freezer().idPaths()));
       frozen.set("instants", strings(recorded.freezer().instantPaths()));
@@ -1493,6 +1586,9 @@ class GoldenMasterRecordingTest {
       if (!recorded.freezer().keyPaths().isEmpty()) {
         // Additive, and only where a member name was frozen: every other entry stays as it was.
         frozen.set("keys", strings(recorded.freezer().keyPaths()));
+      }
+      if (interaction.bodyless()) {
+        frozen.set("responseHeaders", strings(interaction.responseHeaders()));
       }
       if (interaction.listFilteredTo() == null) {
         frozen.putNull("listFilteredTo");
@@ -1506,8 +1602,10 @@ class GoldenMasterRecordingTest {
         failures.add("Duplicate interaction " + file);
       }
 
-      written.add(file);
-      check(dir.resolve(file), GoldenJson.render(recorded.body()), update, failures);
+      if (!interaction.bodyless()) {
+        written.add(file);
+        check(dir.resolve(file), GoldenJson.render(recorded.body()), update, failures);
+      }
     }
 
     ObjectNode index = JsonNodeFactory.instance.objectNode();
@@ -1549,8 +1647,12 @@ class GoldenMasterRecordingTest {
     }
   }
 
-  /** One interaction's frozen answer, its frozen params and what was frozen where. */
-  record Recorded(JsonNode body, ObjectNode params, Freezer freezer) {}
+  /**
+   * One interaction's frozen answer, its frozen params and what was frozen where. A body-less
+   * recording's body is null and its named response headers are {@code headers}; a JSON one's
+   * {@code headers} are empty.
+   */
+  record Recorded(JsonNode body, ObjectNode headers, ObjectNode params, Freezer freezer) {}
 
   private Recorded record(Interaction interaction) throws IOException {
     ProviderStates.Setup setup = states.setUp(interaction.state());
@@ -1602,9 +1704,28 @@ class GoldenMasterRecordingTest {
               + ": "
               + raw);
     }
-    // An answer with no body (204) is recorded as JSON null: the status is the whole contract.
-    JsonNode body = raw.isEmpty() ? JsonNodeFactory.instance.nullNode() : JSON.readTree(raw);
-    body = recordable(body, interaction, params.values(), setup.uniqueTokens());
+    ObjectNode headers = JsonNodeFactory.instance.objectNode();
+    JsonNode body = null;
+    if (interaction.bodyless()) {
+      // Bytes, not JSON (qits-1934): never parsed, and only the named headers are recorded.
+      for (String name : interaction.responseHeaders()) {
+        String value = response.header(name);
+        if (value == null) {
+          throw new AssertionError(
+              interaction.operationId()
+                  + " in state '"
+                  + interaction.state()
+                  + "' carries no "
+                  + name
+                  + " header");
+        }
+        headers.put(name, value);
+      }
+    } else {
+      // An answer with no body (204) is recorded as JSON null: the status is the whole contract.
+      body = raw.isEmpty() ? JsonNodeFactory.instance.nullNode() : JSON.readTree(raw);
+      body = recordable(body, interaction, params.values(), setup.uniqueTokens());
+    }
 
     Freezer freezer =
         new Freezer()
@@ -1615,7 +1736,7 @@ class GoldenMasterRecordingTest {
             .sequences(setup.sequenceParams().stream().map(params::get).toList());
     ObjectNode frozenParams = JsonNodeFactory.instance.objectNode();
     params.forEach((k, v) -> frozenParams.put(k, freezer.freezeParam(v)));
-    return new Recorded(freezer.freeze(body), frozenParams, freezer);
+    return new Recorded(body == null ? null : freezer.freeze(body), headers, frozenParams, freezer);
   }
 
   /**
@@ -1704,8 +1825,13 @@ class GoldenMasterRecordingTest {
     return out.toString();
   }
 
-  /** The operationIds whose operation declares a request body, read off the served openapi. */
-  private static Set<String> operationsTakingABody() throws IOException {
+  /**
+   * Every operation of the served openapi, as {@code METHOD path-template}, to whether it declares
+   * a request body. Keyed by method and path rather than operationId (qits-1934): 47 of the
+   * operations declare no operationId, and a write to one of them would otherwise read as taking
+   * no body.
+   */
+  private static Map<String, Boolean> operationsTakingABody() throws IOException {
     JsonNode paths =
         JSON.readTree(
                 given()
@@ -1716,17 +1842,71 @@ class GoldenMasterRecordingTest {
                     .extract()
                     .asString())
             .path("paths");
-    Set<String> ids = new TreeSet<>();
-    paths.forEach(
-        path ->
-            path.forEach(
-                operation -> {
-                  if (operation.has("operationId") && operation.has("requestBody")) {
-                    ids.add(operation.get("operationId").asText());
-                  }
-                }));
-    return ids;
+    Map<String, Boolean> operations = new TreeMap<>();
+    paths
+        .fields()
+        .forEachRemaining(
+            path ->
+                path.getValue()
+                    .fields()
+                    .forEachRemaining(
+                        method -> {
+                          if (method.getValue().isObject()
+                              && HTTP_METHODS.contains(method.getKey())) {
+                            operations.put(
+                                method.getKey().toUpperCase(Locale.ROOT) + " " + path.getKey(),
+                                method.getValue().has("requestBody"));
+                          }
+                        }));
+    return operations;
   }
+
+  /** The members of an openapi path item that are operations; the rest are shared parameters. */
+  private static final Set<String> HTTP_METHODS =
+      Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
+
+  /**
+   * The operation an interaction calls, out of {@code METHOD path-template} keys: the same method,
+   * and a template of as many segments whose literals equal the interaction's path (its query
+   * dropped) while each {@code {x}} stands for exactly one segment, whatever it holds. Where
+   * several match, the one with the most literal segments — {@code /work/{qualifiedId}/dossier} over
+   * {@code /work/{qualifiedId}/{page}}. Null when none matches. Package-private for the machinery
+   * test (qits-1934).
+   */
+  static String operation(Collection<String> operations, String method, String path) {
+    int at = path.indexOf('?');
+    String[] segments = (at < 0 ? path : path.substring(0, at)).split("/", -1);
+    String best = null;
+    int bestLiterals = -1;
+    for (String operation : operations) {
+      int space = operation.indexOf(' ');
+      if (!operation.substring(0, space).equals(method)) {
+        continue;
+      }
+      String[] template = operation.substring(space + 1).split("/", -1);
+      if (template.length != segments.length) {
+        continue;
+      }
+      int literals = 0;
+      boolean matches = true;
+      for (int i = 0; i < template.length && matches; i++) {
+        if (TEMPLATE_SEGMENT.matcher(template[i]).matches()) {
+          matches = !segments[i].isEmpty();
+        } else {
+          matches = template[i].equals(segments[i]);
+          literals++;
+        }
+      }
+      if (matches && literals > bestLiterals) {
+        best = operation;
+        bestLiterals = literals;
+      }
+    }
+    return best;
+  }
+
+  /** A path segment that is one param of an openapi template. */
+  private static final Pattern TEMPLATE_SEGMENT = Pattern.compile("\\{[^/{}]+}");
 
   private static ArrayNode strings(List<String> values) {
     ArrayNode out = JsonNodeFactory.instance.arrayNode();

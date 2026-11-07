@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.contracts;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -390,6 +391,65 @@ class GoldenMasterMachineryTest {
       assertEquals("contract-daemon", sorted.at("/entries/1/repository/name").asText());
       assertEquals("contract-service", sorted.at("/entries/2/repository/name").asText());
     }
+  }
+
+  // --- which operation an interaction calls (qits-1934) -----------------------------------------
+
+  private static final List<String> OPERATIONS =
+      List.of(
+          "GET /projects/api/work/{qualifiedId}",
+          "GET /projects/api/work/{qualifiedId}/dossier",
+          "GET /projects/api/work/{qualifiedId}/dossier/{pageId}",
+          "GET /projects/api/work/{qualifiedId}/{page}",
+          "PUT /projects/api/work/{qualifiedId}",
+          "POST /projects/api/projects/{projectId}/repositories/backup-sync");
+
+  @Test
+  void anInteractionMatchesItsOperationByMethodAndPathWhateverItsParamsAreNamed() {
+    assertEquals(
+        "PUT /projects/api/work/{qualifiedId}",
+        GoldenMasterRecordingTest.operation(OPERATIONS, "PUT", "/projects/api/work/{id}"));
+    assertEquals(
+        "POST /projects/api/projects/{projectId}/repositories/backup-sync",
+        GoldenMasterRecordingTest.operation(
+            OPERATIONS, "POST", "/projects/api/projects/{projectId}/repositories/backup-sync"));
+  }
+
+  @Test
+  void aParamIsExactlyOneSegmentAndTheQueryIsDropped() {
+    assertEquals(
+        "GET /projects/api/work/{qualifiedId}/dossier/{pageId}",
+        GoldenMasterRecordingTest.operation(
+            OPERATIONS, "GET", "/projects/api/work/{qualifiedId}/dossier/data-flow?x=1"));
+    assertNull(
+        GoldenMasterRecordingTest.operation(
+            OPERATIONS, "GET", "/projects/api/work/{qualifiedId}/dossier/data/flow"));
+    assertNull(GoldenMasterRecordingTest.operation(OPERATIONS, "DELETE", "/projects/api/work/x"));
+  }
+
+  @Test
+  void theTemplateWithTheMostLiteralSegmentsWins() {
+    assertEquals(
+        "GET /projects/api/work/{qualifiedId}/dossier",
+        GoldenMasterRecordingTest.operation(
+            OPERATIONS, "GET", "/projects/api/work/{qualifiedId}/dossier"));
+    assertEquals(
+        "GET /projects/api/work/{qualifiedId}/{page}",
+        GoldenMasterRecordingTest.operation(
+            OPERATIONS, "GET", "/projects/api/work/{qualifiedId}/comments"));
+  }
+
+  @Test
+  void aBytesInteractionIsBodylessAndTheOthersAreNot() {
+    GoldenMasterRecordingTest.Interaction bytes =
+        GoldenMasterRecordingTest.Interaction.bytes(
+            "s", "getContent", "/x/{id}/content", 200, "Content-Type", "Cache-Control");
+    assertTrue(bytes.bodyless());
+    assertEquals("GET", bytes.method());
+    assertEquals(List.of("Content-Type", "Cache-Control"), bytes.responseHeaders());
+    assertFalse(
+        new GoldenMasterRecordingTest.Interaction("s", "op", "GET", "/x", 200, null, null)
+            .bodyless());
   }
 
   @Test
