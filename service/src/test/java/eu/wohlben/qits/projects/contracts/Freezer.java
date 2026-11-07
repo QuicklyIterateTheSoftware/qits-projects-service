@@ -12,8 +12,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,9 +25,18 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li><b>Ids.</b> Every distinct UUID, wherever it sits in a string value, becomes {@code
- *       00000000-0000-4000-8000-00000000000N} (N in hex, the last group 12 digits), numbered by first
- *       appearance. The mapping is seeded with the state's params first ({@link #seed}), which is
- *       how a state's {@code projectId} is {@code …0001}.
+ *       00000000-0000-4000-8000-00000000000N} (N in hex, the last group 12 digits). The mapping is
+ *       seeded with the state's params first ({@link #seed(Map, Map)}), which is how a state's
+ *       {@code projectId} is {@code …0001}; every UUID met after that takes the highest number
+ *       assigned so far plus one. A param's number is <b>sticky to the committed index</b>: a
+ *       param whose value is a UUID and whose committed frozen value is {@code frozenId(n)} keeps
+ *       n, the other params number above every number taken (in key order), and the answer's
+ *       UUIDs above those. So removing a param leaves a gap rather than renumbering every param
+ *       after it (qits-1908 removed {@code campaignId} and shifted them all, qits-1915). With no
+ *       committed index the numbering is by first appearance, params in key order first. <b>Known
+ *       limit:</b> an id that only the answer holds is not pinned — when a param is ADDED it takes
+ *       a number above the pinned ones, and every answer-only id moves up past it. A consumer
+ *       therefore joins only on param ids, never on an answer-only frozen id.
  *   <li><b>Instants.</b> Every string value that is an ISO-8601 instant becomes {@value
  *       #FROZEN_INSTANT} — by shape, not by a list of field names. An instant inside a longer
  *       string (the JSON text of an audit snapshot) is frozen in place, and that string's path goes
@@ -58,6 +69,8 @@ public final class Freezer {
   static final Pattern UUID =
       Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
+  private static final Pattern FROZEN_ID = Pattern.compile("00000000-0000-4000-8000-[0-9a-f]{12}");
+
   static final Pattern INSTANT =
       Pattern.compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})");
 
@@ -69,6 +82,9 @@ public final class Freezer {
   private static final Pattern PLAIN_KEY = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
   private final Map<String, String> ids = new HashMap<>();
+
+  /** The highest id number assigned so far: the next new UUID takes one above it. */
+  private int highestId;
   private final Map<String, String> tokens = new LinkedHashMap<>();
   private int tokenCount;
   private final Set<String> idPaths = new LinkedHashSet<>();
@@ -86,12 +102,67 @@ public final class Freezer {
     return this;
   }
 
-  /** Numbers each UUID in {@code values}, in order, ahead of anything the answer holds. */
+  /**
+   * Numbers each UUID in {@code values}, in order, ahead of anything the answer holds — {@link
+   * #seed(Map, Map)} with no committed index to pin to.
+   */
   public Freezer seed(Collection<String> values) {
     for (String value : values) {
       freezeIds(value);
     }
     return this;
+  }
+
+  /**
+   * Numbers the state's params ahead of anything the answer holds, sticky to the committed index.
+   *
+   * <ol>
+   *   <li>A param whose value IS a UUID, and whose {@code committedParams} entry is exactly {@code
+   *       frozenId(n)}, keeps n. If its raw UUID is already numbered (two params naming one entity)
+   *       it keeps that first number; if another raw UUID already holds n (the committed index pinned
+   *       one number to two params that now name different entities) it is not pinned and numbers
+   *       as a new param below.
+   *   <li>Every other param — new, unpinned, or merely containing a UUID — then numbers its UUIDs in
+   *       key order above the highest number taken so far, pinned ones included.
+   * </ol>
+   *
+   * <p>With no committed params (no index, or a state it does not hold yet) this is exactly {@link
+   * #seed(Collection)} over the values in key order.
+   *
+   * @param params the state's raw params
+   * @param committedParams the same state's frozen params in the committed {@code index.json}
+   */
+  public Freezer seed(Map<String, String> params, Map<String, String> committedParams) {
+    Map<String, String> sorted = new TreeMap<>(params);
+    for (Map.Entry<String, String> param : sorted.entrySet()) {
+      String value = param.getValue();
+      if (value == null || !UUID.matcher(value).matches()) {
+        continue;
+      }
+      int n = frozenNumber(committedParams.get(param.getKey()));
+      String original = value.toLowerCase(Locale.ROOT);
+      if (n <= 0 || ids.containsKey(original) || ids.containsValue(frozenId(n))) {
+        continue;
+      }
+      ids.put(original, frozenId(n));
+      highestId = Math.max(highestId, n);
+    }
+    for (String value : sorted.values()) {
+      freezeIds(value);
+    }
+    return this;
+  }
+
+  /** The n of a value that is exactly {@code frozenId(n)}, or 0. */
+  private static int frozenNumber(String committed) {
+    if (committed == null || !FROZEN_ID.matcher(committed).matches()) {
+      return 0;
+    }
+    long n = Long.parseLong(committed.substring(committed.length() - 12), 16);
+    if (n <= 0 || n > Integer.MAX_VALUE || !frozenId((int) n).equals(committed)) {
+      return 0;
+    }
+    return (int) n;
   }
 
   /**
@@ -223,8 +294,8 @@ public final class Freezer {
     Matcher m = UUID.matcher(value);
     StringBuilder out = new StringBuilder();
     while (m.find()) {
-      String original = m.group().toLowerCase(java.util.Locale.ROOT);
-      String frozen = ids.computeIfAbsent(original, k -> frozenId(ids.size() + 1));
+      String original = m.group().toLowerCase(Locale.ROOT);
+      String frozen = ids.computeIfAbsent(original, k -> frozenId(++highestId));
       m.appendReplacement(out, Matcher.quoteReplacement(frozen));
     }
     m.appendTail(out);

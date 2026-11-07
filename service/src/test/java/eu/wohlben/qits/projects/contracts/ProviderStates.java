@@ -362,7 +362,9 @@ public class ProviderStates {
   /**
    * What a state hands back.
    *
-   * @param params the state's parameters, keys sorted — what a pact {@code @State} method returns
+   * @param params the state's parameters, keys sorted — what a pact {@code @State} method returns.
+   *     A UUID param's frozen number is sticky to the committed {@code golden-masters/index.json}
+   *     ({@link Freezer#seed(Map, Map)}): adding or removing a param never renumbers the others
    * @param uniqueTokens random tokens the state had to put into names to keep them unique
    * @param sequenceParams the params whose value is a database sequence number (a refinement's
    *     id), which the recorder freezes to 1, 2, … in this order
