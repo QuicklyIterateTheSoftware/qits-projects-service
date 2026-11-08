@@ -135,8 +135,8 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
-        <qits.eventstream.version>2026.1106.12426</qits.eventstream.version>
-        <qits.githost-events.version>2026.1106.52935</qits.githost-events.version>
+        <qits.eventstream.version>2026.1107.192805</qits.eventstream.version>
+        <qits.githost-events.version>2026.1107.215950</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
              starts, now that it holds no docker socket. Framework-free — one class, four answers,
@@ -146,7 +146,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.1106.31658</qits.containers-client.version>
+        <qits.containers-client.version>2026.1107.230235</qits.containers-client.version>
 
         <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
              artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
@@ -186,10 +186,10 @@
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
              version two of its three artifacts do not have. -->
-        <qits.arch-rules.version>2026.1106.507</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1108.20205</qits.arch-rules.version>
         <!-- qits-db-core by its own string for the same reason: 2026.1012.173247 moved auth-core
              and published no db-core. -->
-        <qits.db-core.version>2026.1106.507</qits.db-core.version>
+        <qits.db-core.version>2026.1107.191249</qits.db-core.version>
 
         <!-- qits-http-core (libs/qits-integrations-quarkus): QitsHttpClients.wrap turns a raw
              java.net.http.HttpClient into one that opens a CLIENT span, injects traceparent and
@@ -236,9 +236,9 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1107.13534</qits.workspaces-service-pacts-qits-projects-service.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1106.232321</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1107.234702</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1107.140028</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1107.32045</qits.platform-access-monorepo-pacts-qits-projects-service.version>
+        <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1107.202817</qits.platform-access-monorepo-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1106.221716</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
@@ -267,10 +267,10 @@
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1020.204038</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1107.164336</qits.workspaces-golden-masters.version>
-        <qits.maintenance-golden-masters.version>2026.1106.221716</qits.maintenance-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1108.24102</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1031.124054</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1107.84029</qits.ci-golden-masters.version>
-        <qits.idp-golden-masters.version>2026.1027.165632</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1107.220215</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1010.145913</qits.deployments-golden-masters.version>
         <qits.containers-golden-masters.version>2026.1019.103940</qits.containers-golden-masters.version>
         <qits.projects-daemon-golden-masters.version>2026.1107.141941</qits.projects-daemon-golden-masters.version>
