@@ -147,6 +147,43 @@ final class DeskTriggerTestFrames {
         null);
   }
 
+  /**
+   * qits-workspaces' {@code AgentWaitClosed} as it arrives: that service's event type is not on
+   * this classpath, so the payload is written as the wire carries it. {@code state} may be {@code
+   * BROKEN}, {@code MATCHED}, {@code TIMED_OUT} or {@code CANCELLED}.
+   */
+  static EventFrame agentWaitClosed(
+      String agentId,
+      String workId,
+      String projectId,
+      String waitId,
+      String state,
+      String label,
+      String reason) {
+    com.fasterxml.jackson.databind.node.ObjectNode payload =
+        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+    payload.put("agentId", agentId);
+    payload.put("workId", workId);
+    payload.put("workspaceId", "ws-" + UUID.randomUUID());
+    payload.put("repositoryId", "repo-" + UUID.randomUUID());
+    payload.put("projectId", projectId);
+    payload.put("waitId", waitId);
+    payload.put("state", state);
+    payload.put(
+        "matchedEventId", "MATCHED".equals(state) ? UUID.randomUUID().toString() : null);
+    payload.put("label", label);
+    payload.put("reason", reason);
+    payload.put("occurredAt", "2026-11-05T09:00:00Z");
+    return new EventFrame(
+        UUID.randomUUID().toString(),
+        "AgentWaitClosed",
+        Instant.now(),
+        payload.toString(),
+        null,
+        null,
+        null);
+  }
+
   static EventFrame commented(
       String projectId,
       long number,

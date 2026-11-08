@@ -8,6 +8,7 @@ import eu.wohlben.qits.githost.events.SCMPublishCommit;
 import eu.wohlben.qits.githost.events.SCMPublishTag;
 import eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource;
 import eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource;
+import eu.wohlben.qits.projects.desktriggers.WaitBrokenSource;
 import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import eu.wohlben.qits.projects.targethost.TargetLeaseChanged;
 import io.quarkus.runtime.annotations.RegisterForReflection;
@@ -95,7 +96,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * CapacityOpenedSource.AgentLeftPayload} (qits-1689) is the fourth: qits-workspaces' {@code
  * AgentObsolete} and {@code AgentRemoved}, read to tell the desk a slot opened. {@link
  * TargetOomKilledSource.TargetOomKilledPayload} (qits-1818) is qits-system's {@code
- * TargetOomKilled}, read to tell the desk a target's node lost processes to an OOM killer.
+ * TargetOomKilled}, read to tell the desk a target's node lost processes to an OOM killer. {@link
+ * WaitBrokenSource.AgentWaitClosedPayload} (qits-1961) is the fifth: qits-workspaces' {@code
+ * AgentWaitClosed}, read to tell the desk an agent's wait broke.
  *
  * <p>{@link TargetLeaseChanged} (epic qits-1481, qits-1551) is the fourth bound consumption:
  * qits-system's lease event, which {@code targethost/TargetLeaseEvents} receives bound to that local
@@ -160,6 +163,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       WaitClosedSource.DeskWaitClosedPayload.class,
       CapacityOpenedSource.AgentLeftPayload.class,
       TargetOomKilledSource.TargetOomKilledPayload.class,
+      WaitBrokenSource.AgentWaitClosedPayload.class,
       TargetLeaseChanged.class,
       EventEnvelope.class,
       EventFrame.class

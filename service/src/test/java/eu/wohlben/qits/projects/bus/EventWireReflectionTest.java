@@ -142,6 +142,7 @@ public class EventWireReflectionTest {
             eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
             eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload
                 .class,
+            eu.wohlben.qits.projects.desktriggers.WaitBrokenSource.AgentWaitClosedPayload.class,
             eu.wohlben.qits.projects.targethost.TargetLeaseChanged.class,
             EventEnvelope.class,
             EventFrame.class),
@@ -677,7 +678,9 @@ public class EventWireReflectionTest {
           "AgentRemoved",
           eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
           "TargetOomKilled",
-          eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload.class);
+          eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload.class,
+          "AgentWaitClosed",
+          eu.wohlben.qits.projects.desktriggers.WaitBrokenSource.AgentWaitClosedPayload.class);
 
   @Test
   public void everyDurableListenersSignatureNamesARegisteredType() {

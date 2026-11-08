@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.desktriggers.DeskTriggerListener;
 import eu.wohlben.qits.projects.desktriggers.RequestFailedSource;
 import eu.wohlben.qits.projects.desktriggers.RequestStalledSource;
 import eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource;
+import eu.wohlben.qits.projects.desktriggers.WaitBrokenSource;
 import eu.wohlben.qits.projects.desktriggers.WaitClosedSource;
 import eu.wohlben.qits.projects.desktriggers.WorkVerifiedSource;
 import java.nio.file.Path;
@@ -53,6 +54,7 @@ class EventstreamPactTest {
                       new RequestStalledSource(),
                       new TargetOomKilledSource(),
                       new AgentIdleSource(),
+                      new WaitBrokenSource(),
                       new CapacityOpenedSource()),
                   null))
           .publishes(true)

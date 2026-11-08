@@ -238,8 +238,8 @@
           }
         }
       },
-      "description": "CatchupSweeper.catchUp(projects-desk-triggers): listEvents (8 names)",
-      "key": "8e0d88e2",
+      "description": "CatchupSweeper.catchUp(projects-desk-triggers): listEvents (9 names)",
+      "key": "4ba7677",
       "pending": false,
       "providerStates": [
         {
@@ -254,7 +254,7 @@
             "200"
           ],
           "name": [
-            "AgentObsolete,AgentRemoved,ApprovalRequirementChanged,DeskWaitClosed,EntityCommented,EntityTransitioned,ReleaseRequestStateChanged,TargetOomKilled"
+            "AgentObsolete,AgentRemoved,AgentWaitClosed,ApprovalRequirementChanged,DeskWaitClosed,EntityCommented,EntityTransitioned,ReleaseRequestStateChanged,TargetOomKilled"
           ],
           "order": [
             "asc"
@@ -733,8 +733,8 @@
           }
         }
       },
-      "description": "CatchupSweeper.initialize(projects-desk-triggers): listEvents (8 names)",
-      "key": "dcfc5192",
+      "description": "CatchupSweeper.initialize(projects-desk-triggers): listEvents (9 names)",
+      "key": "53a93f27",
       "pending": false,
       "providerStates": [
         {
@@ -749,7 +749,7 @@
             "1"
           ],
           "name": [
-            "AgentObsolete,AgentRemoved,ApprovalRequirementChanged,DeskWaitClosed,EntityCommented,EntityTransitioned,ReleaseRequestStateChanged,TargetOomKilled"
+            "AgentObsolete,AgentRemoved,AgentWaitClosed,ApprovalRequirementChanged,DeskWaitClosed,EntityCommented,EntityTransitioned,ReleaseRequestStateChanged,TargetOomKilled"
           ]
         }
       },
