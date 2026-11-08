@@ -1366,6 +1366,35 @@ public class WorkEntityService {
   }
 
   /**
+   * <b>A needs-only write</b> (qits-1965): replaces what the row of {@code archetype} needs by
+   * {@code stated} ({@link NeedService#replace}'s rules — the set {@link NeedService#refusals}
+   * passed, an empty list clears it) and touches the row, in one transaction, so a retry can never
+   * write the needs without the touch. The touch moves {@code updatedAt} and records an UPDATE audit
+   * entry by {@code changedBy}, so the change shows where every other edit does.
+   *
+   * <p><b>No freeze, no status, no archetype check</b>: the needs are neither scope nor a marker —
+   * ordering must be fixable after REFINED (qits-1903) — and nothing else on the row is written.
+   * That is why this is not an {@link #update} with an empty write, which would count as scope.
+   * Answers the touched row, for the door to answer from rather than a re-read (see {@link
+   * TransitionedEntity#edited}).
+   */
+  public WorkEntity replaceNeeds(
+      Archetype archetype, String id, List<NeedService.Stated> stated, String changedBy) {
+    Kind kind = kind(archetype);
+    return writes.hold(
+        kind.label("needs"),
+        () -> {
+          WorkEntity row = lookup(archetype, id);
+          needs.replaceIn(id, stated);
+          // Dirty, so the flush writes the row and @UpdateTimestamp moves updatedAt with it.
+          row.updatedAt = Instant.now();
+          WorkEntity touched = settled(row);
+          audit(touched, auditRootOf(touched), AuditOperation.UPDATE, changedBy);
+          return touched;
+        });
+  }
+
+  /**
    * The status a transition {@code target} lands on: the word itself, or {@link EntityStatus#DROPPED}
    * for the {@linkplain #SUPERSEDE supersede} operation of a kind that has it — judged against the
    * lifecycle graph from the row's status. A word naming neither is a 409, and so is asking it of a

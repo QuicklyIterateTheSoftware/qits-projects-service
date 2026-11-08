@@ -105,8 +105,9 @@ import java.util.List;
  *     archetype and always on the wire. A transition never changes them
  * @param needs what the entity needs (qits-1903), in the order written — each needed item, the
  *     status it must reach, the status it holds and whether that is far enough ({@link NeedRef}).
- *     Filled on the work reads alone ({@link #withNeeds}), {@code []} when it needs nothing; null
- *     and left off the wire on a write's answer and an announcement
+ *     Filled on the work reads and the work patch's answer (qits-1965) alone ({@link #withNeeds}),
+ *     {@code []} when it needs nothing; null and left off the wire on every other write's answer
+ *     and on an announcement
  * @param unmetNeeds how many of {@link #needs} are not met. Present exactly when {@link #needs} is
  * @param excerpt the listing's plain-text lead of {@link #description} (qits-1821, {@link
  *     DescriptionExcerpt}) — <b>never on the wire here</b>: only {@link EntitySummary} answers it,
@@ -161,8 +162,9 @@ public record TransitionedEntity(
 
   /**
    * The same entity carrying what it needs (qits-1903): {@link #needs} and their derived {@link
-   * #unmetNeeds}. Filled on the work reads only; every write's
-   * answer and every announcement leaves both off the wire.
+   * #unmetNeeds}. Filled on the work reads and on the answer of {@code PATCH /work/{q}}, which
+   * answers in the read's shape (qits-1965); every other write's answer and every announcement
+   * leaves both off the wire.
    */
   public TransitionedEntity withNeeds(List<NeedRef> stated) {
     List<NeedRef> refs = stated == null ? List.of() : List.copyOf(stated);

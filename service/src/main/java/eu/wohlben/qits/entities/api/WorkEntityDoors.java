@@ -206,7 +206,10 @@ public class WorkEntityDoors {
 
   // --- read ------------------------------------------------------------------------------------
 
-  /** The row in the merged shape, qualified, with what it needs (qits-1903). */
+  /**
+   * The row in the merged shape, qualified, with what it needs (qits-1903) — the shape {@link
+   * #patch} answers too (qits-1965).
+   */
   public TransitionedEntity read(WorkEntity row) {
     TransitionedEntity found = catalog.byIds(List.of(row.id)).get(row.id);
     return found == null
@@ -344,8 +347,9 @@ public class WorkEntityDoors {
   // --- patch -----------------------------------------------------------------------------------
 
   /**
-   * Applies a merge patch to the entity {@code id} (a UUID) and answers it as it now stands. The
-   * order is the refusal order: the id (404), the binding (403), the body (400), the write.
+   * Applies a merge patch to the entity {@code id} (a UUID) and answers it as it now stands, with
+   * what it needs, in the shape {@link #read} answers (qits-1965). The order is the refusal order:
+   * the id (404), the binding (403), the body (400), the write.
    */
   public TransitionedEntity patch(SecurityIdentity identity, String id, JsonNode body) {
     TransitionedEntity current = catalog.byIds(List.of(id)).get(id);
@@ -384,11 +388,13 @@ public class WorkEntityDoors {
     String changedBy = EntitiesPrincipal.changedBy(identity);
     if (needs != null && body.size() == 1) {
       // Only the needs: they are neither scope nor a marker, so no freeze and no status refuses
-      // them (qits-1903) — and the empty entity write a lone needs would make counts as scope.
-      workNeeds.replace(id, needs);
+      // them (qits-1903) — and the empty entity write a lone needs would make counts as scope. The
+      // row is still touched, in the needs' own transaction: updatedAt moves and the audit says
+      // who changed them (qits-1965).
+      WorkEntity touched = entities.replaceNeeds(current.archetype(), id, needs, changedBy);
       epicHints.fire(current.projectId());
       ticketHints.fire(current.projectId());
-      return qualifiedIds.qualify(current);
+      return answered(touched, current);
     }
     Nested updated = entities.update(current.archetype(), id, write, changedBy);
     if (needs != null) {
@@ -404,9 +410,19 @@ public class WorkEntityDoors {
     // After the write and outside it, as the transition door fires them: its body is retried.
     epicHints.fire(current.projectId());
     ticketHints.fire(current.projectId());
-    // The row the write handed back, never a re-read — see TransitionedEntity.edited for why a
-    // re-read in this request answers the row as it was.
-    return qualifiedIds.qualify(TransitionedEntity.edited(updated.entity(), current));
+    return answered(updated.entity(), current);
+  }
+
+  /**
+   * A patch's answer: the row the write handed back, never a re-read — see {@link
+   * TransitionedEntity#edited} for why a re-read in this request answers the row as it was — with
+   * what it needs, as {@code GET /work/{q}} answers it (qits-1965). The needs are read after the
+   * write committed, in a transaction of their own ({@link NeedService#ofEntity}), so they are the
+   * new set.
+   */
+  private TransitionedEntity answered(WorkEntity written, TransitionedEntity before) {
+    return qualifiedIds.qualify(
+        TransitionedEntity.edited(written, before).withNeeds(workNeeds.ofEntity(written.id)));
   }
 
   /**
