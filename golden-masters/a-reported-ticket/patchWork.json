@@ -29,5 +29,7 @@
   "acceptanceCriteria": [
     "It does what it says."
   ],
-  "tags": []
+  "tags": [],
+  "needs": [],
+  "unmetNeeds": 0
 }

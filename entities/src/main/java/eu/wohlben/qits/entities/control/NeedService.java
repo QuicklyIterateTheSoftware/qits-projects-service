@@ -287,25 +287,31 @@ public class NeedService {
   /**
    * Replaces what {@code entityId} needs by {@code stated}, whole — an empty list clears it. The
    * set is the one {@link #refusals} passed; each {@link Stated#entityId} is a UUID. A transaction
-   * of its own, rows and nothing else, so a retry may run it again.
+   * of its own, rows and nothing else, so a retry may run it again. A write that must also touch
+   * the item's own row runs {@link WorkEntityService#replaceNeeds} instead (qits-1965).
    */
   public void replace(String entityId, List<Stated> stated) {
-    writes.run(
-        "work needs write",
-        () -> {
-          needs.clearOf(entityId);
-          needs.getEntityManager().flush();
-          Set<String> written = new HashSet<>();
-          for (Stated need : stated == null ? List.<Stated>of() : stated) {
-            if (written.add(need.entityId())) {
-              WorkNeed row = new WorkNeed();
-              row.entityId = entityId;
-              row.neededEntityId = need.entityId();
-              row.status = need.status();
-              needs.persist(row);
-            }
-          }
-        });
+    writes.run("work needs write", () -> replaceIn(entityId, stated));
+  }
+
+  /**
+   * The body of {@link #replace}, in the caller's transaction: database-only, so a retry of that
+   * transaction may run it again. {@link WorkEntityService#replaceNeeds} runs it beside the row's
+   * touch, so the needs and the touch commit together or not at all (qits-1965).
+   */
+  void replaceIn(String entityId, List<Stated> stated) {
+    needs.clearOf(entityId);
+    needs.getEntityManager().flush();
+    Set<String> written = new HashSet<>();
+    for (Stated need : stated == null ? List.<Stated>of() : stated) {
+      if (written.add(need.entityId())) {
+        WorkNeed row = new WorkNeed();
+        row.entityId = entityId;
+        row.neededEntityId = need.entityId();
+        row.status = need.status();
+        needs.persist(row);
+      }
+    }
   }
 
   // --- the flip -------------------------------------------------------------------------------------

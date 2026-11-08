@@ -9,6 +9,9 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.contracts.ContractBearers;
+import java.time.Instant;
+
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -130,6 +133,166 @@ class WorkNeedApiTest {
     patch(waiting, needs(need(needed, "DONE"))).statusCode(200);
     patch(waiting, map("needs", null)).statusCode(200);
     read(waiting).body("needs", hasSize(0));
+  }
+
+  // --- the patch's answer (qits-1965) ----------------------------------------------------------
+
+  /** The top-level keys of an answer body. */
+  private static java.util.Set<String> keys(ValidatableResponse response) {
+    return new java.util.TreeSet<>(
+        response.extract().jsonPath().<String, Object>getMap("$").keySet());
+  }
+
+  private static Instant updatedAt(ValidatableResponse response) {
+    return Instant.parse(response.extract().path("updatedAt"));
+  }
+
+  /**
+   * The patch answers what it wrote, needs included: a set, a replace and both clears answer the
+   * new set and its {@code unmetNeeds} on the patch's own answer, not only on the next read — the
+   * needs are read after the write committed, so the answer never shows the set it replaced.
+   */
+  @Test
+  void aNeedsPatchAnswersTheNewNeeds() {
+    EntityFixtures.Project project = EntityFixtures.project("Needs Patch Answer");
+    String waiting = EntityFixtures.ticket(project.id());
+    String first = EntityFixtures.ticket(project.id());
+    String second = EntityFixtures.ticket(project.id());
+
+    patch(waiting, needs(need(first, "VERIFIED")))
+        .statusCode(200)
+        .body("needs", hasSize(1))
+        .body("needs[0].id", equalTo(first))
+        .body("needs[0].status", equalTo("VERIFIED"))
+        .body("needs[0].met", equalTo(false))
+        .body("unmetNeeds", equalTo(1));
+
+    // A replace answers the new set alone; one of the two is already met.
+    patch(waiting, needs(need(second, "DONE"), need(first, "REPORTED")))
+        .statusCode(200)
+        .body("needs", hasSize(2))
+        .body("needs[0].id", equalTo(second))
+        .body("needs[0].status", equalTo("DONE"))
+        .body("needs[1].id", equalTo(first))
+        .body("needs[1].met", equalTo(true))
+        .body("unmetNeeds", equalTo(1));
+
+    patch(waiting, map("needs", List.of()))
+        .statusCode(200)
+        .body("needs", hasSize(0))
+        .body("unmetNeeds", equalTo(0));
+
+    patch(waiting, needs(need(first, "DONE"))).statusCode(200).body("unmetNeeds", equalTo(1));
+    patch(waiting, map("needs", null))
+        .statusCode(200)
+        .body("needs", hasSize(0))
+        .body("unmetNeeds", equalTo(0));
+    read(waiting).body("needs", hasSize(0)).body("unmetNeeds", equalTo(0));
+  }
+
+  /** A patch that names no needs answers the stored ones, as the read does. */
+  @Test
+  void aPatchWithoutNeedsAnswersTheStoredNeeds() {
+    EntityFixtures.Project project = EntityFixtures.project("Needs Patch Kept");
+    String waiting = EntityFixtures.ticket(project.id());
+    String needed = EntityFixtures.ticket(project.id());
+    String met = EntityFixtures.ticket(project.id());
+    patch(waiting, needs(need(needed, "VERIFIED"), need(met, "REPORTED"))).statusCode(200);
+
+    patch(waiting, map("title", "Renamed"))
+        .statusCode(200)
+        .body("title", equalTo("Renamed"))
+        .body("needs", hasSize(2))
+        .body("needs[0].id", equalTo(needed))
+        .body("needs[0].met", equalTo(false))
+        .body("needs[1].met", equalTo(true))
+        .body("unmetNeeds", equalTo(1));
+  }
+
+  /** The patch answers the read's shape: the same top-level keys, needs-only or not. */
+  @Test
+  void thePatchAnswersTheKeysTheReadDoes() {
+    EntityFixtures.Project project = EntityFixtures.project("Needs Patch Shape");
+    String waiting = EntityFixtures.ticket(project.id());
+    String needed = EntityFixtures.ticket(project.id());
+
+    java.util.Set<String> needsOnly =
+        keys(patch(waiting, needs(need(needed, "VERIFIED"))).statusCode(200));
+    assertEquals(keys(read(waiting)), needsOnly, "a needs-only patch");
+    assertTrue(
+        needsOnly.contains("needs") && needsOnly.contains("unmetNeeds"), needsOnly.toString());
+
+    java.util.Set<String> titled = keys(patch(waiting, map("title", "Renamed")).statusCode(200));
+    assertEquals(keys(read(waiting)), titled, "a title patch");
+  }
+
+  /**
+   * A needs-only patch touches the row: {@code updatedAt} moves, on the answer and the read, and
+   * the item's history gains an UPDATE by the caller (qits-1965) — though the entity write it skips
+   * would have been refused as scope.
+   */
+  @Test
+  void aNeedsOnlyPatchMovesUpdatedAtAndIsAudited() {
+    EntityFixtures.Project project = EntityFixtures.project("Needs Patch Touch");
+    String waiting = EntityFixtures.ticket(project.id());
+    String needed = EntityFixtures.ticket(project.id());
+    Instant before = updatedAt(read(waiting));
+    int updatesBefore =
+        audit(waiting).extract().path("entries.findAll { it.operation == 'UPDATE' }.size()");
+
+    ValidatableResponse answer =
+        given()
+            .header("Authorization", ContractBearers.caller("ada", "qits:admin"))
+            .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
+            .body(needs(need(needed, "VERIFIED")))
+            .when()
+            .patch(WORK + EntityFixtures.qualifiedId(waiting))
+            .then()
+            .statusCode(200)
+            .body("needs[0].id", equalTo(needed));
+    Instant after = updatedAt(answer);
+    assertTrue(after.isAfter(before), before + " then " + after);
+    assertEquals(after, updatedAt(read(waiting)), "the read agrees with the answer");
+
+    audit(waiting)
+        .body("entries.findAll { it.operation == 'UPDATE' }", hasSize(updatesBefore + 1))
+        .body("entries[0].operation", equalTo("UPDATE"))
+        .body("entries[0].entityId", equalTo(waiting))
+        .body("entries[0].changedBy", equalTo("ada"));
+  }
+
+  private static ValidatableResponse audit(String id) {
+    return given().when().get(WORK + id + "/audit").then().statusCode(200);
+  }
+
+  /**
+   * A needs-only patch on a task whose epic froze its scope still answers 200 with the needs: the
+   * touch runs no freeze, where a title patch is refused.
+   */
+  @Test
+  void aNeedsOnlyPatchUnderAFrozenEpicAnswersItsNeeds() {
+    EntityFixtures.Project project = EntityFixtures.project("Needs Patch Frozen");
+    String repository = EntityFixtures.repository(project.id());
+    String epic = EntityFixtures.epic(project.id());
+    String feature = EntityFixtures.feature(epic);
+    String needed = EntityFixtures.task(feature, repository);
+    String waiting = EntityFixtures.task(feature, repository);
+    move(epic, "REFINED");
+    patch(waiting, map("title", "Renamed")).statusCode(409);
+    Instant before = updatedAt(read(waiting));
+
+    ValidatableResponse answer =
+        patch(waiting, needs(need(needed, "IMPLEMENTED")))
+            .statusCode(200)
+            .body("needs", hasSize(1))
+            .body("needs[0].id", equalTo(needed))
+            .body("needs[0].archetype", equalTo("TASK"))
+            .body("unmetNeeds", equalTo(1));
+    assertTrue(updatedAt(answer).isAfter(before));
+    read(waiting).body("needs[0].id", equalTo(needed));
+    audit(epic)
+        .body("entries[0].operation", equalTo("UPDATE"))
+        .body("entries[0].entityId", equalTo(waiting));
   }
 
   // --- the 400 ---------------------------------------------------------------------------------
