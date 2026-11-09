@@ -409,6 +409,13 @@
             ]
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -425,6 +432,13 @@
           {
             "to": "REPORTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
           },
           {
             "to": "DROPPED",
@@ -445,6 +459,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -453,6 +474,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
           },
           {
             "to": "DROPPED",
@@ -479,6 +507,13 @@
             "kind": "BACK"
           },
           {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
+          },
+          {
             "to": "DROPPED",
             "kind": "DROP"
           }
@@ -491,6 +526,13 @@
           {
             "to": "IMPLEMENTED",
             "kind": "BACK"
+          },
+          {
+            "to": "DONE",
+            "kind": "CLOSE",
+            "gates": [
+              "CONDITION_MET"
+            ]
           },
           {
             "to": "DROPPED",

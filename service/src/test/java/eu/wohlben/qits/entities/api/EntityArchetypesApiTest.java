@@ -194,9 +194,24 @@ class EntityArchetypesApiTest {
     return stripped;
   }
 
+  /** {@link #withoutGates} with every CLOSE move dropped too — what a task shares with an epic. */
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> withoutCloses(Map<String, Object> moves) {
+    Map<String, Object> stripped = new LinkedHashMap<>();
+    withoutGates(moves)
+        .forEach(
+            (status, list) ->
+                stripped.put(
+                    status,
+                    ((List<Map<String, Object>>) list)
+                        .stream().filter(move -> !"CLOSE".equals(move.get("kind"))).toList()));
+    return stripped;
+  }
+
   /**
    * The ticket's whole served map of legal moves, asserted exactly — keys in lifecycle order, each
-   * value FORWARD, then SKIP, then BACK, then DROP/REOPEN (a ticket has no CLOSE, qits-1757) — and
+   * value FORWARD, then SKIP, then BACK, then CLOSE (a condition's, gated by CONDITION_MET,
+   * qits-1972), then DROP/REOPEN — and
    * DONE answering no move at all, because DONE is final. Parsed with Jackson rather than read through a GPath so the key order is what arrived.
    */
   @Test
@@ -213,12 +228,16 @@ class EntityArchetypesApiTest {
     Map<String, List<Map<String, Object>>> expected = new LinkedHashMap<>();
     expected.put(
         "REPORTED",
-        List.of(move("REFINED", "FORWARD", "ACCEPTANCE_CRITERIA"), move("DROPPED", "DROP")));
+        List.of(
+            move("REFINED", "FORWARD", "ACCEPTANCE_CRITERIA"),
+            move("DONE", "CLOSE", "CONDITION_MET"),
+            move("DROPPED", "DROP")));
     expected.put(
         "REFINED",
         List.of(
             move("READY_FOR_DEV", "FORWARD", "ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
             move("REPORTED", "BACK"),
+            move("DONE", "CLOSE", "CONDITION_MET"),
             move("DROPPED", "DROP")));
     expected.put(
         "READY_FOR_DEV",
@@ -226,9 +245,11 @@ class EntityArchetypesApiTest {
             move("IMPLEMENTING", "FORWARD"),
             move("IMPLEMENTED", "SKIP"),
             move("REFINED", "BACK"),
+            move("DONE", "CLOSE", "CONDITION_MET"),
             move("DROPPED", "DROP")));
     expected.put(
-        "IMPLEMENTING", List.of(move("IMPLEMENTED", "FORWARD"), move("DROPPED", "DROP")));
+        "IMPLEMENTING",
+        List.of(move("IMPLEMENTED", "FORWARD"), move("DONE", "CLOSE", "CONDITION_MET"), move("DROPPED", "DROP")));
     // qits-150: the quality-check step stands on both moves out of a ticket's IMPLEMENTED.
     expected.put(
         "IMPLEMENTED",
@@ -236,10 +257,15 @@ class EntityArchetypesApiTest {
             move("VERIFYING", "FORWARD", "QUALITY_CHECKS"),
             move("VERIFIED", "SKIP", "QUALITY_CHECKS"),
             move("IMPLEMENTING", "BACK"),
+            move("DONE", "CLOSE", "CONDITION_MET"),
             move("DROPPED", "DROP")));
     expected.put(
         "VERIFYING",
-        List.of(move("VERIFIED", "FORWARD"), move("IMPLEMENTED", "BACK"), move("DROPPED", "DROP")));
+        List.of(
+            move("VERIFIED", "FORWARD"),
+            move("IMPLEMENTED", "BACK"),
+            move("DONE", "CLOSE", "CONDITION_MET"),
+            move("DROPPED", "DROP")));
     expected.put(
         "VERIFIED",
         List.of(move("DONE", "FORWARD"), move("VERIFYING", "BACK"), move("DROPPED", "DROP")));
@@ -295,17 +321,17 @@ class EntityArchetypesApiTest {
   /**
    * qits-763: a feature and a task serve the epic's moves and walk, both skips included — though
    * not its acceptance-criteria gate (qits-887), which judges an epic and a ticket alone. A task
-   * has no children, so it serves the ticket's moves without the CLOSEs (qits-1757).
+   * has no children and is no condition, so it serves the epic's moves without the CLOSEs
+   * (qits-1757, qits-1972).
    */
   @Test
   void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
     Map<String, Object> epicMoves = document().extract().path(at("EPIC") + "transitions");
-    Map<String, Object> ticketMoves = document().extract().path(at("TICKET") + "transitions");
     List<String> epicWalk = document().extract().path(at("EPIC") + "lifecycle");
     for (String archetype : List.of("FEATURE", "TASK")) {
       Map<String, Object> moves = document().extract().path(at(archetype) + "transitions");
       assertEquals(
-          withoutGates(archetype.equals("FEATURE") ? epicMoves : ticketMoves),
+          archetype.equals("FEATURE") ? withoutGates(epicMoves) : withoutCloses(epicMoves),
           withoutGates(moves),
           archetype);
       document()
@@ -318,8 +344,8 @@ class EntityArchetypesApiTest {
 
   /**
    * qits-1757: an epic and a feature serve a CLOSE to DONE from every open status they hold but
-   * VERIFIED, each naming CHILDREN_CLOSED; VERIFIED → DONE stays FORWARD with no gate, and a ticket
-   * and a task serve no CLOSE.
+   * VERIFIED, each naming CHILDREN_CLOSED, and a ticket the same CLOSEs naming CONDITION_MET alone
+   * (qits-1972); VERIFIED → DONE stays FORWARD with no gate, and a task serves no CLOSE.
    */
   @Test
   void theGatheringKindsServeACloseToDoneGatedByChildrenClosed() {
@@ -329,6 +355,9 @@ class EntityArchetypesApiTest {
                 List.of(
                     "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
             "FEATURE",
+                List.of(
+                    "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"),
+            "TICKET",
                 List.of(
                     "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
     closing.forEach(
@@ -340,13 +369,13 @@ class EntityArchetypesApiTest {
                     equalTo("DONE"))
                 .body(
                     at(archetype) + "transitions." + from + ".find { it.kind == 'CLOSE' }.gates",
-                    contains("CHILDREN_CLOSED"));
+                    contains(archetype.equals("TICKET") ? "CONDITION_MET" : "CHILDREN_CLOSED"));
           }
           document()
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.kind", equalTo("FORWARD"))
               .body(at(archetype) + "transitions.VERIFIED.find { it.to == 'DONE' }.gates", nullValue());
         });
-    for (String archetype : List.of("TICKET", "TASK")) {
+    for (String archetype : List.of("TASK")) {
       Map<String, List<Map<String, Object>>> moves =
           document().extract().path(at(archetype) + "transitions");
       moves.forEach(

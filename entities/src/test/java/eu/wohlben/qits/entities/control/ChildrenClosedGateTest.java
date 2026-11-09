@@ -266,8 +266,9 @@ class ChildrenClosedGateTest extends EntitiesTestSupport {
     for (Archetype archetype : Archetype.values()) {
       for (EntityStatus from : EntityStatus.values()) {
         for (EntityStatus to : EntityStatus.values()) {
+          // An epic's and a feature's: a ticket's CLOSE is CONDITION_MET's (qits-1972).
           boolean close =
-              EntityStateMachine.closes(archetype)
+              (archetype == Archetype.EPIC || archetype == Archetype.FEATURE)
                   && to == EntityStatus.DONE
                   && EntityStateMachine.states(archetype).contains(from)
                   && from != EntityStatus.VERIFIED

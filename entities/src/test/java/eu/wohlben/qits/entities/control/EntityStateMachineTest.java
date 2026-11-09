@@ -61,12 +61,12 @@ class EntityStateMachineTest {
 
   @Test
   void theDeclarationIsExactlyTheSpecifiedGraph() {
-    // Every archetype with the walk reads the machine unchanged: an epic or a feature the whole of it, a
-    // ticket or a task all of it but the CLOSE moves (qits-1757).
+    // Every archetype with the walk reads the machine unchanged: an epic, a feature or a ticket the
+    // whole of it (qits-1757, a ticket's CLOSE qits-1972), a task all of it but the CLOSE moves.
     for (Archetype archetype :
         List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
-      boolean closes = archetype == Archetype.EPIC || archetype == Archetype.FEATURE;
+      boolean closes = archetype != Archetype.TASK;
       for (EntityStatus state : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
         assertEquals(
             EntityStateMachine.transitionsFrom(state).stream()
@@ -96,7 +96,7 @@ class EntityStateMachineTest {
         EntityStateMachine.transitions().stream()
             .filter(move -> move.kind() == TransitionKind.CLOSE)
             .toList());
-    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE, Archetype.TICKET)) {
       for (EntityStatus from : closing) {
         assertTrue(
             EntityStateMachine.isClose(archetype, from, EntityStatus.DONE), archetype + " " + from);
@@ -137,8 +137,8 @@ class EntityStateMachineTest {
   }
 
   @Test
-  void aTicketAndATaskServeNoClose() {
-    for (Archetype archetype : List.of(Archetype.TICKET, Archetype.TASK)) {
+  void aTaskServesNoClose() {
+    for (Archetype archetype : List.of(Archetype.TASK)) {
       assertFalse(EntityStateMachine.closes(archetype), archetype.name());
       for (EntityStatus from : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
         assertTrue(
@@ -158,7 +158,29 @@ class EntityStateMachineTest {
     for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
       assertTrue(EntityStateMachine.closes(archetype), archetype.name());
     }
-    assertFalse(EntityStateMachine.closes(Archetype.TICKET), "a ticket has no children");
+  }
+
+  /**
+   * A ticket is served the CLOSE moves (qits-1972) so a condition can be met straight to DONE; the
+   * CONDITION_MET gate, not the machine, refuses every other ticket and every other mover.
+   */
+  @Test
+  void aTicketServesCloseForItsConditions() {
+    assertTrue(EntityStateMachine.closes(Archetype.TICKET), "a condition closes to DONE");
+    for (EntityStatus from : EntityStateMachine.states().toArray(EntityStatus[]::new)) {
+      boolean open =
+          from != EntityStatus.VERIFIED
+              && from != EntityStatus.DONE
+              && from != EntityStatus.DROPPED;
+      assertEquals(
+          open, EntityStateMachine.isClose(Archetype.TICKET, from, EntityStatus.DONE), "" + from);
+      if (open) {
+        assertTrue(EntityStateMachine.allows(Archetype.TICKET, from, EntityStatus.DONE), "" + from);
+      }
+    }
+    assertFalse(
+        EntityStateMachine.allows(Archetype.TICKET, EntityStatus.DROPPED, EntityStatus.DONE),
+        "DROPPED reopens only to REPORTED");
   }
 
   @Test
@@ -185,6 +207,7 @@ class EntityStateMachineTest {
             new Transition(
                 EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DONE, TransitionKind.CLOSE),
             new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.TICKET, EntityStatus.READY_FOR_DEV));
     assertTrue(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
@@ -249,7 +272,7 @@ class EntityStateMachineTest {
     }
     // A refusal out of any other state carries no finality clause.
     String ordinary =
-        EntityStateMachine.refusal(Archetype.TICKET, EntityStatus.REPORTED, EntityStatus.DONE)
+        EntityStateMachine.refusal(Archetype.TASK, EntityStatus.REPORTED, EntityStatus.DONE)
             .orElseThrow();
     assertEquals("cannot move from REPORTED to DONE", ordinary);
   }

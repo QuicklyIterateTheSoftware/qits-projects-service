@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -236,8 +237,8 @@ class ArchetypeRegistryDocumentTest {
   void theServedMovesAreTheMachinesDeclarationExactly() {
     // Rebuilt from EntityStateMachine.transitions() — the declaration itself, not transitionsFrom —
     // so a served move the machine does not declare, or a declared move the document drops, fails.
-    // A ticket is served every declared move but the CLOSEs, which only a kind with children has
-    // (qits-1757).
+    // Both are served every declared move, the CLOSEs included: an epic's by its children
+    // (qits-1757), a ticket's for a condition (qits-1972).
     for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       Map<String, List<ArchetypeRegistryDocument.LegalMove>> expected = new LinkedHashMap<>();
@@ -289,12 +290,16 @@ class ArchetypeRegistryDocumentTest {
             "DROPPED"),
         List.copyOf(moves.keySet()));
     assertEquals(
-        List.of(move("REFINED", EntityStateMachine.TransitionKind.FORWARD), move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        List.of(
+            move("REFINED", EntityStateMachine.TransitionKind.FORWARD),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("REPORTED"));
     assertEquals(
         List.of(
             move("READY_FOR_DEV", EntityStateMachine.TransitionKind.FORWARD),
             move("REPORTED", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("REFINED"));
     assertEquals(
@@ -302,11 +307,13 @@ class ArchetypeRegistryDocumentTest {
             move("IMPLEMENTING", EntityStateMachine.TransitionKind.FORWARD),
             move("IMPLEMENTED", EntityStateMachine.TransitionKind.SKIP),
             move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("READY_FOR_DEV"));
     assertEquals(
         List.of(
             move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("IMPLEMENTING"));
     assertEquals(
@@ -314,12 +321,14 @@ class ArchetypeRegistryDocumentTest {
             move("VERIFYING", EntityStateMachine.TransitionKind.FORWARD),
             move("VERIFIED", EntityStateMachine.TransitionKind.SKIP),
             move("IMPLEMENTING", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("IMPLEMENTED"));
     assertEquals(
         List.of(
             move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
             move("IMPLEMENTED", EntityStateMachine.TransitionKind.BACK),
+            move("DONE", EntityStateMachine.TransitionKind.CLOSE),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("VERIFYING"));
     assertEquals(
@@ -335,10 +344,11 @@ class ArchetypeRegistryDocumentTest {
   @Test
   void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
     // One graph, both skips included (qits-763): what a client draws for a task is an epic's walk.
-    // A feature has children and closes as an epic does; a task has none and closes as a ticket
-    // does, by the walk alone (qits-1757).
+    // A feature has children and closes as an epic does (qits-1757), and so does a ticket, whose
+    // CLOSE is a condition's (qits-1972); a task closes by the walk alone.
     assertEquals(declared(Archetype.EPIC).transitions(), declared(Archetype.FEATURE).transitions());
-    assertEquals(declared(Archetype.TICKET).transitions(), declared(Archetype.TASK).transitions());
+    assertEquals(declared(Archetype.EPIC).transitions(), declared(Archetype.TICKET).transitions());
+    assertNotEquals(declared(Archetype.EPIC).transitions(), declared(Archetype.TASK).transitions());
     for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(
           declared(Archetype.EPIC).lifecycle(), declared(archetype).lifecycle(), archetype.name());
@@ -422,16 +432,18 @@ class ArchetypeRegistryDocumentTest {
   }
 
   /**
-   * qits-1757: every CLOSE move names CHILDREN_CLOSED and nothing else of the shipped gates;
-   * VERIFIED → DONE, the walk's FORWARD, names none.
+   * qits-1757: every epic's and feature's CLOSE move names CHILDREN_CLOSED and nothing else of the
+   * shipped gates, and every ticket's names CONDITION_MET alone (qits-1972); VERIFIED → DONE, the
+   * walk's FORWARD, names none.
    */
   @Test
-  void everyCloseMoveNamesChildrenClosedAndVerifiedToDoneNamesNone() {
+  void everyCloseMoveNamesItsGateAndVerifiedToDoneNamesNone() {
     List<TransitionGate> shipped =
         List.of(
             new PersonApprovalGate(),
             new AcceptanceCriteriaGate(),
-            new ChildrenClosedGate());
+            new ChildrenClosedGate(),
+            new ConditionMetGate());
     int closes = 0;
     for (ArchetypeRegistryDocument.DeclaredArchetype declared :
         ArchetypeRegistryDocument.describe(shipped).archetypes()) {
@@ -441,7 +453,9 @@ class ArchetypeRegistryDocumentTest {
           if (legal.kind() == EntityStateMachine.TransitionKind.CLOSE) {
             closes++;
             assertEquals(
-                List.of("CHILDREN_CLOSED"),
+                declared.archetype() == Archetype.TICKET
+                    ? List.of(ConditionMetGate.NAME)
+                    : List.of(ChildrenClosedGate.NAME),
                 legal.gates(),
                 declared.archetype() + " " + entry.getKey());
           }
@@ -451,8 +465,8 @@ class ArchetypeRegistryDocumentTest {
         assertEquals(List.of(), gatesOf(shipped, declared.archetype(), "VERIFIED", "DONE"));
       }
     }
-    // An epic's and a feature's six.
-    assertEquals(12, closes);
+    // An epic's, a feature's and a ticket's six.
+    assertEquals(18, closes);
   }
 
   @Test
