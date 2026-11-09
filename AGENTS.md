@@ -1794,6 +1794,9 @@ started four release builds for one change. Now:
   heads contain `oldSha` drop, outside any long transaction for the reads. The refold's reason
   (`a push rewrote <branch> to <sha>; dropped [...]`) shows only briefly in `detail`, which the next
   evaluation overwrites; the INFO line `a push rewrote <branch> away from <old>` is the lasting trace.
+  To see it live: the request's `sources` no longer name the `maintenance/automations/*/<rr>`
+  branch right after the rewriting push, the automation lands again on a new branch head whose
+  parent is the new fold, and that fold does not contain the old tip.
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
