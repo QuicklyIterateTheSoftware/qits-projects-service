@@ -338,7 +338,8 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1790_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_1816_PREVIOUS_DEVELOPMENT_FLOW,
             DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW,
-            DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW),
+            DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW,
+            DevelopmentGuideDefaults.QITS_1960_PREVIOUS_DEVELOPMENT_FLOW),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY),
         "an unedited flow part rolls forward to the new text");
     assertTrue(
@@ -385,6 +386,32 @@ public class DevelopmentGuideControllerTest {
   }
 
   /**
+   * qits-1960: a change that lands through a maintenance bump has no branch to wait on, so the flow
+   * names the ReleaseRequestStateChanged waits that do fire for one. An unedited row holding the
+   * text before rolls forward on boot.
+   */
+  @Test
+  public void theFlowTeachesWaitingOnABump() {
+    String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW;
+    assertTrue(flow.contains("--when 'branches[]=<bump branch> state=REJECTED'"), flow);
+    assertTrue(
+        flow.contains("--when 'repoName=<repository> branches[]^=maintenance/ state=FINALIZED'"),
+        flow);
+    assertFalse(
+        DevelopmentGuideDefaults.QITS_1960_PREVIOUS_DEVELOPMENT_FLOW.contains("machine bump"),
+        "a kept-only-for-migration part must never be edited");
+
+    String key = DevelopmentGuideDefaults.FLOW_KEY;
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(
+        key, withText(part, DevelopmentGuideDefaults.QITS_1960_PREVIOUS_DEVELOPMENT_FLOW), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(read("agent").getString("markdown").contains("only through a machine bump"));
+  }
+
+  /**
    * qits-1816: the flow sends a red automation to regenerate, not to ci retry, and an unedited flow
    * row holding the text before rolls forward on boot. The earlier texts in PREVIOUS keep their
    * exact shipped wording, or the rows still holding them would never match.
@@ -396,7 +423,8 @@ public class DevelopmentGuideControllerTest {
             "`qits release-request regenerate --kind <kind>`"));
     for (String previous : DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.FLOW_KEY)) {
       if (previous.equals(DevelopmentGuideDefaults.QITS_706_PREVIOUS_DEVELOPMENT_FLOW)
-          || previous.equals(DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW)) {
+          || previous.equals(DevelopmentGuideDefaults.QITS_1899_PREVIOUS_DEVELOPMENT_FLOW)
+          || previous.equals(DevelopmentGuideDefaults.QITS_1960_PREVIOUS_DEVELOPMENT_FLOW)) {
         continue; // shipped after qits-1816, so it carries qits-1816's paragraph by right
       }
       assertFalse(previous.contains("A red automation"), "a previous text was rewritten");
