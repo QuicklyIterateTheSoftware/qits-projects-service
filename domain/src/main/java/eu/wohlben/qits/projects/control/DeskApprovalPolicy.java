@@ -398,11 +398,7 @@ public class DeskApprovalPolicy {
       return Optional.empty();
     }
     return standings.stream()
-        .filter(
-            standing ->
-                !BranchDelivery.Step.LIVE
-                    .name()
-                    .equals(BranchDeliveries.everywhere(List.of(standing.step()))))
+        .filter(standing -> !BranchDelivery.Step.LIVE.name().equals(standing.step()))
         .findFirst();
   }
 
