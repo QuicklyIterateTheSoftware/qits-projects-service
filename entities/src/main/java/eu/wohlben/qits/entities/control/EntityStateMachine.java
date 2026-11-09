@@ -25,8 +25,8 @@ import java.util.Set;
  *                                 └──────── SKIP ─────────▶ └──────── SKIP ───────▶
  *   FORWARD one step right, BACK one step left (below DONE, and never out of IMPLEMENTING), the two
  *   SKIPs over an "-ING" status, DROP from every open state to DROPPED, DROPPED REOPENs to
- *   REPORTED, and — for an epic or a feature only — CLOSE from every open state short of VERIFIED
- *   straight to DONE (qits-1757).
+ *   REPORTED, and — for an epic, a feature or a ticket — CLOSE from every open state short of
+ *   VERIFIED straight to DONE (qits-1757; a ticket's, qits-1972).
  *
  *   starts phase:  REPORTED → refine,  READY_FOR_DEV and IMPLEMENTING → implement,
  *                  IMPLEMENTED and VERIFYING → verify;  REFINED (it waits for a person), VERIFIED,
@@ -75,9 +75,13 @@ import java.util.Set;
  * <p><b>An epic or a feature may CLOSE straight to DONE</b> (qits-1757) from every open
  * state short of VERIFIED — finished work that was never walked: every child it holds is closed
  * already, and scheduling it to walk it would be a scheduling act about nothing. Whether the
- * children are closed, and who may make the move, is the {@code CHILDREN_CLOSED} gate's to judge;
- * this class only says the move exists, and only for {@link #closes} archetypes. VERIFIED → DONE is
- * not a CLOSE: it stays the walk's FORWARD, ungated, so each target is still reached by one move.
+ * children are closed, and who may make the move, is the {@code CHILDREN_CLOSED} gate's to judge.
+ * <b>A ticket is served the same CLOSE moves</b> (qits-1972), for one ticket only: a condition
+ * ({@code WorkTag.CONDITION}), which is no work to walk but a fact other items need at DONE.
+ * Whether it is a condition, and who may make the move, is the {@code CONDITION_MET} gate's to
+ * judge, and it refuses every other ticket — whose DONE the platform sets. This class only says the
+ * move exists, and only for {@link #closes} archetypes. VERIFIED → DONE is not a CLOSE: it stays the
+ * walk's FORWARD, ungated, so each target is still reached by one move.
  *
  * <p><b>The declaration checks itself.</b> The class initialiser refuses a {@link #TRANSITIONS} entry
  * whose kind does not match its ends (a FORWARD that is not the next step on the walk, a DROP that
@@ -100,8 +104,9 @@ public final class EntityStateMachine {
     BACK,
     /**
      * Straight to {@link EntityStatus#DONE} from an open state on the walk short of VERIFIED
-     * (qits-1757): closing an epic or a feature whose children are all closed already.
-     * Served only to the archetypes that have children ({@link #CLOSES}); VERIFIED → DONE stays the
+     * (qits-1757): closing an epic or a feature whose children are all closed already, or a ticket
+     * tagged condition (qits-1972). Served only to the archetypes in {@link #CLOSES}, and judged by
+     * their gates ({@code CHILDREN_CLOSED}, {@code CONDITION_MET}); VERIFIED → DONE stays the
      * FORWARD it always was, so at most one move out of a state leads to each target.
      */
     CLOSE,
@@ -239,11 +244,14 @@ public final class EntityStateMachine {
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
 
   /**
-   * The archetypes served the {@link TransitionKind#CLOSE} moves (qits-1757): the ones whose
-   * children are structural — an epic its features, a feature its tasks — so "every child is
-   * closed" can be true of them. A ticket and a task have none and close by the walk alone.
+   * The archetypes served the {@link TransitionKind#CLOSE} moves: the ones whose children are
+   * structural — an epic its features, a feature its tasks — so "every child is closed" can be true
+   * of them (qits-1757, {@code CHILDREN_CLOSED}); and the ticket, because a ticket tagged condition
+   * is met rather than walked (qits-1972, {@code CONDITION_MET}, which refuses every other ticket).
+   * A task closes by the walk alone.
    */
-  private static final Set<Archetype> CLOSES = EnumSet.of(Archetype.EPIC, Archetype.FEATURE);
+  private static final Set<Archetype> CLOSES =
+      EnumSet.of(Archetype.EPIC, Archetype.FEATURE, Archetype.TICKET);
 
   static {
     verify();
@@ -358,7 +366,8 @@ public final class EntityStateMachine {
 
   /**
    * Whether {@code from → to} is a {@link TransitionKind#CLOSE} move for {@code archetype} — the one
-   * question the CHILDREN_CLOSED gate asks of a move. False for VERIFIED → DONE, which is FORWARD.
+   * question the CHILDREN_CLOSED and CONDITION_MET gates ask of a move. False for VERIFIED → DONE,
+   * which is FORWARD.
    */
   public static boolean isClose(Archetype archetype, EntityStatus from, EntityStatus to) {
     return transitionsFrom(archetype, from).stream()

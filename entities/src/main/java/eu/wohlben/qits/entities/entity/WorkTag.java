@@ -39,7 +39,11 @@ public enum WorkTag {
    * node", say. Other items name it in their {@code needs} like any other item; what closes it goes
    * in its description. No agent is dispatched onto it (every press is a 409 naming the tag) and a
    * status move delivers it no phase turn: a person or an agent moves its status, and the items
-   * that need it see the move. Widened into {@code ck_entity_tag_tag} by epics V40.
+   * that need it see the move. <b>It closes straight to DONE</b> (qits-1972): a person or the
+   * project's delivery desk moves it to DONE from any open status short of VERIFIED with the status
+   * door ({@code POST /work/{qualifiedId}/status}, the ticket's CLOSE move under the {@code
+   * CONDITION_MET} gate), and the items that need it at DONE see their need met. Every other ticket's
+   * DONE stays the platform's (qits-150). Widened into {@code ck_entity_tag_tag} by epics V40.
    */
   CONDITION;
 

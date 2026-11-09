@@ -39,7 +39,9 @@ import org.jboss.logging.Logger;
  * <b>The platform sets a ticket DONE, and this is where</b> (qits-150). A ticket is DONE only once
  * the wrapper release request carrying its branch is FINALIZED — or once its wrapper branch is found
  * to carry nothing — and no agent or person moves it there: both doors refuse a ticket's DONE for
- * every role ({@code WorkEntityDoors.move}, {@code EntityTransitionService.refuseTicketDone}).
+ * every role ({@code WorkEntityDoors.move}, {@code EntityTransitionService.refuseTicketDone}). The
+ * one exception is a condition ({@code WorkTag.CONDITION}, qits-1972), which carries no branch: a
+ * person or the project's desk closes it on the status door, under the {@code CONDITION_MET} gate.
  *
  * <h2>Four ways in, one move</h2>
  *

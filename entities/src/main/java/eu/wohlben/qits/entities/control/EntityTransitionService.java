@@ -418,7 +418,9 @@ public class EntityTransitionService {
    * once the wrapper release request carrying the ticket's branch is finalized (or ends with
    * nothing to release), and no caller of any role may say so instead; the status door refuses the
    * same move in the same words ({@link #TICKET_DONE_IS_THE_PLATFORMS}). An entry restating DONE on
-   * a row already DONE is no move and passes. An epic keeps its manual DONE.
+   * a row already DONE is no move and passes. An epic keeps its manual DONE. A condition ({@code
+   * WorkTag.CONDITION}, qits-1972) is refused here too: it closes on the status door alone, where
+   * the CONDITION_MET gate judges who closes it.
    */
   private static void refuseTicketDone(
       Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {

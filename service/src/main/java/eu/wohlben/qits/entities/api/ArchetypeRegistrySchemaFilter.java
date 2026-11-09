@@ -37,7 +37,9 @@ public class ArchetypeRegistrySchemaFilter implements OASFilter {
                   + " carries acceptance criteria; PERSON_APPROVAL: a person makes the move — a"
                   + " browser session or a person's qits CLI, never an agent, a service client or"
                   + " asserted headers; CHILDREN_CLOSED: every child is DONE or DROPPED and a person or"
-                  + " the delivery desk makes the move). Only a FORWARD, SKIP or CLOSE move has any,"
+                  + " the delivery desk makes the move; CONDITION_MET: a ticket closing straight to"
+                  + " DONE is tagged CONDITION and a person or the delivery desk makes the move)."
+                  + " Only a FORWARD, SKIP or CLOSE move has any,"
                   + " and the key is absent"
                   + " when there are none. A move that fails one is a 409 naming every failing"
                   + " gate."),

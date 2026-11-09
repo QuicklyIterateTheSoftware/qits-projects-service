@@ -10,9 +10,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -44,6 +46,9 @@ public class ChildrenClosedGate implements TransitionGate {
 
   public static final String NAME = "CHILDREN_CLOSED";
 
+  /** The archetypes whose CLOSE this gate judges: the ones that hold structural children. */
+  static final Set<Archetype> ARCHETYPES = EnumSet.of(Archetype.EPIC, Archetype.FEATURE);
+
   @Inject EntityMembershipRepository memberships;
 
   @Inject WorkEntityRepository entities;
@@ -56,9 +61,13 @@ public class ChildrenClosedGate implements TransitionGate {
     return NAME;
   }
 
+  /**
+   * An epic's or a feature's CLOSE, and nothing else: a ticket's CLOSE (qits-1972) is {@link
+   * ConditionMetGate}'s, since a ticket has no children to be closed.
+   */
   @Override
   public boolean appliesTo(Archetype archetype, EntityStatus from, EntityStatus to) {
-    return EntityStateMachine.isClose(archetype, from, to);
+    return ARCHETYPES.contains(archetype) && EntityStateMachine.isClose(archetype, from, to);
   }
 
   @Override
@@ -75,7 +84,10 @@ public class ChildrenClosedGate implements TransitionGate {
     return refused.isEmpty() ? Optional.empty() : Optional.of(String.join("; ", refused));
   }
 
-  /** A verified person, or the delivery desk of {@code row}'s own project. */
+  /**
+   * A verified person, or the delivery desk of {@code row}'s own project — who may close, here and
+   * at {@link ConditionMetGate}.
+   */
   static boolean mayClose(WorkEntity row, Mover mover) {
     return mover.isPerson()
         || (mover.isDesk()

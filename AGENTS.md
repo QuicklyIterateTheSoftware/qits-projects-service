@@ -2076,16 +2076,23 @@ first. Restating the status a row holds passes, at READY_FOR_DEV too.
 **Closing finished work straight to DONE (qits-1757): the CLOSE kind and `CHILDREN_CLOSED`.** An
 EPIC or a FEATURE (`EntityStateMachine.closes`) has a CLOSE move `X → DONE` from every open
 status it holds short of VERIFIED; VERIFIED → DONE stays the ungated FORWARD, so each target is still
-reached by exactly one move (`verify()` checks it per archetype). A TICKET or TASK serves no CLOSE —
+reached by exactly one move (`verify()` checks it per archetype). A TASK serves no CLOSE —
 the archetype-less `transitionsFrom(from)` is the declaration and does list them, so a door asks the
-archetype-aware reading. `control/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges the CLOSE moves
+archetype-aware reading. A TICKET serves CLOSE too since qits-1972, judged by its own gate (below).
+`control/ChildrenClosedGate` (`CHILDREN_CLOSED`) judges an EPIC's and a FEATURE's CLOSE moves
 only (`EntityStateMachine.isClose`, never VERIFIED → DONE, which the PUT door would otherwise start
 refusing): every direct child — an epic's or feature's STRUCTURAL children — must be DONE or
 DROPPED (VERIFIED is open), at least one child must exist, and the mover must be a person or the
 delivery desk of the row's own project; a machine (`qits:agent`, `qits:system`) is a 409. Nothing
 derives an epic or a feature from its children: the close is asked for, and the gate only says
 whether it is true; every status is asked for. The move emits the usual one `EntityTransitioned`
-(`statusBefore`, DONE, `changedBy`), with no kind on the event.
+(`statusBefore`, DONE, `changedBy`), with no kind on the event. **A condition closes the same way
+(qits-1972)**: `control/ConditionMetGate` (`CONDITION_MET`) judges a TICKET's CLOSE moves — the
+ticket must be tagged `CONDITION`, and the mover a person or its project's desk
+(`ChildrenClosedGate.mayClose`) — and `WorkEntityDoors.move` skips the qits-150 refusal for a
+condition alone, so a person or the desk closes it on the status door and the items that need it
+at DONE are met. Every other ticket keeps qits-150's 409, and `POST /work/transition` refuses a
+condition's DONE as before.
 
 **Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
 READY_FOR_DEV, for every archetype, unless the `control/Mover` is a person — and the entities module
@@ -2588,8 +2595,9 @@ and each one is a decision rather than a simplification:
   past `qits.projects.wrapper-done.no-branch-grace` (PT15M) after VERIFIED (`NO_BRANCH`, reconcile
   only). A row in flight, a NO and an unanswered ask close nothing. The reconcile's first pass
   after a deploy is the backfill. Both doors refuse a ticket's DONE for every role, a 409
-  (`EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS`); DROPPED stays open, an epic's DONE is
-  unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
+  (`EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS`) — except the status door for a ticket
+  tagged `CONDITION`, which a person or the desk closes under `CONDITION_MET` (qits-1972); DROPPED
+  stays open, an epic's DONE is unchanged. Every ticket move out of IMPLEMENTED into VERIFYING or VERIFIED passes the
   `QUALITY_CHECKS` gate (`control/QualityChecksGate` over `Instance<QualityCheck>`, none yet), so the
   step is empty and every ticket passes it.
   **The read door** (qits-1873) is `GET /projects/api/projects/{project}/wrapper-closings`

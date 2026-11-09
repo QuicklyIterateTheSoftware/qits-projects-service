@@ -715,11 +715,15 @@ public class WorkEntityDoors {
     }
     if (archetype == Archetype.TICKET
         && EntityStatus.DONE.name().equals(target)
-        && !EntityStatus.DONE.name().equals(row.status)) {
+        && !EntityStatus.DONE.name().equals(row.status)
+        && !(row.tags != null && row.tags.contains(WorkTag.CONDITION))) {
       // qits-150: the platform sets a ticket DONE when the wrapper release request carrying its
       // branch is finalized (TicketWrapperDone), and no caller of any role claims it instead —
       // qits:admin and qits:system included. DROPPED stays open to whoever may drop it. A ticket
-      // already DONE is left to the lifecycle's own refusal, which says DONE is final.
+      // already DONE is left to the lifecycle's own refusal, which says DONE is final. A condition
+      // (WorkTag.CONDITION, qits-1972) is the one exception: it has no branch and no release, so
+      // its DONE is claimed here and judged by the move's CONDITION_MET gate — a person or the
+      // project's desk, nobody else. The bulk door keeps refusing it (refuseTicketDone).
       throw new ConflictException(
           "Ticket " + row.id + ": " + EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS + ".");
     }
