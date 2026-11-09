@@ -108,7 +108,10 @@ public class ReleaseRequestHeadListener implements QitsDurableEventListener {
           frame.name(), frame.id());
       return;
     }
-    releaseRequests.onBranchMoved(repoId, branch, sha);
+    // The head before the push (qits-1971): a push that rewrote the branch drops the automation
+    // branches carrying it. Absent or blank is "unknown", which drops nothing.
+    String oldSha = payload.path("oldSha").asText(null);
+    releaseRequests.onBranchMoved(repoId, branch, isBlank(oldSha) ? null : oldSha, sha);
     if (releaseRequests.isMainBranch(repoId, branch)) {
       // A push to main may carry released tags onto it; each one it contains leaves the implicit
       // source set. The new head is the question — never the parents, which say nothing of lineage.

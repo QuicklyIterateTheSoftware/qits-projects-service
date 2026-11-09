@@ -2081,11 +2081,27 @@ public class ReleaseRequests {
    * automation commit's only parent is the fold it was made on, and that fold carries the source
    * that left: kept as a source, the branch would fold it straight back in. The refold that follows
    * re-runs the pre-run, which regenerates from the new fold.
+   *
+   * <p>A push that rewrote a person's source (qits-1971) drops too, but only the automation
+   * branches whose heads carry the rewritten-away tip: {@code which} narrows the drop by branch
+   * name ({@link #dropAutomationSourcesCarrying}). A source that left, or was deleted, drops them
+   * all.
    */
   private List<String> dropAutomationSources(ReleaseRequest row) {
+    return dropAutomationSources(row, name -> true);
+  }
+
+  /**
+   * {@link #dropAutomationSources(ReleaseRequest)}, narrowed to the automation branches {@code
+   * which} accepts.
+   */
+  private List<String> dropAutomationSources(
+      ReleaseRequest row, java.util.function.Predicate<String> which) {
     List<String> dropped = new ArrayList<>();
     for (ReleaseRequestSource other : sources.listByRequest(row.id)) {
-      if (other.kind == ReleaseRequestSource.Kind.BRANCH && isAutomationBranch(other.name)) {
+      if (other.kind == ReleaseRequestSource.Kind.BRANCH
+          && isAutomationBranch(other.name)
+          && which.test(other.name)) {
         dropped.add(other.name);
         sources.delete(other);
       }
@@ -3797,8 +3813,21 @@ public class ReleaseRequests {
    * ({@link #deferAutomationRefold}). Any other branch — a ticket's, an epic's, {@code main} —
    * re-folds at once whatever the request is doing, and that fold pays what was owed, since it reads
    * the automation branch's head too.
+   *
+   * <p><b>A push that rewrote a person's branch takes the automation branches carrying its old tip
+   * with it</b> (qits-1971). An automation commit is parented on the fold it was made on, so its
+   * branch contains every source tip of that fold; after a force-push or a rewind the old tip is no
+   * longer in the source, and folding the automation branch would bring the dropped commits back as
+   * the automation's own change. When {@code oldSha} is known, is not all zeros and the git host
+   * answers that {@code sha} does not contain it, every automation source whose head contains
+   * {@code oldSha} is dropped before the refold ({@link #dropAutomationSources}); qits-maintenance
+   * then regenerates from the clean fold. A failed read is logged and read as not rewritten — the
+   * behaviour before qits-1971, never worse.
+   *
+   * @param oldSha the branch's head before the push ({@code SCMPublishCommit.oldSha}); null or blank
+   *     when unknown, which never drops anything
    */
-  public void onBranchMoved(String repoId, String branch, String sha) {
+  public void onBranchMoved(String repoId, String branch, String oldSha, String sha) {
     List<String> affected =
         QuarkusTransaction.requiringNew()
             .call(
@@ -3815,13 +3844,117 @@ public class ReleaseRequests {
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not record that %s of %s was pushed", branch, repoId);
     }
+    boolean rewritten = !affected.isEmpty() && rewrote(repoId, branch, oldSha, sha);
     for (String id : affected) {
       String why = "a push moved " + branch + " to " + shortSha(sha);
       if (isAutomationBranch(branch) && deferAutomationRefold(id, why)) {
         continue;
       }
+      if (rewritten) {
+        List<String> dropped = dropAutomationSourcesCarrying(repoId, id, branch, oldSha);
+        if (!dropped.isEmpty()) {
+          why = "a push rewrote " + branch + " to " + shortSha(sha) + "; dropped " + dropped;
+        }
+      }
       remerge(id, why);
     }
+  }
+
+  /** {@link #onBranchMoved(String, String, String, String)} with the old head unknown. */
+  public void onBranchMoved(String repoId, String branch, String sha) {
+    onBranchMoved(repoId, branch, null, sha);
+  }
+
+  /**
+   * Whether the push of {@code branch} from {@code oldSha} to {@code sha} rewrote it (qits-1971):
+   * true only when the git host answers that {@code sha} does not contain {@code oldSha}. An
+   * automation's own branch, an unknown or all-zero old head (a new branch), a push that did not
+   * move, no git host and a failed read all answer false.
+   */
+  private boolean rewrote(String repoId, String branch, String oldSha, String sha) {
+    if (isAutomationBranch(branch)
+        || oldSha == null
+        || oldSha.isBlank()
+        || oldSha.chars().allMatch(c -> c == '0')
+        || oldSha.equals(sha)
+        || !gitHosts.isResolvable()) {
+      return false;
+    }
+    ReleaseGitHost.Answer<Boolean> answer;
+    try {
+      answer = gitHosts.get().contains(repoId, oldSha, sha);
+    } catch (RuntimeException e) {
+      answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+    }
+    if (!answer.ok() || answer.value() == null) {
+      LOG.warnf(
+          "Whether the push of %s of %s to %s contains its old head %s could not be read; read as"
+              + " a fast-forward: %s",
+          branch, repoId, shortSha(sha), shortSha(oldSha), answer.detail());
+      return false;
+    }
+    return !answer.value();
+  }
+
+  /**
+   * The rewrite case of qits-1764's drop (qits-1971): the automation sources of request {@code id}
+   * whose heads contain {@code oldSha}, the tip a push just rewrote {@code branch} away from, are
+   * deleted, and their names answered. The git host is asked outside any transaction; an automation
+   * head that does not contain the old tip, or whose containment cannot be read, stays.
+   */
+  private List<String> dropAutomationSourcesCarrying(
+      String repoId, String id, String branch, String oldSha) {
+    List<String> automations =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    sources.listByRequest(id).stream()
+                        .filter(
+                            source ->
+                                source.kind == ReleaseRequestSource.Kind.BRANCH
+                                    && isAutomationBranch(source.name))
+                        .map(source -> source.name)
+                        .toList());
+    Set<String> carrying = new LinkedHashSet<>();
+    ReleaseGitHost gitHost = gitHosts.get();
+    for (String automation : automations) {
+      ReleaseGitHost.Answer<Boolean> answer;
+      try {
+        answer = gitHost.contains(repoId, oldSha, "refs/heads/" + automation);
+      } catch (RuntimeException e) {
+        answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+      }
+      if (!answer.ok() || answer.value() == null) {
+        LOG.warnf(
+            "Whether %s of %s carries %s, the old head of the rewritten %s, could not be read; it"
+                + " stays: %s",
+            automation, repoId, shortSha(oldSha), branch, answer.detail());
+      } else if (answer.value()) {
+        carrying.add(automation);
+      }
+    }
+    if (carrying.isEmpty()) {
+      return List.of();
+    }
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                requests
+                    .findByIdOptional(id)
+                    .filter(row -> ReleaseRequestRepository.UNRELEASED.contains(row.state))
+                    .map(
+                        row -> {
+                          List<String> dropped = dropAutomationSources(row, carrying::contains);
+                          if (!dropped.isEmpty()) {
+                            row.updatedAt = Instant.now();
+                            LOG.infof(
+                                "Release request %s: a push rewrote %s away from %s; automation"
+                                    + " branches dropped: %s",
+                                row.qualifiedId, branch, shortSha(oldSha), dropped);
+                          }
+                          return dropped;
+                        })
+                    .orElse(List.of()));
   }
 
   /**
