@@ -1786,8 +1786,9 @@ started four release builds for one change. Now:
   (qits-1971): `ReleaseRequestHeadListener` passes `SCMPublishCommit.oldSha` to `onBranchMoved`,
   which asks the git host whether the new head contains it (unknown, all-zero or unchanged
   `oldSha`, and a failed read, are a fast-forward); on a rewrite only the automation branches whose
-  heads contain `oldSha` drop, outside any long transaction for the reads, and the refold's
-  `detail` reads `a push rewrote <branch> to <sha>; dropped [...]`.
+  heads contain `oldSha` drop, outside any long transaction for the reads. The refold's reason
+  (`a push rewrote <branch> to <sha>; dropped [...]`) shows only briefly in `detail`, which the next
+  evaluation overwrites; the INFO line `a push rewrote <branch> away from <old>` is the lasting trace.
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
