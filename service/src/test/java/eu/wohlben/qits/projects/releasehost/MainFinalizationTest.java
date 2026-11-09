@@ -195,6 +195,55 @@ public class MainFinalizationTest {
   }
 
   // -----------------------------------------------------------------------------------------------
+  // Variant deployments (qits-1985)
+  // -----------------------------------------------------------------------------------------------
+
+  @Test
+  public void aNullVariantIsTheReleasesOwnDeploymentAndMergesAsBefore() {
+    String tag = freshTag();
+    QuarkusTransaction.requiringNew().run(() -> pendingTag(tag));
+
+    deploymentActive("publisher", tag, "dev", null);
+
+    assertEquals(
+        1,
+        merger.foldsOf("refs/heads/main").size(),
+        "no variant on the payload at all reads exactly as before");
+    assertNotNull(rowOf(tag).mergedAt);
+  }
+
+  @Test
+  public void aBlankVariantIsTheReleasesOwnDeploymentAndMergesAsBefore() {
+    String tag = freshTag();
+    QuarkusTransaction.requiringNew().run(() -> pendingTag(tag));
+
+    deploymentActive("publisher", tag, "dev", "   ");
+
+    assertEquals(
+        1,
+        merger.foldsOf("refs/heads/main").size(),
+        "a blank variant is unchanged behaviour, like a null one");
+    assertNotNull(rowOf(tag).mergedAt);
+  }
+
+  @Test
+  public void aNamedVariantGoingActiveNeverFinalizesTheReleasesOwnTag() {
+    String tag = freshTag();
+    QuarkusTransaction.requiringNew().run(() -> pendingTag(tag));
+
+    deploymentActive("publisher", tag, "dev", "private");
+
+    assertEquals(
+        List.of(),
+        merger.foldsOf("refs/heads/main"),
+        "qits-publisher-private going live is not the release's own main deployment going live");
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNull(row.mergedAt);
+    assertNull(row.mergeRequestedAt);
+    assertNull(row.deploymentActiveAt, "the variant's own activeness is not this tag's");
+  }
+
+  // -----------------------------------------------------------------------------------------------
   // Failure
   // -----------------------------------------------------------------------------------------------
 
@@ -436,6 +485,11 @@ public class MainFinalizationTest {
   }
 
   private void deploymentActive(String application, String version, String environment) {
+    deploymentActive(application, version, environment, null);
+  }
+
+  private void deploymentActive(
+      String application, String version, String environment, String variant) {
     deployments.onFrame(
         frame(
             "{\"deploymentId\":\""
@@ -450,7 +504,9 @@ public class MainFinalizationTest {
                 + version
                 + "\",\"commitSha\":\""
                 + RecordingBackingBranchMerger.freshSha()
-                + "\"}"));
+                + "\""
+                + (variant == null ? "" : ",\"variant\":\"" + variant + "\"")
+                + "}"));
   }
 
   private static EventFrame frame(String payload) {
