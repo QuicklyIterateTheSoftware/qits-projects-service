@@ -54,7 +54,10 @@ public class DeploymentFailedListener implements QitsDurableEventListener {
    * fields are ignored. {@code version} is the correlation, as on {@link
    * DeploymentActiveListener.DeploymentActivePayload}; {@code status} is the deployer's terminal
    * word ({@code ROLLED_BACK}, {@code FAILED}, {@code IMAGE_MISSING}) and {@code detail} its own
-   * diagnosis, nullable and never parsed — only its first line is kept.
+   * diagnosis, nullable and never parsed — only its first line is kept. {@code variant}
+   * (qits-1985) is {@link DeploymentActiveListener.DeploymentActivePayload}'s, and {@link
+   * #onFrame} skips a non-blank one the same way, for the same reason: a failing variant must
+   * never fail a release whose main deployment is healthy.
    *
    * <p>Public so {@code bus/EventWireReflection} and the wire test can name it.
    */
@@ -67,7 +70,8 @@ public class DeploymentFailedListener implements QitsDurableEventListener {
       String commitSha,
       String runId,
       String status,
-      String detail) {}
+      String detail,
+      String variant) {}
 
   @Inject ReleaseFinalization finalization;
 
@@ -92,6 +96,12 @@ public class DeploymentFailedListener implements QitsDurableEventListener {
       LOG.warnf(
           "%s %s carries no version, so no released tag can be marked failed for %s; it is skipped",
           frame.name(), frame.id(), deployment.applicationName());
+      return;
+    }
+    if (!isBlank(deployment.variant())) {
+      LOG.debugf(
+          "variant %s of %s@%s: not a release's own deployment, finalization skips it",
+          deployment.variant(), deployment.applicationName(), deployment.version());
       return;
     }
     finalization.onDeploymentFailed(

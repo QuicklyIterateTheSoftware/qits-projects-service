@@ -228,6 +228,44 @@ public class DeploymentRollbackTest {
   }
 
   // -----------------------------------------------------------------------------------------------
+  // Variant deployments (qits-1985)
+  // -----------------------------------------------------------------------------------------------
+
+  @Test
+  public void aNullVariantFailureIsTheReleasesOwnAndRecordsAsBefore() {
+    String tag = releaseOf("work-a");
+
+    deploymentFailed(tag, "ROLLED_BACK", "no suitable node", null);
+
+    assertNotNull(rowOf(tag).deploymentFailedAt, "no variant on the payload reads exactly as before");
+  }
+
+  @Test
+  public void aBlankVariantFailureIsTheReleasesOwnAndRecordsAsBefore() {
+    String tag = releaseOf("work-a");
+
+    deploymentFailed(tag, "ROLLED_BACK", "no suitable node", "   ");
+
+    assertNotNull(rowOf(tag).deploymentFailedAt, "a blank variant is unchanged behaviour");
+  }
+
+  @Test
+  public void aNamedVariantFailureNeverFailsTheReleasesOwnTag() {
+    String tag = releaseOf("work-a");
+    String request = firstRequest();
+
+    deploymentFailed(tag, "ROLLED_BACK", "no suitable node", "private");
+
+    assertNull(
+        rowOf(tag).deploymentFailedAt,
+        "qits-rollback-private rolling back is not the release's own main deployment failing");
+    assertEquals(
+        "PENDING",
+        listed(request).getString(GATE + ".state"),
+        "the gate still just waits to go live");
+  }
+
+  // -----------------------------------------------------------------------------------------------
   // The fixture — ReleaseSupersessionTest's, trimmed
   // -----------------------------------------------------------------------------------------------
 
@@ -248,6 +286,10 @@ public class DeploymentRollbackTest {
   }
 
   private void deploymentFailed(String version, String status, String detail) {
+    deploymentFailed(version, status, detail, null);
+  }
+
+  private void deploymentFailed(String version, String status, String detail, String variant) {
     failures.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -261,7 +303,9 @@ public class DeploymentRollbackTest {
                 + status
                 + "\",\"detail\":\""
                 + detail
-                + "\"}",
+                + "\""
+                + (variant == null ? "" : ",\"variant\":\"" + variant + "\"")
+                + "}",
             null,
             null,
             null));

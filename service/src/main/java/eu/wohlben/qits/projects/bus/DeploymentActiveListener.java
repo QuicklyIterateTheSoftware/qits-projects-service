@@ -86,6 +86,14 @@ public class DeploymentActiveListener implements QitsDurableEventListener {
    * {@code QitsEvent}'s own accessor, which the canonical mix-in keeps out of every payload, and the
    * second is read off the frame where it is ever needed.
    *
+   * <p>{@code variant} (qits-1985) is null for a repository's main deployment and a name like
+   * {@code "private"} for a second application the same release deploys beside it (e.g. {@code
+   * qits-edge-private} beside {@code qits-edge}), both carrying the same {@code version}. {@link
+   * #onFrame} skips a non-blank one before calling {@link ReleaseFinalization}: {@code correlate}
+   * matches on version alone when one released row is open, so a variant going live must never be
+   * read as the release's own deployment going live, and a variant failing must never fail a
+   * release whose main deployment is healthy.
+   *
    * <p>Public so {@code bus/EventWireReflection} and the wire test can name it.
    */
   public record DeploymentActivePayload(
@@ -94,7 +102,8 @@ public class DeploymentActiveListener implements QitsDurableEventListener {
       String environmentId,
       String environmentName,
       String version,
-      String commitSha) {}
+      String commitSha,
+      String variant) {}
 
   @Inject ReleaseFinalization finalization;
 
@@ -123,6 +132,12 @@ public class DeploymentActiveListener implements QitsDurableEventListener {
       LOG.warnf(
           "%s %s carries no version, so no released tag can be finalized for %s; it is skipped",
           frame.name(), frame.id(), deployment.applicationName());
+      return;
+    }
+    if (!isBlank(deployment.variant())) {
+      LOG.debugf(
+          "variant %s of %s@%s: not a release's own deployment, finalization skips it",
+          deployment.variant(), deployment.applicationName(), deployment.version());
       return;
     }
     finalization.onDeploymentActive(
