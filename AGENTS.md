@@ -1782,6 +1782,18 @@ started four release builds for one change. Now:
   owing it; the re-fold that lands re-arms it. The pre-run's note is not touched meanwhile (a FRESH
   note is never re-read once QA is announced), and a note that stops reading passed ends the
   flight, so the sweep re-folds.
+- **Automation branches leave with the work they carry** (`dropAutomationSources`). An automation
+  commit is parented on the fold it was made on, so its branch holds every source tip of that fold
+  and folding it again would bring back work the request no longer names. They are dropped as
+  sources (qits-maintenance's recut/sweep then handles the branch, and the pre-run regenerates
+  from the new fold) when a person's source moves out (`moveSource`) or is deleted
+  (`onBranchDeleted`) — all of them (qits-1764) — and when a push **rewrote** a person's source
+  (qits-1971): `ReleaseRequestHeadListener` passes `SCMPublishCommit.oldSha` to `onBranchMoved`,
+  which asks the git host whether the new head contains it (unknown, all-zero or unchanged
+  `oldSha`, and a failed read, are a fast-forward); on a rewrite only the automation branches whose
+  heads contain `oldSha` drop, outside any long transaction for the reads. The refold's reason
+  (`a push rewrote <branch> to <sha>; dropped [...]`) shows only briefly in `detail`, which the next
+  evaluation overwrites; the INFO line `a push rewrote <branch> away from <old>` is the lasting trace.
 - **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
   side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
   that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a

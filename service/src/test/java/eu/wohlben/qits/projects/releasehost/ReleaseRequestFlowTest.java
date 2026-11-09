@@ -1271,6 +1271,155 @@ public class ReleaseRequestFlowTest {
     assertEquals(List.of("main", "work", "other"), sourceNames(id));
   }
 
+  /**
+   * {@code SCMPublishCommit} as the git host announces it, {@code oldSha} included — what lets the
+   * listener tell a rewrite from a fast-forward (qits-1971).
+   */
+  private void headMoved(String branch, String oldSha, String sha) {
+    headListener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "SCMPublishCommit",
+            Instant.now(),
+            "{\"branch\":\"" + branch + "\",\"repoId\":\"" + repoId + "\",\"oldSha\":\""
+                + oldSha + "\",\"sha\":\"" + sha + "\"}",
+            null,
+            null,
+            null));
+  }
+
+  /** A request carrying {@code work}, {@code other} and one automation branch, folded once. */
+  private String requestWithAnAutomationBranch() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("work");
+    assertEquals(id, create("other"), "the premise: one request carries both");
+    releaseRequests.addSource(id, automationOf(id), "dev-qits-maintenance", null);
+    assertTrue(
+        merger.lastFold().sources().contains("refs/heads/" + automationOf(id)),
+        "the premise: the automation branch folds: " + merger.lastFold());
+    merger.reset();
+    return id;
+  }
+
+  private static String automationOf(String id) {
+    return "maintenance/automations/dependency-bump/" + id;
+  }
+
+  /**
+   * qits-1971: a push that rewrote a person's source (its new head does not contain the old one)
+   * drops the automation branch whose head carries the old tip. The automation commit sits on the
+   * old fold, so folding it would bring the rewritten-away commits back as its own change.
+   */
+  @Test
+  public void aRewrittenSourceDropsTheAutomationBranchCarryingItsOldTip() {
+    String id = requestWithAnAutomationBranch();
+    String oldTip = sha();
+    String rewritten = sha();
+    // Nothing staged between the two heads: the git host answers that rewritten lacks oldTip.
+    gitHost.containsCommit(repoId, oldTip, "refs/heads/" + automationOf(id));
+
+    List<String> logged = capturingInfo(() -> headMoved("other", oldTip, rewritten));
+
+    assertEquals("PENDING", stateOf(id));
+    assertEquals(List.of("main", "work", "other"), sourceNames(id), "the automation branch went");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(BackingBranches.ref(id));
+    assertEquals(1, folds.size(), "the push folds the request again: " + folds);
+    assertEquals(
+        List.of("refs/heads/main", "refs/heads/work", "refs/heads/other"),
+        folds.get(0).sources(),
+        "the refold folds only the remaining sources");
+    // The refold's own sentence ("a push rewrote other to <sha>; dropped [...]") is the request's
+    // detail only until the evaluation that follows replaces it, so the drop is read off its log.
+    assertTrue(
+        logged.stream()
+            .anyMatch(
+                line ->
+                    line.contains("a push rewrote other away from " + oldTip.substring(0, 10))
+                        && line.contains("automation branches dropped: [" + automationOf(id) + "]")),
+        "the drop names the rewrite: " + logged);
+  }
+
+  /** The INFO lines {@link ReleaseRequests} logs while {@code action} runs. */
+  private static List<String> capturingInfo(Runnable action) {
+    java.util.logging.Logger logger =
+        java.util.logging.Logger.getLogger(ReleaseRequests.class.getName());
+    List<String> lines = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    java.util.logging.Handler handler =
+        new java.util.logging.Handler() {
+          @Override
+          public void publish(java.util.logging.LogRecord record) {
+            lines.add(
+                record instanceof org.jboss.logmanager.ExtLogRecord ext
+                    ? ext.getFormattedMessage()
+                    : record.getMessage());
+          }
+
+          @Override
+          public void flush() {}
+
+          @Override
+          public void close() {}
+        };
+    logger.addHandler(handler);
+    try {
+      action.run();
+    } finally {
+      logger.removeHandler(handler);
+    }
+    return List.copyOf(lines);
+  }
+
+  /** A fast-forward push keeps the automation branch, whatever it carries. */
+  @Test
+  public void aFastForwardPushKeepsTheAutomationBranch() {
+    String id = requestWithAnAutomationBranch();
+    String oldTip = sha();
+    String ahead = sha();
+    gitHost.containsCommit(repoId, oldTip, ahead);
+    gitHost.containsCommit(repoId, oldTip, "refs/heads/" + automationOf(id));
+
+    headMoved("other", oldTip, ahead);
+
+    assertEquals(List.of("main", "work", "other", automationOf(id)), sourceNames(id));
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(BackingBranches.ref(id));
+    assertEquals(1, folds.size(), folds.toString());
+    assertTrue(
+        folds.get(0).sources().contains("refs/heads/" + automationOf(id)), folds.toString());
+  }
+
+  /** A rewrite keeps an automation branch whose head does not carry the old tip. */
+  @Test
+  public void aRewriteKeepsAnAutomationBranchThatLacksTheOldTip() {
+    String id = requestWithAnAutomationBranch();
+    String oldTip = sha();
+    String rewritten = sha();
+    // Neither containment is staged: a rewrite, and an automation head without the old tip.
+
+    headMoved("other", oldTip, rewritten);
+
+    assertEquals(List.of("main", "work", "other", automationOf(id)), sourceNames(id));
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(BackingBranches.ref(id));
+    assertEquals(1, folds.size(), folds.toString());
+    assertTrue(
+        folds.get(0).sources().contains("refs/heads/" + automationOf(id)), folds.toString());
+  }
+
+  /** A push whose event names no {@code oldSha} cannot be told a rewrite: nothing is dropped. */
+  @Test
+  public void aPushWithoutAnOldShaKeepsTheAutomationBranch() {
+    String id = requestWithAnAutomationBranch();
+    String oldTip = sha();
+    gitHost.containsCommit(repoId, oldTip, "refs/heads/" + automationOf(id));
+
+    headMoved("other", sha());
+
+    assertEquals(List.of("main", "work", "other", automationOf(id)), sourceNames(id));
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(BackingBranches.ref(id));
+    assertEquals(1, folds.size(), folds.toString());
+    assertTrue(
+        folds.get(0).sources().contains("refs/heads/" + automationOf(id)), folds.toString());
+  }
+
   private List<String> sourceNames(String id) {
     return releaseRequests.get(id).sources().stream()
         .filter(source -> !source.implicit())
