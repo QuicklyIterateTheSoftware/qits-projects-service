@@ -13,10 +13,12 @@ import eu.wohlben.qits.projects.control.gate.ApprovalGate;
 import eu.wohlben.qits.projects.control.gate.ReleaseGate;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
 import eu.wohlben.qits.projects.dto.ReleaseQualityGateDto;
+import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.persistence.BranchDeliveryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -45,7 +47,12 @@ import org.jboss.logging.Logger;
  *       VERIFIED or DONE — VERIFYING since qits-1560, so a verify-phase request (a probe, its
  *       restore, a fix found in verification) can ship. On the wrapper, IMPLEMENTING or later
  *       since qits-1661: an item's agent files wrapper requests as steps of its work and waits for
- *       them, so waiting for VERIFIED deadlocks. It governs the wrapper and every {@code
+ *       them, so waiting for VERIFIED deadlocks. Off the wrapper, since qits-1969, an IMPLEMENTING
+ *       or IMPLEMENTED item is admitted too once its branch is LIVE everywhere else: every row
+ *       {@link BranchDeliveryRepository#stepsOf} counts, but the request's own repository's, is
+ *       LIVE, or there is none (a ticket whose only deliverable is a skill). The same deadlock
+ *       otherwise: an agent ships a skill or memory to {@code qits-agent-config} and waits for it
+ *       to go LIVE, while the desk waited for VERIFYING. It governs the wrapper and every {@code
  *       manual-review: true} repository, such as {@code qits-agent-config}. It also answers a
  *       desk-admitted {@code no-changes} (qits-1568), which adds one more condition: at least one
  *       branch source other than main and {@code maintenance/*} names a work item of the request's
@@ -77,7 +84,8 @@ import org.jboss.logging.Logger;
  * qualifying role is {@code desk} files an issue for the owner instead.
  *
  * <p>Domain-only: the gate answers are the request's own read, handed in by {@link
- * ReleaseRequests}, and the work items come through the {@link BranchWorkItems} port.
+ * ReleaseRequests}, the work items come through the {@link BranchWorkItems} port, and where a
+ * branch stands elsewhere is the branch-delivery ledger's ({@link BranchDeliveryRepository}).
  */
 @ApplicationScoped
 public class DeskApprovalPolicy {
@@ -116,10 +124,17 @@ public class DeskApprovalPolicy {
   /**
    * The statuses a named work item must stand at under {@link #MANUAL_REVIEW_RULE} off the wrapper
    * (on the wrapper, {@link #IN_FLIGHT} since qits-1661): VERIFYING too
-   * since qits-1560, because a verify probe ships from an item under verification. The rule keeps
-   * its id, which recorded notes name.
+   * since qits-1560, because a verify probe ships from an item under verification. An item at
+   * {@link #LIVE_ELSEWHERE} is admitted as well once its branch is LIVE in every other counted
+   * repository (qits-1969). The rule keeps its id, which recorded notes name.
    */
   static final Set<String> SHIPPABLE = Set.of("VERIFYING", "VERIFIED", "DONE");
+
+  /**
+   * The statuses a named work item may stand at under {@link #MANUAL_REVIEW_RULE} off the wrapper
+   * once its branch is LIVE everywhere but the request's own repository (qits-1969).
+   */
+  static final Set<String> LIVE_ELSEWHERE = Set.of("IMPLEMENTING", "IMPLEMENTED");
 
   /** The statuses a work item of a member request may stand at under {@link #MEMBER_CI_GREEN_RULE}. */
   static final List<String> IN_FLIGHT =
@@ -130,6 +145,8 @@ public class DeskApprovalPolicy {
   @Inject ReleaseGateEvaluator gateEvaluator;
 
   @Inject Instance<BranchWorkItems> workItems;
+
+  @Inject BranchDeliveryRepository deliveries;
 
   /**
    * The rule {@code approver} approves under, or empty where it does not approve as the desk: it
@@ -251,14 +268,36 @@ public class DeskApprovalPolicy {
       // deadlocks with the item's agent, which waits for the request.
       named =
           requireWorkAt(
-              rule, row, sources, mainBranch, Set.copyOf(IN_FLIGHT), String.join(", ", IN_FLIGHT));
+              rule,
+              row,
+              sources,
+              mainBranch,
+              Set.copyOf(IN_FLIGHT),
+              String.join(", ", IN_FLIGHT),
+              false);
     } else if (MANUAL_REVIEW_RULE.equals(rule)) {
+      // qits-1969: an IMPLEMENTING or IMPLEMENTED item ships here once its branch is LIVE in every
+      // other repository; waiting for VERIFYING deadlocks with the agent waiting for this LIVE.
       named =
-          requireWorkAt(rule, row, sources, mainBranch, SHIPPABLE, "VERIFYING, VERIFIED or DONE");
+          requireWorkAt(
+              rule,
+              row,
+              sources,
+              mainBranch,
+              SHIPPABLE,
+              "VERIFYING, VERIFIED or DONE (IMPLEMENTING or IMPLEMENTED once the branch is LIVE"
+                  + " in every other repository)",
+              true);
     } else if (MEMBER_CI_GREEN_RULE.equals(rule)) {
       named =
           requireWorkAt(
-              rule, row, sources, mainBranch, Set.copyOf(IN_FLIGHT), String.join(", ", IN_FLIGHT));
+              rule,
+              row,
+              sources,
+              mainBranch,
+              Set.copyOf(IN_FLIGHT),
+              String.join(", ", IN_FLIGHT),
+              false);
     }
     if (named == 0 && concerned != null && admitsDesk(concerned, NO_CHANGES)) {
       throw refused(
@@ -272,7 +311,9 @@ public class DeskApprovalPolicy {
 
   /**
    * Every branch source but main is {@code maintenance/*} or names a work item of the request's
-   * project standing at one of {@code statuses} ({@code said} is how the refusal names them).
+   * project standing at one of {@code statuses} ({@code said} is how the refusal names them) — or,
+   * where {@code liveElsewhere}, at one of {@link #LIVE_ELSEWHERE} with its branch LIVE in every
+   * other counted repository ({@link #heldBackBy}, qits-1969).
    *
    * @return how many branch sources name such a work item
    */
@@ -282,7 +323,8 @@ public class DeskApprovalPolicy {
       List<ReleaseRequestSource> sources,
       String mainBranch,
       Set<String> statuses,
-      String said) {
+      String said,
+      boolean liveElsewhere) {
     int named = 0;
     for (ReleaseRequestSource source : sources == null ? List.<ReleaseRequestSource>of() : sources) {
       if (source.kind != ReleaseRequestSource.Kind.BRANCH || source.name == null) {
@@ -302,7 +344,28 @@ public class DeskApprovalPolicy {
                 + " names no work item of this project, and the desk approves only maintenance/*"
                 + " and ticket/, epic/ or task/<qualified id> branches");
       }
-      if (!statuses.contains(item.get().status())) {
+      String status = item.get().status();
+      if (!statuses.contains(status) && liveElsewhere && LIVE_ELSEWHERE.contains(status)) {
+        Optional<BranchDeliveryRepository.Standing> held = heldBackBy(row, branch);
+        if (held.isPresent()) {
+          throw refused(
+              rule,
+              row,
+              "work item "
+                  + item.get().qualifiedId()
+                  + " (branch "
+                  + branch
+                  + ") is "
+                  + status
+                  + " and "
+                  + branch
+                  + " is not LIVE in "
+                  + held.get().repoName()
+                  + " ("
+                  + held.get().step()
+                  + "), not VERIFYING, VERIFIED or DONE");
+        }
+      } else if (!statuses.contains(status)) {
         throw refused(
             rule,
             row,
@@ -318,6 +381,29 @@ public class DeskApprovalPolicy {
       named++;
     }
     return named;
+  }
+
+  /**
+   * The first repository, by name, whose counted row holds {@code branch} short of LIVE — the rows
+   * {@link BranchDeliveryRepository#stepsOf} counts, but the request's own repository's — or empty
+   * where {@link BranchDeliveries#everywhere} over them is LIVE or null (no other row counts).
+   */
+  private Optional<BranchDeliveryRepository.Standing> heldBackBy(ReleaseRequest row, String branch) {
+    List<BranchDeliveryRepository.Standing> standings =
+        deliveries.standingsExcept(row.projectId, branch, row.repoId);
+    String everywhere =
+        BranchDeliveries.everywhere(
+            standings.stream().map(BranchDeliveryRepository.Standing::step).toList());
+    if (everywhere == null || BranchDelivery.Step.LIVE.name().equals(everywhere)) {
+      return Optional.empty();
+    }
+    return standings.stream()
+        .filter(
+            standing ->
+                !BranchDelivery.Step.LIVE
+                    .name()
+                    .equals(BranchDeliveries.everywhere(List.of(standing.step()))))
+        .findFirst();
   }
 
   private Optional<BranchWorkItems.WorkItem> workItemOf(String branch) {

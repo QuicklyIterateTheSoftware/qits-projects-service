@@ -187,6 +187,34 @@ public class BranchDeliveryRepository
         .getResultList();
   }
 
+  /** One counted row of a branch: the repository it stands in, by name, and its step. */
+  public record Standing(String repoName, String step) {}
+
+  /**
+   * The rows {@link #stepsOf} counts for {@code branch} in {@code projectId}, but for the one in
+   * {@code exceptRepoId}, by repository name (qits-1969): where else the branch stands. The delivery
+   * desk asks it of a {@code manual-review} request's IMPLEMENTING or IMPLEMENTED item, whose
+   * branch must be LIVE everywhere else; the request's own repository is left out, because its row
+   * is the request being approved.
+   */
+  public List<Standing> standingsExcept(String projectId, String branch, String exceptRepoId) {
+    List<?> rows =
+        em().createNativeQuery(
+                "select d.repo_name, d.step from branch_delivery d"
+                    + " where d.project_id = ?1 and d.branch = ?2 and d.repo_id <> ?3"
+                    + " and not exists (select 1 from Repository r where r.id = d.repo_id"
+                    + " and r.archetype = 'AGENT_CONFIG') and d.step <> 'WITHDRAWN'"
+                    + " order by d.repo_name, d.repo_id")
+            .setParameter(1, projectId)
+            .setParameter(2, branch)
+            .setParameter(3, exceptRepoId)
+            .getResultList();
+    return rows.stream()
+        .map(Object[].class::cast)
+        .map(row -> new Standing((String) row[0], (String) row[1]))
+        .toList();
+  }
+
   /** The rows a request released and that still name it: what its finalization makes LIVE. */
   public List<Released> releasedBy(String requestId) {
     return atStep(requestId, "RELEASED");

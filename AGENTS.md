@@ -1609,7 +1609,12 @@ approval's roles. The display path stores the content requirements as JSON objec
   (`control/approval/BranchWorkItems` → `entitieshost/EntityBranchWorkItems`) whose item is
   VERIFYING, VERIFIED or DONE (VERIFYING since qits-1560, so a verify probe ships; the rule keeps
   its id) — on the wrapper IMPLEMENTING or later (qits-1661: an agent files wrapper requests as
-  steps of its work and waits for them, so waiting for VERIFIED deadlocks); for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
+  steps of its work and waits for them, so waiting for VERIFIED deadlocks); off the wrapper an
+  IMPLEMENTING or IMPLEMENTED item is admitted too once its branch is LIVE everywhere else (qits-1969:
+  every row `BranchDeliveryRepository.stepsOf` counts but the request's own repository's is LIVE, or
+  none is — `standingsExcept`, ranked by `BranchDeliveries.everywhere`; an agent shipping a skill to
+  `qits-agent-config` waits for it to go LIVE, so waiting for VERIFYING deadlocked), the refusal
+  naming the first repository and step that holds it back; for a desk-admitted `no-changes` (qits-1568) at least one such branch names a work item
   too — a main-only or maintenance/*-only request that adds nothing has no work to resolve and stays
   the owner's (qits-maintenance's `BumpDispatcher.openMainOnly` holds `no-changes` transiently until
   its pre-run commits the branch); and for an admitted `automation:*`/`contract:*`

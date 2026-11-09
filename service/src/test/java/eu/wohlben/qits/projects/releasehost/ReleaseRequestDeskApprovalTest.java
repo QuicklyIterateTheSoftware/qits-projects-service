@@ -13,6 +13,7 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.contracts.ContractBearers;
+import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.control.AutomationKinds;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -48,7 +49,8 @@ import org.junit.jupiter.api.Test;
  * front_desk.delivery.approves} lists admits {@code desk}; and the approve door then holds the desk
  * to the owner's rule — its own project, every gate before approval passed, and for {@code
  * manual-review} only work-item branches whose items are VERIFYING (qits-1560), VERIFIED or DONE
- * (on the wrapper IMPLEMENTING or later, qits-1661);
+ * (on the wrapper IMPLEMENTING or later, qits-1661; elsewhere IMPLEMENTING or IMPLEMENTED too
+ * once the branch is LIVE in every other repository, qits-1969);
  * for an {@code automation:*} or {@code contract:*} hold (qits-1517, rule {@code member-ci-green}),
  * and a {@code config-directory} one (qits-1560), a member repository, never the wrapper, whose work
  * items are IMPLEMENTING or later; for a listed {@code no-changes} (qits-1568) the {@code
@@ -101,6 +103,8 @@ public class ReleaseRequestDeskApprovalTest {
   private String declarationRepoId;
   private String configRepoId;
   private String memberRepoId;
+  private String agentConfigRepoId;
+  private String reviewRepoId;
   private WorkEntity ticket;
   private String ticketBranch;
   private final List<String> requestIds = new ArrayList<>();
@@ -124,6 +128,8 @@ public class ReleaseRequestDeskApprovalTest {
     declarationRepoId = "desk-declaration-" + UUID.randomUUID();
     configRepoId = "desk-config-" + UUID.randomUUID();
     memberRepoId = "desk-member-" + UUID.randomUUID();
+    agentConfigRepoId = "desk-agent-config-" + UUID.randomUUID();
+    reviewRepoId = "desk-review-" + UUID.randomUUID();
     // The wrapper says manual-review: true at its main, as the platform's own does.
     gitHost.gatedTreeFor(
         wrapperRepoId,
@@ -140,6 +146,8 @@ public class ReleaseRequestDeskApprovalTest {
               repository(project, declarationRepoId, RepositoryArchetype.SERVICE);
               repository(project, configRepoId, RepositoryArchetype.SERVICE);
               repository(project, memberRepoId, RepositoryArchetype.SERVICE);
+              repository(project, agentConfigRepoId, RepositoryArchetype.AGENT_CONFIG);
+              repository(project, reviewRepoId, RepositoryArchetype.SERVICE);
               repository(other, "desk-other-repo-" + UUID.randomUUID(), RepositoryArchetype.SERVICE);
             });
     // The declaration repository's fold only declares an artifact in release.yml.
@@ -177,8 +185,15 @@ public class ReleaseRequestDeskApprovalTest {
         .run(
             () -> {
               ReleaseRequest.delete("projectId = ?1", projectId);
+              BranchDelivery.delete("projectId = ?1", projectId);
               for (String repoId :
-                  List.of(wrapperRepoId, declarationRepoId, configRepoId, memberRepoId)) {
+                  List.of(
+                      wrapperRepoId,
+                      declarationRepoId,
+                      configRepoId,
+                      memberRepoId,
+                      agentConfigRepoId,
+                      reviewRepoId)) {
                 ReleasedTagPendingMerge.delete("repoId = ?1", repoId);
               }
               if (!requestIds.isEmpty()) {
@@ -395,6 +410,171 @@ public class ReleaseRequestDeskApprovalTest {
             "approvals[0].note",
             equalTo(
                 "delivery desk, rule manual-review-verified: the interval probe the ticket plans"));
+  }
+
+  // ---- manual-review off the wrapper, live elsewhere (qits-1969) --------------------------------
+
+  /**
+   * qits-1969, the deadlock: an IMPLEMENTING item's agent ships a skill to {@code qits-agent-config}
+   * and waits for it to go LIVE. Its branch is LIVE in the service repository, so the desk
+   * approves under the same rule.
+   */
+  @Test
+  void theDeskApprovesAnImplementingAgentConfigRequestOnceTheBranchIsLiveElsewhere() {
+    approves("manual-review");
+    status(ticket, "IMPLEMENTING");
+    delivery("qits-thing-service", "LIVE");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\",\"note\":\"the skill the ticket ships\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+    person("ada")
+        .get(base(agentConfigRepoId) + "/" + id + "/approvals")
+        .then()
+        .statusCode(200)
+        .body("approvals[0].roles", equalTo(List.of("desk")))
+        .body(
+            "approvals[0].note",
+            equalTo("delivery desk, rule manual-review-verified: the skill the ticket ships"));
+  }
+
+  /** qits-1969: not LIVE everywhere else yet — the refusal names the repository and its step. */
+  @Test
+  void anImplementingAgentConfigRequestIsRefusedWhileTheBranchIsJoinedElsewhere() {
+    approves("manual-review");
+    status(ticket, "IMPLEMENTING");
+    delivery("qits-thing-service", "JOINED");
+    delivery("qits-zz-service", "LIVE");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule manual-review-verified"))
+        .body(
+            "message",
+            containsString(
+                "is IMPLEMENTING and "
+                    + ticketBranch
+                    + " is not LIVE in qits-thing-service (JOINED), not VERIFYING, VERIFIED or"
+                    + " DONE"));
+  }
+
+  /** qits-1969: a ticket whose only deliverable is the skill has no other row — the desk approves. */
+  @Test
+  void theDeskApprovesAnImplementingAgentConfigRequestWithNoOtherDelivery() {
+    approves("manual-review");
+    status(ticket, "IMPLEMENTING");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+  }
+
+  /** qits-1969 admits only work in flight: an item not yet started is refused as before. */
+  @Test
+  void anAgentConfigRequestOfAnItemNotStartedIsRefused() {
+    approves("manual-review");
+    status(ticket, "READY_FOR_DEV");
+    delivery("qits-thing-service", "LIVE");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(403)
+        .body("message", containsString("rule manual-review-verified"))
+        .body("message", containsString("is READY_FOR_DEV, not VERIFYING, VERIFIED or DONE"))
+        .body("message", containsString("IMPLEMENTING or IMPLEMENTED once the branch is LIVE"));
+  }
+
+  /** A VERIFYING item is shippable whatever the ledger says, as before qits-1969. */
+  @Test
+  void aVerifyingAgentConfigRequestIsApprovedWhileTheBranchIsJoinedElsewhere() {
+    approves("manual-review");
+    status(ticket, "VERIFYING");
+    delivery("qits-thing-service", "JOINED");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+  }
+
+  /**
+   * qits-1969: a code repository declaring {@code manual-review} is not held back by its own row —
+   * JOINED by the request being approved — only by the other repositories', which are LIVE.
+   */
+  @Test
+  void aManualReviewServiceRequestIsNotHeldBackByItsOwnRow() {
+    approves("manual-review");
+    status(ticket, "IMPLEMENTING");
+    delivery("qits-thing-service", "LIVE");
+    String id = createManualReview(reviewRepoId, ticketBranch);
+    String fold = mergedShaOf(reviewRepoId, id);
+    verdict(reviewRepoId, fold);
+    assertEquals(
+        "JOINED",
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    BranchDelivery.<BranchDelivery>find(
+                            "projectId = ?1 and repoId = ?2 and branch = ?3",
+                            projectId,
+                            reviewRepoId,
+                            ticketBranch)
+                        .firstResult()
+                        .step));
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(reviewRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
+  }
+
+  /** qits-1969: an IMPLEMENTED item whose branch is LIVE everywhere else is admitted too. */
+  @Test
+  void theDeskApprovesAnImplementedAgentConfigRequestOnceTheBranchIsLiveElsewhere() {
+    approves("manual-review");
+    status(ticket, "IMPLEMENTED");
+    delivery("qits-thing-service", "LIVE");
+    delivery("qits-other-service", "LIVE");
+    String id = createManualReview(agentConfigRepoId, ticketBranch);
+    String fold = mergedShaOf(agentConfigRepoId, id);
+    verdict(agentConfigRepoId, fold);
+
+    desk(projectId)
+        .body("{\"mergedSha\":\"" + fold + "\"}")
+        .post(base(agentConfigRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvalState", equalTo("APPROVED"));
   }
 
   // ---- no-changes (qits-1568) -------------------------------------------------------------------
@@ -973,6 +1153,39 @@ public class ReleaseRequestDeskApprovalTest {
     foldChanges.changes(memberRepoId, List.of());
     foldChanges.empty(memberRepoId);
     return create(memberRepoId, branch);
+  }
+
+  /**
+   * A request of {@code repoId}, configured {@code manual-review: true} at its main, whose fold
+   * changes one plain file and so holds nothing else.
+   */
+  private String createManualReview(String repoId, String branch) {
+    gitHost.gatedTreeFor(
+        repoId,
+        "refs/heads/main",
+        Map.of("README.md", "a repo", ".config/qits/release-requests.yml", "manual-review: true\n"));
+    foldChanges.changes(
+        repoId, List.of(RecordingFoldChanges.file("MODIFIED", "skills/thing/SKILL.md", null)));
+    return create(repoId, branch);
+  }
+
+  /** The ticket branch's ledger row in a repository of the project the suite knows no row of. */
+  private void delivery(String repoName, String step) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              BranchDelivery row = new BranchDelivery();
+              row.projectId = projectId;
+              row.repoId = "desk-elsewhere-" + UUID.randomUUID();
+              row.repoName = repoName;
+              row.branch = ticketBranch;
+              row.step = step;
+              row.requestId = UUID.randomUUID().toString();
+              row.qualifiedId = repoName + "-rr-1";
+              row.foldSha = "f01d";
+              row.changedAt = Instant.now();
+              row.persist();
+            });
   }
 
   /** A main-only request: its one source is main, whose tree the seed staged and this keeps. */
