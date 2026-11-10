@@ -532,6 +532,132 @@ public class DeskDispatchTest {
     assertEquals("REPORTED", row(condition).status);
   }
 
+  // ---- a needs hold frees the slot (qits-2053) ------------------------------------------------
+
+  /**
+   * A person's PHASE press at REPORTED puts an agent on {@code id} — the assignee is written — and,
+   * being a PHASE press, pre-approves nothing, so no later move schedules it on its own.
+   */
+  private void assigned(String id) {
+    asAdmin("mallory")
+        .body(Map.of("mode", "PHASE"))
+        .when()
+        .post("/projects/api/work/" + id + "/dispatch")
+        .then()
+        .statusCode(200);
+  }
+
+  /**
+   * An item held at REFINED by an unmet need (qits-1903) cannot run a phase, so it holds no slot:
+   * at cap 1, with its agent still ACTIVE, the desk dispatches the very item it needs — the one
+   * press that can ever release it. The held row is not even sent to qits-workspaces.
+   */
+  @Test
+  public void anItemHeldAtRefinedByAnUnmetNeedDoesNotHoldADeskSlot() {
+    String projectId = createProject("Desk Held Refined");
+    delivery(projectId, true, 1, false);
+    String heldId = createTicket(projectId, "Held by its need");
+    String neededId = createTicket(projectId, "What it needs");
+    assigned(heldId);
+    needs(heldId, neededId, "REFINED");
+    transition(heldId, "REFINED");
+    assertEquals("REFINED", row(heldId).status);
+    dispatch.reset();
+    dispatch.willFind(activeOn(heldId));
+
+    EntityDispatchDto pressed = doors.press(desk(projectId), neededId, "FLOW", RULE);
+
+    assertEquals("refine", pressed.phase());
+    assertEquals(1, dispatch.calls().size());
+    assertTrue(
+        dispatch.lookups().stream().noneMatch(looked -> looked.workIds().contains(heldId)),
+        "a held row is left out before the agent lookup: " + dispatch.lookups());
+  }
+
+  /** The same hold at READY_FOR_DEV: scheduled, but still held by its need, it frees its slot. */
+  @Test
+  public void anItemHeldAtReadyForDevByAnUnmetNeedDoesNotHoldADeskSlot() {
+    String projectId = createProject("Desk Held Ready");
+    delivery(projectId, true, 1, false);
+    String heldId = createTicket(projectId, "Held by its need");
+    String neededId = createTicket(projectId, "What it needs");
+    assigned(heldId);
+    needs(heldId, neededId, "REFINED");
+    transition(heldId, "REFINED");
+    transition(heldId, "READY_FOR_DEV");
+    assertEquals("READY_FOR_DEV", row(heldId).status);
+    dispatch.reset();
+    dispatch.willFind(activeOn(heldId));
+
+    EntityDispatchDto pressed = doors.press(desk(projectId), neededId, "FLOW", RULE);
+
+    assertEquals("refine", pressed.phase());
+    assertEquals(1, dispatch.calls().size());
+  }
+
+  /**
+   * The hold is read now and never latched: once the need is met the item counts again, whatever
+   * status a resume may have moved it to, and the cap refuses the next press naming it.
+   */
+  @Test
+  public void aHeldItemWhoseNeedIsMetHoldsItsSlotAgain() {
+    String projectId = createProject("Desk Held Met");
+    delivery(projectId, true, 1, false);
+    String heldId = createTicket(projectId, "Held by its need");
+    String neededId = createTicket(projectId, "What it needs");
+    String thirdId = createTicket(projectId, "Third in line");
+    assigned(heldId);
+    needs(heldId, neededId, "REFINED");
+    transition(heldId, "REFINED");
+
+    transition(neededId, "REFINED");
+    entityRows.getEntityManager().clear();
+    dispatch.reset();
+    dispatch.willFind(activeOn(heldId));
+
+    DispatchRefused refusal = refused(desk(projectId), thirdId, "FLOW", RULE);
+    assertEquals(409, refusal.statusCode());
+    assertTrue(
+        refusal.getMessage().contains("1 are running: " + qualifiedIdOf(projectId, row(heldId)) + "."),
+        refusal.getMessage());
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
+  /**
+   * A held item beside an ordinary running one: at cap 2 only the running one counts, so the press
+   * goes through; at cap 1 the 409 names the running item and not the held one.
+   */
+  @Test
+  public void aHeldItemBesideARunningOneCountsOnlyTheRunningOne() {
+    String projectId = createProject("Desk Held Beside");
+    delivery(projectId, true, 2, false);
+    String runningId = createTicket(projectId, "Already running");
+    String heldId = createTicket(projectId, "Held by its need");
+    String neededId = createTicket(projectId, "What it needs");
+    String nextId = createTicket(projectId, "Next in line");
+    assigned(runningId);
+    assigned(heldId);
+    needs(heldId, neededId, "VERIFIED");
+    transition(heldId, "REFINED");
+    dispatch.reset();
+    dispatch.willFind(activeOn(runningId), activeOn(heldId));
+
+    doors.press(desk(projectId), nextId, "FLOW", RULE);
+    assertEquals(1, dispatch.calls().size());
+
+    delivery(projectId, true, 1, false);
+    String lastId = createTicket(projectId, "Last in line");
+    dispatch.reset();
+    dispatch.willFind(activeOn(runningId), activeOn(heldId));
+    DispatchRefused refusal = refused(desk(projectId), lastId, "FLOW", RULE);
+    assertEquals(409, refusal.statusCode());
+    String running = qualifiedIdOf(projectId, row(runningId));
+    String held = qualifiedIdOf(projectId, row(heldId));
+    assertTrue(refusal.getMessage().contains("1 are running: " + running + "."), refusal.getMessage());
+    assertFalse(refusal.getMessage().contains(held), refusal.getMessage());
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
   /** What the far side answers when the item's agent is already running: the turn is dropped. */
   private static WorkspaceAgentDispatch.Dispatch skippedRunning() {
     return new WorkspaceAgentDispatch.Dispatch("agent-1", 1L, null, false, "SKIPPED_RUNNING", null);

@@ -2228,7 +2228,10 @@ delivery desk names the rule it dispatches under."), the project's `delivery_ena
 .config/qits/project.yml)."), an issue (409), the project at `delivery_max_running` (409 naming the count, the limit and the running
 qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, not explicitly blocked
 (qits-1569: the row's `blocked` flag only — a derived agent-waiting block keeps its slot, because
-that agent is in-flight work), with an assignee and an ACTIVE agent from
+that agent is in-flight work), not held at REFINED or READY_FOR_DEV by a need not met now (qits-2053:
+the platform refuses to start it, so it is not in-flight work; read through `NeedService.unmet`, not
+`UnmetNeeds.holding`, whose slug read is a second datasource; it counts again once its last need is
+met and `PhaseAdvance.resumeHeld` schedules it, past no cap check), with an assignee and an ACTIVE agent from
 `WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself; an unblocked item takes
 its slot back, so the count may briefly exceed the limit), and REFINED
 while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refined is off."). With

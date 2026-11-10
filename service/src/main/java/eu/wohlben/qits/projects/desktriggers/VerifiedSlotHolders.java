@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * <b>Which of a project's slots finished work holds, and what it waits on</b> (qits-1778). A
  * VERIFIED item keeps its agent ACTIVE until its branches release and the agent goes OBSOLETE —
  * after the wrapper's release — so it keeps its slot in {@link RunningItems} for the whole wrapper
- * cycle. That is right (qits-1569 decides what holds a slot, and this does not change it), but the
+ * cycle. That is right (qits-1569 and qits-2053 decide what holds a slot, and this does not change it), but the
  * desk could not see it: on 2026-10-31 it counted 5 of 5, could not tell that 3 of them were
  * VERIFIED work in one PENDING wrapper request, and dispatched nothing for an hour. This is the one
  * reading of that fact, shared by the Slots section every delivery trigger now ends with ({@link
