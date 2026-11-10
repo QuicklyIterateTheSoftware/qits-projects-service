@@ -1496,6 +1496,25 @@
           }
         },
         {
+          "operationId": "createWork",
+          "method": "POST",
+          "path": "/projects/api/work",
+          "body": {
+            "archetype": "TICKET",
+            "project": "{projectId}",
+            "title": "Faster builds",
+            "ticketType": "IMPROVEMENT"
+          },
+          "status": 400,
+          "file": "a-project-with-ideas/createWork.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getIdea",
           "method": "GET",
           "path": "/projects/api/ideas/{ideaId}",

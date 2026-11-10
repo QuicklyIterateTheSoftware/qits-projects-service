@@ -974,6 +974,18 @@ class GoldenMasterRecordingTest {
                 + "\"title\":\"Export fails for an empty quarter\","
                 + "\"impetus\":\"The CSV export answers 500 when the range holds no invoice.\","
                 + "\"ticketType\":\"BUG\"}"));
+    // A refused create, for the work create page's refusal (qits-2004).
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_IDEAS,
+            "createWork",
+            "POST",
+            "/projects/api/work",
+            400,
+            null,
+            null,
+            "{\"archetype\":\"TICKET\",\"project\":\"{projectId}\","
+                + "\"title\":\"Faster builds\",\"ticketType\":\"IMPROVEMENT\"}"));
     all.add(
         write(
             ProviderStates.A_REPORTED_TICKET,
