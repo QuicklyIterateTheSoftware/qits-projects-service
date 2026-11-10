@@ -394,6 +394,7 @@ public class WorkEntityDoors {
       WorkEntity touched = entities.replaceNeeds(current.archetype(), id, needs, changedBy);
       epicHints.fire(current.projectId());
       ticketHints.fire(current.projectId());
+      resumeIfReleased(id, changedBy);
       return answered(touched, current);
     }
     Nested updated = entities.update(current.archetype(), id, write, changedBy);
@@ -410,7 +411,25 @@ public class WorkEntityDoors {
     // After the write and outside it, as the transition door fires them: its body is retried.
     epicHints.fire(current.projectId());
     ticketHints.fire(current.projectId());
+    if (needs != null) {
+      resumeIfReleased(id, changedBy);
+    }
     return answered(updated.entity(), current);
+  }
+
+  /**
+   * <b>A needs write that leaves none unmet resumes the run they held</b> (qits-2026): after the
+   * write committed and outside it, the row is handed to {@link PhaseAdvance#resumeHeld}, which
+   * re-reads it and its needs and does nothing unless it is a pre-approved FLOW run held at REFINED
+   * — then it schedules it on its pre-approval, as {@code changedBy} where the pre-approval names
+   * nobody, and hands implement on. Never throws: the write is already answered for.
+   */
+  private void resumeIfReleased(String id, String changedBy) {
+    try {
+      phaseAdvance.resumeHeld(id, changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not resume the run of %s after its needs were written", id);
+    }
   }
 
   /**

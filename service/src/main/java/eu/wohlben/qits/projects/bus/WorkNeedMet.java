@@ -12,7 +12,10 @@ import java.util.UUID;
  * needs write names an item that is already met: a write is not something reaching its status.
  *
  * <p>The delivery desk waits on it ({@code qits wait --event WorkNeedMet --when 'qualifiedId=qits-1898
- * allMet=true'}). The wire name is the simple class name.
+ * allMet=true'}). It is news, not the re-wake: a pre-approved FLOW run its needs held at REFINED is
+ * resumed in process, from the same {@code NeedsMet} this is published from ({@code
+ * api/NeedsMetResume}, qits-2026), whether or not anybody waits on the wire. The wire name is the
+ * simple class name.
  *
  * @param projectId the project of both items
  * @param entityId the item that waits
