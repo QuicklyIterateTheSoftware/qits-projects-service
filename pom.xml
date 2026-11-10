@@ -236,7 +236,7 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1108.230857</qits.workspaces-service-pacts-qits-projects-service.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1110.164903</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1110.181135</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1110.104502</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1107.202817</qits.platform-access-monorepo-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1106.221716</qits.maintenance-service-pacts-qits-projects-service.version>
@@ -277,7 +277,7 @@
         <!-- qits-system's golden masters (epic qits-1481): the lease, work-volume and target doors
              targethost/HttpSystemLeases calls (contracts/consumer/SystemContract), recorded for the
              DESK tenant. The same rule: a qits-maintenance bump moves it. -->
-        <qits.system-golden-masters.version>2026.1108.50219</qits.system-golden-masters.version>
+        <qits.system-golden-masters.version>2026.1110.173442</qits.system-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
