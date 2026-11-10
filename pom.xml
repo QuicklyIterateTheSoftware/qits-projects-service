@@ -253,7 +253,7 @@
         <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1110.104136</qits.artifacts-frontend-pacts-qits-projects-service.version>
         <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1108.195733</qits.deployments-frontend-pacts-qits-projects-service.version>
         <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1108.205344</qits.mirror-frontend-pacts-qits-projects-service.version>
-        <qits.observability-frontend-pacts-qits-projects-service.version>2026.1110.162141</qits.observability-frontend-pacts-qits-projects-service.version>
+        <qits.observability-frontend-pacts-qits-projects-service.version>2026.1110.191956</qits.observability-frontend-pacts-qits-projects-service.version>
         <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1109.4958</qits.orchestrator-frontend-pacts-qits-projects-service.version>
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1109.4601</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
