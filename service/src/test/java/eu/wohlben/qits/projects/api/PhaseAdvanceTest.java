@@ -81,6 +81,9 @@ public class PhaseAdvanceTest {
    */
   @Inject PhaseAdvance advance;
 
+  /** The boot pass for runs already stuck behind met needs (qits-2026), called directly. */
+  @Inject eu.wohlben.qits.projects.startup.HeldPreApprovalSweep sweep;
+
   @Inject RecordingEntityTransitionAnnouncer transitions;
 
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
@@ -827,23 +830,20 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>Its needs hold it</b> (qits-1903): the pre-approved FLOW refine that would be scheduled and
-   * handed implement ({@link #aPreApprovedFlowRefineThatLandsRefinedIsScheduledAsThePersonAndHandedOn})
-   * lands REFINED with a need unmet, so nothing is scheduled, no turn delivered and the
-   * pre-approval kept. Meeting the need afterwards re-wakes nothing: the desk's backlog does.
+   * <b>Its needs hold it, and meeting them resumes it</b> (qits-1903, qits-2026): the pre-approved
+   * FLOW refine that would be scheduled and handed implement ({@link
+   * #aPreApprovedFlowRefineThatLandsRefinedIsScheduledAsThePersonAndHandedOn}) lands REFINED with a
+   * need unmet, so nothing is scheduled, no turn delivered and the pre-approval kept. The move that
+   * meets the need then resumes it: scheduled as the person who pre-approved it, the pre-approval
+   * spent, the implement turn delivered and the ticket IMPLEMENTING — the hold delays the run, it
+   * no longer ends it.
    */
   @Test
-  public void anItemEnteringRefinedWithAnUnmetNeedDeliversNoTurn() {
+  public void anItemHeldAtRefinedByAnUnmetNeedIsResumedWhenTheNeedIsMet() {
     String projectId = createProject("Advance Needs");
     String ticketId = createTicket(projectId, "Waits for the other");
     String needed = createTicket(projectId, "Comes first");
-    asAdmin("dana")
-        .contentType("application/merge-patch+json")
-        .body(Map.of("needs", List.of(Map.of("item", needed, "status", "REFINED"))))
-        .when()
-        .patch("/projects/api/work/" + ticketId)
-        .then()
-        .statusCode(200);
+    needs(ticketId, Map.of(needed, "REFINED"));
     dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
     workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
@@ -855,8 +855,248 @@ public class PhaseAdvanceTest {
     assertEquals("mallory", dispatchEntities.fresh(ticketId).preApprovedBy, "not spent");
 
     transition(needed, "REFINED");
-    assertEquals(List.of(), turns.calls(), "nothing re-wakes it; the desk's backlog picks it up");
+
+    assertEquals(List.of(ticketId), workIdsOfTurns(), "one implement turn, to the held ticket");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
+    assertEquals(
+        List.of(
+            "REPORTED->REFINED by dana",
+            "REFINED->READY_FOR_DEV by mallory",
+            "READY_FOR_DEV->IMPLEMENTING by " + PhaseAdvance.PLATFORM),
+        movesOf(ticketId));
+  }
+
+  /**
+   * <b>The desk's pre-approval resumes the same way</b> (qits-1714, qits-2026): a desk FLOW press
+   * at REPORTED under start_refined left {@link EntityDispatch#DESK_PRE_APPROVAL}, the refine landed
+   * REFINED with a need unmet, and the move that meets it schedules the ticket as the desk's
+   * declaration and hands implement on — qits-2004's shape, which used to wait for ever.
+   */
+  @Test
+  public void aDeskPreApprovedRunHeldByItsNeedIsResumedWhenTheNeedIsMet() {
+    String projectId = createProject("Advance Desk Needs");
+    delivery(projectId, true, true);
+    String ticketId = createTicket(projectId, "The desk waits for the other");
+    String needed = createTicket(projectId, "The desk's first");
+    needs(ticketId, Map.of(needed, "REFINED"));
+    dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REFINED");
+    assertEquals(List.of(), turns.calls(), "held by its need");
+    assertEquals(
+        EntityDispatch.DESK_PRE_APPROVAL, dispatchEntities.fresh(ticketId).preApprovedBy);
+
+    transition(needed, "REFINED");
+
+    assertEquals(List.of(ticketId), workIdsOfTurns());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
+    assertTrue(
+        movesOf(ticketId).contains("REFINED->READY_FOR_DEV by " + EntityDispatch.DESK_PRE_APPROVAL),
+        "scheduled as the desk's declaration: " + movesOf(ticketId));
+  }
+
+  /**
+   * <b>Only the last need resumes it</b> (qits-2026): with two needs, the move that meets the first
+   * leaves one unmet, so nothing is scheduled and the pre-approval stays; the move that meets the
+   * second resumes the run.
+   */
+  @Test
+  public void aRunHeldByTwoNeedsIsResumedOnlyByTheSecond() {
+    String projectId = createProject("Advance Two Needs");
+    String ticketId = createTicket(projectId, "Waits for two");
+    String first = createTicket(projectId, "First of two");
+    String second = createTicket(projectId, "Second of two");
+    needs(ticketId, Map.of(first, "REFINED", second, "REFINED"));
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transition(ticketId, "REFINED");
+
+    transition(first, "REFINED");
+
+    assertEquals(List.of(), turns.calls(), "one need is still unmet");
     assertEquals("REFINED", statusOf(ticketId));
+    assertEquals("mallory", dispatchEntities.fresh(ticketId).preApprovedBy, "not spent");
+
+    transition(second, "REFINED");
+
+    assertEquals(List.of(ticketId), workIdsOfTurns());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+  }
+
+  /**
+   * <b>A one-phase run is not resumed</b> (qits-2026): its last press asked for one phase, so a
+   * need met later starts nothing, whatever pre-approval the row carries — the next press does.
+   */
+  @Test
+  public void aPhaseRunHeldByItsNeedIsNotResumed() {
+    String projectId = createProject("Advance Phase Needs");
+    String ticketId = createTicket(projectId, "One phase at a time");
+    String needed = createTicket(projectId, "Needed by the phase run");
+    needs(ticketId, Map.of(needed, "REFINED"));
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    dispatchEntities.setDispatchContinues(ticketId, false, "dana");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transition(ticketId, "REFINED");
+
+    transition(needed, "REFINED");
+
+    assertEquals(List.of(), turns.calls());
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals("mallory", dispatchEntities.fresh(ticketId).preApprovedBy, "untouched");
+    assertFalse(advance.resumeHeld(ticketId, "dana"), "nor by a direct resume");
+  }
+
+  /**
+   * <b>Without a pre-approval there is nothing to resume</b> (qits-2026): REFINED waits for a
+   * person to schedule it (qits-887), so the need met moves nothing and writes nothing — no
+   * scheduling, no turn, no sentence on the thread.
+   */
+  @Test
+  public void aHeldRunWithNoPreApprovalIsNotResumed() {
+    String projectId = createProject("Advance Unapproved Needs");
+    String ticketId = createTicket(projectId, "Nobody pre-approved it");
+    String needed = createTicket(projectId, "Needed by the unapproved");
+    needs(ticketId, Map.of(needed, "REFINED"));
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transition(ticketId, "REFINED");
+
+    transition(needed, "REFINED");
+
+    assertEquals(List.of(), turns.calls());
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals(List.of("REPORTED->REFINED by dana"), movesOf(ticketId));
+    assertEquals(List.of(), thread(ticketId), "nothing said");
+  }
+
+  /**
+   * <b>A needs write that leaves none unmet resumes it</b> (qits-2026): the need is taken off by a
+   * PATCH instead of being met, and the run carries on after the write — the scheduling made as the
+   * person who pre-approved it, the hand-off's own move stamped with the writer.
+   */
+  @Test
+  public void aNeedsPatchRemovingTheLastUnmetNeedResumesTheRun() {
+    String projectId = createProject("Advance Needs Patch");
+    String ticketId = createTicket(projectId, "Its need is dropped");
+    String needed = createTicket(projectId, "No longer needed");
+    needs(ticketId, Map.of(needed, "VERIFIED"));
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transition(ticketId, "REFINED");
+    assertEquals(List.of(), turns.calls(), "held by its need");
+
+    needs(ticketId, Map.of());
+
+    assertEquals(List.of(ticketId), workIdsOfTurns());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
+    assertEquals(
+        List.of(
+            "REPORTED->REFINED by dana",
+            "REFINED->READY_FOR_DEV by mallory",
+            "READY_FOR_DEV->IMPLEMENTING by dana"),
+        movesOf(ticketId));
+  }
+
+  /**
+   * <b>The boot pass resumes a run already stuck</b> (qits-2026, qits-2004's case): a pre-approved
+   * FLOW run held at REFINED whose need was met with no re-wake — the needed row moved behind the
+   * observer's back here — is scheduled and handed on by {@link
+   * eu.wohlben.qits.projects.startup.HeldPreApprovalSweep#sweep}, once:
+   * a second pass and a direct resume find nothing left to do. The rows beside it that are not
+   * that shape stay where they are: one still held by an unmet need, one with no pre-approval, one
+   * whose last press was a single phase.
+   */
+  @Test
+  public void theStartupSweepResumesARunAlreadyStuckAndLeavesTheRestAlone() {
+    String projectId = createProject("Advance Stuck Sweep");
+    String stuck = createTicket(projectId, "Stuck behind a met need");
+    String stillHeld = createTicket(projectId, "Still held");
+    String unapproved = createTicket(projectId, "Never pre-approved");
+    String onePhase = createTicket(projectId, "One phase");
+    String needed = createTicket(projectId, "Met behind the observer's back");
+    String unmet = createTicket(projectId, "Never moves");
+    needs(stuck, Map.of(needed, "REFINED"));
+    needs(stillHeld, Map.of(unmet, "REFINED"));
+    needs(unapproved, Map.of(needed, "REFINED"));
+    needs(onePhase, Map.of(needed, "REFINED"));
+    dispatchEntities.setPreApprovedBy(stuck, "mallory", "mallory");
+    dispatchEntities.setPreApprovedBy(stillHeld, "mallory", "mallory");
+    dispatchEntities.setPreApprovedBy(onePhase, "mallory", "mallory");
+    dispatchEntities.setDispatchContinues(onePhase, false, "dana");
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(stuck), stuck));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    for (String held : List.of(stuck, stillHeld, unapproved, onePhase)) {
+      transition(held, "REFINED");
+    }
+    // The need met with no move through the lifecycle: no NeedsMet, so nothing resumed it — the
+    // shape a row had when it was met before qits-2026 shipped.
+    QuarkusTransaction.requiringNew()
+        .run(() -> WorkEntity.<WorkEntity>findById(needed).status = "REFINED");
+    assertEquals(List.of(), turns.calls(), "nothing resumed it yet");
+    assertEquals("REFINED", statusOf(stuck));
+
+    int resumed = sweep.sweep();
+
+    assertTrue(resumed >= 1, "the stuck run was resumed: " + resumed);
+    // The pass reads the whole database, so only this project's rows are judged here.
+    List<String> ours = List.of(stuck, stillHeld, unapproved, onePhase, needed, unmet);
+    assertEquals(
+        List.of(stuck),
+        workIdsOfTurns().stream().filter(ours::contains).toList(),
+        "one implement turn, to the stuck row alone");
+    assertEquals("IMPLEMENTING", statusOf(stuck));
+    assertEquals(null, dispatchEntities.fresh(stuck).preApprovedBy, "spent");
+    for (String left : List.of(stillHeld, unapproved, onePhase)) {
+      assertEquals("REFINED", statusOf(left), left + " stays where it is");
+    }
+    assertEquals("mallory", dispatchEntities.fresh(stillHeld).preApprovedBy);
+    assertEquals("mallory", dispatchEntities.fresh(onePhase).preApprovedBy);
+
+    sweep.sweep();
+    assertFalse(advance.resumeHeld(stuck, PhaseAdvance.PLATFORM), "it left REFINED");
+    assertEquals(
+        List.of(stuck),
+        workIdsOfTurns().stream().filter(ours::contains).toList(),
+        "and was handed on once");
+  }
+
+  /** Writes {@code ticketId}'s needs whole, {@code item → status}, through the PATCH door. */
+  private void needs(String ticketId, Map<String, String> needs) {
+    asAdmin("dana")
+        .contentType("application/merge-patch+json")
+        .body(
+            Map.of(
+                "needs",
+                needs.entrySet().stream()
+                    .map(need -> Map.of("item", need.getKey(), "status", need.getValue()))
+                    .toList()))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+  }
+
+  /** The work item every delivered turn went to, in order. */
+  private List<String> workIdsOfTurns() {
+    return turns.calls().stream().map(RecordingWorkspaceAgentTurns.Spoken::workId).toList();
+  }
+
+  /** {@code id}'s announced moves, {@code BEFORE->AFTER by changedBy}, in order. */
+  private List<String> movesOf(String id) {
+    return transitions.published().stream()
+        .flatMap(event -> event.entities().stream())
+        .filter(e -> id.equals(e.entityId()))
+        .map(e -> e.statusBefore() + "->" + e.status() + " by " + e.changedBy())
+        .toList();
   }
 
   /**

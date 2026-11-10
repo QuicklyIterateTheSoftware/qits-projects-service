@@ -34,6 +34,7 @@ import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Duration;
@@ -436,9 +437,17 @@ public class PhaseAdvance {
    * {@link WorkTag#CONDITION} is not work of its own, so no move of it starts a phase, as with
    * {@link WorkTag#RESERVED_FOR_HUMAN}. An entity entering REFINED or READY_FOR_DEV with a need not
    * met is held there: no turn, no scheduling of a pre-approval, one log line naming the needs.
-   * <b>Nothing re-wakes it when the need is met</b>, and that is intended: the move of the needed
-   * item is published as {@code WorkNeedMet}, and the delivery desk's backlog picks the held item up
-   * on its next pass — the desk, not this bean, decides what runs next.
+   * <b>A held pre-approved run is resumed when its needs are met</b> (qits-2026), by {@link
+   * #resumeHeld} and from three places, because it used to be resumed from none: this return was
+   * the end of the run, the pre-approval stood on a REFINED row for ever, and the claim that the
+   * delivery desk's backlog would pick it up was false — the desk presses only what a person or a
+   * trigger hands it, and its FLOW press at REFINED is refused while {@code start_refined} is off
+   * (qits-2004 sat REFINED, FLOW, desk pre-approved, every need met). The three: the move that
+   * meets its last need ({@link NeedsMetResume}, observing {@code NeedsMet} after the read that
+   * found the flip has committed), a needs write that leaves none unmet ({@code
+   * WorkEntityDoors.patch}), and one pass at boot for the rows already stuck ({@code
+   * startup/HeldPreApprovalSweep}). A held row with no pre-approval is not resumed: REFINED waits for
+   * a person to schedule it (qits-887), and nothing pre-approved that scheduling.
    *
    * @param entity the moved row <b>as it is after the move</b> — a feature, a task and an issue
    *     return at once (qits-763); for a ticket or an epic the new status is the input
@@ -504,7 +513,8 @@ public class PhaseAdvance {
     List<eu.wohlben.qits.entities.control.NeedRef> unmet = unmetNeeds.holding(entity);
     if (!unmet.isEmpty()) {
       // Its needs hold the implementation (qits-1903): REFINED schedules nothing and READY_FOR_DEV
-      // starts nothing while one is unmet. Nothing re-wakes it — the desk's backlog does (javadoc).
+      // starts nothing while one is unmet. A pre-approval left standing here is spent later, by
+      // resumeHeld, once the last need is met (qits-2026, javadoc).
       LOG.infof(
           "%s %s needs %s, so no turn is delivered for the phase its status (%s) starts",
           entity.archetype, entity.id, UnmetNeeds.describe(unmet), entity.status);
@@ -555,14 +565,9 @@ public class PhaseAdvance {
       // nothing.
       if (EntityStatus.REFINED.name().equals(entity.status)
           && EntityStatus.REPORTED.name().equals(statusBefore)
-          && entity.dispatchContinues) {
-        if (EntityDispatch.DESK_PRE_APPROVAL.equals(entity.preApprovedBy)) {
-          scheduleOnTheDeskPreApproval(entity, changedBy);
-        } else if (entity.preApprovedBy != null) {
-          scheduleOnThePreApproval(entity, changedBy);
-        } else {
-          noteTheFlowWaitsForAPerson(entity, changedBy);
-        }
+          && entity.dispatchContinues
+          && !scheduleOnItsPreApproval(entity, changedBy)) {
+        noteTheFlowWaitsForAPerson(entity, changedBy);
       }
       return;
     }
@@ -588,6 +593,97 @@ public class PhaseAdvance {
       // still at IMPLEMENTED for the skip. Read, never inferred from the direction of the move.
       noteTheReleaseThatStandsOpen(entity, changedBy);
     }
+  }
+
+  /**
+   * <b>Resume a pre-approved run its needs held at REFINED</b> (qits-2026): what the REFINED arm of
+   * {@link #afterTransition} would have done had the needs been met when the refine landed — the
+   * scheduling on the pre-approval, the pre-approval spent, implement handed on (and the row moved
+   * to IMPLEMENTING once the turn is spoken) — done now that they are. Called when a need is met
+   * ({@link NeedsMetResume}), after a needs write ({@code WorkEntityDoors.patch}) and by the boot
+   * pass for rows already stuck ({@code startup/HeldPreApprovalSweep}).
+   *
+   * <p><b>The row is read fresh</b>, in a transaction of its own ({@link
+   * EntityDispatchService#fresh}), and resumed only when every condition the hold left standing
+   * still holds: an epic or a ticket ({@link Archetypes#runsNoPhase} false), REFINED, its last press
+   * a FLOW ({@code dispatchContinues}), a pre-approval on it, not explicitly blocked, neither
+   * {@link WorkTag#RESERVED_FOR_HUMAN} nor {@link WorkTag#CONDITION}, and no need unmet — the needs
+   * re-read now, never taken from the caller. Anything else returns having written nothing: a row
+   * with no pre-approval waits for a person, as REFINED always does (qits-887), and one a person
+   * moved meanwhile is theirs.
+   *
+   * <p><b>Two triggers for one row make one hand-off.</b> The scheduling is {@link
+   * WorkEntityService#transitionFrom} REFINED → READY_FOR_DEV, which answers empty for a row that
+   * left REFINED meanwhile, so the second caller to arrive moves nothing and hands nothing on.
+   *
+   * <p>Any transaction the caller stands in is suspended first — the met-need trigger runs while the
+   * read that found the flip is completing — and a request context is activated for the boot pass's
+   * thread, which has none. <b>Never throws</b>, for {@link #afterTransition}'s reason: every caller
+   * comes after a write that is already recorded.
+   *
+   * @param entityId the row's UUID
+   * @param changedBy who the scheduling and the thread's sentences are stamped with where the
+   *     pre-approval does not name it — the caller of a needs write, or {@link #PLATFORM}
+   * @return whether the scheduling was attempted; false when a condition kept the row where it is
+   */
+  @ActivateRequestContext
+  public boolean resumeHeld(String entityId, String changedBy) {
+    try {
+      return QuarkusTransaction.suspendingExisting()
+          .call(() -> resumeIfReleased(entityId, changedBy));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not resume the pre-approved run of %s its needs held", entityId);
+      return false;
+    }
+  }
+
+  /** Who the platform's own resumes are stamped as — the name its other made moves carry. */
+  public static final String PLATFORM = "qits-projects";
+
+  private boolean resumeIfReleased(String entityId, String changedBy) {
+    WorkEntity row = entityDispatch.fresh(entityId);
+    if (Archetypes.runsNoPhase(row.archetype)
+        || !EntityStatus.REFINED.name().equals(row.status)
+        || !row.dispatchContinues
+        || row.preApprovedBy == null
+        || row.blocked
+        || EntityDispatch.isReservedForHuman(row)
+        || EntityDispatch.isCondition(row)) {
+      LOG.debugf(
+          "%s %s is not a pre-approved FLOW run held at REFINED (status %s, flow %s, pre-approved"
+              + " %s, blocked %s); nothing is resumed",
+          row.archetype, row.id, row.status, row.dispatchContinues, row.preApprovedBy, row.blocked);
+      return false;
+    }
+    List<eu.wohlben.qits.entities.control.NeedRef> unmet = unmetNeeds.holding(row);
+    if (!unmet.isEmpty()) {
+      LOG.debugf(
+          "%s %s still needs %s, so its pre-approved run stays held",
+          row.archetype, row.id, UnmetNeeds.describe(unmet));
+      return false;
+    }
+    LOG.infof(
+        "%s %s is REFINED with every need met and a pre-approval standing (%s); resuming its run",
+        row.archetype, row.id, row.preApprovedBy);
+    return scheduleOnItsPreApproval(row, changedBy);
+  }
+
+  /**
+   * The scheduling {@code entity}'s pre-approval asks for — the delivery desk's under {@code
+   * start_refined} (qits-1714) or a person's (qits-1075) — or false, doing nothing, when it carries
+   * none. The one branch both the REFINED arm of {@link #afterTransition} and {@link #resumeHeld}
+   * take, so a resumed run is scheduled exactly as an unheld one would have been.
+   */
+  private boolean scheduleOnItsPreApproval(WorkEntity entity, String changedBy) {
+    if (EntityDispatch.DESK_PRE_APPROVAL.equals(entity.preApprovedBy)) {
+      scheduleOnTheDeskPreApproval(entity, changedBy);
+      return true;
+    }
+    if (entity.preApprovedBy != null) {
+      scheduleOnThePreApproval(entity, changedBy);
+      return true;
+    }
+    return false;
   }
 
   /**

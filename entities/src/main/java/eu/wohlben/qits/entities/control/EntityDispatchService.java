@@ -156,6 +156,42 @@ public class EntityDispatchService {
         });
   }
 
+  /**
+   * <b>The rows a pre-approved FLOW run may be held on by its needs</b> (qits-2026): every epic and
+   * ticket at REFINED whose last press was a FLOW, that carries a pre-approval, is not explicitly
+   * blocked and has at least one need — the shape {@code PhaseAdvance} leaves a run in when its
+   * needs hold the refine's scheduling. Their ids, by project and number, in one query and a
+   * transaction of its own. Whether those needs are met now is the caller's question: this reads
+   * rows, never a need's status.
+   */
+  public java.util.List<String> preApprovedAtRefinedWithNeeds() {
+    return reads.hold(
+        "pre-approved rows held at REFINED",
+        () ->
+            QuarkusTransaction.requiringNew()
+                .call(
+                    () ->
+                        entities
+                            .getEntityManager()
+                            .createQuery(
+                                "select e.id from WorkEntity e"
+                                    + " where e.archetype in ?1 and e.status = ?2"
+                                    + " and e.dispatchContinues = true"
+                                    + " and e.preApprovedBy is not null and e.blocked = false"
+                                    + " and exists (select 1 from WorkNeed n"
+                                    + " where n.entityId = e.id)"
+                                    + " order by e.projectId, e.number",
+                                String.class)
+                            .setParameter(
+                                1,
+                                java.util.List.of(
+                                    eu.wohlben.qits.entities.entity.Archetype.EPIC,
+                                    eu.wohlben.qits.entities.entity.Archetype.TICKET))
+                            .setParameter(
+                                2, eu.wohlben.qits.entities.entity.EntityStatus.REFINED.name())
+                            .getResultList()));
+  }
+
   private WorkEntity entity(String id) {
     WorkEntity row = id == null ? null : entities.findById(id);
     if (row == null) {

@@ -7,8 +7,11 @@ import java.util.List;
  * <b>Needs a transition turned from unmet to met</b> (qits-1903), fired on the CDI bus by {@link
  * NeedService#announceMet} inside the read of who waits on the moved items, so an observer {@code
  * during = AFTER_SUCCESS} — {@code WorkNeedAnnouncer} in {@code service} — publishes one {@code
- * WorkNeedMet} per entry once that read has committed. The ids are bare: the qualified ids are
- * rendered where the project slug can be read.
+ * WorkNeedMet} per entry once that read has committed, and a second, {@code NeedsMetResume} beside
+ * {@code PhaseAdvance}, resumes every waiting item it leaves with no unmet need (qits-2026): a
+ * pre-approved FLOW run its needs held at REFINED is scheduled and handed implement then, since
+ * nothing else wakes it. The ids are bare: the qualified ids are rendered where the project slug can
+ * be read.
  */
 public record NeedsMet(List<Met> met) {
 

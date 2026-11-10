@@ -2030,9 +2030,17 @@ child create and the patch, at every status and outside every scope freeze — l
 their reason it is not a registry property, so a transition never clears it. Whether a need is met is
 read live (`control/NeedRule.reached`: at or past the status, DROPPED met by DROPPED alone) and never
 latched; the reads carry `needs[]` and `unmetNeeds`. The dispatch press refuses an item at REFINED or
-READY_FOR_DEV with an unmet need (409), and `PhaseAdvance` delivers it no turn there; nothing re-wakes
-it when the need is met — the move of the needed item publishes `WorkNeedMet`, and the delivery
-desk's backlog picks it up. A condition that is not work of its own is an item tagged `CONDITION`,
+READY_FOR_DEV with an unmet need (409), and `PhaseAdvance` delivers it no turn there. A
+pre-approved FLOW run its needs held at REFINED is resumed once they are all met (qits-2026):
+`PhaseAdvance.resumeHeld` re-reads the row and its needs and, for an epic or a ticket still REFINED,
+FLOW, pre-approved, not blocked, not reserved or a condition and with no need unmet, makes the
+scheduling the refine landing would have made (the desk's under `start_refined`, or the person's)
+and hands implement on; `transitionFrom` keeps concurrent triggers to one hand-off. Three triggers:
+`api/NeedsMetResume` observes `NeedsMet` `AFTER_SUCCESS` (the move that meets the last need, stamped
+`qits-projects`), `WorkEntityDoors.patch` after a needs write, and `startup/HeldPreApprovalSweep` once
+at boot (NORMAL mode; the suite calls `sweep()`) for rows already stuck. A held row with no
+pre-approval waits for a person. The move of the needed item still publishes `WorkNeedMet`. A
+condition that is not work of its own is an item tagged `CONDITION`,
 which no press dispatches. A body still naming `dependsOn` is answered the retirement 400
 (`EntityWireProperties.DEPENDS_ON_RETIRED`), not "unknown property". The retired tables and columns
 (`milestone*`, `work_milestone`, `campaign_membership_milestone`, `campaign_start`, the membership run
