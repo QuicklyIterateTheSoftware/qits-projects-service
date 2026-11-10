@@ -143,8 +143,9 @@ import org.jboss.logging.Logger;
  * another project (403), no rule named (400), the project's loop off (409), an issue (409), the project at its {@code max_running} (409 naming the count, the
  * limit and the running items), and a REFINED item while {@code start_refined} is off (the {@link
  * #REFINED_WAITS} 409, saying so). "Running" is an epic or a ticket of the project, not DONE or
- * DROPPED, not explicitly blocked (qits-1569), with an assignee and an ACTIVE agent ({@link
- * WorkspaceAgentDispatch#agentsFor}); the item pressed is never counted against itself. A blocked
+ * DROPPED, not explicitly blocked (qits-1569), not held at REFINED or READY_FOR_DEV by an unmet need
+ * (qits-2053), with an assignee and an ACTIVE agent ({@link WorkspaceAgentDispatch#agentsFor}); the
+ * item pressed is never counted against itself ({@link RunningItems}). A blocked
  * item waits on a person or on another item, and holding a slot for it starved the backlog — five
  * of them once stopped every dispatch for two hours. Unblocking hands the slot back, so the count
  * can briefly exceed the limit, which is fine: the desk only waits until it falls again.
