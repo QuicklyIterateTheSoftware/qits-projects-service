@@ -447,6 +447,132 @@ class FrontDeskTest {
     assertEquals(0, frontDesks.requestRoll("no-such-project", at), "no desk, no row touched");
   }
 
+  // --- stale resolvers: POST /system/api/leases/{id}/refresh (qits-2091) -----------------------
+
+  /** The desk's RUNNING lease, read by the reconcile's listing with its resolvers {@code stale}. */
+  private UUID runningWithResolvers(String projectId, boolean stale) {
+    UUID leaseId = running(projectId);
+    system.resolvers(leaseId, stale);
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+    return leaseId;
+  }
+
+  /**
+   * A quiet desk whose lease reads stale is refreshed once by the roll pass, and not again while the
+   * listing still reads it stale at the generation the refresh answered.
+   */
+  @Test
+  void aQuietDeskWithStaleResolversIsRefreshedOnce() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    String applied = row(projectId).specHash;
+    assertTrue(specRoll.quiet(projectId, Instant.now()));
+
+    assertEquals(0, specRoll.roll(Instant.now()), "a refresh is not a roll");
+    assertEquals(List.of(leaseId), system.refreshed());
+    assertTrue(system.rolled().isEmpty());
+    assertEquals(applied, row(projectId).specHash, "the spec is untouched");
+    assertEquals(leaseId, row(projectId).leaseId, "a refresh keeps the lease");
+
+    // The runner has not reported the new container yet: generation 1 still reads stale.
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+    assertEquals(1L, system.lease(leaseId).orElseThrow().generation());
+    specRoll.roll(Instant.now());
+    specRoll.roll(projectId, Instant.now());
+    assertEquals(List.of(leaseId), system.refreshed(), "not again at the generation it answered");
+  }
+
+  /** A turn running holds the refresh back, however long ago the desk was last used. */
+  @Test
+  void aStaleDeskWithATurnRunningIsNotRefreshed() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    runningWithResolvers(projectId, true);
+    daemons()
+        .onMessage(
+            projectId,
+            null,
+            new AgentActivity("cmd-1", "session-1", AgentState.BUSY, "PreToolUse", null, null, 0L));
+    daemons().touchAgentActivity(projectId, Instant.now().minus(Duration.ofHours(2)));
+
+    specRoll.roll(Instant.now());
+    specRoll.roll(projectId, Instant.now());
+    assertTrue(system.refreshed().isEmpty());
+  }
+
+  /** A desk used inside the quiet window is not refreshed until the window has passed. */
+  @Test
+  void aStaleDeskUsedInsideTheQuietWindowWaits() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    usedRecentlyAndNow(projectId, AgentState.IDLE);
+
+    specRoll.roll(Instant.now());
+    assertTrue(system.refreshed().isEmpty(), "used a minute ago");
+
+    assertEquals(0, specRoll.roll(Instant.now().plus(Duration.ofHours(1))));
+    assertEquals(List.of(leaseId), system.refreshed(), "quiet for the window: refreshed");
+  }
+
+  /** Resolvers that are not stale, or a lease that is not RUNNING, are never refreshed. */
+  @Test
+  void aDeskWithCurrentResolversIsNotRefreshed() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, false);
+
+    specRoll.roll(Instant.now());
+    assertTrue(system.refreshed().isEmpty());
+
+    system.resolvers(leaseId, true);
+    leases.observe(system.move(leaseId, SystemLeases.LeaseState.GRANTED, UUID.randomUUID(), null));
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+    specRoll.roll(Instant.now());
+    assertTrue(system.refreshed().isEmpty(), "a GRANTED lease is not refreshed");
+    assertFalse(system.calls().contains("refresh"));
+  }
+
+  /** A 409 is logged and the pass goes on; the next pass asks again while it still reads stale. */
+  @Test
+  void aRefusedRefreshIsLoggedAndAskedAgain() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    system.refuseRefresh(
+        new SystemLeases.LeaseRefused(409, "LEASE_NOT_RUNNING", "not RUNNING", null));
+
+    assertEquals(0, specRoll.roll(Instant.now()));
+    assertTrue(system.refreshed().isEmpty());
+    assertEquals(leaseId, row(projectId).leaseId, "a refusal moves nothing on the row");
+
+    system.refuseRefresh(null);
+    specRoll.roll(Instant.now());
+    assertEquals(List.of(leaseId), system.refreshed());
+    assertEquals(
+        2, system.calls().stream().filter("refresh"::equals).count(), "asked once per pass");
+  }
+
+  /**
+   * A desk that rolls in a pass is not refreshed in it — the roll recreates the container too — nor
+   * on a listing read right after the roll, which may predate the runner's report of it.
+   */
+  @Test
+  void aRollTakesThePlaceOfARefresh() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
+
+    assertEquals(1, specRoll.roll(Instant.now()));
+    assertEquals(List.of(leaseId), system.rolled());
+
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+    specRoll.roll(Instant.now());
+    assertTrue(system.refreshed().isEmpty());
+  }
+
   // --- removal -----------------------------------------------------------------------------------
 
   /**

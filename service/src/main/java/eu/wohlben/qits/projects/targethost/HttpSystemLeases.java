@@ -113,6 +113,11 @@ public class HttpSystemLeases implements SystemLeases {
   }
 
   @Override
+  public Lease refresh(UUID leaseId) {
+    return lease(exchange("POST", "/leases/" + leaseId + "/refresh", null, "refresh lease " + leaseId));
+  }
+
+  @Override
   public Optional<Lease> end(UUID leaseId) {
     return optional("DELETE", "/leases/" + leaseId, null, "end lease " + leaseId);
   }
@@ -258,6 +263,8 @@ public class HttpSystemLeases implements SystemLeases {
       return null;
     }
     JsonNode exit = node.path("exitCode");
+    JsonNode stale = node.path("resolversStale");
+    JsonNode generation = node.path("generation");
     return new Lease(
         uuid(text(node, "id")),
         text(node, "ownerRef"),
@@ -267,7 +274,9 @@ public class HttpSystemLeases implements SystemLeases {
         exit.isNumber() ? exit.asInt() : null,
         text(node, "detail"),
         text(node, "specHash"),
-        instant(text(node, "requestedAt")));
+        instant(text(node, "requestedAt")),
+        stale.isBoolean() ? stale.asBoolean() : null,
+        generation.isIntegralNumber() ? generation.asLong() : null);
   }
 
   private static String text(JsonNode node, String field) {

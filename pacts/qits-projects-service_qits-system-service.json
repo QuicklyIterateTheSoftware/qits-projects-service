@@ -282,6 +282,117 @@
         "references": {
           "qits-call": {
             "app": "qits-system-service",
+            "operationId": "refreshLease"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "FrontDeskSpecRoll.roll"
+          }
+        }
+      },
+      "description": "FrontDeskSpecRoll.roll: refreshLease",
+      "key": "53af455b",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a running desk lease",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-qits-projects",
+            "leaseId": "00000000-0000-4000-8000-000000000002",
+            "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "targetId": "00000000-0000-4000-8000-000000000001",
+            "workKey": "desk-00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "${authorization}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/system/api/leases/${leaseId}/refresh",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer qits_tok_contract-qits-projects"
+          ]
+        },
+        "method": "POST",
+        "path": "/system/api/leases/00000000-0000-4000-8000-000000000002/refresh"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "generation": 1,
+            "id": "00000000-0000-4000-8000-000000000002",
+            "state": "RUNNING"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.generation": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
             "operationId": "replaceLeaseSpec"
           },
           "qits-trigger": {
@@ -635,8 +746,10 @@
         "body": {
           "content": {
             "detail": null,
+            "generation": 0,
             "id": "00000000-0000-4000-8000-000000000002",
             "ownerRef": "00000000-0000-4000-8000-000000000003",
+            "resolversStale": false,
             "slotType": "DESK",
             "specHash": "spec-hash-1",
             "state": "RUNNING",
@@ -652,6 +765,14 @@
         },
         "matchingRules": {
           "body": {
+            "$.generation": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
             "$.id": {
               "combine": "AND",
               "matchers": [
@@ -667,6 +788,14 @@
                 {
                   "match": "regex",
                   "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.resolversStale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -772,9 +901,11 @@
           "content": [
             {
               "detail": null,
+              "generation": 0,
               "id": "00000000-0000-4000-8000-000000000002",
               "ownerRef": "00000000-0000-4000-8000-000000000003",
               "requestedAt": "2026-01-01T00:00:00Z",
+              "resolversStale": false,
               "slotType": "DESK",
               "specHash": "spec-hash-1",
               "state": "RUNNING",
@@ -797,6 +928,14 @@
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            },
+            "$[*].generation": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
                 }
               ]
             },
@@ -824,6 +963,14 @@
                 {
                   "match": "regex",
                   "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$[*].resolversStale": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },

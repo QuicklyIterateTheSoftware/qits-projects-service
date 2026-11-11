@@ -24,8 +24,11 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@code createLease} — {@code DeskLeases.start}: a wanted desk with no lease;
- *   <li>{@code getLease}, {@code listLeases} — the reconcile ({@code TargetLeaseEvents});
+ *   <li>{@code getLease}, {@code listLeases} — the reconcile ({@code TargetLeaseEvents}), which
+ *       reads a RUNNING lease's {@code resolversStale} and {@code generation} too (qits-2091);
  *   <li>{@code replaceLeaseSpec} — a roll ({@code FrontDeskSpecRoll});
+ *   <li>{@code refreshLease} — the same pass, for a quiet desk whose RUNNING lease reads its
+ *       resolvers stale (qits-2091);
  *   <li>{@code endLease} — a desk desired stopped, and a removal;
  *   <li>{@code purgeWorkVolume} — a removed desk's volume, once its lease is ENDED;
  *   <li>{@code listTargets} — a legacy desk's first lease, pinned to the target on its old node.
@@ -68,6 +71,21 @@ final class SystemContract {
           "$[*].detail",
           "$[*].specHash",
           "$[*].requestedAt");
+
+  /**
+   * A RUNNING lease's fields besides {@link #LEASE}: what the stale-resolver refresh decides on
+   * (qits-2091). {@code resolvers} itself is never read, so nothing here binds its length.
+   */
+  private static final List<String> RUNNING_LEASE =
+      java.util.stream.Stream.concat(
+              LEASE.stream(), java.util.stream.Stream.of("$.resolversStale", "$.generation"))
+          .toList();
+
+  private static final List<String> RUNNING_LEASES =
+      java.util.stream.Stream.concat(
+              LEASES.stream(),
+              java.util.stream.Stream.of("$[*].resolversStale", "$[*].generation"))
+          .toList();
 
   private static final Trigger START = Trigger.schedule("DeskLeases.start");
   private static final Trigger RECONCILE = Trigger.schedule("TargetLeaseEvents.reconcile");
@@ -156,13 +174,15 @@ final class SystemContract {
                   "GET",
                   "/system/api/leases/{leaseId}",
                   null,
-                  LEASE,
+                  RUNNING_LEASE,
                   200,
                   RECONCILE,
                   (base, p) -> {
                     SystemLeases.Lease lease = leases(base, p).get(lease(p)).orElseThrow();
                     assertEquals(SystemLeases.LeaseState.RUNNING, lease.state());
                     assertNotNull(lease.targetId());
+                    assertEquals(Boolean.FALSE, lease.resolversStale());
+                    assertNotNull(lease.generation());
                   },
                   "GET /system/api/leases/{leaseId} answering 200 with the RUNNING lease")
               .withNullable("$.detail"),
@@ -172,10 +192,15 @@ final class SystemContract {
                   "GET",
                   "/system/api/leases",
                   null,
-                  LEASES,
+                  RUNNING_LEASES,
                   200,
                   RECONCILE,
-                  (base, p) -> assertFalse(leases(base, p).list().isEmpty()),
+                  (base, p) -> {
+                    SystemLeases.Lease lease = leases(base, p).list().get(0);
+                    assertEquals(SystemLeases.LeaseState.RUNNING, lease.state());
+                    assertEquals(Boolean.FALSE, lease.resolversStale());
+                    assertNotNull(lease.generation());
+                  },
                   "GET /system/api/leases answering 200 with this service's leases")
               .withNullable("$[*].targetId", "$[*].detail"),
           row(
@@ -191,6 +216,23 @@ final class SystemContract {
                       assertNotNull(leases(base, p).replaceSpec(lease(p), spec()).specHash()),
                   "PUT /system/api/leases/{leaseId}/spec answering 200 with the rolled lease")
               .withNullable("$.detail"),
+          row(
+              "refreshLease",
+              A_RUNNING_DESK_LEASE,
+              "POST",
+              "/system/api/leases/{leaseId}/refresh",
+              null,
+              List.of("$.id", "$.state", "$.generation"),
+              200,
+              ROLL,
+              (base, p) -> {
+                SystemLeases.Lease lease = leases(base, p).refresh(lease(p));
+                assertEquals(lease(p), lease.id());
+                assertEquals(SystemLeases.LeaseState.RUNNING, lease.state());
+                assertTrue(lease.generation() > 0, "the refresh raised the generation");
+              },
+              "POST /system/api/leases/{leaseId}/refresh answering 200 with the raised"
+                  + " generation"),
           row(
                   "endLease",
                   A_RUNNING_DESK_LEASE,

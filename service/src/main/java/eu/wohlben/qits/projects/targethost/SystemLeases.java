@@ -12,7 +12,8 @@ import java.util.UUID;
  * qits-system's lease, work-volume and target doors, as the front desks use them (epic qits-1481,
  * qits-1551): a DESK lease per desk — {@code slotType DESK}, {@code ownerRef <projectId>}, {@code
  * workKey desk-<projectId>} — asked for, rolled, read, listed and ended, its work volume purged with
- * the desk, and the targets listed for a legacy desk's pin. {@link HttpSystemLeases} is the shipped
+ * the desk, and the targets listed for a legacy desk's pin; a RUNNING lease whose container's
+ * resolvers are stale is refreshed (qits-2091). {@link HttpSystemLeases} is the shipped
  * implementation; a suite stands in for it.
  *
  * <p>Nothing here is called inside a transaction: every method is an HTTP call.
@@ -95,6 +96,12 @@ public interface SystemLeases {
    * @param exitCode set for EXITED
    * @param detail why a QUEUED lease waits, or why it failed or exited
    * @param specHash qits-system's hash of the spec the lease runs
+   * @param resolversStale whether the runner last reported the node to have a DNS resolver the
+   *     container lacks (qits-2091): the runner decides a container's resolvers only at create, and
+   *     a {@link #refresh} cures it. Null where the source does not say it (an event, a qits-system
+   *     before qits-2091)
+   * @param generation the lease's refresh counter (qits-2091), raised by every {@link #refresh};
+   *     null where the source does not say it
    */
   record Lease(
       UUID id,
@@ -105,7 +112,24 @@ public interface SystemLeases {
       Integer exitCode,
       String detail,
       String specHash,
-      Instant requestedAt) {}
+      Instant requestedAt,
+      Boolean resolversStale,
+      Long generation) {
+
+    /** A lease as a source that says nothing of its resolvers reports it. */
+    public Lease(
+        UUID id,
+        String ownerRef,
+        String slotType,
+        LeaseState state,
+        UUID targetId,
+        Integer exitCode,
+        String detail,
+        String specHash,
+        Instant requestedAt) {
+      this(id, ownerRef, slotType, state, targetId, exitCode, detail, specHash, requestedAt, null, null);
+    }
+  }
 
   /**
    * One target, as the listing shows it; {@code engineId} and {@code hostname} may be null.
@@ -157,6 +181,15 @@ public interface SystemLeases {
 
   /** {@code PUT /system/api/leases/{id}/spec}: the lease with its new spec — a roll. */
   Lease replaceSpec(UUID leaseId, LeaseSpec spec);
+
+  /**
+   * {@code POST /system/api/leases/{id}/refresh} (qits-2091): the RUNNING lease with its {@code
+   * generation} raised by one, on which its runner recreates the container on the same work volume —
+   * so it takes the node's current DNS resolvers, and every process in it restarts.
+   *
+   * @throws LeaseRefused 409 {@code LEASE_NOT_RUNNING} for a lease that is not RUNNING
+   */
+  Lease refresh(UUID leaseId);
 
   /** {@code DELETE /system/api/leases/{id}}: ENDING or ENDED; empty when there is no such lease. */
   Optional<Lease> end(UUID leaseId);

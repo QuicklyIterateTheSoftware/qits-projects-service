@@ -49,6 +49,10 @@ import org.jboss.logging.Logger;
  *       volume stays on the target for the next.
  *   <li><b>A roll</b> ({@link #roll}) is {@code PUT /system/api/leases/{id}/spec};
  *       {@code FrontDeskSpecRoll} keeps deciding when.
+ *   <li><b>A refresh</b> ({@link #refreshResolvers}, qits-2091) is {@code POST
+ *       /system/api/leases/{id}/refresh}, for a RUNNING lease the reconcile's listing last read with
+ *       {@code resolversStale} ({@link #resolversStale}); {@code FrontDeskSpecRoll} decides when,
+ *       under its quiet rule, in the same pass that decides the rolls.
  *   <li><b>Removal</b> ({@link #retire}): the lease ended and, once it is ENDED, the work volume
  *       purged.
  * </ul>
@@ -91,6 +95,9 @@ public class DeskLeases {
   /** The failure detail of a desk whose lease qits-system refused for good. */
   public static final String TARGET_REFUSED = "TARGET_REFUSED";
 
+  /** The reason every lease refresh is logged with (qits-2091). */
+  static final String RESOLVERS_STALE = "resolvers stale";
+
   @Inject FrontDeskRepository desks;
 
   @Inject ProjectRepository projects;
@@ -123,6 +130,24 @@ public class DeskLeases {
   public void legacyDeskTargetOverride(String target) {
     this.legacyDeskTargetOverride = target;
   }
+
+  /**
+   * How long after a roll a listing's {@code resolversStale} is not believed (qits-2091): a roll
+   * recreates the container too, and the runner's report of the new one may lag the listing.
+   */
+  static final Duration ROLL_SETTLE = Duration.ofMinutes(2);
+
+  /** What a listing read of a lease's resolvers (qits-2091), and when. */
+  private record Resolvers(boolean stale, long generation, Instant readAt) {}
+
+  /** The last {@link Resolvers} the reconcile read, by lease id; only leases a desk names. */
+  private final Map<UUID, Resolvers> resolvers = new ConcurrentHashMap<>();
+
+  /** The generation each lease this process refreshed was answered with (qits-2091). */
+  private final Map<UUID, Long> refreshedTo = new ConcurrentHashMap<>();
+
+  /** When this process last rolled each lease: its container was recreated then. */
+  private final Map<UUID, Instant> rolledAt = new ConcurrentHashMap<>();
 
   /** Work volumes a removal could not purge yet (their lease was still ending): the reconcile's. */
   private final Set<String> pendingPurges = ConcurrentHashMap.newKeySet();
@@ -356,6 +381,9 @@ public class DeskLeases {
       return false;
     }
     String hash = rolled == null ? null : rolled.specHash();
+    // The roll recreates the container: what a listing said of the old one's resolvers is moot.
+    resolvers.remove(leaseId);
+    rolledAt.put(leaseId, Instant.now());
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
@@ -371,6 +399,77 @@ public class DeskLeases {
               }
               return true;
             });
+  }
+
+  // --- stale resolvers (qits-2091) ---------------------------------------------------------------
+
+  /**
+   * Whether the desk's lease is RUNNING and the reconcile's last listing read its resolvers stale at
+   * a generation this process has not refreshed it to. Still stale at the generation a refresh
+   * answered is a runner whose report has not caught up, or a new container that did not cure it:
+   * another recreate would cure neither, so it is not asked for again. A reading made within {@link
+   * #ROLL_SETTLE} of a roll is not believed.
+   */
+  public boolean resolversStale(FrontDesk row) {
+    if (row == null || row.leaseId == null || !LeaseState.RUNNING.name().equals(row.reportedState)) {
+      return false;
+    }
+    Resolvers read = resolvers.get(row.leaseId);
+    if (read == null || !read.stale()) {
+      return false;
+    }
+    Long done = refreshedTo.get(row.leaseId);
+    if (done != null && done == read.generation()) {
+      LOG.debugf(
+          "Lease %s of the desk of project %s still reads its resolvers stale at generation %d,"
+              + " which it was refreshed to; not refreshed again",
+          row.leaseId, row.projectId, read.generation());
+      return false;
+    }
+    Instant rolled = rolledAt.get(row.leaseId);
+    return rolled == null || read.readAt().isAfter(rolled.plus(ROLL_SETTLE));
+  }
+
+  /**
+   * Refresh the desk's lease ({@code POST /system/api/leases/{id}/refresh}): its runner recreates the
+   * container on the same work volume with the node's current resolvers, and the desk's processes
+   * restart. True when it landed; a refusal (409 {@code LEASE_NOT_RUNNING}: the lease moved since the
+   * listing) is logged and answers false.
+   */
+  public boolean refreshResolvers(FrontDesk row) {
+    if (row == null || row.leaseId == null || !system.isResolvable()) {
+      return false;
+    }
+    UUID leaseId = row.leaseId;
+    Lease refreshed;
+    try {
+      refreshed = system.get().refresh(leaseId);
+    } catch (LeaseRefused refused) {
+      LOG.infof(
+          "qits-system refused to refresh lease %s of the desk of project %s (%s); the next pass"
+              + " asks again if it still reads stale: %s",
+          leaseId, row.projectId, RESOLVERS_STALE, refused.getMessage());
+      return false;
+    }
+    long generation =
+        refreshed == null || refreshed.generation() == null ? -1 : refreshed.generation();
+    refreshedTo.put(leaseId, generation);
+    LOG.infof(
+        "Refreshed lease %s of the front desk of project %s to generation %d: %s; its container is"
+            + " recreated on the same work volume",
+        leaseId, row.projectId, generation, RESOLVERS_STALE);
+    return true;
+  }
+
+  /** What a read of {@code lease} says of its resolvers, kept; a source that says nothing is not. */
+  private void noteResolvers(Lease lease, Instant readAt) {
+    if (lease == null || lease.id() == null || lease.resolversStale() == null) {
+      return;
+    }
+    resolvers.put(
+        lease.id(),
+        new Resolvers(
+            lease.resolversStale(), lease.generation() == null ? 0 : lease.generation(), readAt));
   }
 
   // --- a lease's state, applied ------------------------------------------------------------------
@@ -516,6 +615,7 @@ public class DeskLeases {
       snapshot.put(row.projectId, row.leaseId);
     }
     List<Lease> listed;
+    Instant readAt = Instant.now();
     try {
       listed = leases.list();
     } catch (RuntimeException e) {
@@ -531,6 +631,10 @@ public class DeskLeases {
         byId.put(lease.id(), lease);
       }
     }
+    Set<UUID> desked = new HashSet<>(snapshot.values());
+    resolvers.keySet().retainAll(desked);
+    refreshedTo.keySet().retainAll(desked);
+    rolledAt.keySet().retainAll(desked);
     List<String> changed = new ArrayList<>();
     for (Map.Entry<String, UUID> desk : snapshot.entrySet()) {
       UUID leaseId = desk.getValue();
@@ -545,6 +649,7 @@ public class DeskLeases {
           continue;
         }
       }
+      noteResolvers(lease, readAt);
       try {
         if (observe(lease) == Outcome.CHANGED) {
           changed.add(desk.getKey());

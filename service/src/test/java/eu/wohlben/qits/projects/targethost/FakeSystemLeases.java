@@ -24,9 +24,11 @@ public class FakeSystemLeases implements SystemLeases {
   private final List<UUID> ended = Collections.synchronizedList(new ArrayList<>());
   private final List<String> purged = Collections.synchronizedList(new ArrayList<>());
   private final List<UUID> rolled = Collections.synchronizedList(new ArrayList<>());
+  private final List<UUID> refreshed = Collections.synchronizedList(new ArrayList<>());
   private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
   private volatile List<Target> targets = List.of();
   private volatile LeaseRefused refuseCreate;
+  private volatile LeaseRefused refuseRefresh;
   private volatile LeaseRefused unreachable;
   private volatile boolean slowEnd;
   private volatile boolean hideFromListing;
@@ -37,9 +39,11 @@ public class FakeSystemLeases implements SystemLeases {
     ended.clear();
     purged.clear();
     rolled.clear();
+    refreshed.clear();
     calls.clear();
     targets = List.of();
     refuseCreate = null;
+    refuseRefresh = null;
     unreachable = null;
     slowEnd = false;
     hideFromListing = false;
@@ -53,6 +57,34 @@ public class FakeSystemLeases implements SystemLeases {
 
   public void refuseCreate(LeaseRefused refused) {
     this.refuseCreate = refused;
+  }
+
+  /** A refresh throws {@code refused} until reset (qits-2091). */
+  public void refuseRefresh(LeaseRefused refused) {
+    this.refuseRefresh = refused;
+  }
+
+  /**
+   * The runner reports {@code leaseId}'s resolvers {@code stale} (qits-2091), at its current
+   * generation (0 until refreshed); answers it.
+   */
+  public Lease resolvers(UUID leaseId, boolean stale) {
+    Lease was = leases.get(leaseId);
+    Lease now =
+        new Lease(
+            leaseId,
+            was.ownerRef(),
+            SLOT_TYPE,
+            was.state(),
+            was.targetId(),
+            was.exitCode(),
+            was.detail(),
+            was.specHash(),
+            was.requestedAt(),
+            stale,
+            was.generation() == null ? 0L : was.generation());
+    leases.put(leaseId, now);
+    return now;
   }
 
   /** Every call throws {@code refused} until reset. */
@@ -83,7 +115,9 @@ public class FakeSystemLeases implements SystemLeases {
             null,
             detail,
             was.specHash(),
-            was.requestedAt());
+            was.requestedAt(),
+            was.resolversStale(),
+            was.generation());
     leases.put(leaseId, now);
     return now;
   }
@@ -122,6 +156,10 @@ public class FakeSystemLeases implements SystemLeases {
 
   public List<UUID> rolled() {
     return List.copyOf(rolled);
+  }
+
+  public List<UUID> refreshed() {
+    return List.copyOf(refreshed);
   }
 
   public List<String> calls() {
@@ -190,7 +228,44 @@ public class FakeSystemLeases implements SystemLeases {
             null,
             was.detail(),
             "rolled-" + rolled.size(),
-            was.requestedAt());
+            was.requestedAt(),
+            was.resolversStale(),
+            was.generation());
+    leases.put(leaseId, now);
+    return now;
+  }
+
+  /**
+   * qits-system's refresh: a RUNNING lease's generation raised by one; the stale flag is left as
+   * it was, as on qits-system until the runner's next report.
+   */
+  @Override
+  public Lease refresh(UUID leaseId) {
+    check("refresh");
+    if (refuseRefresh != null) {
+      throw refuseRefresh;
+    }
+    Lease was = leases.get(leaseId);
+    if (was == null) {
+      throw new LeaseRefused(404, null, "no lease " + leaseId, null);
+    }
+    if (was.state() != LeaseState.RUNNING) {
+      throw new LeaseRefused(409, "LEASE_NOT_RUNNING", "lease " + leaseId + " is not RUNNING", null);
+    }
+    refreshed.add(leaseId);
+    Lease now =
+        new Lease(
+            leaseId,
+            was.ownerRef(),
+            SLOT_TYPE,
+            was.state(),
+            was.targetId(),
+            was.exitCode(),
+            was.detail(),
+            was.specHash(),
+            was.requestedAt(),
+            was.resolversStale(),
+            (was.generation() == null ? 0L : was.generation()) + 1);
     leases.put(leaseId, now);
     return now;
   }

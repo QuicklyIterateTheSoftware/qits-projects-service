@@ -49,6 +49,17 @@ import org.jboss.logging.Logger;
  * <p>A desk with no applied spec takes the fresh one always. A composed spec equal to the applied
  * one answers a pending request without a roll: the request is cleared and nothing restarts — the
  * hook fires on unchanged settings too.
+ *
+ * <p><b>Stale resolvers</b> (qits-2091). A target's runner decides a lease container's DNS
+ * resolvers only when it creates it, so a desk leased before its node's private edge or tunnel
+ * answered keeps public DNS for life; the reconcile's listing says so as the lease's {@code
+ * resolversStale} ({@link DeskLeases#resolversStale}). A desk whose spec is current and whose
+ * RUNNING lease reads stale is refreshed ({@link DeskLeases#refreshResolvers}: the container
+ * recreated on the same work volume, every process in it restarted) under the <b>unrequested
+ * roll's rule</b>: only while it is {@link #quiet quiet}. It is decided here, in the same pass as
+ * the rolls, so a refresh and a roll never race: a desk that rolls in a pass is not refreshed in it
+ * (the roll recreates the container too), and one whose roll waits for quiet waits for the same
+ * thing either way.
  */
 @ApplicationScoped
 public class FrontDeskSpecRoll {
@@ -128,6 +139,7 @@ public class FrontDeskSpecRoll {
       if (row.rollRequestedAt != null) {
         frontDesks.clearRollRequest(row.projectId);
       }
+      refreshIfStale(row, now);
       return false;
     }
     if (row.specJson != null && "RUNNING".equals(row.reportedState)) {
@@ -151,6 +163,24 @@ public class FrontDeskSpecRoll {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Refresh the desk's RUNNING lease when its resolvers read stale and the desk is {@link #quiet
+   * quiet} (qits-2091); true when it was refreshed.
+   */
+  boolean refreshIfStale(FrontDesk row, Instant now) {
+    if (!leases.resolversStale(row)) {
+      return false;
+    }
+    if (!quiet(row.projectId, now)) {
+      LOG.debugf(
+          "The front desk of project %s has stale resolvers and is in use; its lease is refreshed"
+              + " once it is quiet",
+          row.projectId);
+      return false;
+    }
+    return leases.refreshResolvers(row);
   }
 
   /** No evidence of use inside the quiet window, and nothing busy or waiting right now. */

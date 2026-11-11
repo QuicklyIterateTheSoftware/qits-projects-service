@@ -2928,6 +2928,22 @@ agent-container doors keep their paths:
   are the target's DESK slot policy, which also owns `HOME`, `CLAUDE_CONFIG_DIR` and `BUILDKIT_HOST`
   and FAILS a spec naming one (`FrontDeskSpecs.POLICY_OWNED_ENV`). A blank, dotless or `localhost`
   `qits.domain` refuses to compose: FAILED `EDGE_PLANE_UNCONFIGURED`.
+- **Stale resolvers** (qits-2091). The runner decides a lease container's DNS resolvers only at
+  create, so a desk leased before its node's private edge or tunnel answered keeps public DNS for
+  life; qits-system says so as the lease's `resolversStale` (with its refresh counter
+  `generation`). The reconcile's `listLeases` (and its `getLease` fallback) keeps what it read per
+  lease in `DeskLeases` — in memory, no column; a `TargetLeaseChanged` says nothing of it and
+  changes nothing. `FrontDeskSpecRoll`'s pass, for a desk whose spec is current, refreshes a
+  RUNNING lease that reads stale (`DeskLeases.refreshResolvers`, `POST
+  /system/api/leases/{id}/refresh`: the container recreated on the same work volume, every
+  process in it restarted) **only under the unrequested roll's rule**, `quiet` (nothing BUSY or
+  WAITING, no use inside `agent-stale-quiet-window`). One pass decides both, so a refresh and a roll
+  never race: a desk that rolls is not refreshed (the roll recreates the container too), and a
+  listing read within `DeskLeases.ROLL_SETTLE` (2 min) of a roll is not believed. A refresh is one
+  INFO line (project, lease, generation, `resolvers stale`); a refusal (409 `LEASE_NOT_RUNNING`)
+  is an INFO and the next pass asks again. A lease is not refreshed again at the generation its
+  refresh answered: still stale there is a runner whose report lags, or a new container that did
+  not cure it.
 - **The token** is one `qits_tok_` per lease (`FrontDeskTokens`, idp kind `agent-container`,
   claims `{project}`, `gitRefs []`), minted immediately before the lease is asked for and revoked
   once it is over (EXITED, FAILED, ENDED), on DELETE and on project deletion
