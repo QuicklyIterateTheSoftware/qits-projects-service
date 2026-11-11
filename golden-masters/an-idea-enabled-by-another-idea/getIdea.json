@@ -1,0 +1,22 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "projectId": "00000000-0000-4000-8000-000000000003",
+  "title": "Share the build cache",
+  "description": null,
+  "enabledBy": "00000000-0000-4000-8000-000000000001",
+  "enabledByIdea": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "title": "Faster builds",
+    "status": "PLANNED",
+    "archived": true
+  },
+  "status": "PLANNED",
+  "archived": false,
+  "archiveReason": null,
+  "archivedAt": null,
+  "priority": null,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "inspired": [],
+  "enables": []
+}

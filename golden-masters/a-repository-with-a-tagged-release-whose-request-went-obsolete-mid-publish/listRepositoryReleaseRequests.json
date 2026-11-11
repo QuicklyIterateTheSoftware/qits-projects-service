@@ -8,6 +8,16 @@
       "backingBranch": "release/contract-service-rr-1",
       "sources": [
         {
+          "kind": "BRANCH",
+          "name": "ticket/contract-00000001-1",
+          "ref": "refs/heads/ticket/contract-00000001-1",
+          "implicit": false,
+          "priority": "MEDIUM",
+          "addedBy": "contract-seeder",
+          "feature": true,
+          "explicitJoin": false
+        },
+        {
           "kind": "RELEASED_TAG",
           "name": "2026.101.100100",
           "ref": "refs/tags/2026.101.100100",
@@ -118,7 +128,7 @@
       "queuedNext": null,
       "queuedNextQualifiedId": null,
       "featureFreeze": {
-        "features": 0,
+        "features": 1,
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
@@ -126,7 +136,16 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": [],
+      "items": [
+        {
+          "source": "ticket/contract-00000001-1",
+          "label": "contract-00000001-1 Export the invoices as CSV",
+          "workItem": {
+            "qualifiedId": "contract-00000001-1",
+            "title": "Export the invoices as CSV"
+          }
+        }
+      ],
       "sourceMoves": []
     },
     {
@@ -136,6 +155,16 @@
       "repoName": "contract-service",
       "backingBranch": "release/contract-service-rr-2",
       "sources": [
+        {
+          "kind": "BRANCH",
+          "name": "ticket/contract-00000001-1",
+          "ref": "refs/heads/ticket/contract-00000001-1",
+          "implicit": false,
+          "priority": "MEDIUM",
+          "addedBy": "contract-seeder",
+          "feature": true,
+          "explicitJoin": false
+        },
         {
           "kind": "RELEASED_TAG",
           "name": "2026.101.100100",
@@ -266,7 +295,7 @@
       "queuedNext": null,
       "queuedNextQualifiedId": null,
       "featureFreeze": {
-        "features": 0,
+        "features": 1,
         "threshold": 3,
         "frozen": false,
         "source": "PLATFORM"
@@ -274,7 +303,16 @@
       "participants": [
         "contract-seeder"
       ],
-      "items": [],
+      "items": [
+        {
+          "source": "ticket/contract-00000001-1",
+          "label": "contract-00000001-1 Export the invoices as CSV",
+          "workItem": {
+            "qualifiedId": "contract-00000001-1",
+            "title": "Export the invoices as CSV"
+          }
+        }
+      ],
       "sourceMoves": []
     }
   ]

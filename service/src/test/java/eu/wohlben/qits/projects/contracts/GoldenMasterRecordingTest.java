@@ -898,6 +898,26 @@ class GoldenMasterRecordingTest {
     all.add(
         read(ProviderStates.A_PROJECT_WITH_IDEAS, "listIdeas", "/projects/api/ideas?project={projectId}"));
     all.add(read(ProviderStates.A_PROJECT_WITH_IDEAS, "getIdea", "/projects/api/ideas/{ideaId}"));
+    // The epic the idea inspired (qits-2039): its page shows where it came from, inspiredBy.
+    all.add(
+        read(ProviderStates.A_PROJECT_WITH_IDEAS, "getWork", "/projects/api/work/{qualifiedId}"));
+    // An idea whose enabler is archived (qits-2039): the read names the enabler, archived, and an
+    // edit the title rule refuses.
+    all.add(
+        read(
+            ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA,
+            "getIdea",
+            "/projects/api/ideas/{ideaId}"));
+    all.add(
+        new Interaction(
+            ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA,
+            "patchIdea",
+            "PATCH",
+            "/projects/api/ideas/{ideaId}",
+            400,
+            null,
+            null,
+            "{\"title\":\"Faster builds. Fewer waits. Less cost\"}"));
     all.add(
         new Interaction(
             ProviderStates.A_PROJECT_WITH_NO_WORK,
@@ -949,6 +969,8 @@ class GoldenMasterRecordingTest {
             "PATCH",
             "/projects/api/ideas/{ideaId}",
             "{\"priority\":5}"));
+    // The idea the patch edits, read in the same state (qits-2039): the edit page's saved view.
+    all.add(read(ProviderStates.THREE_IDEAS, "getIdea", "/projects/api/ideas/{ideaId}"));
     all.add(
         write(
             ProviderStates.THREE_IDEAS,
@@ -1470,6 +1492,21 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH,
             "listRepositoryReleaseRequests",
             requests + "?state=all"));
+    // The same requests as the landing app's release pages read them (qits-2039): each names the
+    // ticket its branch carries, and the obsolete one names what superseded it.
+    String obsoleted =
+        ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH;
+    all.add(
+        read(
+            obsoleted,
+            "listProjectReleaseRequests",
+            "/projects/api/projects/{projectId}/release-requests?state=all"));
+    all.add(read(obsoleted, "getReleaseRequest", requests + "/{requestId}"));
+    all.add(
+        read(
+            obsoleted,
+            "getProjectReleaseRequest",
+            "/projects/api/projects/{projectId}/release-requests/{requestQualifiedId}"));
     // The soft feature freeze (epic qits-1580): both lists, the frozen request read by id and the
     // queued one read through its project by qualified id.
     String frozen = ProviderStates.A_FROZEN_RELEASE_REQUEST_WITH_A_QUEUED_NEXT_REQUEST;
@@ -1549,6 +1586,23 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
             "listDeskTriggerMessages",
             "/projects/api/projects/{projectId}/desk-triggers"));
+    // A comment that addressed the desk (qits-2039): its line names the comment.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT,
+            "listDeskTriggerMessages",
+            "/projects/api/projects/{projectId}/desk-triggers"));
+    // An open issue (qits-2039): the project's work lists it, and its page reads it.
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
     // The branch-delivery read door (qits-1720), as qits-platform-access-cli reads where a branch
     // stands: by the branch's name alone, which is all an agent waiting on its branch holds.
     all.add(

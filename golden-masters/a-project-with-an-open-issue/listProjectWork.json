@@ -1,0 +1,35 @@
+{
+  "entities": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "archetype": "ISSUE",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "number": 1,
+      "qualifiedId": "contract-00000001-1",
+      "title": "Lift the runner lease",
+      "excerpt": null,
+      "slug": "lift-the-runner-lease",
+      "slugScope": "00000000-0000-4000-8000-000000000001",
+      "status": "OPEN",
+      "statusBefore": null,
+      "ticketType": null,
+      "impetus": null,
+      "assignee": null,
+      "createdBy": "contract-seeder",
+      "supersededBy": null,
+      "outcome": null,
+      "repositoryId": null,
+      "implementedAt": null,
+      "implementingAt": null,
+      "parent": null,
+      "position": null,
+      "priority": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "changedBy": null,
+      "tags": [],
+      "needs": [],
+      "unmetNeeds": 0
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "messages": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "state": "DELIVERED",
+      "openedAt": "2026-01-01T00:00:00Z",
+      "closesAt": "2026-01-01T00:00:00Z",
+      "closedAt": "2026-01-01T00:00:00Z",
+      "acceptedAt": "2026-01-01T00:00:00Z",
+      "attempts": 1,
+      "lastStatus": 200,
+      "lastDetail": null,
+      "commandId": "desk-command-1",
+      "queuePosition": null,
+      "message": "You are the delivery desk of project contract-00000001. Run `qits help guide` and follow your brief. Its guide-hash is 0000000000000000: re-read the guide only when that differs from the hash you last read. Then act on what happened below. (desk trigger 00000000-0000-4000-8000-000000000002, 2026-01-01T00:00:00Z to 2026-01-01T00:00:00Z)\n\nComments to @desk:\n- contract-00000001-1 (Desk mentions carry their comment; from contract-seeder)",
+      "events": [
+        {
+          "source": "desk-mentioned",
+          "itemRef": "contract-00000001-1",
+          "itemId": "00000000-0000-4000-8000-000000000003",
+          "label": "Desk mentions carry their comment; from contract-seeder",
+          "cause": "comment 16600000",
+          "commentId": "00000000-0000-4000-8000-000000000004",
+          "eventId": "00000000-0000-4000-8000-000000000005",
+          "occurredAt": "2026-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

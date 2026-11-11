@@ -303,6 +303,26 @@ public class ProviderStates {
   public static final String A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE =
       "a project whose desk received a trigger message";
 
+  /**
+   * qits-2039: a delivered window of one {@code desk-mentioned} line (qits-1660), a comment that
+   * addressed {@code @desk}, so the line carries its {@code commentId}. Param {@code projectId}.
+   */
+  public static final String A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT =
+      "a project whose desk was addressed in a comment";
+
+  /**
+   * qits-2039: one OPEN ISSUE (qits-1819) in a project of its own. Params {@code projectId}, {@code
+   * qualifiedId} (the issue).
+   */
+  public static final String A_PROJECT_WITH_AN_OPEN_ISSUE = "a project with an open issue";
+
+  /**
+   * qits-2039: two PLANNED ideas, the second ({@code ideaId}) enabled by the first ({@code
+   * enablerIdeaId}), which is archived after the link was made. Params {@code projectId}, {@code
+   * ideaId}, {@code enablerIdeaId}.
+   */
+  public static final String AN_IDEA_ENABLED_BY_ANOTHER_IDEA = "an idea enabled by another idea";
+
   // qits-1720: the branch-delivery read door, over one branch the ledger holds RELEASED.
   public static final String BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE =
       "branch ticket/qits-9001 is RELEASED in qits-demo-service";
@@ -433,6 +453,15 @@ public class ProviderStates {
 
   /** The trigger state's window, fixed so the recording is the same on every run. */
   static final UUID DESK_TRIGGER_WINDOW = UUID.fromString("16040000-0000-4000-8000-000000000001");
+
+  /** The comment state's window, fixed for the same reason, and apart from the trigger state's. */
+  static final UUID DESK_COMMENT_WINDOW = UUID.fromString("16600000-0000-4000-8000-000000000001");
+
+  /**
+   * The comment the comment state's line names: fixed, because the line's {@code cause} ({@code
+   * comment <first 8>}) carries it unfrozen.
+   */
+  static final String DESK_COMMENT_ID = "16600000-0000-4000-8000-000000000041";
 
   /** When the trigger state's window opened; its lines, close and delivery follow it. */
   private static final Instant DESK_TRIGGER_OPENED = Instant.parse("2026-01-01T00:01:00Z");
@@ -608,6 +637,9 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.projects.desktriggers.WorkVerifiedSource workVerifiedSource;
 
   @Inject eu.wohlben.qits.projects.desktriggers.ApprovalNeededSource approvalNeededSource;
+
+  /** The comment state's source, which renders its window's message as the sweep does. */
+  @Inject eu.wohlben.qits.projects.desktriggers.DeskMentionedSource deskMentionedSource;
 
   /** The fake daemon the front-desk state stands up; closed by {@link #cleanUp()}. */
   private eu.wohlben.qits.projects.agenthost.FakeProjectDaemon frontDeskDaemon;
@@ -799,6 +831,11 @@ public class ProviderStates {
     states.put(
         A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
         this::aProjectWhoseDeskReceivedATriggerMessage);
+    states.put(
+        A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT,
+        this::aProjectWhoseDeskWasAddressedInAComment);
+    states.put(A_PROJECT_WITH_AN_OPEN_ISSUE, this::aProjectWithAnOpenIssue);
+    states.put(AN_IDEA_ENABLED_BY_ANOTHER_IDEA, this::anIdeaEnabledByAnotherIdea);
     states.put(
         BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
         this::branchTicketQits9001IsReleasedInQitsDemoService);
@@ -1014,6 +1051,7 @@ public class ProviderStates {
                       "Desk triggers read door",
                       "tok-workspace-agent-contract",
                       "16040000-0000-4000-8000-000000000031",
+                      null,
                       DESK_TRIGGER_OPENED);
               var approval =
                   deskTriggerEvent(
@@ -1024,6 +1062,7 @@ public class ProviderStates {
                       "Release qits-1580; waits on manual-review: a person approves",
                       "fold 5eed5eed",
                       "16040000-0000-4000-8000-000000000032",
+                      null,
                       DESK_TRIGGER_OPENED.plusSeconds(60));
               window.message =
                   eu.wohlben.qits.projects.desktriggers.DeskTriggerMessage.render(
@@ -1048,6 +1087,102 @@ public class ProviderStates {
               approval.persist();
             });
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * qits-2039: a project whose delivery desk was addressed in a comment ({@code @desk}, qits-1660)
+   * and took the message: one DELIVERED window holding one {@code desk-mentioned} line about a
+   * seeded ticket, carrying the comment's id as {@code DeskMentionedSource.qualify} writes it, its
+   * cause {@code comment <first 8>}. Seeded as {@link
+   * #aProjectWhoseDeskReceivedATriggerMessage()} is, with ids and instants of its own; the comment
+   * id is fixed rather than a real comment's, since the cause carries it unfrozen.
+   */
+  private Setup aProjectWhoseDeskWasAddressedInAComment() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT);
+    String ticket = ticket(project, "Desk mentions carry their comment");
+    String ticketQualifiedId = qualified(project, ticket);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              eu.wohlben.qits.projects.entity.DeskTriggerWindow.delete("id", DESK_COMMENT_WINDOW);
+              var window = new eu.wohlben.qits.projects.entity.DeskTriggerWindow();
+              window.id = DESK_COMMENT_WINDOW;
+              window.projectId = project.id;
+              window.openedAt = DESK_TRIGGER_OPENED;
+              window.closesAt = DESK_TRIGGER_OPENED.plusSeconds(15 * 60);
+              window.closedAt = window.closesAt.plusSeconds(5);
+              window.state = eu.wohlben.qits.projects.entity.DeskTriggerWindowState.DELIVERED;
+              window.attempts = 1;
+              window.lastAttemptAt = window.closedAt.plusSeconds(1);
+              window.lastStatus = 200;
+              window.acceptedAt = window.lastAttemptAt;
+              window.commandId = "desk-command-1";
+              var mentioned =
+                  deskTriggerEvent(
+                      "16600000-0000-4000-8000-000000000011",
+                      deskMentionedSource.id(),
+                      ticketQualifiedId,
+                      ticket,
+                      "Desk mentions carry their comment; from " + SEEDER,
+                      "comment " + DESK_COMMENT_ID.substring(0, 8),
+                      "16600000-0000-4000-8000-000000000031",
+                      DESK_COMMENT_ID,
+                      DESK_TRIGGER_OPENED);
+              window.message =
+                  eu.wohlben.qits.projects.desktriggers.DeskTriggerMessage.render(
+                      project.slug,
+                      // A fixed guide-hash, as the trigger state's (qits-1734).
+                      "0000000000000000",
+                      window,
+                      Map.of(
+                          deskMentionedSource,
+                          List.of(
+                              eu.wohlben.qits.projects.desktriggers.DeskTriggerEventRow.of(
+                                  mentioned))));
+              window.persist();
+              mentioned.windowId = window.id;
+              mentioned.persist();
+            });
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * qits-2039: one OPEN ISSUE (qits-1819), filed through the work service as the desk files one,
+   * alone in its project. {@code qualifiedId} names it.
+   */
+  private Setup aProjectWithAnOpenIssue() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_AN_OPEN_ISSUE);
+    String issue =
+        work.create(
+                Archetype.ISSUE,
+                project.id,
+                EntityWrite.epic(
+                    "Lift the runner lease",
+                    "The CI runner's lease on target one is stuck; a person lifts it."),
+                SEEDER)
+            .entity()
+            .id;
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", qualified(project, issue)),
+        List.of(token));
+  }
+
+  /**
+   * qits-2039: {@code ideaId} is enabled by {@code enablerIdeaId}, which was archived after the
+   * link was made, so the read of {@code ideaId} answers an archived {@code enabledByIdea}.
+   */
+  private Setup anIdeaEnabledByAnotherIdea() {
+    String token = token();
+    Project project = project(token, AN_IDEA_ENABLED_BY_ANOTHER_IDEA);
+    String enabler =
+        ideas.create(project.id, "Faster builds", "Cache the dependencies.", null, SEEDER).id;
+    String idea = ideas.create(project.id, "Share the build cache", null, enabler, SEEDER).id;
+    ideas.archive(enabler, "The cache epic covers it.", SEEDER);
+    return new Setup(
+        params("enablerIdeaId", enabler, "ideaId", idea, "projectId", project.id),
+        List.of(token));
   }
 
   /**
@@ -1204,6 +1339,7 @@ public class ProviderStates {
       String label,
       String cause,
       String eventId,
+      String commentId,
       Instant at) {
     var event = new eu.wohlben.qits.projects.entity.DeskTriggerEvent();
     event.id = UUID.fromString(id);
@@ -1213,6 +1349,7 @@ public class ProviderStates {
     event.label = label;
     event.cause = cause;
     event.eventId = UUID.fromString(eventId);
+    event.commentId = commentId;
     event.occurredAt = at;
     event.admittedAt = at;
     return event;
@@ -2529,16 +2666,22 @@ public class ProviderStates {
         ideas.create(project.id, "Share the build cache", null, idea, SEEDER).id;
     String archived = ideas.create(project.id, "Nightly rebuilds", null, null, SEEDER).id;
     ideas.archive(archived, "The cache makes them unnecessary.", SEEDER);
-    work.create(
-        Archetype.EPIC,
-        project.id,
-        EntityWrite.epic("Cache the build dependencies", "A shared dependency cache.")
-            .withInspiredBy(idea, false),
-        SEEDER);
+    String epic =
+        work.create(
+                Archetype.EPIC,
+                project.id,
+                EntityWrite.epic("Cache the build dependencies", "A shared dependency cache.")
+                    .withInspiredBy(idea, false),
+                SEEDER)
+            .entity()
+            .id;
     return new Setup(
         params(
             "projectId",
             project.id,
+            // The epic the first idea inspired (qits-2039): its getWork answers inspiredBy.
+            "qualifiedId",
+            qualified(project, epic),
             "ideaId",
             idea,
             "enabledIdeaId",
@@ -2945,6 +3088,14 @@ public class ProviderStates {
                   row.detail = "Run " + run + " finished FAILURE for " + fold;
                 });
         serviceSources(id);
+        // qits-2039: the ticket filed because the red verdict found nobody watching, as
+        // ReleaseRequests.fileUnattendedGateTicket links it.
+        String gateTicket = ticket(project, "Release request rejected by its build");
+        String rejected = id;
+        QuarkusTransaction.requiringNew()
+            .run(
+                () ->
+                    ReleaseRequest.<ReleaseRequest>findById(rejected).gateTicketId = gateTicket);
         verdictOf(run, project, service, "contract-service", id, fold, "FAILURE", 12);
         phaseRunWithId(run, id, service, "RELEASE_REQUEST", "FAILED", 11, 12);
       }
@@ -3896,8 +4047,21 @@ public class ProviderStates {
               tag.abandonedAt = SEEDED_AT.plusSeconds(60L * 3);
               tag.persist();
             });
+    // qits-2039: the ticket both requests carry, so each names its work item; the successor took
+    // the branch over when it overtook the obsolete request.
+    String ticketBranch =
+        "ticket/" + qualified(project, ticket(project, "Export the invoices as CSV"));
+    source(obsolete, ticketBranch, eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 1, true);
+    source(successor, ticketBranch, eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 3, true);
+    String obsoleteQualifiedId =
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequest.<ReleaseRequest>findById(obsolete).qualifiedId);
     return new Setup(
-        params("projectId", project.id, "repositoryId", repoId, "requestId", obsolete),
+        params(
+            "projectId", project.id,
+            "repositoryId", repoId,
+            "requestId", obsolete,
+            "requestQualifiedId", obsoleteQualifiedId),
         List.of(token));
   }
 

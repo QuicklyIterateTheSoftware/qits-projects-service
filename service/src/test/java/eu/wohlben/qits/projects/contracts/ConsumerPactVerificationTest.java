@@ -857,6 +857,21 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);
   }
 
+  @State(ProviderStates.A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT)
+  Map<String, String> aProjectWhoseDeskWasAddressedInAComment() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE)
+  Map<String, String> aProjectWithAnOpenIssue() {
+    return states.params(ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE);
+  }
+
+  @State(ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA)
+  Map<String, String> anIdeaEnabledByAnotherIdea() {
+    return states.params(ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA);
+  }
+
   @State(ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE)
   Map<String, String> branchTicketQits9001IsReleasedInQitsDemoService() {
     return states.params(ProviderStates.BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE);
