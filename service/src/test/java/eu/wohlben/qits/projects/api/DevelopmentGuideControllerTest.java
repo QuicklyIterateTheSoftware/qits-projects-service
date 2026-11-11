@@ -553,7 +553,8 @@ public class DevelopmentGuideControllerTest {
     assertEquals(
         List.of(
             DevelopmentGuideDefaults.QITS_1679_WORKSTATION_GUIDE,
-            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_WORKSTATION_GUIDE),
+            DevelopmentGuideDefaults.QITS_1724_PREVIOUS_WORKSTATION_GUIDE,
+            DevelopmentGuideDefaults.QITS_2082_PREVIOUS_WORKSTATION_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("workstation")),
         "an unedited workstation part rolls forward to the new text");
   }

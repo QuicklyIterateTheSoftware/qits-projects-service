@@ -255,8 +255,11 @@ public final class DevelopmentGuideDefaults {
       Name everything by its full id: `qits-1178`, `qits-workspaces-service-rr-165`.\
       """;
 
-  /** A person on a workstation. */
-  public static final String WORKSTATION_GUIDE =
+  /**
+   * The workstation part as qits-2082 found it shipping: the registries section covered npm and
+   * Maven only, before it said how Docker gets its registry login too.
+   */
+  public static final String QITS_2082_PREVIOUS_WORKSTATION_GUIDE =
       """
       # Development guide: workstation
 
@@ -281,6 +284,84 @@ public final class DevelopmentGuideDefaults {
       - `--remove-stale` also drops old `*.dev.localhost` registries and duplicate entries.
       - From then on `qits session-daemon` writes each new token into the blocks.
       - Never write a registry token by hand.
+
+      ## Build
+
+      - Maven resolves through the mirror `qits-maven-host` for the repository `qits-maven`
+        (`https://registry.qits.<domain>/artifacts/maven/maven`). With the blocks in place,
+        `./mvnw verify` resolves what CI resolves.
+      - npm reads its registries from `~/.npmrc`: `npm ci` needs nothing else.
+      - Run the tests your change affects, not the whole suite: the release request runs it.
+      - Quarkus tests: pass `-Dquarkus.http.test-port=0`, so a test does not take a fixed port.
+
+      ## Ask the delivery desk
+
+      Each project has a delivery desk, an agent that keeps its work moving. To ask it for
+      something (an approval, an action your credential cannot do, a decision), comment on the work
+      item with a comment that starts with `@desk` and says exactly what you need. This works from a
+      workstation too, for example from your own Claude Code session. Then wait for the outcome
+      on your branch (`qits wait branch <branch> --until live`) or on the item's final state,
+      never on a request id or a fold.
+
+      A person or an admin can also talk to the desk directly:
+      `qits projects desk prompt --project <project> "<text>"`, then
+      `qits projects desk answer --project <project>` for its answer.
+
+      ## Ship a change
+
+      1. Commit on a branch. Name the work in the subject: `term(<project>-<n>): message`, for
+         example `feat(qits-1337): refuse malformed commit subjects`.
+      2. Push it to the platform's git host, under `refs/heads/external/`:
+         `git push https://githost.qits.<domain>/git/<project>/<repository> HEAD:refs/heads/external/<name>`.
+         Never push to `main`, and never to a mirror such as GitHub: deploys come from the
+         platform's git host only. A push releases nothing.
+      3. Ask for a release: `qits release-request create --project <project> --repository
+         <repository> --branch external/<name>`. What it carries comes from the work item your
+         branch names; when a request is open for the repository, `create` joins it. An older CLI
+         that still asks for `--summary` takes any text and ignores it.
+      4. Follow it: `qits release-request list --project <project>`. For a red build:
+         `qits ci runs --project <project> --repository <repository> --release-request <id>`, then
+         `qits ci report show <run id> --project <project> --repository <repository>`.
+      5. A request is done at FINALIZED: the tag is merged into `main`, and a service is deployed.
+         Fix a REJECTED or CONFLICTED request with a new push to its branch; do not open a second.
+      6. Check the change on the running platform before you call it done.
+
+      Name everything by its full id: `qits-1178`, `qits-workspaces-service-rr-165`.\
+      """;
+
+  /** A person on a workstation. */
+  public static final String WORKSTATION_GUIDE =
+      """
+      # Development guide: workstation
+
+      How to develop on the qits platform from your own machine. Inside the platform, run
+      `qits help guide` there: agents get their own variant.
+
+      ## Sign in
+
+      1. `qits login` signs you in through the browser. The session is stored in
+         `~/.config/qits/t.json`.
+      2. Keep `qits session-daemon` running (the CLI's README has a systemd user unit). It keeps
+         the session fresh, and the registry logins below.
+      3. `qits git-login` lets Git push to the platform's git host. Git gets its token from
+         `qits git-credential`; do not store one by hand.
+
+      ## Registries for npm, Maven and Docker
+
+      `qits registry-login --configure` writes a login for the platform's registries into blocks of
+      `~/.npmrc` and `~/.m2/settings.xml` that the CLI owns. The rest of each file stays as it is.
+
+      - Run it with `--dry-run` first: it prints the changes as a redacted diff and writes nothing.
+      - `--remove-stale` also drops old `*.dev.localhost` registries and duplicate entries.
+      - From then on `qits session-daemon` writes each new token into the blocks.
+      - Never write a registry token by hand.
+      - `--configure` also points Docker at the CLI for the platform registry: it adds
+        `"credHelpers": {"registry.qits.<domain>": "qits"}` to `~/.docker/config.json` (or
+        `$DOCKER_CONFIG/config.json`) and writes the `docker-credential-qits` script beside `qits`
+        (the installer writes it too).
+      - Docker then gets the session's token from `qits docker-credential` each time it pulls; no
+        token is written for Docker, so do not `docker login` to the platform registry.
+      - `qits network-access up` pulls its companion image this way.
 
       ## Build
 
@@ -3201,7 +3282,10 @@ public final class DevelopmentGuideDefaults {
   public static final Map<String, List<String>> PREVIOUS =
       Map.of(
           key(WORKSTATION),
-              List.of(QITS_1679_WORKSTATION_GUIDE, QITS_1724_PREVIOUS_WORKSTATION_GUIDE),
+              List.of(
+                  QITS_1679_WORKSTATION_GUIDE,
+                  QITS_1724_PREVIOUS_WORKSTATION_GUIDE,
+                  QITS_2082_PREVIOUS_WORKSTATION_GUIDE),
           key(DESK),
               List.of(
                   QITS_1679_DESK_GUIDE,
