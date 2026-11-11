@@ -143,8 +143,20 @@ public class DeskLeases {
   /** The last {@link Resolvers} the reconcile read, by lease id; only leases a desk names. */
   private final Map<UUID, Resolvers> resolvers = new ConcurrentHashMap<>();
 
-  /** The generation each lease this process refreshed was answered with (qits-2091). */
-  private final Map<UUID, Long> refreshedTo = new ConcurrentHashMap<>();
+  /** A refresh this process made: the generation it was answered with, and when (qits-2091). */
+  private record Refreshed(long generation, Instant at) {}
+
+  /** The last refresh of each lease this process refreshed. */
+  private final Map<UUID, Refreshed> refreshedTo = new ConcurrentHashMap<>();
+
+  /**
+   * How long a lease still reading stale at the generation its refresh answered is left alone
+   * (qits-2091) before it may be refreshed again: long enough for the runner's report of the new
+   * container to land, short enough that a container recreated while the tunnel was down again is
+   * not left on public DNS for good.
+   */
+  @ConfigProperty(name = "qits.projects.target-leases.refresh-cooldown", defaultValue = "PT30M")
+  Duration refreshCooldown;
 
   /** When this process last rolled each lease: its container was recreated then. */
   private final Map<UUID, Instant> rolledAt = new ConcurrentHashMap<>();
@@ -404,13 +416,14 @@ public class DeskLeases {
   // --- stale resolvers (qits-2091) ---------------------------------------------------------------
 
   /**
-   * Whether the desk's lease is RUNNING and the reconcile's last listing read its resolvers stale at
-   * a generation this process has not refreshed it to. Still stale at the generation a refresh
-   * answered is a runner whose report has not caught up, or a new container that did not cure it:
-   * another recreate would cure neither, so it is not asked for again. A reading made within {@link
-   * #ROLL_SETTLE} of a roll is not believed.
+   * Whether the desk's lease is RUNNING and the reconcile's last listing read its resolvers stale.
+   * Still stale at the generation a refresh answered is most likely a runner whose report has not
+   * caught up, so it is not asked for again until {@code
+   * qits.projects.target-leases.refresh-cooldown} (PT30M) after that refresh; past it, the new
+   * container did not cure it (the tunnel was down again at its create) and another refresh may.
+   * A reading made within {@link #ROLL_SETTLE} of a roll is not believed.
    */
-  public boolean resolversStale(FrontDesk row) {
+  public boolean resolversStale(FrontDesk row, Instant now) {
     if (row == null || row.leaseId == null || !LeaseState.RUNNING.name().equals(row.reportedState)) {
       return false;
     }
@@ -418,12 +431,14 @@ public class DeskLeases {
     if (read == null || !read.stale()) {
       return false;
     }
-    Long done = refreshedTo.get(row.leaseId);
-    if (done != null && done == read.generation()) {
+    Refreshed done = refreshedTo.get(row.leaseId);
+    if (done != null
+        && done.generation() == read.generation()
+        && now.isBefore(done.at().plus(refreshCooldown))) {
       LOG.debugf(
           "Lease %s of the desk of project %s still reads its resolvers stale at generation %d,"
-              + " which it was refreshed to; not refreshed again",
-          row.leaseId, row.projectId, read.generation());
+              + " which it was refreshed to at %s; not refreshed again before the cooldown ends",
+          row.leaseId, row.projectId, read.generation(), done.at());
       return false;
     }
     Instant rolled = rolledAt.get(row.leaseId);
@@ -436,7 +451,7 @@ public class DeskLeases {
    * restart. True when it landed; a refusal (409 {@code LEASE_NOT_RUNNING}: the lease moved since the
    * listing) is logged and answers false.
    */
-  public boolean refreshResolvers(FrontDesk row) {
+  public boolean refreshResolvers(FrontDesk row, Instant now) {
     if (row == null || row.leaseId == null || !system.isResolvable()) {
       return false;
     }
@@ -453,7 +468,7 @@ public class DeskLeases {
     }
     long generation =
         refreshed == null || refreshed.generation() == null ? -1 : refreshed.generation();
-    refreshedTo.put(leaseId, generation);
+    refreshedTo.put(leaseId, new Refreshed(generation, now));
     LOG.infof(
         "Refreshed lease %s of the front desk of project %s to generation %d: %s; its container is"
             + " recreated on the same work volume",

@@ -483,6 +483,33 @@ class FrontDeskTest {
     assertEquals(List.of(leaseId), system.refreshed(), "not again at the generation it answered");
   }
 
+  /**
+   * Still stale at the generation the refresh answered: left alone for the cooldown, then refreshed
+   * once more (and not again before the next cooldown ends).
+   */
+  @Test
+  void aDeskStillStaleAfterItsRefreshIsRefreshedAgainAfterTheCooldown() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    Instant t0 = Instant.now();
+
+    specRoll.roll(t0);
+    assertEquals(List.of(leaseId), system.refreshed());
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+
+    specRoll.roll(t0.plus(Duration.ofMinutes(29)));
+    assertEquals(List.of(leaseId), system.refreshed(), "inside the cooldown");
+
+    specRoll.roll(t0.plus(Duration.ofMinutes(31)));
+    assertEquals(List.of(leaseId, leaseId), system.refreshed(), "refreshed again after it");
+    assertEquals(2L, system.lease(leaseId).orElseThrow().generation());
+
+    leases.reconcile(Duration.ofMinutes(2), Instant.now());
+    specRoll.roll(t0.plus(Duration.ofMinutes(40)));
+    assertEquals(2, system.refreshed().size(), "a new cooldown from the second refresh");
+  }
+
   /** A turn running holds the refresh back, however long ago the desk was last used. */
   @Test
   void aStaleDeskWithATurnRunningIsNotRefreshed() {

@@ -170,7 +170,7 @@ public class FrontDeskSpecRoll {
    * quiet} (qits-2091); true when it was refreshed.
    */
   boolean refreshIfStale(FrontDesk row, Instant now) {
-    if (!leases.resolversStale(row)) {
+    if (!leases.resolversStale(row, now)) {
       return false;
     }
     if (!quiet(row.projectId, now)) {
@@ -180,7 +180,7 @@ public class FrontDeskSpecRoll {
           row.projectId);
       return false;
     }
-    return leases.refreshResolvers(row);
+    return leases.refreshResolvers(row, now);
   }
 
   /** No evidence of use inside the quiet window, and nothing busy or waiting right now. */

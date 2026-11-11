@@ -2941,9 +2941,10 @@ agent-container doors keep their paths:
   never race: a desk that rolls is not refreshed (the roll recreates the container too), and a
   listing read within `DeskLeases.ROLL_SETTLE` (2 min) of a roll is not believed. A refresh is one
   INFO line (project, lease, generation, `resolvers stale`); a refusal (409 `LEASE_NOT_RUNNING`)
-  is an INFO and the next pass asks again. A lease is not refreshed again at the generation its
-  refresh answered: still stale there is a runner whose report lags, or a new container that did
-  not cure it.
+  is an INFO and the next pass asks again. A lease still stale at the generation its refresh
+  answered is left alone for `qits.projects.target-leases.refresh-cooldown` (PT30M) after that
+  refresh — the runner's report may lag — and past it may be refreshed again, still only when
+  quiet.
 - **The token** is one `qits_tok_` per lease (`FrontDeskTokens`, idp kind `agent-container`,
   claims `{project}`, `gitRefs []`), minted immediately before the lease is asked for and revoked
   once it is over (EXITED, FAILED, ENDED), on DELETE and on project deletion
