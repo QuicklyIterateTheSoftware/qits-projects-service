@@ -5033,24 +5033,16 @@
           "operationId": "listProjectReleaseRequests",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/release-requests",
-          "query": {
-            "state": "all"
-          },
           "status": 200,
           "file": "a-repository-with-a-tagged-release-whose-request-went-obsolete-mid-publish/listProjectReleaseRequests.json",
           "frozen": {
             "ids": [
               "$.requests[*].id",
-              "$.requests[*].repoId",
-              "$.requests[*].supersededBy",
-              "$.requests[*].pipeline.phases[*].runId",
-              "$.requests[*].qualityGates[*].runId"
+              "$.requests[*].repoId"
             ],
             "instants": [
               "$.requests[*].createdAt",
-              "$.requests[*].updatedAt",
-              "$.requests[*].pipeline.phases[*].startedAt",
-              "$.requests[*].pipeline.phases[*].finishedAt"
+              "$.requests[*].updatedAt"
             ],
             "strings": [
               "$.requests[*].sources[*].name",

@@ -1493,14 +1493,13 @@ class GoldenMasterRecordingTest {
             "listRepositoryReleaseRequests",
             requests + "?state=all"));
     // The same requests as the landing app's release pages read them (qits-2039): each names the
-    // ticket its branch carries, and the obsolete one names what superseded it.
+    // ticket its branch carries, and the obsolete one names what superseded it. The list is read
+    // as the app reads it, with no state, so it holds the open successor alone.
     String obsoleted =
         ProviderStates.A_REPOSITORY_WITH_A_TAGGED_RELEASE_WHOSE_REQUEST_WENT_OBSOLETE_MID_PUBLISH;
     all.add(
         read(
-            obsoleted,
-            "listProjectReleaseRequests",
-            "/projects/api/projects/{projectId}/release-requests?state=all"));
+            obsoleted, "listProjectReleaseRequests", "/projects/api/projects/{projectId}/release-requests"));
     all.add(read(obsoleted, "getReleaseRequest", requests + "/{requestId}"));
     all.add(
         read(
