@@ -19,6 +19,7 @@ import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.BranchDeliveryStep;
+import eu.wohlben.qits.projects.control.BuildStatusLedger;
 import eu.wohlben.qits.projects.control.FoldAttempt;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
@@ -83,6 +84,8 @@ public class BranchDeliveryTest {
   @Inject DeploymentActiveListener deployments;
 
   @Inject ReleaseFinalization finalization;
+
+  @Inject BuildStatusLedger ledger;
 
   @Inject FakeActiveBuilds activeBuilds;
 
@@ -1044,11 +1047,145 @@ public class BranchDeliveryTest {
     publishVerdict("BuildFailed", repoA, "2026.0101.1", run("elsewhere"));
     publishVerdict("BuildFailed", repoB, tag, run("other-repo"));
     publishRunTransition(repoA, "2026.0101.1", run("elsewhere"), "RUNNING");
-    finalization.onPublishVerdict(repoA, branch, run("a-branch"), false);
+    finalization.onPublishVerdict(repoA, branch, run("a-branch"), false, Instant.now());
     pause(300);
 
     assertEquals(List.of("JOINED@" + qid, "RELEASED@" + qid), announced.movesOf(branch));
     assertEquals("RELEASED", ledgerStep(repoA, branch));
+  }
+
+  /**
+   * qits-2164, the incident: a publish run A of a deployable tag failed while this service could
+   * not record it, so its BuildFailed stayed owed; the retry B (retryOfRunId A) went green live; the
+   * catch-up then replayed A's old red, which used to overwrite PASSED with FAILED, fail the branch
+   * with failure PUBLISH and strand the release for ever. A red never replaces PASSED: the replay
+   * writes nothing, and the deployment going live finalizes the request.
+   */
+  @Test
+  public void aLateRedOfARetriedPublishRunNeitherFailsTheGateNorTheBranch() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch, stagePublishedDeployedRelease());
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+    String releasedSha = pendingRow(repoA, tag).releasedSha;
+
+    String original = run("publish-original");
+    String retry = run("publish-retry");
+    Instant failedAt = Instant.now().minusSeconds(88 * 60);
+    publishVerdictAt("BuildSuccessful", repoA, tag, releasedSha, retry, original, Instant.now());
+    assertEquals(ReleasedTagPendingMerge.PublishState.PASSED, pendingRow(repoA, tag).publishState);
+
+    publishVerdictAt("BuildFailed", repoA, tag, releasedSha, original, null, failedAt);
+
+    ReleasedTagPendingMerge row = pendingRow(repoA, tag);
+    assertEquals(
+        ReleasedTagPendingMerge.PublishState.PASSED,
+        row.publishState,
+        "a red never replaces PASSED: a green run is final for the version");
+    assertEquals(retry, row.publishRunId, "and the gate keeps naming the run that passed it");
+    assertEquals("RELEASED", ledgerStep(repoA, branch), "the branch is not failed");
+
+    deploymentActive(tag);
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid, "LIVE@" + qid));
+    assertTrue(
+        announced.stepsOf(branch).stream().noneMatch(step -> "FAILED".equals(step.step())),
+        "no FAILED/PUBLISH step was announced for the replayed run: " + announced.movesOf(branch));
+  }
+
+  /**
+   * qits-2164: a red of run A arriving while its retry B — newer, started after A finished — is
+   * still RUNNING is not the gate's word either: B answers for the version. Nothing is written, the
+   * gate stays PENDING, and B's green finalizes as a first green would.
+   */
+  @Test
+  public void aLateRedWhileANewerPublishRunIsBuildingWritesNothing() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch, stagePublishedRelease());
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+    String releasedSha = pendingRow(repoA, tag).releasedSha;
+
+    String original = run("publish-original");
+    String retry = run("publish-retry");
+    Instant now = Instant.now();
+    publishRunTransitionAt(repoA, tag, original, "QUEUED", now.minusSeconds(600));
+    publishRunTransitionAt(repoA, tag, original, "RUNNING", now.minusSeconds(590));
+    publishRunTransitionAt(repoA, tag, retry, "QUEUED", now.minusSeconds(300));
+    publishRunTransitionAt(repoA, tag, retry, "RUNNING", now.minusSeconds(290));
+
+    publishVerdictAt("BuildFailed", repoA, tag, releasedSha, original, null, now.minusSeconds(400));
+    pause(300);
+
+    assertEquals(
+        ReleasedTagPendingMerge.PublishState.PENDING,
+        pendingRow(repoA, tag).publishState,
+        "the newer run answers for the version, so the old red writes nothing");
+    assertEquals(List.of("JOINED@" + qid, "RELEASED@" + qid), announced.movesOf(branch));
+
+    publishVerdictAt("BuildSuccessful", repoA, tag, releasedSha, retry, null, Instant.now());
+    finalization.sweep();
+    awaitState(repoA, id, "FINALIZED");
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid, "LIVE@" + qid));
+  }
+
+  /**
+   * qits-2164, the heal: a row a late red already overwrote — FAILED, its branch failed, deployed —
+   * while the ledger holds the green publish verdict for its released sha under its version. The
+   * sweep alone reads the gate PASSED again, re-arms the branch and merges: no new publish run. A
+   * green fold build of another branch at the same commit proves nothing and heals nothing.
+   */
+  @Test
+  public void theSweepHealsAFailedPublishGateTheLedgerProvesGreenAndMergesItOnceDeployed() {
+    String branch = ticketBranch();
+    activeBuilds.answer(Optional.of(0));
+    String tag = releaseOf(repoA, branch, stagePublishedDeployedRelease());
+    String id = firstRequest(repoA);
+    String qid = qualifiedIdOf(repoA, id);
+    awaitMoves(branch, List.of("JOINED@" + qid, "RELEASED@" + qid));
+    String releasedSha = pendingRow(repoA, tag).releasedSha;
+
+    // The overwritten state, as the incident left it: a red applied, the deployment live.
+    publishVerdictAt("BuildFailed", repoA, tag, releasedSha, run("red"), null, Instant.now());
+    awaitLastStep(branch, "FAILED");
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleasedTagPendingMerge.update(
+                    "deploymentActiveAt = ?1 where repoId = ?2 and tagName = ?3",
+                    Instant.now(),
+                    repoA,
+                    tag));
+
+    ledger.record(greenVerdict(repoA, "release/elsewhere", releasedSha, run("fold")));
+    finalization.sweep();
+    assertEquals(
+        ReleasedTagPendingMerge.PublishState.FAILED,
+        pendingRow(repoA, tag).publishState,
+        "a green build of another branch is no publish run of this version");
+    assertEquals("RELEASED", stateOf(repoA, id));
+
+    String green = run("green-publish");
+    ledger.record(greenVerdict(repoA, tag, releasedSha, green));
+    finalization.sweep();
+
+    ReleasedTagPendingMerge healed = pendingRow(repoA, tag);
+    assertEquals(ReleasedTagPendingMerge.PublishState.PASSED, healed.publishState);
+    assertEquals(green, healed.publishRunId);
+    awaitState(repoA, id, "FINALIZED");
+    awaitMoves(
+        branch,
+        List.of(
+            "JOINED@" + qid,
+            "RELEASED@" + qid,
+            "FAILED@" + qid,
+            "RELEASED@" + qid,
+            "LIVE@" + qid));
   }
 
   // ---- helpers ---------------------------------------------------------------------------------
@@ -1776,6 +1913,95 @@ public class BranchDeliveryTest {
                 + "\""
                 + ("BuildFailed".equals(name) ? ",\"outcome\":\"FAILED\"" : "")
                 + "}"));
+  }
+
+  /**
+   * The next release's version, whose tree declares both a release pipeline qits-ci runs and a
+   * deployment: the publish and the deployment gate stand between its tag and main (qits-2164).
+   */
+  private String stagePublishedDeployedRelease() {
+    String tag = "2026.1112." + (100000 + (int) (Math.random() * 800000));
+    executor.answer(ReleaseExecutor.Outcome.released(tag, RecordingBackingBranchMerger.freshSha()));
+    gitHost.tree(
+        "refs/tags/" + tag,
+        Map.of(
+            "pom.xml",
+            "irrelevant",
+            RecordingReleaseGitHost.RELEASE_CONFIG,
+            RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
+            ".config/qits/deployments.yml",
+            "irrelevant"));
+    publishRuns.answer(Optional.of(true));
+    return tag;
+  }
+
+  private ReleasedTagPendingMerge pendingRow(String repoId, String tag) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                ReleasedTagPendingMerge.<ReleasedTagPendingMerge>find(
+                        "repoId = ?1 and tagName = ?2", repoId, tag)
+                    .firstResult());
+  }
+
+  /** A publish run's verdict at the released sha, at {@code at}, optionally a retry (qits-2164). */
+  private void publishVerdictAt(
+      String name,
+      String repoId,
+      String version,
+      String sha,
+      String runId,
+      String retryOf,
+      Instant at) {
+    buildListener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            name,
+            at,
+            "{\"branch\":\""
+                + version
+                + "\",\"commitSha\":\""
+                + sha
+                + "\",\"repoId\":\""
+                + repoId
+                + "\""
+                + (retryOf == null ? "" : ",\"retryOfRunId\":\"" + retryOf + "\"")
+                + ",\"runId\":\""
+                + runId
+                + "\""
+                + ("BuildFailed".equals(name) ? ",\"outcome\":\"FAILED\"" : "")
+                + "}",
+            null,
+            null,
+            null));
+  }
+
+  /** qits-ci's {@code BuildStatusChanged} for a publish run of {@code version}, at {@code at}. */
+  private void publishRunTransitionAt(
+      String repoId, String version, String runId, String status, Instant at) {
+    pipelineRunListener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "BuildStatusChanged",
+            at,
+            "{\"branch\":\""
+                + version
+                + "\",\"phase\":\"RELEASE\",\"repoId\":\""
+                + repoId
+                + "\",\"runId\":\""
+                + runId
+                + "\",\"status\":\""
+                + status
+                + "\"}",
+            null,
+            null,
+            null));
+  }
+
+  private static BuildStatusLedger.Verdict greenVerdict(
+      String repoId, String branch, String sha, String runId) {
+    return new BuildStatusLedger.Verdict(
+        runId, repoId, null, null, branch, sha, "SUCCESS", Instant.now(), null, null);
   }
 
   /** qits-ci's {@code BuildStatusChanged} for a publish run of {@code version}. */

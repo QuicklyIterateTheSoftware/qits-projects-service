@@ -161,11 +161,14 @@ public class BuildStatusListener implements QitsDurableEventListener {
     // because one event cannot be both and neither is expensive to rule out. See
     // ReleaseFinalization.onPublishVerdict, which is where the correlation and the refusal to move
     // the request out of RELEASED live.
+    // The frame's own instant rides along (qits-2164): a catch-up delivers late and out of order,
+    // and the gate refuses a red that a newer publish run of the same tag already answers for.
     finalization.onPublishVerdict(
         build.repoId(),
         build.branch(),
         build.runId(),
-        SUCCESS_SIGNATURE.equals(frame.name()));
+        SUCCESS_SIGNATURE.equals(frame.name()),
+        frame.occurredAt());
   }
 
   /**
