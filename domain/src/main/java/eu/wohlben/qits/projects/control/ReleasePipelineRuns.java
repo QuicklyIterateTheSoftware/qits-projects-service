@@ -269,6 +269,37 @@ public class ReleasePipelineRuns {
         .findFirst();
   }
 
+  /**
+   * A publish run of this request newer than a red publish verdict, or empty (qits-2164) — the
+   * evidence that the red is not the version's last word, because a later run of the same tag
+   * (a {@code qits ci retry}, a phase rerun) has been asked for since and will answer for it.
+   *
+   * <p>Qualifies: phase {@link #PHASE_RELEASE}, a run id other than {@code redRunId}, a status
+   * other than {@code CANCELLED} (a cancelled run publishes no verdict, so it answers for nothing
+   * and must not swallow the red that would otherwise be the gate's word), and a first known
+   * instant — {@code startedAt}, else the newest transition, which for a run never started is its
+   * QUEUED — strictly after {@code redFinishedAt}. The start rather than the newest transition is
+   * what keeps a <em>parallel</em> run, started before the red finished, from counting as newer
+   * merely because it finished later. Both instants are qits-ci's own frames' {@code occurredAt},
+   * so they are one clock — {@link #buildingAgain}'s argument, one phase later.
+   *
+   * <p>A mirror with no row for the request answers empty, which leaves the caller with exactly
+   * what it did before this read existed. Read in the caller's transaction.
+   */
+  public Optional<ReleasePipelineRun> newerPublishRun(
+      String releaseRequestId, String redRunId, Instant redFinishedAt) {
+    if (releaseRequestId == null || redFinishedAt == null) {
+      return Optional.empty();
+    }
+    return runs.findByRequest(releaseRequestId).stream()
+        .filter(run -> PHASE_RELEASE.equals(run.phase))
+        .filter(run -> !run.runId.equals(redRunId))
+        .filter(run -> !"CANCELLED".equals(run.status))
+        .filter(
+            run -> (run.startedAt != null ? run.startedAt : run.updatedAt).isAfter(redFinishedAt))
+        .findFirst();
+  }
+
   /** The request a mirrored run was correlated to, or empty where the mirror holds no row for it. */
   public Optional<String> requestOf(String runId) {
     return runId == null

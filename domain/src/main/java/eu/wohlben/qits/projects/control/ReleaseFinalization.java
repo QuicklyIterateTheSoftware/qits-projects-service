@@ -154,6 +154,15 @@ public class ReleaseFinalization {
   @Inject BranchDeliveries deliveries;
 
   /**
+   * The per-commit verdicts (qits-2164): whether a retry already answered a red publish run, and
+   * the green verdict for a released sha that heals a publish gate a late red overwrote.
+   */
+  @Inject BuildStatusLedger ledger;
+
+  /** The publish runs' mirror (qits-2164): whether a newer run of the tag answers for a red one. */
+  @Inject ReleasePipelineRuns pipelineRuns;
+
+  /**
    * How long a PENDING publish gate is ordinary before it is worth saying out loud — see {@link
    * PublishGatePatience}. It changes who is told and never whether a gate passes.
    */
@@ -400,13 +409,29 @@ public class ReleaseFinalization {
    * with a finalization still owed. A run for anything else — a QA run on {@code release/<id>}, a
    * build of {@code main} — names no such version and settles nothing here.
    *
+   * <p><b>A red verdict is applied only while it is the version's last word (qits-2164).</b> The
+   * consumption is durable, and its catch-up delivers late and out of order: a release run that
+   * failed while this service's database was down stayed owed, its retry went green live, and 88
+   * minutes later the replay of the old red overwrote PASSED with FAILED and failed the branches —
+   * and nothing ever finalized the release. So a red is ignored, with a line saying why, when the
+   * row's gate already PASSED (a green run is final for the version), when a retry has already
+   * answered the run ({@link BuildStatusLedger#answeredByRetry}), or when the publish runs' mirror
+   * holds a newer run of the tag than the red ({@link ReleasePipelineRuns#newerPublishRun}, which
+   * is why the verdict's own instant is passed in). Ignored means nothing at all is written: no
+   * state, no run id, no FAILED step. Where neither the ledger nor the mirror knows anything, a red
+   * on a gate that has not passed is applied as before. {@link ReleasePipelineRuns#record}'s
+   * newer-than-the-row rule is the precedent; this is the gate's own copy of it.
+   *
    * <p>It never throws: the caller is a durable consumption whose watermark must not be held behind
    * one repository's publish run.
    *
    * @param branch the verdict's branch, which for a publish run is the released version's own name
    * @param green whether the run finished {@code SUCCESS}
+   * @param occurredAt the verdict frame's own instant, the run's finish; null where none is known,
+   *     which only skips the mirror's newer-run test
    */
-  public void onPublishVerdict(String repoId, String branch, String runId, boolean green) {
+  public void onPublishVerdict(
+      String repoId, String branch, String runId, boolean green, Instant occurredAt) {
     if (repoId == null || repoId.isBlank() || branch == null || branch.isBlank()) {
       return;
     }
@@ -421,6 +446,9 @@ public class ReleaseFinalization {
                 + " FAILED; the release stays open until it is retried and passes";
     java.util.concurrent.atomic.AtomicReference<String> published =
         new java.util.concurrent.atomic.AtomicReference<>();
+    // Why a red verdict was not applied (qits-2164), carried out of the transaction to be said once.
+    java.util.concurrent.atomic.AtomicReference<String> ignored =
+        new java.util.concurrent.atomic.AtomicReference<>();
     Owed owed =
         QuarkusTransaction.requiringNew()
             .call(
@@ -428,6 +456,14 @@ public class ReleaseFinalization {
                     pendingTags
                         .find(repoId, version)
                         .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                        .filter(
+                            row -> {
+                              if (green) {
+                                return true;
+                              }
+                              ignored.set(staleRed(row, runId, occurredAt));
+                              return ignored.get() == null;
+                            })
                         .map(
                             row -> {
                               published.set(row.releaseRequestId);
@@ -456,6 +492,12 @@ public class ReleaseFinalization {
     // Gate 3's trigger (epic qits-897), after the commit and best effort: the publish is what the
     // released request's downstream requests were waiting for.
     downstreamReevaluation.upstreamMoved(published.get());
+    if (ignored.get() != null) {
+      LOG.infof(
+          "The red release run %s of %s of %s is not the publish gate's word and is ignored: %s",
+          runId, version, repoId, ignored.get());
+      return;
+    }
     if (owed == null) {
       // The overwhelmingly ordinary case: a verdict for a branch, not for a tag of ours.
       LOG.debugf("No release of %s is waiting on a run for %s", repoId, version);
@@ -469,6 +511,32 @@ public class ReleaseFinalization {
     LOG.warnf(
         "The publish gate FAILED for %s of %s and the release request stays open: %s",
         version, repoId, said);
+  }
+
+  /**
+   * Why a red publish verdict of {@code runId} is not {@code row}'s gate's word, or null where it is
+   * (qits-2164) — see {@link #onPublishVerdict}. In the verdict's transaction, so the ledger and the
+   * mirror are read beside the row they protect.
+   */
+  private String staleRed(ReleasedTagPendingMerge row, String runId, Instant occurredAt) {
+    if (row.publishState == ReleasedTagPendingMerge.PublishState.PASSED) {
+      return "the gate already passed on run "
+          + row.publishRunId
+          + ", and a green run is final for the version";
+    }
+    if (ledger.answeredByRetry(runId)) {
+      return "a retry of it has already reported";
+    }
+    return pipelineRuns
+        .newerPublishRun(row.releaseRequestId, runId, occurredAt)
+        .map(
+            newer ->
+                "the newer release run "
+                    + newer.runId
+                    + " ("
+                    + newer.status
+                    + ") of the same tag answers for it")
+        .orElse(null);
   }
 
   /**
@@ -748,6 +816,11 @@ public class ReleaseFinalization {
                                 written.set(row.releaseRequestId);
                                 row.publishState = null;
                                 row.publishDetail = null;
+                              } else if (publishes
+                                  && row.publishState
+                                      == ReleasedTagPendingMerge.PublishState.FAILED
+                                  && healed(row)) {
+                                written.set(row.releaseRequestId);
                               }
                               return new Owing(row.publishState, row.deploymentActiveAt);
                             })
@@ -755,6 +828,50 @@ public class ReleaseFinalization {
     // Gate 3's trigger (epic qits-897): the publish gate was stamped or cleared after the commit.
     downstreamReevaluation.upstreamMoved(written.get());
     return owing;
+  }
+
+  /**
+   * <b>A FAILED publish gate the ledger proves green is PASSED again</b> (qits-2164), in {@link
+   * #owingOf}'s transaction. The verdict rule in {@link #onPublishVerdict} stops a late red from
+   * overwriting a green one from now on; this is what heals a row a late red already overwrote —
+   * qits-landing-app-rr-228's, deployed and stuck — with no new publish run and no database surgery.
+   * Every arrival and every sweep reaches {@link #advance}, and the catch-up selects exactly these
+   * rows: a red gate leaves {@code merge_requested_at} null.
+   *
+   * <p>The proof is a {@code SUCCESS} verdict in {@link BuildStatusLedger} for the row's own {@code
+   * released_sha} <b>whose branch is the row's version</b> — the publish run of this tag, the same
+   * correlation {@link #onPublishVerdict} makes. A green fold build of some other branch at the
+   * same commit proves nothing about the publish and is not accepted. A green run is final for the
+   * version, so no red beside it is weighed. The branches the red failed are put back to RELEASED
+   * as the green arm does, unless the deployment is recorded failed too, and {@link #advance} then
+   * goes on to merge where the deployment has gone live.
+   *
+   * @return whether the row was healed
+   */
+  private boolean healed(ReleasedTagPendingMerge row) {
+    if (row.releasedSha == null) {
+      return false;
+    }
+    Optional<eu.wohlben.qits.projects.dto.CommitBuildStatusDto> green =
+        ledger.verdictsOf(row.repoId, row.releasedSha).stream()
+            .filter(verdict -> "SUCCESS".equals(verdict.status()))
+            .filter(verdict -> row.tagName.equals(verdict.branch()))
+            .findFirst();
+    if (green.isEmpty()) {
+      return false;
+    }
+    String runId = green.get().runId();
+    LOG.infof(
+        "The publish gate of %s of %s read FAILED (%s) while its release run %s is recorded green;"
+            + " a green run is final for the version, so the gate is PASSED again",
+        row.tagName, row.repoId, row.publishDetail, runId);
+    row.publishState = ReleasedTagPendingMerge.PublishState.PASSED;
+    row.publishDetail = "The release run " + runId + " of " + row.tagName + " finished green";
+    row.publishRunId = runId;
+    if (row.deploymentFailedAt == null) {
+      retried(row);
+    }
+    return true;
   }
 
   /**
@@ -814,7 +931,9 @@ public class ReleaseFinalization {
    * loses nothing but time — and it is what heals a tag nothing ever decided about, which is every
    * non-deployable release made while this decision hung off {@code SoftwareRelease}. A release
    * still waiting on a gate is looked at and left alone on every pass, which is one cheap tree
-   * listing per release in flight.
+   * listing per release in flight. A release whose publish gate reads FAILED is among them — a red
+   * gate stamps no {@code merge_requested_at} — which is what lets {@link #advance} heal one the
+   * ledger proves green (qits-2164) and merge it once its deployment is live.
    *
    * <p><b>The retry</b> re-attempts each merge this service already owes {@code main}, turning an
    * unreachable git host, a merge that raced a concurrent writer and a conflict somebody has since

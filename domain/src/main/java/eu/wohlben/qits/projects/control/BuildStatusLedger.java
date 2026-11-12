@@ -253,4 +253,14 @@ public class BuildStatusLedger {
         .map(row -> new CommitBuildStatusDto(row.runId, row.status, row.branch, row.finishedAt))
         .toList();
   }
+
+  /**
+   * Whether a retry has already answered this run: some recorded verdict names it as the run it
+   * re-fired (qits-2164). The positive half of {@link #stands} — that one cannot tell "superseded"
+   * from "never recorded", and a caller asking about a verdict it has not recorded here needs the
+   * difference. Read in the caller's transaction.
+   */
+  public boolean answeredByRetry(String runId) {
+    return runId != null && statuses.isSuperseded(runId);
+  }
 }

@@ -68,9 +68,13 @@ class BuildStatusListenerTest {
   private static final class RecordingFinalization extends ReleaseFinalization {
     final List<String> offered = new ArrayList<>();
 
+    final List<Instant> occurred = new ArrayList<>();
+
     @Override
-    public void onPublishVerdict(String repoId, String branch, String runId, boolean green) {
+    public void onPublishVerdict(
+        String repoId, String branch, String runId, boolean green, Instant occurredAt) {
       offered.add(repoId + "@" + branch + "/" + runId + (green ? " green" : " red"));
+      occurred.add(occurredAt);
     }
   }
 
@@ -112,6 +116,10 @@ class BuildStatusListenerTest {
                 + "\"commitSha\":\"abc123\",\"outcome\":\"FAILED\"}"));
 
     assertEquals(List.of("repo-1@2026.915.101010/run-10 red"), finalization.offered);
+    assertEquals(
+        List.of(Instant.parse("2026-08-30T12:00:00Z")),
+        finalization.occurred,
+        "with the frame's own instant, which the gate orders a late red by (qits-2164)");
   }
 
   private static EventFrame frame(String name, String payload) {
