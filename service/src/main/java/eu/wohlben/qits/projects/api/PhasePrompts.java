@@ -459,8 +459,10 @@ final class PhasePrompts {
    * promised holds, feature by feature. What was confirmed, and how, goes on the epic's thread. A
    * failing feature is fixed on the epic's branch, released and checked again live rather than
    * blocked, the status left where it stands (qits-1154); only what the agent cannot resolve blocks
-   * it. Reaching VERIFIED asks for the release of {@code epic/<qualified id>} ({@link
-   * PhaseAdvance}); closing stays a person's move.
+   * it. Each confirmed feature is moved to VERIFIED before the epic is (qits-2097): a parent's
+   * status does not depend on its children, so nothing else moves them. Reaching VERIFIED asks for
+   * the release of {@code epic/<qualified id>} ({@link PhaseAdvance}); closing stays a person's
+   * move.
    */
   private static String verifyEpic(WorkEntity epic, String q) {
     return "Verify epic \""
@@ -476,7 +478,8 @@ final class PhasePrompts {
         + " the change only if a behaviour cannot be reproduced on demand. If something fails, fix"
         + " it on this branch, release it and verify again live; leave the status where it is"
         + " meanwhile. Record on its thread with work_comment_create what you confirmed and how,"
-        + " what you found and what you fixed. If it holds, move it to "
+        + " what you found and what you fixed. Move each feature to VERIFIED (work_status) once"
+        + " you confirm it live. Once every feature is VERIFIED, move the epic to "
         + end(Phase.VERIFY)
         + " with work_status; closing is a person's move. Call work_block only for what you cannot"
         + " resolve yourself: a person's decision, a door your credential cannot open, or a defect"
