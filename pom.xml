@@ -255,7 +255,7 @@
         <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1112.164610</qits.mirror-frontend-pacts-qits-projects-service.version>
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1112.153402</qits.observability-frontend-pacts-qits-projects-service.version>
         <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1112.164611</qits.orchestrator-frontend-pacts-qits-projects-service.version>
-        <qits.system-frontend-pacts-qits-projects-service.version>2026.1111.174607</qits.system-frontend-pacts-qits-projects-service.version>
+        <qits.system-frontend-pacts-qits-projects-service.version>2026.1112.184123</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-containers and
