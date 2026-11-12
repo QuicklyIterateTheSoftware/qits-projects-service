@@ -250,7 +250,7 @@
         <qits.events-frontend-pacts-qits-projects-service.version>2026.1112.45711</qits.events-frontend-pacts-qits-projects-service.version>
         <qits.githost-frontend-pacts-qits-projects-service.version>2026.1112.40047</qits.githost-frontend-pacts-qits-projects-service.version>
         <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1111.174610</qits.maintenance-frontend-pacts-qits-projects-service.version>
-        <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1111.172947</qits.artifacts-frontend-pacts-qits-projects-service.version>
+        <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1112.50540</qits.artifacts-frontend-pacts-qits-projects-service.version>
         <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1112.41936</qits.deployments-frontend-pacts-qits-projects-service.version>
         <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1111.174600</qits.mirror-frontend-pacts-qits-projects-service.version>
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1112.40259</qits.observability-frontend-pacts-qits-projects-service.version>
