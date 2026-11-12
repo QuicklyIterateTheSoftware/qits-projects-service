@@ -1579,6 +1579,8 @@ public class ProviderStates {
    * one implemented (one of its two tasks implemented too), one
    * not (with one open task). The implemented feature runs ahead of its epic, so the epic's lane on
    * a board spans two columns, and so does the feature's. Children are created while the epic is still REPORTED, as the domain demands.
+   * {@code qualifiedId} names the open feature (READY_FOR_DEV with its epic), whose page the landing
+   * app renders (qits-2095).
    */
   private Setup anEpicWithFeaturesAndTasks() {
     String token = token();
@@ -1595,7 +1597,9 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     implemented(shippedTask);
     implemented(done);
-    return new Setup(params("projectId", project.id), List.of(token));
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", qualified(project, open)),
+        List.of(token));
   }
 
   /**

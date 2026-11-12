@@ -1847,34 +1847,43 @@ class GoldenMasterRecordingTest {
     all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "PHASE"));
     all.add(dispatch(ProviderStates.A_REFINED_EPIC, "FLOW"));
     all.add(dispatch(ProviderStates.A_READY_FOR_DEV_EPIC, "FLOW"));
+    // qits-2095: the landing work item page's action screenshots render each status from its own
+    // state, so every status state records the item's reads — the epics their figures too.
+    statusReads(all, ProviderStates.TICKET_IN_STATUS, false);
+    statusReads(all, ProviderStates.EPIC_IN_STATUS, true);
+    // The page of a feature under way: the epic's READY_FOR_DEV "Open feature" (no dossier).
     all.add(
-        new Interaction(
-            ProviderStates.AN_IMPLEMENTED_TICKET,
+        read(
+            ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS,
             "getWork",
-            "GET",
-            "/projects/api/work/{qualifiedId}",
-            200,
-            null,
-            null));
+            "/projects/api/work/{qualifiedId}"));
     all.add(
-        new Interaction(
-            ProviderStates.AN_IMPLEMENTED_TICKET,
+        read(
+            ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS,
             "listWorkComments",
-            "GET",
-            "/projects/api/work/{qualifiedId}/comments",
-            200,
-            null,
-            null));
-    all.add(
-        new Interaction(
-            ProviderStates.AN_IMPLEMENTED_TICKET,
-            "listProjectWork",
-            "GET",
-            "/projects/api/projects/{projectId}/work",
-            200,
-            null,
-            null));
+            "/projects/api/work/{qualifiedId}/comments"));
     return List.copyOf(all);
+  }
+
+  /** The work item page's reads of each state's item: entity, thread, project list, dossier. */
+  private static void statusReads(
+      List<Interaction> all, Map<String, EntityStatus> statesByStatus, boolean figures) {
+    statesByStatus
+        .keySet()
+        .forEach(
+            state -> {
+              all.add(read(state, "getWork", "/projects/api/work/{qualifiedId}"));
+              all.add(read(state, "listWorkComments", "/projects/api/work/{qualifiedId}/comments"));
+              all.add(read(state, "listProjectWork", "/projects/api/projects/{projectId}/work"));
+              all.add(read(state, "listWorkDossier", "/projects/api/work/{qualifiedId}/dossier"));
+              if (figures) {
+                all.add(
+                    read(
+                        state,
+                        "listWorkDossierAssets",
+                        "/projects/api/work/{qualifiedId}/dossier-assets"));
+              }
+            });
   }
 
   /**

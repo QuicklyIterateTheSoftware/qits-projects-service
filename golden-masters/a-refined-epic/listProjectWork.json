@@ -1,0 +1,36 @@
+{
+  "entities": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "archetype": "EPIC",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "number": 1,
+      "qualifiedId": "contract-00000001-1",
+      "title": "Work item actions",
+      "excerpt": "Seeded work: the page's moves and dispatches.",
+      "slug": "work-item-actions",
+      "slugScope": "00000000-0000-4000-8000-000000000002",
+      "status": "REFINED",
+      "statusBefore": null,
+      "ticketType": null,
+      "impetus": null,
+      "assignee": null,
+      "createdBy": null,
+      "supersededBy": null,
+      "outcome": null,
+      "repositoryId": null,
+      "implementedAt": null,
+      "implementingAt": null,
+      "parent": null,
+      "position": null,
+      "priority": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "changedBy": null,
+      "blocked": false,
+      "tags": [],
+      "needs": [],
+      "unmetNeeds": 0
+    }
+  ]
+}
