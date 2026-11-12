@@ -672,6 +672,42 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
+   * qits-2089: an unedited newest-first brief — the one that took the backlog last in, first out and
+   * pressed under backlog-newest-first — rolls to the current one, which takes bugs first, then
+   * priority, then oldest, and presses under backlog-order.
+   */
+  @Test
+  public void anUneditedQits2089PreBriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_2089_PRE_DELIVERY_DESK_PROMPT.contains(
+            "--rule backlog-newest-first."),
+        "the qits-2089 pre text is the newest-first one");
+    stage(AgentSurfaceDefaults.QITS_2089_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the newest-first brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("--rule backlog-order."), after);
+    assertTrue(after.contains("bugs first (ticketType BUG)"), after);
+    assertFalse(after.contains("backlog-newest-first"), after);
+    assertFalse(after.contains("last in, first out"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /** qits-2089: an edit of the newest-first brief is the owner's too. */
+  @Test
+  public void anOwnerEditedQits2089PreBriefIsLeftAlone() {
+    String edited = AgentSurfaceDefaults.QITS_2089_PRE_DELIVERY_DESK_PROMPT + "\nAlso: be brief.";
+    stage(edited);
+
+    assertFalse(rollout.rollOut(), "an edit is the owner's");
+
+    assertEquals(edited, surfaces.get(SURFACE).systemPrompt());
+  }
+
+  /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.
    */

@@ -63,7 +63,10 @@ import org.junit.jupiter.api.Test;
 @TestSecurity(user = "dev", roles = "qits:admin")
 public class DeskDispatchTest {
 
-  private static final String RULE = "backlog-newest-first";
+  private static final String RULE = "backlog-order";
+
+  /** The rule qits-2089 renamed: the door still takes it, as it takes any rule but a blank one. */
+  private static final String OLD_RULE = "backlog-newest-first";
 
   @Inject DispatchDoors doors;
 
@@ -198,6 +201,26 @@ public class DeskDispatchTest {
     String comment = thread.get(thread.size() - 1);
     assertTrue(
         comment.endsWith(" Dispatched by the delivery desk under rule `" + RULE + "`."), comment);
+  }
+
+  /**
+   * qits-2089 renamed the desk's backlog rule to backlog-order, but the door holds no closed set of
+   * rule names: a press under the old backlog-newest-first is still taken and its comment names it.
+   */
+  @Test
+  public void aDeskPressUnderTheOldBacklogRuleIsStillAccepted() {
+    String projectId = createProject("Desk Dispatch Old Rule");
+    delivery(projectId, true, 2, false);
+    String ticketId = createTicket(projectId, "For the desk, old rule");
+
+    EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", OLD_RULE);
+
+    assertEquals("refine", pressed.phase());
+    List<String> thread = threadOf(ticketId);
+    String comment = thread.get(thread.size() - 1);
+    assertTrue(
+        comment.endsWith(" Dispatched by the delivery desk under rule `" + OLD_RULE + "`."),
+        comment);
   }
 
   /** Another project's claim is a 403, before anything else is decided and nothing is written. */
