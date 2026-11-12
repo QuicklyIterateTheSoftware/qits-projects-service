@@ -4165,6 +4165,8 @@ public class ReleaseRequests {
       return;
     }
     String tip = sha == null || sha.isBlank() ? null : sha;
+    // Asked outside the transaction, once per repository: main is the same for every request.
+    boolean keepAutomations = mainContainsDeletedTip(repoId, branch, tip);
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
             .call(
@@ -4185,13 +4187,28 @@ public class ReleaseRequests {
                         .find(open.id, ReleaseRequestSource.Kind.BRANCH, branch)
                         .ifPresent(sources::delete);
                     deliveries.withdrawn(open, List.of(branch));
+                    if (!isAutomationBranch(branch) && !keepAutomations) {
+                      // A person's source is gone, so the automation branches go too
+                      // (qits-1764): each sits on the old fold, which carries the deleted
+                      // branch, so the refold would take it back in. They regenerate from the
+                      // new fold. Not when main already contains the deleted tip (qits-2096):
+                      // the branch brought nothing beyond main, so there is nothing to keep out,
+                      // and dropping lost qits-qits-rr-406's estate pins. Before the emptiness
+                      // check, so a request the drop leaves at main alone is withdrawn.
+                      List<String> dropped = dropAutomationSources(open);
+                      if (!dropped.isEmpty()) {
+                        LOG.infof(
+                            "Release request %s: %s was deleted; automation branches dropped: %s",
+                            open.qualifiedId, branch, dropped);
+                      }
+                    }
                     List<ReleaseRequestSource> left = sources.listByRequest(open.id);
                     boolean empty =
                         left.isEmpty()
                             || left.stream().allMatch(s -> s.name.equals(main));
                     if (empty) {
                       states.move(open, ReleaseRequest.State.WITHDRAWN);
-                      open.detail = "Withdrawn: the branch was deleted";
+                      open.detail = "Withdrawn: its source branch " + branch + " was deleted";
                       open.retryable = false;
                       open.updatedAt = Instant.now();
                       deliveries.withdrawn(open);
@@ -4199,18 +4216,6 @@ public class ReleaseRequests {
                           "Release request %s withdrawn: branch %s of %s was deleted",
                           open.id, branch, repoId);
                     } else {
-                      if (!isAutomationBranch(branch)) {
-                        // A person's source is gone, so the automation branches go too
-                        // (qits-1764): each sits on the old fold, which carries the deleted
-                        // branch, so the refold would take it back in. They regenerate from the
-                        // new fold.
-                        List<String> dropped = dropAutomationSources(open);
-                        if (!dropped.isEmpty()) {
-                          LOG.infof(
-                              "Release request %s: %s was deleted; automation branches dropped: %s",
-                              open.qualifiedId, branch, dropped);
-                        }
-                      }
                       open.updatedAt = Instant.now();
                     }
                     touched.add(
@@ -4245,6 +4250,44 @@ public class ReleaseRequests {
         remerge(row.id(), "the source branch " + branch + " was deleted");
       }
     }
+  }
+
+  /**
+   * Whether the default branch of {@code repoId} already contains {@code tip}, the deleted head of
+   * the person's source {@code branch} (qits-2096): then {@link #onBranchDeleted} keeps the open
+   * requests' automation sources, since the old fold carries nothing of the branch that main does
+   * not. Asked outside any transaction, and only when some open request names the branch. An
+   * automation's own branch, an unknown tip, no git host, a failed read and a "no" all answer
+   * false, which keeps qits-1764's drop.
+   */
+  private boolean mainContainsDeletedTip(String repoId, String branch, String tip) {
+    if (tip == null || isAutomationBranch(branch) || !gitHosts.isResolvable()) {
+      return false;
+    }
+    String main =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests.findUnreleasedByBranches(repoId, List.of(branch)).isEmpty()
+                        ? null
+                        : mainOf(repoId));
+    if (main == null) {
+      return false;
+    }
+    ReleaseGitHost.Answer<Boolean> answer;
+    try {
+      answer = gitHosts.get().contains(repoId, tip, "refs/heads/" + main);
+    } catch (RuntimeException e) {
+      answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+    }
+    if (!answer.ok() || answer.value() == null) {
+      LOG.warnf(
+          "Whether %s of %s contains %s, the deleted head of %s, could not be read; its open"
+              + " requests drop their automation branches: %s",
+          main, repoId, shortSha(tip), branch, answer.detail());
+      return false;
+    }
+    return answer.value();
   }
 
   /** {@link #onBranchDeleted(String, String, String)} with the deleted tip unknown. */

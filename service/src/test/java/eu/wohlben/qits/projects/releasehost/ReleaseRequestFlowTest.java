@@ -1209,7 +1209,7 @@ public class ReleaseRequestFlowTest {
         .get(base() + "/" + id)
         .then()
         .body("request.state", equalTo("WITHDRAWN"))
-        .body("request.detail", equalTo("Withdrawn: the branch was deleted"));
+        .body("request.detail", equalTo("Withdrawn: its source branch work was deleted"));
 
     // The work item behind it is told (qits-1671), naming every source it had before the drop.
     List<eu.wohlben.qits.projects.control.ReleaseRequestWithdrawalComments.Withdrawn> told =
@@ -1254,6 +1254,51 @@ public class ReleaseRequestFlowTest {
         List.of("refs/heads/main", "refs/heads/work"),
         folds.get(0).sources(),
         "without the deleted branch and without the automation branch");
+  }
+
+  /**
+   * qits-1764's drop with the deleted tip known: main lacks it, so the automation branch, which
+   * sits on a fold carrying the deleted work, goes as it did with the tip unknown.
+   */
+  @Test
+  public void aDeletedSourceWhoseTipMainLacksTakesTheAutomationBranchesWithIt() {
+    String id = requestWithAnAutomationBranch();
+    String tip = sha();
+    gitHost.doesNotContain(repoId, tip, "refs/heads/main");
+
+    releaseRequests.onBranchDeleted(repoId, "other", tip);
+
+    assertEquals("PENDING", stateOf(id));
+    assertEquals(List.of("main", "work"), sourceNames(id), "the automation branch went too");
+  }
+
+  /**
+   * qits-2096: a deleted source whose tip main already contains brought nothing beyond main, so
+   * the old fold carries nothing to keep out and the automation branches stay. qits-qits-rr-406
+   * lost its estate pins this way: both ticket branches were deleted at main's head, the first
+   * deletion dropped the pins and the second withdrew a request left with main alone.
+   */
+  @Test
+  public void aDeletedSourceMainAlreadyContainsKeepsTheAutomationBranches() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("work");
+    assertEquals(id, create("other"), "the premise: one request carries both");
+    String pins = "maintenance/automations/estate-pins/" + id;
+    releaseRequests.addSource(id, pins, "dev-qits-maintenance", null);
+    String tip = sha();
+    gitHost.containsCommit(repoId, tip, "refs/heads/main");
+    merger.reset();
+
+    releaseRequests.onBranchDeleted(repoId, "work", tip);
+    releaseRequests.onBranchDeleted(repoId, "other", tip);
+
+    assertEquals("PENDING", stateOf(id), "the estate pins are still work to release");
+    assertEquals(List.of("main", pins), sourceNames(id));
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(BackingBranches.ref(id));
+    assertTrue(!folds.isEmpty(), "the deletions fold the request again");
+    assertTrue(
+        folds.get(folds.size() - 1).sources().contains("refs/heads/" + pins),
+        "the refold keeps the estate pins: " + folds);
   }
 
   /** The automation's own branch deleted: only it leaves, as before qits-1764. */
