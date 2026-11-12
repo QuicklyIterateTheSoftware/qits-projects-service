@@ -696,7 +696,7 @@ public class PhasePromptsTest {
   /**
    * The epic verify turn: the live platform first, the code second, each acceptance criterion
    * checked, and a failure fixed on the same branch and verified again rather than blocked
-   * (qits-1154).
+   * (qits-1154). Each confirmed feature moves to VERIFIED before the epic does (qits-2097).
    */
   @Test
   public void theEpicVerifyTurnConfirmsLiveAndFixesWhatItFinds() {
@@ -717,6 +717,10 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("Call work_block only for what you cannot resolve yourself"), turn);
     assertTrue(turn.contains("work_comment_create"), turn);
     assertFalse(turn.contains("REFINED"), "no route back to REFINED: " + turn);
+    assertTrue(turn.contains("Move each feature to VERIFIED"), "qits-2097: " + turn);
+    assertTrue(
+        turn.indexOf("Move each feature to VERIFIED") < turn.indexOf("move the epic to VERIFIED"),
+        "qits-2097: features move to VERIFIED before the epic does: " + turn);
   }
 
   /**
