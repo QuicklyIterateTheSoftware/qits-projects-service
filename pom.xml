@@ -249,12 +249,12 @@
         <qits.docs-frontend-pacts-qits-projects-service.version>2026.1112.101040</qits.docs-frontend-pacts-qits-projects-service.version>
         <qits.events-frontend-pacts-qits-projects-service.version>2026.1112.135707</qits.events-frontend-pacts-qits-projects-service.version>
         <qits.githost-frontend-pacts-qits-projects-service.version>2026.1112.124320</qits.githost-frontend-pacts-qits-projects-service.version>
-        <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1111.174610</qits.maintenance-frontend-pacts-qits-projects-service.version>
+        <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1112.135714</qits.maintenance-frontend-pacts-qits-projects-service.version>
         <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1112.124158</qits.artifacts-frontend-pacts-qits-projects-service.version>
-        <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1112.104332</qits.deployments-frontend-pacts-qits-projects-service.version>
-        <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1112.101512</qits.mirror-frontend-pacts-qits-projects-service.version>
+        <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1112.135709</qits.deployments-frontend-pacts-qits-projects-service.version>
+        <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1112.135712</qits.mirror-frontend-pacts-qits-projects-service.version>
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1112.124352</qits.observability-frontend-pacts-qits-projects-service.version>
-        <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1111.174606</qits.orchestrator-frontend-pacts-qits-projects-service.version>
+        <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1112.135715</qits.orchestrator-frontend-pacts-qits-projects-service.version>
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1111.174607</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
