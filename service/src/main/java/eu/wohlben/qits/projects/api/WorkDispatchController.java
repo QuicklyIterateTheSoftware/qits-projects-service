@@ -58,8 +58,9 @@ public class WorkDispatchController {
           String mode,
       @Schema(
               description =
-                  "The delivery desk's rule id this press is made under (backlog-newest-first,"
-                      + " start-refined, resume-orphaned). Required for a qits:desk caller, ignored for anyone else.")
+                  "The delivery desk's rule id this press is made under (backlog-order,"
+                      + " start-refined, resume-orphaned; the older backlog-newest-first is still"
+                      + " accepted). Required for a qits:desk caller, ignored for anyone else.")
           String rule) {
 
     /** A press with no rule: every caller but the delivery desk. */
