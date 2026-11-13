@@ -14,13 +14,17 @@ import java.util.Optional;
  * phase: a step inside one of those runs is not one, and neither is any other part a run is split
  * into, because neither has a rerun of its own. The <b>gate</b> that follows this phase is a
  * different thing again and is not this port's business — {@code DEPLOYMENT} is closed by a {@code
- * DeploymentActive} arriving on the bus, {@code ReleaseFinalization} is where that is decided, and
- * nothing here re-decides it or is allowed to. A gate delays; this port reports.
+ * DeploymentActive} arriving on the bus, or by {@code ReleaseFinalization.reconcileDeployments}
+ * reading this port's newest request as {@code ACTIVE} when no event came (qits-2217:
+ * qits-deployments flips a failed deployment it later finds running to ACTIVE and announces
+ * nothing). {@code ReleaseFinalization} is where both are decided; this port only answers the
+ * question, and nothing here decides a gate. A gate delays; this port reports.
  *
  * <p><b>This service holds no fact about a deployment and that is why the port exists.</b> Its one
  * stored fact is {@code ReleasedTagPendingMerge.deploymentActiveAt} — the gate's answer, written
- * when the event arrived — and reporting that as the phase as well would be one fact wearing two
- * hats, with no request id, no intermediate state and nothing to re-run. So the phase is read live
+ * when the event arrived or the reconcile found it live — and reporting that as the phase as well
+ * would be one fact wearing two hats, with no request id, no intermediate state and nothing to
+ * re-run. So the phase is read live
  * from the service that owns it, and <b>no project awareness is added over there</b>: the question
  * is asked in qits-deployments' own vocabulary, {@code (repoId, version)}, which is the pair its
  * listing is already keyed on.

@@ -75,11 +75,15 @@ public class ReleaseRequestSweep {
   Duration deploymentReconcileAfter;
 
   /**
-   * The rolled-back release's belt (qits-1690): every release still waiting on its deployment is
-   * asked of qits-deployments, and one rolled back or failed is recorded on its row — because the
-   * {@code DeploymentFailed} event is not always on the log to be consumed. Its own method and
-   * interval, {@code qits.projects.release-requests.deployment-reconcile-every}: it is a network
-   * call per release, and nothing about it is urgent. It never redeploys.
+   * The deployment events' belt (qits-1690, qits-2217): every release still waiting on its
+   * deployment — recorded as failed or not — is asked of qits-deployments; one whose newest
+   * deployment is {@code ACTIVE} passes its deployment gate and finalizes as a {@code
+   * DeploymentActive} would make it, and one rolled back or failed and not yet recorded is recorded
+   * on its row — because neither {@code DeploymentFailed} nor {@code DeploymentActive} is always on
+   * the log to be consumed (a deployment qits-deployments recovers by observation announces
+   * nothing). Its own method and interval, {@code
+   * qits.projects.release-requests.deployment-reconcile-every}: it is a network call per release,
+   * and nothing about it is urgent. It never redeploys.
    */
   @Scheduled(
       every = "{qits.projects.release-requests.deployment-reconcile-every}",

@@ -73,9 +73,10 @@ import org.jboss.logging.Logger;
  * answer and not the phase's. The null-block rule ({@link #hasSomethingToShow}) reads it, so a
  * RELEASED request whose deployment can be answered draws a block even with no phase run mirrored.
  * The gate placement needed nothing: {@code DEPLOYMENT} was already placed at {@code
- * DEPLOY_FINALIZED}, and it is still closed by a {@code DeploymentActive} reaching {@code
- * ReleaseFinalization} — a phase and the gate behind it are two facts, and this class reports both
- * without merging them.
+ * DEPLOY_FINALIZED}, and it is still closed in {@code ReleaseFinalization} — by a {@code
+ * DeploymentActive}, or by its scheduled reconcile finding the newest deployment {@code ACTIVE}
+ * (qits-2217), never by this read — a phase and the gate behind it are two facts, and this class
+ * reports both without merging them.
  *
  * <p><b>It is asked on the single-request read and never on a list read</b>, which is what {@link
  * DeployReach} is for and why it is a parameter rather than a policy in here. qits-deployments'

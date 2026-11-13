@@ -23,7 +23,11 @@ import org.jboss.logging.Logger;
  *
  * <p>The event alone is not relied on: the rollback that prompted this never reached the events
  * log, so {@code ReleaseFinalization.reconcileDeployments} asks qits-deployments about every
- * release still waiting on its deployment on a schedule. This listener is the prompt path.
+ * release still waiting on its deployment on a schedule. This listener is the prompt path. Nor is
+ * the record final without an event (qits-2217): qits-deployments can flip a failed deployment to
+ * ACTIVE when it later finds it running, announcing no {@code DeploymentActive}, so the reconcile
+ * keeps asking about a release recorded failed here and passes its gate when the newest deployment
+ * reads {@code ACTIVE} — and never re-records a failure it already holds.
  *
  * <p>The payload is a local record for {@link DeploymentActiveListener}'s reason, and registered in
  * {@code EventWireReflection} for the same one. Failure handling is that class's: a payload that

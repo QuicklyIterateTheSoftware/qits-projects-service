@@ -43,7 +43,10 @@ import org.jboss.logging.Logger;
  *       window instead ({@link PublishGatePatience}).
  *   <li><b>The deployment gate</b>, where the tree declares {@code .config/qits/deployments.yml}.
  *       qits-deployments announces {@code DeploymentActive} for an application and a version, and
- *       that version is a released tag of some repository — see {@link #onDeploymentActive}.
+ *       that version is a released tag of some repository — see {@link #onDeploymentActive}. The
+ *       event is not always announced, so the {@link #reconcileDeployments reconcile} also passes
+ *       the gate on qits-deployments' own word that the newest deployment is {@code ACTIVE}
+ *       (qits-2217).
  * </ul>
  *
  * <p><b>They pass in either order and each keeps its own fact on the row</b> ({@code publish_state},
@@ -205,6 +208,33 @@ public class ReleaseFinalization {
     if (owed == null) {
       return;
     }
+    wentLive(
+        owed,
+        (applicationName == null ? "the application" : applicationName)
+            + " "
+            + version
+            + " is active"
+            + (environmentName == null ? "" : " in " + environmentName));
+  }
+
+  /**
+   * <b>{@code owed}'s deployment went live</b> — the one went-live path, shared by the {@code
+   * DeploymentActive} event ({@link #onDeploymentActive}) and the {@link #reconcileDeployments
+   * reconcile} finding qits-deployments' newest deployment of the version {@code ACTIVE} with no
+   * event on the log (qits-2217). The row is already in hand on both paths, so nothing here
+   * correlates again.
+   *
+   * <p>{@code deployment_active_at} is stamped once, while the tag is neither merged nor live, and
+   * a recorded failure (qits-1690) is cleared in the same transaction: the redeploy went live, so
+   * the failure is history, and the request's FAILED branches go back to RELEASED (qits-1796)
+   * unless the publish gate is still recorded failed. Then the finalization advances, loudly,
+   * because a deployment is news: a tag whose tree cannot be read here says so once per deployment
+   * rather than once per sweep.
+   *
+   * @param how the sentence the INFO line ends with, saying how the gate was found passed
+   * @return whether this call stamped the row live (false when it already was, or is merged)
+   */
+  private boolean wentLive(Owed owed, String how) {
     boolean first =
         QuarkusTransaction.requiringNew()
             .call(
@@ -237,16 +267,10 @@ public class ReleaseFinalization {
                         .orElse(false));
     if (first) {
       LOG.infof(
-          "The deployment gate passed for %s of %s: %s %s is active%s",
-          owed.tagName(),
-          owed.repoId(),
-          applicationName == null ? "the application" : applicationName,
-          version,
-          environmentName == null ? "" : " in " + environmentName);
+          "The deployment gate passed for %s of %s: %s", owed.tagName(), owed.repoId(), how);
     }
-    // Loud, because a deployment is news: a tag whose tree cannot be read here says so once per
-    // deployment rather than once per sweep.
     advance(owed, true);
+    return first;
   }
 
   /**
@@ -258,7 +282,8 @@ public class ReleaseFinalization {
    * tag's row ({@code deployment_failed_at}/{@code deployment_failed_detail}) only while that
    * version has never gone live: a failure of a later redeploy says nothing about a version that
    * already shipped. The record is what makes the deployment gate FAILED on every read and the
-   * release red for the qits-1471 hold; a later {@code DeploymentActive} clears it. <b>Nothing is
+   * release red for the qits-1471 hold; a later {@code DeploymentActive}, or the reconcile finding
+   * the newest deployment {@code ACTIVE} (qits-2217), clears it. <b>Nothing is
    * redeployed here</b> — the tag is cut and the remedy is a person's (or an agent's) rerun of the
    * DEPLOY phase. It never throws past a database failure, which the caller retries.
    *
@@ -320,18 +345,35 @@ public class ReleaseFinalization {
   }
 
   /**
-   * <b>The belt under {@code DeploymentFailed}</b> (qits-1690): the event is not always there to be
-   * read — the rollback of qits-containers-service 2026.1026.210534 never reached the events log —
-   * so every released tag still waiting on its deployment is asked about directly. Selected are rows
-   * of a {@code RELEASED} request, released more than {@code settle} ago, neither live nor recorded
-   * as failed, whose repository's gate set (at {@code main}) requires {@link
-   * ReleaseGates.Kind#DEPLOYMENT}; for each, qits-deployments' newest deployment of the version is
-   * read, and a {@code ROLLED_BACK} or failed one is recorded as {@link #onDeploymentFailed} would.
+   * <b>The belt under {@code DeploymentFailed} and {@code DeploymentActive}</b> (qits-1690,
+   * qits-2217): neither event is always there to be read — the rollback of
+   * qits-containers-service 2026.1026.210534 never reached the events log, and qits-deployments
+   * flips a FAILED deployment to ACTIVE when it later observes it running ("recovered by
+   * observation") and announces nothing at all — so every released tag still waiting on its
+   * deployment is asked about directly. Selected are rows of a {@code RELEASED} request, released
+   * more than {@code settle} ago and not live — recorded as failed or not — whose repository's gate
+   * set (at {@code main}) requires {@link ReleaseGates.Kind#DEPLOYMENT}; for each,
+   * qits-deployments' newest deployment of the version is read, and its word decides one of two
+   * arms:
+   *
+   * <ul>
+   *   <li><b>{@code ACTIVE}, and that word alone</b>, is live: the gate passes exactly as a {@code
+   *       DeploymentActive} would pass it — the row stamped live, a recorded failure cleared, its
+   *       branches back to RELEASED, the finalization advanced — on the row already in hand. A
+   *       release that failed and then recovered, or whose {@code DeploymentActive} was lost,
+   *       finalizes here. {@code DECOMMISSIONED}, {@code SUPERSEDED}, {@code GONE}, {@code
+   *       SCALED_TO_ZERO}, a deployment still queued or starting, and no word at all change
+   *       nothing.
+   *   <li><b>{@code ROLLED_BACK} or failed</b> is recorded as {@link #onDeploymentFailed} would
+   *       record it — but only on a row not already recorded failed. The reconcile carries no
+   *       detail, so its sentence is not the event's, and re-recording would re-word the row and
+   *       fail its branches again on every pass.
+   * </ul>
    *
    * <p>A deployments port that is absent, cannot answer, or throws costs this pass and nothing else:
    * the row stays as it was and the next pass asks again. Nothing is redeployed.
    *
-   * @return how many rows were recorded as failed
+   * @return how many rows this pass changed — recorded as failed, or found live
    */
   public int reconcileDeployments(Duration settle) {
     if (!deploymentRequests.isResolvable()) {
@@ -339,7 +381,10 @@ public class ReleaseFinalization {
       return 0;
     }
     Instant before = Instant.now().minus(settle == null ? Duration.ZERO : settle);
-    List<Owed> waiting =
+    // Whether a row is already recorded failed is copied out with it: the selection's transaction
+    // is over by the time the arms decide.
+    record Waiting(Owed owed, boolean failed) {}
+    List<Waiting> waiting =
         QuarkusTransaction.requiringNew()
             .call(
                 () ->
@@ -350,11 +395,12 @@ public class ReleaseFinalization {
                                     .findByIdOptional(row.releaseRequestId)
                                     .map(request -> request.state == ReleaseRequest.State.RELEASED)
                                     .orElse(false))
-                        .map(ReleaseFinalization::owedOf)
+                        .map(row -> new Waiting(owedOf(row), row.deploymentFailedAt != null))
                         .toList());
-    int recorded = 0;
+    int changed = 0;
     java.util.Map<String, ReleaseGates.GateSet> sets = new java.util.HashMap<>();
-    for (Owed owed : waiting) {
+    for (Waiting row : waiting) {
+      Owed owed = row.owed();
       try {
         ReleaseGates.GateSet set =
             sets.computeIfAbsent(
@@ -369,8 +415,20 @@ public class ReleaseFinalization {
           continue;
         }
         String status = answered.get().get(0).status();
-        if (failedDeployment(status) && recordDeploymentFailure(owed, status, null)) {
-          recorded++;
+        if (LIVE_DEPLOYMENT.equals(status)) {
+          if (wentLive(
+              owed,
+              "the reconcile found qits-deployments' newest deployment of it "
+                  + LIVE_DEPLOYMENT
+                  + " with no DeploymentActive on the log"
+                  + (row.failed() ? ", after its deployment had been recorded failed" : "")
+                  + " (qits-2217)")) {
+            changed++;
+          }
+        } else if (!row.failed()
+            && failedDeployment(status)
+            && recordDeploymentFailure(owed, status, null)) {
+          changed++;
         }
       } catch (RuntimeException e) {
         LOG.warnf(
@@ -378,8 +436,16 @@ public class ReleaseFinalization {
             owed.repoId(), owed.tagName(), e.toString());
       }
     }
-    return recorded;
+    return changed;
   }
+
+  /**
+   * qits-deployments' one word for a deployment that is live, and the only one the {@link
+   * #reconcileDeployments reconcile} passes the gate on (qits-2217). Every other word — {@code
+   * DECOMMISSIONED}, {@code SUPERSEDED}, {@code GONE}, {@code SCALED_TO_ZERO}, a deployment still
+   * queued or starting — says nothing about whether this version went live.
+   */
+  static final String LIVE_DEPLOYMENT = "ACTIVE";
 
   /**
    * Whether qits-deployments' word says the deployment ended without going live: {@code

@@ -217,6 +217,109 @@ public class DeploymentRollbackTest {
     assertEquals("RELEASED", listed(request).getString("state"), "nothing redeployed, nothing moved");
   }
 
+  /**
+   * qits-2217's live case: the deployment failed, the failure was recorded from its {@code
+   * DeploymentFailed}, and qits-deployments later found it running and flipped it to ACTIVE —
+   * "recovered by observation" — announcing nothing. The reconcile reads the newest deployment
+   * ACTIVE and passes the gate exactly as a {@code DeploymentActive} would: live, the failure
+   * cleared, the merge to main owed and folded.
+   */
+  @Test
+  public void theReconcilePassesAFailedDeploymentThatRecoveredNoEventAnnounced() {
+    String tag = releaseOf("work-a");
+    String request = firstRequest();
+    deploymentFailed(
+        tag, "FAILED", "service rollback still not started yet (no update status) after 180s");
+    assertNotNull(rowOf(tag).deploymentFailedAt, "the premise: recorded failed");
+    deploymentRequests.answerStatus("deployment-1", "ACTIVE");
+
+    assertEquals(1, finalization.reconcileDeployments(Duration.ZERO), "one row went live");
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentActiveAt, "the reconcile found it live");
+    assertNull(row.deploymentFailedAt, "the recovery is what counts; the failure is history");
+    assertNull(row.deploymentFailedDetail);
+    assertNotNull(row.mergeRequestedAt, "and finalization goes on exactly as on the event");
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+    assertEquals(
+        "PASSED",
+        given()
+            .get(base() + "/" + request)
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("request." + GATE + ".state"));
+  }
+
+  /** A {@code DeploymentActive} that never reached the log: the reconcile finalizes it anyway. */
+  @Test
+  public void theReconcilePassesALiveDeploymentWhoseEventWasLost() {
+    String tag = releaseOf("work-a");
+    deploymentRequests.answerStatus("deployment-1", "ACTIVE");
+
+    assertEquals(1, finalization.reconcileDeployments(Duration.ZERO));
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentActiveAt);
+    assertNull(row.deploymentFailedAt);
+    assertNotNull(row.mergeRequestedAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+  }
+
+  /** A release younger than the settle window is not asked about, live or not. */
+  @Test
+  public void theReconcileLeavesALiveDeploymentInsideTheSettleWindowAlone() {
+    String tag = releaseOf("work-a");
+    deploymentRequests.answerStatus("deployment-1", "ACTIVE");
+
+    assertEquals(0, finalization.reconcileDeployments(Duration.ofHours(1)), "too fresh to ask");
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNull(row.deploymentActiveAt);
+    assertNull(row.mergeRequestedAt);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+  }
+
+  /**
+   * A failure already recorded is never recorded again by the reconcile: its sentence carries no
+   * detail, so re-recording would re-word the row (and fail its branches again) on every pass.
+   */
+  @Test
+  public void theReconcileNeverReWordsARecordedFailure() {
+    String tag = releaseOf("work-a");
+    deploymentFailed(tag, "FAILED", "no suitable node");
+    ReleasedTagPendingMerge before = rowOf(tag);
+    assertEquals("FAILED: no suitable node", before.deploymentFailedDetail);
+
+    deploymentRequests.answerStatus("deployment-1", "FAILED");
+    assertEquals(0, finalization.reconcileDeployments(Duration.ZERO));
+    deploymentRequests.answerStatus("deployment-1", "ROLLED_BACK");
+    assertEquals(0, finalization.reconcileDeployments(Duration.ZERO));
+
+    ReleasedTagPendingMerge after = rowOf(tag);
+    assertEquals(
+        "FAILED: no suitable node", after.deploymentFailedDetail, "the event's words stay");
+    assertEquals(before.deploymentFailedAt, after.deploymentFailedAt);
+    assertNull(after.deploymentActiveAt);
+  }
+
+  /** Only ACTIVE is live: a decommissioned or still-starting newest deployment changes nothing. */
+  @Test
+  public void onlyActiveIsLiveForTheReconcile() {
+    String tag = releaseOf("work-a");
+    deploymentFailed(tag, "FAILED", "no suitable node");
+
+    for (String status : new String[] {"DECOMMISSIONED", "STARTING"}) {
+      deploymentRequests.answerStatus("deployment-1", status);
+      assertEquals(0, finalization.reconcileDeployments(Duration.ZERO), status);
+      ReleasedTagPendingMerge row = rowOf(tag);
+      assertNull(row.deploymentActiveAt, status + " is not live");
+      assertEquals("FAILED: no suitable node", row.deploymentFailedDetail, status);
+      assertNull(row.mergeRequestedAt, status);
+    }
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+  }
+
   /** A deployments port that cannot answer, or throws, costs the pass and nothing else. */
   @Test
   public void anUnanswerableReconcileLeavesTheRowAlone() {
