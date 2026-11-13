@@ -1689,6 +1689,157 @@
       ]
     },
     {
+      "name": "a project with a pitch",
+      "slug": "a-project-with-a-pitch",
+      "params": {
+        "archivedPitchId": "00000000-0000-4000-8000-000000000001",
+        "authorization": "Bearer contract-ui-builder",
+        "pitchId": "00000000-0000-4000-8000-000000000002",
+        "projectId": "00000000-0000-4000-8000-000000000003",
+        "repositoryId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "addPitchVersion",
+          "method": "POST",
+          "path": "/projects/api/pitches/{pitchId}/versions",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "html": "<main><h1>Board</h1><nav>Filters</nav><p>Saved</p></main>",
+            "note": "Saved views under the filters"
+          },
+          "status": 201,
+          "file": "a-project-with-a-pitch/addPitchVersion.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "archivePitch",
+          "method": "POST",
+          "path": "/projects/api/pitches/{pitchId}/archive",
+          "status": 200,
+          "file": "a-project-with-a-pitch/archivePitch.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.archivedAt",
+              "$.createdAt",
+              "$.updatedAt",
+              "$.versions[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "createPitch",
+          "method": "POST",
+          "path": "/projects/api/pitches",
+          "headers": {
+            "Authorization": "{authorization}"
+          },
+          "body": {
+            "project": "{projectId}",
+            "repository": "{repositoryId}",
+            "route": "/work",
+            "screenshot": "work/board-desktop-dark.html",
+            "kind": "DATA",
+            "viewport": "DESKTOP",
+            "colorScheme": "DARK",
+            "manifestVersion": "2026.1113.1",
+            "title": "A darker board header",
+            "note": "The dark scheme's twin.",
+            "html": "<main><h1>Board</h1></main>",
+            "versionNote": "First cut"
+          },
+          "status": 201,
+          "file": "a-project-with-a-pitch/createPitch.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt",
+              "$.versions[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getPitch",
+          "method": "GET",
+          "path": "/projects/api/pitches/{pitchId}",
+          "status": 200,
+          "file": "a-project-with-a-pitch/getPitch.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt",
+              "$.versions[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getPitchVersion",
+          "method": "GET",
+          "path": "/projects/api/pitches/{pitchId}/versions/latest",
+          "status": 200,
+          "file": "a-project-with-a-pitch/getPitchVersion.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listPitches",
+          "method": "GET",
+          "path": "/projects/api/pitches",
+          "query": {
+            "project": "{projectId}"
+          },
+          "status": 200,
+          "file": "a-project-with-a-pitch/listPitches.json",
+          "frozen": {
+            "ids": [
+              "$.pitches[*].id",
+              "$.pitches[*].repositoryId"
+            ],
+            "instants": [
+              "$.pitches[*].createdAt",
+              "$.pitches[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with an open issue",
       "slug": "a-project-with-an-open-issue",
       "params": {

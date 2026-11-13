@@ -857,6 +857,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING);
   }
 
+  @State(ProviderStates.A_PROJECT_WITH_A_PITCH)
+  Map<String, String> aProjectWithAPitch() {
+    return states.params(ProviderStates.A_PROJECT_WITH_A_PITCH);
+  }
+
   @State(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE)
   Map<String, String> aProjectWhoseDeskReceivedATriggerMessage() {
     return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);

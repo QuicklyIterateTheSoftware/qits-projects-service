@@ -2267,6 +2267,18 @@
           "site" : "AgentView.of(AgentState)"
         },
         {
+          "type" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "NamedAgentCaller.lookup(String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "site" : "PitchController.create(NewPitch)"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
           "kind" : "mapper",
           "via" : null,
@@ -2302,6 +2314,14 @@
           "path" : "/projects/{projectId}/agent-container/stop",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
           "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "kind" : "body",
           "cardinality" : "single"
         },
         {
@@ -2377,6 +2397,18 @@
           "site" : "AgentView.of(AgentState)"
         },
         {
+          "type" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "NamedAgentCaller.lookup(String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "site" : "PitchController.create(NewPitch)"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
           "kind" : "mapper",
           "via" : null,
@@ -2384,6 +2416,14 @@
         }
       ],
       "operations" : [
+        {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.control.NamedAgentCaller$Caller",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
         {
           "operationId" : "getAgentLastAnswer",
           "method" : "GET",
@@ -2422,6 +2462,228 @@
           "path" : "/projects/{projectId}/front-desk/prompt",
           "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
           "kind" : "body",
+          "cardinality" : "single"
+        }
+      ]
+    },
+    {
+      "entity" : "eu.wohlben.qits.projects.entity.Pitch",
+      "table" : "pitch",
+      "marking" : "domain",
+      "reason" : null,
+      "projectionOf" : null,
+      "knownGap" : null,
+      "dtos" : [
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.archive(String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.list(String, String, String, String, String, boolean)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchSummary",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "PitchController.summary(Pitch, int, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionDto",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.version(String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionSummary",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.detail(Detail)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "factory",
+          "via" : null,
+          "site" : "Detail.<init>(Pitch, List)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "site" : "PitchController.create(NewPitch)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$VersionInfo",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "site" : "Detail.versions()"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.entity.Pitch",
+          "kind" : "direct",
+          "via" : null,
+          "site" : "PitchController.create(NewPitch)"
+        }
+      ],
+      "operations" : [
+        {
+          "operationId" : "addPitchVersion",
+          "method" : "POST",
+          "path" : "/pitches/{id}/versions",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionSummary",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "archivePitch",
+          "method" : "POST",
+          "path" : "/pitches/{id}/archive",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.entity.Pitch",
+          "kind" : "direct",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "getPitch",
+          "method" : "GET",
+          "path" : "/pitches/{id}",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "getPitchVersion",
+          "method" : "GET",
+          "path" : "/pitches/{id}/versions/{number}",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionDto",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "listPitches",
+          "method" : "GET",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        }
+      ]
+    },
+    {
+      "entity" : "eu.wohlben.qits.projects.entity.PitchVersion",
+      "table" : "pitch_version",
+      "marking" : "domain",
+      "reason" : null,
+      "projectionOf" : null,
+      "knownGap" : null,
+      "dtos" : [
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "site" : "PitchController.archive(String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$Listed",
+          "site" : "PitchController.list(String, String, String, String, String, boolean)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionDto",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "PitchController.version(PitchVersion)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionSummary",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "PitchController.versionSummary(PitchVersion)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "Pitches.create(NewPitch)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$Listed",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "Pitches.list(Filter)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "site" : "PitchController.create(NewPitch)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$VersionInfo",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "Pitches.info(PitchVersion)"
+        }
+      ],
+      "operations" : [
+        {
+          "operationId" : "addPitchVersion",
+          "method" : "POST",
+          "path" : "/pitches/{id}/versions",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionSummary",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "archivePitch",
+          "method" : "POST",
+          "path" : "/pitches/{id}/archive",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "body",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "getPitch",
+          "method" : "GET",
+          "path" : "/pitches/{id}",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchDetail",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "getPitchVersion",
+          "method" : "GET",
+          "path" : "/pitches/{id}/versions/{number}",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchVersionDto",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "listPitches",
+          "method" : "GET",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "returns",
           "cardinality" : "single"
         }
       ]
@@ -2541,6 +2803,18 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.api.BranchDeliveriesController$Answer",
           "site" : "Answer.deliveries()"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.list(String, String, String, String, String, boolean)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchSummary",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "site" : "PitchList.pitches()"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
@@ -2691,6 +2965,18 @@
           "kind" : "factory",
           "via" : null,
           "site" : "FeatureFreezeThreshold.of(Repository)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "site" : "Pitches.create(NewPitch)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.create(NewPitch)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ProjectReconciliation",
@@ -2963,6 +3249,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "createProjectRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories",
@@ -3103,6 +3397,14 @@
           "method" : "GET",
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "listPitches",
+          "method" : "GET",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
           "kind" : "returns",
           "cardinality" : "collection"
         },
@@ -6897,6 +7199,18 @@
       "knownGap" : null,
       "dtos" : [
         {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.list(String, String, String, String, String, boolean)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchSummary",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "site" : "PitchList.pitches()"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.api.ProjectController$AdoptProjectRepositoryRequest$Response",
           "kind" : "assembler",
           "via" : null,
@@ -7015,6 +7329,18 @@
           "kind" : "factory",
           "via" : null,
           "site" : "FeatureFreezeThreshold.of(Repository)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "site" : "Pitches.create(NewPitch)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.control.Pitches$NewPitch",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.create(NewPitch)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ProjectService$AgentConfigRepository",
@@ -7363,6 +7689,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "createPitch",
+          "method" : "POST",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.control.Pitches$Detail",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "createProjectRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories",
@@ -7471,6 +7805,14 @@
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitChangesDto",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "listPitches",
+          "method" : "GET",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
           "kind" : "returns",
           "cardinality" : "collection"
         },
@@ -7660,6 +8002,18 @@
       "projectionOf" : null,
       "knownGap" : null,
       "dtos" : [
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "PitchController.list(String, String, String, String, String, boolean)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.PitchController$PitchSummary",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "site" : "PitchList.pitches()"
+        },
         {
           "type" : "eu.wohlben.qits.projects.api.ProjectController$AdoptProjectRepositoryRequest$Response",
           "kind" : "via",
@@ -8089,6 +8443,14 @@
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$GetRepositoryRequest$Response",
           "kind" : "returns",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "listPitches",
+          "method" : "GET",
+          "path" : "/pitches",
+          "dto" : "eu.wohlben.qits.projects.api.PitchController$PitchList",
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",

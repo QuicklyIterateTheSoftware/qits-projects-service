@@ -88,6 +88,7 @@ class AgentReadAccessTest {
           ProjectDeskTriggersController.class,
           ProjectFrontDeskController.class,
           ProjectAgentsController.class,
+          PitchController.class,
           ProjectEventsController.class,
           ProjectRefinementsController.class,
           ProjectReleaseRequestsController.class,
@@ -194,6 +195,16 @@ class AgentReadAccessTest {
   private static final Set<String> DESIGN_AGENT_WRITES =
       Set.of("RefinementDesignController.add", "RefinementDesignController.update");
 
+  /**
+   * <b>The pitch writes a named agent makes</b> (qits-2155). A named agent's token is a plain {@code
+   * qits:agent} with a {@code project} claim, so the doors admit the role and decide in their bodies:
+   * the create only for a caller that resolves to a named agent of the body's project (anyone else a
+   * 403, admins included), a version only for the pitch's own agent, and the archive for that agent,
+   * an admin or the desk-admin. {@code PitchControllerTest} pins those refusals.
+   */
+  private static final Set<String> PITCH_AGENT_WRITES =
+      Set.of("PitchController.create", "PitchController.addVersion", "PitchController.archive");
+
   // No idea write is an agent's (qits-1790): ideas are broad, high-level notes the delivery desk and
   // admins keep, so IdeaController's writes name qits:desk and the admin roles, never qits:agent,
   // and the per-class rule below refuses them the agent like any undeclared write. Its reads still
@@ -203,7 +214,7 @@ class AgentReadAccessTest {
   private static final Set<String> AGENT_WRITES =
       union(
           union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
-          DESIGN_AGENT_WRITES);
+          union(DESIGN_AGENT_WRITES, PITCH_AGENT_WRITES));
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a

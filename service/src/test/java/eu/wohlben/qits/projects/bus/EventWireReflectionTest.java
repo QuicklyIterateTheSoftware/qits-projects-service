@@ -82,6 +82,9 @@ public class EventWireReflectionTest {
 
   @Inject Instance<IdeaEventAnnouncer> shippedIdeaAnnouncer;
 
+  /** And the one that says a named agent's pitch changed (qits-2155). */
+  @Inject Instance<PitchEventAnnouncer> shippedPitchAnnouncer;
+
   /** The typed live listener of qits-system's lease event (epic qits-1481). */
   @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
 
@@ -134,6 +137,7 @@ public class EventWireReflectionTest {
             IdeaUpdated.class,
             IdeaArchived.class,
             IdeaUnarchived.class,
+            PitchChanged.class,
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
@@ -149,7 +153,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR, EntityCommented, WorkNeedMet and the four idea events out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented, WorkNeedMet, the four idea events and PitchChanged out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -226,6 +230,28 @@ public class EventWireReflectionTest {
       assertTrue(
           targets.contains(idea),
           "IdeaEventAnnouncer publishes " + idea.getSimpleName() + " (qits-1387)");
+    }
+    assertTrue(
+        targets.contains(PitchChanged.class),
+        "PitchEventAnnouncer publishes this (qits-2155); unregistered, a pitch page never hears"
+            + " of a new version");
+  }
+
+  @Test
+  public void thePitchEventAnnouncerShipsAsABean() {
+    assertTrue(!shippedPitchAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  /**
+   * {@code PitchChanged} spells no envelope word, so every field reaches the wire: {@code name}
+   * above all, which a mix-in would drop without a sound.
+   */
+  @Test
+  public void pitchChangedNamesNoEnvelopeWord() {
+    for (var component : PitchChanged.class.getRecordComponents()) {
+      assertTrue(
+          !Set.of("name", "occurredAt", "signature").contains(component.getName()),
+          "PitchChanged." + component.getName() + " spells an envelope word");
     }
   }
 

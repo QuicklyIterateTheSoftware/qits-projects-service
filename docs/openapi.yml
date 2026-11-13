@@ -2042,6 +2042,72 @@ components:
           type: string
         truncated:
           type: boolean
+    NewPitch:
+      description: A new pitch and its version 1.
+      type: object
+      required:
+      - project
+      - repository
+      - route
+      - screenshot
+      - kind
+      - viewport
+      - manifestVersion
+      - title
+      - html
+      properties:
+        project:
+          type: string
+          description: The project's id or slug
+        repository:
+          type: string
+          description: "A repository of the project, by id or name"
+        route:
+          type: string
+        screenshot:
+          type: string
+        kind:
+          type: string
+          enum:
+          - DATA
+          - NO_DATA
+          - PENDING
+          - ERROR
+        viewport:
+          type: string
+          enum:
+          - PHONE
+          - TABLET
+          - DESKTOP
+        colorScheme:
+          type: string
+          enum:
+          - LIGHT
+          - DARK
+        manifestVersion:
+          type: string
+        title:
+          type: string
+        note:
+          type: string
+        html:
+          type: string
+          description: "The whole document, styles inline"
+        versionNote:
+          type: string
+          description: Version 1's note
+    NewPitchVersion:
+      description: The next version of a pitch.
+      type: object
+      required:
+      - html
+      properties:
+        html:
+          type: string
+          description: "The whole document, styles inline"
+        note:
+          type: string
+          description: What changed
     NonComplyingCommit:
       type: object
       properties:
@@ -2077,6 +2143,197 @@ components:
           pattern: \S
         note:
           type: string
+    PitchColorScheme:
+      type: string
+      enum:
+      - LIGHT
+      - DARK
+    PitchDetail:
+      description: "A pitch with every version, oldest first, no HTML."
+      type: object
+      required:
+      - id
+      - agent
+      - repositoryId
+      - route
+      - screenshot
+      - kind
+      - viewport
+      - manifestVersion
+      - title
+      - latestVersion
+      - createdAt
+      - updatedAt
+      - versions
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+        repositoryId:
+          type: string
+        repositoryName:
+          type: string
+        route:
+          type: string
+        screenshot:
+          type: string
+        kind:
+          $ref: "#/components/schemas/PitchKind"
+        viewport:
+          $ref: "#/components/schemas/PitchViewport"
+        colorScheme:
+          $ref: "#/components/schemas/PitchColorScheme"
+        manifestVersion:
+          type: string
+        title:
+          type: string
+        note:
+          type: string
+        latestVersion:
+          type: integer
+          format: int32
+        archivedAt:
+          $ref: "#/components/schemas/Instant"
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PitchVersionSummary"
+    PitchKind:
+      type: string
+      enum:
+      - DATA
+      - NO_DATA
+      - PENDING
+      - ERROR
+    PitchList:
+      type: object
+      required:
+      - pitches
+      properties:
+        pitches:
+          type: array
+          items:
+            $ref: "#/components/schemas/PitchSummary"
+    PitchSummary:
+      type: object
+      description: A pitch without its versions or its HTML.
+      required:
+      - id
+      - agent
+      - repositoryId
+      - route
+      - screenshot
+      - kind
+      - viewport
+      - manifestVersion
+      - title
+      - latestVersion
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+          description: "The named agent that pitched it, e.g. ui-builder"
+        repositoryId:
+          type: string
+        repositoryName:
+          type: string
+          description: "The repository's name, null when it answers to none"
+        route:
+          type: string
+          description: The freeze's route
+        screenshot:
+          type: string
+          description: The freeze's file key in manifest.json
+        kind:
+          $ref: "#/components/schemas/PitchKind"
+        viewport:
+          $ref: "#/components/schemas/PitchViewport"
+        colorScheme:
+          $ref: "#/components/schemas/PitchColorScheme"
+          description: Null for an app with no colour schemes
+          type: string
+        manifestVersion:
+          type: string
+          description: The @routes bundle version the screenshot came from
+        title:
+          type: string
+        note:
+          type: string
+        latestVersion:
+          type: integer
+          format: int32
+          description: The newest version number
+        archivedAt:
+          $ref: "#/components/schemas/Instant"
+          description: When it was archived; null while it is not
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+    PitchVersion:
+      description: "One version of a pitch with its HTML — agent-authored, unsanitised,\
+        \ for a sandboxed script-free frame only."
+      type: object
+      required:
+      - number
+      - html
+      - htmlBytes
+      - createdAt
+      properties:
+        number:
+          type: integer
+          format: int32
+        html:
+          type: string
+        htmlBytes:
+          type: integer
+          format: int32
+        note:
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+    PitchVersionSummary:
+      type: object
+      description: "One version of a pitch, without its HTML."
+      required:
+      - number
+      - htmlBytes
+      - createdAt
+      properties:
+        number:
+          type: integer
+          format: int32
+          description: From 1
+        htmlBytes:
+          type: integer
+          format: int32
+          description: The HTML's UTF-8 length
+        note:
+          type: string
+          description: What changed
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+    PitchViewport:
+      type: string
+      enum:
+      - PHONE
+      - TABLET
+      - DESKTOP
     PlacementDto:
       type: object
       properties:
@@ -4856,6 +5113,234 @@ paths:
         - qits:desk-admin
         - qits:system
         - qits:agent
+  /projects/api/pitches:
+    get:
+      summary: "A project's pitches, newest change first, without their HTML"
+      description: "Narrowed by agent, repository (id or name), route and screenshot;\
+        \ archived pitches only with archived=true."
+      operationId: listPitches
+      parameters:
+      - name: agent
+        in: query
+        schema:
+          type: string
+      - name: archived
+        in: query
+        schema:
+          type: boolean
+          default: false
+      - name: project
+        in: query
+        schema:
+          type: string
+      - name: repository
+        in: query
+        schema:
+          type: string
+      - name: route
+        in: query
+        schema:
+          type: string
+      - name: screenshot
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PitchList"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
+    post:
+      summary: "Pitch a mock of one screenshot: the pitch and its version 1"
+      description: "Only a named agent of the project pitches, and the pitch is that\
+        \ agent's; anyone else is a 403. The HTML is at most qits.projects.pitch-max-bytes\
+        \ (413), and not empty (400)."
+      operationId: createPitch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPitch"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
+  /projects/api/pitches/{id}:
+    get:
+      summary: "One pitch with every version, oldest first, without their HTML"
+      operationId: getPitch
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PitchDetail"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
+  /projects/api/pitches/{id}/archive:
+    post:
+      summary: "Archive a pitch: hidden from the default listing, nothing deleted"
+      description: "The pitch's agent, qits:admin or qits:desk-admin. Idempotent."
+      operationId: archivePitch
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PitchDetail"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
+  /projects/api/pitches/{id}/versions:
+    post:
+      summary: Append the next version of a pitch
+      description: Only the pitch's agent; an archived pitch is a 409. Answers the
+        new version without its HTML.
+      operationId: addPitchVersion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPitchVersion"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
+  /projects/api/pitches/{id}/versions/{number}:
+    get:
+      summary: "One version of a pitch with its HTML, as a JSON field"
+      description: "number is a version from 1, or latest. The HTML is agent-authored\
+        \ and unsanitised: render it only in a sandboxed, script-free frame."
+      operationId: getPitchVersion
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: number
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PitchVersion"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Pitch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
+        - qits:agent
+        - qits:system
   /projects/api/projects:
     get:
       operationId: listProjects

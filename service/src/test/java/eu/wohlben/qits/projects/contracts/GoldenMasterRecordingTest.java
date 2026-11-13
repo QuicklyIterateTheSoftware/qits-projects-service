@@ -1595,6 +1595,53 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING,
             "getAgentLastAnswer",
             agents + "/{name}/last-answer"));
+    // The pitch doors (qits-2155), as qits-platform-access-monorepo's `qits pitches` calls them: the
+    // default listing (the archived pitch left out), a pitch with its two versions, the latest
+    // version's document, a create and a version by the ui-builder's own bearer (only a named agent
+    // pitches, and only the pitch's agent adds a version), and an archive by an admin.
+    String pitches = "/projects/api/pitches";
+    all.add(read(ProviderStates.A_PROJECT_WITH_A_PITCH, "listPitches", pitches + "?project={projectId}"));
+    all.add(read(ProviderStates.A_PROJECT_WITH_A_PITCH, "getPitch", pitches + "/{pitchId}"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WITH_A_PITCH,
+            "getPitchVersion",
+            pitches + "/{pitchId}/versions/latest"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_A_PITCH,
+            "createPitch",
+            "POST",
+            pitches,
+            201,
+            null,
+            null,
+            "{\"project\":\"{projectId}\",\"repository\":\"{repositoryId}\","
+                + "\"route\":\"/work\",\"screenshot\":\"work/board-desktop-dark.html\","
+                + "\"kind\":\"DATA\",\"viewport\":\"DESKTOP\",\"colorScheme\":\"DARK\","
+                + "\"manifestVersion\":\"2026.1113.1\",\"title\":\"A darker board header\","
+                + "\"note\":\"The dark scheme's twin.\","
+                + "\"html\":\"<main><h1>Board</h1></main>\",\"versionNote\":\"First cut\"}",
+            BEARER));
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_A_PITCH,
+            "addPitchVersion",
+            "POST",
+            pitches + "/{pitchId}/versions",
+            201,
+            null,
+            null,
+            "{\"html\":\"<main><h1>Board</h1><nav>Filters</nav><p>Saved</p></main>\","
+                + "\"note\":\"Saved views under the filters\"}",
+            BEARER));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WITH_A_PITCH,
+            "archivePitch",
+            "POST",
+            pitches + "/{pitchId}/archive",
+            null));
     // The desk trigger read door (qits-1612, epic qits-1604), as qits-platform-access-cli's `qits
     // projects desk triggers` and the landing app's desk page call it: one delivered window, its
     // message and its two lines.

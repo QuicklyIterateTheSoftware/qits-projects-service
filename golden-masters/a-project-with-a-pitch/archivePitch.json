@@ -1,0 +1,32 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "agent": "ui-builder",
+  "repositoryId": "00000000-0000-4000-8000-000000000004",
+  "repositoryName": "contract-app",
+  "route": "/work",
+  "screenshot": "work/board-desktop-light.html",
+  "kind": "DATA",
+  "viewport": "DESKTOP",
+  "colorScheme": "LIGHT",
+  "manifestVersion": "2026.1113.1",
+  "title": "A calmer board header",
+  "note": "The banner folds into the toolbar.",
+  "latestVersion": 2,
+  "archivedAt": "2026-01-01T00:00:00Z",
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "versions": [
+    {
+      "number": 1,
+      "htmlBytes": 27,
+      "note": "First cut",
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "number": 2,
+      "htmlBytes": 45,
+      "note": "Filters beside the title",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

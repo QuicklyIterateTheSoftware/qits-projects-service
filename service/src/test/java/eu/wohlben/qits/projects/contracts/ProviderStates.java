@@ -321,6 +321,18 @@ public class ProviderStates {
           + "\"state\":\"IDLE\",\"text\":\"Pitched one snapshot: the header without its"
           + " banner.\",\"at\":\"2026-01-01T00:00:00Z\"}";
 
+  /**
+   * qits-2155: the pitch doors. The project's {@code ui-builder} named agent, holding the bearer
+   * {@link #PITCH_AGENT_BEARER}; one live pitch with two versions on the project's repository
+   * {@code contract-app}, and one archived pitch beside it. Params {@code projectId}, {@code
+   * repositoryId}, {@code pitchId} (the live pitch), {@code archivedPitchId} and the {@code
+   * authorization} the agent presents (its token subject is in no answer).
+   */
+  public static final String A_PROJECT_WITH_A_PITCH = "a project with a pitch";
+
+  /** The bearer the pitch state's {@code ui-builder} agent presents. */
+  static final String PITCH_AGENT_BEARER = "Bearer contract-ui-builder";
+
   // qits-1612: the desk trigger read door, over one delivered window of two lines (epic qits-1604).
   public static final String A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE =
       "a project whose desk received a trigger message";
@@ -686,6 +698,9 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.deskhost.FrontDesks frontDesks;
 
+  /** The pitch state's store (qits-2155), written as the doors write it. */
+  @Inject eu.wohlben.qits.projects.control.Pitches pitches;
+
   /** The processes pull, push and sync start, waited on by {@link #cleanUp()}. */
   @Inject
   jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.control.TechnicalProcessRegistry>
@@ -851,6 +866,7 @@ public class ProviderStates {
         REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS, this::repositoriesWithDecommissionableTags);
     states.put(A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING, this::aProjectWhoseFrontDeskIsRunning);
     states.put(A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING, this::aProjectWhoseNamedAgentIsRunning);
+    states.put(A_PROJECT_WITH_A_PITCH, this::aProjectWithAPitch);
     states.put(
         A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
         this::aProjectWhoseDeskReceivedATriggerMessage);
@@ -1074,6 +1090,86 @@ public class ProviderStates {
                   : new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(200, body);
             });
     return new Setup(params("projectId", project.id, "name", "ui-builder"), List.of(token));
+  }
+
+  /**
+   * See {@link #A_PROJECT_WITH_A_PITCH}. The named agent's row is written straight to the table with
+   * a token subject of its own (no idp mint), and the bearer is granted as that subject: a {@code
+   * qits:agent} token with the project's {@code project} claim, which is all a named agent's token
+   * is. The pitches are written through {@code Pitches}, as the doors write them, with fixed values
+   * so every answer records the same; ids and instants are frozen.
+   */
+  private Setup aProjectWithAPitch() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_A_PITCH);
+    String repoId =
+        projectService
+            .createRepository(project.id, null, "contract-app", RepositoryArchetype.FRONTEND)
+            .repository()
+            .id;
+    String subject = "tok-ui-builder-" + token;
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var agent = new eu.wohlben.qits.projects.entity.NamedAgent();
+              agent.projectId = project.id;
+              agent.name = eu.wohlben.qits.projects.control.NamedAgents.UI_BUILDER;
+              agent.surface = eu.wohlben.qits.projects.control.AgentSurfaceDefaults.PROJECT_UI_BUILDER;
+              agent.tokenSubject = subject;
+              agent.createdAt = java.time.Instant.now();
+              agent.persist();
+            });
+    bearers.grant(
+        PITCH_AGENT_BEARER,
+        subject,
+        Map.of("project", project.id, "groups", List.of("qits:agent")),
+        "qits:agent");
+    var live =
+        pitches.create(
+            new eu.wohlben.qits.projects.control.Pitches.NewPitch(
+                project.id,
+                eu.wohlben.qits.projects.control.NamedAgents.UI_BUILDER,
+                repoId,
+                "/work",
+                "work/board-desktop-light.html",
+                "DATA",
+                "DESKTOP",
+                "LIGHT",
+                "2026.1113.1",
+                "A calmer board header",
+                "The banner folds into the toolbar.",
+                "<main><h1>Board</h1></main>",
+                "First cut",
+                subject));
+    String pitchId = live.pitch().id.toString();
+    pitches.addVersion(
+        live.pitch().id, "<main><h1>Board</h1><nav>Filters</nav></main>", "Filters beside the title");
+    var archived =
+        pitches.create(
+            new eu.wohlben.qits.projects.control.Pitches.NewPitch(
+                project.id,
+                eu.wohlben.qits.projects.control.NamedAgents.UI_BUILDER,
+                repoId,
+                "/work",
+                "work/board-phone.html",
+                "NO_DATA",
+                "PHONE",
+                null,
+                "2026.1113.1",
+                "An empty board that explains itself",
+                null,
+                "<main><p>Nothing yet</p></main>",
+                null,
+                subject));
+    pitches.archive(archived.pitch().id);
+    return new Setup(
+        params(
+            "projectId", project.id,
+            "repositoryId", repoId,
+            "pitchId", pitchId,
+            "archivedPitchId", archived.pitch().id.toString(),
+            "authorization", PITCH_AGENT_BEARER),
+        List.of(token));
   }
 
   /**
