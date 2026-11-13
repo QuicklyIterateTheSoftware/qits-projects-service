@@ -27,7 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p><b>Cached by subject</b>, the way {@code FrontDesks} keeps each desk's bound subject: a
  * subject is minted with one token and never moves to another row, so a hit stays true for as long
  * as the token can be presented at all (a revoked token no longer authenticates). Only hits are
- * cached: an agent whose first token is minted after a miss is found on its next call.
+ * cached: an agent whose first token is minted after a miss is found on its next call. A hit for
+ * another project is never trusted as a refusal; the database is asked again.
  */
 @ApplicationScoped
 public class NamedAgentCaller {
@@ -46,8 +47,8 @@ public class NamedAgentCaller {
       return Optional.empty();
     }
     Caller cached = bySubject.get(subject);
-    if (cached != null) {
-      return cached.projectId().equals(projectId) ? Optional.of(cached) : Optional.empty();
+    if (cached != null && cached.projectId().equals(projectId)) {
+      return Optional.of(cached);
     }
     Optional<Caller> found =
         QuarkusTransaction.requiringNew().call(() -> lookup(projectId, subject));
