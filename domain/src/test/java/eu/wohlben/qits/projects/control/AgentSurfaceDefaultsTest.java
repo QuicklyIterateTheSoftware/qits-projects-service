@@ -5744,23 +5744,101 @@ public class AgentSurfaceDefaultsTest {
   }
 
   /**
-   * Its placeholder brief says it is not the desk and owns no desk work, and borrows nothing of
-   * the desk's: not the delivery brief, not the brief pointer, no initial prompt (it runs only when
-   * prompted). qits-2156 replaces the text.
+   * qits-2154's placeholder, copied in from the release that stored it: the text {@code
+   * AgentBriefRollout} recognises as an unedited row, so it must never change.
+   */
+  private static final String QITS_2154_UI_BUILDER_PROMPT =
+      """
+      You are the UI builder of this project: one of its named agents (qits-2154), a session of
+      your own in the project's front desk container. You are not the front desk and not the
+      delivery desk: you handle no desk triggers, no delivery and no release work, and a message
+      addressed to the delivery desk is not for you. The project's checkout at /workspace is
+      read-only to you: it follows the project's releases, so read it and never write under it.
+      Answer the person who prompts you about the project's user interface. Your full briefing
+      arrives with qits-2156.\
+      """;
+
+  /**
+   * qits-2156: the UI builder ships its real brief, which says it is not the desk and owns no desk
+   * work, and borrows nothing of the desk's: not the delivery brief, not the brief pointer, no
+   * initial prompt (it runs only when prompted).
    */
   @Test
-  public void theUiBuilderShipsAPlaceholderBriefThatIsNotTheDesks() {
+  public void theUiBuilderShipsItsBriefWhichIsNotTheDesks() {
     AgentSurfaceConfigurationDto builder = AgentSurfaceDefaults.SHIPPED.get("project.ui-builder");
-    assertEquals(AgentSurfaceDefaults.UI_BUILDER_PROMPT, builder.systemPrompt());
-    assertTrue(builder.systemPrompt().startsWith("You are the UI builder of this project"));
-    assertTrue(builder.systemPrompt().contains("You are not the front desk"));
-    assertTrue(builder.systemPrompt().contains("no desk triggers, no delivery"));
-    assertTrue(builder.systemPrompt().contains("/workspace is"));
-    assertTrue(builder.systemPrompt().contains("qits-2156"));
-    assertFalse(builder.systemPrompt().contains("You are the delivery desk"));
+    String prompt = builder.systemPrompt();
+    assertEquals(AgentSurfaceDefaults.UI_BUILDER_PROMPT, prompt);
+    assertTrue(prompt.startsWith("You are the UI builder of this project"));
+    assertTrue(prompt.contains("You are not the front desk"));
+    assertTrue(prompt.contains("no desk triggers, no delivery"));
+    assertTrue(prompt.contains("/workspace is read-only to you"));
+    assertTrue(prompt.contains("no work item, no branch"));
+    assertFalse(prompt.contains("You are the delivery desk"));
+    assertFalse(prompt.contains("Your full briefing"), "the placeholder's promise is kept");
     assertEquals("", builder.initialPrompt(), "it runs only when a person prompts it");
     assertEquals(List.of(QITS), builder.mcpServers());
     assertTrue(builder.remoteControl());
+  }
+
+  /** The four reads (qits-2156 A), named exactly as the CLI and the MCP server take them. */
+  @Test
+  public void theUiBuilderBriefNamesTheFourReads() {
+    String prompt = AgentSurfaceDefaults.UI_BUILDER_PROMPT;
+    for (String command :
+        List.of(
+            "qits ui-builder routes --repository <repo> [--bundle-version <v>]",
+            "qits ui-builder freeze --repository <repo> --screenshot <file key>"
+                + " [--bundle-version <v>] [--html]",
+            "qits ui-builder golden-masters --provider <app> [--state <slug>]"
+                + " [--operation <operationId>] [--bundle-version <v>]",
+            "qits ui-builder entities --provider <app> [--bundle-version <v>]",
+            "ui-builder_routes, ui-builder_freeze, ui-builder_golden-masters and\n"
+                + "ui-builder_entities")) {
+      assertTrue(prompt.contains(command), command);
+    }
+    assertFalse(prompt.contains("--version"), "the help mixin owns --version");
+    assertTrue(prompt.contains("| qits pitches create"));
+    assertTrue(prompt.contains("| qits pitches add-version --pitch <id>"));
+    assertTrue(prompt.contains("| qits work create --archetype ticket"));
+    assertTrue(prompt.contains("@desk"), "an idea goes through the desk");
+    assertTrue(prompt.contains("Never move a ticket's status."));
+  }
+
+  /** qits-2156 C fixes the opened-context block; the brief carries it literally, unindented. */
+  @Test
+  public void theUiBuilderBriefCarriesTheOpenedContextBlock() {
+    String block =
+        """
+        <opened-context>
+        repository: <repository name>
+        route: <route path, as in manifest.json>
+        manifestVersion: <@routes bundle version>
+        screenshot: <freeze file key> | none
+        kind: DATA|NO_DATA|PENDING|ERROR
+        viewport: PHONE|TABLET|DESKTOP
+        colorScheme: LIGHT|DARK
+        connectivity: online|offline
+        selection: none | entity <name> | mark <qitsEntityList|qitsEntity|qitsField> <source>[ <item>][ <field>]
+        </opened-context>
+        """;
+    String prompt = AgentSurfaceDefaults.UI_BUILDER_PROMPT;
+    assertTrue(prompt.contains("\n" + block), "the block, each line at the start of its own");
+    assertTrue(prompt.contains("reads none"));
+    assertTrue(prompt.contains("for that prompt only"));
+    assertTrue(prompt.contains("ask which repository\nand route are meant"));
+  }
+
+  /** The placeholder is kept byte for byte for the boot migration, and differs from the brief. */
+  @Test
+  public void theQits2154PlaceholderIsKeptForTheRollout() {
+    assertEquals(
+        QITS_2154_UI_BUILDER_PROMPT,
+        AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT,
+        "the previous brief, kept for the boot migration");
+    assertNotEquals(
+        AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT,
+        AgentSurfaceDefaults.UI_BUILDER_PROMPT,
+        "the migration would be a no-op");
   }
 
   @Test

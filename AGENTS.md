@@ -3066,8 +3066,11 @@ decided on the person's own text, before the prefix.
 with its own name, surface (its briefing), credential and session, tied to no work item.
 `control/NamedAgents` is the closed registry and every project has every name: `desk` is the front
 desk itself (its `front_desk` row, its keeper, its `front-desk/*` doors, all unchanged) and
-`ui-builder` runs on surface `project.ui-builder` (`AgentSurfaceDefaults.PROJECT_UI_BUILDER`, a
-placeholder brief until qits-2156; never the desk's brief, skills or triggers). The session key on
+`ui-builder` runs on surface `project.ui-builder` (`AgentSurfaceDefaults.PROJECT_UI_BUILDER`,
+briefed by `UI_BUILDER_PROMPT` since qits-2156: the page, the `qits ui-builder` reads, pitching,
+filing and the `<opened-context>` block every prompt from the page starts with; qits-2154's
+placeholder is kept as `QITS_2154_UI_BUILDER_PROMPT` and `AgentBriefRollout` rolls an unedited row
+forward; never the desk's brief, skills or triggers). The session key on
 the control socket is `agent:<name>`, spelled by qits-projects-daemon's protocol `NamedAgents`
 (capability 4: `namedAgentKey`/`namedAgentName`), which the hosts call; the registry holds no copy,
 only names that protocol's `NAME` admits (`NamedAgentsComposeTest` checks each).

@@ -15,13 +15,19 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The workspace agents' brief on asking the delivery desk (qits-1679) rolls onto unedited rows. */
+/**
+ * The workspace agents' brief on asking the delivery desk (qits-1679), and the UI builder's real
+ * brief (qits-2156), roll onto unedited rows.
+ */
 @QuarkusTest
 @TestSecurity(user = "dev", roles = "qits:admin")
 public class AgentBriefRolloutTest {
 
   private static final List<String> SURFACES =
-      List.of(AgentSurfaceDefaults.WORKSPACE_AGENT, AgentSurfaceDefaults.TICKET_DISPATCH);
+      List.of(
+          AgentSurfaceDefaults.WORKSPACE_AGENT,
+          AgentSurfaceDefaults.TICKET_DISPATCH,
+          AgentSurfaceDefaults.PROJECT_UI_BUILDER);
 
   @Inject AgentSurfaceSeed seed;
 
@@ -94,6 +100,29 @@ public class AgentBriefRolloutTest {
     assertEquals(
         AgentSurfaceDefaults.COMPOSED_RUN_PROMPT + " Edited.",
         prompt(AgentSurfaceDefaults.TICKET_DISPATCH));
+  }
+
+  /** qits-2156: a row still holding qits-2154's placeholder rolls forward to the real brief. */
+  @Test
+  public void anUneditedUiBuilderPlaceholderRollsForward() {
+    stage(
+        AgentSurfaceDefaults.PROJECT_UI_BUILDER, AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT);
+
+    assertTrue(rollout.rollOut() >= 1, "the staged row rolls");
+
+    assertEquals(
+        AgentSurfaceDefaults.UI_BUILDER_PROMPT, prompt(AgentSurfaceDefaults.PROJECT_UI_BUILDER));
+    assertEquals(0, rollout.rollOut(), "idempotent");
+  }
+
+  @Test
+  public void anEditedUiBuilderBriefStays() {
+    String edited = AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT + " Edited.";
+    stage(AgentSurfaceDefaults.PROJECT_UI_BUILDER, edited);
+
+    rollout.rollOut();
+
+    assertEquals(edited, prompt(AgentSurfaceDefaults.PROJECT_UI_BUILDER));
   }
 
   private void stage(String surface, String systemPrompt) {

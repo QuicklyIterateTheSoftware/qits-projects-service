@@ -19,6 +19,10 @@ import org.jboss.logging.Logger;
  * AgentSurfaceDefaults#COMPOSED_RUN_PROMPT} alone. A row holding exactly that text is rewritten to
  * what ships now; any other text is an owner's edit and stays. Idempotent, never fails or blocks
  * boot, and the suite drives {@link #rollOut()} directly.
+ *
+ * <p>qits-2156 adds the UI builder's surface ({@link AgentSurfaceDefaults#PROJECT_UI_BUILDER}): a
+ * row still holding qits-2154's placeholder ({@link
+ * AgentSurfaceDefaults#QITS_2154_UI_BUILDER_PROMPT}) is rewritten to its real brief.
  */
 @ApplicationScoped
 public class AgentBriefRollout {
@@ -44,7 +48,7 @@ public class AgentBriefRollout {
         for (String previous : entry.getValue()) {
           if (surfaces.replaceSystemPromptIfUnedited(surface, previous, current)) {
             rewritten++;
-            LOG.infof("Rewrote %s's system prompt to the shipped brief (qits-1679)", surface);
+            LOG.infof("Rewrote %s's system prompt to the shipped brief", surface);
             break;
           }
         }
@@ -66,6 +70,9 @@ public class AgentBriefRollout {
                 List.of(
                     AgentSurfaceDefaults.COMPOSED_RUN_PROMPT,
                     AgentSurfaceDefaults.QITS_1724_COMPOSED_RUN_BRIEF)));
+    all.put(
+        AgentSurfaceDefaults.PROJECT_UI_BUILDER,
+        List.of(AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT));
     return Map.copyOf(all);
   }
 }
