@@ -3052,6 +3052,55 @@ trigger sweep below, which asks it for a typed outcome (`prompt`) instead of a r
 alone, so the desk re-reads its guide before answering whenever it moved. The blank-text 400 is
 decided on the person's own text, before the prefix.
 
+### Named agents (qits-2154)
+
+**A named agent is a further kept Claude session in the desk's container**, beside the desk's own,
+with its own name, surface (its briefing), credential and session, tied to no work item.
+`control/NamedAgents` is the closed registry and every project has every name: `desk` is the front
+desk itself (its `front_desk` row, its keeper, its `front-desk/*` doors, all unchanged) and
+`ui-builder` runs on surface `project.ui-builder` (`AgentSurfaceDefaults.PROJECT_UI_BUILDER`, a
+placeholder brief until qits-2156; never the desk's brief, skills or triggers). The session key on
+the control socket is `agent:<name>`, mirrored from qits-projects-daemon's protocol `NamedAgents`
+(capability 4) until the pin carries that class.
+
+- **The row** (`named_agent`, V76, `@Uncaused`): `(project_id, name)`, `surface`, `session_id`,
+  `token_*`, `last_demand_at`, `pending_prompt`, `created_at`; created on the agent's first prompt,
+  dropped with the project (`FrontDeskHooks.projectDeleting` revokes the tokens first, the FK
+  cascades). The desk never has one.
+- **The token**: one `qits_tok_` per row, idp kind `named-agent` (`qits:agent` only, claims
+  `{project}`, `gitRefs []`) through `FrontDeskTokens.mintNamedAgent`/`revokeNamedAgent`. In no
+  environment: `DeskSessionCredentials.compose` carries it under `agent:<name>`. A failed mint is a
+  WARN and the next prompt mints again; `FrontDeskTokenReconcile` keeps every token a row's
+  `token_id` names and reaps the other live `named-agent` tokens (5 min grace).
+- **The session** (`RefinementSessions.compose`): `agent:<name>`, its surface, RUNNING,
+  `resumeSessionId` = `session_id`, no entity — only while `last_demand_at` is inside
+  `agent-idle-timeout` and only to a daemon whose `hello` said
+  `AgentDaemonRegistry.NAMED_AGENTS_CAPABILITY` (4). Outside the window it is left out, so an agent
+  nobody prompts costs no session. A `SessionReport`'s non-blank `sessionId` for the key lands on
+  the row (never cleared); an `AgentActivity` of its command re-stamps `last_demand_at` (throttled,
+  only inside the window). The desk's demand and the spec roll's busy rollup count every session of
+  the container already, the agent's included. `deskhost/NamedAgentDemand` wants the desk while an
+  agent is inside its window. No lease or slot of its own: the desk's one DESK lease.
+
+`api/ProjectAgentsController`, `ProjectFrontDeskController`'s roles (`qits:admin`,
+`qits:admin-agent`, `qits:desk-admin` bound to its project; `qits:agent` and `qits:desk` 403,
+reads included — `AgentReadAccessTest` names all three):
+
+| route | behaviour |
+| --- | --- |
+| `GET …/projects/{projectId}/agents` (`listAgents`) | `{agents: [{name, surface, state, sessionId, commandId}]}`, the desk first, every name listed; `state` STOPPED / STARTING / IDLE / BUSY / FAILED (WAITING reads BUSY); `commandId` is the terminal proxy's `/projects/container/{projectId}/terminal/commands/{commandId}` |
+| `POST …/agents/{name}/prompt` `{text}` (`promptAgent`) | `desk`: the front desk's prompt (brief pointer included) after `FrontDesks.ensure`, so a stopped desk starts. Any other: row and token if absent, both demands stamped, desk ensured, sessions pushed, then `POST <base>named-agents/{name}/prompt` passed through — or, with no capable daemon connected (or the daemon's 404 "not in the frame"), held in `pending_prompt` and **202** `{commandId:null, state:"STARTING", delivered:false, queued:true, position:null}`; a second prompt while one waits is 409; never the brief pointer |
+| `GET …/agents/{name}/last-answer` (`getAgentLastAnswer`) | `desk`: the front desk's last answer; any other: `GET <base>named-agents/{name}/last-answer` passed through; no daemon 503, too old 409 |
+
+Unknown name 404, unknown project 404, blank text 400 before anything moves. A held prompt is
+delivered by `NamedAgentHost.deliverPending` after the `hello`'s credentials and sessions, on every
+`SessionReport` naming an agent, and every `desk.sessions-resend-interval`; it is cleared only once
+the daemon took it (or called it malformed). Desk triggers still prompt only the desk. Contracts:
+provider state `a project whose named agent is running` (params `projectId`, `name`); consumer
+rows `listNamedAgents`, `promptNamedAgent`, `getNamedAgentLastAnswer` under the daemon's `a daemon
+whose named agent is running`, pending until the pinned daemon golden masters carry it.
+`ProjectAgentsTest`, `NamedAgentsComposeTest`, `NamedAgentGuideVariantTest`.
+
 ### The development guide (qits-1679)
 
 `api/DevelopmentGuideController`, `GET /projects/api/guide[?for=<variant>]`
@@ -3209,6 +3258,7 @@ everything the daemon held, so a key left out has no credential any more. Three 
 | `front-desk` (`SessionCredentials.FRONT_DESK_KEY`) | the desk-delivery token (`qits:agent` + `qits:desk`) while `project.deliveryEnabled` and the row holds one; else the desk-session token | the ONE front desk session, which runs the delivery loop as turns (owner ruling 2026-10-22) |
 | `desk-agents` (`SessionCredentials.DESK_AGENTS_KEY`) | the desk-session token (`qits:agent`), always | every launch a person starts from the desk panel, so a person-started session never holds `qits:desk` |
 | an entity id | that refinement room's own token (`RefinementTokens.credentialOf`) | one per refinement row of the project holding a token — the key qits-770's sessions will use |
+| `agent:<name>` | that named agent's own token (`named-agent`, `qits:agent`) | one per `named_agent` row holding a token (qits-2154) |
 
 **A key with no token is omitted**, never sent blank: after its first frame the daemon **fails
 closed** on a missing key (the session is not launched) rather than falling back to another
