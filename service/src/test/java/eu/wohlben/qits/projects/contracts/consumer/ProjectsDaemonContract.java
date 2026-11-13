@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.api.AgentCapabilityController.CapabilityReportRequest;
@@ -23,6 +24,14 @@ import java.util.Map;
  * {@code ProjectFrontDeskController} proxies to it down the same tunnel. Every other request to the
  * daemon is a browser's, passed through verbatim by {@code ContainerProxyRoute}, and has no row here.
  *
+ * <p>Since qits-2154 three more, the named agents' routes {@code ProjectAgentsController} and
+ * {@code NamedAgentHost} ask through the same tunnel — {@code GET named-agents}, {@code POST
+ * named-agents/{name}/prompt} and {@code GET named-agents/{name}/last-answer} — under the daemon's
+ * state {@value #NAMED_AGENT_RUNNING}. They are pending until the pinned
+ * qits-projects-daemon golden masters carry that state (the daemon records it from capability 4 on);
+ * the maintenance bump of {@code qits.projects-daemon-golden-masters.version} brings it, and the
+ * pact is rewritten with {@code -Dgolden.update=true} then.
+ *
  * <p>The two front-desk rows are pending until qits-projects-daemon records the state {@value
  * #FRONT_DESK_RUNNING} for {@code promptFrontDesk} and {@code getFrontDeskLastAnswer}. Their bodies
  * pass through this service verbatim, so what they consume is what this service's own OpenAPI
@@ -40,6 +49,9 @@ final class ProjectsDaemonContract {
 
   /** The daemon's state for the front desk's two routes (qits-1572), pending its recording. */
   static final String FRONT_DESK_RUNNING = "a daemon whose front desk is running";
+
+  /** The daemon's state for the named agents' three routes (qits-2154), pending its pin. */
+  static final String NAMED_AGENT_RUNNING = "a daemon whose named agent is running";
 
   private ProjectsDaemonContract() {}
 
@@ -146,5 +158,113 @@ final class ProjectsDaemonContract {
               },
               "GET {base}/front-desk/last-answer answering 200 with commandId, sessionId, state,"
                   + " text and at")
+              .withHeaders(Map.of("Authorization", "Bearer {apiToken}")),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listNamedAgents",
+              NAMED_AGENT_RUNNING,
+              "GET",
+              ContainerProxyPath.PREFIX + "{projectId}/named-agents",
+              Map.of(),
+              null,
+              List.of(
+                  "$.agents[0].name",
+                  "$.agents[0].state",
+                  "$.agents[0].commandId",
+                  "$.agents[0].sessionId"),
+              200,
+              Trigger.operation("listAgents"),
+              (base, p) -> {
+                HttpResponse<String> response =
+                    RowClients.HTTP
+                        .send(
+                            HttpRequest.newBuilder(
+                                    URI.create(
+                                        base
+                                            + ContainerProxyPath.base(p.get("projectId"))
+                                            + "named-agents"))
+                                .header("Authorization", "Bearer " + p.get("apiToken"))
+                                .GET()
+                                .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, response.statusCode());
+                JsonNode agents = new ObjectMapper().readTree(response.body()).path("agents");
+                assertFalse(agents.isEmpty());
+                assertNotNull(agents.get(0).path("name").asText(null));
+              },
+              "GET {base}/named-agents answering 200 with agents[] of name, key, surface, state,"
+                  + " commandId and sessionId")
+              .withHeaders(Map.of("Authorization", "Bearer {apiToken}")),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "promptNamedAgent",
+              NAMED_AGENT_RUNNING,
+              "POST",
+              ContainerProxyPath.PREFIX + "{projectId}/named-agents/{name}/prompt",
+              Map.of(),
+              ConsumerRow.json("{\"text\":\"Pitch a calmer header.\"}"),
+              List.of("$.commandId", "$.state", "$.delivered", "$.queued"),
+              200,
+              Trigger.operation("promptAgent"),
+              (base, p) -> {
+                HttpResponse<String> response =
+                    RowClients.HTTP
+                        .send(
+                            HttpRequest.newBuilder(
+                                    URI.create(
+                                        base
+                                            + ContainerProxyPath.base(p.get("projectId"))
+                                            + "named-agents/"
+                                            + p.get("name")
+                                            + "/prompt"))
+                                .header("Authorization", "Bearer " + p.get("apiToken"))
+                                .header("Content-Type", "application/json")
+                                .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                        "{\"text\":\"Pitch a calmer header.\"}"))
+                                .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, response.statusCode());
+                assertNotNull(
+                    new ObjectMapper().readTree(response.body()).path("commandId").asText(null));
+              },
+              "POST {base}/named-agents/{name}/prompt {text} answering 200 with commandId, state,"
+                  + " delivered, queued and position")
+              .withHeaders(Map.of("Authorization", "Bearer {apiToken}")),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getNamedAgentLastAnswer",
+              NAMED_AGENT_RUNNING,
+              "GET",
+              ContainerProxyPath.PREFIX + "{projectId}/named-agents/{name}/last-answer",
+              Map.of(),
+              null,
+              List.of("$.commandId", "$.sessionId", "$.state"),
+              200,
+              Trigger.operation("getAgentLastAnswer"),
+              (base, p) -> {
+                HttpResponse<String> response =
+                    RowClients.HTTP
+                        .send(
+                            HttpRequest.newBuilder(
+                                    URI.create(
+                                        base
+                                            + ContainerProxyPath.base(p.get("projectId"))
+                                            + "named-agents/"
+                                            + p.get("name")
+                                            + "/last-answer"))
+                                .header("Authorization", "Bearer " + p.get("apiToken"))
+                                .GET()
+                                .build(),
+                            HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, response.statusCode());
+                assertNotNull(
+                    new ObjectMapper().readTree(response.body()).path("commandId").asText(null));
+              },
+              "GET {base}/named-agents/{name}/last-answer answering 200 with commandId, sessionId,"
+                  + " state, text and at")
               .withHeaders(Map.of("Authorization", "Bearer {apiToken}")));
 }

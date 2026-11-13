@@ -1552,6 +1552,61 @@
       ]
     },
     {
+      "name": "a project whose named agent is running",
+      "slug": "a-project-whose-named-agent-is-running",
+      "params": {
+        "name": "ui-builder",
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getAgentLastAnswer",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/agents/{name}/last-answer",
+          "status": 200,
+          "file": "a-project-whose-named-agent-is-running/getAgentLastAnswer.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.at"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listAgents",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/agents",
+          "status": 200,
+          "file": "a-project-whose-named-agent-is-running/listAgents.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "promptAgent",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/agents/{name}/prompt",
+          "body": {
+            "text": "Pitch a calmer header."
+          },
+          "status": 200,
+          "file": "a-project-whose-named-agent-is-running/promptAgent.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project whose work has workspaces",
       "slug": "a-project-whose-work-has-workspaces",
       "params": {

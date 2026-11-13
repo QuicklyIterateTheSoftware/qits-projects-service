@@ -108,6 +108,14 @@ class ConsumerCallCoverageTest {
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#post"),
           "getFrontDeskLastAnswer: getFrontDeskLastAnswer",
           Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
+          // The named agents' three (qits-2154): NamedAgentHost and ProjectAgentsController ask
+          // through the same tunnel client.
+          "listAgents: listNamedAgents",
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
+          "promptAgent: promptNamedAgent",
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#post"),
+          "getAgentLastAnswer: getNamedAgentLastAnswer",
+          Set.of("eu.wohlben.qits.projects.agenthost.DaemonApiClient#get"),
           IdpContract.TOKEN_MINT_TRIGGER + ": issueToken",
           Set.of("quarkus-oidc-client:qits"),
           // The tenant's two reads (qits-708): quarkus-oidc makes them, the rows stand in.

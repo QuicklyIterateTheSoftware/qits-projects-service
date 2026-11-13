@@ -299,6 +299,28 @@ public class ProviderStates {
           + "\"state\":\"RUNNING\",\"text\":\"Two tickets are ready for dev.\","
           + "\"at\":\"2026-01-01T00:00:00Z\"}";
 
+  // qits-2154: the named agents' doors, proxied to a fake daemon of capability 4 standing behind the
+  // real reverse tunnel, as the front desk's state does; held until cleanUp.
+  public static final String A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING =
+      "a project whose named agent is running";
+
+  /** What the named-agent state's daemon lists: the UI builder, running. */
+  static final String NAMED_AGENTS_LISTED =
+      "{\"agents\":[{\"name\":\"ui-builder\",\"key\":\"agent:ui-builder\","
+          + "\"surface\":\"project.ui-builder\",\"state\":\"RUNNING\","
+          + "\"commandId\":\"ui-builder-command-1\",\"sessionId\":\"ui-builder-session-1\"}]}";
+
+  /** What it answers a prompt to the UI builder: delivered at once. */
+  static final String NAMED_AGENT_PROMPTED =
+      "{\"commandId\":\"ui-builder-command-1\",\"state\":\"IDLE\",\"delivered\":true,"
+          + "\"queued\":false,\"position\":null}";
+
+  /** What it answers for the UI builder's last answer: one, with its text. */
+  static final String NAMED_AGENT_LAST_ANSWER =
+      "{\"commandId\":\"ui-builder-command-1\",\"sessionId\":\"ui-builder-session-1\","
+          + "\"state\":\"IDLE\",\"text\":\"Pitched one snapshot: the header without its"
+          + " banner.\",\"at\":\"2026-01-01T00:00:00Z\"}";
+
   // qits-1612: the desk trigger read door, over one delivered window of two lines (epic qits-1604).
   public static final String A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE =
       "a project whose desk received a trigger message";
@@ -828,6 +850,7 @@ public class ProviderStates {
     states.put(
         REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS, this::repositoriesWithDecommissionableTags);
     states.put(A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING, this::aProjectWhoseFrontDeskIsRunning);
+    states.put(A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING, this::aProjectWhoseNamedAgentIsRunning);
     states.put(
         A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE,
         this::aProjectWhoseDeskReceivedATriggerMessage);
@@ -1011,6 +1034,46 @@ public class ProviderStates {
                   404, "{\"message\":\"No such endpoint\"}");
             });
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A project whose named agent {@code ui-builder} is running (qits-2154): a fake daemon announcing
+   * capability 4 (named agents) dials this service's control socket as the project's, lists the
+   * agent, takes a prompt to it at once and answers its last answer; its desk keeps a command too,
+   * so the listing's {@code desk} entry reads from the desk's own last answer. Every request crosses
+   * the real tunnel. The bodies are the daemon's contract's shape (its state {@code a daemon whose
+   * named agent is running}), fixed so the recording is stable. Params {@code projectId} and {@code
+   * name} ({@code ui-builder}).
+   */
+  private Setup aProjectWhoseNamedAgentIsRunning() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING);
+    frontDeskDaemon =
+        eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.connect(
+            vertx,
+            tunnels,
+            "localhost",
+            httpServer.getPort(),
+            project.id,
+            eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry.NAMED_AGENTS_CAPABILITY,
+            seen -> {
+              String uri = seen.uri();
+              String body =
+                  uri.endsWith("/named-agents")
+                      ? NAMED_AGENTS_LISTED
+                      : uri.endsWith("/named-agents/ui-builder/prompt")
+                          ? NAMED_AGENT_PROMPTED
+                          : uri.endsWith("/named-agents/ui-builder/last-answer")
+                              ? NAMED_AGENT_LAST_ANSWER
+                              : uri.endsWith("/front-desk/last-answer")
+                                  ? FRONT_DESK_LAST_ANSWER
+                                  : null;
+              return body == null
+                  ? new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(
+                      404, "{\"message\":\"No such endpoint\"}")
+                  : new eu.wohlben.qits.projects.agenthost.FakeProjectDaemon.Reply(200, body);
+            });
+    return new Setup(params("projectId", project.id, "name", "ui-builder"), List.of(token));
   }
 
   /**

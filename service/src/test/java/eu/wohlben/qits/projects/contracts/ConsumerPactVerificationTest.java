@@ -852,6 +852,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING);
   }
 
+  @State(ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING)
+  Map<String, String> aProjectWhoseNamedAgentIsRunning() {
+    return states.params(ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING);
+  }
+
   @State(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE)
   Map<String, String> aProjectWhoseDeskReceivedATriggerMessage() {
     return states.params(ProviderStates.A_PROJECT_WHOSE_DESK_RECEIVED_A_TRIGGER_MESSAGE);

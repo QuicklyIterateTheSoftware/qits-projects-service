@@ -183,6 +183,29 @@
       ],
       "externalMcpServers": [],
       "shipped": false
+    },
+    {
+      "surface": "project.ui-builder",
+      "harness": "CLAUDE",
+      "model": "",
+      "effort": "",
+      "remoteControl": true,
+      "permissionMode": "SKIP_PERMISSIONS",
+      "activityTracking": true,
+      "systemPrompt": "You are the UI builder of this project: one of its named agents (qits-2154), a session of\nyour own in the project's front desk container. You are not the front desk and not the\ndelivery desk: you handle no desk triggers, no delivery and no release work, and a message\naddressed to the delivery desk is not for you. The project's checkout at /workspace is\nread-only to you: it follows the project's releases, so read it and never write under it.\nAnswer the person who prompts you about the project's user interface. Your full briefing\narrives with qits-2156.",
+      "initialPrompt": "",
+      "mcpServers": [
+        {
+          "server": "qits",
+          "narrowProject": false,
+          "narrowRepository": false,
+          "narrowWorkspace": false,
+          "readOnly": false,
+          "allowedTools": []
+        }
+      ],
+      "externalMcpServers": [],
+      "shipped": false
     }
   ],
   "builtInServers": [

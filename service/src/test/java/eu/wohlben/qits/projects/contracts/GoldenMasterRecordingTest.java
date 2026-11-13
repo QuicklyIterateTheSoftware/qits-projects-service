@@ -1577,6 +1577,24 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WHOSE_FRONT_DESK_IS_RUNNING,
             "getFrontDeskLastAnswer",
             frontDesk + "/last-answer"));
+    // The named agents' doors (qits-2154), as qits-platform-access-monorepo's `qits projects agents
+    // list|prompt|answer` calls them: the listing (the desk from its own last answer, the UI builder
+    // as the daemon lists it), a prompt the UI builder's session takes at once, and its last answer.
+    // Every daemon answer is the fake's, through the real tunnel.
+    String agents = "/projects/api/projects/{projectId}/agents";
+    all.add(read(ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING, "listAgents", agents));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING,
+            "promptAgent",
+            "POST",
+            agents + "/{name}/prompt",
+            "{\"text\":\"Pitch a calmer header.\"}"));
+    all.add(
+        read(
+            ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING,
+            "getAgentLastAnswer",
+            agents + "/{name}/last-answer"));
     // The desk trigger read door (qits-1612, epic qits-1604), as qits-platform-access-cli's `qits
     // projects desk triggers` and the landing app's desk page call it: one delivered window, its
     // message and its two lines.

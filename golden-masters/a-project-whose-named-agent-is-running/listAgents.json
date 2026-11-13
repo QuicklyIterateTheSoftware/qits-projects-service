@@ -1,0 +1,18 @@
+{
+  "agents": [
+    {
+      "name": "desk",
+      "surface": "project.work",
+      "state": "IDLE",
+      "sessionId": "desk-session-1",
+      "commandId": "desk-command-1"
+    },
+    {
+      "name": "ui-builder",
+      "surface": "project.ui-builder",
+      "state": "IDLE",
+      "sessionId": "ui-builder-session-1",
+      "commandId": "ui-builder-command-1"
+    }
+  ]
+}
