@@ -237,7 +237,7 @@
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1108.230857</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1113.72544</qits.landing-app-pacts-qits-projects-service.version>
-        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1113.93638</qits.projects-frontend-pacts-qits-projects-service.version>
+        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1113.105422</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1113.90329</qits.platform-access-monorepo-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1111.173803</qits.maintenance-service-pacts-qits-projects-service.version>
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
@@ -253,7 +253,7 @@
         <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1113.93010</qits.artifacts-frontend-pacts-qits-projects-service.version>
         <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1113.93155</qits.deployments-frontend-pacts-qits-projects-service.version>
         <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1113.93405</qits.mirror-frontend-pacts-qits-projects-service.version>
-        <qits.observability-frontend-pacts-qits-projects-service.version>2026.1113.93447</qits.observability-frontend-pacts-qits-projects-service.version>
+        <qits.observability-frontend-pacts-qits-projects-service.version>2026.1113.105418</qits.observability-frontend-pacts-qits-projects-service.version>
         <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1113.93521</qits.orchestrator-frontend-pacts-qits-projects-service.version>
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1113.93714</qits.system-frontend-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
