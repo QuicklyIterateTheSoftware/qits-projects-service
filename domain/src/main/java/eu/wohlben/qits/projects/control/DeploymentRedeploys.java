@@ -28,9 +28,9 @@ package eu.wohlben.qits.projects.control;
  *
  * <p><b>Nothing about the pipeline is changed by asking.</b> No row is written here, no release
  * request status moves — there is no new status and there must not be one — and the {@code
- * DEPLOYMENT} gate is still closed by a {@code DeploymentActive} reaching {@code
- * ReleaseFinalization} and by nothing else. A rerun re-asks a question; the answer arrives where it
- * always did.
+ * DEPLOYMENT} gate is still closed in {@code ReleaseFinalization} alone — by a {@code
+ * DeploymentActive}, or by its scheduled reconcile finding the newest deployment {@code ACTIVE}
+ * (qits-2217). A rerun re-asks a question; the answer arrives where it always did.
  */
 public interface DeploymentRedeploys {
 

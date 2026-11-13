@@ -94,14 +94,18 @@ public class ReleasedTagPendingMergeRepository
   /** The tags a page of release requests produced, for naming what reached {@code main}. */
   /**
    * The released tags of a request still waiting on their deployment, released before {@code
-   * releasedBefore}: neither merged, owed a merge, abandoned, live nor recorded as failed — the
-   * deployment reconcile's selection (qits-1690). The request's own state is the caller's to check.
+   * releasedBefore}: neither merged, owed a merge, abandoned nor live — the deployment reconcile's
+   * selection (qits-1690). <b>A row recorded as failed is selected too</b> (qits-2217):
+   * qits-deployments can find a failed deployment running later and flip it to ACTIVE without
+   * announcing anything, and the reconcile is then the only thing that will ever see it went live.
+   * Whether a row is recorded failed ({@code deploymentFailedAt}) is the caller's to branch on, and
+   * so is the request's own state.
    */
   public List<ReleasedTagPendingMerge> listAwaitingDeployment(java.time.Instant releasedBefore) {
     return list(
         "releaseRequestId is not null and mergedAt is null and mergeRequestedAt is null"
             + " and abandonedAt is null and deploymentActiveAt is null"
-            + " and deploymentFailedAt is null and releasedAt < ?1 order by releasedAt",
+            + " and releasedAt < ?1 order by releasedAt",
         releasedBefore);
   }
 

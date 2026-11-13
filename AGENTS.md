@@ -674,14 +674,14 @@ merely its only occupant. Six things about it are rules:
     read RELEASED until somebody retried and `--until live` neither fired nor failed.
     `ReleaseFinalization` now writes FAILED over the request's RELEASED rows
     (`BranchDeliveries.gateFailed`, in the verdict's transaction): failure `PUBLISH` with the red
-    run in `onPublishVerdict`, `DEPLOYMENT` with no run in `recordDeploymentFailure` (the event and
-    the reconcile, and again for the same sentence). `BranchDeliveries.gateRetried` puts every row
+    run in `onPublishVerdict`, `DEPLOYMENT` with no run in `recordDeploymentFailure` (the event,
+    and again for the same sentence; the reconcile only on a row not yet recorded failed). `BranchDeliveries.gateRetried` puts every row
     naming a RELEASED request at FAILED back to RELEASED at the tag's version — the ledger has no
     failure column, so the request's state is what tells a post-release failure apart: on a
     `BuildStatusChanged` of phase `RELEASE` QUEUED/RUNNING for a tag whose `publish_state` is
     FAILED (`ReleasePipelineRunListener` → `ReleaseFinalization.onPublishRunStarted`), on an
     accepted DEPLOY rerun (`rerunPhase` → `onDeploymentRerun`), and as a belt on a green verdict
-    or a `DeploymentActive` clearing a failure; never while the other gate is still recorded failed.
+    or a `DeploymentActive` (or the reconcile finding the deployment `ACTIVE`) clearing a failure; never while the other gate is still recorded failed.
     A second red is then a new position and announced; a green one ends at LIVE as before.
     `BranchDeliveryNotices` says nothing for either failure.
   - **`control/BranchDeliveryStepListener`** hears each written step **inside** the transaction —
@@ -754,8 +754,15 @@ merely its only occupant. Six things about it are rules:
   log, so `ReleaseRequestSweep.reconcileDeployments`
   (`qits.projects.release-requests.deployment-reconcile-every`, 5m, `off` in dev/test; settle
   `…-reconcile-after`, PT5M) asks qits-deployments about every RELEASED request's tag still waiting
-  under a DEPLOYMENT gate and records a `ROLLED_BACK` or failed newest deployment. A later
-  `DeploymentActive` clears the record and finalizes as before. The record makes
+  under a DEPLOYMENT gate — recorded failed or not — and records a `ROLLED_BACK` or failed newest
+  deployment on a row not yet recorded failed (never re-recording one: its detail-less sentence
+  would re-word the row and re-fail the branches every pass). A later `DeploymentActive` clears the
+  record and finalizes as before, and so does the reconcile when the newest deployment reads
+  exactly `ACTIVE` (qits-2217: qits-deployments flips a FAILED deployment it later finds running to
+  ACTIVE and announces nothing, so such a release, or one whose `DeploymentActive` was lost, never
+  finalized). That arm is `ReleaseFinalization.wentLive`, the event's own path, on the row in hand;
+  `DECOMMISSIONED`, `SUPERSEDED`, `GONE`, `SCALED_TO_ZERO`, `QUEUED`, `STARTING` and no word
+  change nothing. The record makes
   `DeploymentRollbackGate` FAILED on every read, the list included, naming the remedy (`qits
   release-request rerun --request <qualifiedId> --phase DEPLOY`), and the DTO's `retryable` true for that RELEASED request. Nothing redeploys
   automatically.
@@ -1960,8 +1967,9 @@ because the cost is the caller's: the far side's listing is keyed on the `(repoI
 and refuses a question naming only a repository, so a page of N released requests is N HTTP calls
 with nothing to batch — on the busiest read this service has. The single request a person opened
 passes `ASK`; every list passes `LIST_READ` and makes no call. **Nothing functional hangs off the
-read**: `DEPLOYMENT` is still closed by a `DeploymentActive` reaching `ReleaseFinalization` and by
-nothing else, and a phase and the gate behind it are two facts.
+read**: `DEPLOYMENT` is still closed in `ReleaseFinalization` alone — by a `DeploymentActive`, or by
+the scheduled reconcile finding the newest deployment `ACTIVE` (qits-2217), never by a read — and a
+phase and the gate behind it are two facts.
 
 **A phase can be run again, and the rerun decides nothing.**
 `POST /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun`
