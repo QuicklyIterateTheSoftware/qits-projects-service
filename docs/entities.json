@@ -1,5 +1,5 @@
 {
-  "formatVersion" : 1,
+  "formatVersion" : 2,
   "application" : "qits-projects",
   "entities" : [
     {
@@ -29,7 +29,8 @@
           "method" : "GET",
           "path" : "/work/{qualifiedId}/audit",
           "dto" : "eu.wohlben.qits.entities.api.WorkAuditController$WorkAudit",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -72,14 +73,16 @@
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetInlined",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listWorkDossierAssets",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -128,42 +131,48 @@
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "deleteWorkDossierPage",
           "method" : "DELETE",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierController$WorkDossierPageDeleted",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWorkDossierPage",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listWorkDossier",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierController$WorkDossier",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveWorkDossierPage",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier/{page}/move",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWorkDossierPage",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -200,7 +209,8 @@
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -255,35 +265,40 @@
           "method" : "POST",
           "path" : "/work/{qualifiedId}/comments",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentAnswer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "deleteWorkComment",
           "method" : "DELETE",
           "path" : "/work/{qualifiedId}/comments/{commentId}",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentDeleted",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "dispatchWork",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dispatch",
           "dto" : "eu.wohlben.qits.projects.api.EntityDispatchDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "editWorkComment",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}/comments/{commentId}",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentAnswer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listWorkComments",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/comments",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentListEntry",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -326,63 +341,72 @@
           "method" : "POST",
           "path" : "/work",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWorkChild",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWork",
           "method" : "GET",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectWork",
           "method" : "GET",
           "path" : "/projects/{project}/work",
           "dto" : "eu.wohlben.qits.entities.control.EntitySummary",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkChildren",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.api.WorkChildrenController$WorkChildren",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "patchWork",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setWorkStatus",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "transitionWork",
           "method" : "POST",
           "path" : "/work/transition",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -455,105 +479,120 @@
           "method" : "POST",
           "path" : "/ideas/{id}/archive",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createIdea",
           "method" : "POST",
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWork",
           "method" : "POST",
           "path" : "/work",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWorkChild",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getIdea",
           "method" : "GET",
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDetail",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getWork",
           "method" : "GET",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listIdeas",
           "method" : "GET",
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkChildren",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "patchIdea",
           "method" : "PATCH",
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "patchWork",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "reprioritizeIdea",
           "method" : "PUT",
           "path" : "/ideas/{id}/priority",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaPriorities",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setWorkStatus",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "transitionWork",
           "method" : "POST",
           "path" : "/work/transition",
           "dto" : "eu.wohlben.qits.entities.control.TransitionedEntity",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "unarchiveIdea",
           "method" : "POST",
           "path" : "/ideas/{id}/unarchive",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -854,301 +893,344 @@
           "method" : "POST",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.dto.ProjectDeliveryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.update",
           "method" : "PUT",
           "path" : "/projects/{id}",
           "dto" : "eu.wohlben.qits.projects.dto.ProjectDeliveryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectRefinementsController.list",
           "method" : "GET",
           "path" : "/projects/{projectId}/refinements",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RefinementController.get",
           "method" : "GET",
           "path" : "/refinements/{id}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "addWorkComment",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/comments",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentAnswer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWork",
           "method" : "POST",
           "path" : "/work",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWorkChild",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWorkDossierPage",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier",
           "dto" : "eu.wohlben.qits.entities.entity.WorkEntity",
-          "kind" : "direct"
+          "kind" : "direct",
+          "cardinality" : "single"
         },
         {
           "operationId" : "deleteWork",
           "method" : "DELETE",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.api.WorkController$WorkDeleted",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "deleteWorkComment",
           "method" : "DELETE",
           "path" : "/work/{qualifiedId}/comments/{commentId}",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentDeleted",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "deleteWorkDossierPage",
           "method" : "DELETE",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierController$WorkDossierPageDeleted",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "dispatchWork",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dispatch",
           "dto" : "eu.wohlben.qits.projects.api.EntityDispatchDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "editWorkComment",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}/comments/{commentId}",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentAnswer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureRefinementContainer",
           "method" : "POST",
           "path" : "/refinements/{id}/ensure-container",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureRefinementSession",
           "method" : "POST",
           "path" : "/refinements/{id}/ensure",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getIdea",
           "method" : "GET",
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDetail",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProject",
           "method" : "GET",
           "path" : "/projects/{id}",
           "dto" : "eu.wohlben.qits.projects.dto.ProjectDeliveryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWork",
           "method" : "GET",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWorkAudit",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/audit",
           "dto" : "eu.wohlben.qits.entities.api.WorkAuditController$WorkAudit",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getWorkDispatch",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dispatch",
           "dto" : "eu.wohlben.qits.projects.api.EntityDispatchStateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWorkDossierPage",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWorkRefinement",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/refinement",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "inlineWorkDossierAsset",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetInlined",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectWork",
           "method" : "GET",
           "path" : "/projects/{project}/work",
           "dto" : "eu.wohlben.qits.entities.api.ProjectWorkController$WorkList",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWorkBriefs",
           "method" : "GET",
           "path" : "/projects/{project}/work/briefs",
           "dto" : "eu.wohlben.qits.entities.api.WorkBriefs",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectWorkWorkspaces",
           "method" : "GET",
           "path" : "/projects/{project}/work/workspaces",
           "dto" : "eu.wohlben.qits.entities.dto.WorkspaceReferenceDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjects",
           "method" : "GET",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.dto.ProjectDeliveryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkChildren",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.api.WorkChildrenController$WorkChildren",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkComments",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/comments",
           "dto" : "eu.wohlben.qits.entities.api.WorkCommentController$WorkCommentList",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkDossier",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierController$WorkDossier",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listWorkDossierAssets",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listWorkWorkspaces",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/workspaces",
           "dto" : "eu.wohlben.qits.entities.dto.WorkspaceReferenceDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWrapperClosings",
           "method" : "GET",
           "path" : "/projects/{project}/wrapper-closings",
           "dto" : "eu.wohlben.qits.projects.api.WrapperClosingsController$Answer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "moveWorkDossierPage",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier/{page}/move",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "patchWork",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWorkDossierPage",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}/dossier/{page}",
           "dto" : "eu.wohlben.qits.entities.dto.DossierPageDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "reprioritizeWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}/priority",
           "dto" : "eu.wohlben.qits.entities.api.WorkPriorities",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setWorkBlocked",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/blocked",
           "dto" : "eu.wohlben.qits.entities.api.WorkController$WorkBlockAnswer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setWorkStatus",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "startWorkRefinement",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/refinement",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "stopRefinementSession",
           "method" : "POST",
           "path" : "/refinements/{id}/stop",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "transitionWork",
           "method" : "POST",
           "path" : "/work/transition",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -1185,63 +1267,72 @@
           "method" : "POST",
           "path" : "/work",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "createWorkChild",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getWork",
           "method" : "GET",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWork",
           "method" : "GET",
           "path" : "/projects/{project}/work",
           "dto" : "eu.wohlben.qits.entities.control.EntitySummary",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkChildren",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "patchWork",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "putWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setWorkStatus",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "transitionWork",
           "method" : "POST",
           "path" : "/work/transition",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -1278,7 +1369,8 @@
           "method" : "GET",
           "path" : "/agent-capabilities",
           "dto" : "eu.wohlben.qits.projects.dto.AgentCapabilityCatalogueDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -1327,49 +1419,56 @@
           "method" : "GET",
           "path" : "/agent-configuration",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.get",
           "method" : "GET",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.list",
           "method" : "GET",
           "path" : "/agent-mcp-catalog",
           "dto" : "eu.wohlben.qits.projects.api.AgentMcpCatalogController$CatalogListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.save",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.get",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.list",
           "method" : "GET",
           "path" : "/agent-surfaces",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
           "method" : "PUT",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -1400,14 +1499,16 @@
           "method" : "GET",
           "path" : "/agent-mcp-catalog/credentials",
           "dto" : "eu.wohlben.qits.projects.api.AgentMcpCatalogController$CredentialListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.setCredential",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/credentials/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCredentialDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -1462,49 +1563,56 @@
           "method" : "GET",
           "path" : "/agent-configuration",
           "dto" : "eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.get",
           "method" : "GET",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.list",
           "method" : "GET",
           "path" : "/agent-mcp-catalog",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.save",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.get",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.list",
           "method" : "GET",
           "path" : "/agent-surfaces",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$SurfaceListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
           "method" : "PUT",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -1571,56 +1679,64 @@
           "method" : "GET",
           "path" : "/agent-configuration",
           "dto" : "eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.get",
           "method" : "GET",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.list",
           "method" : "GET",
           "path" : "/agent-mcp-catalog",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.save",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.get",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.list",
           "method" : "GET",
           "path" : "/agent-surfaces",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$SurfaceListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.revisions",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}/revisions",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$RevisionDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
           "method" : "PUT",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -1687,49 +1803,56 @@
           "method" : "GET",
           "path" : "/agent-configuration",
           "dto" : "eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.get",
           "method" : "GET",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.list",
           "method" : "GET",
           "path" : "/agent-mcp-catalog",
           "dto" : "eu.wohlben.qits.projects.api.AgentMcpCatalogController$CatalogListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.save",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.get",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.list",
           "method" : "GET",
           "path" : "/agent-surfaces",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$SurfaceListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
           "method" : "PUT",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -1796,49 +1919,56 @@
           "method" : "GET",
           "path" : "/agent-configuration",
           "dto" : "eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.get",
           "method" : "GET",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentMcpCatalogController.list",
           "method" : "GET",
           "path" : "/agent-mcp-catalog",
           "dto" : "eu.wohlben.qits.projects.api.AgentMcpCatalogController$CatalogListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentMcpCatalogController.save",
           "method" : "PUT",
           "path" : "/agent-mcp-catalog/{key}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.get",
           "method" : "GET",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.list",
           "method" : "GET",
           "path" : "/agent-surfaces",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$SurfaceListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
           "method" : "PUT",
           "path" : "/agent-surfaces/{surface}",
           "dto" : "eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -1869,7 +1999,8 @@
           "method" : "GET",
           "path" : "/branch-deliveries",
           "dto" : "eu.wohlben.qits.projects.api.BranchDeliveriesController$Answer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -1916,105 +2047,120 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListCommitBuildsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -2045,7 +2191,8 @@
           "method" : "GET",
           "path" : "/projects/{projectId}/desk-triggers",
           "dto" : "eu.wohlben.qits.projects.api.ProjectDeskTriggersController$Event",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -2082,7 +2229,8 @@
           "method" : "GET",
           "path" : "/projects/{projectId}/desk-triggers",
           "dto" : "eu.wohlben.qits.projects.api.ProjectDeskTriggersController$Event",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -2119,21 +2267,24 @@
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-container/ensure",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentContainerController.get",
           "method" : "GET",
           "path" : "/projects/{projectId}/agent-container",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentContainerController.stop",
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-container/stop",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -2534,399 +2685,456 @@
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-container/ensure",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentContainerController.get",
           "method" : "GET",
           "path" : "/projects/{projectId}/agent-container",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "AgentContainerController.stop",
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-container/stop",
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.backupSyncProject",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/backup-sync",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$BackupSyncProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.create",
           "method" : "POST",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.reconcile",
           "method" : "POST",
           "path" : "/projects/{projectId}/reconcile",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ReconcileProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.reconcileRepositories",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/reconcile",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ReconcileProjectRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "ProjectController.update",
           "method" : "PUT",
           "path" : "/projects/{id}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$UpdateProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.rename",
           "method" : "PATCH",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$RenameRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.setMainBranch",
           "method" : "PUT",
           "path" : "/repositories/{repoId}/main-branch",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "addReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "adoptRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/adopt",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveIdea",
           "method" : "POST",
           "path" : "/ideas/{id}/archive",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "backupResetRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/backup-reset",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryBackupResetDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createIdea",
           "method" : "POST",
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createProjectRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWork",
           "method" : "POST",
           "path" : "/work",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createWorkChild",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureAgentConfigRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-config-repository",
           "dto" : "eu.wohlben.qits.projects.entity.Project",
-          "kind" : "direct"
+          "kind" : "direct",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getBranchDeliveries",
           "method" : "GET",
           "path" : "/branch-deliveries",
           "dto" : "eu.wohlben.qits.projects.api.BranchDeliveriesController$Answer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getIdea",
           "method" : "GET",
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDetail",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProject",
           "method" : "GET",
           "path" : "/projects/{id}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$GetProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getRepository",
           "method" : "GET",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWork",
           "method" : "GET",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listDeskTriggerMessages",
           "method" : "GET",
           "path" : "/projects/{projectId}/desk-triggers",
           "dto" : "eu.wohlben.qits.projects.api.ProjectDeskTriggersController$Message",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listIdeas",
           "method" : "GET",
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectRepositories",
           "method" : "GET",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWork",
           "method" : "GET",
           "path" : "/projects/{project}/work",
           "dto" : "eu.wohlben.qits.entities.api.ProjectWorkController$WorkList",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWorkBriefs",
           "method" : "GET",
           "path" : "/projects/{project}/work/briefs",
           "dto" : "eu.wohlben.qits.entities.api.WorkBriefs",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectWorkWorkspaces",
           "method" : "GET",
           "path" : "/projects/{project}/work/workspaces",
           "dto" : "eu.wohlben.qits.entities.dto.WorkspaceReferenceDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjects",
           "method" : "GET",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ListProjectsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositories",
           "method" : "GET",
           "path" : "/repositories",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryBackupResets",
           "method" : "GET",
           "path" : "/repositories/{repoId}/backup-resets",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListBackupResetsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkChildren",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/children",
           "dto" : "eu.wohlben.qits.entities.api.WorkChildrenController$WorkChildren",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkWorkspaces",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/workspaces",
           "dto" : "eu.wohlben.qits.entities.dto.WorkspaceReferenceDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWrapperClosings",
           "method" : "GET",
           "path" : "/projects/{project}/wrapper-closings",
           "dto" : "eu.wohlben.qits.projects.api.WrapperClosingsController$Answer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "patchIdea",
           "method" : "PATCH",
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "patchWork",
           "method" : "PATCH",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "putWork",
           "method" : "PUT",
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setWorkStatus",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "transitionWork",
           "method" : "POST",
           "path" : "/work/transition",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "unarchiveIdea",
           "method" : "POST",
           "path" : "/ideas/{id}/unarchive",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -3029,126 +3237,144 @@
           "method" : "GET",
           "path" : "/projects/{projectId}/refinements",
           "dto" : "eu.wohlben.qits.projects.api.ProjectRefinementsController$ListResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RefinementController.get",
           "method" : "GET",
           "path" : "/refinements/{id}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementController$RefinementResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.add",
           "method" : "POST",
           "path" : "/refinements/{id}/prompt-attachments",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "body"
+          "kind" : "body",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.list",
           "method" : "GET",
           "path" : "/refinements/{id}/prompt-attachments",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.replace",
           "method" : "PUT",
           "path" : "/refinements/{id}/prompt-attachments/{attachmentId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptDraftController.get",
           "method" : "GET",
           "path" : "/refinements/{id}/prompt-draft",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptDraftController$DraftDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptDraftController.save",
           "method" : "PUT",
           "path" : "/refinements/{id}/prompt-draft",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptDraftController$DraftDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "addRefinementDesign",
           "method" : "POST",
           "path" : "/refinements/{id}/designs",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "body"
+          "kind" : "body",
+          "cardinality" : "single"
         },
         {
           "operationId" : "discardRefinement",
           "method" : "POST",
           "path" : "/refinements/{id}/discard",
           "dto" : "eu.wohlben.qits.projects.api.RefinementController$DiscardResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureRefinementContainer",
           "method" : "POST",
           "path" : "/refinements/{id}/ensure-container",
           "dto" : "eu.wohlben.qits.projects.api.RefinementController$ProcessResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureRefinementSession",
           "method" : "POST",
           "path" : "/refinements/{id}/ensure",
           "dto" : "eu.wohlben.qits.projects.api.RefinementController$RefinementResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getRefinementDesign",
           "method" : "GET",
           "path" : "/refinements/{id}/designs/{designId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWorkRefinement",
           "method" : "GET",
           "path" : "/work/{qualifiedId}/refinement",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "inlineWorkDossierAsset",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetInlined",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listRefinementDesigns",
           "method" : "GET",
           "path" : "/refinements/{id}/designs",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "startWorkRefinement",
           "method" : "POST",
           "path" : "/work/{qualifiedId}/refinement",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "stopRefinementSession",
           "method" : "POST",
           "path" : "/refinements/{id}/stop",
           "dto" : "eu.wohlben.qits.projects.api.RefinementController$RefinementResponse",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "updateRefinementDesign",
           "method" : "PUT",
           "path" : "/refinements/{id}/designs/{designId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -3179,28 +3405,32 @@
           "method" : "POST",
           "path" : "/refinements/{id}/designs",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "body"
+          "kind" : "body",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getRefinementDesign",
           "method" : "GET",
           "path" : "/refinements/{id}/designs/{designId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listRefinementDesigns",
           "method" : "GET",
           "path" : "/refinements/{id}/designs",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "updateRefinementDesign",
           "method" : "PUT",
           "path" : "/refinements/{id}/designs/{designId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -3231,21 +3461,24 @@
           "method" : "POST",
           "path" : "/refinements/{id}/prompt-attachments",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "body"
+          "kind" : "body",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.list",
           "method" : "GET",
           "path" : "/refinements/{id}/prompt-attachments",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.replace",
           "method" : "PUT",
           "path" : "/refinements/{id}/prompt-attachments/{attachmentId}",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -3276,14 +3509,16 @@
           "method" : "GET",
           "path" : "/refinements/{id}/prompt-draft",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptDraftController$DraftDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RefinementPromptDraftController.save",
           "method" : "PUT",
           "path" : "/refinements/{id}/prompt-draft",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptDraftController$DraftDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -3398,112 +3633,128 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -3876,203 +4127,232 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getCommitFileDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequestApprovalEligibility$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestArtifacts",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/artifacts",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseArtifactDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestChangeDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChangeDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listBranchCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListCommitBuildsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitChangesDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestApprovals",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approvals",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequestApprovals$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWrapperClosings",
           "method" : "GET",
           "path" : "/projects/{project}/wrapper-closings",
           "dto" : "eu.wohlben.qits.projects.api.WrapperClosingsController$Answer",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -4313,154 +4593,176 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestApprovals",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approvals",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequestApprovals$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -4681,126 +4983,144 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -4897,126 +5217,144 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -5281,147 +5619,168 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listBranchCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -5500,112 +5859,128 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.dto.CommitBuildStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -5792,112 +6167,128 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -6162,133 +6553,152 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestArtifacts",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/artifacts",
           "dto" : "eu.wohlben.qits.projects.dto.ReleaseArtifactDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitBuilds",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/builds",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListCommitBuildsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -6667,308 +7077,352 @@
           "method" : "POST",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.reconcileRepositories",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/reconcile",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ReconcileProjectRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RepositoryController.activeProcess",
           "method" : "GET",
           "path" : "/repositories/{repoId}/active-process",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ActiveProcessRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.backupSync",
           "method" : "POST",
           "path" : "/repositories/{repoId}/backup-sync",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$BackupSyncRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.rename",
           "method" : "PATCH",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$RenameRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.setMainBranch",
           "method" : "PUT",
           "path" : "/repositories/{repoId}/main-branch",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$SetMainBranchRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.syncStatus",
           "method" : "GET",
           "path" : "/repositories/{repoId}/sync-status",
           "dto" : "eu.wohlben.qits.projects.dto.SyncStatusDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "addReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "adoptRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/adopt",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$AdoptProjectRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "backupResetRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/backup-reset",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryBackupResetDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "collectTags",
           "method" : "POST",
           "path" : "/gc/tags",
           "dto" : "eu.wohlben.qits.projects.dto.TagCollectionReportDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createProjectRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureAgentConfigRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-config-repository",
           "dto" : "eu.wohlben.qits.projects.entity.Repository",
-          "kind" : "direct"
+          "kind" : "direct",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getCommitFileDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestApprovalEligibility",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approval-eligibility",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalEligibilityDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestChangeDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChangeDiff",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule/diff",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileDiffDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequestSubmoduleChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes/submodule",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "getRepository",
           "method" : "GET",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$GetRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listBranchCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listCommitChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commits/{commitHash}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitChangesDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectRepositories",
           "method" : "GET",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ListProjectRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestChanges",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listReleaseRequestCommits",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/commits",
           "dto" : "eu.wohlben.qits.projects.dto.CommitDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositories",
           "method" : "GET",
           "path" : "/repositories",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryBackupResets",
           "method" : "GET",
           "path" : "/repositories/{repoId}/backup-resets",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListBackupResetsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryBranches",
           "method" : "GET",
           "path" : "/repositories/{repoId}/branches",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListBranchesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "measureCommitSubjects",
           "method" : "GET",
           "path" : "/repositories/{repoId}/commit-subjects",
           "dto" : "eu.wohlben.qits.projects.entitieshost.CommitSubjectsDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "resolveRepositoryName",
           "method" : "GET",
           "path" : "/projects/{projectId}/repositories/by-name/{repoName}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ResolveRepositoryNameRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -6999,14 +7453,16 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/backup-reset",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryBackupResetDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listRepositoryBackupResets",
           "method" : "GET",
           "path" : "/repositories/{repoId}/backup-resets",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListBackupResetsRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -7325,196 +7781,224 @@
           "method" : "POST",
           "path" : "/projects",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ProjectController.reconcileRepositories",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/reconcile",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ReconcileProjectRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RepositoryController.rename",
           "method" : "PATCH",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$RenameRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "RepositoryController.setMainBranch",
           "method" : "PUT",
           "path" : "/repositories/{repoId}/main-branch",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$SetMainBranchRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "addReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "adoptRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories/adopt",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$AdoptProjectRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "collectTags",
           "method" : "POST",
           "path" : "/gc/tags",
           "dto" : "eu.wohlben.qits.projects.dto.TagCollectionReportDto",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createProjectRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$CreateProjectRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "ensureAgentConfigRepository",
           "method" : "POST",
           "path" : "/projects/{projectId}/agent-config-repository",
           "dto" : "eu.wohlben.qits.projects.dto.LastBackupDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getRepository",
           "method" : "GET",
           "path" : "/repositories/{repoId}",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$GetRepositoryRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectRepositories",
           "method" : "GET",
           "path" : "/projects/{projectId}/repositories",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ListProjectRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositories",
           "method" : "GET",
           "path" : "/repositories",
           "dto" : "eu.wohlben.qits.projects.api.RepositoryController$ListRepositoriesRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "resolveRepositoryName",
           "method" : "GET",
           "path" : "/projects/{projectId}/repositories/by-name/{repoName}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectController$ResolveRepositoryNameRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     },
@@ -7701,112 +8185,128 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$AddReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "approveReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/approve",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ApproveReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "archiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/archive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "createReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$CreateReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "declineReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/decline",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$DeclineReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getProjectReleaseRequest",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests/{ref}",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$GetProjectReleaseRequest",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "getReleaseRequest",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests/{requestId}",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$GetReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "listProjectReleaseRequests",
           "method" : "GET",
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listRepositoryReleaseRequests",
           "method" : "GET",
           "path" : "/repositories/{repoId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$ListReleaseRequests$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/move",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$MoveReleaseRequestSource$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "overrideReleaseRequestUpstream",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/upstream-overrides",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$OverrideReleaseRequestUpstream$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "rerunReleasePipelinePhase",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "unarchiveRepository",
           "method" : "POST",
           "path" : "/repositories/{repoId}/unarchive",
           "dto" : "eu.wohlben.qits.projects.dto.RepositoryArchiveDto",
-          "kind" : "schema"
+          "kind" : "schema",
+          "cardinality" : "single"
         },
         {
           "operationId" : "waiveReleaseRequestAutomations",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/automations/waivers",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WaiveReleaseRequestAutomations$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         },
         {
           "operationId" : "withdrawReleaseRequest",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/withdraw",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$WithdrawReleaseRequest$Response",
-          "kind" : "returns"
+          "kind" : "returns",
+          "cardinality" : "single"
         }
       ]
     }
