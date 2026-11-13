@@ -4584,7 +4584,7 @@ public class AgentSurfaceDefaultsTest {
   // -------------------------------------------------------------------------------------------
 
   @Test
-  public void theVocabularyIsTheEightSurfacesSessionsLaunchWith() {
+  public void theVocabularyIsTheNineSurfacesSessionsLaunchWith() {
     assertEquals(
         List.of(
             "project.work",
@@ -4594,10 +4594,12 @@ public class AgentSurfaceDefaultsTest {
             "workspace.agent",
             "epic.autonomous",
             "ticket.dispatch",
-            "project.delivery"),
+            "project.delivery",
+            "project.ui-builder"),
         AgentSurfaceDefaults.SURFACES,
-        "the desk, the four a human opens, the two composed runs and the delivery desk last, as in"
-            + " AgentSurface.KNOWN; another is a line here and a default below, never a migration");
+        "the desk, the four a human opens, the two composed runs, the delivery desk and the UI"
+            + " builder last, as in AgentSurface.KNOWN; another is a line here and a default below,"
+            + " never a migration");
     for (String surface : AgentSurfaceDefaults.SURFACES) {
       assertNotNull(
           AgentSurfaceDefaults.SHIPPED.get(surface), surface + " is in the vocabulary but unseeded");
@@ -4820,10 +4822,10 @@ public class AgentSurfaceDefaultsTest {
    * which appends it last to {@code KNOWN}; the order here mirrors that list.
    */
   @Test
-  public void theDeliveryDeskLaunchesAsProjectDeliveryAndIsListedLast() {
+  public void theDeliveryDeskLaunchesAsProjectDeliveryAndIsListedBeforeTheUiBuilder() {
     assertEquals("project.delivery", AgentSurfaceDefaults.PROJECT_DELIVERY);
     List<String> surfaces = AgentSurfaceDefaults.SURFACES;
-    assertEquals("project.delivery", surfaces.get(surfaces.size() - 1));
+    assertEquals("project.delivery", surfaces.get(surfaces.size() - 2));
     assertEquals(1, surfaces.stream().filter("project.delivery"::equals).count());
   }
 
@@ -5723,6 +5725,42 @@ public class AgentSurfaceDefaultsTest {
         unknown.mcpServers(),
         "no servers: this service cannot know what an unknown surface addresses, and the wrong"
             + " servers are worse than none");
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // The UI builder (qits-2154)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * The literal is a wire contract with {@code AgentSurface.PROJECT_UI_BUILDER} in
+   * qits-coding-agents (qits-2154), appended last to {@code KNOWN}; the order here mirrors it.
+   */
+  @Test
+  public void theUiBuilderLaunchesAsProjectUiBuilderAndIsListedLast() {
+    assertEquals("project.ui-builder", AgentSurfaceDefaults.PROJECT_UI_BUILDER);
+    List<String> surfaces = AgentSurfaceDefaults.SURFACES;
+    assertEquals("project.ui-builder", surfaces.get(surfaces.size() - 1));
+    assertEquals(1, surfaces.stream().filter("project.ui-builder"::equals).count());
+  }
+
+  /**
+   * Its placeholder brief says it is not the desk and owns no desk work, and borrows nothing of
+   * the desk's: not the delivery brief, not the brief pointer, no initial prompt (it runs only when
+   * prompted). qits-2156 replaces the text.
+   */
+  @Test
+  public void theUiBuilderShipsAPlaceholderBriefThatIsNotTheDesks() {
+    AgentSurfaceConfigurationDto builder = AgentSurfaceDefaults.SHIPPED.get("project.ui-builder");
+    assertEquals(AgentSurfaceDefaults.UI_BUILDER_PROMPT, builder.systemPrompt());
+    assertTrue(builder.systemPrompt().startsWith("You are the UI builder of this project"));
+    assertTrue(builder.systemPrompt().contains("You are not the front desk"));
+    assertTrue(builder.systemPrompt().contains("no desk triggers, no delivery"));
+    assertTrue(builder.systemPrompt().contains("/workspace is"));
+    assertTrue(builder.systemPrompt().contains("qits-2156"));
+    assertFalse(builder.systemPrompt().contains("You are the delivery desk"));
+    assertEquals("", builder.initialPrompt(), "it runs only when a person prompts it");
+    assertEquals(List.of(QITS), builder.mcpServers());
+    assertTrue(builder.remoteControl());
   }
 
   @Test

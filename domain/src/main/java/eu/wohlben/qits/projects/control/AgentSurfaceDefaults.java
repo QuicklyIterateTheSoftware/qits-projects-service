@@ -114,11 +114,28 @@ public final class AgentSurfaceDefaults {
   public static final String PROJECT_DELIVERY = "project.delivery";
 
   /**
-   * The eight surfaces sessions launch with, in the order the editor lists them: the project's one
-   * front desk, the four a human opens in a workspace container, the two composed runs, then the
-   * delivery desk. This is what the boot seed writes and what the listing leads with. The order
-   * mirrors {@code AgentSurface.KNOWN} in qits-coding-agents, which is why {@link
-   * #PROJECT_DELIVERY} is appended last rather than placed beside the desk it runs in.
+   * The project's UI builder (qits-2154) — the first <b>named agent</b> that is not the desk
+   * ({@code control/NamedAgents}): a further kept session in the desk's container, prompted through
+   * {@code /projects/{projectId}/agents/ui-builder/…}. Projects daemon, interactive. A surface of its
+   * own rather than {@link #PROJECT_WORK}, because the daemon holds the desk's launch back while any
+   * live {@code project.work} session exists, and because this configuration <em>is</em> the agent's
+   * briefing: it never gets the desk's.
+   *
+   * <p>A wire contract like {@link #PROJECT_DELIVERY}: {@code AgentSurface.PROJECT_UI_BUILDER} in
+   * qits-coding-agents (qits-2154), appended last to {@code AgentSurface.KNOWN}. A daemon built
+   * against an older library refuses the key when it reads the injected document, so this ships
+   * only once the desk's daemon (the {@code qits.projects-daemon-protocol.version} pin, which is
+   * also the desk's image) carries that release.
+   */
+  public static final String PROJECT_UI_BUILDER = "project.ui-builder";
+
+  /**
+   * The nine surfaces sessions launch with, in the order the editor lists them: the project's one
+   * front desk, the four a human opens in a workspace container, the two composed runs, the
+   * delivery desk, then the UI builder (qits-2154). This is what the boot seed writes and what the
+   * listing leads with. The order mirrors {@code AgentSurface.KNOWN} in qits-coding-agents, which is
+   * why {@link #PROJECT_DELIVERY} and {@link #PROJECT_UI_BUILDER} are appended last rather than
+   * placed beside the desk they run in.
    *
    * <p>Adding one is a line here and a shipped default below — no migration, no schema change.
    * That openness is the point: an unknown surface reads as {@link #neutralDefault} rather than
@@ -135,7 +152,8 @@ public final class AgentSurfaceDefaults {
           WORKSPACE_AGENT,
           EPIC_AUTONOMOUS,
           TICKET_DISPATCH,
-          PROJECT_DELIVERY);
+          PROJECT_DELIVERY,
+          PROJECT_UI_BUILDER);
 
   // ---------------------------------------------------------------------------------------------
   // The platform's own MCP server
@@ -4973,6 +4991,22 @@ public final class AgentSurfaceDefaults {
    */
   public static final String DELIVERY_DESK_INITIAL_PROMPT = "Run one pass of the delivery loop.";
 
+  /**
+   * The UI builder's placeholder brief (qits-2154) — the system prompt {@link #PROJECT_UI_BUILDER}
+   * ships with until qits-2156 writes the real one. It says only what the agent is not: the desk.
+   * No initial prompt: the agent runs when a person prompts it and does nothing on its own.
+   */
+  public static final String UI_BUILDER_PROMPT =
+      """
+      You are the UI builder of this project: one of its named agents (qits-2154), a session of
+      your own in the project's front desk container. You are not the front desk and not the
+      delivery desk: you handle no desk triggers, no delivery and no release work, and a message
+      addressed to the delivery desk is not for you. The project's checkout at /workspace is
+      read-only to you: it follows the project's releases, so read it and never write under it.
+      Answer the person who prompts you about the project's user interface. Your full briefing
+      arrives with qits-2156.\
+      """;
+
   // ---------------------------------------------------------------------------------------------
   // The seed
   // ---------------------------------------------------------------------------------------------
@@ -5082,6 +5116,11 @@ public final class AgentSurfaceDefaults {
             DELIVERY_DESK_PROMPT,
             DELIVERY_DESK_INITIAL_PROMPT,
             qits(false)));
+    // The UI builder (qits-2154): a named agent's own surface, steered by its placeholder brief,
+    // run only when prompted. Remote control on, as on the desk it runs beside.
+    map.put(
+        PROJECT_UI_BUILDER,
+        surface(PROJECT_UI_BUILDER, true, UI_BUILDER_PROMPT, "", qits(false)));
     return Map.copyOf(map);
   }
 

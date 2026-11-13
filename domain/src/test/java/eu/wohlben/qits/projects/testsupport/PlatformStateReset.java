@@ -70,8 +70,8 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    *
    * <p>front_desk (qits-767) references project, so it is truncated with it, and so are the desk
    * trigger windows and their lines (V57, epic qits-1604) and the retired runners' legacy
-   * placements (V62, epic qits-1481). (agent_credential was in the list until
-   * V38 dropped the table with the direct agent path.)
+   * placements (V62, epic qits-1481), and so are the named agents (V76, qits-2154).
+   * (agent_credential was in the list until V38 dropped the table with the direct agent path.)
    */
   private static void truncate(AgroalDataSource dataSource) {
     for (int attempt = 1; ; attempt++) {
@@ -79,6 +79,7 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
           Statement sql = connection.createStatement()) {
         sql.execute(
             "truncate table desk_trigger_event, desk_trigger_window, legacy_placement, front_desk,"
+                + " named_agent,"
                 + " repository_name,"
                 + " repository, project");
         return;
