@@ -1,7 +1,8 @@
 package eu.wohlben.qits.projects.deskhost;
 
+import static eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentKey;
+
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
-import eu.wohlben.qits.projects.control.NamedAgents;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.NamedAgent;
 import eu.wohlben.qits.projects.entity.Project;
@@ -118,7 +119,7 @@ public class DeskSessionCredentials {
           continue;
         }
         Credential held =
-            credential(NamedAgents.key(agent.name), agent.tokenValue, agent.tokenSubject);
+            credential(namedAgentKey(agent.name), agent.tokenValue, agent.tokenSubject);
         if (held != null) {
           credentials.add(held);
         }

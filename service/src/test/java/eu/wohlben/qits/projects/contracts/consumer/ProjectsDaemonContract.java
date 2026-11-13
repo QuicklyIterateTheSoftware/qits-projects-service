@@ -27,10 +27,9 @@ import java.util.Map;
  * <p>Since qits-2154 three more, the named agents' routes {@code ProjectAgentsController} and
  * {@code NamedAgentHost} ask through the same tunnel — {@code GET named-agents}, {@code POST
  * named-agents/{name}/prompt} and {@code GET named-agents/{name}/last-answer} — under the daemon's
- * state {@value #NAMED_AGENT_RUNNING}. They are pending until the pinned
- * qits-projects-daemon golden masters carry that state (the daemon records it from capability 4 on);
- * the maintenance bump of {@code qits.projects-daemon-golden-masters.version} brings it, and the
- * pact is rewritten with {@code -Dgolden.update=true} then.
+ * state {@value #NAMED_AGENT_RUNNING}, which qits-projects-daemon's golden masters record from
+ * 2026.1113.34426 (capability 4) on. The listing's paths are {@code $.agents[*].…}: {@code
+ * NamedAgentHost} reads every entry, and the row machinery reads {@code [*]} only, never an index.
  *
  * <p>The two front-desk rows are pending until qits-projects-daemon records the state {@value
  * #FRONT_DESK_RUNNING} for {@code promptFrontDesk} and {@code getFrontDeskLastAnswer}. Their bodies
@@ -50,7 +49,7 @@ final class ProjectsDaemonContract {
   /** The daemon's state for the front desk's two routes (qits-1572), pending its recording. */
   static final String FRONT_DESK_RUNNING = "a daemon whose front desk is running";
 
-  /** The daemon's state for the named agents' three routes (qits-2154), pending its pin. */
+  /** The daemon's state for the named agents' three routes (qits-2154). */
   static final String NAMED_AGENT_RUNNING = "a daemon whose named agent is running";
 
   private ProjectsDaemonContract() {}
@@ -169,10 +168,10 @@ final class ProjectsDaemonContract {
               Map.of(),
               null,
               List.of(
-                  "$.agents[0].name",
-                  "$.agents[0].state",
-                  "$.agents[0].commandId",
-                  "$.agents[0].sessionId"),
+                  "$.agents[*].name",
+                  "$.agents[*].state",
+                  "$.agents[*].commandId",
+                  "$.agents[*].sessionId"),
               200,
               Trigger.operation("listAgents"),
               (base, p) -> {

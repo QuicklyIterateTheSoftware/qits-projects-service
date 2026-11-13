@@ -69,6 +69,13 @@ public record ConsumerRow(
     headers = headers == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(headers));
     nullable = nullable == null ? List.of() : List.copyOf(nullable);
     exact = exact == null ? List.of() : List.copyOf(exact);
+    for (String consumed : consumes) {
+      try {
+        ConsumerInteractions.Need.requireReadable(consumed);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(operationId + ": " + e.getMessage(), e);
+      }
+    }
     for (String declared : exact) {
       if (!consumes.contains(declared)) {
         throw new IllegalArgumentException(

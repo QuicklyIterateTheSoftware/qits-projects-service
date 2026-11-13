@@ -3060,8 +3060,9 @@ with its own name, surface (its briefing), credential and session, tied to no wo
 desk itself (its `front_desk` row, its keeper, its `front-desk/*` doors, all unchanged) and
 `ui-builder` runs on surface `project.ui-builder` (`AgentSurfaceDefaults.PROJECT_UI_BUILDER`, a
 placeholder brief until qits-2156; never the desk's brief, skills or triggers). The session key on
-the control socket is `agent:<name>`, mirrored from qits-projects-daemon's protocol `NamedAgents`
-(capability 4) until the pin carries that class.
+the control socket is `agent:<name>`, spelled by qits-projects-daemon's protocol `NamedAgents`
+(capability 4: `namedAgentKey`/`namedAgentName`), which the hosts call; the registry holds no copy,
+only names that protocol's `NAME` admits (`NamedAgentsComposeTest` checks each).
 
 - **The row** (`named_agent`, V76, `@Uncaused`): `(project_id, name)`, `surface`, `session_id`,
   `token_*`, `last_demand_at`, `pending_prompt`, `created_at`; created on the agent's first prompt,
@@ -3098,7 +3099,7 @@ delivered by `NamedAgentHost.deliverPending` after the `hello`'s credentials and
 the daemon took it (or called it malformed). Desk triggers still prompt only the desk. Contracts:
 provider state `a project whose named agent is running` (params `projectId`, `name`); consumer
 rows `listNamedAgents`, `promptNamedAgent`, `getNamedAgentLastAnswer` under the daemon's `a daemon
-whose named agent is running`, pending until the pinned daemon golden masters carry it.
+whose named agent is running`, which the daemon golden masters record from 2026.1113.34426 on.
 `ProjectAgentsTest`, `NamedAgentsComposeTest`, `NamedAgentGuideVariantTest`.
 
 ### The development guide (qits-1679)

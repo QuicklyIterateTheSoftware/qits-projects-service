@@ -70,14 +70,30 @@ class NamedAgentsComposeTest {
     assertTrue(NamedAgents.find(null).isEmpty());
   }
 
-  /** The spelling the daemon's protocol {@code NamedAgents} (capability 4) uses. */
+  /**
+   * The key is the daemon's protocol's {@code NamedAgents} (capability 4), which the hosts call; the
+   * registry only has to hold names that protocol accepts, since the daemon refuses any other as a
+   * path segment and a file name.
+   */
   @Test
-  void theSessionKeyIsAgentColonName() {
-    assertEquals("agent:ui-builder", NamedAgents.key("ui-builder"));
-    assertEquals("ui-builder", NamedAgents.nameOfKey("agent:ui-builder").orElseThrow());
-    assertTrue(NamedAgents.nameOfKey(SessionCredentials.FRONT_DESK_KEY).isEmpty());
-    assertTrue(NamedAgents.nameOfKey("agent:").isEmpty());
-    assertTrue(NamedAgents.nameOfKey(null).isEmpty());
+  void everyRegisteredNameIsOneTheDaemonAcceptsAsAKey() {
+    for (NamedAgents.Agent agent : NamedAgents.ALL) {
+      assertTrue(
+          eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.validName(agent.name()),
+          agent.name());
+      assertEquals(
+          agent.name(),
+          eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentName(
+                  eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentKey(agent.name()))
+              .orElseThrow());
+    }
+    assertEquals(
+        "agent:ui-builder",
+        eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentKey(NamedAgents.UI_BUILDER));
+    assertTrue(
+        eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentName(
+                SessionCredentials.FRONT_DESK_KEY)
+            .isEmpty());
   }
 
   // ---- the sessions frame ------------------------------------------------------------------------

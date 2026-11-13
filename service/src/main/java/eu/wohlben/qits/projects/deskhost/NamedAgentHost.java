@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.deskhost;
 
+import static eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentName;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
@@ -667,7 +669,7 @@ public class NamedAgentHost {
     }
     boolean namesAnAgent = false;
     for (SessionReport.Session entry : report.sessions()) {
-      Optional<String> name = entry == null ? Optional.empty() : NamedAgents.nameOfKey(entry.key());
+      Optional<String> name = entry == null ? Optional.empty() : namedAgentName(entry.key());
       if (name.isEmpty()) {
         continue;
       }

@@ -231,6 +231,114 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-daemon",
+            "operationId": "getNamedAgentLastAnswer"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getAgentLastAnswer"
+          }
+        }
+      },
+      "description": "getAgentLastAnswer: getNamedAgentLastAnswer",
+      "key": "216e7683",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose named agent is running",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "name": "ui-builder",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/named-agents/${name}/last-answer",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ]
+        },
+        "method": "GET",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/named-agents/ui-builder/last-answer"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "commandId": "00000000-0000-4000-8000-00000000ab01",
+            "sessionId": "00000000-0000-4000-8000-00000000ab02",
+            "state": "IDLE"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.commandId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sessionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
             "operationId": "getFrontDeskLastAnswer"
           },
           "qits-trigger": {
@@ -301,6 +409,263 @@
               ]
             },
             "$.sessionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
+            "operationId": "listNamedAgents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "listAgents"
+          }
+        }
+      },
+      "description": "listAgents: listNamedAgents",
+      "key": "692e4d31",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose named agent is running",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "name": "ui-builder",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/named-agents",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ]
+        },
+        "method": "GET",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/named-agents"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "agents": [
+              {
+                "commandId": "00000000-0000-4000-8000-00000000ab01",
+                "name": "ui-builder",
+                "sessionId": "00000000-0000-4000-8000-00000000ab02",
+                "state": "RUNNING"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.agents": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.agents[*].commandId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.agents[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.agents[*].sessionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.agents[*].state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-daemon",
+            "operationId": "promptNamedAgent"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "promptAgent"
+          }
+        }
+      },
+      "description": "promptAgent: promptNamedAgent",
+      "key": "9f67e3f1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a daemon whose named agent is running",
+          "params": {
+            "apiToken": "daemon-api-token",
+            "name": "ui-builder",
+            "projectId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "text": "Pitch a calmer header."
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "header": {
+            "Authorization": {
+              "dataType": "RAW",
+              "expression": "Bearer ${apiToken}",
+              "type": "ProviderState"
+            }
+          },
+          "path": {
+            "dataType": "RAW",
+            "expression": "/projects/container/${projectId}/named-agents/${name}/prompt",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer daemon-api-token"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/projects/container/00000000-0000-4000-8000-000000000001/named-agents/ui-builder/prompt"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "commandId": "00000000-0000-4000-8000-00000000ab01",
+            "delivered": true,
+            "queued": false,
+            "state": "IDLE"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.commandId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.delivered": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.queued": {
               "combine": "AND",
               "matchers": [
                 {

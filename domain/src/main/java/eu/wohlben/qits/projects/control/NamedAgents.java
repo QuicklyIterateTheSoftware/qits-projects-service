@@ -18,10 +18,13 @@ import java.util.Optional;
  *       AgentSurfaceDefaults#PROJECT_UI_BUILDER}: never the desk's briefing, skills or triggers.
  * </ul>
  *
- * <p><b>The session key spelling</b> ({@link #KEY_PREFIX}, {@link #key}, {@link #nameOfKey}) mirrors
- * {@code eu.wohlben.qits.projectsdaemon.protocol.NamedAgents} (qits-projects-daemon, capability 4),
- * which is not in the protocol release this service is pinned to yet. TODO(qits-2154): once the
- * maintenance bump pins a protocol carrying it, delegate these three to that class.
+ * <p><b>The session key is the wire's, not this registry's</b>: {@code agent:<name>} is spelled
+ * by {@code eu.wohlben.qits.projectsdaemon.protocol.NamedAgents} (qits-projects-daemon, capability
+ * 4), and the service's hosts ask that class for it ({@code namedAgentKey}, {@code
+ * namedAgentName}) rather than a copy here: the daemon holds a name to its {@code NAME} pattern
+ * because the name becomes a path segment and a file name, and a second spelling of the rule is the
+ * one that drifts. This module does not depend on the daemon's protocol, so every name added below
+ * must also match it — {@code NamedAgentsComposeTest} asserts that for each.
  */
 public final class NamedAgents {
 
@@ -46,9 +49,6 @@ public final class NamedAgents {
           new Agent(DESK, AgentSurfaceDefaults.PROJECT_WORK),
           new Agent(UI_BUILDER, AgentSurfaceDefaults.PROJECT_UI_BUILDER));
 
-  /** What every named agent's session key starts with on the control socket. */
-  public static final String KEY_PREFIX = "agent:";
-
   private NamedAgents() {}
 
   /** The named agent {@code name}, or empty for a name nobody registered. */
@@ -62,19 +62,5 @@ public final class NamedAgents {
   /** The named agents that are not the desk: the ones with a {@code named_agent} row. */
   public static List<Agent> hosted() {
     return ALL.stream().filter(agent -> !agent.desk()).toList();
-  }
-
-  /** The session (and credential) key of the named agent {@code name}: {@code agent:<name>}. */
-  public static String key(String name) {
-    return KEY_PREFIX + name;
-  }
-
-  /** The name a session key {@code agent:<name>} belongs to, or empty for any other key. */
-  public static Optional<String> nameOfKey(String key) {
-    if (key == null || !key.startsWith(KEY_PREFIX)) {
-      return Optional.empty();
-    }
-    String name = key.substring(KEY_PREFIX.length());
-    return name.isEmpty() ? Optional.empty() : Optional.of(name);
   }
 }

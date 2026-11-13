@@ -1,11 +1,13 @@
 package eu.wohlben.qits.projects.refinementhost;
 
+import static eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentKey;
+import static eu.wohlben.qits.projectsdaemon.protocol.NamedAgents.namedAgentName;
+
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.control.NamedAgents;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.NamedAgent;
@@ -250,7 +252,7 @@ public class RefinementSessions {
         }
         sessions.add(
             new Sessions.Session(
-                NamedAgents.key(agent.name),
+                namedAgentKey(agent.name),
                 agent.surface,
                 DaemonProtocol.DesiredState.RUNNING,
                 agent.sessionId == null || agent.sessionId.isBlank() ? null : agent.sessionId,
@@ -552,7 +554,7 @@ public class RefinementSessions {
       if (entry == null || entry.sessionId() == null || entry.sessionId().isBlank()) {
         continue;
       }
-      Optional<String> name = NamedAgents.nameOfKey(entry.key());
+      Optional<String> name = namedAgentName(entry.key());
       if (name.isEmpty()) {
         continue;
       }

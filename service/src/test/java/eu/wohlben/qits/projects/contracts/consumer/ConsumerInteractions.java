@@ -695,6 +695,23 @@ public final class ConsumerInteractions {
       return root;
     }
 
+    /**
+     * Refuses a consumed path {@link #of} could not read — anything but {@code $}, {@code .field}
+     * and {@code [*]} — when the row is built rather than when its provider first records the
+     * state. A pending row is never turned into an interaction, so a path written as {@code
+     * $.agents[0].name} used to sit unnoticed until the golden-master bump made it live and every
+     * pact test failed at once (qits-2154).
+     */
+    static void requireReadable(String path) {
+      if ("$".equals(path)) {
+        return;
+      }
+      if (path == null || !path.startsWith("$")) {
+        throw new IllegalArgumentException("a consumed path starts at $: " + path);
+      }
+      tokens(path.substring(1), path);
+    }
+
     private static List<String> tokens(String rest, String path) {
       List<String> out = new ArrayList<>();
       int i = 0;
