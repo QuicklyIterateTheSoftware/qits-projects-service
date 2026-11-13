@@ -236,7 +236,7 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-service-pacts-qits-projects-service.version>2026.1108.230857</qits.workspaces-service-pacts-qits-projects-service.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1113.120655</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1113.130428</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1113.105422</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1113.90329</qits.platform-access-monorepo-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1111.173803</qits.maintenance-service-pacts-qits-projects-service.version>
