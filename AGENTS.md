@@ -3102,6 +3102,41 @@ rows `listNamedAgents`, `promptNamedAgent`, `getNamedAgentLastAnswer` under the 
 whose named agent is running`, which the daemon golden masters record from 2026.1113.34426 on.
 `ProjectAgentsTest`, `NamedAgentsComposeTest`, `NamedAgentGuideVariantTest`.
 
+### Pitches (qits-2155)
+
+**A pitch is a named agent's mock snapshot of one UI-builder screenshot, kept per agent with every
+version of its HTML.** `pitch` and `pitch_version` (V77, both `CausedRow`): a pitch names its
+`repository_id` (of its project), the freeze's `route` and `screenshot` (`manifest.json`'s `file`
+key), `kind` (DATA/NO_DATA/PENDING/ERROR), `viewport` (PHONE/TABLET/DESKTOP), `color_scheme`
+(LIGHT/DARK/null) and `manifest_version` (the `@routes` bundle version, opaque); versions are
+append-only, `n+1` under a lock on the pitch row. Nothing is deleted: an archive stamps
+`archived_at`, and rows go only with their project or repository (cascade). `RefinementDesign`
+stays as it is: it belongs to a refinement and is rewritten in place.
+
+- **Who is calling** is `control/NamedAgentCaller`: the caller's token subject
+  (`AgentControlSocketAccess.subjectOf`) and its `project` claim → the `named_agent` row with that
+  `project_id` and `token_subject`, or the desk's `front_desk.token_subject` → `desk`; cached by
+  subject (hits only).
+- **Doors** (`api/PitchController`, `/pitches`, JSON only — no door answers `text/html`, and the
+  HTML is not sanitised: its reader frames it sandboxed and script-free): reads (`listPitches`
+  `?project=<id|slug>&agent=&repository=<id|name>&route=&screenshot=&archived=false`, newest
+  `updated_at` first; `getPitch`, with `versions[]` and no HTML; `getPitchVersion` `/{id}/versions/{n|latest}`,
+  the one answer with `html`) admit `qits:admin`, `qits:admin-agent`, `qits:desk-admin`,
+  `qits:desk`, `qits:agent` and `qits:system`, each bound by `EntitiesAgentAccess.requireProject`.
+  `createPitch` (201): only a named agent of the body's project, which owns the pitch — anyone else
+  403 `Only a named agent pitches`, admins included. `addPitchVersion` (201, no HTML): only the
+  pitch's agent (403 `Only the pitch's agent may change it`), 409 on an archived pitch.
+  `archivePitch`: the pitch's agent, `qits:admin`/`qits:admin-agent` or `qits:desk-admin`;
+  idempotent. Empty `html` 400, larger than `qits.projects.pitch-max-bytes` (4 MiB) 413, a bad
+  enum 400.
+- **Event** `PitchChanged` (`projectId, pitchId, agentName, repositoryId, route, screenshot, change
+  CREATED|VERSION_ADDED|ARCHIVED, version, changedAt`) after the commit, through
+  `control/PitchAnnouncer` → `bus/PitchEventAnnouncer` (`@DefaultBean`); the suite records through
+  `RecordingPitchEventAnnouncer`. Not yet matchable by `qits wait`.
+- **Contracts**: provider state `a project with a pitch` (params `projectId`, `repositoryId`,
+  `pitchId`, `archivedPitchId`, `authorization` — the ui-builder's bearer) records all six doors for
+  `qits pitches`. `PitchControllerTest`.
+
 ### The development guide (qits-1679)
 
 `api/DevelopmentGuideController`, `GET /projects/api/guide[?for=<variant>]`
