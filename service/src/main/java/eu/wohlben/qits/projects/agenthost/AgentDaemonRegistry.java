@@ -112,6 +112,23 @@ public class AgentDaemonRegistry {
    */
   public static final int SESSIONS_CAPABILITY = 3;
 
+  /**
+   * The first daemon capability that hosts <b>named agents</b> (qits-2154): an {@code agent:<name>}
+   * key of {@link Sessions} is a kept session beside the front desk, and its loopback API serves
+   * {@code /named-agents}. Fixed for {@link #SESSION_CREDENTIALS_CAPABILITY}'s reason: an older
+   * daemon would run the key on its generic ladder but serve no route for it, so it is never asked
+   * for one.
+   */
+  public static final int NAMED_AGENTS_CAPABILITY = 4;
+
+  /**
+   * The named agents (qits-2154): told after a {@link Hello} (once the sessions went out) and on
+   * every {@link SessionReport}, so a prompt that waited for the desk's daemon is delivered; and
+   * told of a session's {@link AgentActivity}, so an agent in use stays wanted. Optional and an
+   * {@code Instance<>} for {@link #refinementSessions}' reasons.
+   */
+  @Inject Instance<eu.wohlben.qits.projects.deskhost.NamedAgentHost> namedAgents;
+
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
   /**
@@ -459,6 +476,42 @@ public class AgentDaemonRegistry {
   }
 
   /**
+   * Whether {@code projectId}'s daemon is connected and has said it hosts named agents —
+   * capability {@value #NAMED_AGENTS_CAPABILITY} or later (qits-2154).
+   */
+  public boolean acceptsNamedAgents(String projectId) {
+    DaemonConnection client = clients.get(projectId);
+    return client != null
+        && client.connection.isOpen()
+        && client.capabilityVersion >= NAMED_AGENTS_CAPABILITY;
+  }
+
+  /**
+   * The last reported agent state of one session of {@code projectId} — keyed, as {@link
+   * #onAgentActivity} keys it, by its session id, else its command id — or empty when neither has
+   * reported one inside the rollup's horizons. What the named agents' listing reads a RUNNING
+   * session's IDLE or BUSY from (qits-2154).
+   */
+  public Optional<String> sessionActivity(String projectId, String sessionId, String commandId) {
+    if (agentActivity(projectId).isEmpty()) {
+      return Optional.empty(); // also ages the entries out, exactly as the rollup does
+    }
+    Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
+    if (sessions == null) {
+      return Optional.empty();
+    }
+    for (String key : new String[] {sessionId, commandId}) {
+      if (key != null && !key.isBlank()) {
+        ActivityEntry entry = sessions.get(key);
+        if (entry != null) {
+          return Optional.ofNullable(entry.state());
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
    * The projects whose daemon is connected and reads {@link Sessions} — what the periodic resend
    * walks (epic qits-770).
    */
@@ -609,6 +662,13 @@ public class AgentDaemonRegistry {
           && refinementSessions.isResolvable()) {
         refinementSessions.get().evidenced(projectId, activity.commandId());
       }
+      // So does a named agent's (qits-2154). The desk's own demand was stamped just above, for
+      // every session alike: a named agent's activity is the desk container's use too.
+      if (message instanceof AgentActivity activity
+          && namedAgents != null
+          && namedAgents.isResolvable()) {
+        namedAgents.get().evidenced(projectId, activity.commandId());
+      }
     }
     DaemonConnection client = clients.get(projectId);
     switch (message) {
@@ -643,6 +703,11 @@ public class AgentDaemonRegistry {
         // Then the sessions (epic qits-770), after the credentials they run on. Below 3 nothing.
         if (refinementSessions != null && refinementSessions.isResolvable()) {
           refinementSessions.get().push(projectId);
+        }
+        // Then a named agent's prompt that waited for this daemon (qits-2154), now that the
+        // sessions naming it went out. Below 4 nothing; off this thread either way.
+        if (namedAgents != null && namedAgents.isResolvable()) {
+          namedAgents.get().deliverPendingLater(projectId);
         }
       }
       case Heartbeat ignored -> {
@@ -683,6 +748,11 @@ public class AgentDaemonRegistry {
       case SessionReport report -> {
         if (refinementSessions != null && refinementSessions.isResolvable()) {
           refinementSessions.get().onReport(projectId, report);
+        }
+        // A named agent the report names is in the daemon's frame now (qits-2154): a prompt
+        // waiting for it can be delivered — the daemon queues it while the session is STARTING.
+        if (namedAgents != null && namedAgents.isResolvable()) {
+          namedAgents.get().onReport(projectId, report);
         }
       }
     }

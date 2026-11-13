@@ -87,6 +87,7 @@ class AgentReadAccessTest {
           ProjectController.class,
           ProjectDeskTriggersController.class,
           ProjectFrontDeskController.class,
+          ProjectAgentsController.class,
           ProjectEventsController.class,
           ProjectRefinementsController.class,
           ProjectReleaseRequestsController.class,
@@ -228,17 +229,26 @@ class AgentReadAccessTest {
           "WorkDispatchController.dispatch",
           "WorkRefinementController.open",
           // Prompting the front desk is a person's (or an admin agent's) word to it (qits-1572).
-          "ProjectFrontDeskController.prompt");
+          "ProjectFrontDeskController.prompt",
+          // So is prompting any named agent, the desk included (qits-2154).
+          "ProjectAgentsController.prompt");
 
   /**
-   * <b>The one read an agent may not make: the front desk's last answer</b> (qits-1572). It is the
+   * <b>The reads an agent may not make: the front desk's last answer</b> (qits-1572), and since
+   * qits-2154 the named agents' listing and last answer, on the same grounds. It is the
    * desk's conversation — what a person or an admin agent prompted it with, answered — rather than
    * a row of the project, and the desk itself (a {@code qits:agent} + {@code qits:desk} token)
    * reading its own answers back through the door would be a loop nobody asked for. Its sibling,
    * {@code ProjectFrontDeskController.prompt}, is a write and stays off the agent's surface by the
    * ordinary rule.
    */
-  private static final Set<String> ADMIN_ONLY_READS = Set.of("ProjectFrontDeskController.lastAnswer");
+  private static final Set<String> ADMIN_ONLY_READS =
+      Set.of(
+          "ProjectFrontDeskController.lastAnswer",
+          // qits-2154: a named agent's answers are its conversation, as the desk's are, and the
+          // listing names the commands whose terminals carry it — the desk's doors' roles exactly.
+          "ProjectAgentsController.list",
+          "ProjectAgentsController.lastAnswer");
 
   /**
    * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a
@@ -283,6 +293,7 @@ class AgentReadAccessTest {
           "AgentContainerController.stop",
           "AgentContainerController.delete",
           "ProjectFrontDeskController.prompt",
+          "ProjectAgentsController.prompt",
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
           "AgentMcpCatalogController.setCredential",

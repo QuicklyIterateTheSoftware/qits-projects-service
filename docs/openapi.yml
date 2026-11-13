@@ -1879,6 +1879,118 @@ components:
           $ref: "#/components/schemas/ReleaseRequestDto"
         to:
           $ref: "#/components/schemas/ReleaseRequestDto"
+    NamedAgent:
+      type: object
+      required:
+      - name
+      - surface
+      - state
+      properties:
+        name:
+          type: string
+          description: "The agent's name: desk, ui-builder"
+        surface:
+          type: string
+          description: The agent surface its session launches as
+        state:
+          type: string
+          description: "STOPPED (no session, none asked for), STARTING (asked for,\
+            \ not running yet), IDLE (running, between turns), BUSY (running, in a\
+            \ turn) or FAILED (the daemon could not run it)"
+          enum:
+          - STOPPED
+          - STARTING
+          - IDLE
+          - BUSY
+          - FAILED
+        sessionId:
+          type:
+          - string
+          - "null"
+          description: "Its harness session, which the next launch resumes; null before\
+            \ it ran"
+        commandId:
+          type:
+          - string
+          - "null"
+          description: "The daemon's command running it now — the terminal is /projects/container/{projectId}/terminal/commands/{commandId};\
+            \ null while none runs"
+    NamedAgentLastAnswer:
+      type: object
+      properties:
+        commandId:
+          type:
+          - string
+          - "null"
+          description: The command that gave it
+        sessionId:
+          type:
+          - string
+          - "null"
+          description: Its agent session
+        state:
+          type:
+          - string
+          - "null"
+          description: "That command's state, as the daemon reports it"
+        text:
+          type:
+          - string
+          - "null"
+          description: The last answer's text; null before the first
+        at:
+          type:
+          - string
+          - "null"
+          description: When it was given; null before the first
+    NamedAgentPromptRequest:
+      type: object
+      required:
+      - text
+      properties:
+        text:
+          type: string
+          description: The prompt; must not be blank
+    NamedAgentPromptResponse:
+      type: object
+      properties:
+        commandId:
+          type:
+          - string
+          - "null"
+          description: The command the prompt was given to; null while it is held
+        state:
+          type: string
+          description: "That command's state as the daemon reports it, or STARTING\
+            \ when held"
+        delivered:
+          type: boolean
+          description: Whether the prompt was handed to the session at once
+        queued:
+          type: boolean
+          description: "Whether it waits instead: behind a running turn, or for the\
+            \ session"
+        position:
+          type:
+          - integer
+          - "null"
+          format: int32
+          description: "Its place in the daemon's queue when queued there, else null"
+    NamedAgentRefusal:
+      type: object
+      properties:
+        reason:
+          type: string
+    NamedAgents:
+      type: object
+      required:
+      - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamedAgent"
+          description: "Every named agent of the project, the desk first"
     NeedRef:
       type: object
       properties:
@@ -5028,6 +5140,177 @@ paths:
       summary: Stop
       tags:
       - Agent Container Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+  /projects/api/projects/{projectId}/agents:
+    get:
+      summary: "The project's named agents: the desk, then every other, prompted or\
+        \ not"
+      operationId: listAgents
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "Every named agent, in the registry's order"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgents"
+        "404":
+          description: No such project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Agents Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+  /projects/api/projects/{projectId}/agents/{name}/last-answer:
+    get:
+      summary: The last answer a named agent gave
+      operationId: getAgentLastAnswer
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Its last answer; text and at are null before the first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentLastAnswer"
+        "404":
+          description: "No such project, no named agent of that name, or the daemon\
+            \ keeps none"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "409":
+          description: The desk's daemon predates the door
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "503":
+          description: "No daemon is connected for the project, or it could not be\
+            \ reached"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Agents Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+  /projects/api/projects/{projectId}/agents/{name}/prompt:
+    post:
+      summary: Hand a named agent a prompt; a stopped desk container is started for
+        it
+      description: "The desk receives the text behind the brief pointer, as on the\
+        \ front desk's own door; any other agent receives the text alone. A prompt\
+        \ that cannot reach the agent's session yet (the container stopped or starting)\
+        \ is held and answered 202 STARTING, and delivered once the session is up."
+      operationId: promptAgent
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamedAgentPromptRequest"
+        required: true
+      responses:
+        "200":
+          description: Delivered or queued by the agent's session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentPromptResponse"
+        "202":
+          description: "Held until the agent's session is up: state STARTING, queued\
+            \ true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentPromptResponse"
+        "400":
+          description: Blank text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "404":
+          description: "No such project, or no named agent of that name"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "409":
+          description: "A prompt already waits for the agent, the agent is not running,\
+            \ or the desk's daemon predates the door"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "429":
+          description: The agent's prompt queue is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "503":
+          description: "The desk's daemon could not be reached (for the desk: is not\
+            \ connected yet)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Agents Controller
       security:
       - SecurityScheme:
         - qits:admin

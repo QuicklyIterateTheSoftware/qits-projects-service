@@ -1,10 +1,13 @@
 package eu.wohlben.qits.projects.deskhost;
 
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
+import eu.wohlben.qits.projects.control.NamedAgents;
 import eu.wohlben.qits.projects.entity.FrontDesk;
+import eu.wohlben.qits.projects.entity.NamedAgent;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
+import eu.wohlben.qits.projects.persistence.NamedAgentRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import eu.wohlben.qits.projects.refinementhost.RefinementCredentialsChanged;
@@ -25,7 +28,7 @@ import org.jboss.logging.Logger;
  * socket as one {@link SessionCredentials} frame (qits-1482). Tokens travel here and never in the
  * desk's environment, so no session can read another's off the container.
  *
- * <p><b>The list</b> ({@link #compose(Project, FrontDesk, List)}, pure) — always the full one, since
+ * <p><b>The list</b> ({@link #compose(Project, FrontDesk, List, List)}, pure) — always the full one, since
  * a frame replaces everything the daemon held:
  *
  * <ul>
@@ -37,6 +40,8 @@ import org.jboss.logging.Logger;
  *       panel: always the session token, so a person-started session never holds {@code qits:desk}.
  *   <li>one per refinement room of the project holding a token, keyed by its entity id (qits-770's
  *       session key).
+ *   <li>one per named agent of the project holding a token (qits-2154), keyed {@code agent:<name>}:
+ *       its own {@code named-agent} token ({@code qits:agent} only), never the desk's.
  * </ul>
  *
  * A key with no token is <b>left out</b>, never sent empty: the daemon then fails closed for that
@@ -66,12 +71,24 @@ public class DeskSessionCredentials {
 
   @Inject RefinementRepository refinements;
 
+  /** The named agents' rows (qits-2154), each holding its own token. */
+  @Inject NamedAgentRepository namedAgents;
+
   /**
    * The full list for a project, from its project row, its desk row and its refinement rows. Pure: a
    * null project or desk contributes no desk keys; nothing here reads a database.
    */
   public static SessionCredentials compose(
       Project project, FrontDesk desk, List<Refinement> rooms) {
+    return compose(project, desk, rooms, List.of());
+  }
+
+  /**
+   * The full list, with the project's named agents (qits-2154): one {@code agent:<name>}
+   * credential per row holding a token, after the rooms. Pure, like the three-argument form.
+   */
+  public static SessionCredentials compose(
+      Project project, FrontDesk desk, List<Refinement> rooms, List<NamedAgent> agents) {
     List<Credential> credentials = new ArrayList<>();
     Credential session =
         desk == null ? null : credential(null, desk.sessionTokenValue, desk.sessionTokenSubject);
@@ -95,6 +112,18 @@ public class DeskSessionCredentials {
                 held -> credentials.add(new Credential(held.key(), held.token(), held.subject())));
       }
     }
+    if (agents != null) {
+      for (NamedAgent agent : agents) {
+        if (agent == null || agent.name == null) {
+          continue;
+        }
+        Credential held =
+            credential(NamedAgents.key(agent.name), agent.tokenValue, agent.tokenSubject);
+        if (held != null) {
+          credentials.add(held);
+        }
+      }
+    }
     return new SessionCredentials(credentials);
   }
 
@@ -106,7 +135,10 @@ public class DeskSessionCredentials {
     return new Credential(key == null ? "" : key, token, subject);
   }
 
-  /** {@link #compose(Project, FrontDesk, List)} over what the database holds for {@code projectId}. */
+  /**
+   * {@link #compose(Project, FrontDesk, List, List)} over what the database holds for {@code
+   * projectId}.
+   */
   public SessionCredentials compose(String projectId) {
     return QuarkusTransaction.requiringNew()
         .call(
@@ -114,7 +146,8 @@ public class DeskSessionCredentials {
                 compose(
                     projects.findById(projectId),
                     desks.findById(projectId),
-                    refinements.listByProject(projectId)));
+                    refinements.listByProject(projectId),
+                    namedAgents.listByProject(projectId)));
   }
 
   /**

@@ -2243,6 +2243,12 @@
       "knownGap" : null,
       "dtos" : [
         {
+          "type" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
+          "site" : "NamedAgentHost.prompt(String, Agent, String)"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
@@ -2255,10 +2261,22 @@
           "site" : "AgentContainerResponse.of(FrontDeskState)"
         },
         {
+          "type" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
+          "site" : "AgentView.of(AgentState)"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
           "kind" : "mapper",
           "via" : null,
           "site" : "FrontDesks.state(Project, FrontDesk, Instant)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "NamedAgentHost.deskState(String, Agent, FrontDesk, boolean)"
         }
       ],
       "operations" : [
@@ -2285,6 +2303,46 @@
           "dto" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
           "kind" : "returns",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "getAgentLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents/{name}/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "getFrontDeskLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/front-desk/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "listAgents",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "promptAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "promptFrontDesk",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/front-desk/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
         }
       ]
     },
@@ -2297,6 +2355,76 @@
       "knownGap" : null,
       "dtos" : [ ],
       "operations" : [ ]
+    },
+    {
+      "entity" : "eu.wohlben.qits.projects.entity.NamedAgent",
+      "table" : "named_agent",
+      "marking" : "domain",
+      "reason" : null,
+      "projectionOf" : null,
+      "knownGap" : null,
+      "dtos" : [
+        {
+          "type" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "NamedAgentHost.pend(String, Agent, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
+          "site" : "AgentView.of(AgentState)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
+          "kind" : "mapper",
+          "via" : null,
+          "site" : "NamedAgentHost.state(Agent, NamedAgent, Hosted, String, boolean, boolean)"
+        }
+      ],
+      "operations" : [
+        {
+          "operationId" : "getAgentLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents/{name}/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "getFrontDeskLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/front-desk/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "listAgents",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
+          "operationId" : "promptAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "promptFrontDesk",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/front-desk/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        }
+      ]
     },
     {
       "entity" : "eu.wohlben.qits.projects.entity.Project",
@@ -2385,6 +2513,12 @@
           "site" : "DispatchedWorkspaces.referencingAll(Collection)"
         },
         {
+          "type" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
+          "site" : "NamedAgentHost.prompt(String, Agent, String)"
+        },
+        {
           "type" : "eu.wohlben.qits.projects.api.AgentContainerController$AgentContainerResponse",
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.deskhost.FrontDeskState",
@@ -2407,6 +2541,18 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.api.BranchDeliveriesController$Answer",
           "site" : "Answer.deliveries()"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentsResponse",
+          "site" : "AgentsResponse.agents()"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentsResponse",
+          "kind" : "assembler",
+          "via" : null,
+          "site" : "ProjectAgentsController.list(String)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ProjectController$BackupSyncProjectRequest$Response",
@@ -2865,11 +3011,27 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "getAgentLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents/{name}/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "getBranchDeliveries",
           "method" : "GET",
           "path" : "/branch-deliveries",
           "dto" : "eu.wohlben.qits.projects.api.BranchDeliveriesController$Answer",
           "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "getFrontDeskLastAnswer",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/front-desk/last-answer",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
           "cardinality" : "single"
         },
         {
@@ -2919,6 +3081,14 @@
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
           "kind" : "returns",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "listAgents",
+          "method" : "GET",
+          "path" : "/projects/{projectId}/agents",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "returns",
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listDeskTriggerMessages",
@@ -3062,6 +3232,22 @@
           "path" : "/work/{qualifiedId}",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
           "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "promptAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "promptFrontDesk",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/front-desk/prompt",
+          "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
+          "kind" : "body",
           "cardinality" : "single"
         },
         {

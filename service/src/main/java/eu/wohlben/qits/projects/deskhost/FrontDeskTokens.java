@@ -19,6 +19,11 @@ import java.util.Optional;
  * #CONTEXT_KIND_SESSION}: minted beside the desk token, revoked with the row, reconciled the same
  * way, and carried in no environment — the daemon is to be handed it over the control socket.
  *
+ * <p><b>Every named agent but the desk holds one too</b> (qits-2154), of kind {@link
+ * #CONTEXT_KIND_NAMED_AGENT}: minted when its {@code named_agent} row is created (its first prompt),
+ * revoked with the row, reconciled against {@code named_agent.token_id}, and carried in no
+ * environment — like the session token, it reaches the daemon only over the control socket.
+ *
  * <p>A seam rather than {@code IdpTokens} itself so a suite can stand in for qits-idp; {@code
  * idphost/IdpFrontDeskTokens} is the {@code @DefaultBean}.
  */
@@ -38,6 +43,15 @@ public interface FrontDeskTokens {
    * {@code qits:agent}.
    */
   String CONTEXT_KIND_SESSION = "desk-session";
+
+  /**
+   * The idp context kind of a named agent's token (qits-2154); {@code CommissionRoles} maps it to
+   * {@code qits:agent} and nothing else. A kind of its own rather than {@link #CONTEXT_KIND_SESSION}
+   * because the platform reads a {@code desk-session} token as the desk (a wait it declares closes
+   * as a turn of the desk's), and a named agent must never be taken for the desk. Several live per
+   * project, one per agent name, told apart by subject.
+   */
+  String CONTEXT_KIND_NAMED_AGENT = "named-agent";
 
   /** A minted token: its id, its value (a credential) and the {@code sub} it introspects as. */
   record Minted(String tokenId, String token, String subject) {
@@ -76,6 +90,17 @@ public interface FrontDeskTokens {
 
   /** Revoke a session token; a 404 counts as done. False when it could not be asked. */
   boolean revokeSession(String tokenId);
+
+  /**
+   * Mint the token of {@code projectId}'s named agent {@code name}: {@code {contextKind:
+   * named-agent, contextId: <projectId>, claims: {project: <projectId>}, gitRefs: []}}. The name is
+   * in no claim (the idp's claim vocabulary is closed): the row stores the subject, and the subject
+   * is what tells the agent apart. Throws when it cannot.
+   */
+  Minted mintNamedAgent(String projectId, String name);
+
+  /** Revoke a named agent's token; a 404 counts as done. False when it could not be asked. */
+  boolean revokeNamedAgent(String tokenId);
 
   /** Every live token this service commissioned, or empty when the listing failed. */
   Optional<List<Live>> list();

@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.deskhost;
 
 import eu.wohlben.qits.projects.entity.FrontDesk;
+import eu.wohlben.qits.projects.entity.NamedAgent;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
+import eu.wohlben.qits.projects.persistence.NamedAgentRepository;
 import eu.wohlben.qits.projects.persistence.LegacyPlacementRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.LaunchMode;
@@ -37,6 +39,10 @@ import org.jboss.logging.Logger;
  *
  * <p>Session tokens (kind {@code desk-session}, qits-1482) are reaped the same way against {@code
  * front_desk.session_token_id}.
+ *
+ * <p>Named agents' tokens (kind {@code named-agent}, qits-2154) are reaped the same way against
+ * {@code named_agent.token_id}: several live per project, one per agent, and each row names its
+ * own, so a token is claimed exactly when some row holds its id — never by project.
  */
 @ApplicationScoped
 public class FrontDeskTokenReconcile {
@@ -51,6 +57,9 @@ public class FrontDeskTokenReconcile {
   @Inject FrontDeskRepository desks;
 
   @Inject LegacyPlacementRepository legacy;
+
+  /** The named agents' rows (qits-2154), whose {@code token_id}s claim their tokens. */
+  @Inject NamedAgentRepository namedAgents;
 
   @Inject FrontDesks frontDesks;
 
@@ -88,6 +97,12 @@ public class FrontDeskTokenReconcile {
     Set<String> claimed = new HashSet<>();
     Set<String> claimedDelivery = new HashSet<>();
     Set<String> claimedSession = new HashSet<>();
+    Set<String> claimedNamed = new HashSet<>();
+    for (NamedAgent row : QuarkusTransaction.requiringNew().call(() -> namedAgents.listAll())) {
+      if (row.tokenId != null) {
+        claimedNamed.add(row.tokenId);
+      }
+    }
     java.util.Map<String, String> leaseless = new java.util.HashMap<>();
     Set<String> legacyDesks = new HashSet<>();
     QuarkusTransaction.requiringNew()
@@ -112,10 +127,12 @@ public class FrontDeskTokenReconcile {
       boolean desk = FrontDeskTokens.CONTEXT_KIND.equals(token.contextKind());
       boolean delivery = FrontDeskTokens.CONTEXT_KIND_DELIVERY.equals(token.contextKind());
       boolean session = FrontDeskTokens.CONTEXT_KIND_SESSION.equals(token.contextKind());
-      if ((!desk && !delivery && !session)
+      boolean named = FrontDeskTokens.CONTEXT_KIND_NAMED_AGENT.equals(token.contextKind());
+      if ((!desk && !delivery && !session && !named)
           || (desk && claimed.contains(token.tokenId()))
           || (delivery && claimedDelivery.contains(token.tokenId()))
           || (session && claimedSession.contains(token.tokenId()))
+          || (named && claimedNamed.contains(token.tokenId()))
           || (token.createdAt() != null && token.createdAt().isAfter(now.minus(MINT_GRACE)))) {
         continue;
       }
@@ -141,10 +158,12 @@ public class FrontDeskTokenReconcile {
               ? tokens.revoke(token.tokenId())
               : delivery
                   ? tokens.revokeDelivery(token.tokenId())
-                  : tokens.revokeSession(token.tokenId());
+                  : named
+                      ? tokens.revokeNamedAgent(token.tokenId())
+                      : tokens.revokeSession(token.tokenId());
       if (revoked) {
         LOG.infof(
-            "Revoked %s token %s (project %s): no front desk claims it",
+            "Revoked %s token %s (project %s): no front desk or named agent claims it",
             token.contextKind(), token.tokenId(), token.contextId());
         reaped++;
       }

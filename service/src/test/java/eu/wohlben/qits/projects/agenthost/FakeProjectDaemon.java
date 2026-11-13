@@ -47,6 +47,12 @@ public final class FakeProjectDaemon implements AutoCloseable {
   private final String projectId;
   private final List<Seen> seen = new CopyOnWriteArrayList<>();
 
+  /** Every frame this service sent down the control socket, decoded, in order. */
+  private final List<JsonObject> frames = new CopyOnWriteArrayList<>();
+
+  /** The capability its {@code Hello} announces. */
+  private final int capability;
+
   private HttpServer api;
   private WebSocketClient wsClient;
   private NetClient netClient;
@@ -55,10 +61,11 @@ public final class FakeProjectDaemon implements AutoCloseable {
   /** {@link #credential()}, granted once on the caller's thread and sent on every dial. */
   private final String authorization = credential();
 
-  private FakeProjectDaemon(Vertx vertx, AgentTunnels tunnels, String projectId) {
+  private FakeProjectDaemon(Vertx vertx, AgentTunnels tunnels, String projectId, int capability) {
     this.vertx = vertx;
     this.tunnels = tunnels;
     this.projectId = projectId;
+    this.capability = capability;
   }
 
   /**
@@ -72,7 +79,24 @@ public final class FakeProjectDaemon implements AutoCloseable {
       int port,
       String projectId,
       Function<Seen, Reply> answers) {
-    FakeProjectDaemon daemon = new FakeProjectDaemon(vertx, tunnels, projectId);
+    return connect(
+        vertx, tunnels, host, port, projectId, DaemonProtocol.CAPABILITY_VERSION, answers);
+  }
+
+  /**
+   * {@link #connect(Vertx, AgentTunnels, String, int, String, Function)} announcing {@code
+   * capability} in its {@code Hello} rather than the pinned protocol's — a daemon newer than the pin
+   * (qits-2154's named agents need 4) or older.
+   */
+  public static FakeProjectDaemon connect(
+      Vertx vertx,
+      AgentTunnels tunnels,
+      String host,
+      int port,
+      String projectId,
+      int capability,
+      Function<Seen, Reply> answers) {
+    FakeProjectDaemon daemon = new FakeProjectDaemon(vertx, tunnels, projectId, capability);
     try {
       daemon.start(host, port, answers);
       return daemon;
@@ -89,6 +113,13 @@ public final class FakeProjectDaemon implements AutoCloseable {
    */
   private static String credential() {
     return ContractBearers.caller("fake-project-daemon", "qits:system");
+  }
+
+  /** Every control-socket frame of {@code type} this service sent, decoded, in order. */
+  public List<JsonObject> frames(String type) {
+    return frames.stream()
+        .filter(frame -> type.equals(frame.getString(DaemonProtocol.Field.TYPE)))
+        .toList();
   }
 
   /** Everything that reached the API, in order. */
@@ -148,6 +179,7 @@ public final class FakeProjectDaemon implements AutoCloseable {
         frame -> {
           JsonObject decoded = new JsonObject(frame);
           String type = decoded.getString(DaemonProtocol.Field.TYPE);
+          frames.add(decoded);
           if (DaemonProtocol.Type.ACK.equals(type)) {
             acked.complete(null);
           } else if (DaemonProtocol.Type.OPEN_STREAM.equals(type)) {
@@ -161,7 +193,7 @@ public final class FakeProjectDaemon implements AutoCloseable {
                     new Hello(
                         projectId,
                         "contract-contract",
-                        DaemonProtocol.CAPABILITY_VERSION,
+                        capability,
                         "test",
                         null))));
     acked.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);

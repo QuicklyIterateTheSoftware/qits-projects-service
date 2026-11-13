@@ -102,4 +102,23 @@ class IdpFrontDeskTokensTest {
     assertTrue(tokens().revokeSession("t-1"));
     assertEquals(List.of("t-1"), idp.deleted);
   }
+
+  /**
+   * qits-2154: a named agent's token is a commission of its own kind, {@code named-agent}
+   * ({@code qits:agent} only at the idp), contextId and claim the project — the name is in no
+   * claim, since the idp's vocabulary is closed; the subject tells agents apart.
+   */
+  @Test
+  void aNamedAgentsTokenIsOneCommissionOfKindNamedAgent() {
+    FrontDeskTokens.Minted minted = tokens().mintNamedAgent(PROJECT, "ui-builder");
+
+    assertEquals(
+        List.of(new Commission("named-agent", PROJECT, Map.of("project", PROJECT), List.of())),
+        idp.commissions);
+    assertEquals(FrontDeskTokens.CONTEXT_KIND_NAMED_AGENT, idp.commissions.get(0).kind());
+    assertEquals("t-1", minted.tokenId());
+
+    assertTrue(tokens().revokeNamedAgent("t-1"));
+    assertEquals(List.of("t-1"), idp.deleted);
+  }
 }

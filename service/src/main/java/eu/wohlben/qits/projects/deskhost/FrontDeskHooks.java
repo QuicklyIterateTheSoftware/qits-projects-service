@@ -29,7 +29,9 @@ import org.jboss.logging.Logger;
  *       hook fired with unchanged settings composes the applied spec, which clears the request and
  *       restarts nothing.
  *   <li>{@link ProjectFrontDeskRemoval} — a project being deleted takes its desk with it: {@code
- *       lease ended and its work volume purged, the tokens revoked, the row dropped.
+ *       lease ended and its work volume purged, the tokens revoked, the row dropped. Its named
+ *       agents go first (qits-2154): their rows deleted and their tokens revoked, before the
+ *       cascade would drop the rows that name the tokens.
  *   <li>{@link RefinementDemandChanged} (epic qits-770) — a refinement room's session became wanted
  *       or unwanted: the desk is created when it is now wanted ({@link RefinementDemand}), and its
  *       desired state is recomputed and pushed, so a refinement starts an {@code ON_DEMAND} desk.
@@ -45,6 +47,9 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
   @Inject FrontDeskSpecRoll specRoll;
 
   @Inject DeskSessionCredentials sessionCredentials;
+
+  /** The project's named agents (qits-2154), removed with it. */
+  @Inject NamedAgentHost namedAgents;
 
   @Inject FrontDeskDemand demand;
 
@@ -118,6 +123,7 @@ public class FrontDeskHooks implements FrontDeskLifecycleChanged, ProjectFrontDe
 
   @Override
   public void projectDeleting(String projectId) {
+    namedAgents.removeAll(projectId);
     desks.removeDesk(projectId);
   }
 }

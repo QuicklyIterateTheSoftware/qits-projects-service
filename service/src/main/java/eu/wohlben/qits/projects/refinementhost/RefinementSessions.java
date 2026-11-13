@@ -5,11 +5,14 @@ import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.control.NamedAgents;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
+import eu.wohlben.qits.projects.entity.NamedAgent;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.persistence.FrontDeskRepository;
+import eu.wohlben.qits.projects.persistence.NamedAgentRepository;
 import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
@@ -39,7 +42,8 @@ import org.jboss.logging.Logger;
  * Sessions} list this service sends the desk's daemon, and the {@link SessionReport} it answers
  * with, written back onto the rows.
  *
- * <h2>The list ({@link #compose(Project, String, List, Function, Instant, Duration)}, pure)</h2>
+ * <h2>The list ({@link #compose(Project, String, List, Function, Instant, Duration, List,
+ * boolean)}, pure)</h2>
  *
  * <ul>
  *   <li>{@value SessionCredentials#FRONT_DESK_KEY}, surface {@code project.work}, {@code
@@ -53,6 +57,12 @@ import org.jboss.logging.Logger;
  *       is younger than {@code qits.projects.agent-idle-timeout}, else {@code STOPPED};
  *       {@code resumeSessionId} the last session id the daemon reported; the entity's facts read
  *       live.
+ *   <li>one entry per named agent of the project (qits-2154) whose {@code last_demand_at} is
+ *       younger than the same idle window: key {@code agent:<name>}, its own surface ({@code
+ *       project.ui-builder}), {@code RUNNING}, {@code resumeSessionId} its last reported session
+ *       id, no entity. Only to a daemon of capability {@value
+ *       AgentDaemonRegistry#NAMED_AGENTS_CAPABILITY} or later; outside the window it is left out,
+ *       which stops it, so an agent nobody prompts costs no session.
  * </ul>
  *
  * <h2>When it is sent ({@link #push})</h2>
@@ -96,6 +106,9 @@ public class RefinementSessions {
 
   @Inject FrontDeskRepository desks;
 
+  /** The project's named agents (qits-2154). */
+  @Inject NamedAgentRepository namedAgents;
+
   @Inject EntityDispatchService entities;
 
   @Inject AgentDaemonRegistry daemons;
@@ -130,6 +143,26 @@ public class RefinementSessions {
     return wantsRunning(row, now, idleTimeout);
   }
 
+  /**
+   * Whether a named agent's session is wanted at {@code now} (qits-2154): demand younger than
+   * {@code idle}, the rooms' rule. A zero or negative window means once prompted, wanted for good.
+   * Pure.
+   */
+  public static boolean wantsRunning(NamedAgent row, Instant now, Duration idle) {
+    if (row == null || row.lastDemandAt == null) {
+      return false;
+    }
+    if (idle == null || idle.isZero() || idle.isNegative()) {
+      return true;
+    }
+    return Duration.between(row.lastDemandAt, now).compareTo(idle) < 0;
+  }
+
+  /** {@link #wantsRunning(NamedAgent, Instant, Duration)} under the configured idle window. */
+  public boolean wantsRunning(NamedAgent row, Instant now) {
+    return wantsRunning(row, now, idleTimeout);
+  }
+
   /** The project's session rooms whose session is wanted at {@code now}, oldest first. */
   public List<Refinement> running(String projectId, Instant now) {
     if (projectId == null) {
@@ -154,6 +187,24 @@ public class RefinementSessions {
       Function<String, Sessions.Entity> facts,
       Instant now,
       Duration idle) {
+    return compose(project, deskSessionId, rooms, facts, now, idle, List.of(), false);
+  }
+
+  /**
+   * The full desired list, with the project's named agents (qits-2154): after the rooms, one
+   * {@code agent:<name>} entry per row whose demand is inside {@code idle} — and none at all unless
+   * {@code namedAgentsCapable}, the daemon's {@code hello} having said capability {@value
+   * AgentDaemonRegistry#NAMED_AGENTS_CAPABILITY} or later. Pure.
+   */
+  public static Sessions compose(
+      Project project,
+      String deskSessionId,
+      List<Refinement> rooms,
+      Function<String, Sessions.Entity> facts,
+      Instant now,
+      Duration idle,
+      List<NamedAgent> agents,
+      boolean namedAgentsCapable) {
     List<Sessions.Session> sessions = new ArrayList<>();
     String resume = deskSessionId == null || deskSessionId.isBlank() ? null : deskSessionId;
     if (project != null && project.frontDeskLifecycle == FrontDeskLifecycle.ALWAYS_ON) {
@@ -189,6 +240,23 @@ public class RefinementSessions {
                 facts == null ? null : facts.apply(room.entityId)));
       }
     }
+    if (namedAgentsCapable && agents != null) {
+      for (NamedAgent agent : agents) {
+        if (agent == null
+            || agent.name == null
+            || agent.surface == null
+            || !wantsRunning(agent, now, idle)) {
+          continue;
+        }
+        sessions.add(
+            new Sessions.Session(
+                NamedAgents.key(agent.name),
+                agent.surface,
+                DaemonProtocol.DesiredState.RUNNING,
+                agent.sessionId == null || agent.sessionId.isBlank() ? null : agent.sessionId,
+                null));
+      }
+    }
     return new Sessions(sessions);
   }
 
@@ -219,8 +287,8 @@ public class RefinementSessions {
   }
 
   /**
-   * {@link #compose(Project, String, List, Function, Instant, Duration)} over what the stores hold
-   * now.
+   * {@link #compose(Project, String, List, Function, Instant, Duration, List, boolean)} over what
+   * the stores hold now, for the daemon connected now.
    */
   public Sessions compose(String projectId) {
     return compose(projectId, Map.of());
@@ -241,13 +309,20 @@ public class RefinementSessions {
                 });
     List<Refinement> rooms =
         QuarkusTransaction.requiringNew().call(() -> store.listByProject(projectId));
+    boolean namedAgentsCapable = daemons.acceptsNamedAgents(projectId);
+    List<NamedAgent> agents =
+        namedAgentsCapable
+            ? QuarkusTransaction.requiringNew().call(() -> namedAgents.listByProject(projectId))
+            : List.of();
     return compose(
         project,
         deskSessionId,
         rooms,
         entityId -> factsFor(entityId, known.get(entityId), project),
         Instant.now(),
-        idleTimeout);
+        idleTimeout,
+        agents,
+        namedAgentsCapable);
   }
 
   /**
@@ -413,6 +488,7 @@ public class RefinementSessions {
   /** The write half of {@link #onReport}, inside its transaction; answers the rows that moved. */
   List<Long> apply(String projectId, SessionReport report) {
     applyDesk(projectId, report);
+    applyNamedAgents(projectId, report);
     List<Long> moved = new ArrayList<>();
     for (Refinement room : store.listByProject(projectId)) {
       Optional<SessionReport.Session> entry = report.find(room.entityId);
@@ -460,6 +536,33 @@ public class RefinementSessions {
         "sessionId = ?1 where projectId = ?2 and (sessionId is null or sessionId <> ?1)",
         session,
         projectId);
+  }
+
+  /**
+   * The named agents' half of {@link #apply} (qits-2154): a non-blank session id reported for an
+   * {@code agent:<name>} key is stored on that agent's row when it differs, so the next frame hands
+   * it back as {@code resumeSessionId} and every prompt resumes the same session. Absent or blank
+   * never clears it; a key with no row writes nothing.
+   */
+  private void applyNamedAgents(String projectId, SessionReport report) {
+    if (report.sessions() == null) {
+      return;
+    }
+    for (SessionReport.Session entry : report.sessions()) {
+      if (entry == null || entry.sessionId() == null || entry.sessionId().isBlank()) {
+        continue;
+      }
+      Optional<String> name = NamedAgents.nameOfKey(entry.key());
+      if (name.isEmpty()) {
+        continue;
+      }
+      namedAgents.update(
+          "sessionId = ?1 where projectId = ?2 and name = ?3"
+              + " and (sessionId is null or sessionId <> ?1)",
+          entry.sessionId(),
+          projectId,
+          name.get());
+    }
   }
 
   // ---- evidence of use ---------------------------------------------------------------------------

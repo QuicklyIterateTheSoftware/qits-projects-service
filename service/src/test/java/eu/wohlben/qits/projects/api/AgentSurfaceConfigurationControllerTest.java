@@ -325,7 +325,9 @@ public class AgentSurfaceConfigurationControllerTest {
             .jsonPath()
             .getList("surfaces.surface", String.class);
     assertThat(listed.stream().filter("project.delivery"::equals).count(), is(1L));
-    assertThat(listed.get(listed.size() - 1), is("project.delivery"));
+    // Before the UI builder (qits-2154), the one surface appended after it, as in AgentSurface.KNOWN.
+    assertThat(listed.get(listed.size() - 2), is("project.delivery"));
+    assertThat(listed.get(listed.size() - 1), is("project.ui-builder"));
 
     JsonPath answer =
         given()
