@@ -156,6 +156,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       IdeaUpdated.class,
       IdeaArchived.class,
       IdeaUnarchived.class,
+      PitchChanged.class,
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
