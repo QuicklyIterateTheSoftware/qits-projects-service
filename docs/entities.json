@@ -82,7 +82,7 @@
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         }
       ]
     },
@@ -210,7 +210,7 @@
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         }
       ]
     },
@@ -512,7 +512,7 @@
           "path" : "/ideas/{id}",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDetail",
           "kind" : "returns",
-          "cardinality" : "collection"
+          "cardinality" : "single"
         },
         {
           "operationId" : "getWork",
@@ -568,7 +568,7 @@
           "path" : "/ideas/{id}/priority",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaPriorities",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setWorkStatus",
@@ -1086,7 +1086,7 @@
           "path" : "/projects/{project}/work/briefs",
           "dto" : "eu.wohlben.qits.entities.api.WorkBriefs",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWorkWorkspaces",
@@ -1126,7 +1126,7 @@
           "path" : "/work/{qualifiedId}/dossier",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierController$WorkDossier",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkDossierAssets",
@@ -1134,7 +1134,7 @@
           "path" : "/work/{qualifiedId}/dossier-assets",
           "dto" : "eu.wohlben.qits.entities.api.WorkDossierAssetController$WorkDossierAssetEntry",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listWorkWorkspaces",
@@ -1150,7 +1150,7 @@
           "path" : "/projects/{project}/wrapper-closings",
           "dto" : "eu.wohlben.qits.projects.api.WrapperClosingsController$Answer",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveWorkDossierPage",
@@ -1190,7 +1190,7 @@
           "path" : "/work/{qualifiedId}/priority",
           "dto" : "eu.wohlben.qits.entities.api.WorkPriorities",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "setWorkBlocked",
@@ -1728,7 +1728,7 @@
           "path" : "/agent-surfaces/{surface}/revisions",
           "dto" : "eu.wohlben.qits.projects.api.AgentSurfaceConfigurationController$RevisionDto",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "AgentSurfaceConfigurationController.update",
@@ -2926,7 +2926,7 @@
           "path" : "/projects/{projectId}/desk-triggers",
           "dto" : "eu.wohlben.qits.projects.api.ProjectDeskTriggersController$Message",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listIdeas",
@@ -2934,7 +2934,7 @@
           "path" : "/ideas",
           "dto" : "eu.wohlben.qits.entities.api.IdeaController$IdeaDto",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectReleaseRequests",
@@ -2942,7 +2942,7 @@
           "path" : "/projects/{projectId}/release-requests",
           "dto" : "eu.wohlben.qits.projects.api.ProjectReleaseRequestsController$ListProjectReleaseRequests$Response",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectRepositories",
@@ -2966,7 +2966,7 @@
           "path" : "/projects/{project}/work/briefs",
           "dto" : "eu.wohlben.qits.entities.api.WorkBriefs",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjectWorkWorkspaces",
@@ -2974,7 +2974,7 @@
           "path" : "/projects/{project}/work/workspaces",
           "dto" : "eu.wohlben.qits.entities.dto.WorkspaceReferenceDto",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "listProjects",
@@ -3030,7 +3030,7 @@
           "path" : "/projects/{project}/wrapper-closings",
           "dto" : "eu.wohlben.qits.projects.api.WrapperClosingsController$Answer",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "moveReleaseRequestSource",
@@ -3262,7 +3262,7 @@
           "path" : "/refinements/{id}/prompt-attachments",
           "dto" : "eu.wohlben.qits.projects.api.RefinementPromptAttachmentController$AttachmentDto",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "RefinementPromptAttachmentController.replace",
@@ -3350,7 +3350,7 @@
           "path" : "/refinements/{id}/designs",
           "dto" : "eu.wohlben.qits.projects.api.RefinementDesignController$DesignDto",
           "kind" : "returns",
-          "cardinality" : "single"
+          "cardinality" : "collection"
         },
         {
           "operationId" : "startWorkRefinement",
@@ -4272,7 +4272,7 @@
           "path" : "/repositories/{repoId}/release-requests/{requestId}/changes",
           "dto" : "eu.wohlben.qits.projects.dto.CommitFileChangeDto",
           "kind" : "returns",
-          "cardinality" : "collection"
+          "cardinality" : "single"
         },
         {
           "operationId" : "listReleaseRequestCommits",
