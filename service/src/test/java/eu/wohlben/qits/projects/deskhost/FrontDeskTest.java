@@ -510,12 +510,15 @@ class FrontDeskTest {
     assertEquals(2, system.refreshed().size(), "a new cooldown from the second refresh");
   }
 
-  /** A turn running holds the refresh back, however long ago the desk was last used. */
+  /**
+   * A turn running holds the refresh back, however long ago the desk was last used — and once the
+   * turn ends (BUSY leaves the rollup) the next pass refreshes it.
+   */
   @Test
   void aStaleDeskWithATurnRunningIsNotRefreshed() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
-    runningWithResolvers(projectId, true);
+    UUID leaseId = runningWithResolvers(projectId, true);
     daemons()
         .onMessage(
             projectId,
@@ -526,21 +529,43 @@ class FrontDeskTest {
     specRoll.roll(Instant.now());
     specRoll.roll(projectId, Instant.now());
     assertTrue(system.refreshed().isEmpty());
+
+    daemons()
+        .onMessage(
+            projectId,
+            null,
+            new AgentActivity("cmd-1", "session-1", AgentState.IDLE, "Stop", null, null, 0L));
+
+    specRoll.roll(Instant.now());
+    assertEquals(List.of(leaseId), system.refreshed(), "the turn ended; the next pass refreshes it");
   }
 
-  /** A desk used inside the quiet window is not refreshed until the window has passed. */
+  /**
+   * A desk used inside the quiet window, with nothing BUSY, is refreshed at once — the quiet
+   * window has no bearing on the refresh any more (qits-2230).
+   */
   @Test
-  void aStaleDeskUsedInsideTheQuietWindowWaits() {
+  void aStaleDeskUsedInsideTheQuietWindowIsRefreshedBetweenTurns() {
     String projectId = project(FrontDeskLifecycle.ON_DEMAND);
     person().post(base(projectId) + "/ensure").then().statusCode(200);
     UUID leaseId = runningWithResolvers(projectId, true);
     usedRecentlyAndNow(projectId, AgentState.IDLE);
 
     specRoll.roll(Instant.now());
-    assertTrue(system.refreshed().isEmpty(), "used a minute ago");
+    assertEquals(
+        List.of(leaseId), system.refreshed(), "used a minute ago, but nothing BUSY: refreshed");
+  }
 
-    assertEquals(0, specRoll.roll(Instant.now().plus(Duration.ofHours(1))));
-    assertEquals(List.of(leaseId), system.refreshed(), "quiet for the window: refreshed");
+  /** The rollup WAITING does not hold the refresh back either: only a BUSY turn does (qits-2230). */
+  @Test
+  void aWaitingStaleDeskIsRefreshed() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    UUID leaseId = runningWithResolvers(projectId, true);
+    usedRecentlyAndNow(projectId, AgentState.WAITING);
+
+    specRoll.roll(Instant.now());
+    assertEquals(List.of(leaseId), system.refreshed(), "WAITING is not a running turn");
   }
 
   /** Resolvers that are not stale, or a lease that is not RUNNING, are never refreshed. */
