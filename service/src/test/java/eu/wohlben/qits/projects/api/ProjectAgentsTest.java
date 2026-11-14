@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentTunnels;
 import eu.wohlben.qits.projects.agenthost.ContainerProxyPath;
 import eu.wohlben.qits.projects.agenthost.FakeProjectDaemon;
+import eu.wohlben.qits.projects.bus.NamedAgentStateChanged;
+import eu.wohlben.qits.projects.bus.RecordingNamedAgentStateEventAnnouncer;
 import eu.wohlben.qits.projects.contracts.ContractBearers;
 import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.control.DevelopmentGuideService;
@@ -104,6 +106,9 @@ public class ProjectAgentsTest {
 
   /** What the registry hands a {@code SessionReport} to, beside {@link #sessions}. */
   @Inject NamedAgentHost host;
+
+  /** What a named agent's state changes announced (qits-2157). */
+  @Inject RecordingNamedAgentStateEventAnnouncer stateChanges;
 
   @TestHTTPResource("/")
   URL root;
@@ -423,6 +428,33 @@ public class ProjectAgentsTest {
     assertEquals(1, delivered.size(), "delivered once");
     assertEquals(
         "Pitch a calmer header.", json.readTree(delivered.get(0).body()).get("text").asText());
+  }
+
+  @Test
+  public void aHeldPromptAnnouncesTheUiBuilderStarting() throws Exception {
+    String projectId = createProject("Named Agent State " + UUID.randomUUID());
+
+    asAdmin()
+        .body(Map.of("text", "Pitch a calmer header."))
+        .when()
+        .post(door(projectId, "ui-builder", "prompt"))
+        .then()
+        .statusCode(202)
+        .body("state", equalTo("STARTING"));
+
+    List<NamedAgentStateChanged> changes = stateChanges.of(projectId);
+    assertEquals(1, changes.size(), "announced once, before the 202: " + changes);
+    NamedAgentStateChanged change = changes.get(0);
+    assertEquals("ui-builder", change.agentName());
+    assertEquals("STARTING", change.state());
+    assertNull(change.commandId());
+    assertNotNull(change.changedAt());
+    assertTrue(
+        changes.stream().noneMatch(c -> "desk".equals(c.agentName())), "never the desk");
+
+    // Nothing moved: observing again says nothing more.
+    host.observe(projectId);
+    assertEquals(1, stateChanges.of(projectId).size(), "the same state twice is one event");
   }
 
   @Test

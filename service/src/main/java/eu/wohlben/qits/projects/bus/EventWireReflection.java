@@ -121,6 +121,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * <p>{@link WorkNeedMet} (qits-1903) is
  * published by {@link WorkNeedAnnouncer}, one line: every field is a flat scalar.
  *
+ * <p>{@link NamedAgentStateChanged} (qits-2157) is published by {@link
+ * NamedAgentStateEventAnnouncer}, one line: every field is a flat scalar.
+ *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
  * @JsonIgnore}s by calling {@code getDeclaredMethods()} on it, which is reflection like any other.
@@ -157,6 +160,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       IdeaArchived.class,
       IdeaUnarchived.class,
       PitchChanged.class,
+      NamedAgentStateChanged.class,
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,

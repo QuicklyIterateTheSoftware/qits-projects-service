@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.agenthost.AgentDaemonRegistry;
 import eu.wohlben.qits.projects.agenthost.DaemonApiClient;
 import eu.wohlben.qits.projects.agenthost.FrontDeskPrompter;
+import eu.wohlben.qits.projects.control.NamedAgentStateAnnouncer;
 import eu.wohlben.qits.projects.control.NamedAgents;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.NamedAgent;
@@ -18,6 +19,7 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -80,6 +83,21 @@ import org.jboss.logging.Logger;
  * launching), {@code IDLE} and {@code BUSY} (running, between turns or in one — {@code WAITING}
  * reads as {@code BUSY}: the turn is not over), {@code FAILED} (the daemon could not run it).
  *
+ * <h2>Its state, announced ({@link #observe})</h2>
+ *
+ * <p>Every agent but the desk has its state re-evaluated whenever something may have moved it, and
+ * a {@code NamedAgentStateChanged} goes out when its (state, commandId) differs from the last one
+ * announced ({@link NamedAgentStates}, in memory; the first observation after boot announces), so a
+ * page following the UI builder need not poll (qits-2157). The triggers: an {@code AgentActivity}
+ * of a named agent's session or command ({@link #onActivity}), the daemon's {@code COMMANDS} nudge
+ * ({@link #onCommandsChanged}), the daemon's {@code hello} and its socket closing ({@link
+ * #observeLater}), a {@link SessionReport} naming an agent ({@link #onReport}), a prompt held
+ * ({@code pend}, {@code STARTING}) and a held prompt delivered ({@code deliver}). <b>Never the
+ * desk</b>: its state costs a daemon call per read (its {@code last-answer}), which no frame should
+ * pay. An observation asks the daemon at most once (its {@code GET named-agents}, and only for a
+ * project that has a named agent row), one pass per project at a time, coalesced: frames arriving
+ * during a pass cost one more pass, not one each; and never on the socket's own thread.
+ *
  * <p>Every method that a socket frame or a sweep calls <b>never throws</b>.
  */
 @ApplicationScoped
@@ -124,6 +142,9 @@ public class NamedAgentHost {
 
   @Inject ObjectMapper json;
 
+  /** Where an observed state change goes (qits-2157); absent, nothing is announced. */
+  @Inject Instance<NamedAgentStateAnnouncer> stateAnnouncer;
+
   /** The front desk's own bound on one proxied call — the same key, so every hop agrees. */
   @ConfigProperty(name = "qits.projects.front-desk.relay-timeout-ms", defaultValue = "10000")
   long timeoutMs;
@@ -140,6 +161,24 @@ public class NamedAgentHost {
 
   /** The (project, agent)s whose pending prompt is being delivered right now. */
   private final Set<String> delivering = ConcurrentHashMap.newKeySet();
+
+  /** The last state announced per (project, agent), and the dedup (qits-2157). */
+  private final NamedAgentStates states = new NamedAgentStates(this::announce);
+
+  /** One observation per project at a time, so announcements go out in the order observed. */
+  private final ConcurrentHashMap<String, ReentrantLock> observing = new ConcurrentHashMap<>();
+
+  /** The projects with an observation pass running off-thread ({@link #observeLater}). */
+  private final Set<String> passRunning = ConcurrentHashMap.newKeySet();
+
+  /** The projects asked to be observed again since their running pass started. */
+  private final Set<String> passWanted = ConcurrentHashMap.newKeySet();
+
+  /** The sessions a named agent was last seen to run, by {@code <projectId>/<sessionId>}. */
+  private final Set<String> agentSessions = ConcurrentHashMap.newKeySet();
+
+  /** The projects an observation found a named agent row in: the ones a nudge is worth a pass. */
+  private final Set<String> withAgents = ConcurrentHashMap.newKeySet();
 
   /**
    * One named agent as the listing answers it.
@@ -183,25 +222,154 @@ public class NamedAgentHost {
       if (agent.desk()) {
         answer.add(deskState(projectId, agent, desk, live));
       } else {
-        NamedAgent row = byName.get(agent.name());
-        Hosted entry = hosted.get(agent.name());
-        String activity =
-            entry == null
-                ? null
-                : daemons
-                    .sessionActivity(projectId, entry.sessionId(), entry.commandId())
-                    .orElse(null);
-        answer.add(
-            state(
-                agent,
-                row,
-                entry,
-                activity,
-                desk != null && desk.wanted(),
-                RefinementSessions.wantsRunning(row, now, idleTimeout)));
+        answer.add(other(projectId, agent, byName.get(agent.name()), hosted, desk, now));
       }
     }
     return answer;
+  }
+
+  /** One agent other than the desk, from its row and the daemon's listing. Asks nothing. */
+  private AgentState other(
+      String projectId,
+      NamedAgents.Agent agent,
+      NamedAgent row,
+      Map<String, Hosted> hosted,
+      FrontDesk desk,
+      Instant now) {
+    Hosted entry = hosted.get(agent.name());
+    String activity =
+        entry == null
+            ? null
+            : daemons.sessionActivity(projectId, entry.sessionId(), entry.commandId()).orElse(null);
+    return state(
+        agent,
+        row,
+        entry,
+        activity,
+        desk != null && desk.wanted(),
+        RefinementSessions.wantsRunning(row, now, idleTimeout));
+  }
+
+  // ---- the state, announced (qits-2157) ----------------------------------------------------------
+
+  /**
+   * Re-evaluate every agent of {@code projectId} but the desk, now and on this thread, and announce
+   * each whose (state, commandId) moved ({@link NamedAgentStates}). Asks the daemon its {@code GET
+   * named-agents} at most once, and only when the project has a named agent row and a capable
+   * daemon is connected; never the desk's {@code last-answer}. One pass per project at a time.
+   * Call it after any write that moved the state committed. <b>Never throws.</b>
+   */
+  public void observe(String projectId) {
+    if (projectId == null) {
+      return;
+    }
+    ReentrantLock lock = observing.computeIfAbsent(projectId, id -> new ReentrantLock());
+    lock.lock();
+    try {
+      Instant now = Instant.now();
+      Map<String, NamedAgent> byName = new HashMap<>();
+      for (NamedAgent row :
+          QuarkusTransaction.requiringNew().call(() -> rows.listByProject(projectId))) {
+        byName.put(row.name, row);
+      }
+      if (byName.isEmpty()) {
+        withAgents.remove(projectId);
+      } else {
+        withAgents.add(projectId);
+      }
+      FrontDesk desk = byName.isEmpty() ? null : frontDesks.find(projectId).orElse(null);
+      Map<String, Hosted> hosted =
+          !byName.isEmpty()
+                  && daemons.isDaemonLive(projectId)
+                  && daemons.acceptsNamedAgents(projectId)
+              ? hosted(projectId)
+              : Map.of();
+      for (NamedAgents.Agent agent : NamedAgents.hosted()) {
+        NamedAgent row = byName.get(agent.name());
+        AgentState state = other(projectId, agent, row, hosted, desk, now);
+        if (state.sessionId() != null) {
+          agentSessions.add(projectId + "/" + state.sessionId());
+        }
+        if (state.commandId() != null) {
+          commandAgents.put(projectId + "/" + state.commandId(), agent.name());
+        }
+        states.observed(projectId, state, row != null, now);
+      }
+    } catch (RuntimeException e) {
+      LOG.debugf("Could not observe project %s's named agents: %s", projectId, e.getMessage());
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  /**
+   * {@link #observe} on a virtual thread of its own, coalesced: what a socket frame calls. A call
+   * while a pass for the project runs costs one more pass after it, however many arrive. <b>Never
+   * throws.</b>
+   */
+  public void observeLater(String projectId) {
+    if (projectId == null) {
+      return;
+    }
+    passWanted.add(projectId);
+    if (!passRunning.add(projectId)) {
+      return; // the running pass sees passWanted and goes again
+    }
+    try {
+      Thread.ofVirtual()
+          .name("qits-named-agent-state")
+          .start(
+              () -> {
+                try {
+                  while (passWanted.remove(projectId)) {
+                    observe(projectId);
+                  }
+                } finally {
+                  passRunning.remove(projectId);
+                  if (passWanted.contains(projectId)) {
+                    observeLater(projectId); // asked for between the last pass and the remove
+                  }
+                }
+              });
+    } catch (RuntimeException e) {
+      passRunning.remove(projectId);
+      LOG.debugf("Could not start observing project %s's named agents: %s", projectId, e.getMessage());
+    }
+  }
+
+  /**
+   * An {@code AgentActivity} of {@code projectId}'s session {@code sessionId} running {@code
+   * commandId}: observed only when either is known to be a named agent's — from a {@link
+   * SessionReport} or an earlier observation — so the desk's and the rooms' turns cost nothing.
+   * <b>Never throws.</b>
+   */
+  public void onActivity(String projectId, String sessionId, String commandId) {
+    if (projectId == null) {
+      return;
+    }
+    boolean named =
+        (commandId != null && commandAgents.containsKey(projectId + "/" + commandId))
+            || (sessionId != null && agentSessions.contains(projectId + "/" + sessionId));
+    if (named) {
+      observeLater(projectId);
+    }
+  }
+
+  /**
+   * The daemon's {@code COMMANDS} nudge: a command started or ended, perhaps a named agent's.
+   * Observed only for a project a pass found a named agent row in. <b>Never throws.</b>
+   */
+  public void onCommandsChanged(String projectId) {
+    if (projectId != null && withAgents.contains(projectId)) {
+      observeLater(projectId);
+    }
+  }
+
+  private void announce(NamedAgentStateAnnouncer.NamedAgentStateChange change) {
+    if (stateAnnouncer == null || !stateAnnouncer.isResolvable()) {
+      return;
+    }
+    stateAnnouncer.get().onNamedAgentStateChanged(change);
   }
 
   /**
@@ -430,6 +598,8 @@ public class NamedAgentHost {
     LOG.infof(
         "Holding a prompt for project %s's named agent %s until its session is up",
         projectId, agent.name());
+    // Committed: the agent reads STARTING now, and a page following it hears so (qits-2157).
+    observe(projectId);
     // A daemon that connected meanwhile is handed it at once; otherwise its hello does.
     deliverPendingLater(projectId);
     return new FrontDeskPrompter.Reply(202, STARTING_BODY, null);
@@ -525,6 +695,9 @@ public class NamedAgentHost {
       LOG.warnf("Could not remove the named agents of project %s: %s", projectId, e.getMessage());
       return;
     }
+    if (!gone.isEmpty()) {
+      observeLater(projectId); // each announced agent reads STOPPED now (qits-2157)
+    }
     for (NamedAgent row : gone) {
       if (row.tokenId != null && !tokens.revokeNamedAgent(row.tokenId)) {
         LOG.warnf(
@@ -607,6 +780,7 @@ public class NamedAgentHost {
     if (answer.status() == 200) {
       clearPending(projectId, name, text);
       LOG.infof("Delivered project %s's pending prompt to its named agent %s", projectId, name);
+      observeLater(projectId); // committed; the daemon runs it now (qits-2157)
       return true;
     }
     if (answer.status() == 400) {
@@ -677,9 +851,13 @@ public class NamedAgentHost {
       if (entry.commandId() != null && !entry.commandId().isBlank()) {
         commandAgents.put(projectId + "/" + entry.commandId(), name.get());
       }
+      if (entry.sessionId() != null && !entry.sessionId().isBlank()) {
+        agentSessions.add(projectId + "/" + entry.sessionId());
+      }
     }
     if (namesAnAgent) {
       deliverPendingLater(projectId);
+      observeLater(projectId); // its session moved (qits-2157)
     }
   }
 

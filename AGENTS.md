@@ -3114,6 +3114,22 @@ rows `listNamedAgents`, `promptNamedAgent`, `getNamedAgentLastAnswer` under the 
 whose named agent is running`, which the daemon golden masters record from 2026.1113.34426 on.
 `ProjectAgentsTest`, `NamedAgentsComposeTest`, `NamedAgentGuideVariantTest`.
 
+**Event** `NamedAgentStateChanged` (qits-2157: `projectId, agentName, state
+STOPPED|STARTING|IDLE|BUSY|FAILED, commandId, sessionId, changedAt` — the listing's words) through
+`control/NamedAgentStateAnnouncer` → `bus/NamedAgentStateEventAnnouncer` (`@DefaultBean`); the
+suite records through `RecordingNamedAgentStateEventAnnouncer`. `NamedAgentHost.observe` re-evaluates
+every agent **but the desk** (whose state costs a daemon call per read) from the rows, the rollup and
+at most one daemon `GET named-agents` (only with a row and a capable daemon), and
+`deskhost/NamedAgentStates` announces only when an agent's (state, commandId) differs from the last
+one announced for it — in memory, so the first observation after boot announces; an agent never
+prompted and never announced stays silent. Triggers, each off the socket thread through the
+coalesced `observeLater` (one pass per project at a time, frames during a pass cost one more): an
+`AgentActivity` whose session or command a named agent is known to run (from reports and earlier
+passes), a `COMMANDS` nudge for a project with a named agent row, the `hello` and the socket's
+close, a `SessionReport` naming an agent, a held prompt delivered, the rows removed with the
+project — and, synchronously after its commit, a prompt held (`STARTING`). Not yet matchable by
+`qits wait`. `NamedAgentStatesTest`.
+
 ### Pitches (qits-2155)
 
 **A pitch is a named agent's mock snapshot of one UI-builder screenshot, kept per agent with every

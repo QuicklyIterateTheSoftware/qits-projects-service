@@ -85,6 +85,9 @@ public class EventWireReflectionTest {
   /** And the one that says a named agent's pitch changed (qits-2155). */
   @Inject Instance<PitchEventAnnouncer> shippedPitchAnnouncer;
 
+  /** And the one that says a named agent's state changed (qits-2157). */
+  @Inject Instance<NamedAgentStateEventAnnouncer> shippedNamedAgentStateAnnouncer;
+
   /** The typed live listener of qits-system's lease event (epic qits-1481). */
   @Inject Instance<eu.wohlben.qits.projects.targethost.TargetLeaseEvents> leaseEvents;
 
@@ -138,6 +141,7 @@ public class EventWireReflectionTest {
             IdeaArchived.class,
             IdeaUnarchived.class,
             PitchChanged.class,
+            NamedAgentStateChanged.class,
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
@@ -153,7 +157,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR, EntityCommented, WorkNeedMet, the four idea events and PitchChanged out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented, WorkNeedMet, the four idea events, PitchChanged and NamedAgentStateChanged out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -235,6 +239,10 @@ public class EventWireReflectionTest {
         targets.contains(PitchChanged.class),
         "PitchEventAnnouncer publishes this (qits-2155); unregistered, a pitch page never hears"
             + " of a new version");
+    assertTrue(
+        targets.contains(NamedAgentStateChanged.class),
+        "NamedAgentStateEventAnnouncer publishes this (qits-2157); unregistered, a page following"
+            + " the UI builder never hears it go busy");
   }
 
   @Test
@@ -252,6 +260,22 @@ public class EventWireReflectionTest {
       assertTrue(
           !Set.of("name", "occurredAt", "signature").contains(component.getName()),
           "PitchChanged." + component.getName() + " spells an envelope word");
+    }
+  }
+
+  @Test
+  public void theNamedAgentStateEventAnnouncerShipsAsABean() {
+    assertTrue(
+        !shippedNamedAgentStateAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  /** {@code NamedAgentStateChanged} spells no envelope word either: the agent is agentName. */
+  @Test
+  public void namedAgentStateChangedNamesNoEnvelopeWord() {
+    for (var component : NamedAgentStateChanged.class.getRecordComponents()) {
+      assertTrue(
+          !Set.of("name", "occurredAt", "signature").contains(component.getName()),
+          "NamedAgentStateChanged." + component.getName() + " spells an envelope word");
     }
   }
 

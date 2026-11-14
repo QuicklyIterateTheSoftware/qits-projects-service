@@ -281,6 +281,10 @@ public class AgentDaemonRegistry {
     if (tunnels.isResolvable()) {
       tunnels.get().onDaemonGone(projectId);
     }
+    // Its named agents read STARTING or STOPPED now (qits-2157); observed off this thread.
+    if (namedAgents != null && namedAgents.isResolvable()) {
+      namedAgents.get().observeLater(projectId);
+    }
     LOG.debugf(
         "projects-daemon disconnected for project %s (connection %s)", projectId, connection.id());
   }
@@ -708,6 +712,8 @@ public class AgentDaemonRegistry {
         // sessions naming it went out. Below 4 nothing; off this thread either way.
         if (namedAgents != null && namedAgents.isResolvable()) {
           namedAgents.get().deliverPendingLater(projectId);
+          // And a page following a named agent hears what it reads now (qits-2157), off-thread.
+          namedAgents.get().observeLater(projectId);
         }
       }
       case Heartbeat ignored -> {
@@ -792,6 +798,11 @@ public class AgentDaemonRegistry {
           .put(key, new ActivityEntry(activity.state(), at));
     }
     changePublisher.fire(projectId, ProjectChangeHint.Topic.AGENT_ACTIVITY);
+    // A named agent's turn began or ended (qits-2157): re-evaluated, after the rollup above moved,
+    // off this thread, and only for a session or command a named agent is known to run.
+    if (namedAgents != null && namedAgents.isResolvable()) {
+      namedAgents.get().onActivity(projectId, activity.sessionId(), activity.commandId());
+    }
   }
 
   /**
@@ -817,6 +828,10 @@ public class AgentDaemonRegistry {
       return;
     }
     changePublisher.fire(projectId, topic);
+    // A command started or ended — perhaps a named agent's (qits-2157); off this thread.
+    if ("COMMANDS".equals(changed.topic()) && namedAgents != null && namedAgents.isResolvable()) {
+      namedAgents.get().onCommandsChanged(projectId);
+    }
   }
 
   private static ProjectChangeHint.Topic topicOf(String wireTopic) {
