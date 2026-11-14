@@ -146,7 +146,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.1111.30449</qits.containers-client.version>
+        <qits.containers-client.version>2026.1114.40637</qits.containers-client.version>
 
         <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
              artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
@@ -272,7 +272,7 @@
         <qits.ci-golden-masters.version>2026.1113.31502</qits.ci-golden-masters.version>
         <qits.idp-golden-masters.version>2026.1109.13349</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1113.124805</qits.deployments-golden-masters.version>
-        <qits.containers-golden-masters.version>2026.1019.103940</qits.containers-golden-masters.version>
+        <qits.containers-golden-masters.version>2026.1114.40637</qits.containers-golden-masters.version>
         <qits.projects-daemon-golden-masters.version>2026.1113.34426</qits.projects-daemon-golden-masters.version>
         <!-- qits-system's golden masters (epic qits-1481): the lease, work-volume and target doors
              targethost/HttpSystemLeases calls (contracts/consumer/SystemContract), recorded for the
