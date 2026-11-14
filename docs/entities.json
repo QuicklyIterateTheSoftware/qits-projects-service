@@ -2412,7 +2412,7 @@
           "type" : "eu.wohlben.qits.projects.deskhost.NamedAgentHost$AgentState",
           "kind" : "mapper",
           "via" : null,
-          "site" : "NamedAgentHost.state(Agent, NamedAgent, Hosted, String, boolean, boolean)"
+          "site" : "NamedAgentHost.other(String, Agent, NamedAgent, Map, FrontDesk, Instant)"
         }
       ],
       "operations" : [
