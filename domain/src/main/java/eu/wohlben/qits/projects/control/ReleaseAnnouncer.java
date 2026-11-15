@@ -76,4 +76,35 @@ public interface ReleaseAnnouncer {
       String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority);
+
+  /**
+   * A release was tagged, with whether its deploy is held for a person (qits-2268) — the request's
+   * {@code deploy_hold} at release time, which rides onto {@code SCMRelease.deployHold}. The
+   * default drops it and announces the older shape, so an implementation that predates the field
+   * keeps compiling; the bus announcer overrides this one.
+   */
+  default void onReleased(
+      String projectId,
+      String repoId,
+      String repoName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      String releaseRequestQualifiedId,
+      Instant occurredAt,
+      String priority,
+      boolean deployHold) {
+    onReleased(
+        projectId,
+        repoId,
+        repoName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        releaseRequestQualifiedId,
+        occurredAt,
+        priority);
+  }
 }

@@ -72,6 +72,66 @@ class DeploymentRollbackGateTest {
     assertTrue(listRead.checks().isEmpty());
   }
 
+  /**
+   * A deploy held for a person (qits-2268) is PENDING, never FAILED, and names the command that
+   * releases it — over a recorded failure of an earlier deployment too.
+   */
+  @Test
+  void aHeldDeployWaitsAndNamesTheApproval() {
+    GateEvaluation held =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                released(PublishState.PASSED, false),
+                GateSubject.Deployment.newest("dr-7", null, true)));
+    assertEquals(ReleaseGates.State.PENDING, held.state());
+    assertEquals(
+        "Deploy of 2026.1009.100000 held for approval: qits deployments requests approve"
+            + " --request dr-7",
+        held.detail());
+    assertEquals("Deployment request dr-7", held.checks().get(0).name());
+
+    GateEvaluation overAFailure =
+        gate.evaluate(
+            with(DEPLOYS, failed("FAILED: boom"), GateSubject.Deployment.newest("dr-8", null, true)));
+    assertEquals(ReleaseGates.State.PENDING, overAFailure.state());
+    assertTrue(overAFailure.detail().startsWith("Deploy of 2026.1009.100000 held for approval"));
+  }
+
+  /** Once it went live, a held redeploy does not take the PASSED gate back. */
+  @Test
+  void aLiveReleaseIsNotHeldBack() {
+    assertEquals(
+        ReleaseGates.State.PASSED,
+        gate.evaluate(with(DEPLOYS, live(), GateSubject.Deployment.newest("dr-7", null, true)))
+            .state());
+  }
+
+  /**
+   * The read is lenient (qits-2268): the flag wins where qits-deployments answers it, and a detail
+   * saying so stands in where it does not; a settled or met gate is never held.
+   */
+  @Test
+  void aViewIsHeldOnlyWhileItsGateIsUnmetAndUnsettled() {
+    java.time.Instant at = java.time.Instant.parse("2026-10-09T10:20:00Z");
+    String detail = "held for manual approval on contract-app-rr-1";
+    assertTrue(view("UNMET", null, null, true).held());
+    assertTrue(view("UNMET", null, detail, null).held(), "an older far side: read off the detail");
+    assertTrue(!view("UNMET", null, detail, false).held(), "the flag wins where it is answered");
+    assertTrue(!view("UNMET", null, "waiting on the gate", null).held());
+    assertTrue(!view("UNMET", at, detail, true).held(), "a settled gate is not held");
+    assertTrue(!view("MET", null, detail, true).held());
+    assertTrue(!new eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView(
+            "d", "ACTIVE", at)
+        .held());
+  }
+
+  private static eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView view(
+      String gate, java.time.Instant settled, String detail, Boolean hold) {
+    return new eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView(
+        "d", null, null, gate, settled, detail, hold);
+  }
+
   private static ReleasedTagPendingMerge failed(String recorded) {
     ReleasedTagPendingMerge tag = released(PublishState.PASSED, false);
     tag.deploymentFailedAt = java.time.Instant.parse("2026-10-09T10:20:00Z");

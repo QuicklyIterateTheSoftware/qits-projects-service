@@ -21,6 +21,9 @@ final class DeploymentsContract {
   static final String PROVIDER = "qits-deployments-service";
   static final String APP = "qits-deployments";
 
+  /** The release request a held redeploy names (qits-2268). */
+  static final String HELD_REQUEST = "contract-app-00000001-rr-1";
+
   private DeploymentsContract() {}
 
   static final List<ConsumerRow> ROWS =
@@ -63,7 +66,12 @@ final class DeploymentsContract {
               json(
                   "{\"repoId\":\"{repoId}\",\"projectId\":\"{projectId}\","
                       + "\"repoName\":\"{repoName}\",\"application\":\"{application}\","
-                      + "\"version\":\"{version}\"}"),
+                      + "\"version\":\"{version}\","
+                      // qits-2268: the request the release came out of, and its deploy hold —
+                      // sent only when held, so the row pins the held shape. Literals: the
+                      // provider's state names neither, and the intake reads both as optional.
+                      + "\"releaseRequestQualifiedId\":\"" + HELD_REQUEST + "\","
+                      + "\"deployHold\":true}"),
               List.of(),
               202,
               Trigger.operation("rerunReleasePipelinePhase"),
@@ -78,6 +86,8 @@ final class DeploymentsContract {
                               p.get("projectId"),
                               p.get("repoName"),
                               p.get("application"),
-                              p.get("version"))),
+                              p.get("version"),
+                              HELD_REQUEST,
+                              Boolean.TRUE)),
               "POST /deployments/api/events/software-released answering 202"));
 }

@@ -164,6 +164,9 @@
         }
       }
     ],
-    "sourceMoves": []
+    "sourceMoves": [],
+    "deployHold": false,
+    "deployHoldBy": null,
+    "deployHoldAt": null
   }
 }

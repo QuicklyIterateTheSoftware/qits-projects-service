@@ -105,7 +105,7 @@ class AgentReadAccessTest {
   /**
    * <b>The release-request writes an agent reaches.</b> The first five are bound to the agent's
    * project and {@code git_refs} ({@code moveSource}, qits-1665, admits the desk's {@code
-   * qits:desk-admin} for any source of its project before that binding); {@code rerunPhase} and {@code rerunAutomation} (qits-978) are
+   * qits:desk-admin} for any source of its project before that binding); {@code rerunPhase}, {@code rerunAutomation} (qits-978) and {@code setDeployHold} (qits-2268) are
    * deliberately unbound — they decide nothing, so there is nothing to bind. {@code approve} and
    * {@code decline} (epic qits-1038) admit the agent at the filter and are bound by eligibility
    * instead: a requirement says which roles may satisfy it, and {@code ApproverCheck} proves the
@@ -120,6 +120,7 @@ class AgentReadAccessTest {
           "ReleaseRequestController.withdraw",
           "ReleaseRequestController.rerunPhase",
           "ReleaseRequestController.rerunAutomation",
+          "ReleaseRequestController.setDeployHold",
           "ReleaseRequestController.approve",
           "ReleaseRequestController.decline");
 

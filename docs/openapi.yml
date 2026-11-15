@@ -2751,6 +2751,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestSourceMoveDto"
+        deployHold:
+          type: boolean
+        deployHoldBy:
+          type: string
+        deployHoldAt:
+          $ref: "#/components/schemas/Instant"
     ReleaseRequestItemDto:
       type: object
       properties:
@@ -3222,6 +3228,16 @@ components:
         branch:
           type: string
           pattern: \S
+    SetReleaseRequestDeployHold:
+      type: object
+      properties:
+        hold:
+          type: boolean
+    SetReleaseRequestDeployHoldResponse:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
     SetReleaseSourcePriority:
       type: object
       required:
@@ -8634,6 +8650,60 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
+        - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/deploy-hold:
+    put:
+      summary: "Hold this request's deploy for a person's approval, or release the\
+        \ hold"
+      description: "With hold true, the release is tagged and published as ever and\
+        \ its deployment request at qits-deployments waits until somebody approves\
+        \ it there (qits deployments requests approve --request <id>); hold false\
+        \ releases the hold. The value is read when the request releases, so it may\
+        \ be switched while the request is PENDING, READY, REJECTED or CONFLICTED,\
+        \ and any other state is a 409. Asking for the value the request already has\
+        \ changes nothing. Nothing is re-folded and no state moves. deployHoldBy and\
+        \ deployHoldAt on the answer name who last switched it and when, off as well\
+        \ as on. A missing hold is a 400, an unknown request a 404. Every person and\
+        \ every agent may switch it, in any project."
+      operationId: setReleaseRequestDeployHold
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetReleaseRequestDeployHold"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetReleaseRequestDeployHoldResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
+        - qits:desk
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun:
     post:

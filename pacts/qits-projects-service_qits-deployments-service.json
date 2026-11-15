@@ -163,7 +163,9 @@
         "body": {
           "content": {
             "application": "contract-app-00000001",
+            "deployHold": true,
             "projectId": "contract-project-00000001",
+            "releaseRequestQualifiedId": "contract-app-00000001-rr-1",
             "repoId": "00000000-0000-4000-8000-000000000001",
             "repoName": "contract-app-00000001",
             "version": "2026.101.120000"

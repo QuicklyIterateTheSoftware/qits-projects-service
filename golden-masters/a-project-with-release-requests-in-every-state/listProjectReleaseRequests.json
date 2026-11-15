@@ -226,7 +226,10 @@
           "workItem": null
         }
       ],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-000000000008",
@@ -316,7 +319,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
@@ -406,7 +412,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-00000000000d",
@@ -529,7 +538,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-00000000000f",
@@ -645,7 +657,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-000000000011",
@@ -821,7 +836,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     },
     {
       "id": "00000000-0000-4000-8000-000000000015",
@@ -911,7 +929,10 @@
         "contract-seeder"
       ],
       "items": [],
-      "sourceMoves": []
+      "sourceMoves": [],
+      "deployHold": false,
+      "deployHoldBy": null,
+      "deployHoldAt": null
     }
   ]
 }

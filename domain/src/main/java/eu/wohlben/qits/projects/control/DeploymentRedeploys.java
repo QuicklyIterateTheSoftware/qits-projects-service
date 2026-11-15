@@ -47,9 +47,27 @@ public interface DeploymentRedeploys {
    * release-queue vocabulary ({@code LOWEST} … {@code BLOCKING}) and qits-deployments' field of that
    * name is its own; passing one as the other would be two meanings on one wire with nothing to
    * notice the mismatch.
+   *
+   * <p><b>{@code releaseRequestQualifiedId} and {@code deployHold} are what the release itself
+   * carried</b> (qits-2268): qits-ci forwards both from {@code SCMRelease} onto the intake, and a
+   * rerun of a held release must be held again rather than deploy unasked. {@code deployHold} is
+   * {@code TRUE} or null — never false on the wire, the shape of every unheld release.
    */
   record Redeploy(
-      String repoId, String projectId, String repoName, String application, String version) {}
+      String repoId,
+      String projectId,
+      String repoName,
+      String application,
+      String version,
+      String releaseRequestQualifiedId,
+      Boolean deployHold) {
+
+    /** The ask before qits-2268: no request named, not held. */
+    public Redeploy(
+        String repoId, String projectId, String repoName, String application, String version) {
+      this(repoId, projectId, repoName, application, version, null, null);
+    }
+  }
 
   /**
    * Ask for {@code (repoId, version)} to be deployed.

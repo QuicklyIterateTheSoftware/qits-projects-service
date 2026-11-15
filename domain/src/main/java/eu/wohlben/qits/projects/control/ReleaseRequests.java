@@ -1863,6 +1863,62 @@ public class ReleaseRequests {
     return get(requestId);
   }
 
+  /** The states a request's deploy hold may still be switched in (qits-2268): before it releases. */
+  static final Set<ReleaseRequest.State> DEPLOY_HOLD_SWITCHABLE =
+      Set.of(
+          ReleaseRequest.State.PENDING,
+          ReleaseRequest.State.READY,
+          ReleaseRequest.State.REJECTED,
+          ReleaseRequest.State.CONFLICTED);
+
+  /**
+   * Switch whether this request's deploy is <b>held for a person</b> (qits-2268): with it on, the
+   * release is tagged and published as ever, and the deployment request qits-deployments opens for
+   * it waits until somebody approves it there. The value rides out on {@code SCMRelease.deployHold}
+   * at release time, so it must be set before the request releases: PENDING, READY, REJECTED and
+   * CONFLICTED take it; every other state is a 409 saying so.
+   *
+   * <p><b>Nothing is re-folded, no gate is re-decided and nothing is announced</b>, on {@link
+   * #updateSourcePriority}'s reasoning: the fold has not moved, and the value is read off the row
+   * when the release happens. <b>Idempotent</b>: asking for the value the request already has
+   * changes nothing — who switched it and when stay as they were. A switch records {@code actor}
+   * and the instant in {@code deployHoldBy}/{@code deployHoldAt}, off as well as on, so the request
+   * always shows who decided last.
+   *
+   * @param actor the caller's principal, or null for an anonymous one
+   */
+  public ReleaseRequestDto setDeployHold(String requestId, boolean hold, String actor) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row =
+                  requests
+                      .findByIdOptional(requestId, LockModeType.PESSIMISTIC_WRITE)
+                      .orElseThrow(
+                          () -> new NotFoundException("Release request not found: " + requestId));
+              if (!DEPLOY_HOLD_SWITCHABLE.contains(row.state)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + row.qualifiedId
+                        + " is already "
+                        + row.state
+                        + ": a deploy hold must be set before the request releases.");
+              }
+              if (row.deployHold == hold) {
+                return;
+              }
+              LOG.infof(
+                  "Release request %s: deploy hold %s, by %s",
+                  row.qualifiedId, hold ? "on" : "off", actor == null ? "an operator" : actor);
+              row.deployHold = hold;
+              row.deployHoldBy = actor;
+              row.deployHoldAt = Instant.now();
+              row.updatedAt = row.deployHoldAt;
+            });
+    return get(requestId);
+  }
+
   /**
    * What the move door answers (qits-1665): the request the source left, as it stands after its
    * refold, and the request queued after it, which holds the source now.
@@ -3137,7 +3193,14 @@ public class ReleaseRequests {
         .get()
         .deployAgain(
             new DeploymentRedeploys.Redeploy(
-                row.repoId, row.projectId, row.repoName, null, released.tagName));
+                row.repoId,
+                row.projectId,
+                row.repoName,
+                null,
+                released.tagName,
+                row.qualifiedId,
+                // Held again when the release was (qits-2268): a rerun must not deploy unasked.
+                row.deployHold ? Boolean.TRUE : null));
     // Accepted: a failed deployment's branches are RELEASED again, so the redeploy's outcome is
     // news to a --until live wait (qits-1796). The ledger is a record beside the rerun.
     if (row.state == ReleaseRequest.State.RELEASED) {
@@ -7176,7 +7239,10 @@ public class ReleaseRequests {
                       mainOf(row.repoId),
                       // Read LIVE, here and not at the fold: a request can wait a whole pipeline on
                       // its gate, and an escalation made in that window has to reach the tag.
-                      effectivePriorityOf(named).name());
+                      effectivePriorityOf(named).name(),
+                      // Read at release time too: the hold can be switched until the request
+                      // releases (qits-2268).
+                      row.deployHold);
                 });
     if (ask == null) {
       return;
@@ -8536,7 +8602,7 @@ public class ReleaseRequests {
       return GateSubject.Deployment.NOTHING_YET;
     }
     DeploymentRequests.DeploymentRequestView newest = answered.get().get(0);
-    return GateSubject.Deployment.newest(newest.id(), newest.status());
+    return GateSubject.Deployment.newest(newest.id(), newest.status(), newest.held());
   }
 
   /**
@@ -8982,7 +9048,10 @@ public class ReleaseRequests {
         featureFreezeOf(row, named, featureFreeze),
         participants,
         requestItems,
-        List.copyOf(moves));
+        List.copyOf(moves),
+        row.deployHold,
+        row.deployHoldBy,
+        row.deployHoldAt);
   }
 
   /**

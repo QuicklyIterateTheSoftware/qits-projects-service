@@ -108,6 +108,14 @@ public class ProviderStates {
   public static final String A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA =
       "a release request with an automation checked by QA";
   /**
+   * The request awaiting approval, with its deploy held for a person (qits-2268): {@code
+   * deployHold} true, switched by the person at a fixed minute. What the deploy-hold door's release
+   * of the hold is recorded on, for the qits CLI's {@code release-request hold-deploy} and the
+   * projects frontend.
+   */
+  public static final String A_RELEASE_REQUEST_WHOSE_DEPLOY_IS_HELD =
+      "a release request whose deploy is held";
+  /**
    * Gate 3 (epic qits-897): contract-suite-app's request is held before QA while contract-service's
    * request, upstream of it, has a QA run going — what a person's upstream override lifts (qits-914).
    */
@@ -786,6 +794,10 @@ public class ProviderStates {
     states.put(
         A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA,
         () -> releaseRequestInDetail(A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA));
+    // Not a detail state either: recorded for the deploy hold alone (qits-2268).
+    states.put(
+        A_RELEASE_REQUEST_WHOSE_DEPLOY_IS_HELD,
+        () -> releaseRequestInDetail(A_RELEASE_REQUEST_WHOSE_DEPLOY_IS_HELD));
     states.put(
         A_RELEASE_REQUEST_HELD_BY_AN_UPSTREAM_RELEASE, this::aReleaseRequestHeldByAnUpstreamRelease);
     states.put(
@@ -3163,6 +3175,23 @@ public class ProviderStates {
             releaseRow(
                 project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
                 row -> row.detail = "Waiting for a person to approve " + shortSha(fold));
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationsFresh(id, fold);
+      }
+      case A_RELEASE_REQUEST_WHOSE_DEPLOY_IS_HELD -> {
+        repoId = estate;
+        fold = estateFold;
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
+                row -> {
+                  row.detail = "Waiting for a person to approve " + shortSha(fold);
+                  row.deployHold = true;
+                  row.deployHoldBy = PERSON;
+                  row.deployHoldAt = SEEDED_AT.plusSeconds(60L * 13);
+                });
         estateSources(id);
         verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
         phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);

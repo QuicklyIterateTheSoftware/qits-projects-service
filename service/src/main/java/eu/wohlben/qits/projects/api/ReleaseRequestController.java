@@ -466,6 +466,64 @@ public class ReleaseRequestController {
   }
 
   /**
+   * @param hold whether the request's deploy waits for a person at qits-deployments: {@code true}
+   *     holds it, {@code false} releases the hold. Required — an absent one is a 400, never read
+   *     as either.
+   */
+  public static record SetReleaseRequestDeployHold(Boolean hold) {
+    @Schema(name = "SetReleaseRequestDeployHoldResponse")
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  /**
+   * <b>Hold this request's deploy for a person, or stop holding it</b> (qits-2268). With the hold
+   * on, the release is tagged and published as ever, and the deployment request qits-deployments
+   * opens for it waits until somebody approves it there ({@code qits deployments requests approve
+   * --request <id>}); the value rides out on {@code SCMRelease.deployHold} at release time, which is
+   * why it must be set before the request releases.
+   *
+   * <p><b>Open to every person and every agent, and NOT bound to the caller's project</b> (owner
+   * ruling): like {@link #rerunPhase} it decides nothing about the release — it only adds a person's
+   * yes in front of its deploy — so there is nothing for a binding to protect. {@code qits:desk} is
+   * named because the desk is one of those callers; {@code qits:system} is not, since a machine
+   * holding a deploy for a person is nobody's ask. The switch is attributed to the caller's
+   * principal, as every write here is.
+   */
+  @jakarta.ws.rs.PUT
+  @Path("/{requestId}/deploy-hold")
+  @jakarta.annotation.security.RolesAllowed({
+    "qits:admin",
+    "qits:admin-agent",
+    "qits:desk-admin",
+    "qits:desk",
+    "qits:agent"
+  })
+  @Operation(
+      operationId = "setReleaseRequestDeployHold",
+      summary = "Hold this request's deploy for a person's approval, or release the hold",
+      description =
+          "With hold true, the release is tagged and published as ever and its deployment request"
+              + " at qits-deployments waits until somebody approves it there (qits deployments"
+              + " requests approve --request <id>); hold false releases the hold. The value is read"
+              + " when the request releases, so it may be switched while the request is PENDING,"
+              + " READY, REJECTED or CONFLICTED, and any other state is a 409. Asking for the value"
+              + " the request already has changes nothing. Nothing is re-folded and no state"
+              + " moves. deployHoldBy and deployHoldAt on the answer name who last switched it and"
+              + " when, off as well as on. A missing hold is a 400, an unknown request a 404. Every"
+              + " person and every agent may switch it, in any project.")
+  public SetReleaseRequestDeployHold.Response setDeployHold(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      SetReleaseRequestDeployHold body) {
+    if (body == null || body.hold() == null) {
+      throw new DomainException(400, "hold is required: true holds the deploy, false releases it.");
+    }
+    requestId = releaseRequests.resolveId(repoId, requestId);
+    return new SetReleaseRequestDeployHold.Response(
+        releaseRequests.setDeployHold(requestId, body.hold(), caller()));
+  }
+
+  /**
    * @param mergedSha the fold being approved — <b>required</b>, and the whole reason this body
    *     exists rather than the route being a bare POST. A person approves content: they read what
    *     the fold brought in and said yes to <em>that</em>. A push landing between the reading and

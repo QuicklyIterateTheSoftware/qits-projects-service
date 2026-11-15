@@ -374,12 +374,13 @@ public class EventWireReflectionTest {
             "releaseRequestId",
             "occurredAt",
             "priority",
-            "releaseRequestQualifiedId"),
+            "releaseRequestQualifiedId",
+            "deployHold"),
         java.util.Arrays.stream(SCMRelease.class.getRecordComponents())
             .map(java.lang.reflect.RecordComponent::getName)
             .toList(),
         "the five qits-workspaces' record carried, in their order, plus commitSha,"
-            + " releaseRequestId, priority and releaseRequestQualifiedId — eventId and occurredAt"
+            + " releaseRequestId, priority, releaseRequestQualifiedId and deployHold — eventId and occurredAt"
             + " are components the canonical mix-in keeps out of the payload, leaving the nine a"
             + " consumer selects on");
   }
@@ -634,6 +635,49 @@ public class EventWireReflectionTest {
                         null)))
             .has("releaseRequestQualifiedId"),
         "NON_NULL: the older shape has no key");
+  }
+
+  /**
+   * qits-2268's field, pinned the same way: {@code deployHold} is on the wire as {@code true} when
+   * the release's deploy is held, and absent otherwise — the announcer never sends {@code false}, so
+   * an unheld release keeps the exact payload every release before the field had.
+   */
+  @Test
+  public void aHeldReleaseCarriesDeployHoldAndAnUnheldOneHasNoKey() throws Exception {
+    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    java.util.function.Function<Boolean, com.fasterxml.jackson.databind.JsonNode> payload =
+        hold -> {
+          try {
+            return mapper.readTree(
+                eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                    new SCMRelease(
+                        "p-1",
+                        "r-1",
+                        "qits-projects-service",
+                        "release/qits-projects-service-rr-12",
+                        "2026.1115.60215",
+                        "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                        "9f2c1a7e",
+                        java.time.Instant.parse("2026-11-15T06:02:15Z"),
+                        "HIGH",
+                        "qits-projects-service-rr-12",
+                        hold)));
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+
+    var held = payload.apply(Boolean.TRUE);
+    var unheld = payload.apply(null);
+
+    assertTrue(held.get("deployHold").asBoolean(), "a held deploy is on the wire");
+    assertTrue(!unheld.has("deployHold"), "NON_NULL: an unheld release has no key");
+    for (String field :
+        java.util.List.of(
+            "branch", "commitSha", "priority", "projectId", "releaseRequestId",
+            "releaseRequestQualifiedId", "repository", "repositoryName", "version")) {
+      assertEquals(held.get(field), unheld.get(field), field + " moved with deployHold");
+    }
   }
 
   /**

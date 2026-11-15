@@ -217,6 +217,9 @@
         "workItem": null
       }
     ],
-    "sourceMoves": []
+    "sourceMoves": [],
+    "deployHold": false,
+    "deployHoldBy": null,
+    "deployHoldAt": null
   }
 }
