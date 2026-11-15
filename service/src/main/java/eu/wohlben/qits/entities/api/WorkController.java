@@ -648,7 +648,8 @@ public class WorkController {
               + " whose epic is still REPORTED, or a quality gate refusing a forward move —"
               + " ACCEPTANCE_CRITERIA, PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller"
               + " this service did not verify as a person, or QUALITY_CHECKS for a ticket leaving"
-              + " IMPLEMENTED — or a ticket's DONE, which no caller of any role may ask for: the"
+              + " IMPLEMENTED, or CHILDREN_VERIFIED for an epic or a feature entering VERIFIED"
+              + " while a feature or task under it is open — or a ticket's DONE, which no caller of any role may ask for: the"
               + " platform sets it when the wrapper release request carrying the ticket's branch is"
               + " finalized")
   public TransitionedEntity setStatus(

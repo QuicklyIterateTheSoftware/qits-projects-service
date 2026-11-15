@@ -547,6 +547,9 @@ public class ProviderStates {
 
   @Inject WorkEntityService work;
 
+  /** The rows themselves, for a state no move may reach any more (a pre-gate row). */
+  @Inject eu.wohlben.qits.entities.persistence.WorkEntityRepository workEntityRows;
+
   /** The ideas the idea state seeds (qits-1387). */
   @Inject eu.wohlben.qits.entities.control.IdeaService ideas;
 
@@ -1983,14 +1986,21 @@ public class ProviderStates {
     return epic;
   }
 
-  /** A VERIFIED epic with one feature and one task, ready to be moved to DONE. */
+  /**
+   * A VERIFIED epic with one feature and one task, ready to be moved to DONE. The task and the
+   * feature are verified before the epic is (qits-2267: {@code CHILDREN_VERIFIED}).
+   */
   private Setup aVerifiedEpic() {
     String token = token();
     Project project = project(token, A_VERIFIED_EPIC);
     String repositoryId = repository(project, "contract-service");
     String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded."));
-    node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded."));
+    String task =
+        node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded."));
+    walk(Archetype.EPIC, epic, EntityStatus.IMPLEMENTED);
+    walk(Archetype.TASK, task, EntityStatus.VERIFIED);
+    walk(Archetype.FEATURE, feature, EntityStatus.VERIFIED);
     walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
     return new Setup(
         params("epicId", epic, "projectId", project.id, "qualifiedId", qualified(project, epic)),
@@ -2396,6 +2406,12 @@ public class ProviderStates {
    * epic is READY_FOR_DEV, then the epic moved to VERIFIED, or on to DONE for {@link
    * #A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED}. The children are created while the epic is still
    * REPORTED, as the domain demands.
+   *
+   * <p>Since qits-2267 ({@code CHILDREN_VERIFIED}) no move puts an epic at VERIFIED over pieces
+   * still IMPLEMENTED. The DONE epic therefore verifies its tasks and its feature before it is
+   * verified and accepted (the acceptance closes them, so the answer is the same). The VERIFIED
+   * epic is a row from before that gate, which the board still has to draw: it is walked to
+   * VERIFYING and its status written straight onto the row, past the move.
    */
   private Setup anEpicWithEveryTaskImplemented(String state) {
     String token = token();
@@ -2419,7 +2435,17 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     tasks.forEach(this::implemented);
     implemented(feature);
-    walk(Archetype.EPIC, epic, done ? EntityStatus.DONE : EntityStatus.VERIFIED);
+    walk(Archetype.EPIC, epic, EntityStatus.VERIFYING);
+    if (done) {
+      for (String task : tasks) {
+        walk(Archetype.TASK, task, EntityStatus.VERIFIED);
+      }
+      walk(Archetype.FEATURE, feature, EntityStatus.VERIFIED);
+      walk(Archetype.EPIC, epic, EntityStatus.DONE);
+    } else {
+      QuarkusTransaction.requiringNew()
+          .run(() -> workEntityRows.findById(epic).status = EntityStatus.VERIFIED.name());
+    }
     return new Setup(params("projectId", project.id), List.of(token));
   }
 

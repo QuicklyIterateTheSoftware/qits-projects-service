@@ -696,7 +696,8 @@ public class PhasePromptsTest {
   /**
    * The epic verify turn: the live platform first, the code second, each acceptance criterion
    * checked, and a failure fixed on the same branch and verified again rather than blocked
-   * (qits-1154). Each confirmed feature moves to VERIFIED before the epic does (qits-2097).
+   * (qits-1154). Each confirmed task moves to VERIFIED, then its feature, then the epic (qits-2097),
+   * whose move is refused while a piece under it is open (qits-2267).
    */
   @Test
   public void theEpicVerifyTurnConfirmsLiveAndFixesWhatItFinds() {
@@ -717,10 +718,17 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("Call work_block only for what you cannot resolve yourself"), turn);
     assertTrue(turn.contains("work_comment_create"), turn);
     assertFalse(turn.contains("REFINED"), "no route back to REFINED: " + turn);
-    assertTrue(turn.contains("Move each feature to VERIFIED"), "qits-2097: " + turn);
+    assertTrue(turn.contains("Move each task to VERIFIED"), "qits-2267: " + turn);
     assertTrue(
-        turn.indexOf("Move each feature to VERIFIED") < turn.indexOf("move the epic to VERIFIED"),
+        turn.indexOf("Move each task to VERIFIED") < turn.indexOf("then each feature once its tasks are"),
+        "qits-2267: tasks move to VERIFIED before their feature: " + turn);
+    assertTrue(
+        turn.indexOf("then each feature once its tasks are") < turn.indexOf("then the epic to VERIFIED"),
         "qits-2097: features move to VERIFIED before the epic does: " + turn);
+    assertTrue(
+        turn.contains(
+            "The epic's move is refused while any piece under it is open"),
+        "qits-2267: " + turn);
   }
 
   /**

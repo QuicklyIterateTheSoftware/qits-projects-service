@@ -149,7 +149,10 @@
           },
           {
             "to": "VERIFIED",
-            "kind": "SKIP"
+            "kind": "SKIP",
+            "gates": [
+              "CHILDREN_VERIFIED"
+            ]
           },
           {
             "to": "IMPLEMENTING",
@@ -170,7 +173,10 @@
         "VERIFYING": [
           {
             "to": "VERIFIED",
-            "kind": "FORWARD"
+            "kind": "FORWARD",
+            "gates": [
+              "CHILDREN_VERIFIED"
+            ]
           },
           {
             "to": "IMPLEMENTED",
@@ -832,7 +838,10 @@
           },
           {
             "to": "VERIFIED",
-            "kind": "SKIP"
+            "kind": "SKIP",
+            "gates": [
+              "CHILDREN_VERIFIED"
+            ]
           },
           {
             "to": "IMPLEMENTING",
@@ -853,7 +862,10 @@
         "VERIFYING": [
           {
             "to": "VERIFIED",
-            "kind": "FORWARD"
+            "kind": "FORWARD",
+            "gates": [
+              "CHILDREN_VERIFIED"
+            ]
           },
           {
             "to": "IMPLEMENTED",
