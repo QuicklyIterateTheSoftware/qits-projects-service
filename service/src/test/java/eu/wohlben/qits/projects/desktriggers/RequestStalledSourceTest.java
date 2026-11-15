@@ -108,6 +108,41 @@ class RequestStalledSourceTest {
         lines.get(0).label);
   }
 
+  /**
+   * A published release whose deploy is held for a person (qits-2268) waits on purpose: no stall.
+   * A held request whose publish is still PENDING is stuck on the publish, and still stalls.
+   */
+  @Test
+  void aReleaseWaitingOnItsHeldDeployIsNoStall() {
+    String projectId = project(true);
+    String held = request(projectId, ReleaseRequest.State.RELEASED, SHA_A, hoursAgo(5));
+    tag(held, hoursAgo(2));
+    holdDeploy(held);
+    String publishing = request(projectId, ReleaseRequest.State.RELEASED, SHA_B, hoursAgo(5));
+    tag(publishing, hoursAgo(2));
+    holdDeploy(publishing);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleasedTagPendingMerge.<ReleasedTagPendingMerge>find(
+                        "releaseRequestId", publishing)
+                    .firstResult()
+                    .publishState =
+                    ReleasedTagPendingMerge.PublishState.PENDING);
+
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(1, lines.size(), "only the request stuck on its publish");
+    assertEquals(publishing, lines.get(0).itemId);
+    assertTrue(lines.get(0).label.endsWith("publish run PENDING"), lines.get(0).label);
+  }
+
+  private static void holdDeploy(String id) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.<ReleaseRequest>findById(id).deployHold = true);
+  }
+
   @Test
   void aFreshRequestOneWaitingOnApprovalAndAProjectWithDeliveryOffFireNothing() {
     String projectId = project(true);

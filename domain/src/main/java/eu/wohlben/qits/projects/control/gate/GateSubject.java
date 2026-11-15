@@ -110,8 +110,10 @@ public record GateSubject(
    * @param answered whether the far side answered; false with {@code asked} is "could not ask"
    * @param requestId the newest deployment request's id, or null where there is none yet
    * @param status that request's deployment status as qits-deployments words it, or null
+   * @param held whether qits-deployments holds that request for a person's approval (qits-2268)
    */
-  public record Deployment(boolean asked, boolean answered, String requestId, String status) {
+  public record Deployment(
+      boolean asked, boolean answered, String requestId, String status, boolean held) {
 
     public static final Deployment NOT_ASKED = new Deployment(false, false, null, null);
 
@@ -119,8 +121,18 @@ public record GateSubject(
 
     public static final Deployment NOTHING_YET = new Deployment(true, true, null, null);
 
+    /** The read before qits-2268: not held. */
+    public Deployment(boolean asked, boolean answered, String requestId, String status) {
+      this(asked, answered, requestId, status, false);
+    }
+
     public static Deployment newest(String requestId, String status) {
       return new Deployment(true, true, requestId, status);
+    }
+
+    /** The newest request, held for a person or not (qits-2268). */
+    public static Deployment newest(String requestId, String status, boolean held) {
+      return new Deployment(true, true, requestId, status, held);
     }
   }
 

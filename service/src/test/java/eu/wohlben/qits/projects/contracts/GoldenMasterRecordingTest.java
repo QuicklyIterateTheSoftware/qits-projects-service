@@ -761,6 +761,23 @@ class GoldenMasterRecordingTest {
             "POST",
             request + "/sources/priority",
             "{\"branch\":\"docs/approval\",\"priority\":\"BLOCKING\"}"));
+    // The deploy hold (qits-2268): switched on where nobody held it, and released where it is held.
+    all.add(
+        write(
+            awaiting,
+            "setReleaseRequestDeployHold",
+            "PUT",
+            request + "/deploy-hold",
+            "{\"hold\":true}"));
+    String deployHeld = ProviderStates.A_RELEASE_REQUEST_WHOSE_DEPLOY_IS_HELD;
+    all.add(read(deployHeld, "getReleaseRequest", request));
+    all.add(
+        write(
+            deployHeld,
+            "setReleaseRequestDeployHold",
+            "PUT",
+            request + "/deploy-hold",
+            "{\"hold\":false}"));
     all.add(
         new Interaction(
             ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS,

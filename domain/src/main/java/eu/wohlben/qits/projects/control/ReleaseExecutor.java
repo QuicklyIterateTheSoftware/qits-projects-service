@@ -59,6 +59,9 @@ public interface ReleaseExecutor {
    *     so an escalation made while the request waited on its gate reaches the tag's announcement.
    *     Nullable and inert: an executor rides it onto {@code SCMRelease} and decides nothing with
    *     it.
+   * @param deployHold whether the request's deploy is held for a person (qits-2268), read off the
+   *     row at release time like {@code priority}. An executor rides it onto {@code
+   *     SCMRelease.deployHold}; qits-deployments is what holds.
    */
   record Release(
       String requestId,
@@ -71,7 +74,36 @@ public interface ReleaseExecutor {
       String summary,
       List<String> namedSources,
       String defaultBranch,
-      String priority) {
+      String priority,
+      boolean deployHold) {
+
+    /** The shape before {@code deployHold}: not held. */
+    public Release(
+        String requestId,
+        String qualifiedId,
+        String repoId,
+        String projectId,
+        String repoName,
+        String backingBranch,
+        String mergedSha,
+        String summary,
+        List<String> namedSources,
+        String defaultBranch,
+        String priority) {
+      this(
+          requestId,
+          qualifiedId,
+          repoId,
+          projectId,
+          repoName,
+          backingBranch,
+          mergedSha,
+          summary,
+          namedSources,
+          defaultBranch,
+          priority,
+          false);
+    }
 
     /** This ask with {@code text} for its {@link #summary}. */
     public Release describedAs(String text) {
@@ -86,7 +118,8 @@ public interface ReleaseExecutor {
           text,
           namedSources,
           defaultBranch,
-          priority);
+          priority,
+          deployHold);
     }
 
     /**
@@ -108,7 +141,8 @@ public interface ReleaseExecutor {
           summary,
           List.copyOf(named),
           defaultBranch,
-          priority);
+          priority,
+          deployHold);
     }
   }
 

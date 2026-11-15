@@ -194,6 +194,13 @@ import java.util.List;
  * oldest first: a source that alone held its request back, moved to the request queued after it
  * through {@code POST …/sources/move}, with who moved it and why. See {@link
  * ReleaseRequestSourceMoveDto}. Empty where nothing moved. Never null.
+ *
+ * <p><b>{@code deployHold} is whether this request's deploy waits for a person</b> (qits-2268):
+ * switched through {@code PUT …/deploy-hold} before the request releases, it makes the deployment
+ * request qits-deployments opens for the release wait until somebody approves it there. Every
+ * request starts false. {@code deployHoldBy} and {@code deployHoldAt} name who last switched it and
+ * when — on or off, so a request switched off still shows who did — and are null on a request
+ * nobody has switched.
  */
 // The gates and approval requirements a list or single read shows are drawn from the stored gate
 // set (qits-1201) through ReleaseGates.forDisplay, which unwraps a Map<String, Stored> the
@@ -239,4 +246,7 @@ public record ReleaseRequestDto(
     FeatureFreezeDto featureFreeze,
     List<String> participants,
     List<ReleaseRequestItemDto> items,
-    List<ReleaseRequestSourceMoveDto> sourceMoves) {}
+    List<ReleaseRequestSourceMoveDto> sourceMoves,
+    boolean deployHold,
+    String deployHoldBy,
+    Instant deployHoldAt) {}

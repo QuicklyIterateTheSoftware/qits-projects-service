@@ -47,7 +47,7 @@ import java.util.Optional;
 public interface DeploymentRequests {
 
   /**
-   * One deployment request, in the three fields a phase needs and no more.
+   * One deployment request, in the three fields a phase needs plus the four its hold is read from.
    *
    * @param id the deployment request's own id — what the phase reports as its {@code runId}, because
    *     a caller does exactly one thing with that field and it is address the phase's own page
@@ -59,8 +59,49 @@ public interface DeploymentRequests {
    *     deliberately no {@code finishedAt} for a deployment phase, because qits-deployments carries
    *     no instant meaning "this deployment settled" — {@code gateSettledAt} is when its own quality
    *     gate answered, which is a different fact and must not be dressed as one.
+   * @param qualityGate the far side's {@code qualityGate} ({@code MET}, {@code UNMET}), verbatim
+   *     and nullable; read for {@link #held} alone (qits-2268)
+   * @param gateSettledAt when that gate settled, or null while it has not
+   * @param gateDetail the far side's sentence on its gate, or null
+   * @param deployHold the far side's {@code deployHold}, or null where it does not answer one — an
+   *     older qits-deployments, which {@link #held} reads off the detail instead
    */
-  record DeploymentRequestView(String id, String status, Instant createdAt) {}
+  record DeploymentRequestView(
+      String id,
+      String status,
+      Instant createdAt,
+      String qualityGate,
+      Instant gateSettledAt,
+      String gateDetail,
+      Boolean deployHold) {
+
+    /** The far side's word for a quality gate that has not passed. */
+    public static final String UNMET = "UNMET";
+
+    /** How qits-deployments' detail begins on a request it holds for a person (qits-2268). */
+    public static final String HELD_DETAIL_PREFIX = "held for manual approval";
+
+    /** The view in the three fields every read before qits-2268 carried. */
+    public DeploymentRequestView(String id, String status, Instant createdAt) {
+      this(id, status, createdAt, null, null, null, null);
+    }
+
+    /**
+     * Whether qits-deployments is <b>holding this request for a person</b> (qits-2268): its gate
+     * UNMET and unsettled, and either its own {@code deployHold} flag or — from a qits-deployments
+     * that does not answer the flag — a detail saying so. Nothing is deployed while it holds; {@code
+     * qits deployments requests approve --request <id>} releases it.
+     */
+    public boolean held() {
+      if (!UNMET.equals(qualityGate) || gateSettledAt != null) {
+        return false;
+      }
+      if (deployHold != null) {
+        return deployHold;
+      }
+      return gateDetail != null && gateDetail.startsWith(HELD_DETAIL_PREFIX);
+    }
+  }
 
   /**
    * Every deployment request for this released version, <b>newest first</b>.

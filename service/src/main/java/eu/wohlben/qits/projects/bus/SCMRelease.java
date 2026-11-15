@@ -85,12 +85,19 @@ import java.util.UUID;
  * id, {@code <repositoryName>-rr-<n>}, for anything a person reads. Additive and nullable on the same
  * terms; {@code releaseRequestId} stays the key.
  *
+ * <p><b>{@code deployHold} is the tenth</b> (qits-2268): {@code TRUE} when the release request's
+ * deploy is held for a person — qits-ci forwards it on {@code SoftwareRelease}, and qits-deployments
+ * holds the deployment request it opens until somebody approves it there. It is {@code TRUE} or
+ * <b>null, never false</b>: an unheld release carries no key at all under {@code NON_NULL}, which is
+ * exactly the shape of every release before the field, so "not held" and "said nothing" are one
+ * wire form and no consumer has to tell them apart.
+ *
  * <p><b>{@code eventId} and {@code occurredAt} are components and stay out of the payload.</b> The
  * library's canonical serializer excludes everything {@link QitsEvent} declares, and these two
  * accessors are those declarations — so identity and time travel in the envelope and the payload is
  * exactly the fields {@code branch}, {@code commitSha}, {@code priority}, {@code projectId}, {@code
  * releaseRequestId}, {@code releaseRequestQualifiedId}, {@code repository}, {@code repositoryName},
- * {@code version}. Reading a payload
+ * {@code version} and, when held, {@code deployHold}. Reading a payload
  * back therefore yields a fresh id and a null time, which is correct: a received event's identity
  * and clock are the envelope's.
  *
@@ -120,6 +127,7 @@ import java.util.UUID;
  * @param priority what this release was worth to whoever asked for it — the release request's
  *     effective priority at release time, or null. Inert data: it is recorded downstream and orders
  *     nothing yet.
+ * @param deployHold {@code TRUE} when the deploy is held for a person, null otherwise (qits-2268)
  */
 public record SCMRelease(
     UUID eventId,
@@ -132,7 +140,8 @@ public record SCMRelease(
     String releaseRequestId,
     Instant occurredAt,
     String priority,
-    String releaseRequestQualifiedId)
+    String releaseRequestQualifiedId,
+    Boolean deployHold)
     implements QitsEvent {
 
   public SCMRelease {
@@ -152,7 +161,8 @@ public record SCMRelease(
       String releaseRequestId,
       Instant occurredAt,
       String priority,
-      String releaseRequestQualifiedId) {
+      String releaseRequestQualifiedId,
+      Boolean deployHold) {
     this(
         null,
         projectId,
@@ -164,7 +174,62 @@ public record SCMRelease(
         releaseRequestId,
         occurredAt,
         priority,
-        releaseRequestQualifiedId);
+        releaseRequestQualifiedId,
+        deployHold);
+  }
+
+  /** The shape before {@code deployHold}, with its identity: an absent key. */
+  public SCMRelease(
+      UUID eventId,
+      String projectId,
+      String repository,
+      String repositoryName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      Instant occurredAt,
+      String priority,
+      String releaseRequestQualifiedId) {
+    this(
+        eventId,
+        projectId,
+        repository,
+        repositoryName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        occurredAt,
+        priority,
+        releaseRequestQualifiedId,
+        null);
+  }
+
+  /** The shape before {@code deployHold}: an absent key. */
+  public SCMRelease(
+      String projectId,
+      String repository,
+      String repositoryName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      Instant occurredAt,
+      String priority,
+      String releaseRequestQualifiedId) {
+    this(
+        projectId,
+        repository,
+        repositoryName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        occurredAt,
+        priority,
+        releaseRequestQualifiedId,
+        (Boolean) null);
   }
 
   /** The shape before {@code releaseRequestQualifiedId}: an absent key. */
@@ -188,6 +253,6 @@ public record SCMRelease(
         releaseRequestId,
         occurredAt,
         priority,
-        null);
+        (String) null);
   }
 }

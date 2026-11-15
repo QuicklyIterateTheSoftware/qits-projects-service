@@ -835,6 +835,9 @@ write** (user ruling, 2026-09-12):
   buildkit cannot resolve its name), and whoever is watching a request should be able to re-ask the
   question. Approve and decline are the sign-off: they admit an agent only where a requirement of the
   fold admits one (epic qits-1038), never `qits:system`.
+- **The deploy hold is unbound too** (qits-2268, `setDeployHold`): it decides nothing about the
+  release, only puts a person's yes in front of its deploy, so any agent, the desk and any person
+  switch it on any request (see "Holding a request's deploy").
 - **The entity write doors take it, where an agent's work needs the write.** A write route in
   `entities/api` admits `qits:agent` for the writes a dispatched agent makes. The central `qits`
   MCP server reaches them with the agent's own bearer, so the door is the only check. Bound by the
@@ -1354,6 +1357,34 @@ every other source with it, or holding them all and the queue behind them.
 - **Wire**: `ReleaseRequestDto.sourceMoves` (additive, never null) lists the moves into or out of
   the request, oldest first — `{branch, fromQualifiedId, toQualifiedId, movedBy, reason, movedAt}`
   — read with one query per page plus one for the qualified ids.
+
+## Holding a request's deploy (qits-2268)
+
+`PUT /projects/api/repositories/{repoId}/release-requests/{requestId}/deploy-hold`
+(`setReleaseRequestDeployHold`), body `{"hold": true|false}`, answers `{request}`
+(`ReleaseRequestDto`). With the hold on, the release tags and publishes as ever and the deployment
+request qits-deployments opens for it waits until somebody approves it there (`qits deployments
+requests approve --request <id>`).
+
+- **Columns** (V78): `release_request.deploy_hold` (false), `deploy_hold_by`, `deploy_hold_at` —
+  who last switched it and when, **off as well as on**. On the DTO: `deployHold`, `deployHoldBy`,
+  `deployHoldAt`. Only `mint` creates a row, so a successor, a queued request and a moved source's
+  next request start off; a refold is the same row and keeps it.
+- **Door** (`ReleaseRequests.setDeployHold`): PENDING, READY, REJECTED, CONFLICTED, else 409
+  ("… a deploy hold must be set before the request releases."); a missing `hold` 400; idempotent
+  (the same value changes nothing, by/at included); no refold, no state move, no event. Roles
+  `qits:admin`, `qits:admin-agent`, `qits:desk-admin`, `qits:desk`, `qits:agent`, **unbound**
+  (owner ruling: every agent and every person); `qits:system` 403. Actor: the caller's principal.
+- **Wire**: `SCMRelease.deployHold` (the tenth payload field) is `true` when the row is held at
+  release time and absent otherwise; qits-ci forwards it on `SoftwareRelease`. A DEPLOY rerun
+  re-posts `releaseRequestQualifiedId` always and `deployHold: true` only when held.
+- **Reads**: `DeploymentRollbackGate` reads a held newest deployment request (`deployHold` true, or
+  absent with `gateDetail` starting `held for manual approval`, while `qualityGate` is UNMET and
+  `gateSettledAt` null — `DeploymentRequestView.held`) as PENDING, `Deploy of <version> held for
+  approval: qits deployments requests approve --request <id>`, until it goes live.
+  `RequestStalledSource` raises no RELEASED stall for a held request published and not live.
+- **Contracts**: state `a release request whose deploy is held` records `getReleaseRequest` and the
+  PUT with `{"hold":false}`; `a release request awaiting approval` records it with `{"hold":true}`.
 
 ## Release request gates
 

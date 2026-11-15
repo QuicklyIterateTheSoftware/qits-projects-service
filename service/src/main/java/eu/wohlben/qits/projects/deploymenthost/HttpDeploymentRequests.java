@@ -135,9 +135,18 @@ public class HttpDeploymentRequests implements DeploymentRequests {
       }
       List<DeploymentRequestView> views = new ArrayList<>();
       for (JsonNode node : requests) {
+        // Every field but id is read leniently: absent, null or a wrong type is null (qits-2268 —
+        // deployHold is new over there, and an older qits-deployments answers none).
+        JsonNode hold = node.path("deployHold");
         views.add(
             new DeploymentRequestView(
-                text(node, "id"), text(node, "deploymentStatus"), instant(node, "createdAt")));
+                text(node, "id"),
+                text(node, "deploymentStatus"),
+                instant(node, "createdAt"),
+                text(node, "qualityGate"),
+                instant(node, "gateSettledAt"),
+                text(node, "gateDetail"),
+                hold.isBoolean() ? hold.asBoolean() : null));
       }
       // The far side orders by its own sequence, newest first, and that order is the answer: the
       // phase is the first entry. Nothing is re-sorted here — the order a row was written in is a

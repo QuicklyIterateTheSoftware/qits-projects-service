@@ -2139,6 +2139,14 @@
           "cardinality" : "collection"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -3569,6 +3577,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.FeatureFreezeDto",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -4100,7 +4116,7 @@
           "type" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseGateDto",
-          "site" : "ReleaseRequestDto.<init>(String, String, String, String, String, List, String, String, String, boolean, String, String, boolean, String, String, Instant, String, List, List, List, MergeConflictDto, String, String, String, String, Instant, boolean, Instant, Instant, ReleasePipelineDto, List, ReleasePreRunDto, String, String, String, String, FeatureFreezeDto, List, List, List)"
+          "site" : "ReleaseRequestDto.<init>(String, String, String, String, String, List, String, String, String, boolean, String, String, boolean, String, String, Instant, String, List, List, List, MergeConflictDto, String, String, String, String, Instant, boolean, Instant, Instant, ReleasePipelineDto, List, ReleasePreRunDto, String, String, String, String, FeatureFreezeDto, List, List, List, boolean, String, Instant)"
         },
         {
           "type" : "eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto",
@@ -4221,6 +4237,14 @@
           "cardinality" : "collection"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.ReleaseAutomationDto",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -4331,6 +4355,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -4811,6 +4841,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -4923,6 +4961,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -5221,6 +5265,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -5337,6 +5389,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -5579,6 +5637,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -5813,6 +5879,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -5919,6 +5993,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -6239,6 +6319,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -6447,6 +6535,14 @@
           "cardinality" : "collection"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.ReleasePreRunDto",
+          "kind" : "returns",
+          "cardinality" : "collection"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -6545,6 +6641,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -6747,6 +6849,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -6853,6 +6963,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -7153,6 +7269,14 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
           "kind" : "returns",
           "cardinality" : "single"
         },
@@ -7921,6 +8045,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.dto.ApprovalRequirementDto",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -8121,6 +8253,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -8517,6 +8655,14 @@
           "cardinality" : "single"
         },
         {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
           "operationId" : "setReleaseSourcePriority",
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/sources/priority",
@@ -8623,6 +8769,12 @@
           "kind" : "via",
           "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
           "site" : "ReleaseRequestController.rerunPhase(String, String, String)"
+        },
+        {
+          "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
+          "kind" : "via",
+          "via" : "eu.wohlben.qits.projects.dto.ReleaseRequestDto",
+          "site" : "ReleaseRequestController.setDeployHold(String, String, SetReleaseRequestDeployHold)"
         },
         {
           "type" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseSourcePriority$Response",
@@ -8821,6 +8973,14 @@
           "method" : "POST",
           "path" : "/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun",
           "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$RerunReleasePipelinePhase$Response",
+          "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "setReleaseRequestDeployHold",
+          "method" : "PUT",
+          "path" : "/repositories/{repoId}/release-requests/{requestId}/deploy-hold",
+          "dto" : "eu.wohlben.qits.projects.api.ReleaseRequestController$SetReleaseRequestDeployHold$Response",
           "kind" : "returns",
           "cardinality" : "single"
         },

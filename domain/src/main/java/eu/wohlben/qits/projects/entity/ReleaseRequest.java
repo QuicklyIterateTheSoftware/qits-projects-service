@@ -461,6 +461,28 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   @Column(name = "gate_ticket_closed_at")
   public Instant gateTicketClosedAt;
 
+  /**
+   * Whether this request's deploy is <b>held for a person</b> (qits-2268): the release tags and
+   * publishes as ever, and the deployment request qits-deployments makes for it waits until
+   * somebody approves it there. Set through {@code PUT …/deploy-hold} while the request has not
+   * released, read at release time onto {@code SCMRelease.deployHold}. Every row starts false —
+   * a successor, a queued request and a moved source's next request are minted fresh and inherit
+   * nothing — and a refold keeps it, because it belongs to the request rather than to a fold.
+   */
+  @Column(name = "deploy_hold", nullable = false)
+  public boolean deployHold;
+
+  /**
+   * Who last switched {@link #deployHold}, on <b>or off</b> — so the request always shows who
+   * decided last. Null on a request nobody has switched.
+   */
+  @Column(name = "deploy_hold_by")
+  public String deployHoldBy;
+
+  /** When {@link #deployHoldBy} switched it. Null with it. */
+  @Column(name = "deploy_hold_at")
+  public Instant deployHoldAt;
+
   @Column(name = "created_at", nullable = false)
   public Instant createdAt;
 

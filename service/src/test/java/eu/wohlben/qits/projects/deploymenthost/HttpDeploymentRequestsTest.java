@@ -197,4 +197,38 @@ class HttpDeploymentRequestsTest {
   void nobodyListeningIsCouldNotAskAndNeverAThrow() {
     assertEquals(Optional.empty(), against("http://127.0.0.1:1").forRelease("repo-1", "v"));
   }
+
+  /**
+   * A request qits-deployments holds for a person (qits-2268) reads held, from the flag where the
+   * far side answers it and from the detail where an older one does not; the default listing
+   * above, carrying neither, is not held.
+   */
+  @Test
+  void aHeldRequestIsReadLeniently() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"deploymentRequests\":[{\"id\":\"dr-9\",\"deploymentStatus\":null,"
+            + "\"createdAt\":\"2026-09-16T11:00:00Z\",\"qualityGate\":\"UNMET\","
+            + "\"gateSettledAt\":null,\"gateDetail\":\"held for manual approval on x-rr-1\","
+            + "\"deployHold\":true,\"releaseRequestQualifiedId\":\"x-rr-1\"},"
+            + "{\"id\":\"dr-8\",\"qualityGate\":\"UNMET\","
+            + "\"gateDetail\":\"held for manual approval on x-rr-1\"}]}");
+
+    List<DeploymentRequests.DeploymentRequestView> views =
+        against(base).forRelease("repo-1", "v").orElseThrow();
+
+    assertEquals(Boolean.TRUE, views.get(0).deployHold());
+    assertTrue(views.get(0).held());
+    assertNull(views.get(1).deployHold(), "an older far side answers no flag");
+    assertTrue(views.get(1).held(), "and its detail says so");
+  }
+
+  @Test
+  void aListingWithoutTheHoldFieldsIsNotHeld() throws Exception {
+    String base = startServer();
+
+    assertTrue(
+        against(base).forRelease("repo-1", "v").orElseThrow().stream()
+            .noneMatch(DeploymentRequests.DeploymentRequestView::held));
+  }
 }

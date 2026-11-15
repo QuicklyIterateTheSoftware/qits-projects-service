@@ -86,15 +86,20 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
               + " deployed again from here.");
     }
     try {
-      // A LinkedHashMap rather than a record: the far side binds five optional fields beside the
-      // two it requires, and a null one is simply not sent rather than travelling as an explicit
-      // null for it to fall back from.
-      Map<String, String> body = new LinkedHashMap<>();
+      // A LinkedHashMap rather than a record: the far side binds optional fields beside the two it
+      // requires, and a null one is simply not sent rather than travelling as an explicit null for
+      // it to fall back from. deployHold travels only as true (qits-2268): an unheld redeploy is
+      // the body every redeploy before the field sent.
+      Map<String, Object> body = new LinkedHashMap<>();
       body.put("repoId", ask.repoId());
       put(body, "projectId", ask.projectId());
       put(body, "repoName", ask.repoName());
       put(body, "application", ask.application());
       body.put("version", ask.version());
+      put(body, "releaseRequestQualifiedId", ask.releaseRequestQualifiedId());
+      if (Boolean.TRUE.equals(ask.deployHold())) {
+        body.put("deployHold", Boolean.TRUE);
+      }
       HttpRequest.Builder builder =
           HttpRequest.newBuilder(
                   URI.create(
@@ -140,7 +145,7 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
     }
   }
 
-  private static void put(Map<String, String> body, String key, String value) {
+  private static void put(Map<String, Object> body, String key, String value) {
     if (value != null && !value.isBlank()) {
       body.put(key, value);
     }

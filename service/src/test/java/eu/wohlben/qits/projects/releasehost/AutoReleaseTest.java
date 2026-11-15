@@ -388,6 +388,7 @@ public class AutoReleaseTest {
         id,
         announced.releaseRequestId(),
         "the released request's own id reaches the announced event");
+    assertFalse(announced.deployHold(), "nobody held this deploy (qits-2268)");
 
     // And this service's own half: the tag joins the repository's implicit source set until
     // something merges it to main, so every other open request is a superset of what is shipping.
@@ -401,6 +402,32 @@ public class AutoReleaseTest {
     assertEquals(version, pending.tagName);
     assertEquals(commit.sha(), pending.releasedSha, "the row says what the tag points at");
     assertNull(pending.mergedAt, "nothing has merged it to main yet — that is a later arm");
+  }
+
+  /**
+   * <b>A request whose deploy is held announces the hold</b> (qits-2268): the switch is read off the
+   * row at release time and rides onto {@code SCMRelease.deployHold}, which qits-ci forwards so
+   * qits-deployments holds the deployment for a person.
+   */
+  @Test
+  public void aHeldDeployIsAnnouncedWithTheRelease() {
+    String id =
+        releaseARequest(
+            reactor(),
+            fold ->
+                releaseRequests.setDeployHold(
+                    QuarkusTransaction.requiringNew()
+                        .call(
+                            () ->
+                                ReleaseRequest.<ReleaseRequest>find("mergedSha", fold)
+                                    .firstResult()
+                                    .id),
+                    true,
+                    "ada"));
+    awaitState(id, "RELEASED");
+
+    assertEquals(1, releases.announced().size());
+    assertTrue(releases.announced().get(0).deployHold(), "the hold rides out with the release");
   }
 
   /**

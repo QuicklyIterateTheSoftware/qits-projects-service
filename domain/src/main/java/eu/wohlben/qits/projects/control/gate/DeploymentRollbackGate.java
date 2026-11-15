@@ -23,6 +23,11 @@ import java.util.List;
  * by the deployment reconcile, so a list read needs no call to say it; the detail names the remedy,
  * {@code qits release-request rerun --request <qualifiedId> --phase DEPLOY}. A single read whose newest deployment is neither rolled back nor
  * failed — a redeploy under way — is believed over the record.
+ *
+ * <p><b>A deploy held for a person is PENDING</b> (qits-2268): a single read whose newest deployment
+ * request qits-deployments holds for approval — the release request's {@code deployHold} — reads
+ * PENDING with the command that releases it, {@code qits deployments requests approve --request
+ * <id>}, until it goes live.
  */
 @ApplicationScoped
 public class DeploymentRollbackGate implements ReleaseGate {
@@ -71,6 +76,16 @@ public class DeploymentRollbackGate implements ReleaseGate {
     String version = released.tagName;
     GateSubject.Deployment deployment = subject.deployment();
     boolean wentLive = released.deploymentActiveAt != null;
+    if (!wentLive && deployment.held()) {
+      // Held on purpose (qits-2268): the request's deploy waits for a person at qits-deployments.
+      // PENDING, never FAILED, and the detail is the command that releases it.
+      return new GateEvaluation(
+          ReleaseGates.State.PENDING,
+          heldDetail(version, deployment.requestId()),
+          checksOf(deployment, ReleaseGates.State.PENDING),
+          null,
+          null);
+    }
     if (!wentLive && released.deploymentFailedAt != null && !redeployUnderWay(deployment)) {
       return new GateEvaluation(
           ReleaseGates.State.FAILED,
@@ -122,6 +137,17 @@ public class DeploymentRollbackGate implements ReleaseGate {
         && deployment.status() != null
         && !ROLLED_BACK.equals(deployment.status())
         && !FAILED_STATUSES.contains(deployment.status());
+  }
+
+  /**
+   * {@code "Deploy of <version> held for approval: qits deployments requests approve --request
+   * <id>"} — the deployment request qits-deployments holds for a person (qits-2268).
+   */
+  static String heldDetail(String version, String deploymentRequestId) {
+    return "Deploy of "
+        + version
+        + " held for approval: qits deployments requests approve --request "
+        + deploymentRequestId;
   }
 
   /** qits-deployments' words for a deployment that ended without going live, besides a rollback. */

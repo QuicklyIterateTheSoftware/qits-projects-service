@@ -47,6 +47,37 @@ public class SCMReleaseAnnouncer implements ReleaseAnnouncer {
       String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority) {
+    onReleased(
+        projectId,
+        repoId,
+        repoName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        releaseRequestQualifiedId,
+        occurredAt,
+        priority,
+        false);
+  }
+
+  /**
+   * {@code deployHold} rides out as {@code TRUE} or not at all (qits-2268): an unheld release keeps
+   * the exact payload every release before the field had.
+   */
+  @Override
+  public void onReleased(
+      String projectId,
+      String repoId,
+      String repoName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      String releaseRequestQualifiedId,
+      Instant occurredAt,
+      String priority,
+      boolean deployHold) {
     bus.publish(
         new SCMRelease(
             projectId,
@@ -58,6 +89,7 @@ public class SCMReleaseAnnouncer implements ReleaseAnnouncer {
             releaseRequestId,
             occurredAt,
             priority,
-            releaseRequestQualifiedId));
+            releaseRequestQualifiedId,
+            deployHold ? Boolean.TRUE : null));
   }
 }

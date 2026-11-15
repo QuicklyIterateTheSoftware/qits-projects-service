@@ -26,7 +26,8 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String releaseRequestId,
       Instant occurredAt,
       String priority,
-      String releaseRequestQualifiedId) {}
+      String releaseRequestQualifiedId,
+      boolean deployHold) {}
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
@@ -50,6 +51,33 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority) {
+    onReleased(
+        projectId,
+        repoId,
+        repoName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        releaseRequestQualifiedId,
+        occurredAt,
+        priority,
+        false);
+  }
+
+  @Override
+  public void onReleased(
+      String projectId,
+      String repoId,
+      String repoName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      String releaseRequestQualifiedId,
+      Instant occurredAt,
+      String priority,
+      boolean deployHold) {
     announced.add(
         new Announced(
             projectId,
@@ -61,6 +89,7 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
             releaseRequestId,
             occurredAt,
             priority,
-            releaseRequestQualifiedId));
+            releaseRequestQualifiedId,
+            deployHold));
   }
 }

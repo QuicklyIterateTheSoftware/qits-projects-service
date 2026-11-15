@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpDeploymentRedeploysTest {
 
-  private record Received(String path, String auth, String user, String roles) {}
+  private record Received(String path, String auth, String user, String roles, String body) {}
 
   private static final Redeploy ASK = new Redeploy("repo-1", "p-1", "thing", "thing", "2026.1103.1");
 
@@ -45,13 +45,17 @@ class HttpDeploymentRedeploysTest {
     server.createContext(
         "/",
         exchange -> {
-          exchange.getRequestBody().readAllBytes();
+          String body =
+              new String(
+                  exchange.getRequestBody().readAllBytes(),
+                  java.nio.charset.StandardCharsets.UTF_8);
           received.add(
               new Received(
                   exchange.getRequestURI().getPath(),
                   exchange.getRequestHeaders().getFirst("Authorization"),
                   exchange.getRequestHeaders().getFirst("X-Qits-User"),
-                  exchange.getRequestHeaders().getFirst("X-Qits-Roles")));
+                  exchange.getRequestHeaders().getFirst("X-Qits-Roles"),
+                  body));
           exchange.sendResponseHeaders(202, -1);
           exchange.getResponseBody().close();
         });
@@ -90,5 +94,35 @@ class HttpDeploymentRedeploysTest {
 
     assertEquals(503, refused.statusCode());
     assertTrue(received.isEmpty(), "nothing may be sent without the bearer");
+  }
+
+  /**
+   * A held release is re-posted held (qits-2268): {@code deployHold} true and the request named,
+   * so qits-deployments holds the redeploy for approval like the first deployment.
+   */
+  @Test
+  void aHeldRedeployCarriesTheHoldAndTheRequest() throws Exception {
+    against(startServer(), TestDeploymentsBearers.machine())
+        .deployAgain(
+            new Redeploy(
+                "repo-1", "p-1", "thing", null, "2026.1103.1", "thing-rr-7", Boolean.TRUE));
+
+    assertEquals(
+        "{\"repoId\":\"repo-1\",\"projectId\":\"p-1\",\"repoName\":\"thing\","
+            + "\"version\":\"2026.1103.1\",\"releaseRequestQualifiedId\":\"thing-rr-7\","
+            + "\"deployHold\":true}",
+        received.get(0).body());
+  }
+
+  /** An unheld one names the request and says nothing of a hold: no {@code deployHold} key. */
+  @Test
+  void anUnheldRedeployOmitsTheHold() throws Exception {
+    against(startServer(), TestDeploymentsBearers.machine())
+        .deployAgain(
+            new Redeploy("repo-1", "p-1", "thing", "thing", "2026.1103.1", "thing-rr-7", null));
+
+    String body = received.get(0).body();
+    assertTrue(body.contains("\"releaseRequestQualifiedId\":\"thing-rr-7\""), body);
+    assertTrue(!body.contains("deployHold"), body);
   }
 }

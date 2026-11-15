@@ -440,7 +440,8 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
               release.requestId(),
               release.qualifiedId(),
               releasedAt,
-              release.priority());
+              release.priority(),
+              release.deployHold());
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the release of %s as %s", release.repoId(), version);
     }

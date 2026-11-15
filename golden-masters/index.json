@@ -3728,6 +3728,40 @@
           }
         },
         {
+          "operationId": "setReleaseRequestDeployHold",
+          "method": "PUT",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/deploy-hold",
+          "body": {
+            "hold": true
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/setReleaseRequestDeployHold.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt",
+              "$.request.deployHoldAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "setReleaseSourcePriority",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/sources/priority",
@@ -4477,6 +4511,84 @@
             "instants": [],
             "strings": [
               "$.id"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request whose deploy is held",
+      "slug": "a-release-request-whose-deploy-is-held",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-whose-deploy-is-held/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt",
+              "$.request.deployHoldAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setReleaseRequestDeployHold",
+          "method": "PUT",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/deploy-hold",
+          "body": {
+            "hold": false
+          },
+          "status": 200,
+          "file": "a-release-request-whose-deploy-is-held/setReleaseRequestDeployHold.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt",
+              "$.request.deployHoldAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name"
             ],
             "listFilteredTo": null
           }

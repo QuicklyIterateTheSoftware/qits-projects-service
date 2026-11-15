@@ -158,6 +158,9 @@ public class RequestStalledSource implements DeskTriggerSource {
         ReleasedTagPendingMerge.<ReleasedTagPendingMerge>find(
                 "releaseRequestId = ?1 order by releasedAt desc", row.id)
             .firstResult();
+    if (heldDeploy(row, tag)) {
+      return null;
+    }
     Instant arm = tag != null ? tag.releasedAt : row.updatedAt;
     Instant since = later(arm, clamp);
     if (!stalled(since, released, now)) {
@@ -187,6 +190,18 @@ public class RequestStalledSource implements DeskTriggerSource {
             + ", not FINALIZED; "
             + open;
     return trigger(row, "RELEASED", arm, label, now);
+  }
+
+  /**
+   * A release whose deploy is held for a person and waits for it (qits-2268): published, not live,
+   * and the request's {@code deploy_hold} set. That wait is intentional, so it is no stall.
+   */
+  static boolean heldDeploy(ReleaseRequest row, ReleasedTagPendingMerge tag) {
+    return row.deployHold
+        && tag != null
+        && tag.publishState != ReleasedTagPendingMerge.PublishState.PENDING
+        && tag.publishState != ReleasedTagPendingMerge.PublishState.FAILED
+        && tag.deploymentActiveAt == null;
   }
 
   private DeskTrigger readyStall(ReleaseRequest row, Instant clamp, Instant now) {
