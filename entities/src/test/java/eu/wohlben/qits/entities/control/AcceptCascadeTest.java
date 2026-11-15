@@ -44,7 +44,7 @@ class AcceptCascadeTest extends EntitiesTestSupport {
     announcer.clear();
   }
 
-  /** A VERIFIED epic: one feature VERIFIED, below it one task IMPLEMENTED and one DROPPED. */
+  /** A VERIFIED epic: one feature VERIFIED, below it one task back at VERIFYING and one DROPPED. */
   private record Plan(String epic, String feature, String task, String dropped) {}
 
   private Plan verifiedPlan() {
@@ -77,10 +77,15 @@ class AcceptCascadeTest extends EntitiesTestSupport {
       workEntities.transition(Archetype.EPIC, epic, target, Mover.person("t"));
     }
     workEntities.transition(Archetype.TASK, dropped, "DROPPED", "t", TestDrops.WONT_DO);
-    for (String target : List.of("IMPLEMENTED", "VERIFYING", "VERIFIED")) {
+    for (String target : List.of("IMPLEMENTED", "VERIFYING")) {
       workEntities.transition(Archetype.EPIC, epic, target, Mover.person("t"));
     }
+    // The epic is verified over verified pieces only (qits-2267); the task is then taken back to
+    // VERIFYING — a correction, which no gate judges — so the plan still holds an open piece.
+    workEntities.transition(Archetype.TASK, task, "VERIFIED", "agent");
     workEntities.transition(Archetype.FEATURE, feature, "VERIFIED", "agent");
+    workEntities.transition(Archetype.EPIC, epic, "VERIFIED", Mover.person("t"));
+    workEntities.transition(Archetype.TASK, task, "VERIFYING", "agent");
     announcer.clear();
     return new Plan(epic, feature, task, dropped);
   }
@@ -105,7 +110,7 @@ class AcceptCascadeTest extends EntitiesTestSupport {
         announcer.batches().get(0).entities().stream()
             .collect(Collectors.toMap(TransitionedEntity::id, TransitionedEntity::statusBefore));
     assertEquals(
-        Map.of(plan.epic(), "VERIFIED", plan.feature(), "VERIFIED", plan.task(), "IMPLEMENTED"),
+        Map.of(plan.epic(), "VERIFIED", plan.feature(), "VERIFIED", plan.task(), "VERIFYING"),
         before);
     assertTrue(
         announcer.batches().get(0).entities().stream()
@@ -128,7 +133,7 @@ class AcceptCascadeTest extends EntitiesTestSupport {
     assertTrue(failure.toString().contains(FailingAudit.FAILED), failure.toString());
     assertEquals("VERIFIED", status(Archetype.EPIC, plan.epic()));
     assertEquals("VERIFIED", status(Archetype.FEATURE, plan.feature()));
-    assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()));
+    assertEquals("VERIFYING", status(Archetype.TASK, plan.task()));
     assertEquals(List.of(), announcer.batches(), "nothing committed, nothing announced");
   }
 }

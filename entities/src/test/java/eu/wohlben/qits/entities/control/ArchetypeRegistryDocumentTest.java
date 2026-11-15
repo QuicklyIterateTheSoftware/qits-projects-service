@@ -469,6 +469,27 @@ class ArchetypeRegistryDocumentTest {
     assertEquals(18, closes);
   }
 
+  /**
+   * qits-2267: an epic's and a feature's moves into VERIFIED — VERIFYING → VERIFIED and the SKIP
+   * from IMPLEMENTED — name CHILDREN_VERIFIED; a ticket's and a task's do not.
+   */
+  @Test
+  void anEpicsAndAFeaturesMovesIntoVerifiedNameChildrenVerified() {
+    List<TransitionGate> shipped = List.of(new ChildrenVerifiedGate(), new ChildrenClosedGate());
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE)) {
+      assertEquals(
+          List.of(ChildrenVerifiedGate.NAME), gatesOf(shipped, archetype, "VERIFYING", "VERIFIED"));
+      assertEquals(
+          List.of(ChildrenVerifiedGate.NAME), gatesOf(shipped, archetype, "IMPLEMENTED", "VERIFIED"));
+      assertEquals(List.of(), gatesOf(shipped, archetype, "VERIFIED", "VERIFYING"));
+      assertEquals(List.of(), gatesOf(shipped, archetype, "VERIFIED", "DONE"));
+    }
+    for (Archetype archetype : List.of(Archetype.TICKET, Archetype.TASK)) {
+      assertEquals(List.of(), gatesOf(shipped, archetype, "VERIFYING", "VERIFIED"));
+      assertEquals(List.of(), gatesOf(shipped, archetype, "IMPLEMENTED", "VERIFIED"));
+    }
+  }
+
   @Test
   void twoReadsAnswerTheSameDocument() {
     assertEquals(ArchetypeRegistryDocument.describe(), ArchetypeRegistryDocument.describe());

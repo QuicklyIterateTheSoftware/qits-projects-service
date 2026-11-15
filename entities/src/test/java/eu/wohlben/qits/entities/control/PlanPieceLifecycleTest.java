@@ -28,8 +28,9 @@ import org.junit.jupiter.api.Test;
  * other, refused while its epic is a draft
  * — and every move of one announced like any other move.
  *
- * <p>The epic's side of the same rules — that VERIFYING and VERIFIED no longer drag the tasks along —
- * is the regression this ticket fixes, and it is asserted here rather than one module up because it
+ * <p>The epic's side of the same rules — that VERIFYING and VERIFIED no longer drag the tasks along,
+ * and (qits-2267) that VERIFIED waits for every piece to be verified on its own — is the regression
+ * this ticket fixes, and it is asserted here rather than one module up because it
  * is a property of {@link WorkEntityService#transition} alone.
  */
 @QuarkusTest
@@ -151,17 +152,53 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()));
   }
 
-  /** The bug qits-763 fixes: verifying an epic dragged every task with it. */
+  /**
+   * The bug qits-763 fixes — verifying an epic dragged every task with it — and the one qits-2267
+   * fixes: the epic stood VERIFIED over pieces still IMPLEMENTED. Its VERIFIED is refused, naming
+   * every open piece tasks first, until each is verified or dropped on its own; then it passes and
+   * moves nothing.
+   */
   @Test
-  void theEpicGoingToVerifyingAndVerifiedLeavesItsTasksWhereTheyAre() {
+  void theEpicIsVerifiedOnlyOverVerifiedPiecesAndDragsNone() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFYING");
 
-    moveEpic(plan, "VERIFYING", "VERIFIED");
+    ConflictException refusal =
+        assertThrows(ConflictException.class, () -> moveEpic(plan, "VERIFIED"));
 
+    assertTrue(
+        refusal
+            .getMessage()
+            .contains(
+                "CHILDREN_VERIFIED: 3 pieces are not verified yet: #"
+                    + row(Archetype.TASK, plan.task()).number
+                    + " (IMPLEMENTED), #"
+                    + row(Archetype.TASK, plan.sibling()).number
+                    + " (IMPLEMENTED), #"
+                    + row(Archetype.FEATURE, plan.feature()).number
+                    + " (IMPLEMENTED) — verify or drop them first, tasks before features"),
+        refusal.getMessage());
+    assertEquals("VERIFYING", status(Archetype.EPIC, plan.epic()));
     assertEquals("IMPLEMENTED", status(Archetype.FEATURE, plan.feature()));
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()));
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.sibling()));
+
+    workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t", TestDrops.WONT_DO);
+    workEntities.transition(Archetype.TASK, plan.task(), "VERIFYING", "agent");
+    workEntities.transition(Archetype.TASK, plan.task(), "VERIFIED", "agent");
+    workEntities.transition(Archetype.FEATURE, plan.feature(), "VERIFYING", "agent");
+    workEntities.transition(Archetype.FEATURE, plan.feature(), "VERIFIED", "agent");
+    announcer.clear();
+
+    moveEpic(plan, "VERIFIED");
+
+    assertEquals("VERIFIED", status(Archetype.EPIC, plan.epic()));
+    assertEquals("VERIFIED", status(Archetype.FEATURE, plan.feature()));
+    assertEquals("VERIFIED", status(Archetype.TASK, plan.task()));
+    assertEquals("DROPPED", status(Archetype.TASK, plan.sibling()), "a dropped piece stays dropped");
+    assertEquals(1, announcer.batches().size());
+    assertEquals(
+        1, announcer.batches().get(0).entities().size(), "the epic's move carried nobody: " + announcer.batches());
   }
 
   @Test

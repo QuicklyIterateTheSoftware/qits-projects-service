@@ -1233,7 +1233,9 @@ public class WorkEntityService {
    * on its own. The cascades set the word directly rather than through the graph, because they
    * state where the plan stands (a REPORTED task under an epic declared IMPLEMENTED is not a move
    * anybody asked to judge). And none of them reads children to decide a parent: that would be
-   * derivation, which the lifecycle deliberately does not do.
+   * derivation, which the lifecycle deliberately does not do. What does relate a parent's VERIFIED
+   * to its pieces is a gate, {@link ChildrenVerifiedGate} (qits-2267): it refuses the move while a
+   * piece under it is open, and moves nothing.
    */
   private List<Carried> carryDescendants(
       WorkEntity row, EntityStatus from, EntityStatus to, String changedBy) {

@@ -338,7 +338,9 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
   /**
    * The door still skips adjacency where nothing stands in front of the move: a started epic may be
-   * restated VERIFIED, two steps on and over no gate.
+   * restated VERIFYING, two steps on and over no gate. (Not VERIFIED: since qits-2267 an epic's
+   * VERIFIED has a gate, CHILDREN_VERIFIED, so this door refuses it — see {@code
+   * ChildrenVerifiedGateTest}.)
    */
   @Test
   void aStartedEntityMayStillBeRestatedPastItsNeighbours() {
@@ -349,9 +351,9 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", WHO);
     Map<String, TransitionedEntity> after =
         transitions.transition(
-            stated(epic.id, epicEntry("Started", null, null, EntityStatus.VERIFIED, CRITERIA)),
+            stated(epic.id, epicEntry("Started", null, null, EntityStatus.VERIFYING, CRITERIA)),
             WHO);
-    assertEquals(EntityStatus.VERIFIED.name(), after.get(epic.id).status());
+    assertEquals(EntityStatus.VERIFYING.name(), after.get(epic.id).status());
   }
 
   /**

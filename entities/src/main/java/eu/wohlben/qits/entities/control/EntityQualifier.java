@@ -8,8 +8,8 @@ import jakarta.enterprise.inject.Instance;
  *
  * <p>A port, optional like every one here, because the project slug lives in {@code domain}'s
  * database and this module depends on {@code domain} nowhere: the assembling service implements it
- * ({@code projects/api/ProjectSlugEntityQualifier}). {@link ChildrenClosedGate} uses it for the
- * children a refusal names; with no implementation it falls back to {@code #<number>}, which is still unambiguous inside one project.
+ * ({@code projects/api/ProjectSlugEntityQualifier}). {@link ChildrenClosedGate} and {@link
+ * ChildrenVerifiedGate} use it for the children a refusal names; with no implementation it falls back to {@code #<number>}, which is still unambiguous inside one project.
  *
  * <p><b>Must never throw</b>: it decorates a sentence, and a sentence must not fail the write it is
  * part of. An implementation that cannot resolve the slug answers null and the fallback is used.

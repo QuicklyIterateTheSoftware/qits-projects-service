@@ -919,6 +919,11 @@ class EpicLifecycleTest extends EntitiesTestSupport {
               "t");
       workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
       for (String target : walk) {
+        if (target.equals("VERIFIED")) {
+          // The epic is verified over verified pieces only (qits-2267).
+          workEntities.transition(Archetype.TASK, task.entity().id, "VERIFIED", "t");
+          workEntities.transition(Archetype.FEATURE, feature.entity().id, "VERIFIED", "t");
+        }
         workEntities.transition(
             Archetype.EPIC, epic.id, target, Mover.person("t"), TestDrops.of(target));
       }
