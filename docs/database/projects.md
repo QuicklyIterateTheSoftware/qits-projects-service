@@ -369,6 +369,9 @@ erDiagram
     uuid causation_id
     string conflict_detail
     instant created_at "not null"
+    boolean deploy_hold "not null"
+    instant deploy_hold_at
+    string deploy_hold_by
     string detail
     instant gate_ticket_closed_at
     string gate_ticket_id
