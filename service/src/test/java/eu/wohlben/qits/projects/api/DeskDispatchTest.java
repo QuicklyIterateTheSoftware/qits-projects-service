@@ -274,6 +274,38 @@ public class DeskDispatchTest {
   }
 
   /**
+   * An item a person claimed by writing its assignee is refused to the desk as to a person
+   * (qits-2259): a 409 naming the assignee, nothing dispatched, the claim left standing — at
+   * REPORTED, and at REFINED under {@code start_refined}, where the press would have scheduled it.
+   */
+  @Test
+  public void aDeskPressOnAClaimedItemIsRefused409() {
+    String projectId = createProject("Desk Claimed");
+    delivery(projectId, true, 2, true);
+    String reportedId = createTicket(projectId, "Dana has it");
+    String refinedId = createTicket(projectId, "Dana plans it");
+    transition(refinedId, "REFINED");
+    for (String id : List.of(reportedId, refinedId)) {
+      asAdmin("dana")
+          .body("{\"assignee\": \"dana\"}")
+          .when()
+          .patch("/projects/api/work/" + id)
+          .then()
+          .statusCode(200);
+    }
+
+    for (String id : List.of(reportedId, refinedId)) {
+      DispatchRefused refusal = refused(desk(projectId), id, "FLOW", RULE);
+      assertEquals(409, refusal.statusCode());
+      assertTrue(refusal.getMessage().contains("is assigned to `dana`"), refusal.getMessage());
+      assertEquals("dana", row(id).assignee);
+      assertNull(row(id).preApprovedBy, "a refused press pre-approves nothing");
+    }
+    assertEquals("REFINED", row(refinedId).status, "the refused press did not schedule it");
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
+  /**
    * At {@code max_running} the press is a 409 naming the count, the limit and the running items. A
    * running item has an assignee and an ACTIVE agent; an OBSOLETE agent does not count, and neither
    * does the item being pressed.

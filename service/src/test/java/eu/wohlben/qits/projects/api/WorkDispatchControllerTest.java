@@ -1046,6 +1046,118 @@ public class WorkDispatchControllerTest {
     assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
   }
 
+  // ---- an assignee a person wrote is their claim (qits-2259) -----------------------------------
+
+  /** A JSON merge patch of {@code entityId} by a person, answered 200. */
+  private void patch(String entityId, String json) {
+    asAdmin("dana")
+        .body(json)
+        .when()
+        .patch("/projects/api/work/" + entityId)
+        .then()
+        .statusCode(200);
+  }
+
+  private boolean dispatchableOf(String entityId) {
+    return asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + entityId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("state.dispatchable");
+  }
+
+  private String statusOf(String entityId) {
+    return dispatchEntities.fresh(entityId).status;
+  }
+
+  /**
+   * <b>A claimed READY_FOR_DEV ticket refuses the press</b>, naming the assignee and saying how to
+   * hand it over; nothing moves (it stays READY_FOR_DEV, not IMPLEMENTING), nothing is dispatched,
+   * and the claim is not overwritten by an agent. The read says it is not dispatchable.
+   */
+  @Test
+  public void aClaimedTicketRefusesThePressAndReadsNotDispatchable() {
+    String projectId = createProject("Dispatch Claimed");
+    String ticketId = createTicket(projectId, "Dana has it");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    patch(ticketId, "{\"assignee\": \"dana\"}");
+
+    assertFalse(dispatchableOf(ticketId), "a person's claim is not dispatchable");
+    pressRefused(ticketId, "FLOW", "is assigned to `dana`");
+    pressRefused(ticketId, "PHASE", "Clear its assignee to hand it to an agent");
+    pressRefusedForAMachine(ticketId, "FLOW", "is assigned to `dana`");
+
+    assertEquals("READY_FOR_DEV", statusOf(ticketId), "a refused press moves nothing");
+    assertEquals("dana", assigneeOf(ticketId), "and writes no agent over the claim");
+    assertTrue(dispatch.calls().isEmpty(), "no agent was asked for");
+  }
+
+  /**
+   * <b>A person's FLOW press at REFINED is refused on a claimed item before it schedules</b>: the
+   * scheduling is the press, and a refused press moves nothing, so the ticket stays REFINED.
+   */
+  @Test
+  public void aClaimedRefinedTicketIsNotScheduledByAPersonsFlowPress() {
+    String projectId = createProject("Dispatch Claimed Refined");
+    String ticketId = createTicket(projectId, "Dana plans it");
+    transitionTicket(ticketId, "REFINED");
+    patch(ticketId, "{\"assignee\": \"dana\"}");
+
+    assertFalse(dispatchableOf(ticketId));
+    pressRefused(ticketId, "FLOW", "is assigned to `dana`");
+
+    assertEquals("REFINED", statusOf(ticketId), "the scheduling did not happen");
+    assertNull(preApprovedByOf(ticketId));
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
+  /** <b>Clearing the assignee hands it to an agent</b>: dispatchable again, and the press goes. */
+  @Test
+  public void clearingTheAssigneeMakesAClaimedTicketDispatchable() {
+    String projectId = createProject("Dispatch Claim Cleared");
+    String ticketId = createTicket(projectId, "Dana lets go");
+    patch(ticketId, "{\"assignee\": \"dana\"}");
+    assertFalse(dispatchableOf(ticketId));
+
+    patch(ticketId, "{\"assignee\": null}");
+
+    assertTrue(dispatchableOf(ticketId));
+    assertEquals("refine", press(ticketId, "PHASE"));
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+  }
+
+  /**
+   * <b>The assignee a dispatch wrote is no claim</b>: the next phase's press (a re-press at
+   * IMPLEMENTING) still resumes it — and so does one after a save restating that same assignee,
+   * which the SPA sends with every edit. A different assignee written then is a claim.
+   */
+  @Test
+  public void anAssigneeADispatchWroteStillResumesEvenWhenASaveRestatesIt() {
+    String projectId = createProject("Dispatch Agent Assignee");
+    String ticketId = createTicket(projectId, "The agent has it");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(
+        new WorkspaceAgentDispatch.Dispatch("agent-61", 61L, null, true, "SCHEDULED", "claude"));
+    assertEquals("implement", press(ticketId, "PHASE"));
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals("claude", assigneeOf(ticketId));
+
+    assertTrue(dispatchableOf(ticketId), "the agent's own assignee is not a claim");
+    assertEquals("implement", press(ticketId, "PHASE"), "the re-press resumes implement");
+
+    patch(ticketId, "{\"title\": \"The agent has it, retitled\", \"assignee\": \"claude\"}");
+    assertTrue(dispatchableOf(ticketId), "restating the agent's assignee claims nothing");
+    assertEquals("implement", press(ticketId, "FLOW"));
+
+    patch(ticketId, "{\"assignee\": \"dana\"}");
+    assertFalse(dispatchableOf(ticketId), "a different assignee is a person's claim");
+    pressRefused(ticketId, "FLOW", "is assigned to `dana`");
+  }
+
   /** {@code <project-slug>-<number>}, read back from the two rows rather than trusted. */
   private String qualifiedIdOf(String projectId, String entityId) {
     String slug = QuarkusTransaction.requiringNew().call(() -> projects.get(projectId).slug);

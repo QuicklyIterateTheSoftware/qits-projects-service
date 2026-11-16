@@ -56,6 +56,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   @Inject WorkEntityRepository entities;
   @Inject EntityMembershipRepository memberships;
   @Inject RecordingTransitionAnnouncer announcer;
+  @Inject EntityDispatchService dispatchEntities;
 
   @BeforeEach
   void forgetAnnouncements() {
@@ -266,6 +267,44 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertEquals("the new body", after.get(epic.id).description());
     assertEquals(epic.slug, after.get(epic.id).slug(), "a retitle never moves the slug");
     inFreshTx(() -> assertEquals("After", entities.findById(epic.id).title));
+  }
+
+  /**
+   * <b>The whole-row restatement keeps a dispatched agent an agent</b> (qits-2259): this door
+   * restates every property on every save, so the assignee the row holds, stated again, claims
+   * nothing; a different one is a person's claim, and an absent one clears both.
+   */
+  @Test
+  void aRestatedAssigneeIsNoClaimAndAChangedOneIs() {
+    WorkEntity ticket =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                PROJECT,
+                EntityWrite.ticket("Claimable", "it came up", null, "BUG", null)
+                    .withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
+                WHO)
+            .entity();
+    dispatchEntities.setAssignee(ticket.id, "claude", "press");
+
+    transitions.transition(stated(ticket.id, ticketEntry("Claimable", "it came up", "claude")), WHO);
+    inFreshTx(
+        () -> {
+          WorkEntity row = entities.findById(ticket.id);
+          assertEquals("claude", row.assignee);
+          assertFalse(row.assigneeClaimed, "the agent's assignee restated is no claim");
+        });
+
+    transitions.transition(stated(ticket.id, ticketEntry("Claimable", "it came up", "carol")), WHO);
+    inFreshTx(() -> assertTrue(entities.findById(ticket.id).assigneeClaimed, "carol claims it"));
+
+    transitions.transition(stated(ticket.id, ticketEntry("Claimable", "it came up")), WHO);
+    inFreshTx(
+        () -> {
+          WorkEntity row = entities.findById(ticket.id);
+          assertNull(row.assignee, "absent clears the assignee, as every property here");
+          assertFalse(row.assigneeClaimed, "and the claim with it");
+        });
   }
 
   // --- DONE is final, and it is the one lifecycle rule this door keeps -----
@@ -1317,6 +1356,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   }
 
   private static EntityTransition ticketEntry(String title, String impetus) {
+    return ticketEntry(title, impetus, null);
+  }
+
+  private static EntityTransition ticketEntry(String title, String impetus, String assignee) {
     return new EntityTransition(
         Archetype.TICKET,
         null,
@@ -1325,7 +1368,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         EntityStatus.REPORTED.name(),
         TicketType.BUG,
         impetus,
-        null,
+        assignee,
         null,
         null,
         null,

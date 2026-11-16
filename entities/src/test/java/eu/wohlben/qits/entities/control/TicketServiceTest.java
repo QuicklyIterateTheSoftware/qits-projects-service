@@ -29,6 +29,9 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Inject EntityCommentService ticketComments;
   @Inject AuditService auditService;
 
+  /** The dispatch's own write of the assignee (qits-887), beside a person's (qits-2259). */
+  @Inject EntityDispatchService dispatchEntities;
+
   private WorkEntity bug(String title) {
     return workEntities
         .create(
@@ -373,6 +376,97 @@ class TicketServiceTest extends EntitiesTestSupport {
                 "t")
             .entity()
             .assignee);
+  }
+
+  /**
+   * <b>A person's assignee is a claim, a dispatch's is not</b> (qits-2259): the create and an edit
+   * naming a different assignee set {@code assigneeClaimed}; the dispatch's write clears it;
+   * restating the assignee the row holds changes nothing, so the whole-row save after a dispatch
+   * leaves the agent an agent; clearing the assignee clears the claim.
+   */
+  @Test
+  void aPersonsAssigneeIsAClaimAndADispatchsIsNot() {
+    WorkEntity claimed =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("Mine", "something occurs on the login page", null, "BUG", "alice")
+                    .withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
+                "alice")
+            .entity();
+    assertTrue(claimed.assigneeClaimed, "a person naming an assignee at create claims the row");
+    assertTrue(workEntities.get(Archetype.TICKET, claimed.id).assigneeClaimed, "and it is stored");
+
+    WorkEntity unassigned = bug("Nobody's");
+    assertFalse(unassigned.assigneeClaimed, "no assignee, no claim");
+
+    WorkEntity dispatched = dispatchEntities.setAssignee(claimed.id, "tok-workspace-7", "press");
+    assertEquals("tok-workspace-7", dispatched.assignee);
+    assertFalse(dispatched.assigneeClaimed, "the dispatch's own write is the agent, not a claim");
+
+    WorkEntity restated =
+        workEntities
+            .update(
+                Archetype.TICKET,
+                claimed.id,
+                EntityWrite.ticketEdit(
+                    "Mine, retitled", null, false, null, false, null, "tok-workspace-7", false),
+                "alice")
+            .entity();
+    assertEquals("tok-workspace-7", restated.assignee);
+    assertFalse(restated.assigneeClaimed, "the same assignee restated is no claim");
+
+    WorkEntity reclaimed =
+        workEntities
+            .update(
+                Archetype.TICKET,
+                claimed.id,
+                EntityWrite.ticketEdit(null, null, false, null, false, null, "bob", false),
+                "bob")
+            .entity();
+    assertTrue(reclaimed.assigneeClaimed, "a different assignee is a person's claim");
+    WorkEntity same =
+        workEntities
+            .update(
+                Archetype.TICKET,
+                claimed.id,
+                EntityWrite.ticketEdit(null, null, false, null, false, null, "bob", false),
+                "bob")
+            .entity();
+    assertTrue(same.assigneeClaimed, "restating a claim keeps it");
+
+    WorkEntity cleared =
+        workEntities
+            .update(
+                Archetype.TICKET,
+                claimed.id,
+                EntityWrite.ticketEdit(null, null, false, null, false, null, null, true),
+                "bob")
+            .entity();
+    assertNull(cleared.assignee);
+    assertFalse(cleared.assigneeClaimed, "clearing the assignee clears the claim");
+
+    WorkEntity blanked =
+        workEntities
+            .update(
+                Archetype.TICKET,
+                reclaimOf(claimed.id),
+                EntityWrite.ticketEdit(null, null, false, null, false, null, "  ", false),
+                "bob")
+            .entity();
+    assertNull(blanked.assignee);
+    assertFalse(blanked.assigneeClaimed, "a blank assignee is nobody, and no claim");
+  }
+
+  /** Claims {@code id} for carol again, answering its id. */
+  private String reclaimOf(String id) {
+    workEntities.update(
+        Archetype.TICKET,
+        id,
+        EntityWrite.ticketEdit(null, null, false, null, false, null, "carol", false),
+        "carol");
+    return id;
   }
 
   @Test

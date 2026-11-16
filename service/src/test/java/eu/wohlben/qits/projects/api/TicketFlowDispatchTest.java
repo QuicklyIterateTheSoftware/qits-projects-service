@@ -92,6 +92,10 @@ public class TicketFlowDispatchTest {
         .path("project.id");
   }
 
+  /**
+   * No assignee: one a person writes is their claim, and no press dispatches onto it (qits-2259 —
+   * this fixture named {@code dana} until then, and every press here went over her claim).
+   */
   private String createTicket(String projectId, String title, String type, String description) {
     return TestCriteria.give(
         WorkRequests.create(
@@ -102,8 +106,7 @@ public class TicketFlowDispatchTest {
                     "title", title,
                     "ticketType", type,
                     "impetus", "something occurs in this project",
-                    "description", description,
-                    "assignee", "dana"))
+                    "description", description))
             .path("id"));
   }
 
