@@ -473,6 +473,7 @@ erDiagram
   released_tag_pending_merge {
     string id PK "not null"
     instant abandoned_at
+    instant declined_at
     instant deployment_active_at
     instant deployment_failed_at
     string deployment_failed_detail "length 1000"
