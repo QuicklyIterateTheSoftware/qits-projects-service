@@ -165,6 +165,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
       DeploymentFailedListener.DeploymentFailedPayload.class,
+      DeploymentRequestDeclinedListener.DeploymentRequestDeclinedPayload.class,
       WaitClosedSource.DeskWaitClosedPayload.class,
       CapacityOpenedSource.AgentLeftPayload.class,
       TargetOomKilledSource.TargetOomKilledPayload.class,

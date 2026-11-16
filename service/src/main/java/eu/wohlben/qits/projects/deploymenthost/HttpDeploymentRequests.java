@@ -146,7 +146,11 @@ public class HttpDeploymentRequests implements DeploymentRequests {
                 text(node, "qualityGate"),
                 instant(node, "gateSettledAt"),
                 text(node, "gateDetail"),
-                hold.isBoolean() ? hold.asBoolean() : null));
+                hold.isBoolean() ? hold.asBoolean() : null,
+                // qits-2271: absent from an older qits-deployments, and null on a request nobody
+                // declined.
+                text(node, "declinedBy"),
+                instant(node, "declinedAt")));
       }
       // The far side orders by its own sequence, newest first, and that order is the answer: the
       // phase is the first entry. Nothing is re-sorted here — the order a row was written in is a
