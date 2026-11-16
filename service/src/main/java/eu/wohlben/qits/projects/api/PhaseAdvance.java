@@ -1136,7 +1136,10 @@ public class PhaseAdvance {
       LOG.debugf("%s %s has no agent, so it asks for no release", entity.archetype, entity.id);
       say(
           entity,
-          "No agent is working on this " + noun(entity) + ", so no release was asked for.",
+          entity.archetype == Archetype.TICKET
+              ? "No agent is working on this ticket, so no release was asked for. With no wrapper"
+                  + " branch, the platform moves it to DONE about 15 minutes from now."
+              : "No agent is working on this " + noun(entity) + ", so no release was asked for.",
           changedBy);
       return false;
     }

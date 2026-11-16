@@ -226,7 +226,8 @@ class ConditionCloseDoorTest {
                     + "."));
     assertEquals(
         "DONE is not a status anybody claims for a ticket — the platform sets it when the"
-            + " workspace's wrapper release request carrying the ticket's branch is finalized",
+            + " wrapper release request carrying the ticket's branch is finalized, or about 15"
+            + " minutes after VERIFIED when no wrapper branch or request exists",
         EntityTransitionService.TICKET_DONE_IS_THE_PLATFORMS);
     assertEquals("REPORTED", statusOf(ticket));
   }

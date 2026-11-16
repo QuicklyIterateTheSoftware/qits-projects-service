@@ -443,11 +443,15 @@ public class EntityTransitionService {
 
   /**
    * Why no caller moves a ticket to DONE (qits-150), as both doors that could say it — this one and
-   * {@code POST /work/{qualifiedId}/status} — word it.
+   * {@code POST /work/{qualifiedId}/status} — word it. The platform closes it two ways, not one
+   * (qits-2263): the wrapper release request carrying the ticket's branch finalizing, or — with no
+   * wrapper branch or request at all — {@code TicketWrapperDone}'s {@code NO_BRANCH} grace, about
+   * 15 minutes after VERIFIED.
    */
   public static final String TICKET_DONE_IS_THE_PLATFORMS =
-      "DONE is not a status anybody claims for a ticket — the platform sets it when the workspace's"
-          + " wrapper release request carrying the ticket's branch is finalized";
+      "DONE is not a status anybody claims for a ticket — the platform sets it when the wrapper"
+          + " release request carrying the ticket's branch is finalized, or about 15 minutes after"
+          + " VERIFIED when no wrapper branch or request exists";
 
   /** Whether {@code status} is scheduled work: READY_FOR_DEV or further along the walk. */
   private static boolean scheduled(EntityStatus status) {

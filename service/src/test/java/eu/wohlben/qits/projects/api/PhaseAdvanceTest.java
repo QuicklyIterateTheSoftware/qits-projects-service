@@ -2567,7 +2567,8 @@ public class PhaseAdvanceTest {
         releaseRequestsOf(wrapperIdOf(projectId)).isEmpty(),
         "there is no branch to release, so nothing was asked for");
     assertEquals(
-        "No agent is working on this ticket, so no release was asked for.",
+        "No agent is working on this ticket, so no release was asked for. With no wrapper"
+            + " branch, the platform moves it to DONE about 15 minutes from now.",
         thread(ticketId).get(thread(ticketId).size() - 1));
     assertTrue(handedToCleanup(ticketId).isEmpty(), "no agent, no workspace to hand over");
     assertTrue(listing.listed().isEmpty(), "and the git host was not read");
@@ -2596,7 +2597,8 @@ public class PhaseAdvanceTest {
         "the far side was asked, which is the only way to know");
     assertTrue(releaseRequestsOf(wrapperIdOf(projectId)).isEmpty());
     assertEquals(
-        "No agent is working on this ticket, so no release was asked for.",
+        "No agent is working on this ticket, so no release was asked for. With no wrapper"
+            + " branch, the platform moves it to DONE about 15 minutes from now.",
         thread(ticketId).get(thread(ticketId).size() - 1));
   }
 
