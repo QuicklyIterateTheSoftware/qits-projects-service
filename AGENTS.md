@@ -3158,8 +3158,8 @@ coalesced `observeLater` (one pass per project at a time, frames during a pass c
 `AgentActivity` whose session or command a named agent is known to run (from reports and earlier
 passes), a `COMMANDS` nudge for a project with a named agent row, the `hello` and the socket's
 close, a `SessionReport` naming an agent, a held prompt delivered, the rows removed with the
-project — and, synchronously after its commit, a prompt held (`STARTING`). Not yet matchable by
-`qits wait`. `NamedAgentStatesTest`.
+project — and, synchronously after its commit, a prompt held (`STARTING`). Matchable by
+`qits wait` since qits-2235 (qits-workspaces' `event-fields.json`). `NamedAgentStatesTest`.
 
 ### Pitches (qits-2155)
 
