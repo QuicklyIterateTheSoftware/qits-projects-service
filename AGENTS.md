@@ -655,7 +655,8 @@ merely its only occupant. Six things about it are rules:
     automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
     (qits-1725); CONFLICTED in `apply`;
     WITHDRAWN in `withdraw`, `onBranchDeleted` (the deleted branch, and the rest when the request is
-    withdrawn) and the estate wrapper's empty fold; RELEASED in `settleReleased` (the branches the
+    withdrawn), the estate wrapper's empty fold and a declined deploy (`withdrawnAfterTag`,
+    qits-2271); RELEASED in `settleReleased` (the branches the
     tag carries, and the carries, qits-1830); LIVE in `settleTagsOnMain` at FINALIZED, for the rows that request RELEASED. No
     step for a decline or a queue's activation, and none for a refold to PENDING — except JOINED
     again: **a request leaving a failure takes its branches back to JOINED** (qits-1719).
@@ -1385,6 +1386,40 @@ requests approve --request <id>`).
   `RequestStalledSource` raises no RELEASED stall for a held request published and not live.
 - **Contracts**: state `a release request whose deploy is held` records `getReleaseRequest` and the
   PUT with `{"hold":false}`; `a release request awaiting approval` records it with `{"hold":true}`.
+
+## Declining a held deploy (qits-2271)
+
+A held deployment request can be declined at qits-deployments (`qits deployments requests decline
+--request <id> [--note …]`). The RELEASED request it belongs to then ends **WITHDRAWN**, and its tag
+never ships — not on its own and not inside a successor that folded it in.
+
+- **One method, two callers**: `ReleaseFinalization.onDeployDeclined(releaseRequest, version,
+  declinedBy, note, deploymentRequestId)` → `ReleaseRequests.endDeclined`. Called by
+  `bus/DeploymentRequestDeclinedListener` (signature `DeploymentRequestDeclined`, local payload
+  record, consumer `projects-deployment-request-declined`, head of log; poison WARNs and settles)
+  and by `reconcileDeployments` when the newest deployment request of a waiting release reads
+  `declinedAt` (the note read off `gateDetail`, `declined by <who>: <note>`). Idempotent: it acts only
+  on a RELEASED request whose tag has not merged and whose version matches; anything else logs.
+- **The end**, one transaction under the repository row lock: RELEASED → WITHDRAWN,
+  `retryable=false`, detail `Deploy of <v> declined by <who> (deployment request <id>): <note>`;
+  `released_tag_pending_merge.declined_at` (V79) stamped and **never `merged_at`**, so the git tag
+  stays on the host (`TagCollector` keeps every unmerged tag) as the only copy of the work; the
+  branches the tag released or failed WITHDRAWN (`BranchDeliveries.withdrawnAfterTag`, a ledger walk
+  like `live`). After the commit, `withdraw`'s bookkeeping: automations note forgotten, QA runs
+  cancelled, gate ticket closed `Ending.WITHDRAWN`, `activateQueuedBehind`, and every unreleased
+  request of the repository re-folded (`remergeOpenOf`, `settleTagsOnMain`'s path), because the
+  active one folded the declined tag in.
+- **A declined tag leaves every fold and every owed read**: `listPending` (the implicit sources),
+  `listOwedMerges`, `listUngated`, `listAwaitingDeployment`, and `ReleaseFinalization`'s own
+  in-flight filters and `correlate`. `releasedSiblingsOf` skips a declined sibling (stamped, or read
+  declined at qits-deployments) as neither in flight nor red, so it never holds a successor and is
+  never made OBSOLETE.
+- **Reads**: `DeploymentRollbackGate` is FAILED, `Deploy of <v> declined by <who>` on a single read
+  whose newest request is declined, `Deploy of <v> declined` on a list read of a stamped row.
+  `HttpDeploymentRequests` maps `declinedBy`/`declinedAt` (`DeploymentRequestView.declined`).
+- **`withdraw` still refuses RELEASED**; a DEPLOY rerun of a request that is not RELEASED is a 409
+  (`rerunDeployPhase`), so a declined version is never re-announced. Reshipping is a new push of a
+  branch made from the declined tag.
 
 ## Release request gates
 
