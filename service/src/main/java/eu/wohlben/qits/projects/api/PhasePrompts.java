@@ -372,13 +372,15 @@ final class PhasePrompts {
   }
 
   /**
-   * What the ticket's verify turn says about DONE (qits-150): the platform sets it once the
-   * workspace's wrapper release request is finalized, so the agent stops at VERIFIED — both doors
-   * refuse a ticket's DONE for every caller anyway.
+   * What the ticket's verify turn says about DONE (qits-150): the platform sets it, either once the
+   * workspace's wrapper release request is finalized or, with no wrapper branch or request at all,
+   * about 15 minutes after VERIFIED (qits-2263) — so the agent stops at VERIFIED either way, and
+   * both doors refuse a ticket's DONE for every caller anyway.
    */
   static final String TICKET_DONE_IS_THE_PLATFORMS =
       "Do not move it to DONE: the platform does, once the workspace's wrapper release request is"
-          + " finalized.";
+          + " finalized, or about 15 minutes after VERIFIED when no wrapper branch or request"
+          + " exists.";
 
   // ---- the three epic templates -------------------------------------------------------------
 

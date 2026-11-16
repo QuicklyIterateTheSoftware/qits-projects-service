@@ -329,7 +329,10 @@ public class TicketFlowDispatchTest {
         .body("entries.size()", equalTo(1))
         .body(
             "entries[0].comment.body",
-            equalTo("No agent is working on this ticket, so no release was asked for."));
+            equalTo(
+                "No agent is working on this ticket, so no release was asked for. With no"
+                    + " wrapper branch, the platform moves it to DONE about 15 minutes from"
+                    + " now."));
   }
 
   /** VERIFIED is the other status that starts nothing: a person closes it, an agent does not. */

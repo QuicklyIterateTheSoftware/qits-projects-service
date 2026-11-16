@@ -584,7 +584,8 @@ public class WorkController {
       responseCode = "409",
       description =
           "A status this door may not state — a ticket's DONE among them, which the platform"
-              + " sets when the wrapper release request carrying its branch is finalized — or a"
+              + " sets when the wrapper release request carrying its branch is finalized, or about"
+              + " 15 minutes after VERIFIED when no wrapper branch or request exists — or a"
               + " changed acceptance-criteria list from READY_FOR_DEV on")
   public Map<String, TransitionedEntity> transition(
       @RequestBody(
@@ -618,7 +619,8 @@ public class WorkController {
               + " dispatch press's under start_refined. A feature or a"
               + " task moves only once its epic is past REPORTED, and its scheduling (to"
               + " READY_FOR_DEV, or back) is the epic's. Nobody moves a ticket to DONE: the platform"
-              + " does, once the wrapper release request carrying its branch is finalized. Answers"
+              + " does, once the wrapper release request carrying its branch is finalized, or about"
+              + " 15 minutes after VERIFIED when no wrapper branch or request exists. Answers"
               + " the entity in the merged shape, with statusBefore.")
   @APIResponse(
       responseCode = "200",
@@ -651,7 +653,8 @@ public class WorkController {
               + " IMPLEMENTED, or CHILDREN_VERIFIED for an epic or a feature entering VERIFIED"
               + " while a feature or task under it is open — or a ticket's DONE, which no caller of any role may ask for: the"
               + " platform sets it when the wrapper release request carrying the ticket's branch is"
-              + " finalized")
+              + " finalized, or about 15 minutes after VERIFIED when no wrapper branch or request"
+              + " exists")
   public TransitionedEntity setStatus(
       @PathParam("qualifiedId") String qualifiedId, WorkStatusMove request) {
     WorkEntity row = ids.resolve(qualifiedId);

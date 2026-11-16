@@ -300,12 +300,14 @@ public class PhasePromptsTest {
     assertFalse(prompt.contains("closing is a person's move"), prompt);
     assertFalse(prompt.contains("you could not check"), prompt);
     assertFalse(prompt.contains("If it still occurs"), prompt);
-    // qits-150: the platform sets a ticket DONE once the wrapper release is finalized, and the
-    // turn says so — it tells the agent not to, never to.
+    // qits-150, qits-2263: the platform sets a ticket DONE once the wrapper release is finalized,
+    // or about 15 minutes after VERIFIED with no wrapper branch or request, and the turn says
+    // so — it tells the agent not to, never to.
     assertTrue(
         prompt.contains(
             "to VERIFIED with work_status. Do not move it to DONE: the platform does, once the"
-                + " workspace's wrapper release request is finalized."),
+                + " workspace's wrapper release request is finalized, or about 15 minutes after"
+                + " VERIFIED when no wrapper branch or request exists."),
         prompt);
     assertFalse(prompt.contains("move it to DONE with"), "an agent never closes a ticket");
     assertFalse(prompt.contains("once released"), prompt);

@@ -210,10 +210,11 @@ class WorkStatusApiTest {
   }
 
   /**
-   * qits-150: no caller moves a ticket to DONE through this door — a person, qits:admin,
+   * qits-150, qits-2263: no caller moves a ticket to DONE through this door — a person, qits:admin,
    * qits:admin-agent and a platform service alike get the same 409 — because the platform sets it
-   * once the workspace's wrapper release request carrying the ticket's branch is finalized.
-   * DROPPED stays open, and an epic's DONE is untouched.
+   * once the wrapper release request carrying the ticket's branch is finalized, or about 15
+   * minutes after VERIFIED when no wrapper branch or request exists. DROPPED stays open, and an
+   * epic's DONE is untouched.
    */
   @Test
   void noCallerMovesATicketToDone() {
@@ -231,8 +232,9 @@ class WorkStatusApiTest {
           .body(
               "message",
               containsString(
-                  "the platform sets it when the workspace's wrapper release request carrying the"
-                      + " ticket's branch is finalized"));
+                  "the platform sets it when the wrapper release request carrying the"
+                      + " ticket's branch is finalized, or about 15 minutes after VERIFIED when"
+                      + " no wrapper branch or request exists"));
     }
     statusOf(ticket, "VERIFIED");
 
