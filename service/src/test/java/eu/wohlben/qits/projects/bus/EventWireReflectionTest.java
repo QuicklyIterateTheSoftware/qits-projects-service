@@ -146,6 +146,7 @@ public class EventWireReflectionTest {
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
             DeploymentFailedListener.DeploymentFailedPayload.class,
+            DeploymentRequestDeclinedListener.DeploymentRequestDeclinedPayload.class,
             WaitClosedSource.DeskWaitClosedPayload.class,
             eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
             eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload
@@ -760,21 +761,33 @@ public class EventWireReflectionTest {
    * still refuses a listener whose wire path nothing registered.
    */
   private static final java.util.Map<String, Class<?>> BOUND_BY_LOCAL_RECORD =
-      java.util.Map.of(
-          "BuildSuccessful", BuildStatusListener.BuildVerdictPayload.class,
-          "BuildFailed", BuildStatusListener.BuildVerdictPayload.class,
-          "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class,
-          "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class,
-          "DeploymentFailed", DeploymentFailedListener.DeploymentFailedPayload.class,
-          "DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class,
-          "AgentObsolete",
-          eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
-          "AgentRemoved",
-          eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class,
-          "TargetOomKilled",
-          eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload.class,
-          "AgentWaitClosed",
-          eu.wohlben.qits.projects.desktriggers.WaitBrokenSource.AgentWaitClosedPayload.class);
+      java.util.Map.ofEntries(
+          java.util.Map.entry("BuildSuccessful", BuildStatusListener.BuildVerdictPayload.class),
+          java.util.Map.entry("BuildFailed", BuildStatusListener.BuildVerdictPayload.class),
+          java.util.Map.entry(
+              "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class),
+          java.util.Map.entry(
+              "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class),
+          java.util.Map.entry(
+              "DeploymentFailed", DeploymentFailedListener.DeploymentFailedPayload.class),
+          java.util.Map.entry(
+              "DeploymentRequestDeclined",
+              DeploymentRequestDeclinedListener.DeploymentRequestDeclinedPayload.class),
+          java.util.Map.entry("DeskWaitClosed", WaitClosedSource.DeskWaitClosedPayload.class),
+          java.util.Map.entry(
+              "AgentObsolete",
+              eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class),
+          java.util.Map.entry(
+              "AgentRemoved",
+              eu.wohlben.qits.projects.desktriggers.CapacityOpenedSource.AgentLeftPayload.class),
+          java.util.Map.entry(
+              "TargetOomKilled",
+              eu.wohlben.qits.projects.desktriggers.TargetOomKilledSource.TargetOomKilledPayload
+                  .class),
+          java.util.Map.entry(
+              "AgentWaitClosed",
+              eu.wohlben.qits.projects.desktriggers.WaitBrokenSource.AgentWaitClosedPayload
+                  .class));
 
   @Test
   public void everyDurableListenersSignatureNamesARegisteredType() {
@@ -833,6 +846,14 @@ public class EventWireReflectionTest {
     assertTrue(
         listeners.stream().anyMatch(DeploymentFailedListener.class::isInstance),
         "a removed listener is a silent one — and here a rollback is never recorded");
+  }
+
+  /** The decline's subscription (qits-2271): without it a declined deploy waits for the reconcile. */
+  @Test
+  public void theDeploymentRequestDeclinedListenerIsDiscoverableAsADurableListener() {
+    assertTrue(
+        listeners.stream().anyMatch(DeploymentRequestDeclinedListener.class::isInstance),
+        "a removed listener is a silent one — and here a declined deploy holds its successor");
   }
 
   /**

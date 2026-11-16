@@ -4,6 +4,7 @@ import eu.wohlben.qits.eventstream.contracts.EventstreamPact;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.bus.DeploymentActiveListener;
 import eu.wohlben.qits.projects.bus.DeploymentFailedListener;
+import eu.wohlben.qits.projects.bus.DeploymentRequestDeclinedListener;
 import eu.wohlben.qits.projects.bus.ReleasePipelineRunListener;
 import eu.wohlben.qits.projects.bus.ReleaseRequestHeadListener;
 import eu.wohlben.qits.projects.bus.ScmBackupTriggerListener;
@@ -41,6 +42,7 @@ class EventstreamPactTest {
               new BuildStatusListener(),
               new DeploymentActiveListener(),
               new DeploymentFailedListener(),
+              new DeploymentRequestDeclinedListener(),
               new ReleasePipelineRunListener(),
               new ReleaseRequestHeadListener(),
               new ScmBackupTriggerListener(),

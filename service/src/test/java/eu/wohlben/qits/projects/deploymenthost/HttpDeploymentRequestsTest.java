@@ -223,6 +223,33 @@ class HttpDeploymentRequestsTest {
     assertTrue(views.get(1).held(), "and its detail says so");
   }
 
+  /**
+   * A declined request (qits-2271) carries who and when, and its note is read off the detail; an
+   * older qits-deployments answers neither field and nothing reads declined.
+   */
+  @Test
+  void aDeclinedRequestIsRead() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"deploymentRequests\":[{\"id\":\"dr-9\",\"deploymentStatus\":null,"
+            + "\"createdAt\":\"2026-09-16T11:00:00Z\",\"qualityGate\":\"UNMET\","
+            + "\"gateSettledAt\":\"2026-09-16T12:00:00Z\","
+            + "\"gateDetail\":\"declined by alice: wrong change\",\"deployHold\":true,"
+            + "\"declinedBy\":\"alice\",\"declinedAt\":\"2026-09-16T12:00:00Z\"},"
+            + "{\"id\":\"dr-8\",\"qualityGate\":\"UNMET\"}]}");
+
+    List<DeploymentRequests.DeploymentRequestView> views =
+        against(base).forRelease("repo-1", "v").orElseThrow();
+
+    assertTrue(views.get(0).declined());
+    assertEquals("alice", views.get(0).declinedBy());
+    assertEquals(java.time.Instant.parse("2026-09-16T12:00:00Z"), views.get(0).declinedAt());
+    assertEquals("wrong change", views.get(0).declineNote());
+    assertTrue(!views.get(0).held(), "a settled request is no longer held");
+    assertTrue(!views.get(1).declined(), "an older far side answers no decline");
+    assertNull(views.get(1).declinedBy());
+  }
+
   @Test
   void aListingWithoutTheHoldFieldsIsNotHeld() throws Exception {
     String base = startServer();

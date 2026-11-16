@@ -119,6 +119,8 @@ public class UnattendedGateTicketTest {
   /** What qits-ci says a red run found stale (qits-1920); reset on both sides of each test. */
   @Inject FakeCiRunLineage lineage;
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
+
   /** The kind the automation cases fail; its fake run id is {@code run-<kind>}. */
   private static final String SCREENSHOTS = "screenshot-baselines";
 
@@ -458,6 +460,34 @@ public class UnattendedGateTicketTest {
     assertTrue(
         said.contains(BackingBranches.qualifiedIdOf(id)), "the comment names the request: " + said);
     assertTrue(said.contains("the bump is not wanted after all"), "and why: " + said);
+    assertTrue(awaitClosedAt(id) != null, "and the request records that its ticket is dealt with");
+  }
+
+  /**
+   * A declined deploy (qits-2271) ends the RELEASED request WITHDRAWN, and its ticket goes as a
+   * withdrawal's does: DROPPED, with the decline on the thread.
+   */
+  @Test
+  public void aDeclinedDeployDropsItsTicketAndSaysWithdrawn() {
+    activeBuilds.answer(Optional.of(0));
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    headMoved("maintenance/dependencies");
+    awaitState(id, "PENDING");
+    verdict("BuildSuccessful", mergedShaOf(id), "");
+    awaitState(id, "RELEASED");
+    assertEquals("REPORTED", statusOf(ticketId), "the premise: released is not ended");
+
+    assertTrue(
+        finalization.onDeployDeclined(
+            BackingBranches.qualifiedIdOf(id), null, "alice", "wrong change", "dr-1"));
+
+    awaitState(id, "WITHDRAWN");
+    awaitStatus(ticketId, "DROPPED");
+    String said = awaitComment(ticketId, "WITHDRAWN");
+    assertTrue(said.contains("declined by alice"), "the comment says why: " + said);
     assertTrue(awaitClosedAt(id) != null, "and the request records that its ticket is dealt with");
   }
 

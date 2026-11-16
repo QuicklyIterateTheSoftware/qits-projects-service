@@ -126,6 +126,50 @@ class DeploymentRollbackGateTest {
         .held());
   }
 
+  /**
+   * A declined deploy (qits-2271) is FAILED, naming who declined it, ahead of the PENDING a settled
+   * UNMET request read as before — on a single read that asked qits-deployments, and on a list read
+   * from this service's own stamp on the tag row.
+   */
+  @Test
+  void aDeclinedDeployFailsNamingWhoDeclinedIt() {
+    java.time.Instant at = java.time.Instant.parse("2026-10-09T10:40:00Z");
+    GateEvaluation asked =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                released(PublishState.PASSED, false),
+                GateSubject.Deployment.newest("dr-9", null, false, at, "alice")));
+    assertEquals(ReleaseGates.State.FAILED, asked.state());
+    assertEquals("Deploy of 2026.1009.100000 declined by alice", asked.detail());
+    assertEquals("Deployment request dr-9", asked.checks().get(0).name());
+    assertEquals("FAILED", asked.checks().get(0).state());
+
+    ReleasedTagPendingMerge stamped = released(PublishState.PASSED, false);
+    stamped.declinedAt = at;
+    GateEvaluation listRead =
+        gate.evaluate(with(DEPLOYS, stamped, GateSubject.Deployment.NOT_ASKED));
+    assertEquals(ReleaseGates.State.FAILED, listRead.state());
+    assertEquals("Deploy of 2026.1009.100000 declined", listRead.detail());
+  }
+
+  /** The view reads declined off {@code declinedAt}, and the note off the far side's detail. */
+  @Test
+  void aViewIsDeclinedByItsStampAndCarriesItsNote() {
+    java.time.Instant at = java.time.Instant.parse("2026-10-09T10:40:00Z");
+    var declined =
+        new eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView(
+            "d", null, null, "UNMET", at, "declined by alice: wrong change", true, "alice", at);
+    assertTrue(declined.declined());
+    assertTrue(!declined.held(), "settled, so no longer held");
+    assertEquals("wrong change", declined.declineNote());
+    var bare =
+        new eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView(
+            "d", null, null, "UNMET", at, "declined by alice", true, "alice", at);
+    assertEquals(null, bare.declineNote());
+    assertTrue(!view("UNMET", null, null, true).declined());
+  }
+
   private static eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView view(
       String gate, java.time.Instant settled, String detail, Boolean hold) {
     return new eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView(

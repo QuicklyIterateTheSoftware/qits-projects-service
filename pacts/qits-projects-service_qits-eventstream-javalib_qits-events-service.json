@@ -229,6 +229,78 @@
           "qits-trigger": {
             "app": "qits-projects-service",
             "kind": "schedule",
+            "schedule": "CatchupSweeper.catchUp(projects-deployment-request-declined)"
+          },
+          "qits-via": {
+            "artifact": "eu.wohlben.qits:qits-eventstream",
+            "repository": "qits-eventstream-javalib",
+            "version": "2026.1110.232501"
+          }
+        }
+      },
+      "description": "CatchupSweeper.catchUp(projects-deployment-request-declined): listEvents (one name)",
+      "key": "87bb7ef4",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no events"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "200"
+          ],
+          "name": [
+            "DeploymentRequestDeclined"
+          ],
+          "order": [
+            "asc"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": []
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
             "schedule": "CatchupSweeper.catchUp(projects-desk-triggers)"
           },
           "qits-via": {
@@ -681,6 +753,75 @@
           ],
           "name": [
             "DeploymentFailed"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": []
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "CatchupSweeper.initialize(projects-deployment-request-declined)"
+          },
+          "qits-via": {
+            "artifact": "eu.wohlben.qits:qits-eventstream",
+            "repository": "qits-eventstream-javalib",
+            "version": "2026.1110.232501"
+          }
+        }
+      },
+      "description": "CatchupSweeper.initialize(projects-deployment-request-declined): listEvents (one name)",
+      "key": "c8ac4044",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no events"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "1"
+          ],
+          "name": [
+            "DeploymentRequestDeclined"
           ]
         }
       },
