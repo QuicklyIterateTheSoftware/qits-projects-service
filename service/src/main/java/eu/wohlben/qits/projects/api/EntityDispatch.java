@@ -47,6 +47,12 @@ import org.jboss.logging.Logger;
  *       person's or the delivery desk's. Right after the block and for the block's reason: the status is one a phase
  *       runs under, and the answer that names the tag is the true one. The tag outlives every move,
  *       so a person does the work and moves its status by hand; clearing the tag lets it dispatch.
+ *       <b>An assignee a person wrote</b> is refused right after it, for the same reason and to the
+ *       same presses (409, qits-2259): writing the assignee is a person claiming the work, and the
+ *       dispatch would overwrite the claim with its agent. The row records which write it was
+ *       ({@code assigneeClaimed}) rather than reading the text, because the assignee every press
+ *       writes is the agent's and nothing clears it — the next phase's press still goes through.
+ *       Clearing the assignee lets it dispatch.
  *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
  *       none and are a <b>409</b> naming the status. REFINED starts none either (qits-887) and has a
  *       409 of its own, asked before the block: it waits for a person to schedule it
@@ -410,7 +416,8 @@ public class EntityDispatch {
     // blocked is what the entity reads as (qits-895); dispatchable reads the EXPLICIT flag alone,
     // because a derived block — an agent waiting for a person — never refuses a press. A tag
     // reserving the work for a person refuses every press (qits-634), so it is not dispatchable;
-    // nor is a condition, nor an item whose unmet needs hold its implementation (qits-1903).
+    // nor is an item a person claimed by writing its assignee (qits-2259), nor a condition, nor an
+    // item whose unmet needs hold its implementation (qits-1903).
     EntityBlockState block = EntityBlockState.of(entity);
     return new EntityDispatchStateDto(
         entity.id,
@@ -421,6 +428,7 @@ public class EntityDispatch {
         flowRuns
             && !entity.blocked
             && !isReservedForHuman(entity)
+            && !isClaimed(entity)
             && !isCondition(entity)
             && unmetNeeds.holding(entity).isEmpty(),
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
@@ -475,6 +483,7 @@ public class EntityDispatch {
       throw blockedRefusal(entity);
     }
     refuseReserved(entity);
+    refuseClaimed(entity);
     refuseCondition(entity);
     refuseUnmetNeeds(entity);
     return located(entity, Phase.IMPLEMENT);
@@ -655,6 +664,7 @@ public class EntityDispatch {
       throw blockedRefusal(entity);
     }
     refuseReserved(entity);
+    refuseClaimed(entity);
     refuseCondition(entity);
     refuseUnmetNeeds(entity);
     return PhasePrompts.phaseOf(entity)
@@ -708,6 +718,34 @@ public class EntityDispatch {
   /** Whether {@code entity} carries {@link WorkTag#RESERVED_FOR_HUMAN} (qits-634). */
   static boolean isReservedForHuman(WorkEntity entity) {
     return entity.tags != null && entity.tags.contains(WorkTag.RESERVED_FOR_HUMAN);
+  }
+
+  /**
+   * The refusal a press on an entity a person claimed answers (qits-2259), whatever its status and
+   * whoever pressed: its assignee was written by a person, not by a dispatch, so no agent is put on
+   * it and the dispatch's own write never overwrites the claim.
+   */
+  private static void refuseClaimed(WorkEntity entity) {
+    if (!isClaimed(entity)) {
+      return;
+    }
+    throw new DispatchRefused(
+        409,
+        capitalised(noun(entity))
+            + " "
+            + entity.id
+            + " is assigned to `"
+            + entity.assignee
+            + "`, so no agent is dispatched onto it. Clear its assignee to hand it to an agent,"
+            + " then dispatch.");
+  }
+
+  /**
+   * Whether a person claimed {@code entity} by writing its assignee (qits-2259) — the row's own
+   * record of who wrote it, never a reading of the text: legacy agent identities have no one shape.
+   */
+  static boolean isClaimed(WorkEntity entity) {
+    return entity.assigneeClaimed && entity.assignee != null && !entity.assignee.isBlank();
   }
 
   /**

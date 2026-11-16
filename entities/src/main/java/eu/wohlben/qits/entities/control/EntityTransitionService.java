@@ -841,7 +841,9 @@ public class EntityTransitionService {
     }
     row.ticketType = target.ticketType();
     row.impetus = blankToNull(target.impetus());
-    row.assignee = blankToNull(target.assignee());
+    // The PATCH's rule (qits-2259): a different assignee is a claim, the one the row holds restated
+    // is not — this door restates the whole row on every save.
+    AssigneeClaims.write(row, target.assignee());
     row.supersededByEntityId = blankToNull(target.supersededBy());
     // Absent clears it, as every property here; a legacy DROPPED row restated without one keeps
     // the null it had (qits-248).

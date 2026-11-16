@@ -377,6 +377,24 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String assignee;
 
   /**
+   * <b>Whether {@link #assignee} is a person's claim</b> (qits-2259) rather than the agent a dispatch
+   * put there. A person who writes the assignee — the create, the PATCH, the PUT-shaped transition,
+   * changing it to a different non-blank value — sets it, and no press (a person's or the delivery
+   * desk's) puts an agent on the row while it stands; clearing the assignee clears it, and so does
+   * the dispatch's own write ({@code EntityDispatchService.setAssignee}). Restating the assignee the
+   * row already holds changes nothing, so the SPA's whole-row save never turns an agent into a claim.
+   *
+   * <p>A flag and not a reading of the text, because the agents' identities have no one shape
+   * (legacy rows hold {@code claude} or {@code tok-workspace-…}): only the write knows which it was.
+   * {@code @JsonIgnore}, like the agent-waiting columns: it is on no answer, the audit snapshot
+   * included, and the dispatch read folds it into {@code dispatchable}. Not an {@code
+   * EntityProperty}, for {@link #blocked}'s reason. False on every row written before epics V43.
+   */
+  @JsonIgnore
+  @Column(name = "assignee_claimed", nullable = false)
+  public boolean assigneeClaimed;
+
+  /**
    * The principal that filed a ticket. Stamped from the request identity, <b>never
    * client-supplied</b> — no surface reads it off a request body and none may start.
    *

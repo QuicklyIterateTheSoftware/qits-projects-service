@@ -144,6 +144,8 @@ public class EntityDispatchService {
                 "A " + row.archetype + " has no assignee: nothing is dispatched onto one.");
           }
           row.assignee = assignee == null || assignee.isBlank() ? null : assignee;
+          // The agent is on it, not a person (qits-2259): the next phase's press goes through.
+          row.assigneeClaimed = false;
           entities.getEntityManager().flush();
           auditService.record(
               AuditEntityType.of(row.archetype),

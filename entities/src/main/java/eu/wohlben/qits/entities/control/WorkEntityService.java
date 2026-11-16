@@ -497,7 +497,8 @@ public class WorkEntityService {
     row.status = kind.hasLifecycle() ? EntityStateMachine.initial(kind.archetype()).name() : null;
     row.ticketType = type;
     row.impetus = write.impetus();
-    row.assignee = blankToNull(write.assignee());
+    // A person's create naming an assignee claims the row (qits-2259): no press dispatches onto it.
+    AssigneeClaims.write(row, write.assignee());
     row.repositoryId = write.repositoryId();
     List<String> criteria = AcceptanceCriteria.require(write.acceptanceCriteria());
     if (criteria != null) {
@@ -602,9 +603,10 @@ public class WorkEntityService {
       row.ticketType = type;
     }
     if (write.clearAssignee()) {
-      row.assignee = null;
+      AssigneeClaims.write(row, null);
     } else if (write.assignee() != null) {
-      row.assignee = blankToNull(write.assignee());
+      // A different assignee is a person's claim (qits-2259); the same one restated is not.
+      AssigneeClaims.write(row, write.assignee());
     }
     if (write.repositoryId() != null) {
       row.repositoryId = write.repositoryId();
@@ -1917,11 +1919,6 @@ public class WorkEntityService {
       throw new BadRequestException(
           violations.stream().map(ArchetypeViolation::message).collect(Collectors.joining("; ")));
     }
-  }
-
-  /** A supplied-but-empty assignee means nobody, not the empty string. */
-  private static String blankToNull(String value) {
-    return (value == null || value.isBlank()) ? null : value;
   }
 
   private static List<String> childIds(List<EntityMembership> edges) {

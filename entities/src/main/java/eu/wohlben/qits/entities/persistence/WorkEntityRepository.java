@@ -71,7 +71,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
                 + " e.agentWaitingCause, e.agentWaitingOn, e.outcome, e.inspiredByIdeaId, e.priority,"
-                + " substring(e.description, 1, 2000)"
+                + " substring(e.description, 1, 2000), e.assigneeClaimed"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
             .setParameter(1, projectId)
@@ -140,6 +140,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.inspiredByIdeaId = (String) c[26];
     row.priority = (Integer) c[27];
     row.descriptionLead = (String) c[28];
+    row.assigneeClaimed = (Boolean) c[29];
     return row;
   }
 
