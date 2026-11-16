@@ -15,7 +15,8 @@ import java.util.UUID;
  * not observed. The class lives here, not in a vocabulary jar, for {@code RepositoryRenamed}'s
  * reason; a consumer decodes it into a record of its own. No field spells an envelope word ({@code
  * name}, {@code occurredAt}, {@code signature}): the agent is {@code agentName}, and {@code
- * changedAt} is the envelope's {@code occurredAt}. It is not matchable by {@code qits wait} yet.
+ * changedAt} is the envelope's {@code occurredAt}. {@code qits wait} matches it since qits-2235
+ * (qits-workspaces' {@code event-fields.json}).
  *
  * @param projectId the agent's project
  * @param agentName the named agent, e.g. {@code ui-builder}
