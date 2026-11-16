@@ -1479,6 +1479,11 @@ public class ReleaseRequests {
    * still queued. Holding wrongly costs a wait the sweep re-asks about every thirty seconds;
    * superseding wrongly throws away a release that would have finished.
    *
+   * <p><b>A declined release is neither, and is left out</b> (qits-2271): its tag row stamped
+   * {@code declinedAt}, or qits-deployments' newest request for it declined before the event or the
+   * reconcile ended it here. It holds no successor and is never superseded — the decline ends it
+   * WITHDRAWN ({@link #endDeclined}), and an OBSOLETE end would fold its tag into the successor.
+   *
    * <p><b>Never call it inside a transaction.</b> The rows are read in one short transaction of
    * its own, the gate set in another (the resolver reads the repository's row, and the release
    * worker that calls this has no transaction or request context of its own), and qits-deployments
@@ -1506,6 +1511,11 @@ public class ReleaseRequests {
                             row -> {
                               ReleasedTagPendingMerge tag =
                                   pendingTags.findByRequest(row.id).orElse(null);
+                              if (tag != null && tag.declinedAt != null) {
+                                // Declined (qits-2271): its request is on its way to WITHDRAWN
+                                // and its tag out of every fold, so it holds nothing.
+                                return null;
+                              }
                               return new Row(
                                   row.id,
                                   row.qualifiedId,
@@ -1519,6 +1529,7 @@ public class ReleaseRequests {
                                           ? "FAILED"
                                           : tag.deploymentFailedDetail);
                             })
+                        .filter(java.util.Objects::nonNull)
                         .toList());
     if (rows.isEmpty()) {
       return List.of();
@@ -1547,7 +1558,16 @@ public class ReleaseRequests {
           // stays outside it.
           set = QuarkusTransaction.requiringNew().call(() -> gates.resolve(repoId));
         }
-        if (deploymentFailed(set, repoId, row.tagName())) {
+        DeploymentRequests.DeploymentRequestView newest =
+            newestDeployment(set, repoId, row.tagName());
+        if (newest != null && newest.declined()) {
+          // Declined at qits-deployments and not ended here yet (qits-2271): neither in flight nor
+          // red — the decline, by its event or the reconcile, ends it WITHDRAWN, never OBSOLETE.
+          continue;
+        }
+        // ROLLED_BACK folds to CANCELLED for the pipeline panel, and stays so there; for the hold it
+        // is a deployment that never went live, which is red (qits-1690).
+        if (newest != null && ReleaseFinalization.failedDeployment(newest.status())) {
           red = "the deployment of " + row.tagName() + " FAILED and never went live";
         }
       }
@@ -1575,13 +1595,13 @@ public class ReleaseRequests {
   }
 
   /**
-   * Whether qits-deployments says the newest deployment of {@code version} failed. False for
-   * everything that is not that statement — see {@link #releasedSiblingsOf}. Outside every
-   * transaction.
+   * qits-deployments' newest deployment request of {@code version}, or null for everything that is
+   * not an answer naming one — see {@link #releasedSiblingsOf}. Outside every transaction.
    */
-  private boolean deploymentFailed(ReleaseGates.GateSet set, String repoId, String version) {
+  private DeploymentRequests.DeploymentRequestView newestDeployment(
+      ReleaseGates.GateSet set, String repoId, String version) {
     if (!set.requires(ReleaseGates.Kind.DEPLOYMENT) || !deploymentRequests.isResolvable()) {
-      return false;
+      return null;
     }
     Optional<List<DeploymentRequests.DeploymentRequestView>> answered;
     try {
@@ -1590,15 +1610,12 @@ public class ReleaseRequests {
       LOG.warnf(
           "Could not read the deployment of %s %s; it is held as in flight: %s",
           repoId, version, e.toString());
-      return false;
+      return null;
     }
     if (answered == null || answered.isEmpty() || answered.get().isEmpty()) {
-      return false;
+      return null;
     }
-    String newest = answered.get().get(0).status();
-    // ROLLED_BACK folds to CANCELLED for the pipeline panel, and stays so there; for the hold it is
-    // a deployment that never went live, which is red (qits-1690).
-    return ReleaseFinalization.failedDeployment(newest);
+    return answered.get().get(0);
   }
 
   /** The sentence a request held behind {@code inFlight} carries on its detail. */
@@ -2270,6 +2287,161 @@ public class ReleaseRequests {
     // (epic qits-1580). Withdrawing is the escape for an active request nobody will fix.
     activateQueuedBehind(id);
     return get(id);
+  }
+
+  /**
+   * <b>A RELEASED request whose deploy was declined ends WITHDRAWN</b> (qits-2271) — the end of a
+   * request a person ruled must not ship, after its tag was cut. Reached only through {@link
+   * ReleaseFinalization#onDeployDeclined}, from the {@code DeploymentRequestDeclined} event or the
+   * deployment reconcile; {@link #withdraw} keeps refusing RELEASED, because a person withdrawing
+   * a released request by hand would end it while its deployment may still be going live.
+   *
+   * <p><b>Idempotent, and a no-op for anything but a RELEASED request whose tag has not merged</b>:
+   * a second event, the reconcile after the event, a FINALIZED request, an unknown one and a
+   * version that is not the request's own all log and return false.
+   *
+   * <p>In one transaction, under the repository's row lock (the lock {@link #request} and {@link
+   * #obsolete} take): RELEASED → WITHDRAWN, {@code retryable=false}, the detail naming the version,
+   * who declined it, the deployment request and the note; the tag row stamped {@code declinedAt},
+   * which takes it out of the implicit source set and every owed-merge read — <b>never {@code
+   * mergedAt}</b>, so the git tag stays on the host as the only copy of the work; and the branches
+   * the tag released WITHDRAWN ({@link BranchDeliveries#withdrawnAfterTag}). After the commit, as
+   * {@link #withdraw} does: the automations note forgotten, the request's QA runs cancelled, its
+   * gate ticket closed WITHDRAWN, whatever is queued behind it activated — and every unreleased
+   * request of the repository re-folded, {@link #settleTagsOnMain}'s path, because the active one
+   * folded the declined tag in as an implicit source and must drop it. Its {@link #evaluate} hold
+   * no longer sees the declined request either, which is WITHDRAWN now.
+   *
+   * @param version the declined version, checked against the request's own tag; null skips the check
+   * @param declinedBy who declined it, or null for an unnamed operator
+   * @param note what they said, or null/blank for nothing
+   * @param deploymentRequestId qits-deployments' request that was declined, or null
+   * @return whether this call ended the request
+   */
+  boolean endDeclined(
+      String requestId,
+      String version,
+      String declinedBy,
+      String note,
+      String deploymentRequestId) {
+    String repoId =
+        QuarkusTransaction.requiringNew()
+            .call(() -> requests.findByIdOptional(requestId).map(row -> row.repoId).orElse(null));
+    if (repoId == null) {
+      LOG.infof("A declined deploy names release request %s, which does not exist", requestId);
+      return false;
+    }
+    record Declined(
+        String repoId,
+        String repoName,
+        String qualifiedId,
+        String gateTicketId,
+        String detail,
+        String tagName) {}
+    Declined declined =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
+                  ReleaseRequest row = requests.findByIdOptional(requestId).orElse(null);
+                  if (row == null || row.state != ReleaseRequest.State.RELEASED) {
+                    LOG.infof(
+                        "The deploy of %s was declined, but release request %s is %s; nothing"
+                            + " to end",
+                        version,
+                        row == null ? requestId : row.qualifiedId,
+                        row == null ? "gone" : row.state);
+                    return null;
+                  }
+                  ReleasedTagPendingMerge tag = pendingTags.findByRequest(row.id).orElse(null);
+                  if (tag != null && tag.mergedAt != null) {
+                    LOG.warnf(
+                        "The deploy of %s was declined, but its tag already reached main; release"
+                            + " request %s is left RELEASED",
+                        tag.tagName,
+                        row.qualifiedId);
+                    return null;
+                  }
+                  String released =
+                      tag != null && tag.tagName != null && !tag.tagName.isBlank()
+                          ? tag.tagName
+                          : row.version;
+                  if (version != null
+                      && !version.isBlank()
+                      && released != null
+                      && !released.equals(version.trim())) {
+                    LOG.warnf(
+                        "A declined deploy of %s names release request %s, which released %s;"
+                            + " nothing is ended",
+                        version,
+                        row.qualifiedId,
+                        released);
+                    return null;
+                  }
+                  Instant now = Instant.now();
+                  states.move(row, ReleaseRequest.State.WITHDRAWN);
+                  row.detail =
+                      declinedDetail(
+                          released != null ? released : version,
+                          declinedBy,
+                          deploymentRequestId,
+                          note);
+                  row.retryable = false;
+                  row.updatedAt = now;
+                  if (tag != null && tag.declinedAt == null) {
+                    tag.declinedAt = now;
+                  }
+                  deliveries.withdrawnAfterTag(row);
+                  return new Declined(
+                      row.repoId,
+                      row.repoName,
+                      row.qualifiedId,
+                      row.gateTicketId,
+                      row.detail,
+                      tag == null ? released : tag.tagName);
+                });
+    if (declined == null) {
+      return false;
+    }
+    LOG.infof(
+        "Release request %s is withdrawn: %s. Its tag %s stays on the git host and leaves every"
+            + " fold",
+        declined.qualifiedId(),
+        declined.detail(),
+        declined.tagName());
+    automationLedger.forget(requestId);
+    cancel(declined.repoId(), requestId, "was withdrawn: its deploy was declined");
+    closeGateTicket(
+        requestId,
+        declined.gateTicketId(),
+        declined.repoName(),
+        UnattendedGateTickets.Ending.WITHDRAWN,
+        declined.detail());
+    activateQueuedBehind(requestId);
+    // The active request folded the declined tag in as an implicit source; its fold must drop it.
+    remergeOpenOf(
+        declined.repoId(),
+        null,
+        "the released tag "
+            + declined.tagName()
+            + " was declined and leaves the implicit sources");
+    return true;
+  }
+
+  /**
+   * {@code "Deploy of <v> declined by <who> (deployment request <id>): <note>"} (qits-2271), each
+   * optional part left out where it is unknown.
+   */
+  static String declinedDetail(
+      String version, String declinedBy, String deploymentRequestId, String note) {
+    return "Deploy of "
+        + version
+        + " declined by "
+        + (declinedBy == null || declinedBy.isBlank() ? "an operator" : declinedBy)
+        + (deploymentRequestId == null || deploymentRequestId.isBlank()
+            ? ""
+            : " (deployment request " + deploymentRequestId + ")")
+        + (note == null || note.isBlank() ? "" : ": " + note.trim());
   }
 
   /**
@@ -3176,6 +3348,19 @@ public class ReleaseRequests {
               + row.qualifiedId
               + " has not released, so there is no version to deploy: the deployment phase begins at"
               + " the tag.");
+    }
+    if (row.state != ReleaseRequest.State.RELEASED) {
+      // qits-2271: a request past RELEASED has nothing left to deploy — FINALIZED already shipped,
+      // and a WITHDRAWN one (a declined deploy) must not, or a rerun would re-announce the declined
+      // version and open a fresh held deployment request for it.
+      throw new DomainException(
+          409,
+          "Release request "
+              + row.qualifiedId
+              + " is "
+              + row.state
+              + ", so its deployment phase cannot be run again: only a RELEASED request is still"
+              + " waiting on its deployment.");
     }
     ReleaseGates.GateSet set = gates.resolve(row.repoId);
     if (set.known() && !set.requires(ReleaseGates.Kind.DEPLOYMENT)) {
@@ -8602,7 +8787,8 @@ public class ReleaseRequests {
       return GateSubject.Deployment.NOTHING_YET;
     }
     DeploymentRequests.DeploymentRequestView newest = answered.get().get(0);
-    return GateSubject.Deployment.newest(newest.id(), newest.status(), newest.held());
+    return GateSubject.Deployment.newest(
+        newest.id(), newest.status(), newest.held(), newest.declinedAt(), newest.declinedBy());
   }
 
   /**

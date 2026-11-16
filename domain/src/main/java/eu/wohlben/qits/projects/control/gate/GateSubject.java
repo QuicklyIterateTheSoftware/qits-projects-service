@@ -111,9 +111,17 @@ public record GateSubject(
    * @param requestId the newest deployment request's id, or null where there is none yet
    * @param status that request's deployment status as qits-deployments words it, or null
    * @param held whether qits-deployments holds that request for a person's approval (qits-2268)
+   * @param declinedAt when somebody declined that request at qits-deployments (qits-2271), or null
+   * @param declinedBy who did, or null with {@code declinedAt}
    */
   public record Deployment(
-      boolean asked, boolean answered, String requestId, String status, boolean held) {
+      boolean asked,
+      boolean answered,
+      String requestId,
+      String status,
+      boolean held,
+      Instant declinedAt,
+      String declinedBy) {
 
     public static final Deployment NOT_ASKED = new Deployment(false, false, null, null);
 
@@ -126,6 +134,17 @@ public record GateSubject(
       this(asked, answered, requestId, status, false);
     }
 
+    /** The read before qits-2271: nothing declined. */
+    public Deployment(
+        boolean asked, boolean answered, String requestId, String status, boolean held) {
+      this(asked, answered, requestId, status, held, null, null);
+    }
+
+    /** Whether the newest request was declined at qits-deployments (qits-2271). */
+    public boolean declined() {
+      return declinedAt != null;
+    }
+
     public static Deployment newest(String requestId, String status) {
       return new Deployment(true, true, requestId, status);
     }
@@ -133,6 +152,12 @@ public record GateSubject(
     /** The newest request, held for a person or not (qits-2268). */
     public static Deployment newest(String requestId, String status, boolean held) {
       return new Deployment(true, true, requestId, status, held);
+    }
+
+    /** The newest request in full: held, or declined and by whom (qits-2271). */
+    public static Deployment newest(
+        String requestId, String status, boolean held, Instant declinedAt, String declinedBy) {
+      return new Deployment(true, true, requestId, status, held, declinedAt, declinedBy);
     }
   }
 

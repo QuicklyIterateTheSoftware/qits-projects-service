@@ -1,0 +1,14 @@
+-- A RELEASED TAG WHOSE DEPLOY WAS DECLINED LEAVES THE ESTATE'S FOLD (qits-2271).
+--
+-- A deploy held for a person (qits-2268) can be declined at qits-deployments. The release request
+-- then ends WITHDRAWN, and its tag must never reach main: neither by its own finalization nor inside
+-- a successor that folds it in as an implicit source.
+--
+--   declined_at  when the decline was recorded here. Null on every tag nobody declined. A declined
+--                row leaves the implicit source set (listPending), the owed merges, the ungated
+--                rows and the deployment reconcile, and keeps merged_at null for ever -- so the
+--                git tag stays on the host, the only copy of the declined work once its source
+--                branches were deleted at the tag cut.
+--
+-- Nothing is backfilled: no tag was declined before this column existed.
+alter table released_tag_pending_merge add column declined_at timestamptz;

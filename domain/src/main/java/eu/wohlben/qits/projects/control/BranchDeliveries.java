@@ -412,6 +412,31 @@ public class BranchDeliveries {
     }
   }
 
+  /**
+   * <b>WITHDRAWN after the tag</b> (qits-2271): the RELEASED {@code row}'s deploy was declined, so
+   * the request ended WITHDRAWN and its tag will never ship. Every ledger row it RELEASED, or
+   * FAILED after the tag, and that no later position has overwritten takes WITHDRAWN at the tag's
+   * version, so {@code qits wait branch --until live} returns instead of waiting for good. It walks
+   * the ledger, as {@link #live} and {@link #gateFailed} do, rather than the request's sources as
+   * {@link #withdrawn(ReleaseRequest)} does: a source branch was deleted at the tag cut, and a
+   * branch of that name pushed again since belongs to whatever request carries it now.
+   */
+  public void withdrawnAfterTag(ReleaseRequest row) {
+    if (row == null || row.id == null) {
+      return;
+    }
+    try {
+      List<BranchDeliveryRepository.Released> held = new ArrayList<>(ledger.releasedBy(row.id));
+      held.addAll(ledger.failedBy(row.id));
+      for (BranchDeliveryRepository.Released released : held) {
+        stepReleased(row, released, Step.WITHDRAWN, null, null, null);
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "Could not record the branches of release request %s as WITHDRAWN", row.qualifiedId);
+    }
+  }
+
   /** <b>RELEASED</b>: the tag {@code row.version} carries each of {@code branches}. */
   public void released(ReleaseRequest row, Collection<String> branches) {
     for (String branch : branches) {

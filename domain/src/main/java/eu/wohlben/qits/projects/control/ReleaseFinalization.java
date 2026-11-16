@@ -318,7 +318,7 @@ public class ReleaseFinalization {
                         .filter(
                             row ->
                                 row.mergedAt == null
-                                    && row.abandonedAt == null
+                                    && row.abandonedAt == null && row.declinedAt == null
                                     && row.deploymentActiveAt == null)
                         .map(
                             row -> {
@@ -353,10 +353,12 @@ public class ReleaseFinalization {
    * deployment is asked about directly. Selected are rows of a {@code RELEASED} request, released
    * more than {@code settle} ago and not live — recorded as failed or not — whose repository's gate
    * set (at {@code main}) requires {@link ReleaseGates.Kind#DEPLOYMENT}; for each,
-   * qits-deployments' newest deployment of the version is read, and its word decides one of two
+   * qits-deployments' newest deployment of the version is read, and its word decides one of three
    * arms:
    *
    * <ul>
+   *   <li><b>Declined</b> ({@code declinedAt} set, qits-2271): the request ends WITHDRAWN through
+   *       {@link #onDeployDeclined}, exactly as the {@code DeploymentRequestDeclined} event ends it.
    *   <li><b>{@code ACTIVE}, and that word alone</b>, is live: the gate passes exactly as a {@code
    *       DeploymentActive} would pass it — the row stamped live, a recorded failure cleared, its
    *       branches back to RELEASED, the finalization advanced — on the row already in hand. A
@@ -383,7 +385,7 @@ public class ReleaseFinalization {
     Instant before = Instant.now().minus(settle == null ? Duration.ZERO : settle);
     // Whether a row is already recorded failed is copied out with it: the selection's transaction
     // is over by the time the arms decide.
-    record Waiting(Owed owed, boolean failed) {}
+    record Waiting(Owed owed, String requestId, boolean failed) {}
     List<Waiting> waiting =
         QuarkusTransaction.requiringNew()
             .call(
@@ -395,7 +397,12 @@ public class ReleaseFinalization {
                                     .findByIdOptional(row.releaseRequestId)
                                     .map(request -> request.state == ReleaseRequest.State.RELEASED)
                                     .orElse(false))
-                        .map(row -> new Waiting(owedOf(row), row.deploymentFailedAt != null))
+                        .map(
+                            row ->
+                                new Waiting(
+                                    owedOf(row),
+                                    row.releaseRequestId,
+                                    row.deploymentFailedAt != null))
                         .toList());
     int changed = 0;
     java.util.Map<String, ReleaseGates.GateSet> sets = new java.util.HashMap<>();
@@ -414,8 +421,20 @@ public class ReleaseFinalization {
         if (answered == null || answered.isEmpty() || answered.get().isEmpty()) {
           continue;
         }
-        String status = answered.get().get(0).status();
-        if (LIVE_DEPLOYMENT.equals(status)) {
+        DeploymentRequests.DeploymentRequestView newest = answered.get().get(0);
+        String status = newest.status();
+        if (newest.declined()) {
+          // Declined at qits-deployments and no DeploymentRequestDeclined consumed (qits-2271):
+          // the same end the event makes, so a lost event costs one reconcile pass.
+          if (onDeployDeclined(
+              row.requestId(),
+              owed.tagName(),
+              newest.declinedBy(),
+              newest.declineNote(),
+              newest.id())) {
+            changed++;
+          }
+        } else if (LIVE_DEPLOYMENT.equals(status)) {
           if (wentLive(
               owed,
               "the reconcile found qits-deployments' newest deployment of it "
@@ -437,6 +456,54 @@ public class ReleaseFinalization {
       }
     }
     return changed;
+  }
+
+  /**
+   * <b>The deploy of a released version was declined at qits-deployments</b> (qits-2271): the
+   * release request ends WITHDRAWN, its tag leaves every fold and stays on the git host. Called by
+   * the {@code DeploymentRequestDeclined} consumption and by the {@link #reconcileDeployments
+   * reconcile} when qits-deployments' newest request for a waiting release reads declined — one
+   * method for both, so a lost event and a delivered one end the request the same way. The whole
+   * end is {@link ReleaseRequests#endDeclined}'s; see it for what is written and in which order.
+   *
+   * <p><b>Idempotent</b>, and a no-op that logs for everything but a RELEASED request whose tag has
+   * not reached {@code main}: a second event (one per declined deployment request, and the sibling
+   * rows of one release each emit their own), the reconcile after the event, a FINALIZED request
+   * and an unknown one. Outside every transaction; it throws only on a database failure, which the
+   * caller retries.
+   *
+   * @param releaseRequest the release request, by its qualified id as the event names it, or by its
+   *     uuid
+   * @param version the declined version, checked against the request's tag; null skips the check
+   * @param declinedBy who declined it
+   * @param note what they said, or null
+   * @param deploymentRequestId qits-deployments' declined request, for the detail
+   * @return whether this call ended the request
+   */
+  public boolean onDeployDeclined(
+      String releaseRequest,
+      String version,
+      String declinedBy,
+      String note,
+      String deploymentRequestId) {
+    if (releaseRequest == null || releaseRequest.isBlank()) {
+      return false;
+    }
+    String requestId =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests
+                        .findByReference(null, releaseRequest.trim())
+                        .map(row -> row.id)
+                        .orElse(null));
+    if (requestId == null) {
+      LOG.infof(
+          "The deploy of %s was declined for release request %s, which is not known here",
+          version, releaseRequest);
+      return false;
+    }
+    return releaseRequests.endDeclined(requestId, version, declinedBy, note, deploymentRequestId);
   }
 
   /**
@@ -521,7 +588,11 @@ public class ReleaseFinalization {
                 () ->
                     pendingTags
                         .find(repoId, version)
-                        .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.abandonedAt == null
+                                    && row.declinedAt == null)
                         .filter(
                             row -> {
                               if (green) {
@@ -630,7 +701,7 @@ public class ReleaseFinalization {
                       .filter(
                           row ->
                               row.mergedAt == null
-                                  && row.abandonedAt == null
+                                  && row.abandonedAt == null && row.declinedAt == null
                                   && row.publishState
                                       == ReleasedTagPendingMerge.PublishState.FAILED
                                   && row.deploymentFailedAt == null)
@@ -664,7 +735,7 @@ public class ReleaseFinalization {
                       .filter(
                           row ->
                               row.mergedAt == null
-                                  && row.abandonedAt == null
+                                  && row.abandonedAt == null && row.declinedAt == null
                                   && row.publishState
                                       != ReleasedTagPendingMerge.PublishState.FAILED)
                       .ifPresent(this::retried));
@@ -745,7 +816,7 @@ public class ReleaseFinalization {
                             row ->
                                 row.mergedAt == null
                                     && row.mergeRequestedAt == null
-                                    && row.abandonedAt == null)
+                                    && row.abandonedAt == null && row.declinedAt == null)
                         .map(ReleaseFinalization::owedOf)
                         .orElse(null));
     if (owed == null) {
@@ -866,7 +937,11 @@ public class ReleaseFinalization {
                 () ->
                     pendingTags
                         .findByIdOptional(owed.id())
-                        .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.abandonedAt == null
+                                    && row.declinedAt == null)
                         .map(
                             row -> {
                               if (publishes && row.publishState == null) {
@@ -966,7 +1041,7 @@ public class ReleaseFinalization {
                         .filter(
                             row ->
                                 row.mergedAt == null
-                                    && row.abandonedAt == null
+                                    && row.abandonedAt == null && row.declinedAt == null
                                     && row.publishState
                                         == ReleasedTagPendingMerge.PublishState.PENDING)
                         .flatMap(
@@ -1040,7 +1115,7 @@ public class ReleaseFinalization {
                             row ->
                                 row.mergedAt == null
                                     && row.mergeRequestedAt == null
-                                    && row.abandonedAt == null)
+                                    && row.abandonedAt == null && row.declinedAt == null)
                         .map(
                             row -> {
                               row.mergeRequestedAt = Instant.now();
@@ -1083,7 +1158,7 @@ public class ReleaseFinalization {
                             row ->
                                 row.mergedAt == null
                                     && row.mergeRequestedAt != null
-                                    && row.abandonedAt == null)
+                                    && row.abandonedAt == null && row.declinedAt == null)
                         .map(
                             row -> {
                               // The address pair the git host announces this merge under — read off
@@ -1371,7 +1446,11 @@ public class ReleaseFinalization {
               List<ReleasedTagPendingMerge> rows = pendingTags.listByTag(version.trim());
               List<ReleasedTagPendingMerge> open =
                   rows.stream()
-                      .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                      .filter(
+                          row ->
+                              row.mergedAt == null
+                                  && row.abandonedAt == null
+                                  && row.declinedAt == null)
                       .toList();
               if (open.isEmpty()) {
                 LOG.debugf(

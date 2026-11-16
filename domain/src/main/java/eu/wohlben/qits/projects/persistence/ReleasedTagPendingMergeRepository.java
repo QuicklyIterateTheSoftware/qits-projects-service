@@ -27,9 +27,16 @@ public class ReleasedTagPendingMergeRepository
    * What abandoning stops is the <em>merge</em> ({@link #listOwedMerges}, {@link #listUngated}),
    * never the fold. What ends the fold is {@code mergedAt}, stamped for every row — abandoned or
    * not — once {@code main} is found to contain its {@code releasedSha}, whoever put it there.
+   *
+   * <p><b>A declined row is not here at all</b> (qits-2271). Its deploy was declined and its request
+   * ended WITHDRAWN, so the change must not ship: a request folding it in would carry the declined
+   * commits to production under its own version. Unlike an abandoned tag, nothing will ever
+   * supersede it, so it leaves the set at the decline and never comes back; its {@code mergedAt}
+   * stays null, which keeps the git tag on the host.
    */
   public List<ReleasedTagPendingMerge> listPending(String repoId) {
-    return list("repoId = ?1 and mergedAt is null order by releasedAt", repoId);
+    return list(
+        "repoId = ?1 and mergedAt is null and declinedAt is null order by releasedAt", repoId);
   }
 
   /**
@@ -65,12 +72,13 @@ public class ReleasedTagPendingMergeRepository
 
   /**
    * Everything gated and not landed: the merges this service owes {@code main}. The publish phase's
-   * sweep is the only caller, and a row is here exactly while the git host has not applied it.
+   * sweep is the only caller, and a row is here exactly while the git host has not applied it. A
+   * declined row (qits-2271) is never owed one.
    */
   public List<ReleasedTagPendingMerge> listOwedMerges() {
     return list(
         "mergeRequestedAt is not null and mergedAt is null and abandonedAt is null"
-            + " order by mergeRequestedAt");
+            + " and declinedAt is null order by mergeRequestedAt");
   }
 
   /**
@@ -84,11 +92,13 @@ public class ReleasedTagPendingMergeRepository
    *
    * <p>An <b>abandoned</b> row is out of it, and that is what stops the catch-up from re-asking
    * about a release a successor has superseded for ever: nothing will finalize it, so asking is a
-   * tree listing per sweep with no outcome that could ever follow it.
+   * tree listing per sweep with no outcome that could ever follow it. A <b>declined</b> row
+   * (qits-2271) is out for the same reason, and more so: it must never be merged.
    */
   public List<ReleasedTagPendingMerge> listUngated() {
     return list(
-        "mergeRequestedAt is null and mergedAt is null and abandonedAt is null order by releasedAt");
+        "mergeRequestedAt is null and mergedAt is null and abandonedAt is null"
+            + " and declinedAt is null order by releasedAt");
   }
 
   /** The tags a page of release requests produced, for naming what reached {@code main}. */
@@ -99,12 +109,13 @@ public class ReleasedTagPendingMergeRepository
    * qits-deployments can find a failed deployment running later and flip it to ACTIVE without
    * announcing anything, and the reconcile is then the only thing that will ever see it went live.
    * Whether a row is recorded failed ({@code deploymentFailedAt}) is the caller's to branch on, and
-   * so is the request's own state.
+   * so is the request's own state. A declined row (qits-2271) is not selected: its request is
+   * WITHDRAWN and there is nothing left to reconcile.
    */
   public List<ReleasedTagPendingMerge> listAwaitingDeployment(java.time.Instant releasedBefore) {
     return list(
         "releaseRequestId is not null and mergedAt is null and mergeRequestedAt is null"
-            + " and abandonedAt is null and deploymentActiveAt is null"
+            + " and abandonedAt is null and declinedAt is null and deploymentActiveAt is null"
             + " and releasedAt < ?1 order by releasedAt",
         releasedBefore);
   }

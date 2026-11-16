@@ -28,6 +28,11 @@ import java.util.List;
  * request qits-deployments holds for approval — the release request's {@code deployHold} — reads
  * PENDING with the command that releases it, {@code qits deployments requests approve --request
  * <id>}, until it goes live.
+ *
+ * <p><b>A declined deploy is FAILED</b> (qits-2271): a single read whose newest deployment request
+ * was declined at qits-deployments ({@code declinedAt}), or any read of a tag row this service
+ * stamped declined, reads FAILED, {@code Deploy of <version> declined by <who>}, ahead of every
+ * other arm. Nothing will ever deploy it, and the request ends WITHDRAWN.
  */
 @ApplicationScoped
 public class DeploymentRollbackGate implements ReleaseGate {
@@ -76,6 +81,16 @@ public class DeploymentRollbackGate implements ReleaseGate {
     String version = released.tagName;
     GateSubject.Deployment deployment = subject.deployment();
     boolean wentLive = released.deploymentActiveAt != null;
+    if (!wentLive && (deployment.declined() || released.declinedAt != null)) {
+      // Declined at qits-deployments (qits-2271): settled UNMET, nothing will deploy it, and the
+      // request ends WITHDRAWN. FAILED, never the PENDING a settled UNMET request read as before.
+      return new GateEvaluation(
+          ReleaseGates.State.FAILED,
+          declinedDetail(version, deployment.declinedBy()),
+          checksOf(deployment, ReleaseGates.State.FAILED),
+          null,
+          null);
+    }
     if (!wentLive && deployment.held()) {
       // Held on purpose (qits-2268): the request's deploy waits for a person at qits-deployments.
       // PENDING, never FAILED, and the detail is the command that releases it.
@@ -148,6 +163,18 @@ public class DeploymentRollbackGate implements ReleaseGate {
         + version
         + " held for approval: qits deployments requests approve --request "
         + deploymentRequestId;
+  }
+
+  /**
+   * {@code "Deploy of <version> declined by <who>"} (qits-2271), or {@code "Deploy of <version>
+   * declined"} where only this service's own stamp says so — a list read, which asks
+   * qits-deployments nothing, or a far side that names nobody.
+   */
+  static String declinedDetail(String version, String declinedBy) {
+    return "Deploy of "
+        + version
+        + " declined"
+        + (declinedBy == null || declinedBy.isBlank() ? "" : " by " + declinedBy);
   }
 
   /** qits-deployments' words for a deployment that ended without going live, besides a rollback. */

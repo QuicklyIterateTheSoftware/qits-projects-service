@@ -65,6 +65,9 @@ public interface DeploymentRequests {
    * @param gateDetail the far side's sentence on its gate, or null
    * @param deployHold the far side's {@code deployHold}, or null where it does not answer one — an
    *     older qits-deployments, which {@link #held} reads off the detail instead
+   * @param declinedBy who declined the held request at qits-deployments (qits-2271), or null where
+   *     nobody did or the far side does not answer the field
+   * @param declinedAt when they did, or null with {@code declinedBy}; see {@link #declined}
    */
   record DeploymentRequestView(
       String id,
@@ -73,7 +76,9 @@ public interface DeploymentRequests {
       String qualityGate,
       Instant gateSettledAt,
       String gateDetail,
-      Boolean deployHold) {
+      Boolean deployHold,
+      String declinedBy,
+      Instant declinedAt) {
 
     /** The far side's word for a quality gate that has not passed. */
     public static final String UNMET = "UNMET";
@@ -83,7 +88,45 @@ public interface DeploymentRequests {
 
     /** The view in the three fields every read before qits-2268 carried. */
     public DeploymentRequestView(String id, String status, Instant createdAt) {
-      this(id, status, createdAt, null, null, null, null);
+      this(id, status, createdAt, null, null, null, null, null, null);
+    }
+
+    /** The view in the seven fields every read before qits-2271 carried: nothing declined. */
+    public DeploymentRequestView(
+        String id,
+        String status,
+        Instant createdAt,
+        String qualityGate,
+        Instant gateSettledAt,
+        String gateDetail,
+        Boolean deployHold) {
+      this(id, status, createdAt, qualityGate, gateSettledAt, gateDetail, deployHold, null, null);
+    }
+
+    /**
+     * Whether somebody <b>declined</b> this held request at qits-deployments (qits-2271): it settled
+     * UNMET and will never deploy, so the release request it belongs to must not ship. {@code
+     * declinedAt} alone decides it, the far side's own stamp.
+     */
+    public boolean declined() {
+      return declinedAt != null;
+    }
+
+    /**
+     * The note the decline was given, read off the far side's {@code gateDetail} ({@code "declined
+     * by <who>: <note>"}), or null where there was none or the detail does not read that way. The
+     * listing carries no field of its own for it.
+     */
+    public String declineNote() {
+      if (!declined() || gateDetail == null) {
+        return null;
+      }
+      String prefix = "declined by " + (declinedBy == null ? "" : declinedBy) + ": ";
+      if (!gateDetail.startsWith(prefix)) {
+        return null;
+      }
+      String note = gateDetail.substring(prefix.length()).trim();
+      return note.isEmpty() ? null : note;
     }
 
     /**

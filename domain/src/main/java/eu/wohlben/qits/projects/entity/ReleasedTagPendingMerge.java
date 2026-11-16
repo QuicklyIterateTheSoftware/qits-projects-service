@@ -209,4 +209,15 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
    */
   @Column(name = "abandoned_at")
   public Instant abandonedAt;
+
+  /**
+   * When the deploy of this tag was declined at qits-deployments and its request ended WITHDRAWN
+   * (V79, qits-2271). Unlike {@link #abandonedAt}, a declined row <b>leaves {@code listPending}</b>
+   * as well: the declined change must not ship, so no later request folds it in, and it leaves every
+   * owed-merge and deployment read too. {@link #mergedAt} stays null for good, which is what keeps
+   * the git tag on the host ({@code TagCollector} keeps every unmerged tag) — the tag is the only
+   * copy of the declined work once its source branches were deleted at the tag cut.
+   */
+  @Column(name = "declined_at")
+  public Instant declinedAt;
 }
