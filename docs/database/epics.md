@@ -56,6 +56,7 @@ erDiagram
     instant agent_waiting_since
     enum archetype "not null"
     string assignee
+    boolean assignee_claimed "not null"
     boolean blocked "not null"
     string blocked_by
     string blocked_reason
