@@ -7014,9 +7014,9 @@
         },
         {
           "type" : "eu.wohlben.qits.projects.control.gate.GateCheck",
-          "kind" : "assembler",
+          "kind" : "mapper",
           "via" : null,
-          "site" : "CiBuildGate.evaluate(GateSubject)"
+          "site" : "ReleaseRequests.variantChecksOf(ReleasedTagPendingMerge)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.gate.GateSubject$Automations",
