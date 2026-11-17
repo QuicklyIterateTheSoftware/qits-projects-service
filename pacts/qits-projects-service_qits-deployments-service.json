@@ -12,6 +12,177 @@
           },
           "qits-trigger": {
             "app": "qits-projects-service",
+            "event": "DeploymentActive",
+            "kind": "event"
+          }
+        }
+      },
+      "description": "DeploymentActive: listDeploymentRequests",
+      "key": "253768aa",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release with a variant deployed",
+          "params": {
+            "applicationName": "contract-app-00000001",
+            "environmentId": "00000000-0000-4000-8000-000000000001",
+            "repoId": "contract-app-00000001",
+            "version": "2026.101.120000"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "query": {
+            "repoId": {
+              "dataType": "RAW",
+              "expression": "${repoId}",
+              "type": "ProviderState"
+            },
+            "version": {
+              "dataType": "RAW",
+              "expression": "${version}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/deployments/api/deployment-requests",
+        "query": {
+          "includeVariants": [
+            "true"
+          ],
+          "repoId": [
+            "contract-app-00000001"
+          ],
+          "version": [
+            "2026.101.120000"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "deploymentRequests": [
+              {
+                "applicationName": "contract-app-00000001-private",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "deploymentStatus": "ACTIVE",
+                "id": "00000000-0000-4000-8000-000000000002",
+                "variant": "private",
+                "variants": [
+                  "private"
+                ]
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.deploymentRequests": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.deploymentRequests[*].applicationName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].deploymentStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].variant": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.deploymentRequests[*].variants": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 0
+                }
+              ]
+            },
+            "$.deploymentRequests[*].variants[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-deployments-service",
+            "operationId": "listDeploymentRequests"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
             "kind": "operation",
             "operationId": "getReleaseRequest"
           }
