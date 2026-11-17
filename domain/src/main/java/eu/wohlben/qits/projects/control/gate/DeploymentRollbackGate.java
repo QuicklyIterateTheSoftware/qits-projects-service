@@ -33,6 +33,13 @@ import java.util.List;
  * was declined at qits-deployments ({@code declinedAt}), or any read of a tag row this service
  * stamped declined, reads FAILED, {@code Deploy of <version> declined by <who>}, ahead of every
  * other arm. Nothing will ever deploy it, and the request ends WITHDRAWN.
+ *
+ * <p><b>A release with variants answers one check per declared variant</b> (qits-2296): name the
+ * variant's application ({@code qits-edge-private}), state PASSED, FAILED or PENDING, detail its
+ * status. They ride a single read whose newest request declares variants and no other read, so a
+ * release without variants answers exactly the checks it did before. A failed variant fails the
+ * gate on that read even before finalization has recorded it, and a recorded variant failure is not
+ * mistaken for a redeploy under way because the main deployment reads ACTIVE.
  */
 @ApplicationScoped
 public class DeploymentRollbackGate implements ReleaseGate {
@@ -118,12 +125,32 @@ public class DeploymentRollbackGate implements ReleaseGate {
     if (ROLLED_BACK.equals(deployment.status())) {
       state = ReleaseGates.State.FAILED;
       detail = version + " was rolled back";
+    } else if (!wentLive && deployment.variantFailed()) {
+      // qits-2296: a declared variant failed and finalization has not recorded it yet.
+      state = ReleaseGates.State.FAILED;
+      detail =
+          version
+              + " failed to deploy: "
+              + deployment.variants().stream()
+                  .filter(check -> "FAILED".equals(check.state()))
+                  .map(check -> check.name() + " " + check.detail())
+                  .collect(java.util.stream.Collectors.joining(", "));
     } else if (wentLive) {
       state = ReleaseGates.State.PASSED;
       detail =
           deployment.asked()
               ? version + " went live and is not rolled back"
               : version + " went live; a list read does not check for a rollback";
+    } else if (deployment.variantPending()) {
+      state = ReleaseGates.State.PENDING;
+      detail =
+          "Waiting for "
+              + version
+              + " to go live in every variant it declares: "
+              + deployment.variants().stream()
+                  .filter(check -> "PENDING".equals(check.state()))
+                  .map(GateCheck::name)
+                  .collect(java.util.stream.Collectors.joining(", "));
     } else {
       state = ReleaseGates.State.PENDING;
       detail = "Waiting for " + version + " to go live";
@@ -133,14 +160,18 @@ public class DeploymentRollbackGate implements ReleaseGate {
 
   private static List<GateCheck> checksOf(
       GateSubject.Deployment deployment, ReleaseGates.State state) {
-    return deployment.requestId() == null
-        ? List.of()
-        : List.of(
-            new GateCheck(
-                "Deployment request " + deployment.requestId(),
-                state.name(),
-                deployment.status() == null ? "No deployment yet" : deployment.status(),
-                null));
+    List<GateCheck> checks = new java.util.ArrayList<>();
+    if (deployment.requestId() != null) {
+      checks.add(
+          new GateCheck(
+              "Deployment request " + deployment.requestId(),
+              state.name(),
+              deployment.status() == null ? "No deployment yet" : deployment.status(),
+              null));
+    }
+    // qits-2296: one row per declared variant, after the release's own.
+    checks.addAll(deployment.variants());
+    return checks;
   }
 
   /**
@@ -151,7 +182,10 @@ public class DeploymentRollbackGate implements ReleaseGate {
     return deployment.answered()
         && deployment.status() != null
         && !ROLLED_BACK.equals(deployment.status())
-        && !FAILED_STATUSES.contains(deployment.status());
+        && !FAILED_STATUSES.contains(deployment.status())
+        // qits-2296: a main that is ACTIVE beside a failed variant is the recorded failure, not a
+        // redeploy.
+        && !deployment.variantFailed();
   }
 
   /**

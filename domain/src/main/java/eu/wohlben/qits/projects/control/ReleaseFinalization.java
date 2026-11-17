@@ -46,7 +46,9 @@ import org.jboss.logging.Logger;
  *       that version is a released tag of some repository — see {@link #onDeploymentActive}. The
  *       event is not always announced, so the {@link #reconcileDeployments reconcile} also passes
  *       the gate on qits-deployments' own word that the newest deployment is {@code ACTIVE}
- *       (qits-2217).
+ *       (qits-2217). A release that declares variants (qits-1976) passes it only once every
+ *       declared variant is {@code ACTIVE} too, and a failed variant fails it (qits-2296, {@link
+ *       ReleaseDeploymentVerdict}).
  * </ul>
  *
  * <p><b>They pass in either order and each keeps its own fact on the row</b> ({@code publish_state},
@@ -204,17 +206,145 @@ public class ReleaseFinalization {
    * @param environmentName where it went live — for the log line and the merge message
    */
   public void onDeploymentActive(String applicationName, String version, String environmentName) {
-    Owed owed = correlate(applicationName, version);
+    onDeploymentActive(applicationName, version, environmentName, null);
+  }
+
+  /**
+   * A deployment of {@code version} is live — the release's main application, or one of its
+   * variants (qits-2296) — so the release is live <b>once every deployment it declares is</b>.
+   *
+   * <p><b>The main going live is no longer the whole answer.</b> A release may deploy variants
+   * beside its main application (qits-1976: {@code qits-edge-private} from qits-edge's release),
+   * and qits-edge-service-rr-165 finalized while its private edge ended FAILED — {@code main}
+   * moved and every {@code --until live} wait fired on a version part of the release never ran.
+   * So before {@link #wentLive} stamps the row and advances, qits-deployments' listing <em>with</em>
+   * variants is read and {@link ReleaseDeploymentVerdict} decides:
+   *
+   * <ul>
+   *   <li><b>The main's event</b> ({@code variant} blank): the event says the main is live, so only
+   *       the declared variants are asked about. All live — and a release declaring none — goes
+   *       live exactly as before. A variant still pending (its row is written 10–75 s after the
+   *       main went ACTIVE) stamps nothing: the variant's own event, or the reconcile, finishes it.
+   *       A variant already failed is recorded, once.
+   *   <li><b>A variant's event</b>: the whole verdict — main and every declared variant ACTIVE goes
+   *       live; a failed variant is recorded; anything else waits.
+   * </ul>
+   *
+   * <p><b>A listing that could not be read finalizes nothing</b>: the reconcile asks again on its
+   * next pass. Only an absent port — no qits-deployments in this topology at all — goes live on the
+   * main's event alone, as every release did before.
+   *
+   * @param variant the variant the event names ({@code "private"}), or null/blank for the main
+   *     application's own deployment
+   */
+  public void onDeploymentActive(
+      String applicationName, String version, String environmentName, String variant) {
+    Owed owed = correlate(applicationName, version, variant);
     if (owed == null) {
       return;
     }
-    wentLive(
-        owed,
+    String how =
         (applicationName == null ? "the application" : applicationName)
             + " "
             + version
             + " is active"
-            + (environmentName == null ? "" : " in " + environmentName));
+            + (environmentName == null ? "" : " in " + environmentName);
+    Optional<ReleaseDeploymentVerdict> read = variantsOf(owed);
+    if (read.isEmpty()) {
+      LOG.infof(
+          "%s, but qits-deployments could not be asked whether %s's declared variants are live too;"
+              + " the deployment reconcile decides %s of %s",
+          how, version, owed.tagName(), owed.repoId());
+      return;
+    }
+    ReleaseDeploymentVerdict verdict = read.get();
+    boolean isVariant = !isBlank(variant);
+    ReleaseDeploymentVerdict.State state =
+        isVariant ? verdict.state() : verdict.variantsState();
+    switch (state) {
+      case LIVE ->
+          wentLive(
+              owed,
+              how
+                  + (verdict.declaresVariants()
+                      ? ", and so is every variant it declares ("
+                          + verdict.variants().stream()
+                              .map(ReleaseDeploymentVerdict.Variant::applicationName)
+                              .collect(Collectors.joining(", "))
+                          + ")"
+                      : ""));
+      case FAILED ->
+          verdict
+              .failedVariant()
+              .filter(failed -> !recordedFailed(owed))
+              .ifPresent(failed -> recordVariantFailure(owed, failed, null));
+      case PENDING -> {
+        if (isVariant) {
+          LOG.debugf(
+              "%s; %s of %s is not live as a whole yet", how, owed.tagName(), owed.repoId());
+        } else {
+          LOG.infof(
+              "%s, but its declared variants are not live yet (%s); %s of %s waits for them",
+              how,
+              String.join(", ", verdict.pendingVariants()),
+              owed.tagName(),
+              owed.repoId());
+        }
+      }
+    }
+  }
+
+  /**
+   * qits-deployments' release listing with variants, as a verdict (qits-2296): empty where it
+   * could not be asked — the caller then decides nothing — and a verdict over no rows (no main, no
+   * declared variants, {@link ReleaseDeploymentVerdict#variantsState} LIVE) where no port is
+   * configured at all, which is how every release was decided before variants counted.
+   */
+  private Optional<ReleaseDeploymentVerdict> variantsOf(Owed owed) {
+    if (!deploymentRequests.isResolvable()) {
+      return Optional.of(ReleaseDeploymentVerdict.of(List.of()));
+    }
+    Optional<List<DeploymentRequests.DeploymentRequestView>> answered;
+    try {
+      answered = deploymentRequests.get().forReleaseWithVariants(owed.repoId(), owed.tagName());
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is "could not ask", never an answer.
+      LOG.debugf(
+          e, "qits-deployments threw listing %s %s with variants", owed.repoId(), owed.tagName());
+      return Optional.empty();
+    }
+    if (answered == null || answered.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(ReleaseDeploymentVerdict.of(answered.get()));
+  }
+
+  /**
+   * Records a declared variant's failure on {@code owed}'s row (qits-2296) as a deployment failure
+   * whose word names the variant's application — {@code qits-edge-private FAILED: <first line>} —
+   * so the gate, the DEPLOY phase and the branches all say which deployment of the release failed.
+   */
+  private boolean recordVariantFailure(
+      Owed owed, ReleaseDeploymentVerdict.Variant failed, String detail) {
+    return recordDeploymentFailure(
+        owed,
+        ReleaseDeploymentVerdict.variantFailureWord(failed.applicationName(), failed.status()),
+        detail);
+  }
+
+  /** Whether {@code owed}'s row already carries a recorded deployment failure. */
+  private boolean recordedFailed(Owed owed) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                pendingTags
+                    .findByIdOptional(owed.id())
+                    .map(row -> row.deploymentFailedAt != null)
+                    .orElse(false));
+  }
+
+  private static boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 
   /**
@@ -293,11 +423,32 @@ public class ReleaseFinalization {
    */
   public boolean onDeploymentFailed(
       String applicationName, String version, String status, String detail) {
-    Owed owed = correlate(applicationName, version);
+    return onDeploymentFailed(applicationName, version, status, detail, null);
+  }
+
+  /**
+   * The same, for the release's main application or one of its variants (qits-2296). A variant's
+   * failure is the release's: it is recorded exactly as the main's would be — the request stays
+   * RELEASED, the branches fail with {@code DEPLOYMENT}, the remedy is a DEPLOY rerun — under a
+   * word naming the variant's application, {@code qits-edge-private FAILED: <first line>}. The
+   * guard is the main's own: a version that already went live is never failed afterwards.
+   *
+   * @param variant the variant the event names, or null/blank for the main application
+   */
+  public boolean onDeploymentFailed(
+      String applicationName, String version, String status, String detail, String variant) {
+    Owed owed = correlate(applicationName, version, variant);
     if (owed == null) {
       return false;
     }
-    return recordDeploymentFailure(owed, status, detail);
+    if (isBlank(variant)) {
+      return recordDeploymentFailure(owed, status, detail);
+    }
+    return recordDeploymentFailure(
+        owed,
+        ReleaseDeploymentVerdict.variantFailureWord(
+            isBlank(applicationName) ? variant : applicationName, status),
+        detail);
   }
 
   /**
@@ -365,7 +516,12 @@ public class ReleaseFinalization {
    *       release that failed and then recovered, or whose {@code DeploymentActive} was lost,
    *       finalizes here. {@code DECOMMISSIONED}, {@code SUPERSEDED}, {@code GONE}, {@code
    *       SCALED_TO_ZERO}, a deployment still queued or starting, and no word at all change
-   *       nothing.
+   *       nothing. <b>Where that main row declares variants</b> (qits-2296) the listing with
+   *       variants is read too and {@link ReleaseDeploymentVerdict} decides instead: live only
+   *       with every declared variant {@code ACTIVE}, a failed variant recorded as the event would
+   *       record it ({@code qits-edge-private FAILED}) on a row not already recorded failed, and a
+   *       pending one — or a listing that could not be read — left for the next pass. So a missed
+   *       variant event still settles.
    *   <li><b>{@code ROLLED_BACK} or failed</b> is recorded as {@link #onDeploymentFailed} would
    *       record it — but only on a row not already recorded failed. The reconcile carries no
    *       detail, so its sentence is not the event's, and re-recording would re-word the row and
@@ -435,10 +591,36 @@ public class ReleaseFinalization {
             changed++;
           }
         } else if (LIVE_DEPLOYMENT.equals(status)) {
+          // qits-2296: a main row declaring variants is live only with them. A release declaring
+          // none — or an older qits-deployments answering no variants — costs no second read.
+          ReleaseDeploymentVerdict verdict = null;
+          if (!newest.variants().isEmpty()) {
+            Optional<ReleaseDeploymentVerdict> read = variantsOf(owed);
+            if (read.isEmpty()) {
+              continue;
+            }
+            verdict = read.get();
+            if (verdict.state() == ReleaseDeploymentVerdict.State.FAILED) {
+              Optional<ReleaseDeploymentVerdict.Variant> failed = verdict.failedVariant();
+              if (!row.failed()
+                  && failed.isPresent()
+                  && recordVariantFailure(owed, failed.get(), null)) {
+                changed++;
+              }
+              continue;
+            }
+            if (verdict.state() != ReleaseDeploymentVerdict.State.LIVE) {
+              LOG.debugf(
+                  "%s of %s is active but its variants are not live yet (%s)",
+                  owed.tagName(), owed.repoId(), String.join(", ", verdict.pendingVariants()));
+              continue;
+            }
+          }
           if (wentLive(
               owed,
               "the reconcile found qits-deployments' newest deployment of it "
                   + LIVE_DEPLOYMENT
+                  + (verdict == null ? "" : ", and every variant it declares too,")
                   + " with no DeploymentActive on the log"
                   + (row.failed() ? ", after its deployment had been recorded failed" : "")
                   + " (qits-2217)")) {
@@ -1437,46 +1619,104 @@ public class ReleaseFinalization {
    * late one is.
    */
   private Owed correlate(String applicationName, String version) {
+    return correlate(applicationName, version, null);
+  }
+
+  /**
+   * The same, for an event that may name a variant (qits-2296). The version is still the whole
+   * key; only the tie-break changes. A variant's application ({@code qits-edge-private}) is not
+   * the main application a repository answers to, so the tie is first tried with the variant's
+   * suffix taken off ({@code qits-edge}), and where that does not single one out, with the
+   * releases' own listings: the repository whose release deployed an application of that name.
+   * An unbreakable tie still merges nothing.
+   */
+  private Owed correlate(String applicationName, String version, String variant) {
     if (version == null || version.isBlank()) {
       return null;
     }
-    return QuarkusTransaction.requiringNew()
-        .call(
-            () -> {
-              List<ReleasedTagPendingMerge> rows = pendingTags.listByTag(version.trim());
-              List<ReleasedTagPendingMerge> open =
-                  rows.stream()
-                      .filter(
-                          row ->
-                              row.mergedAt == null
-                                  && row.abandonedAt == null
-                                  && row.declinedAt == null)
-                      .toList();
-              if (open.isEmpty()) {
-                LOG.debugf(
-                    "Nothing here owes main for version %s (%d released rows carry that tag)",
-                    version, rows.size());
-                return null;
-              }
-              if (open.size() == 1) {
-                return owedOf(open.get(0));
-              }
-              List<ReleasedTagPendingMerge> named =
-                  open.stream().filter(row -> answersTo(row.repoId, applicationName)).toList();
-              if (named.size() == 1) {
-                LOG.infof(
-                    "Version %s is pending in %d repositories; the application name %s names one of"
-                        + " them",
-                    version, open.size(), applicationName);
-                return owedOf(named.get(0));
-              }
-              LOG.errorf(
-                  "Version %s is pending a merge to main in %d repositories and the application"
-                      + " name %s tells them apart in %d of them; NOTHING is merged, because a"
-                      + " wrong main cannot be taken back. Merge one by hand and the rest follow.",
-                  version, open.size(), applicationName, named.size());
-              return null;
-            });
+    String application = mainApplicationOf(applicationName, variant);
+    record Candidates(int rows, List<Owed> open, List<Owed> named) {}
+    Candidates found =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  List<ReleasedTagPendingMerge> rows = pendingTags.listByTag(version.trim());
+                  List<ReleasedTagPendingMerge> open =
+                      rows.stream()
+                          .filter(
+                              row ->
+                                  row.mergedAt == null
+                                      && row.abandonedAt == null
+                                      && row.declinedAt == null)
+                          .toList();
+                  List<ReleasedTagPendingMerge> named =
+                      open.size() < 2
+                          ? open
+                          : open.stream().filter(row -> answersTo(row.repoId, application)).toList();
+                  return new Candidates(
+                      rows.size(),
+                      open.stream().map(ReleaseFinalization::owedOf).toList(),
+                      named.stream().map(ReleaseFinalization::owedOf).toList());
+                });
+    if (found.open().isEmpty()) {
+      LOG.debugf(
+          "Nothing here owes main for version %s (%d released rows carry that tag)",
+          version, found.rows());
+      return null;
+    }
+    if (found.open().size() == 1) {
+      return found.open().get(0);
+    }
+    List<Owed> named = found.named();
+    if (named.size() != 1 && !isBlank(variant) && !isBlank(applicationName)) {
+      named =
+          found.open().stream().filter(owed -> releaseDeploys(owed, applicationName)).toList();
+    }
+    if (named.size() == 1) {
+      LOG.infof(
+          "Version %s is pending in %d repositories; the application name %s names one of them",
+          version, found.open().size(), applicationName);
+      return named.get(0);
+    }
+    LOG.errorf(
+        "Version %s is pending a merge to main in %d repositories and the application"
+            + " name %s tells them apart in %d of them; NOTHING is merged, because a"
+            + " wrong main cannot be taken back. Merge one by hand and the rest follow.",
+        version, found.open().size(), applicationName, named.size());
+    return null;
+  }
+
+  /**
+   * The main application a variant's application belongs to, by the deployer's naming ({@code
+   * qits-edge-private} for variant {@code private} of {@code qits-edge}); the name itself where it
+   * is no variant's or does not read that way.
+   */
+  static String mainApplicationOf(String applicationName, String variant) {
+    if (applicationName == null || variant == null || variant.isBlank()) {
+      return applicationName;
+    }
+    String suffix = "-" + variant.trim();
+    return applicationName.endsWith(suffix) && applicationName.length() > suffix.length()
+        ? applicationName.substring(0, applicationName.length() - suffix.length())
+        : applicationName;
+  }
+
+  /** Whether {@code owed}'s release deployed an application named {@code applicationName}. */
+  private boolean releaseDeploys(Owed owed, String applicationName) {
+    if (!deploymentRequests.isResolvable()) {
+      return false;
+    }
+    try {
+      return deploymentRequests
+          .get()
+          .forReleaseWithVariants(owed.repoId(), owed.tagName())
+          .map(
+              rows ->
+                  rows.stream().anyMatch(row -> applicationName.equals(row.applicationName())))
+          .orElse(false);
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 
   private static Owed owedOf(ReleasedTagPendingMerge row) {

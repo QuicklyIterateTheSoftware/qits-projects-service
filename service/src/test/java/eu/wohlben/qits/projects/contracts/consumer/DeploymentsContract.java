@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * <b>What qits-projects asks qits-deployments</b> (ticket qits-1149): the deployment requests of a
@@ -55,6 +56,43 @@ final class DeploymentsContract {
               },
               "GET /deployments/api/deployment-requests?repoId&version answering 200 with"
                   + " deploymentRequests[] holding id, deploymentStatus and createdAt"),
+          // qits-2296: the release read WITH its variants, which finalization asks on every
+          // DeploymentActive of a release and the reconcile asks of a main row that declares any.
+          // Pending until the pinned qits-deployments golden masters record "a release with a
+          // variant deployed" (first published by qits-deployments-service-rr-212).
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listDeploymentRequests",
+              "a release with a variant deployed",
+              "GET",
+              "/deployments/api/deployment-requests",
+              Map.of("repoId", "{repoId}", "version", "{version}", "includeVariants", "true"),
+              null,
+              List.of(
+                  "$.deploymentRequests[*].id",
+                  "$.deploymentRequests[*].deploymentStatus",
+                  "$.deploymentRequests[*].createdAt",
+                  "$.deploymentRequests[*].applicationName",
+                  "$.deploymentRequests[*].variant",
+                  "$.deploymentRequests[*].variants"),
+              200,
+              Trigger.event("DeploymentActive"),
+              (base, p) -> {
+                List<DeploymentRequests.DeploymentRequestView> views =
+                    Fields.with(
+                            new HttpDeploymentRequests(RowClients.clients()),
+                            "deploymentsUrl", Optional.of(base),
+                            "bearer", TestDeploymentsBearers.machine())
+                        .forReleaseWithVariants(p.get("repoId"), p.get("version"))
+                        .orElseThrow();
+                assertTrue(views.stream().anyMatch(view -> view.isVariant()));
+                assertTrue(views.stream().anyMatch(view -> !view.variants().isEmpty()));
+              },
+              "GET /deployments/api/deployment-requests?repoId&version&includeVariants=true"
+                  + " answering 200 with deploymentRequests[] holding a main row (variant null,"
+                  + " variants naming the release's variants) and a variant row (variant,"
+                  + " applicationName)"),
           new ConsumerRow(
               PROVIDER,
               APP,

@@ -335,6 +335,19 @@ public class ReleasePipelineAssembler {
       state = "SUCCESS";
       detail = "replaced by a later deployment";
     }
+    if ("SUCCESS".equals(state) && !wentLive && !newest.variants().isEmpty()) {
+      // qits-2296: the main is live and the release is not — a declared variant is what it waits
+      // on, or what failed. Read off the row this service keeps, so the phase costs no second call:
+      // a failure recorded beside an ACTIVE main is a variant's (or a main failure the reconcile has
+      // yet to clear), and its sentence names the variant — "qits-edge-private FAILED: …".
+      if (released.deploymentFailedAt != null && released.deploymentFailedDetail != null) {
+        state = "FAILED";
+        detail = released.deploymentFailedDetail;
+      } else {
+        state = "RUNNING";
+        detail = "waiting for the variants it declares: " + String.join(", ", newest.variants());
+      }
+    }
     return new ReleasePhaseDto(
         PHASE_DEPLOY, state, newest.id(), newest.createdAt(), null, detail);
   }

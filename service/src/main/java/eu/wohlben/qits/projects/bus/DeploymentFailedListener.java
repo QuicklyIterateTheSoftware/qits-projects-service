@@ -59,9 +59,10 @@ public class DeploymentFailedListener implements QitsDurableEventListener {
    * DeploymentActiveListener.DeploymentActivePayload}; {@code status} is the deployer's terminal
    * word ({@code ROLLED_BACK}, {@code FAILED}, {@code IMAGE_MISSING}) and {@code detail} its own
    * diagnosis, nullable and never parsed — only its first line is kept. {@code variant}
-   * (qits-1985) is {@link DeploymentActiveListener.DeploymentActivePayload}'s, and {@link
-   * #onFrame} skips a non-blank one the same way, for the same reason: a failing variant must
-   * never fail a release whose main deployment is healthy.
+   * (qits-1985) is {@link DeploymentActiveListener.DeploymentActivePayload}'s. It used to be
+   * skipped; since qits-2296 a failed variant is the release's failure — qits-edge-service-rr-165
+   * finalized while its private edge was FAILED — and is recorded under a word naming the
+   * variant's application ({@code qits-edge-private FAILED: …}).
    *
    * <p>Public so {@code bus/EventWireReflection} and the wire test can name it.
    */
@@ -102,17 +103,12 @@ public class DeploymentFailedListener implements QitsDurableEventListener {
           frame.name(), frame.id(), deployment.applicationName());
       return;
     }
-    if (!isBlank(deployment.variant())) {
-      LOG.debugf(
-          "variant %s of %s@%s: not a release's own deployment, finalization skips it",
-          deployment.variant(), deployment.applicationName(), deployment.version());
-      return;
-    }
     finalization.onDeploymentFailed(
         deployment.applicationName(),
         deployment.version(),
         deployment.status(),
-        deployment.detail());
+        deployment.detail(),
+        isBlank(deployment.variant()) ? null : deployment.variant().trim());
   }
 
   /** Null on anything that will not read as this payload, warned about once, never thrown. */

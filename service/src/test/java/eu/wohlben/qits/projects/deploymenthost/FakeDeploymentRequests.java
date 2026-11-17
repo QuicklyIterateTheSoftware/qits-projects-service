@@ -33,6 +33,17 @@ public class FakeDeploymentRequests implements DeploymentRequests {
 
   private final List<Asked> asked = new CopyOnWriteArrayList<>();
 
+  /**
+   * The with-variants listing (qits-2296), or null while unstaged. <b>Unstaged answers an empty
+   * listing</b> — asked, and no main row declaring a variant — rather than "could not be asked":
+   * finalization reads it on every {@code DeploymentActive}, and a release with no variants must go
+   * live there exactly as every test before qits-2296 expects.
+   */
+  private final AtomicReference<Optional<List<DeploymentRequestView>>> withVariants =
+      new AtomicReference<>();
+
+  private final List<Asked> askedWithVariants = new CopyOnWriteArrayList<>();
+
   /** What the next answers are — empty being "could not be asked". */
   public void answer(Optional<List<DeploymentRequestView>> value) {
     answer.set(value);
@@ -59,14 +70,34 @@ public class FakeDeploymentRequests implements DeploymentRequests {
     return List.copyOf(asked);
   }
 
+  /** What the next with-variants reads answer (qits-2296) — empty being "could not be asked". */
+  public void answerWithVariants(Optional<List<DeploymentRequestView>> value) {
+    withVariants.set(value);
+  }
+
+  /** The with-variants reads asked so far. */
+  public List<Asked> askedWithVariants() {
+    return List.copyOf(askedWithVariants);
+  }
+
   public void reset() {
     answer.set(Optional.empty());
     asked.clear();
+    withVariants.set(null);
+    askedWithVariants.clear();
   }
 
   @Override
   public Optional<List<DeploymentRequestView>> forRelease(String repoId, String version) {
     asked.add(new Asked(repoId, version));
     return answer.get();
+  }
+
+  @Override
+  public Optional<List<DeploymentRequestView>> forReleaseWithVariants(
+      String repoId, String version) {
+    askedWithVariants.add(new Asked(repoId, version));
+    Optional<List<DeploymentRequestView>> staged = withVariants.get();
+    return staged == null ? Optional.of(List.of()) : staged;
   }
 }

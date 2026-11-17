@@ -90,6 +90,22 @@ public class HttpDeploymentRequests implements DeploymentRequests {
 
   @Override
   public Optional<List<DeploymentRequestView>> forRelease(String repoId, String version) {
+    return read(repoId, version, false);
+  }
+
+  /**
+   * The same listing with {@code &includeVariants=true} (qits-2296): the release's variant rows
+   * interleaved with its main rows, newest first. Without the parameter the far side answers main
+   * rows only, which is what {@link #forRelease} keeps asking for.
+   */
+  @Override
+  public Optional<List<DeploymentRequestView>> forReleaseWithVariants(
+      String repoId, String version) {
+    return read(repoId, version, true);
+  }
+
+  private Optional<List<DeploymentRequestView>> read(
+      String repoId, String version, boolean includeVariants) {
     if (repoId == null || repoId.isBlank() || version == null || version.isBlank()) {
       return Optional.empty();
     }
@@ -110,7 +126,8 @@ public class HttpDeploymentRequests implements DeploymentRequests {
                   + "/deployments/api/deployment-requests?repoId="
                   + URLEncoder.encode(repoId, StandardCharsets.UTF_8)
                   + "&version="
-                  + URLEncoder.encode(version, StandardCharsets.UTF_8));
+                  + URLEncoder.encode(version, StandardCharsets.UTF_8)
+                  + (includeVariants ? "&includeVariants=true" : ""));
       HttpRequest request =
           HttpRequest.newBuilder(uri)
               .timeout(Duration.ofSeconds(3))
@@ -150,7 +167,12 @@ public class HttpDeploymentRequests implements DeploymentRequests {
                 // qits-2271: absent from an older qits-deployments, and null on a request nobody
                 // declined.
                 text(node, "declinedBy"),
-                instant(node, "declinedAt")));
+                instant(node, "declinedAt"),
+                // qits-2296: absent from an older qits-deployments; variant null on a main row,
+                // variants [] on a variant row and on a release declaring none.
+                text(node, "applicationName"),
+                text(node, "variant"),
+                strings(node, "variants")));
       }
       // The far side orders by its own sequence, newest first, and that order is the answer: the
       // phase is the first entry. Nothing is re-sorted here — the order a row was written in is a
@@ -171,6 +193,21 @@ public class HttpDeploymentRequests implements DeploymentRequests {
   private static String text(JsonNode node, String field) {
     JsonNode value = node.path(field);
     return value.isTextual() ? value.asText() : null;
+  }
+
+  /** A string-array field's strings, or empty where it is absent, null or not an array. */
+  private static List<String> strings(JsonNode node, String field) {
+    JsonNode value = node.path(field);
+    if (!value.isArray()) {
+      return List.of();
+    }
+    List<String> strings = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (element.isTextual() && !element.asText().isBlank()) {
+        strings.add(element.asText());
+      }
+    }
+    return List.copyOf(strings);
   }
 
   /** An instant field, or null where it is absent, null or unreadable. Never "now". */

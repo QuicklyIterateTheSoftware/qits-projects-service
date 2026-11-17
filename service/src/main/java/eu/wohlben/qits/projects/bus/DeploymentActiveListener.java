@@ -88,11 +88,11 @@ public class DeploymentActiveListener implements QitsDurableEventListener {
    *
    * <p>{@code variant} (qits-1985) is null for a repository's main deployment and a name like
    * {@code "private"} for a second application the same release deploys beside it (e.g. {@code
-   * qits-edge-private} beside {@code qits-edge}), both carrying the same {@code version}. {@link
-   * #onFrame} skips a non-blank one before calling {@link ReleaseFinalization}: {@code correlate}
-   * matches on version alone when one released row is open, so a variant going live must never be
-   * read as the release's own deployment going live, and a variant failing must never fail a
-   * release whose main deployment is healthy.
+   * qits-edge-private} beside {@code qits-edge}), both carrying the same {@code version}. It used
+   * to be skipped here; since qits-2296 it is handed over with the variant named, because a
+   * release is live only once every variant it declares is, and the variant's event is what
+   * finishes a release whose main went live first. {@link ReleaseFinalization} reads the release's
+   * listing to decide, so a variant going live is never mistaken for the main going live.
    *
    * <p>Public so {@code bus/EventWireReflection} and the wire test can name it.
    */
@@ -134,14 +134,11 @@ public class DeploymentActiveListener implements QitsDurableEventListener {
           frame.name(), frame.id(), deployment.applicationName());
       return;
     }
-    if (!isBlank(deployment.variant())) {
-      LOG.debugf(
-          "variant %s of %s@%s: not a release's own deployment, finalization skips it",
-          deployment.variant(), deployment.applicationName(), deployment.version());
-      return;
-    }
     finalization.onDeploymentActive(
-        deployment.applicationName(), deployment.version(), deployment.environmentName());
+        deployment.applicationName(),
+        deployment.version(),
+        deployment.environmentName(),
+        isBlank(deployment.variant()) ? null : deployment.variant().trim());
   }
 
   /** Null on anything that will not read as this payload, warned about once, never thrown. */

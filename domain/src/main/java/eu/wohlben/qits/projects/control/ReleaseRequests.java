@@ -8787,8 +8787,51 @@ public class ReleaseRequests {
       return GateSubject.Deployment.NOTHING_YET;
     }
     DeploymentRequests.DeploymentRequestView newest = answered.get().get(0);
-    return GateSubject.Deployment.newest(
-        newest.id(), newest.status(), newest.held(), newest.declinedAt(), newest.declinedBy());
+    GateSubject.Deployment deployment =
+        GateSubject.Deployment.newest(
+            newest.id(), newest.status(), newest.held(), newest.declinedAt(), newest.declinedBy());
+    if (newest.variants().isEmpty()) {
+      return deployment;
+    }
+    return deployment.withVariants(variantChecksOf(released));
+  }
+
+  /**
+   * One gate check per variant the release declares (qits-2296), read from qits-deployments' listing
+   * with variants — asked only where the newest main request declares any, so a release without
+   * variants costs no second call and answers the checks it always did. A listing that could not
+   * be read answers one UNKNOWN check rather than none, so a declared variant never silently drops
+   * out of the gate.
+   */
+  private List<eu.wohlben.qits.projects.control.gate.GateCheck> variantChecksOf(
+      ReleasedTagPendingMerge released) {
+    Optional<List<DeploymentRequests.DeploymentRequestView>> rows;
+    try {
+      rows = deploymentRequests.get().forReleaseWithVariants(released.repoId, released.tagName);
+    } catch (RuntimeException e) {
+      rows = Optional.empty();
+    }
+    if (rows == null || rows.isEmpty()) {
+      return List.of(
+          new eu.wohlben.qits.projects.control.gate.GateCheck(
+              "Variants of " + released.tagName,
+              ReleaseGates.State.UNKNOWN.name(),
+              "qits-deployments could not be asked about the variants",
+              null));
+    }
+    return ReleaseDeploymentVerdict.of(rows.get()).variants().stream()
+        .map(
+            variant ->
+                new eu.wohlben.qits.projects.control.gate.GateCheck(
+                    variant.applicationName(),
+                    switch (variant.state()) {
+                      case LIVE -> ReleaseGates.State.PASSED.name();
+                      case FAILED -> ReleaseGates.State.FAILED.name();
+                      case PENDING -> ReleaseGates.State.PENDING.name();
+                    },
+                    variant.status() == null ? "No deployment yet" : variant.status(),
+                    null))
+        .toList();
   }
 
   /**

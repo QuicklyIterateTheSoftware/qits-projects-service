@@ -258,4 +258,57 @@ class HttpDeploymentRequestsTest {
         against(base).forRelease("repo-1", "v").orElseThrow().stream()
             .noneMatch(DeploymentRequests.DeploymentRequestView::held));
   }
+  /**
+   * qits-2296: the release read with variants sends {@code includeVariants=true} and reads each
+   * row's application, variant and declared variants; the main-only read sends no such parameter.
+   */
+  @Test
+  void theReadWithVariantsAsksForThemAndReadsTheirFields() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"deploymentRequests\":[{\"id\":\"v1\",\"deploymentStatus\":\"FAILED\","
+            + "\"createdAt\":\"2026-11-16T03:15:35Z\",\"applicationName\":\"qits-edge-private\","
+            + "\"variant\":\"private\",\"variants\":[]},{\"id\":\"m1\","
+            + "\"deploymentStatus\":\"ACTIVE\",\"createdAt\":\"2026-11-16T03:14:21Z\","
+            + "\"applicationName\":\"qits-edge\",\"variant\":null,\"variants\":[\"private\"]}]}");
+
+    List<DeploymentRequests.DeploymentRequestView> rows =
+        against(base).forReleaseWithVariants("repo-1", "2026.1116.30122").orElseThrow();
+
+    assertTrue(received.get(0).query().contains("includeVariants=true"), received.get(0).query());
+    assertEquals("qits-edge-private", rows.get(0).applicationName());
+    assertEquals("private", rows.get(0).variant());
+    assertTrue(rows.get(0).isVariant());
+    assertEquals(List.of(), rows.get(0).variants());
+    assertEquals("qits-edge", rows.get(1).applicationName());
+    assertNull(rows.get(1).variant());
+    assertEquals(List.of("private"), rows.get(1).variants());
+
+    against(base).forRelease("repo-1", "2026.1116.30122");
+    assertTrue(
+        !received.get(1).query().contains("includeVariants"),
+        "the main-only read is unchanged: " + received.get(1).query());
+  }
+
+  /** An older qits-deployments answers none of the three: null, null and an empty list. */
+  @Test
+  void anOlderAnswerWithoutTheVariantFieldsReadsAsNoVariants() throws Exception {
+    String base = startServer();
+
+    DeploymentRequests.DeploymentRequestView row =
+        against(base).forRelease("repo-1", "2026.916.1").orElseThrow().get(0);
+
+    assertNull(row.applicationName());
+    assertNull(row.variant());
+    assertEquals(List.of(), row.variants());
+  }
+
+  /** The variants read keeps the port's contract: a failure is "could not ask", never empty. */
+  @Test
+  void theReadWithVariantsFailsLikeTheOther() throws Exception {
+    String base = startServer();
+    status.set(503);
+
+    assertEquals(Optional.empty(), against(base).forReleaseWithVariants("repo-1", "2026.916.1"));
+  }
 }

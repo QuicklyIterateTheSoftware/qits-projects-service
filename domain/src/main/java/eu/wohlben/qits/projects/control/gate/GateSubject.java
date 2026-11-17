@@ -113,6 +113,10 @@ public record GateSubject(
    * @param held whether qits-deployments holds that request for a person's approval (qits-2268)
    * @param declinedAt when somebody declined that request at qits-deployments (qits-2271), or null
    * @param declinedBy who did, or null with {@code declinedAt}
+   * @param variants one check per variant the release declares (qits-2296) — name the variant's
+   *     application, state {@code PASSED}/{@code FAILED}/{@code PENDING}, detail its status word —
+   *     read only where the newest request declares any; empty otherwise, which is every release
+   *     without variants and every read that did not ask
    */
   public record Deployment(
       boolean asked,
@@ -121,7 +125,40 @@ public record GateSubject(
       String status,
       boolean held,
       Instant declinedAt,
-      String declinedBy) {
+      String declinedBy,
+      List<GateCheck> variants) {
+
+    public Deployment {
+      variants = variants == null ? List.of() : List.copyOf(variants);
+    }
+
+    /** The read before qits-2296: no variant checks. */
+    public Deployment(
+        boolean asked,
+        boolean answered,
+        String requestId,
+        String status,
+        boolean held,
+        Instant declinedAt,
+        String declinedBy) {
+      this(asked, answered, requestId, status, held, declinedAt, declinedBy, List.of());
+    }
+
+    /** Whether a declared variant's newest deployment failed (qits-2296). */
+    public boolean variantFailed() {
+      return variants.stream().anyMatch(check -> "FAILED".equals(check.state()));
+    }
+
+    /** Whether a declared variant has not gone live yet (qits-2296). */
+    public boolean variantPending() {
+      return variants.stream().anyMatch(check -> "PENDING".equals(check.state()));
+    }
+
+    /** The same answer with {@code checks} as its variants. */
+    public Deployment withVariants(List<GateCheck> checks) {
+      return new Deployment(
+          asked, answered, requestId, status, held, declinedAt, declinedBy, checks);
+    }
 
     public static final Deployment NOT_ASKED = new Deployment(false, false, null, null);
 

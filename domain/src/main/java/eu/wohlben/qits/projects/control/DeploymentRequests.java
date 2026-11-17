@@ -68,6 +68,15 @@ public interface DeploymentRequests {
    * @param declinedBy who declined the held request at qits-deployments (qits-2271), or null where
    *     nobody did or the far side does not answer the field
    * @param declinedAt when they did, or null with {@code declinedBy}; see {@link #declined}
+   * @param applicationName the application the request deploys (qits-2296) — the main
+   *     application's name on a main row, the variant's own ({@code qits-edge-private}) on a
+   *     variant row; null where the far side does not answer it
+   * @param variant the variant this row deploys (qits-1976, {@code "private"}), or null on the
+   *     release's main row — and on every row of a listing that does not include variants
+   * @param variants on a main row, the variant names its release declares (qits-2296), written
+   *     when the main was queued and so known before any variant row exists; empty on a variant
+   *     row, on a release declaring none, and from a qits-deployments that does not answer the
+   *     field — never null
    */
   record DeploymentRequestView(
       String id,
@@ -78,7 +87,14 @@ public interface DeploymentRequests {
       String gateDetail,
       Boolean deployHold,
       String declinedBy,
-      Instant declinedAt) {
+      Instant declinedAt,
+      String applicationName,
+      String variant,
+      List<String> variants) {
+
+    public DeploymentRequestView {
+      variants = variants == null ? List.of() : List.copyOf(variants);
+    }
 
     /** The far side's word for a quality gate that has not passed. */
     public static final String UNMET = "UNMET";
@@ -88,7 +104,7 @@ public interface DeploymentRequests {
 
     /** The view in the three fields every read before qits-2268 carried. */
     public DeploymentRequestView(String id, String status, Instant createdAt) {
-      this(id, status, createdAt, null, null, null, null, null, null);
+      this(id, status, createdAt, null, null, null, null, null, null, null, null, null);
     }
 
     /** The view in the seven fields every read before qits-2271 carried: nothing declined. */
@@ -101,6 +117,37 @@ public interface DeploymentRequests {
         String gateDetail,
         Boolean deployHold) {
       this(id, status, createdAt, qualityGate, gateSettledAt, gateDetail, deployHold, null, null);
+    }
+
+    /** The view in the nine fields every read before qits-2296 carried: a main row, no variants. */
+    public DeploymentRequestView(
+        String id,
+        String status,
+        Instant createdAt,
+        String qualityGate,
+        Instant gateSettledAt,
+        String gateDetail,
+        Boolean deployHold,
+        String declinedBy,
+        Instant declinedAt) {
+      this(
+          id,
+          status,
+          createdAt,
+          qualityGate,
+          gateSettledAt,
+          gateDetail,
+          deployHold,
+          declinedBy,
+          declinedAt,
+          null,
+          null,
+          null);
+    }
+
+    /** Whether this row is a variant's (qits-1976) rather than the release's main deployment. */
+    public boolean isVariant() {
+      return variant != null && !variant.isBlank();
     }
 
     /**
@@ -161,4 +208,16 @@ public interface DeploymentRequests {
    *     interface's javadoc for why that is never the same answer as an empty list
    */
   Optional<List<DeploymentRequestView>> forRelease(String repoId, String version);
+
+  /**
+   * Every deployment request for this released version <b>including its variants'</b> (qits-2296,
+   * {@code includeVariants=true} over there), newest first — main and variant rows interleaved in
+   * the far side's own order. {@link ReleaseDeploymentVerdict} is the one reader that tells them
+   * apart; every reader that wants the release's own deployment keeps {@link #forRelease}, whose
+   * answer is unchanged.
+   *
+   * <p>The same failure contract as {@link #forRelease}: empty is "could not be asked", never "no
+   * deployment".
+   */
+  Optional<List<DeploymentRequestView>> forReleaseWithVariants(String repoId, String version);
 }

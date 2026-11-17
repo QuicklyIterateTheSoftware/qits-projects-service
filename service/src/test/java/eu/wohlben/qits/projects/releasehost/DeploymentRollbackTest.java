@@ -12,6 +12,7 @@ import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.bus.DeploymentActiveListener;
 import eu.wohlben.qits.projects.bus.DeploymentFailedListener;
+import eu.wohlben.qits.projects.control.DeploymentRequests.DeploymentRequestView;
 import eu.wohlben.qits.projects.control.ReleaseExecutor;
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
 import eu.wohlben.qits.projects.deploymenthost.FakeDeploymentRequests;
@@ -29,6 +30,7 @@ import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,6 +49,9 @@ import org.junit.jupiter.api.Test;
  * records it from qits-deployments' own answer when no event came; the deployment gate reads FAILED
  * on the list read, naming the remedy, and {@code retryable} says a redeploy finishes it; a redeploy
  * that goes live clears the failure and finalizes as before. Nothing redeploys on its own.
+ *
+ * <p>And since qits-2296, a release's declared variants count: qits-edge-service-rr-165 — main
+ * ACTIVE, its private variant FAILED, the request FINALIZED anyway — is replayed and now holds.
  */
 @QuarkusTest
 @TestSecurity(user = "dev", roles = "qits:admin")
@@ -72,6 +77,8 @@ public class DeploymentRollbackTest {
 
   @Inject FakeDeploymentRequests deploymentRequests;
 
+  @Inject eu.wohlben.qits.projects.deploymenthost.RecordingDeploymentRedeploys redeploys;
+
   private String repoId;
   private String projectId;
 
@@ -82,6 +89,7 @@ public class DeploymentRollbackTest {
     merger.reset();
     gitHost.reset();
     deploymentRequests.reset();
+    redeploys.reset();
     activeBuilds.answer(Optional.of(0));
     repoId = "rollback-repo-" + UUID.randomUUID();
     projectId = "rollback-project-" + UUID.randomUUID();
@@ -352,20 +360,248 @@ public class DeploymentRollbackTest {
     assertNotNull(rowOf(tag).deploymentFailedAt, "a blank variant is unchanged behaviour");
   }
 
+  // -----------------------------------------------------------------------------------------------
+  // A release's variants count (qits-2296): qits-edge-service-rr-165 replayed
+  // -----------------------------------------------------------------------------------------------
+
+  private static final String MAIN_APP = "rollback";
+  private static final String VARIANT_APP = "rollback-private";
+
+  /** The release's main row, ACTIVE, declaring {@code private}. */
+  private static DeploymentRequestView mainRow(String id) {
+    return new DeploymentRequestView(
+        id,
+        "ACTIVE",
+        Instant.parse("2026-11-16T03:14:21Z"),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        MAIN_APP,
+        null,
+        List.of("private"));
+  }
+
+  private static DeploymentRequestView variantRow(String id, String status) {
+    return new DeploymentRequestView(
+        id,
+        status,
+        Instant.parse("2026-11-16T03:15:35Z"),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        VARIANT_APP,
+        "private",
+        List.of());
+  }
+
+  /** qits-deployments' two listings: the main row alone, and the release with its variants. */
+  private void listing(DeploymentRequestView... withVariants) {
+    List<DeploymentRequestView> rows = List.of(withVariants);
+    deploymentRequests.answer(
+        Optional.of(rows.stream().filter(row -> !row.isVariant()).toList()));
+    deploymentRequests.answerWithVariants(Optional.of(rows));
+  }
+
+  /**
+   * qits-edge-service-rr-165: the main went ACTIVE, then its private variant FAILED. The request
+   * stays RELEASED with a deployment failure naming the variant's application, main never moves,
+   * and the gate and the DEPLOY phase say which deployment failed.
+   */
   @Test
-  public void aNamedVariantFailureNeverFailsTheReleasesOwnTag() {
+  public void rr165AVariantFailingAfterTheMainWentLiveHoldsTheRequest() {
     String tag = releaseOf("work-a");
     String request = firstRequest();
 
-    deploymentFailed(tag, "ROLLED_BACK", "no suitable node", "private");
+    listing(mainRow("m1"));
+    deploymentActive(tag, MAIN_APP, null);
+    assertNull(rowOf(tag).deploymentActiveAt, "the variant has not gone live yet");
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
 
-    assertNull(
-        rowOf(tag).deploymentFailedAt,
-        "qits-rollback-private rolling back is not the release's own main deployment failing");
+    listing(variantRow("v1", "FAILED"), mainRow("m1"));
+    deploymentFailed(tag, "FAILED", "registry DNS lookup failed\\nsecond line", "private");
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentFailedAt);
+    assertEquals("rollback-private FAILED: registry DNS lookup failed", row.deploymentFailedDetail);
+    assertNull(row.deploymentActiveAt);
+    assertNull(row.mergeRequestedAt);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty(), "never merged");
+    assertEquals("RELEASED", listed(request).getString("state"));
+    assertEquals("FAILED", listed(request).getString(GATE + ".state"));
+    assertTrue(listed(request).getBoolean("retryable"));
+
+    JsonPath single =
+        given().get(base() + "/" + request).then().statusCode(200).extract().jsonPath();
+    assertEquals("FAILED", single.getString("request." + GATE + ".state"));
+    assertTrue(
+        single.getString("request." + GATE + ".detail").contains("rollback-private FAILED"),
+        single.getString("request." + GATE + ".detail"));
     assertEquals(
-        "PENDING",
-        listed(request).getString(GATE + ".state"),
-        "the gate still just waits to go live");
+        List.of("Deployment request m1", "rollback-private"),
+        single.getList("request." + GATE + ".checks.name"));
+    assertEquals("FAILED", single.getString("request." + GATE + ".checks[1].state"));
+    assertEquals(
+        "FAILED", single.getString("request.pipeline.phases.find { it.phase == 'DEPLOY' }.state"));
+    assertEquals(
+        "rollback-private FAILED: registry DNS lookup failed",
+        single.getString("request.pipeline.phases.find { it.phase == 'DEPLOY' }.detail"));
+  }
+
+  /** The main's event alone, with the declared variant's row not written yet, merges nothing. */
+  @Test
+  public void theMainGoingLiveBeforeItsVariantHasARowMergesNothing() {
+    String tag = releaseOf("work-a");
+    String request = firstRequest();
+    listing(mainRow("m1"));
+
+    deploymentActive(tag, MAIN_APP, null);
+
+    assertNull(rowOf(tag).deploymentActiveAt);
+    assertNull(rowOf(tag).deploymentFailedAt);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+    JsonPath single =
+        given().get(base() + "/" + request).then().statusCode(200).extract().jsonPath();
+    assertEquals("PENDING", single.getString("request." + GATE + ".state"));
+    assertEquals("PENDING", single.getString("request." + GATE + ".checks[1].state"));
+    assertEquals(
+        "RUNNING", single.getString("request.pipeline.phases.find { it.phase == 'DEPLOY' }.state"));
+  }
+
+  /** Main ACTIVE, then the variant ACTIVE: the variant's event finalizes. */
+  @Test
+  public void theVariantGoingLiveAfterTheMainFinalizes() {
+    String tag = releaseOf("work-a");
+    listing(mainRow("m1"));
+    deploymentActive(tag, MAIN_APP, null);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+
+    listing(variantRow("v1", "ACTIVE"), mainRow("m1"));
+    deploymentActive(tag, VARIANT_APP, "private");
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentActiveAt);
+    assertNotNull(row.mergeRequestedAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+  }
+
+  /** A variant's event naming a release whose main is not live yet finalizes nothing. */
+  @Test
+  public void aLiveVariantNeverFinalizesAReleaseWhoseMainIsNotLive() {
+    String tag = releaseOf("work-a");
+    DeploymentRequestView starting =
+        new DeploymentRequestView(
+            "m1", "STARTING", Instant.now(), null, null, null, null, null, null, MAIN_APP, null,
+            List.of("private"));
+    deploymentRequests.answerWithVariants(
+        Optional.of(List.of(variantRow("v1", "ACTIVE"), starting)));
+
+    deploymentActive(tag, VARIANT_APP, "private");
+
+    assertNull(rowOf(tag).deploymentActiveAt);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+  }
+
+  /**
+   * The remedy: a DEPLOY rerun re-posts the release. Its main goes ACTIVE while the variant's newest
+   * row is still the old failure (older than the new main row) — still waiting, nothing re-failed —
+   * and the rerun's variant going ACTIVE clears the failure and finalizes.
+   */
+  @Test
+  public void aDeployRerunThatBringsTheVariantLiveClearsTheFailureAndFinalizes() {
+    String tag = releaseOf("work-a");
+    String request = firstRequest();
+    listing(variantRow("v1", "FAILED"), mainRow("m1"));
+    deploymentActive(tag, MAIN_APP, null);
+    assertEquals("rollback-private FAILED", rowOf(tag).deploymentFailedDetail,
+        "the main's event finds the variant failed and records it");
+
+    given()
+        .contentType(ContentType.JSON)
+        .post(base() + "/" + request + "/pipeline/DEPLOY/rerun")
+        .then()
+        .statusCode(200);
+    assertEquals(1, redeploys.asks().size(), "the release was re-posted");
+
+    listing(mainRow("m2"), variantRow("v1", "FAILED"), mainRow("m1"));
+    deploymentActive(tag, MAIN_APP, null);
+    ReleasedTagPendingMerge waiting = rowOf(tag);
+    assertNull(waiting.deploymentActiveAt, "the rerun's variant has no row yet");
+    assertEquals("rollback-private FAILED", waiting.deploymentFailedDetail);
+
+    listing(variantRow("v2", "ACTIVE"), mainRow("m2"), variantRow("v1", "FAILED"), mainRow("m1"));
+    deploymentActive(tag, VARIANT_APP, "private");
+
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentActiveAt);
+    assertNull(row.deploymentFailedAt, "the rerun went live, so the failure is history");
+    assertNull(row.deploymentFailedDetail);
+    assertNotNull(row.mergeRequestedAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+
+    deploymentFailed(tag, "ROLLED_BACK", "a later rollback", "private");
+    assertNull(rowOf(tag).deploymentFailedAt, "a version that went live did ship");
+  }
+
+  /** A release whose main declares no variants finalizes on the main's event, as before. */
+  @Test
+  public void aReleaseDeclaringNoVariantsFinalizesOnTheMainAsBefore() {
+    String tag = releaseOf("work-a");
+    deploymentRequests.answerWithVariants(
+        Optional.of(List.of(new DeploymentRequestView("m1", "ACTIVE", Instant.now()))));
+
+    deploymentActive(tag, MAIN_APP, null);
+
+    assertNotNull(rowOf(tag).deploymentActiveAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+  }
+
+  /**
+   * qits-deployments cannot be asked about the variants when the main's event arrives: nothing is
+   * finalized on a guess, and the reconcile settles it once it can ask.
+   */
+  @Test
+  public void anUnreadableVariantListingLeavesTheMainsEventToTheReconcile() {
+    String tag = releaseOf("work-a");
+    deploymentRequests.answerWithVariants(Optional.empty());
+
+    deploymentActive(tag, MAIN_APP, null);
+    assertNull(rowOf(tag).deploymentActiveAt);
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+
+    listing(variantRow("v1", "ACTIVE"), mainRow("m1"));
+    assertEquals(1, finalization.reconcileDeployments(Duration.ZERO));
+    assertNotNull(rowOf(tag).deploymentActiveAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
+  }
+
+  /** The reconcile reaches every verdict with no event on the log at all. */
+  @Test
+  public void theReconcileAppliesTheVariantVerdictNoEventAnnounced() {
+    String tag = releaseOf("work-a");
+
+    listing(mainRow("m1"));
+    assertEquals(0, finalization.reconcileDeployments(Duration.ZERO), "a variant still pending");
+    assertNull(rowOf(tag).deploymentActiveAt);
+
+    listing(variantRow("v1", "ROLLED_BACK"), mainRow("m1"));
+    assertEquals(1, finalization.reconcileDeployments(Duration.ZERO));
+    assertEquals("rollback-private ROLLED_BACK", rowOf(tag).deploymentFailedDetail);
+    assertEquals(
+        0, finalization.reconcileDeployments(Duration.ZERO), "a recorded failure is not re-worded");
+    assertTrue(merger.foldsOf("refs/heads/main").isEmpty());
+
+    listing(variantRow("v2", "ACTIVE"), variantRow("v1", "ROLLED_BACK"), mainRow("m1"));
+    assertEquals(1, finalization.reconcileDeployments(Duration.ZERO));
+    ReleasedTagPendingMerge row = rowOf(tag);
+    assertNotNull(row.deploymentActiveAt);
+    assertNull(row.deploymentFailedAt);
+    assertEquals(1, merger.foldsOf("refs/heads/main").size());
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -400,7 +636,9 @@ public class DeploymentRollbackTest {
             Instant.now(),
             "{\"deploymentId\":\""
                 + UUID.randomUUID()
-                + "\",\"applicationName\":\"rollback\",\"environmentName\":\"dev\",\"version\":\""
+                + "\",\"applicationName\":\""
+                + (variant == null || variant.isBlank() ? MAIN_APP : MAIN_APP + "-" + variant.trim())
+                + "\",\"environmentName\":\"dev\",\"version\":\""
                 + version
                 + "\",\"status\":\""
                 + status
@@ -415,6 +653,10 @@ public class DeploymentRollbackTest {
   }
 
   private void deploymentActive(String version) {
+    deploymentActive(version, MAIN_APP, null);
+  }
+
+  private void deploymentActive(String version, String application, String variant) {
     actives.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -422,9 +664,13 @@ public class DeploymentRollbackTest {
             Instant.now(),
             "{\"deploymentId\":\""
                 + UUID.randomUUID()
-                + "\",\"applicationName\":\"rollback\",\"environmentName\":\"dev\",\"version\":\""
+                + "\",\"applicationName\":\""
+                + application
+                + "\",\"environmentName\":\"dev\",\"version\":\""
                 + version
-                + "\"}",
+                + "\""
+                + (variant == null ? "" : ",\"variant\":\"" + variant + "\"")
+                + "}",
             null,
             null,
             null));

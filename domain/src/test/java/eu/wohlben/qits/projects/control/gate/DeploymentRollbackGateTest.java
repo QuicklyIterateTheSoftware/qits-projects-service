@@ -275,4 +275,86 @@ class DeploymentRollbackGateTest {
         ReleaseGates.State.PENDING,
         gate.evaluate(with(DEPLOYS, merged, GateSubject.Deployment.NOT_ASKED)).state());
   }
+  // -----------------------------------------------------------------------------------------------
+  // Variants (qits-2296)
+  // -----------------------------------------------------------------------------------------------
+
+  private static GateCheck variant(String state, String status) {
+    return new GateCheck("qits-edge-private", state, status, null);
+  }
+
+  /** One check per declared variant, after the release's own; none for a release without any. */
+  @Test
+  void eachDeclaredVariantIsACheck() {
+    GateEvaluation live =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                live(),
+                GateSubject.Deployment.newest("d1", "ACTIVE")
+                    .withVariants(List.of(variant("PASSED", "ACTIVE")))));
+    assertEquals(ReleaseGates.State.PASSED, live.state());
+    assertEquals(2, live.checks().size());
+    assertEquals("Deployment request d1", live.checks().get(0).name());
+    assertEquals("qits-edge-private", live.checks().get(1).name());
+    assertEquals("PASSED", live.checks().get(1).state());
+    assertEquals("ACTIVE", live.checks().get(1).detail());
+
+    assertEquals(
+        1,
+        gate.evaluate(with(DEPLOYS, live(), GateSubject.Deployment.newest("d1", "ACTIVE")))
+            .checks()
+            .size(),
+        "a release without variants answers the checks it always did");
+  }
+
+  /** The main is ACTIVE and the variant has no row yet: the gate waits and names the variant. */
+  @Test
+  void aPendingVariantHoldsTheGateAndIsNamed() {
+    GateEvaluation waiting =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                released(PublishState.PASSED, false),
+                GateSubject.Deployment.newest("d1", "ACTIVE")
+                    .withVariants(List.of(variant("PENDING", "No deployment yet")))));
+    assertEquals(ReleaseGates.State.PENDING, waiting.state());
+    assertEquals(
+        "Waiting for 2026.1009.100000 to go live in every variant it declares: qits-edge-private",
+        waiting.detail());
+  }
+
+  /**
+   * rr-165 on a single read: the variant failed and finalization recorded it — the main reads
+   * ACTIVE, and that is not a redeploy under way. The detail names the variant.
+   */
+  @Test
+  void aRecordedVariantFailureIsFailedBesideAnActiveMain() {
+    GateEvaluation answer =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                failed("qits-edge-private FAILED: registry DNS lookup failed"),
+                GateSubject.Deployment.newest("d1", "ACTIVE")
+                    .withVariants(List.of(variant("FAILED", "FAILED")))));
+    assertEquals(ReleaseGates.State.FAILED, answer.state());
+    assertTrue(answer.detail().contains("qits-edge-private FAILED"), answer.detail());
+    assertTrue(answer.detail().contains("registry DNS lookup failed"), answer.detail());
+    assertEquals("FAILED", answer.checks().get(1).state());
+  }
+
+  /** A variant read failed before finalization recorded anything is FAILED on that read too. */
+  @Test
+  void anUnrecordedVariantFailureIsFailedOnASingleRead() {
+    GateEvaluation answer =
+        gate.evaluate(
+            with(
+                DEPLOYS,
+                released(PublishState.PASSED, false),
+                GateSubject.Deployment.newest("d1", "ACTIVE")
+                    .withVariants(List.of(variant("FAILED", "IMAGE_MISSING")))));
+    assertEquals(ReleaseGates.State.FAILED, answer.state());
+    assertEquals(
+        "2026.1009.100000 failed to deploy: qits-edge-private IMAGE_MISSING", answer.detail());
+  }
 }

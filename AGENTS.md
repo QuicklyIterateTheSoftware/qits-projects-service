@@ -767,6 +767,23 @@ merely its only occupant. Six things about it are rules:
   `DeploymentRollbackGate` FAILED on every read, the list included, naming the remedy (`qits
   release-request rerun --request <qualifiedId> --phase DEPLOY`), and the DTO's `retryable` true for that RELEASED request. Nothing redeploys
   automatically.
+- **A release is live only once every variant it declares is (qits-2296).** qits-deployments'
+  main row names the release's variants (`variants: ["private"]`, written before the main deploys;
+  variant rows come 10–75 s after the main went ACTIVE), and `DeploymentRequests.forReleaseWithVariants`
+  (`&includeVariants=true`) lists main and variant rows together. `control/ReleaseDeploymentVerdict`
+  is the one fold: LIVE when the newest main row is ACTIVE and each declared variant's newest row
+  (newer than that main row — an older one predates a DEPLOY rerun) is ACTIVE; FAILED when the main
+  failed or a variant is FAILED, ROLLED_BACK, IMAGE_MISSING or DECLARATION_REFUSED; else PENDING.
+  The main's `DeploymentActive` stamps nothing while a variant is pending, and nothing when the
+  listing cannot be read (the reconcile decides); the variant's `DeploymentActive`/`DeploymentFailed`
+  are no longer dropped (qits-1985's skip is gone) and finish or fail the release. A variant failure
+  is recorded as `<variant application> <status>: <first line>` (`qits-edge-private FAILED: …`).
+  The reconcile reads the with-variants listing only for a main row declaring variants. The single
+  read's rollback gate adds one check per declared variant, and the DEPLOY phase reads FAILED with
+  the recorded sentence (or RUNNING while a variant is pending) beside an ACTIVE main. Every
+  `forRelease(...).get(0)` reader keeps the main-only listing. The consumer row for the new read is
+  pending until the pinned qits-deployments golden masters record `a release with a variant
+  deployed`; regenerate the pact (`-Dgolden.update=true`) on that bump.
 - **`bus/EventWireReflection` is the native-image registration**, and `EventWireReflectionTest`
   guards its completeness against the registered listener beans. Read that class's javadoc before
   adding a wire type; the failure it prevents is invisible to every JVM test by construction.
