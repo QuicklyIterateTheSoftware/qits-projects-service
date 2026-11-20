@@ -268,7 +268,7 @@
         <qits.githost-golden-masters.version>2026.1109.41303</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1117.154126</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1119.183438</qits.maintenance-golden-masters.version>
-        <qits.events-golden-masters.version>2026.1118.203913</qits.events-golden-masters.version>
+        <qits.events-golden-masters.version>2026.1120.65904</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1119.60052</qits.ci-golden-masters.version>
         <qits.idp-golden-masters.version>2026.1109.13349</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1119.141022</qits.deployments-golden-masters.version>
