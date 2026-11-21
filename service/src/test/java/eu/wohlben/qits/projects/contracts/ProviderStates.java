@@ -4184,6 +4184,11 @@ public class ProviderStates {
             eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.merged(
                 SCRIPTED_FOLD, List.of()));
     activeBuilds.get().answer(java.util.Optional.of(1));
+    // The two branches the states' asks name are on the git host (qits-2365): a door asks it first,
+    // and a branch it does not hold is answered with a sentence these recordings do not pin.
+    for (String branch : List.of("feature/export", "fix/rounding")) {
+      releaseGitHost.get().headOf(repoId, branch, SCRIPTED_FOLD);
+    }
     return repoId;
   }
 

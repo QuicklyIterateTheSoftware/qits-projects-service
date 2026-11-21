@@ -169,7 +169,11 @@ public class ReleaseRequestController {
                         + " request has released or been withdrawn. A branch already a source of an"
                         + " unreleased request answers PRESENT where it is. outcome is CREATED,"
                         + " JOINED or PRESENT, queued says the answering request is queued, and"
-                        + " detail is one sentence saying where the branch went.")
+                        + " detail is one sentence saying where the branch went."
+                        + " When the git host answers that a branch this ask added is not in the"
+                        + " repository (qits-2365), detail ends by saying so and what the request"
+                        + " does about it: it folds the branch on its push, or rejects it once the"
+                        + " missing-source grace is over. The branch is placed all the same.")
             PlacementDto placement) {}
   }
 
@@ -249,8 +253,7 @@ public class ReleaseRequestController {
     requireAgentProject(repoId);
     requireAgentBranch(body == null ? null : body.branch());
     ReleaseRequests.Asked asked =
-        releaseRequests.ask(
-            repoId, body.branch(), caller(), body.priority());
+        releaseRequests.ask(repoId, body.branch(), caller(), body.priority(), true);
     return new CreateReleaseRequest.Response(asked.request(), asked.placement());
   }
 
@@ -276,7 +279,11 @@ public class ReleaseRequestController {
                         + " the new source carries explicitJoin true, with a detail saying it joined"
                         + " a frozen request explicitly. From RELEASED on no join is accepted: the"
                         + " 409 says the request is released and names the repository's next"
-                        + " unreleased request by qualified id, if there is one.")
+                        + " unreleased request by qualified id, if there is one."
+                        + " When the git host answers that a branch this ask added is not in the"
+                        + " repository (qits-2365), detail ends by saying so and what the request"
+                        + " does about it: it folds the branch on its push, or rejects it once the"
+                        + " missing-source grace is over. The branch is placed all the same.")
             PlacementDto placement) {}
   }
 

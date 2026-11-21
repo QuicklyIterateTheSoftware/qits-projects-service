@@ -3020,7 +3020,11 @@ components:
             \ withdrawn. A branch already a source of an unreleased request answers\
             \ PRESENT where it is. outcome is CREATED, JOINED or PRESENT, queued says\
             \ the answering request is queued, and detail is one sentence saying where\
-            \ the branch went."
+            \ the branch went. When the git host answers that a branch this ask added\
+            \ is not in the repository (qits-2365), detail ends by saying so and what\
+            \ the request does about it: it folds the branch on its push, or rejects\
+            \ it once the missing-source grace is over. The branch is placed all the\
+            \ same."
           type: object
     Response22:
       type: object
@@ -3052,7 +3056,11 @@ components:
             \ branch), and the new source carries explicitJoin true, with a detail\
             \ saying it joined a frozen request explicitly. From RELEASED on no join\
             \ is accepted: the 409 says the request is released and names the repository's\
-            \ next unreleased request by qualified id, if there is one."
+            \ next unreleased request by qualified id, if there is one. When the git\
+            \ host answers that a branch this ask added is not in the repository (qits-2365),\
+            \ detail ends by saying so and what the request does about it: it folds\
+            \ the branch on its push, or rejects it once the missing-source grace\
+            \ is over. The branch is placed all the same."
           type: object
     Response26:
       type: object
@@ -10574,4 +10582,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1106.143353
+  version: 2026.1121.95954

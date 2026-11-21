@@ -649,8 +649,11 @@ merely its only occupant. Six things about it are rules:
     request's sources and every row still naming it at MOVED, RELEASED or FAILED, so a chain of red
     releases carries them on to the last successor.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
-    under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
-    it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
+    under `handOn`, **with no `foldSha`** (qits-2365): it is written before the fold that carries
+    the branch is asked for, so the request's `mergedSha` then is a fold that lacks it — stamped,
+    the step said "joined at" the old fold, which for a branch not yet pushed was the fold that
+    went on to reject it (qits-landing-app-rr-257). `resumed`'s JOINED keeps the current fold.
+    MOVED in `handOn` (previous = the releasing request, current = where `ask` put it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
     request the source left, current = the request queued behind it); FAILED in `evaluate` (red CI, failed
     automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
     (qits-1725); CONFLICTED in `apply`;

@@ -11,6 +11,9 @@ package eu.wohlben.qits.projects.dto;
  * request, which reached its feature freeze: it folds nothing and runs no gate until that request has
  * left the unreleased states. {@code detail} is one sentence saying where the branch went and why —
  * queued behind a frozen request, joined below the freeze, or joined a frozen request explicitly
- * through the sources door — built here so a caller prints it rather than reconstructs it.
+ * through the sources door — built here so a caller prints it rather than reconstructs it. Where
+ * the ask added the branch and the git host answered that the repository does not hold it, the
+ * sentence goes on to say so (qits-2365): the branch is placed all the same, and the request folds
+ * it on its push or rejects it once the missing-source grace is over.
  */
 public record PlacementDto(String outcome, boolean queued, String detail) {}

@@ -423,6 +423,8 @@ public class ReleaseFeatureFreezeTest {
   void aJoinBelowTheFreezeIsNoExplicitJoin() {
     String active = ask(feature()).request().id();
     String branch = feature();
+    // On the git host, so the door's answer says nothing about a push still to come (qits-2365).
+    gitHost.headOf(repoId, branch, "5eed5eed5eed5eed5eed5eed5eed5eed5eed2365");
 
     ExtractableResponse<Response> joined = addSource(active, branch);
 

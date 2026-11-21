@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -209,6 +210,10 @@ public class BranchDeliveryTest {
     String second = ticketBranch();
     releaseRequests.join(id, second, "alice", null);
     assertEquals(List.of("JOINED@" + qid), announced.movesOf(second));
+    assertNotNull(mergedShaOf(repoA, id), "the premise: the request had a fold to join");
+    assertNull(
+        announced.stepsOf(second).get(0).foldSha(),
+        "the fold the request was at lacks the branch, so the JOINED names none (qits-2365)");
   }
 
   /** {@link ReleaseFeatureFreezeTest}'s fourth feature: JOINED on the queue it landed in. */
