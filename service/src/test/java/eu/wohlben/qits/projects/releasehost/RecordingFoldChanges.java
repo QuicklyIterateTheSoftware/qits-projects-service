@@ -86,29 +86,43 @@ public class RecordingFoldChanges implements FoldChanges {
 
   private final Set<String> rowReaders = ConcurrentHashMap.newKeySet();
 
-  /** How long every content read takes — zero, unless a test stands in for a slow mirror. */
-  private final java.util.concurrent.atomic.AtomicLong latencyMs =
-      new java.util.concurrent.atomic.AtomicLong();
+  /** The standing park of every content read, or null — see {@link #parkReads}. */
+  private final java.util.concurrent.atomic.AtomicReference<ReadPark> park =
+      new java.util.concurrent.atomic.AtomicReference<>();
 
-  /** Make every {@link #changes} and {@link #addsNothingToMain} read take {@code millis}. */
-  public void readLatency(long millis) {
-    latencyMs.set(millis);
+  /**
+   * <b>Park every {@link #changes} and {@link #addsNothingToMain} read</b>, of every repository,
+   * until {@link ReadPark#release} or {@link #releaseReads} — a mirror that has not answered yet.
+   * Arming a new park releases the one before it. A read is counted in {@link #reads} as it arrives,
+   * before it parks, so a parked read is already visible there.
+   */
+  public ReadPark parkReads() {
+    ReadPark armed = new ReadPark();
+    ReadPark before = park.getAndSet(armed);
+    if (before != null) {
+      before.release();
+    }
+    return armed;
+  }
+
+  /** Release the standing park, if any; later content reads answer at once. */
+  public void releaseReads() {
+    ReadPark armed = park.getAndSet(null);
+    if (armed != null) {
+      armed.release();
+    }
   }
 
   private void count(String repoId) {
     reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
-    long latency = latencyMs.get();
-    if (latency > 0) {
-      try {
-        Thread.sleep(latency);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
+    ReadPark armed = park.get();
+    if (armed != null) {
+      armed.park(repoId);
     }
   }
 
   public void reset() {
-    latencyMs.set(0);
+    releaseReads();
     rowReaders.clear();
     scripted.clear();
     betweenScripted.clear();

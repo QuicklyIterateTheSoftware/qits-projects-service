@@ -403,13 +403,32 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   private final List<TreeRead> treeReads = Collections.synchronizedList(new ArrayList<>());
 
-  /** How long every tree read takes — zero, unless a test stands in for a slow git host. */
-  private final java.util.concurrent.atomic.AtomicLong treeLatencyMs =
-      new java.util.concurrent.atomic.AtomicLong();
+  /** The standing park of every tree read, or null — see {@link #parkTreeReads}. */
+  private final AtomicReference<ReadPark> treePark = new AtomicReference<>();
 
-  /** Make every tree read take {@code millis}, the way qits-githost's sometimes does. */
-  public void treeLatency(long millis) {
-    treeLatencyMs.set(millis);
+  /**
+   * <b>Park every tree read, of every repository,</b> until {@link ReadPark#release} or {@link
+   * #releaseTreeReads} — a git host that has not answered yet, for as long as the test needs it not
+   * to. Arming a new park releases the one before it.
+   *
+   * <p>A parked read is not in {@link #treeReads} until it is released (a read is recorded when it
+   * ends); {@link ReadPark#arrived} is how a test sees it while it waits.
+   */
+  public ReadPark parkTreeReads() {
+    ReadPark park = new ReadPark();
+    ReadPark before = treePark.getAndSet(park);
+    if (before != null) {
+      before.release();
+    }
+    return park;
+  }
+
+  /** Release the standing tree-read park, if any; later tree reads answer at once. */
+  public void releaseTreeReads() {
+    ReadPark park = treePark.getAndSet(null);
+    if (park != null) {
+      park.release();
+    }
   }
 
   /** Every tree read since the last {@link #reset} or {@link #clearTreeReads}, in arrival order. */
@@ -425,7 +444,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   public void reset() {
     treeReads.clear();
-    treeLatencyMs.set(0);
+    releaseTreeReads();
     trees.clear();
     trees.put("refs/heads/main", new LinkedHashMap<>(GATED_MAIN));
     commits.clear();
@@ -520,13 +539,9 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   private Answer<List<String>> treeAnswer(String repoId, String rev) {
-    long latency = treeLatencyMs.get();
-    if (latency > 0) {
-      try {
-        Thread.sleep(latency);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
+    ReadPark park = treePark.get();
+    if (park != null) {
+      park.park(repoId);
     }
     Hold armed = hold.get();
     if (armed != null && armed.repoId().equals(repoId) && hold.compareAndSet(armed, null)) {
