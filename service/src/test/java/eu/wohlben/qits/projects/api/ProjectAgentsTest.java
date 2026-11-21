@@ -229,8 +229,13 @@ public class ProjectAgentsTest {
           .get(door(projectId, "ui-builder", "last-answer"))
           .then()
           .statusCode(403);
+      as("someone", roles)
+          .when()
+          .post(door(projectId, "ui-builder", "start"))
+          .then()
+          .statusCode(403);
     }
-    assertNull(row("ui-builder"), "a refused prompt creates nothing");
+    assertNull(row("ui-builder"), "a refused prompt or start creates nothing");
   }
 
   @Test
@@ -306,6 +311,54 @@ public class ProjectAgentsTest {
         .body("agents[1].state", equalTo("IDLE"))
         .body("agents[1].commandId", equalTo("cmd-ui"))
         .body("agents[1].sessionId", equalTo("sess-ui"));
+  }
+
+  // ---- the start (qits-2499) ---------------------------------------------------------------------
+
+  @Test
+  public void startingTheUiBuilderWhileTheDeskIsDownStartsTheDeskAndAsksForItsSession()
+      throws Exception {
+    String projectId = createProject("Named Agent Start " + UUID.randomUUID());
+
+    asAdmin()
+        .when()
+        .post(door(projectId, "ui-builder", "start"))
+        .then()
+        .statusCode(200)
+        .body("name", equalTo("ui-builder"))
+        .body("state", equalTo("STARTING"))
+        .body("commandId", equalTo(null));
+    NamedAgent row = row("ui-builder");
+    assertNotNull(row, "created by the start");
+    assertNotNull(row.lastDemandAt);
+    assertNull(row.pendingPrompt, "a start carries no prompt");
+    assertEquals(1, tokens.namedAgentMintsFor(projectId, "ui-builder"));
+    assertTrue(frontDesks.find(projectId).orElseThrow().wanted(), "the stopped desk was started");
+
+    connectDaemon(projectId);
+    await(
+        "a sessions frame naming agent:ui-builder",
+        () ->
+            daemon.frames(DaemonProtocol.Type.SESSIONS).stream()
+                .anyMatch(frame -> entry(frame, "agent:ui-builder") != null));
+    assertTrue(seen("/named-agents/ui-builder/prompt").isEmpty(), "nothing is typed into it");
+  }
+
+  @Test
+  public void startingTheDeskEnsuresItAndAnUnknownNameIsRefused() {
+    String projectId = createProject("Named Agent Start Desk " + UUID.randomUUID());
+    asAdmin().when().post(door(projectId, "nobody", "start")).then().statusCode(404);
+    assertTrue(frontDesks.find(projectId).isEmpty(), "no desk was woken for an unknown name");
+
+    asAdmin()
+        .when()
+        .post(door(projectId, "desk", "start"))
+        .then()
+        .statusCode(200)
+        .body("name", equalTo("desk"))
+        .body("state", equalTo("STARTING"));
+    assertTrue(frontDesks.find(projectId).orElseThrow().wanted());
+    assertNull(row("desk"), "the desk never has a named agent row");
   }
 
   // ---- the prompt --------------------------------------------------------------------------------

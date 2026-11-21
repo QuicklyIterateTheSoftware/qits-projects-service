@@ -5826,6 +5826,51 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:desk-admin
+  /projects/api/projects/{projectId}/agents/{name}/start:
+    post:
+      summary: Start a named agent if it is not running; a stopped desk container
+        is started
+      description: "Asks for the agent's session without a prompt (qits-2499): the\
+        \ agent's demand is stamped and the desk ensured, so a stopped container is\
+        \ started and the agent's session asked for. A running agent is left as it\
+        \ is. Answers the agent as the listing does, at once: STARTING while it comes\
+        \ up."
+      operationId: startAgent
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The agent, as the listing answers it"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgent"
+        "404":
+          description: "No such project, or no named agent of that name"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamedAgentRefusal"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Agents Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:desk-admin
   /projects/api/projects/{projectId}/desk-triggers:
     get:
       summary: The messages the project's delivery desk was sent by its desk triggers
@@ -10582,4 +10627,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1121.95954
+  version: 2026.1121.170044

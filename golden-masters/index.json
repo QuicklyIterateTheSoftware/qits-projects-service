@@ -1603,6 +1603,19 @@
             "strings": [],
             "listFilteredTo": null
           }
+        },
+        {
+          "operationId": "startAgent",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/agents/{name}/start",
+          "status": 200,
+          "file": "a-project-whose-named-agent-is-running/startAgent.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
         }
       ]
     },
