@@ -242,8 +242,10 @@ class AgentReadAccessTest {
           "WorkRefinementController.open",
           // Prompting the front desk is a person's (or an admin agent's) word to it (qits-1572).
           "ProjectFrontDeskController.prompt",
-          // So is prompting any named agent, the desk included (qits-2154).
-          "ProjectAgentsController.prompt");
+          // So is prompting any named agent, the desk included (qits-2154), and starting one
+          // (qits-2499), which wakes the desk container as the container ensure does.
+          "ProjectAgentsController.prompt",
+          "ProjectAgentsController.start");
 
   /**
    * <b>The reads an agent may not make: the front desk's last answer</b> (qits-1572), and since
@@ -306,6 +308,7 @@ class AgentReadAccessTest {
           "AgentContainerController.delete",
           "ProjectFrontDeskController.prompt",
           "ProjectAgentsController.prompt",
+          "ProjectAgentsController.start",
           "AgentMcpCatalogController.save",
           "AgentMcpCatalogController.delete",
           "AgentMcpCatalogController.setCredential",
