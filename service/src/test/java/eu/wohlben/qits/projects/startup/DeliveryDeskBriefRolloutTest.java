@@ -708,6 +708,26 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
+   * qits-2496: an unedited "none last" brief — from when a priority could be null — rolls to the
+   * current one, which says 0 is the default and a negative priority comes after everything else.
+   */
+  @Test
+  public void anUneditedQits2496PreBriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_2496_PRE_DELIVERY_DESK_PROMPT.contains("(highest first, none"),
+        "the qits-2496 pre text is the none-last one");
+    stage(AgentSurfaceDefaults.QITS_2496_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the none-last brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("a negative priority comes after everything else"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.
    */

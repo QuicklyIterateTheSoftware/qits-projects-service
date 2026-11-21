@@ -13,16 +13,18 @@ import java.util.Objects;
  *
  * <h2>The order rule</h2>
  *
- * <p>{@link #ORDER}: {@code priority} descending, a null after every number, then the qualified id's
- * {@code number} ascending, then the id. Higher is sooner; an unranked row keeps the order it was
- * filed in, which is the order every board showed before the priority existed. The server's listing
+ * <p>{@link #ORDER}: {@code priority} descending, then the qualified id's {@code number} ascending,
+ * then the id. Higher is sooner. Work always holds a priority (qits-2496): 0 by default, so a
+ * negative one sorts below unranked work, and unranked rows keep the order they were filed in. A
+ * null (an idea nobody ranked, {@link IdeaPriorityService}) still sorts after every number. The server's listing
  * does not sort by it — a client does, over the siblings it draws.
  *
  * <h2>The drop</h2>
  *
  * <p>{@link #drop} takes the siblings S that are still open (neither DONE nor DROPPED), sorts them,
  * takes the moved item out and puts it back directly above or directly below the anchor, at index
- * {@code i}. The floor is the highest priority among S[i+1..] (0 when none is ranked), and S[0..i]
+ * {@code i}. The floor is the highest priority among S[i+1..] (0 when none is ranked or S[i+1..] is
+ * empty), and S[0..i]
  * are renumbered {@code floor+i+1, floor+i, …, floor+1}: strictly descending, every one above every
  * ranked row below, so the order afterwards is exactly the order the drop drew. <b>Nothing below
  * {@code i} is touched</b> — a drop near the top of a long backlog writes a handful of rows, and an

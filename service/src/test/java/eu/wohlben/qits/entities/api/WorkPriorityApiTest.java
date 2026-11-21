@@ -3,7 +3,6 @@ package eu.wohlben.qits.entities.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import eu.wohlben.qits.entities.control.EntityStateMachine;
@@ -82,7 +81,7 @@ class WorkPriorityApiTest {
 
   /**
    * The project's roots as a client draws them: the listing, sorted by the order rule — priority
-   * descending, nulls last, then number.
+   * descending, then number (qits-2496: every item holds one, 0 by default).
    */
   private static List<String> rootsInOrder(String projectId) {
     List<Map<String, Object>> entities =
@@ -101,13 +100,13 @@ class WorkPriorityApiTest {
     }
     roots.sort(
         Comparator.<Map<String, Object>, Integer>comparing(
-                e -> (Integer) e.get("priority"), Comparator.nullsLast(Comparator.reverseOrder()))
+                e -> (Integer) e.get("priority"), Comparator.reverseOrder())
             .thenComparingLong(e -> ((Number) e.get("number")).longValue()));
     return roots.stream().map(e -> (String) e.get("qualifiedId")).toList();
   }
 
   @Test
-  void everyAnswerCarriesThePriorityNullUntilRanked() {
+  void everyAnswerCarriesThePriorityZeroUntilRanked() {
     String projectId = project("Priority Reads");
     String ticket = ticket(projectId, "Unranked");
 
@@ -117,7 +116,7 @@ class WorkPriorityApiTest {
         .then()
         .statusCode(200)
         .body("containsKey('priority')", equalTo(true))
-        .body("priority", nullValue());
+        .body("priority", equalTo(0));
     given()
         .when()
         .get("/projects/api/projects/" + projectId + "/work")
@@ -144,8 +143,9 @@ class WorkPriorityApiTest {
         .body("priority", equalTo(5))
         .body("title", equalTo("Ranked by hand"))
         .body("impetus", equalTo("it occurs"));
-    patch(ticket, priority(null)).statusCode(200).body("priority", nullValue());
-    given().when().get("/projects/api/work/" + ticket).then().body("priority", nullValue());
+    // A null writes 0, the default (qits-2496).
+    patch(ticket, priority(null)).statusCode(200).body("priority", equalTo(0));
+    given().when().get("/projects/api/work/" + ticket).then().body("priority", equalTo(0));
 
     patch(ticket, Map.of("priority", "high"))
         .statusCode(400)
@@ -213,7 +213,7 @@ class WorkPriorityApiTest {
         .body("items.qualifiedId", equalTo(List.of(qa, qd)))
         .body("items.priority", equalTo(List.of(2, 1)));
     assertEquals(List.of(qa, qd, qb, qc), rootsInOrder(projectId));
-    given().when().get("/projects/api/work/" + b).then().body("priority", nullValue());
+    given().when().get("/projects/api/work/" + b).then().body("priority", equalTo(0));
 
     // b dropped directly above a, by UUID: it goes over the top.
     drop(qb, Map.of("above", a))
@@ -271,7 +271,31 @@ class WorkPriorityApiTest {
     drop(feature, Map.of("below", a))
         .statusCode(400)
         .body("message", containsString("not a reorderable sibling"));
-    given().when().get("/projects/api/work/" + a).then().body("priority", nullValue());
+    given().when().get("/projects/api/work/" + a).then().body("priority", equalTo(0));
+  }
+
+  /** qits-2496: an unranked item counts as 0, so a negative one sorts below it, a positive above. */
+  @Test
+  void aNegativePrioritySortsBelowUnrankedWork() {
+    String projectId = project("Priority Negative");
+    String low = ticket(projectId, "Later");
+    String plain = ticket(projectId, "Unranked");
+    String high = ticket(projectId, "Sooner");
+    patch(low, priority(-1)).statusCode(200).body("priority", equalTo(-1));
+    patch(high, priority(1)).statusCode(200);
+
+    assertEquals(
+        List.of(qualified(high), qualified(plain), qualified(low)), rootsInOrder(projectId));
+
+    // A drop below the unranked item ranks it above the negative one without touching that one.
+    String below = ticket(projectId, "Dropped");
+    drop(qualified(below), Map.of("below", qualified(plain)))
+        .statusCode(200)
+        .body("items.priority", equalTo(List.of(2, 1, 0)));
+    assertEquals(
+        List.of(qualified(high), qualified(plain), qualified(below), qualified(low)),
+        rootsInOrder(projectId));
+    given().when().get("/projects/api/work/" + low).then().body("priority", equalTo(-1));
   }
 
   @Test

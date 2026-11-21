@@ -71,8 +71,8 @@ import java.util.List;
  *     started (qits-749) — or null. Kept once {@code implementedAt} is set, which ranks over it
  * @param parent what it is part of now, or null for a root
  * @param position where among its siblings it sits, or null for a root. Dense and zero-based
- * @param priority the ranking among its siblings (qits-753): higher sorts first, null — nobody
- *     ranked it — after every number, then by {@link #number}. Always on the wire, null included;
+ * @param priority the ranking among its siblings (qits-753): higher sorts first, then by {@link
+ *     #number}. Never null (qits-2496): 0 by default, so a negative one sorts below unranked work;
  *     the listing's order does not read it, a client sorts by it ({@link SiblingPriorities#ORDER})
  * @param createdAt unchanged by a transition
  * @param updatedAt when the transition committed

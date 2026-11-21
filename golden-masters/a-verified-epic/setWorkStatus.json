@@ -21,7 +21,7 @@
   "implementingAt": null,
   "parent": null,
   "position": null,
-  "priority": null,
+  "priority": 0,
   "createdAt": "2026-01-01T00:00:00Z",
   "updatedAt": "2026-01-01T00:00:00Z",
   "changedBy": "dev",
