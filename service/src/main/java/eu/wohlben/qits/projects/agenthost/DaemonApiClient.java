@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.agenthost;
 
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
@@ -26,10 +27,13 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *       to be calling</b> — the tunnel's ephemeral loopback port, presented as {@code
  *       localhost:<daemon api port>}, exactly as {@link ContainerProxyRoute#hostRewrite} pins a
  *       browser's request. The bearer is the daemon's own api token, which says "qits is calling".
- *   <li><b>The exchange is composed and awaited ONCE.</b> Request, send and {@code body()} are one
- *       {@link io.vertx.core.Future} chain, so {@code body()} is attached inside the response
- *       callback on the event loop where it cannot miss a chunk; awaiting the response and then
- *       asking it for its body loses the body (Vert.x 4.5's unpaused inbound buffer).
+ *   <li><b>The exchange is composed and awaited ONCE, with {@code body()} NESTED in the send's
+ *       callback.</b> Composed inside it, {@code body()} is attached on the event loop the moment
+ *       the response arrives, where it cannot miss a chunk. Chained after it — flat — it is
+ *       attached from the caller's thread once that {@code compose} returns, and on a reused
+ *       keep-alive connection the whole response can land in between and be dropped (Vert.x 4.5's
+ *       unpaused inbound buffer): the status survives, the body comes back empty (qits-2394).
+ *       Awaiting the response and then asking it for its body loses it the same way.
  * </ul>
  *
  * <p>It classifies nothing: a status and a body come back verbatim, and "could not ask at all" is
@@ -51,6 +55,14 @@ public class DaemonApiClient {
    */
   @ConfigProperty(name = "qits.projects.daemon-api-port", defaultValue = "13338")
   int daemonApiPort;
+
+  /** Test seam (qits-2394): run on the caller's thread between building the chain and awaiting. */
+  private Runnable afterChainBuilt = () -> {};
+
+  /** Sets {@link #afterChainBuilt}; a method, so a test reaches the bean behind its proxy. */
+  void afterChainBuilt(Runnable hook) {
+    this.afterChainBuilt = hook == null ? () -> {} : hook;
+  }
 
   /** One whole answer: status and body together, assembled on the event loop. */
   public record Answer(int status, String body) {}
@@ -108,19 +120,24 @@ public class DaemonApiClient {
       options.putHeader("Content-Type", "application/json");
     }
     try {
-      return origin
-          .client()
-          .request(options)
-          .compose(request -> json == null ? request.send() : request.send(Buffer.buffer(json)))
-          .compose(
-              response ->
-                  response
-                      .body()
-                      .map(
-                          buffer ->
-                              new Answer(
-                                  response.statusCode(),
-                                  buffer == null ? null : buffer.toString())))
+      Future<Answer> answer =
+          origin
+              .client()
+              .request(options)
+              .compose(
+                  request ->
+                      (json == null ? request.send() : request.send(Buffer.buffer(json)))
+                          .compose(
+                              response ->
+                                  response
+                                      .body()
+                                      .map(
+                                          buffer ->
+                                              new Answer(
+                                                  response.statusCode(),
+                                                  buffer == null ? null : buffer.toString()))));
+      afterChainBuilt.run();
+      return answer
           .toCompletionStage()
           .toCompletableFuture()
           .get(timeoutMs, TimeUnit.MILLISECONDS);
