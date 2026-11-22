@@ -291,6 +291,14 @@ import org.jboss.logging.Logger;
  * and a decline rejects on it, rather than at the sweep's next pass. {@link #approvals} is the trail
  * they leave.
  *
+ * <p><b>An approved fold is closed to new branches</b> (qits-2526). Because a decision names its
+ * fold, every join re-folds the request and voids an approval just given, so a PENDING or READY
+ * request whose newest decision at its {@code mergedSha} is APPROVED ({@link #joinLocked}) behaves as
+ * frozen for joiners: the create door queues a new branch behind it ({@link #place}) and the sources
+ * door refuses one with a 409 that says where to go ({@link #join}), except {@code main} and the
+ * request's own automation branches. It is derived from the approval table like everything else
+ * here, so the re-fold that lapses the approval lifts it too.
+ *
  * <p><b>Where both gates apply, both must pass, and their order relative to each other is not a
  * rule.</b> It is asked last here for a reason that is a convenience rather than a law: a red
  * verdict rejects the request before anybody is asked, so nobody is put in front of a fold CI has
@@ -1016,13 +1024,17 @@ public class ReleaseRequests {
    *     joins; null where the repository has none
    * @param activeFeatures {@code active}'s feature count before this ask, or 0 with no active
    * @param queued whether the target (or the request to mint) is queued behind {@code active}
+   * @param approved whether it is queued because {@code active}'s current fold is approved
+   *     (qits-2526, {@link #joinLocked}) rather than, or as well as, because it is frozen — the
+   *     cause the placement's sentence names
    */
   private record Placement(
       ReleaseRequest target,
       Outcome outcome,
       ReleaseRequest active,
       int activeFeatures,
-      boolean queued) {}
+      boolean queued,
+      boolean approved) {}
 
   /** A queue activated with the reason its fold is to carry. */
   private record Activation(String id, String why) {}
@@ -1047,6 +1059,12 @@ public class ReleaseRequests {
    *       ({@link Outcome#CREATED}, queued). A queued request has no limit of its own, and there is
    *       at most one per active request. Only {@link #join}, naming the frozen request by id, puts
    *       a branch past the freeze.
+   *   <li><b>Approved</b> — the active request's current fold is approved ({@link #joinLocked},
+   *       qits-2526) — is treated exactly as frozen, at any count and whatever the threshold: the
+   *       branch joins the request queued behind it or mints one queued behind it, and the sentence
+   *       says the active request is approved rather than frozen. Joining would re-fold it and lapse
+   *       the approval somebody just gave. A re-fold lifts it, and the queue activates as any queue
+   *       does, once the active request leaves the unreleased states.
    * </ol>
    *
    * <p>"Open" is still {@link ReleaseRequestRepository#UNRELEASED}, never {@link
@@ -1073,20 +1091,22 @@ public class ReleaseRequests {
             Outcome.PRESENT,
             behind,
             behind == null ? 0 : featureCountOf(behind.id),
-            candidate.queuedBehind != null);
+            candidate.queuedBehind != null,
+            false);
       }
     }
     if (active == null) {
-      return new Placement(null, Outcome.CREATED, null, 0, false);
+      return new Placement(null, Outcome.CREATED, null, 0, false, false);
     }
-    if (!threshold.freezes(activeFeatures)) {
-      return new Placement(active, Outcome.JOINED, active, activeFeatures, false);
+    boolean approved = joinLocked(active);
+    if (!approved && !threshold.freezes(activeFeatures)) {
+      return new Placement(active, Outcome.JOINED, active, activeFeatures, false, false);
     }
     ReleaseRequest queued =
         open.stream().filter(row -> active.id.equals(row.queuedBehind)).findFirst().orElse(null);
     return queued != null
-        ? new Placement(queued, Outcome.JOINED, active, activeFeatures, true)
-        : new Placement(null, Outcome.CREATED, active, activeFeatures, true);
+        ? new Placement(queued, Outcome.JOINED, active, activeFeatures, true, approved)
+        : new Placement(null, Outcome.CREATED, active, activeFeatures, true, approved);
   }
 
   /**
@@ -1349,8 +1369,9 @@ public class ReleaseRequests {
           case CREATED, JOINED -> {
             if (placement.queued() && active != null) {
               yield active.qualifiedId
-                  + " is frozen at "
-                  + counted(placement.activeFeatures(), threshold)
+                  + (placement.approved()
+                      ? " is approved"
+                      : " is frozen at " + counted(placement.activeFeatures(), threshold))
                   + "; "
                   + named
                   + (placement.outcome() == Outcome.CREATED ? " opened " : " joined ")
@@ -1753,6 +1774,14 @@ public class ReleaseRequests {
    * alike — and is never redirected, frozen request or not. Naming the request by id is the caller
    * saying it belongs in that release, which is the one judgement the freeze leaves to a caller.
    *
+   * <p><b>Except past an approval</b> (qits-2526): a request whose current fold is approved ({@link
+   * #joinLocked}) refuses a new branch with a 409 naming the request queued behind it, or the create
+   * door that opens one, because the join would re-fold it and lapse the approval — the gate's own
+   * invalidation, spent on a branch that could as well have waited. A branch already a source still
+   * answers PRESENT with nothing re-folded, and two branches are admitted all the same: {@code main},
+   * and the request's own {@code maintenance/automations/<kind>/<request>} branches, whose commits
+   * regenerate what the approved request releases. A re-fold, or a decline, lifts the refusal.
+   *
    * <p>A source that joins a request <b>frozen at the moment of the join</b> is stamped {@code
    * explicit_join} (V55), so a reader can tell what came past the freeze from what the request
    * held when it froze; a join below the freeze, or onto a queued request (never frozen), is not
@@ -1827,6 +1856,9 @@ public class ReleaseRequests {
                                 + " is already a source of "
                                 + row.qualifiedId
                                 + "; nothing was added"));
+                  }
+                  if (!exemptFromApprovalLock(row, named, of.main()) && joinLocked(row)) {
+                    throw new DomainException(409, approvedRefusal(row));
                   }
                   addSourceRow(row.id, named, actor, orDefault(stated), feature, frozen);
                   row.updatedAt = Instant.now();
@@ -1930,6 +1962,70 @@ public class ReleaseRequests {
   /** The repository a refusal names: its name where the request carries one, else its id. */
   private static String repositoryWord(ReleaseRequest row) {
     return row.repoName != null && !row.repoName.isBlank() ? row.repoName : row.repoId;
+  }
+
+  /**
+   * <b>Whether {@code row}'s current fold is approved, and so closed to new branches</b>
+   * (qits-2526): PENDING or READY, folded, and the newest decision recorded at that {@code
+   * mergedSha} is APPROVED. Every further source would re-fold it, land a new sha and leave the
+   * approval behind — the gate's own invalidation, paid by the person who has to approve again — so
+   * {@link #join} refuses and {@link #place} queues instead, exactly as for a frozen request. It is
+   * derived on every call and never stored, as the approval gate always is: a re-fold moves {@code
+   * mergedSha} and lifts it by itself, a DECLINED-newest fold is not approved, a fold nobody has
+   * decided about (a repository that needs no approval among them) is not, and REJECTED, FAILED and
+   * CONFLICTED are never locked. A plain read of the approval table inside the caller's transaction:
+   * it never asks the git host, so it answers what was decided, not whether the policy would still
+   * ask.
+   */
+  private boolean joinLocked(ReleaseRequest row) {
+    return (row.state == ReleaseRequest.State.PENDING || row.state == ReleaseRequest.State.READY)
+        && row.mergedSha != null
+        && approvals
+            .latestFor(row.id, row.mergedSha)
+            .map(newest -> newest.decision == ReleaseRequestApproval.Decision.APPROVED)
+            .orElse(false);
+  }
+
+  /**
+   * The branches an approved request still admits by an explicit join (qits-2526): the repository's
+   * {@code main}, a source of every request already, and the request's <b>own</b> automation
+   * branches — {@code maintenance/automations/<kind>/<request>}, the last segment naming this
+   * request by uuid or qualified id — which qits-maintenance joins through the same door to
+   * regenerate what the request releases. Another request's automation branch is a new joiner like
+   * any other.
+   */
+  private static boolean exemptFromApprovalLock(ReleaseRequest row, String branch, String main) {
+    if (branch.equals(main)) {
+      return true;
+    }
+    if (!isAutomationBranch(branch)) {
+      return false;
+    }
+    String last = branch.substring(branch.lastIndexOf('/') + 1);
+    return last.equals(row.id) || last.equals(row.qualifiedId);
+  }
+
+  /**
+   * The 409 {@link #join} answers a new branch for an approved request (qits-2526), in {@link
+   * #requireJoinable}'s shape: what the request is, why the branch cannot join it, and where it
+   * should go instead — the request queued behind it, or, with none, the create door that opens one.
+   * Inside the caller's transaction.
+   */
+  private String approvedRefusal(ReleaseRequest row) {
+    String next =
+        requests
+            .findQueuedBehind(row.id)
+            .map(queued -> "join " + queued.qualifiedId + ", queued behind it")
+            .orElse(
+                "ask for a release of the branch (qits release-request create) and it opens a"
+                    + " request queued behind "
+                    + row.qualifiedId);
+    return "Release request "
+        + row.qualifiedId
+        + " is approved at "
+        + row.mergedSha.substring(0, Math.min(8, row.mergedSha.length()))
+        + ": a new branch would refold it and lapse the approval; "
+        + next;
   }
 
   /**
