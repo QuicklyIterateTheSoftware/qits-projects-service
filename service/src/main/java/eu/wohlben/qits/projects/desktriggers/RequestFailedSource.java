@@ -12,6 +12,7 @@ import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestParticipant;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -88,6 +89,12 @@ import org.jboss.logging.Logger;
  * <p>The label is {@code <state>: <detail>; <why no agent>}. The principal is the person or desk
  * whose decline rejected the fold, so the desk's own decline is dropped; a build, an automation or a
  * conflict has none. The cause is that principal, else {@code fold <sha8>}.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #holds}) while the request is in the state the label
+ * opens with and has not moved past the line: for a state read by sha, its {@code merged_sha} is
+ * still the cause's fold; for one read by attempt ({@link #byAttempt}), the line is not keyed to an
+ * attempt other than the current one ({@link #foldKey}). A newer line of the same request in a
+ * window supersedes the older ones, and a live approval-needed line of it supersedes them all.
  */
 @ApplicationScoped
 public class RequestFailedSource implements DeskTriggerSource {
@@ -312,6 +319,79 @@ public class RequestFailedSource implements DeskTriggerSource {
               null,
               null));
     }
+  }
+
+  /** A newer failure line of the same request names it at what it says last. */
+  @Override
+  public boolean supersedesOlderLinesOfItsItem() {
+    return true;
+  }
+
+  /** A request that waits on the desk's approval is told as that, not as failed. */
+  @Override
+  public Set<String> supersededBy() {
+    return Set.of(ApprovalNeededSource.ID);
+  }
+
+  /**
+   * The request still stands in the line's failed state, at the line's fold or attempt. A request
+   * this service no longer has holds: there is nothing to read the answer from.
+   */
+  @Override
+  public boolean holds(DeskTriggerEventRow line, Instant now) {
+    if (line.itemId() == null) {
+      return true;
+    }
+    return QuarkusTransaction.requiringNew().call(() -> holdsNow(line));
+  }
+
+  private static boolean holdsNow(DeskTriggerEventRow line) {
+    ReleaseRequest row = ReleaseRequest.findById(line.itemId());
+    if (row == null) {
+      return true;
+    }
+    if (row.state == null || !FAILED_STATES.contains(row.state.name())) {
+      return false;
+    }
+    String state = stateOf(line.label());
+    if (state != null && !state.equals(row.state.name())) {
+      return false;
+    }
+    if (byAttempt(row.state.name(), row)) {
+      // The merged sha does not move with a failed attempt: compare attempts. A line keyed to an
+      // attempt of this request other than the current one is about an earlier fold attempt.
+      String step = noticeStep(row.state.name());
+      String current = currentAttempt(row.id, step);
+      for (BranchDelivery delivery :
+          BranchDelivery.<BranchDelivery>list(
+              "requestId = ?1 and step = ?2 and foldAttempt is not null", row.id, step)) {
+        if (!delivery.foldAttempt.equals(current)
+            && foldKey(row.id, delivery.foldAttempt).equals(line.eventId())) {
+          return false;
+        }
+      }
+      return true;
+    }
+    String sha8 = ApprovalNeededSource.foldOf(line.cause());
+    return sha8 == null || (row.mergedSha != null && row.mergedSha.startsWith(sha8));
+  }
+
+  /** The state {@link #label} opens with ({@code <STATE>: …} or {@code <STATE>; …}); else null. */
+  static String stateOf(String label) {
+    if (label == null) {
+      return null;
+    }
+    int end = label.length();
+    int colon = label.indexOf(':');
+    int semicolon = label.indexOf(';');
+    if (colon >= 0) {
+      end = Math.min(end, colon);
+    }
+    if (semicolon >= 0) {
+      end = Math.min(end, semicolon);
+    }
+    String state = label.substring(0, end).strip();
+    return FAILED_STATES.contains(state) ? state : null;
   }
 
   @Override

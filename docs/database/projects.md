@@ -180,6 +180,8 @@ erDiagram
     instant admitted_at "not null"
     string cause
     string comment_id
+    instant dropped_at
+    string dropped_reason
     uuid event_id "not null"
     string item_id
     string item_ref "not null"

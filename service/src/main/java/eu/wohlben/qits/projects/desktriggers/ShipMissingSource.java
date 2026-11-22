@@ -5,6 +5,7 @@ import eu.wohlben.qits.projects.desktriggers.VerifiedSlotHolders.Holder;
 import eu.wohlben.qits.projects.desktriggers.VerifiedSlotHolders.Reading;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.nio.charset.StandardCharsets;
@@ -12,7 +13,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +54,9 @@ import org.jboss.logging.Logger;
  * so a desk turned on is not told of every item that sat VERIFIED while it was off. The clamp never
  * enters the key; the label's duration is the item's real VERIFIED time. Nothing causes a missing
  * request, so no principal: the cause is {@code verified <instant to the minute>}.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while the scan would still find it: still a
+ * running VERIFIED item at the same move into VERIFIED, with no open request carrying its branch.
  */
 @ApplicationScoped
 public class ShipMissingSource implements DeskTriggerSource {
@@ -118,6 +125,45 @@ public class ShipMissingSource implements DeskTriggerSource {
       }
     }
     return triggers;
+  }
+
+  /**
+   * The item is still a running VERIFIED item of the project, at the same move into VERIFIED
+   * ({@link #shipKey}), and still no open request carries its branch — the scan's own predicate,
+   * from one reading of the project's slots. A reading that cannot be made resolves nothing.
+   */
+  @Override
+  public Set<DeskTriggerEventRow> resolved(
+      String projectId, List<DeskTriggerEventRow> lines, Instant now) {
+    Optional<Reading> reading;
+    try {
+      Project project =
+          QuarkusTransaction.requiringNew().call(() -> Project.<Project>findById(projectId));
+      if (project == null) {
+        return Set.of();
+      }
+      reading = holders.read(project);
+    } catch (RuntimeException e) {
+      return Set.of();
+    }
+    if (reading.isEmpty()) {
+      return Set.of();
+    }
+    Map<String, Holder> byItem = new HashMap<>();
+    reading.get().verified().forEach(holder -> byItem.put(holder.itemId(), holder));
+    Set<DeskTriggerEventRow> resolved = new HashSet<>();
+    for (DeskTriggerEventRow line : lines) {
+      if (line.itemId() == null) {
+        continue;
+      }
+      Holder holder = byItem.get(line.itemId());
+      if (holder == null
+          || !holder.requests().isEmpty()
+          || !shipKey(holder.itemId(), holder.verifiedSince()).equals(line.eventId())) {
+        resolved.add(line);
+      }
+    }
+    return resolved;
   }
 
   @Override

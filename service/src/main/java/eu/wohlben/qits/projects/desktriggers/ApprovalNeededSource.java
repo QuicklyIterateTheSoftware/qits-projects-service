@@ -3,6 +3,9 @@ package eu.wohlben.qits.projects.desktriggers;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.ApprovalRequirementChanged;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestApprovalNotice;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -23,6 +26,14 @@ import java.util.stream.Collectors;
  * ({@link ReleaseRequests#textOf}; left out for a request that is gone) — then
  * what it waits on. The cause is {@code fold <sha8>}: a fold has no actor, and the phrase can never
  * equal a desk's subject.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #holds}) while the request is PENDING — the one state a
+ * request held by the approval gate is in — its current {@code merged_sha} is still the line's
+ * fold, and the requirement the label names has not been settled at that fold (no SATISFIED,
+ * DECLINED or VOID in {@code release_request_approval_notice}, the ledger {@code
+ * RequestStalledSource} reads for the same question). It reads only this service's rows. A newer
+ * line of the same request in a window supersedes the older ones, and supersedes the request's
+ * request-failed lines too ({@link RequestFailedSource#supersededBy}).
  */
 @ApplicationScoped
 public class ApprovalNeededSource implements DeskTriggerSource {
@@ -73,6 +84,93 @@ public class ApprovalNeededSource implements DeskTriggerSource {
             label(changed),
             DeskTriggerFrames.eventIdOf(frame),
             occurredAt));
+  }
+
+  /** A newer approval line of the same request names it at its current fold. */
+  @Override
+  public boolean supersedesOlderLinesOfItsItem() {
+    return true;
+  }
+
+  /**
+   * The request still waits at the line's fold on the requirement it names. A request this service
+   * no longer has holds: there is nothing to read the answer from.
+   */
+  @Override
+  public boolean holds(DeskTriggerEventRow line, Instant now) {
+    if (line.itemId() == null) {
+      return true;
+    }
+    return QuarkusTransaction.requiringNew().call(() -> holdsNow(line));
+  }
+
+  private static boolean holdsNow(DeskTriggerEventRow line) {
+    ReleaseRequest row = ReleaseRequest.findById(line.itemId());
+    if (row == null) {
+      return true;
+    }
+    if (row.state != ReleaseRequest.State.PENDING) {
+      return false;
+    }
+    String sha8 = foldOf(line.cause());
+    if (sha8 != null && (row.mergedSha == null || !row.mergedSha.startsWith(sha8))) {
+      return false;
+    }
+    if (row.mergedSha == null) {
+      return true;
+    }
+    List<ReleaseRequestApprovalNotice> notices =
+        ReleaseRequestApprovalNotice.list(
+            "requestId = ?1 and mergedSha = ?2", row.id, row.mergedSha);
+    String requirement = requirementOf(line.label());
+    if (requirement != null) {
+      return notices.stream()
+          .noneMatch(
+              notice ->
+                  requirement.equals(notice.requirementId)
+                      && !ReleaseRequestApprovalNotice.State.OPEN.name().equals(notice.state));
+    }
+    // No requirement to read off the label: any requirement still open and unsettled at the fold.
+    if (notices.isEmpty()) {
+      return true;
+    }
+    Set<String> settled =
+        notices.stream()
+            .filter(n -> !ReleaseRequestApprovalNotice.State.OPEN.name().equals(n.state))
+            .map(n -> n.requirementId)
+            .collect(Collectors.toSet());
+    return notices.stream()
+        .anyMatch(
+            n ->
+                ReleaseRequestApprovalNotice.State.OPEN.name().equals(n.state)
+                    && !settled.contains(n.requirementId));
+  }
+
+  /** The sha8 of {@code fold <sha8>}; null for any other cause, or an unknown fold. */
+  static String foldOf(String cause) {
+    if (cause == null || !cause.startsWith("fold ")) {
+      return null;
+    }
+    String sha8 = cause.substring("fold ".length()).strip();
+    return sha8.isEmpty() || "unknown".equals(sha8) ? null : sha8;
+  }
+
+  /**
+   * The requirement id of {@link #label}'s {@code waits on <requirement>[: <reason>]}, the last
+   * such clause; null when the label carries none.
+   */
+  static String requirementOf(String label) {
+    if (label == null) {
+      return null;
+    }
+    int at = label.lastIndexOf("waits on ");
+    if (at < 0 || (at > 0 && !label.startsWith("; ", at - 2))) {
+      return null;
+    }
+    String rest = label.substring(at + "waits on ".length());
+    int colon = rest.indexOf(": ");
+    String requirement = (colon < 0 ? rest : rest.substring(0, colon)).strip();
+    return requirement.isEmpty() ? null : requirement;
   }
 
   @Override

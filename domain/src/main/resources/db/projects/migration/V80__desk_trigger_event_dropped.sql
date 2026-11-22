@@ -1,0 +1,21 @@
+-- A DESK TRIGGER LINE THAT NO LONGER HOLDS IS DROPPED, NOT DELETED (qits-2501).
+--
+-- A window collects lines for 15 minutes and its delivery is retried for up to 4 hours, so what a
+-- line said can stop being true before the desk reads it: the approval was given, the request
+-- refolded, the slot filled again, the idle agent took a turn. The sweep now re-checks every live
+-- line (DeskTriggerSource#holds) on each pass over an OPEN window, at the close and before every
+-- delivery attempt, and renders only the lines that still hold.
+--
+--   dropped_at      when the sweep found the line no longer holds; null while it is live
+--   dropped_reason  why: 'resolved' (the condition it reported is over) or 'superseded' (a newer
+--                   line of the same request in the window says it better); null while live
+--
+-- Rows are never deleted for this: V65's desk_trigger_event_once must keep refusing a dropped
+-- event's re-admission, and the read door shows the dropped lines with their reason. Both columns
+-- are nullable and not backfilled: every line stored before is live.
+--
+-- desk_trigger_window.state is plain text, with no check constraint (V57), so its new REDUNDANT
+-- value (a window whose every line was dropped, closed without a prompt) needs nothing here; the
+-- partial unique index desk_trigger_window_one_open still covers OPEN only.
+alter table desk_trigger_event add column dropped_at timestamp with time zone;
+alter table desk_trigger_event add column dropped_reason text;

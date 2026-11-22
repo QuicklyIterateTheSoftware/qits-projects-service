@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,11 @@ import java.util.stream.Collectors;
  * project.delivery_enabled_at}, so a desk turned on is not told of every agent that went quiet
  * while it was off. The clamp never enters the key; the label's duration is the agent's real idle
  * time. Nothing causes idleness, so no principal.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while {@link WorkspaceAgentLookup#active()}
+ * still lists the agent ({@code item_id}) as ACTIVE, not BUSY, at the same {@code lastActivityAt}
+ * the line's {@link #idleKey} was made from: a turn since, or an agent gone, is over. A list that
+ * cannot be read resolves nothing.
  */
 @ApplicationScoped
 public class AgentIdleSource implements DeskTriggerSource {
@@ -153,6 +159,53 @@ public class AgentIdleSource implements DeskTriggerSource {
       }
     }
     return triggers;
+  }
+
+  /** One read of the active agents for the window's lines; a failed read resolves nothing. */
+  @Override
+  public Set<DeskTriggerEventRow> resolved(
+      String projectId, List<DeskTriggerEventRow> lines, Instant now) {
+    Map<String, ActiveAgent> active = activeById(lookup);
+    if (active == null) {
+      return Set.of();
+    }
+    Set<DeskTriggerEventRow> resolved = new HashSet<>();
+    for (DeskTriggerEventRow line : lines) {
+      ActiveAgent agent = line.itemId() == null ? null : active.get(line.itemId());
+      if (agent == null
+          || BUSY.equals(agent.activity())
+          || agent.lastActivityAt() == null
+          || !idleKey(agent.agentId(), agent.lastActivityAt()).equals(line.eventId())) {
+        resolved.add(line);
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * The ACTIVE agents by id, or null when they cannot be read: the port absent, an empty answer
+   * (qits-workspaces away) or a throw. Shared with {@link WaitBrokenSource}.
+   */
+  static Map<String, ActiveAgent> activeById(Instance<WorkspaceAgentLookup> lookup) {
+    if (lookup == null || !lookup.isResolvable()) {
+      return null;
+    }
+    Optional<List<ActiveAgent>> listed;
+    try {
+      listed = lookup.get().active();
+    } catch (RuntimeException e) {
+      return null;
+    }
+    if (listed == null || listed.isEmpty()) {
+      return null;
+    }
+    Map<String, ActiveAgent> byId = new HashMap<>();
+    for (ActiveAgent agent : listed.get()) {
+      if (agent.agentId() != null) {
+        byId.put(agent.agentId(), agent);
+      }
+    }
+    return byId;
   }
 
   @Override

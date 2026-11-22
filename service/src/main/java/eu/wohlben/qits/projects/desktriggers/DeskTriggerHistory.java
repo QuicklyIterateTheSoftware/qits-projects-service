@@ -16,7 +16,9 @@ import java.util.UUID;
  * <b>The read side of the window store</b> (epic qits-1604, task qits-1612): a project's newest
  * windows with their lines, for {@code GET /projects/{projectId}/desk-triggers}. It writes nothing,
  * and reads every state — an OPEN window shows what is collecting, an OWED one why it has not
- * arrived, a FAILED one that it never will.
+ * arrived, a FAILED one that it never will, a REDUNDANT one that nothing in it still held. Every
+ * line is read, the ones the sweep dropped too (qits-2501): their {@code dropped_at} and {@code
+ * dropped_reason} say so.
  *
  * <p>Two queries, not one per window: the windows, newest {@code opened_at} first (the id breaks a
  * tie, so a page is stable), then every line of those windows at once, in the order the message

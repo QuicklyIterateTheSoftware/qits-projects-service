@@ -853,7 +853,8 @@ components:
         source:
           type: string
           description: "The source that admitted it: wait, work-verified, approval-needed,\
-            \ desk-mentioned, request-failed, request-stalled or capacity-opened"
+            \ desk-mentioned, issue-answered, request-failed, target-oom-killed, request-stalled,\
+            \ agent-idle, verified-unshipped, wait-broken or capacity-opened"
         itemRef:
           type: string
           description: "The item as the desk is shown it, e.g. qits-1580"
@@ -887,6 +888,22 @@ components:
           $ref: "#/components/schemas/Instant"
           description: When it happened
           type: string
+        droppedAt:
+          description: When the sweep dropped it from the message because it no longer
+            held; null while it is live
+          type:
+          - string
+          - "null"
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        droppedReason:
+          type:
+          - string
+          - "null"
+          description: "Why it was dropped: resolved (what it reported is over) or\
+            \ superseded (a newer line of the same request in the window says it);\
+            \ null while it is live"
     DeskTriggerMessage:
       description: "One desk trigger window of the project: what it collected, the\
         \ message it became and how its delivery to the delivery desk went."
@@ -896,7 +913,9 @@ components:
           $ref: "#/components/schemas/UUID"
         state:
           type: string
-          description: "OPEN, OWED, DELIVERED, QUEUED or FAILED"
+          description: "OPEN, OWED, DELIVERED, QUEUED, FAILED or REDUNDANT (closed\
+            \ without a prompt: none of its lines still held at the close or before\
+            \ a delivery attempt)"
         openedAt:
           $ref: "#/components/schemas/Instant"
           description: When the first trigger opened the window
@@ -952,12 +971,15 @@ components:
           type:
           - string
           - "null"
-          description: The exact text sent to the desk; null while OPEN
+          description: "The exact text last sent, or about to be sent, to the desk:\
+            \ re-rendered from the lines still live before every attempt. Null while\
+            \ OPEN, and for a window that went REDUNDANT at its close"
         events:
           type: array
           items:
             $ref: "#/components/schemas/DeskTriggerEvent"
-          description: "The lines it collected, by admittedAt then itemRef"
+          description: "The lines it collected, by admittedAt then itemRef, the dropped\
+            \ ones included"
     DeskTriggerMessages:
       description: "A project's desk trigger messages, newest first by openedAt."
       type: object
@@ -5877,9 +5899,11 @@ paths:
       summary: The messages the project's delivery desk was sent by its desk triggers
       description: "Newest first by openedAt, every state: OPEN (collecting), OWED\
         \ (closed, not yet taken — attempts, lastStatus and lastDetail say why), DELIVERED\
-        \ or QUEUED (taken, with acceptedAt and commandId) and FAILED (never to be\
-        \ delivered). Each carries the lines it collected, by admittedAt then itemRef.\
-        \ limit defaults to 20 and may be 1 to 100. An unknown project is a 404."
+        \ or QUEUED (taken, with acceptedAt and commandId), FAILED (never to be delivered)\
+        \ and REDUNDANT (closed without a prompt: no line still held). Each carries\
+        \ the lines it collected, by admittedAt then itemRef, the dropped ones included\
+        \ with droppedAt and droppedReason. limit defaults to 20 and may be 1 to 100.\
+        \ An unknown project is a 404."
       operationId: listDeskTriggerMessages
       parameters:
       - name: projectId

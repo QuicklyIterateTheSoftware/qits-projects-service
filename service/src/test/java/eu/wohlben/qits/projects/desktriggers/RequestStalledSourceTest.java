@@ -93,6 +93,47 @@ class RequestStalledSourceTest {
     assertTrue(other != null);
   }
 
+  /**
+   * qits-2501: a stall line holds while the scan would still find that stall. A refold, a move on,
+   * or a queue makes it resolved, and a newer stall line of the request supersedes it; the row
+   * stays, so the stall is never told again.
+   */
+  @Test
+  void aStallThatEndedIsDroppedFromTheWindowAndTheNewFoldsLineSupersedesIt() {
+    String projectId = project(true);
+    String moved = request(projectId, ReleaseRequest.State.PENDING, SHA_A, hoursAgo(3));
+    String refolded = request(projectId, ReleaseRequest.State.PENDING, SHA_A, hoursAgo(3));
+    String stuck = request(projectId, ReleaseRequest.State.PENDING, SHA_A, hoursAgo(3));
+    // Every request here is its repository's rr-1: a detail each keeps the three lines apart.
+    detail(moved, "moved");
+    detail(refolded, "refolded");
+    detail(stuck, "stuck");
+    sweep.sweep(Instant.now());
+    assertEquals(3, DeskTriggerFixtures.eventsOf(projectId).size());
+
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.<ReleaseRequest>findById(moved).state = ReleaseRequest.State.FINALIZED);
+    refold(refolded, SHA_B, hoursAgo(3));
+    sweep.sweep(Instant.now());
+
+    List<DeskTriggerEvent> lines = DeskTriggerFixtures.eventsOf(projectId);
+    assertEquals(4, lines.size(), "the refold is a new stall; nothing is deleted");
+    for (DeskTriggerEvent line : lines) {
+      String expected;
+      if (line.itemId.equals(stuck)) {
+        expected = null;
+      } else if (line.itemId.equals(moved)) {
+        expected = DeskTriggerEvent.RESOLVED;
+      } else {
+        expected = line.label.contains("fold bbbbbbbb") ? null : DeskTriggerEvent.RESOLVED;
+      }
+      assertEquals(expected, line.droppedReason, line.itemRef + " " + line.label);
+    }
+
+    sweep.sweep(Instant.now());
+    assertEquals(4, DeskTriggerFixtures.eventsOf(projectId).size(), "a dropped stall is not re-told");
+  }
+
   @Test
   void aReleasedRequestWithItsDeploymentPendingFires() {
     String projectId = project(true);
