@@ -649,8 +649,11 @@ merely its only occupant. Six things about it are rules:
     request's sources and every row still naming it at MOVED, RELEASED or FAILED, so a chain of red
     releases carries them on to the last successor.
   - **The hooks, all in `ReleaseRequests`**: JOINED in `addSourceRow` (ask, mint, join) except
-    under `handOn`; MOVED in `handOn` (previous = the releasing request, current = where `ask` put
-    it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
+    under `handOn`, **with no `foldSha`** (qits-2365): it is written before the fold that carries
+    the branch is asked for, so the request's `mergedSha` then is a fold that lacks it — stamped,
+    the step said "joined at" the old fold, which for a branch not yet pushed was the fold that
+    went on to reject it (qits-landing-app-rr-257). `resumed`'s JOINED keeps the current fold.
+    MOVED in `handOn` (previous = the releasing request, current = where `ask` put it), in `obsolete` (current = `supersededBy`) and in `moveSource` (qits-1665: previous = the
     request the source left, current = the request queued behind it); FAILED in `evaluate` (red CI, failed
     automations), in `settle` to FAILED and, with `failure` `FOLD`, in `apply`'s MISSING_SOURCE arm
     (qits-1725); CONFLICTED in `apply`;
@@ -3152,15 +3155,16 @@ with its own name, surface (its briefing), credential and session, tied to no wo
 desk itself (its `front_desk` row, its keeper, its `front-desk/*` doors, all unchanged) and
 `ui-builder` runs on surface `project.ui-builder` (`AgentSurfaceDefaults.PROJECT_UI_BUILDER`,
 briefed by `UI_BUILDER_PROMPT` since qits-2156: the page, the `qits ui-builder` reads, pitching,
-filing and the `<opened-context>` block every prompt from the page starts with; qits-2154's
-placeholder is kept as `QITS_2154_UI_BUILDER_PROMPT` and `AgentBriefRollout` rolls an unedited row
-forward; never the desk's brief, skills or triggers). The session key on
+filing and the `<opened-context>` block the page's Insert page context pastes into its input
+since qits-2499; qits-2154's placeholder and qits-2156's brief are kept as
+`QITS_2154_UI_BUILDER_PROMPT` and `QITS_2156_UI_BUILDER_PROMPT`, and `AgentBriefRollout` rolls an
+unedited row forward; never the desk's brief, skills or triggers). The session key on
 the control socket is `agent:<name>`, spelled by qits-projects-daemon's protocol `NamedAgents`
 (capability 4: `namedAgentKey`/`namedAgentName`), which the hosts call; the registry holds no copy,
 only names that protocol's `NAME` admits (`NamedAgentsComposeTest` checks each).
 
 - **The row** (`named_agent`, V76, `@Uncaused`): `(project_id, name)`, `surface`, `session_id`,
-  `token_*`, `last_demand_at`, `pending_prompt`, `created_at`; created on the agent's first prompt,
+  `token_*`, `last_demand_at`, `pending_prompt`, `created_at`; created on the agent's first prompt or start,
   dropped with the project (`FrontDeskHooks.projectDeleting` revokes the tokens first, the FK
   cascades). The desk never has one.
 - **The token**: one `qits_tok_` per row, idp kind `named-agent` (`qits:agent` only, claims
@@ -3177,6 +3181,11 @@ only names that protocol's `NAME` admits (`NamedAgentsComposeTest` checks each).
   only inside the window). The desk's demand and the spec roll's busy rollup count every session of
   the container already, the agent's included. `deskhost/NamedAgentDemand` wants the desk while an
   agent is inside its window. No lease or slot of its own: the desk's one DESK lease.
+- **A kept agent** (`NamedAgents.Agent.kept`, qits-2499; `ui-builder` is one) is long-running like
+  the desk: once its row has a `last_demand_at` (it was started or prompted once), its session is
+  asked for whenever the container runs, outside the idle window too
+  (`RefinementSessions.sessionWanted`), so it is never stopped for being idle. Its window still
+  bounds `NamedAgentDemand`: a kept agent never holds an `ON_DEMAND` container up on its own.
 
 `api/ProjectAgentsController`, `ProjectFrontDeskController`'s roles (`qits:admin`,
 `qits:admin-agent`, `qits:desk-admin` bound to its project; `qits:agent` and `qits:desk` 403,
@@ -3186,6 +3195,7 @@ reads included — `AgentReadAccessTest` names all three):
 | --- | --- |
 | `GET …/projects/{projectId}/agents` (`listAgents`) | `{agents: [{name, surface, state, sessionId, commandId}]}`, the desk first, every name listed; `state` STOPPED / STARTING / IDLE / BUSY / FAILED (WAITING reads BUSY); `commandId` is the terminal proxy's `/projects/container/{projectId}/terminal/commands/{commandId}` |
 | `POST …/agents/{name}/prompt` `{text}` (`promptAgent`) | `desk`: the front desk's prompt (brief pointer included) after `FrontDesks.ensure`, so a stopped desk starts. Any other: row and token if absent, both demands stamped, desk ensured, sessions pushed, then `POST <base>named-agents/{name}/prompt` passed through — or, with no capable daemon connected (or the daemon's 404 "not in the frame"), held in `pending_prompt` and **202** `{commandId:null, state:"STARTING", delivered:false, queued:true, position:null}`; a second prompt while one waits is 409; never the brief pointer |
+| `POST …/agents/{name}/start` (`startAgent`, qits-2499) | `desk`: `FrontDesks.ensure`. Any other: row and token if absent, both demands stamped, desk ensured, sessions pushed — the prompt's path without a prompt. A running agent is left as it is. Answers the agent as the listing does (`{name, surface, state, sessionId, commandId}`), STARTING while it comes up |
 | `GET …/agents/{name}/last-answer` (`getAgentLastAnswer`) | `desk`: the front desk's last answer; any other: `GET <base>named-agents/{name}/last-answer` passed through; no daemon 503, too old 409 |
 
 Unknown name 404, unknown project 404, blank text 400 before anything moves. A held prompt is

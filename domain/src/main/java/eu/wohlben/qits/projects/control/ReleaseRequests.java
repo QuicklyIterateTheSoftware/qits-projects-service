@@ -810,6 +810,19 @@ public class ReleaseRequests {
    * why {@code main}, a source of every request, never queues.
    */
   public Asked ask(String repoId, String branch, String requester, String priority) {
+    return ask(repoId, branch, requester, priority, false);
+  }
+
+  /**
+   * {@link #ask}, and with {@code askGitHost} the create door's ask (qits-2365): whether the git
+   * host holds the branch is asked first, and a branch it answered it does not have is said so in
+   * the placement's detail ({@link #unpushedNote}). The request is placed exactly as without —
+   * the grace of qits-1751 is what waits for the push — and only the detail differs. The other
+   * callers (a VERIFIED phase move, which asks the git host itself first; an archive's hand-on)
+   * pass false and pay no read.
+   */
+  public Asked ask(
+      String repoId, String branch, String requester, String priority, boolean askGitHost) {
     String named = requireBranch(branch);
     ReleasePriority stated = statedPriority(priority);
     Repository repository =
@@ -836,6 +849,9 @@ public class ReleaseRequests {
     boolean namedFeature = featureBranches.isFeature(named);
     boolean mainFeature = featureBranches.isFeature(main);
     ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
+    // And HERE too: whether the git host holds the branch is an HTTP read (qits-2365).
+    String unpushed =
+        askGitHost ? unpushedNote(repoId, named, main, repoName == null ? repoId : repoName) : null;
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
     // and their owed merges stopped afterwards, because both reach out of this database. Empty on
     // every converging ask — see the obsolescence paragraph in this method's javadoc.
@@ -878,7 +894,10 @@ public class ReleaseRequests {
                     }
                     target.updatedAt = Instant.now();
                     qualified.set(target.qualifiedId);
-                    answered.set(placementOf(placement, named, namedFeature, target, threshold));
+                    answered.set(
+                        unpushed(
+                            placementOf(placement, named, namedFeature, target, threshold),
+                            unpushed));
                     return target.id;
                   }
                   ReleaseRequest fresh =
@@ -899,7 +918,10 @@ public class ReleaseRequests {
                     ended.addAll(obsolete(repoId, fresh, red));
                   }
                   qualified.set(fresh.qualifiedId);
-                  answered.set(placementOf(placement, named, namedFeature, fresh, threshold));
+                  answered.set(
+                      unpushed(
+                          placementOf(placement, named, namedFeature, fresh, threshold),
+                          unpushed));
                   return fresh.id;
                 });
     endSuperseded(repoId, ended, id, qualified.get());
@@ -914,6 +936,66 @@ public class ReleaseRequests {
    * landed in, and where and why — see {@link PlacementDto}.
    */
   public record Asked(ReleaseRequestDto request, PlacementDto placement) {}
+
+  /**
+   * <b>What an ask says about a branch the git host does not hold</b> (qits-2365), or null where
+   * there is nothing to say. Asked of the git host before the ask's transaction opens, since it is
+   * an HTTP read, and never for {@code main}: the repository's default branch is a source of every
+   * request and qits-maintenance opens main-only requests by naming it.
+   *
+   * <p>Only the git host's definitive no counts ({@link ReleaseGitHost.Answer#noSuchBranch}: the
+   * repository answered and the branch is not in it). No git host, an unreachable one, a refusal of
+   * any other kind and a throw are all "could not ask", which says nothing — the rule {@code
+   * ReleasableBranch} states for the VERIFIED phase move.
+   *
+   * <p>A missing branch is <b>not refused</b>: an agent asks mid-turn and its workspace daemon pushes
+   * at the turn's end, which is what the grace of qits-1751 ({@link #missingSourceGrace}) waits
+   * for. The answer used to read "joined" with nothing more, and the fold then rejected the request
+   * two minutes later over a 404 the caller was never told about (qits-landing-app-rr-257); it now
+   * says the branch is missing and what the request will do about it.
+   */
+  private String unpushedNote(String repoId, String branch, String main, String repository) {
+    if (branch.equals(main) || !gitHosts.isResolvable()) {
+      return null;
+    }
+    try {
+      if (!gitHosts.get().head(repoId, branch).noSuchBranch()) {
+        return null;
+      }
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "Could not ask the git host for %s of %s", branch, repoId);
+      return null;
+    }
+    String missing = branch + " is not on the git host in " + repository + " yet; the request ";
+    if (missingSourceGrace == null
+        || missingSourceGrace.isZero()
+        || missingSourceGrace.isNegative()) {
+      return missing + "rejects it at its fold, and folds it again on its push";
+    }
+    return missing + "folds it on its push, or rejects it after " + human(missingSourceGrace);
+  }
+
+  /** {@code placement} with {@link #unpushedNote}'s sentence, where the ask added the branch. */
+  private static PlacementDto unpushed(PlacementDto placement, String note) {
+    if (note == null || Outcome.PRESENT.name().equals(placement.outcome())) {
+      return placement;
+    }
+    return new PlacementDto(
+        placement.outcome(), placement.queued(), placement.detail() + "; " + note);
+  }
+
+  /** A grace as a person reads it: {@code 2m}, {@code 90s}, {@code 1h}, {@code 1h30m}. */
+  static String human(java.time.Duration duration) {
+    long seconds = Math.max(1, (duration.toMillis() + 999) / 1000);
+    if (seconds % 60 != 0) {
+      return seconds + "s";
+    }
+    long minutes = seconds / 60;
+    if (minutes < 60) {
+      return minutes + "m";
+    }
+    return minutes % 60 == 0 ? minutes / 60 + "h" : minutes / 60 + "h" + minutes % 60 + "m";
+  }
 
   /** How an ask landed: {@link PlacementDto#outcome()}'s words. */
   enum Outcome {
@@ -1682,16 +1764,34 @@ public class ReleaseRequests {
     // Before the transaction: the classification reads the epics database (qits-1580), and the
     // repository's own freeze is read from its main through the gate configuration's read.
     boolean feature = featureBranches.isFeature(named);
-    String repoId =
+    record Of(String repoId, String repository, String main) {}
+    Of of =
         QuarkusTransaction.requiringNew()
             .call(
-                () ->
-                    requests
-                        .findByIdOptional(requestId)
-                        .map(row -> row.repoId)
-                        .orElseThrow(
-                            () -> new NotFoundException("Release request not found: " + requestId)));
+                () -> {
+                  ReleaseRequest found =
+                      requests
+                          .findByIdOptional(requestId)
+                          .orElseThrow(
+                              () ->
+                                  new NotFoundException("Release request not found: " + requestId));
+                  Repository repository = repositories.findByIdOptional(found.repoId).orElse(null);
+                  String main =
+                      repository == null
+                              || repository.mainBranch == null
+                              || repository.mainBranch.isBlank()
+                          ? DEFAULT_MAIN
+                          : repository.mainBranch;
+                  return new Of(
+                      found.repoId,
+                      found.repoName == null ? found.repoId : found.repoName,
+                      main);
+                });
+    String repoId = of.repoId();
     ReleaseGates.DeclaredFeatureFreeze declared = gates.featureFreeze(repoId);
+    // Before the transaction as well: whether the git host holds the branch is an HTTP read
+    // (qits-2365). The sources door is a door, so it always asks.
+    String unpushed = unpushedNote(repoId, named, of.main(), of.repository());
     record Joined(boolean added, PlacementDto placement) {}
     List<Activation> activated = new ArrayList<>();
     Joined joined =
@@ -1732,10 +1832,12 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return new Joined(
                       true,
-                      new PlacementDto(
-                          Outcome.JOINED.name(),
-                          row.queuedBehind != null,
-                          joinedDetail(row, named, feature, counted, frozen, threshold)));
+                      unpushed(
+                          new PlacementDto(
+                              Outcome.JOINED.name(),
+                              row.queuedBehind != null,
+                              joinedDetail(row, named, feature, counted, frozen, threshold)),
+                          unpushed));
                 });
     if (joined.added()) {
       // A queued request returns at once: nothing is folded for it until it is active.

@@ -2371,6 +2371,14 @@
           "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
           "kind" : "body",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -2471,6 +2479,14 @@
           "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
           "kind" : "body",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -3008,7 +3024,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Moved",
@@ -3598,6 +3614,14 @@
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
           "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
           "cardinality" : "single"
         },
         {
@@ -4408,7 +4432,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$GateView",
@@ -5714,7 +5738,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Moved",
@@ -6028,7 +6052,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Moved",
@@ -7476,7 +7500,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Moved",
@@ -8312,7 +8336,7 @@
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Asked",
           "kind" : "assembler",
           "via" : null,
-          "site" : "ReleaseRequests.ask(String, String, String, String)"
+          "site" : "ReleaseRequests.ask(String, String, String, String, boolean)"
         },
         {
           "type" : "eu.wohlben.qits.projects.control.ReleaseRequests$Moved",

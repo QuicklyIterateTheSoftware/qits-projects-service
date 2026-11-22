@@ -28,8 +28,13 @@ import java.util.Optional;
  */
 public final class NamedAgents {
 
-  /** One named agent: its name and the surface its session launches as. */
-  public record Agent(String name, String surface) {
+  /**
+   * One named agent: its name, the surface its session launches as, and whether it is <b>kept</b>
+   * (qits-2499): once started, a kept agent's session is asked for whenever the desk container
+   * runs, and never stopped for being idle. Its idle window still bounds how long it keeps the
+   * container itself wanted, so a kept agent never holds an {@code ON_DEMAND} desk up on its own.
+   */
+  public record Agent(String name, String surface, boolean kept) {
 
     /** Whether this is the front desk, which keeps its own row and routes. */
     public boolean desk() {
@@ -46,8 +51,8 @@ public final class NamedAgents {
   /** Every named agent, in the order the listing answers them: the desk first. */
   public static final List<Agent> ALL =
       List.of(
-          new Agent(DESK, AgentSurfaceDefaults.PROJECT_WORK),
-          new Agent(UI_BUILDER, AgentSurfaceDefaults.PROJECT_UI_BUILDER));
+          new Agent(DESK, AgentSurfaceDefaults.PROJECT_WORK, true),
+          new Agent(UI_BUILDER, AgentSurfaceDefaults.PROJECT_UI_BUILDER, true));
 
   private NamedAgents() {}
 
@@ -57,6 +62,11 @@ public final class NamedAgents {
       return Optional.empty();
     }
     return ALL.stream().filter(agent -> agent.name().equals(name)).findFirst();
+  }
+
+  /** Whether the agent named {@code name} is kept (false for a name nobody registered). */
+  public static boolean kept(String name) {
+    return find(name).map(Agent::kept).orElse(false);
   }
 
   /** The named agents that are not the desk: the ones with a {@code named_agent} row. */

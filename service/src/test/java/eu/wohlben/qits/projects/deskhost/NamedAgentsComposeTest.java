@@ -140,6 +140,7 @@ class NamedAgentsComposeTest {
 
   @Test
   void anAgentOutsideItsIdleWindowOrNeverPromptedIsLeftOutSoItCostsNoSession() {
+    // "other" stands for an agent that is not kept; the registry's own are all kept (qits-2499).
     Sessions frame =
         RefinementSessions.compose(
             project(),
@@ -149,11 +150,28 @@ class NamedAgentsComposeTest {
             NOW,
             IDLE,
             List.of(
-                agent("ui-builder", NOW.minus(IDLE).minusSeconds(1), "sess-ui-1"),
-                agent("other", null, null)),
+                agent("other", NOW.minus(IDLE).minusSeconds(1), "sess-other-1"),
+                agent("ui-builder", null, null)),
             true);
 
     assertTrue(frame.sessions().isEmpty());
+  }
+
+  /** qits-2499: the UI builder is kept, so idleness never stops it once it was started. */
+  @Test
+  void aKeptAgentOutsideItsIdleWindowIsStillAskedFor() {
+    assertTrue(NamedAgents.find("ui-builder").orElseThrow().kept());
+    NamedAgent row = agent("ui-builder", NOW.minus(IDLE).minusSeconds(1), "sess-ui-1");
+    Sessions frame =
+        RefinementSessions.compose(
+            project(), null, List.of(), id -> null, NOW, IDLE, List.of(row), true);
+
+    assertEquals(
+        DaemonProtocol.DesiredState.RUNNING, frame.find("agent:ui-builder").orElseThrow().state());
+    assertTrue(RefinementSessions.sessionWanted(row, NOW, IDLE));
+    assertFalse(
+        RefinementSessions.wantsRunning(row, NOW, IDLE),
+        "its idle window still bounds the container's demand");
   }
 
   @Test

@@ -6091,8 +6091,20 @@ public class AgentSurfaceDefaultsTest {
     String prompt = AgentSurfaceDefaults.UI_BUILDER_PROMPT;
     assertTrue(prompt.contains("\n" + block), "the block, each line at the start of its own");
     assertTrue(prompt.contains("reads none"));
-    assertTrue(prompt.contains("for that prompt only"));
-    assertTrue(prompt.contains("ask which repository\nand route are meant"));
+    assertTrue(prompt.contains("Insert page context"), "qits-2499: the person pastes it");
+    assertTrue(prompt.contains("when they inserted it"));
+    assertTrue(prompt.contains("ask\nwhich repository and route are meant"));
+    assertFalse(prompt.contains("Every prompt sent from the UI builder starts with"));
+  }
+
+  /** qits-2499: qits-2156's brief is kept for the rollout, and differs from the brief. */
+  @Test
+  public void theQits2156BriefIsKeptForTheRollout() {
+    String kept = AgentSurfaceDefaults.QITS_2156_UI_BUILDER_PROMPT;
+    assertTrue(
+        kept.contains("Every prompt sent from the UI builder starts with exactly this block"));
+    assertTrue(kept.contains("for that prompt only"));
+    assertNotEquals(kept, AgentSurfaceDefaults.UI_BUILDER_PROMPT, "the migration would be a no-op");
   }
 
   /** The placeholder is kept byte for byte for the boot migration, and differs from the brief. */

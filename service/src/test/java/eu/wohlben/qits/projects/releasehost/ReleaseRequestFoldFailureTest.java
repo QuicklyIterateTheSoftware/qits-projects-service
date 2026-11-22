@@ -3,12 +3,15 @@ package eu.wohlben.qits.projects.releasehost;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
+import eu.wohlben.qits.projects.control.BranchDeliveryStep;
+import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.gate.FoldFailure;
 import eu.wohlben.qits.projects.entity.BranchDelivery;
@@ -70,6 +73,8 @@ public class ReleaseRequestFoldFailureTest {
 
   @Inject RecordingReleaseRequestStateAnnouncer states;
 
+  @Inject RecordingBranchDeliveryAnnouncer deliveries;
+
   private String repoId;
   private String projectId;
 
@@ -80,6 +85,7 @@ public class ReleaseRequestFoldFailureTest {
     merger.reset();
     gitHost.reset();
     states.reset();
+    deliveries.reset();
     // A run is "still active", so nothing settles a fixture mid-test: the subject is the fold.
     activeBuilds.answer(Optional.of(1));
     repoId = "fold-failure-repo-" + UUID.randomUUID();
@@ -381,12 +387,26 @@ public class ReleaseRequestFoldFailureTest {
     assertNotNull(merged);
 
     merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
-    join(id, "ticket/qits-1199");
+    String detail = join(id, "ticket/qits-1199").getString("placement.detail");
+    // qits-2365: the answer says the branch is missing rather than reading "joined" and no more.
+    assertTrue(detail.startsWith("ticket/qits-1199 joined "), detail);
+    assertTrue(
+        detail.endsWith(
+            "; ticket/qits-1199 is not on the git host in "
+                + repoId
+                + " yet; the request folds it on its push, or rejects it after 2m"),
+        detail);
     JsonPath waiting = request(id);
     assertEquals("PENDING", waiting.getString("state"));
     assertEquals(merged, waiting.getString("mergedSha"), "the last fold is kept");
     assertNotNull(row(id).refoldOwedAt);
     assertEquals(0, noticesOf(id));
+    // ... and its JOINED carries no fold: the one the request is at lacks the branch (qits-2365).
+    List<BranchDeliveryStep> steps = stepsOf("ticket/qits-1199");
+    assertEquals(1, steps.size(), "steps: " + steps);
+    assertEquals("JOINED", steps.get(0).step());
+    assertNull(steps.get(0).foldSha(), "not stamped with the old fold " + merged);
+    assertNull(ledgerFoldOf("ticket/qits-1199"), "nor is the ledger row");
 
     int folds = merger.foldsOf(BackingBranches.ref(id)).size();
     releaseRequests.sweep();
@@ -399,7 +419,128 @@ public class ReleaseRequestFoldFailureTest {
     assertEquals(FoldFailure.KIND, rejectingGateOf(id));
   }
 
+  // ---- qits-2365: the doors say when the git host does not hold the branch ------------------
+
+  @Test
+  public void aCreateForABranchNotOnTheGitHostSaysSoAndIsPlacedAllTheSame() throws Exception {
+    grace(Duration.ofMinutes(2));
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+
+    JsonPath answer = createAnswer("ticket/qits-1199");
+
+    assertEquals("CREATED", answer.getString("placement.outcome"));
+    String detail = answer.getString("placement.detail");
+    assertEquals(
+        "ticket/qits-1199 opened "
+            + answer.getString("request.qualifiedId")
+            + ", the repository's active release request; ticket/qits-1199 is not on the git host"
+            + " in "
+            + repoId
+            + " yet; the request folds it on its push, or rejects it after 2m",
+        detail);
+    String id = answer.getString("request.id");
+    assertEquals("PENDING", request(id).getString("state"), "a missing branch is not refused");
+    List<BranchDeliveryStep> steps = stepsOf("ticket/qits-1199");
+    assertEquals("JOINED", steps.get(0).step());
+    assertNull(steps.get(0).foldSha());
+  }
+
+  /** The suite's grace is zero: there is no "after 0s" to wait for, and the sentence says so. */
+  @Test
+  public void withNoGraceTheAnswerSaysTheFoldRejectsIt() {
+    merger.answer(BackingBranchMerger.Outcome.missingSource(MISSING));
+
+    JsonPath answer = createAnswer("ticket/qits-1199");
+
+    String detail = answer.getString("placement.detail");
+    assertTrue(
+        detail.endsWith(
+            "; ticket/qits-1199 is not on the git host in "
+                + repoId
+                + " yet; the request rejects it at its fold, and folds it again on its push"),
+        detail);
+    assertEquals("REJECTED", request(answer.getString("request.id")).getString("state"));
+  }
+
+  @Test
+  public void aBranchOnTheGitHostIsAnsweredWithNoWarning() throws Exception {
+    grace(Duration.ofMinutes(2));
+    gitHost.headOf(repoId, "ticket/qits-1198", "5eed5eed5eed5eed5eed5eed5eed5eed5eed1198");
+    gitHost.headOf(repoId, "ticket/qits-1199", "5eed5eed5eed5eed5eed5eed5eed5eed5eed1199");
+
+    JsonPath created = createAnswer("ticket/qits-1198");
+    String id = created.getString("request.id");
+    String merged = request(id).getString("mergedSha");
+    assertNotNull(merged);
+    JsonPath joined = join(id, "ticket/qits-1199");
+
+    assertEquals(
+        "ticket/qits-1198 opened "
+            + created.getString("request.qualifiedId")
+            + ", the repository's active release request",
+        created.getString("placement.detail"));
+    assertFalse(
+        joined.getString("placement.detail").contains("not on the git host"),
+        joined.getString("placement.detail"));
+    // Its fold lands at once here, yet the JOINED was written before it: still no fold on it.
+    String refold = request(id).getString("mergedSha");
+    assertNotEquals(merged, refold, "the join refolded");
+    assertNull(stepsOf("ticket/qits-1199").get(0).foldSha());
+  }
+
+  /** "Could not ask" is never "not there": a host that failed to answer says nothing. */
+  @Test
+  public void aGitHostThatCouldNotAnswerAddsNoWarning() throws Exception {
+    grace(Duration.ofMinutes(2));
+    gitHost.headUnreadable(
+        repoId,
+        "ticket/qits-1198",
+        ReleaseGitHost.Answer.failedRetryable("qits-githost answered 503"));
+    gitHost.headUnreadable(
+        repoId,
+        "ticket/qits-1199",
+        ReleaseGitHost.Answer.failed("qits-githost answered 403: forbidden"));
+
+    JsonPath created = createAnswer("ticket/qits-1198");
+    JsonPath joined = join(created.getString("request.id"), "ticket/qits-1199");
+
+    assertFalse(
+        created.getString("placement.detail").contains("not on the git host"),
+        created.getString("placement.detail"));
+    assertFalse(
+        joined.getString("placement.detail").contains("not on the git host"),
+        joined.getString("placement.detail"));
+  }
+
+  /** The default branch is never asked about: qits-maintenance's main-only requests name it. */
+  @Test
+  public void aMainOnlyRequestIsNeverWarnedAbout() {
+    JsonPath answer = createAnswer("main");
+
+    assertEquals("CREATED", answer.getString("placement.outcome"));
+    assertFalse(
+        answer.getString("placement.detail").contains("not on the git host"),
+        answer.getString("placement.detail"));
+  }
+
   // -----------------------------------------------------------------------------------------
+
+  /** This test's repository's steps of {@code branch}, as announced. */
+  private List<BranchDeliveryStep> stepsOf(String branch) {
+    return deliveries.stepsOf(branch).stream()
+        .filter(step -> repoId.equals(step.repoId()))
+        .toList();
+  }
+
+  private String ledgerFoldOf(String branch) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                BranchDelivery.<BranchDelivery>find(
+                        "projectId = ?1 and repoId = ?2 and branch = ?3", projectId, repoId, branch)
+                    .firstResult()
+                    .foldSha);
+  }
 
   /** Sets the bean's missing-source grace; the suite's own is zero. */
   private void grace(Duration grace) throws Exception {
@@ -438,13 +579,15 @@ public class ReleaseRequestFoldFailureTest {
         .call(() -> BranchDeliveryNotice.count("requestId", id));
   }
 
-  private void join(String id, String branch) {
-    given()
+  private JsonPath join(String id, String branch) {
+    return given()
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"" + branch + "\"}")
         .post(base() + "/" + id + "/sources")
         .then()
-        .statusCode(200);
+        .statusCode(200)
+        .extract()
+        .jsonPath();
   }
 
   private String base() {
@@ -452,6 +595,11 @@ public class ReleaseRequestFoldFailureTest {
   }
 
   private String create(String branch) {
+    return createAnswer(branch).getString("request.id");
+  }
+
+  /** The create door's whole answer: the request and its placement. */
+  private JsonPath createAnswer(String branch) {
     return given()
         .contentType(ContentType.JSON)
         .body("{\"branch\":\"" + branch + "\",\"summary\":\"a release with a missing source\"}")
@@ -459,7 +607,7 @@ public class ReleaseRequestFoldFailureTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("request.id");
+        .jsonPath();
   }
 
   private JsonPath request(String id) {

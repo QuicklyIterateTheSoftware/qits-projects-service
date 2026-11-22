@@ -247,7 +247,7 @@ public class NamedAgentHost {
         entry,
         activity,
         desk != null && desk.wanted(),
-        RefinementSessions.wantsRunning(row, now, idleTimeout));
+        RefinementSessions.sessionWanted(row, now, idleTimeout));
   }
 
   // ---- the state, announced (qits-2157) ----------------------------------------------------------
@@ -493,6 +493,30 @@ public class NamedAgentHost {
     }
   }
 
+  // ---- the start (qits-2499) ---------------------------------------------------------------------
+
+  /**
+   * Start {@code projectId}'s named agent {@code agent} (never the desk) without a prompt: its row
+   * and token if absent, its demand and the desk's stamped, the desk ensured (a stopped container
+   * started), and the sessions sent, which ask for the agent's session. A running agent is left as
+   * it is. The caller has checked the project and the name.
+   */
+  public void start(String projectId, NamedAgents.Agent agent) {
+    Instant now = Instant.now();
+    ensureRow(projectId, agent);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                rows.update(
+                    "lastDemandAt = ?1 where projectId = ?2 and name = ?3",
+                    now,
+                    projectId,
+                    agent.name()));
+    frontDesks.ensure(projectId);
+    sessions.push(projectId);
+    observeLater(projectId);
+  }
+
   // ---- the prompt --------------------------------------------------------------------------------
 
   /**
@@ -510,7 +534,7 @@ public class NamedAgentHost {
           503, null, "The named agent " + agent.name() + " could not be created; try again.");
     }
     if (row.pendingPrompt != null) {
-      if (RefinementSessions.wantsRunning(row, now, idleTimeout)) {
+      if (RefinementSessions.sessionWanted(row, now, idleTimeout)) {
         return new FrontDeskPrompter.Reply(
             409,
             null,

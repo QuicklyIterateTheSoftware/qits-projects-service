@@ -254,12 +254,21 @@ public class BranchDeliveries {
   /**
    * <b>JOINED</b>: {@code branch} was put on {@code row}. Not inside {@link #handingOn}, whose
    * caller writes MOVED for the same add.
+   *
+   * <p><b>With no fold</b> (qits-2365). It is written as the source row is added, before the fold
+   * that will carry the branch is even asked for, so {@code row.mergedSha} is at best the fold
+   * before it — one that cannot contain the branch. Stamped with it, the step and its {@code
+   * BranchDeliveryChanged} said the branch was joined <em>at</em> a fold that lacked it, which for a
+   * branch not yet on the git host (qits-landing-app-rr-257) was the fold that went on to reject it.
+   * A minted request had no fold to stamp anyway, so {@code foldSha} absent on JOINED is the shape it
+   * always had there. {@link #resumed}'s JOINED is a different statement — the branch is back on a
+   * fold that carries it — and keeps the fold.
    */
   public void joined(ReleaseRequest row, String branch) {
     if (Boolean.TRUE.equals(HANDING_ON.get())) {
       return;
     }
-    step(row, branch, Step.JOINED, null, null, null, null, null, null, false);
+    step(row, branch, Step.JOINED, null, null, null, null, null, null, false, null, null, false);
   }
 
   /**
@@ -750,6 +759,42 @@ public class BranchDeliveries {
       boolean onlyFromPrevious,
       List<BackingBranchMerger.Conflict> conflicts,
       String buildNote) {
+    step(
+        row,
+        branch,
+        step,
+        previousId,
+        previousQualifiedId,
+        foldAttempt,
+        failure,
+        runId,
+        version,
+        onlyFromPrevious,
+        conflicts,
+        buildNote,
+        true);
+  }
+
+  /**
+   * One step of one branch carried by {@code row}, if it is a branch this ledger follows.
+   *
+   * @param atFold whether the step is stamped with {@code row.mergedSha}; false only for {@link
+   *     #joined}, whose request has not folded the branch yet (qits-2365)
+   */
+  private void step(
+      ReleaseRequest row,
+      String branch,
+      Step step,
+      String previousId,
+      String previousQualifiedId,
+      String foldAttempt,
+      String failure,
+      String runId,
+      String version,
+      boolean onlyFromPrevious,
+      List<BackingBranchMerger.Conflict> conflicts,
+      String buildNote,
+      boolean atFold) {
     if (row == null) {
       return;
     }
@@ -770,7 +815,7 @@ public class BranchDeliveries {
               branch,
               row.id,
               row.qualifiedId,
-              row.mergedSha,
+              atFold ? row.mergedSha : null,
               foldAttempt,
               step.name(),
               previousId,

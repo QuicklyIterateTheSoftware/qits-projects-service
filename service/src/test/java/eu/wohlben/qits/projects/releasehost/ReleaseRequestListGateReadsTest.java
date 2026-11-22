@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,8 +30,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,22 +56,26 @@ import org.junit.jupiter.api.Test;
  * their own length, as the freshness window is set on the bean: a {@code @TestProfile} would be a
  * whole second app kept for the rest of the run (CLAUDE.md, "the test-profile budget rule").
  *
- * <p>"Read nothing on the list's thread" is proven by latency: the git host and the fold reads are
- * made slower than the bound the page must answer within, so a page that waited for any of them
- * could not make it — and the reads are then seen to happen anyway, behind the page.
+ * <p>"Read nothing on the list's thread" is proven by a park, not a stopwatch: the git host's tree
+ * reads and the fold reads are parked ({@link RecordingReleaseGitHost#parkTreeReads}, {@link
+ * RecordingFoldChanges#parkReads}) and the page must answer while every one of them is still
+ * waiting — a page that waited for any of them cannot finish before the park is released, so it
+ * fails by timeout however fast or slow the machine is. The reads are then seen to have arrived at
+ * the park, behind the page, and once released to land where they should.
  */
 @QuarkusTest
 @TestSecurity(user = "dev", roles = "qits:admin")
 public class ReleaseRequestListGateReadsTest {
 
-  /** How long every tree read takes here — a slow git host, made slow on purpose. */
-  private static final long TREE_LATENCY_MS = 300;
+  /**
+   * How long a page run while the reads are parked may take before it counts as waiting for one —
+   * generous, and shorter than {@link ReadPark#GIVE_UP_SECONDS}, so a page that waited times out
+   * here rather than finishing once the parked read gives up.
+   */
+  private static final long PAGE_TIMEOUT_SECONDS = 20;
 
-  /** How long each content read takes: a mirror refresh plus its git subprocesses. */
-  private static final long FOLD_LATENCY_MS = 300;
-
-  /** What a page must answer within when nothing slow is on its thread. */
-  private static final long PAGE_BOUND_MS = 250;
+  /** How long nothing of ours may move before the background work counts as settled. */
+  private static final long QUIET_INTERVAL_MS = 900;
 
   private static final int REPOSITORIES = 4;
 
@@ -134,9 +141,9 @@ public class ReleaseRequestListGateReadsTest {
   }
 
   /**
-   * The first page into a fresh app pays for warming the route and its queries up — measured at
-   * about a tree read's latency — and no page timed here should. So a throwaway project of its own
-   * is listed once, in the suite's mode, before anything is timed.
+   * The first page into a fresh app pays for warming the route and its queries up, and no page
+   * under test here should carry that. So a throwaway project of its own is listed once, in the
+   * suite's mode, before anything is parked.
    */
   private void warmUp() {
     String warmProject = "gate-reads-warm-up-" + UUID.randomUUID();
@@ -182,8 +189,9 @@ public class ReleaseRequestListGateReadsTest {
 
   @AfterEach
   void restore() throws Exception {
-    gitHost.treeLatency(0);
-    foldChanges.readLatency(0);
+    // A parked read moves no counter and would read as quiet: release first, then settle.
+    gitHost.releaseTreeReads();
+    foldChanges.releaseReads();
     awaitQuiet();
     setFreshness(freshnessBefore);
     field(ReleaseGates.class, "displayReadsSynchronously").setBoolean(bean(gates), gatesSynchronousBefore);
@@ -232,9 +240,10 @@ public class ReleaseRequestListGateReadsTest {
 
   /**
    * A cold page — nothing in memory, nothing stored — asks neither the git host nor the mirror: it
-   * answers within a bound shorter than one read of either, shows every gate set as not read yet and
-   * every open fold as not read yet (approval required: fail closed), and the reads then happen
-   * behind it, once each, and land in the store. The next page shows them and reads nothing.
+   * answers while every read of either is parked, shows every gate set as not read yet and every
+   * open fold as not read yet (approval required: fail closed), and the reads it started arrive
+   * behind it, once each, and once released land in the store. The next page shows them and reads
+   * nothing.
    */
   @Test
   void aColdPageReadsNothingAndWhatItStartedLandsInTheStore() throws Exception {
@@ -243,14 +252,11 @@ public class ReleaseRequestListGateReadsTest {
     for (int index = 0; index < REPOSITORIES; index++) {
       open.add(pending(repoIds.get(index), fold(index)));
     }
-    gitHost.treeLatency(TREE_LATENCY_MS);
-    foldChanges.readLatency(FOLD_LATENCY_MS);
+    ReadPark trees = gitHost.parkTreeReads();
+    ReadPark folds = foldChanges.parkReads();
 
-    long started = System.nanoTime();
-    JsonPath page = page();
-    long tookMs = (System.nanoTime() - started) / 1_000_000;
+    JsonPath page = whileParked(this::page, "a cold page");
 
-    assertTrue(tookMs < PAGE_BOUND_MS, "a cold page took " + tookMs + " ms: it waited for a read");
     for (String id : open) {
       assertEquals(
           ApprovalContentRecorder.NOT_YET_READ,
@@ -259,8 +265,18 @@ public class ReleaseRequestListGateReadsTest {
       assertEquals("UNKNOWN", page.getString(row(id) + ".gates.find { it.kind == 'CI' }.state"));
     }
 
+    // Behind the page: one tree read per repository and each fold's content read, all still parked.
+    trees.awaitArrived(
+        park -> repoIds.stream().allMatch(repoId -> park.arrived(repoId) >= 1), "gate sets");
+    folds.awaitArrived(
+        park -> repoIds.stream().allMatch(repoId -> park.arrived(repoId) >= 1), "folds");
+    assertEquals(each(1L), arrivedAt(trees), "one background tree read per repository, parked");
+    gitHost.releaseTreeReads();
+    foldChanges.releaseReads();
+
     await(() -> repoIds.stream().allMatch(repoId -> storedGateSet(repoId) != null), "gate sets stored");
     await(() -> open.stream().allMatch(id -> storedFold(id) != null), "fold contents stored");
+    awaitQuiet();
     assertEquals(each(1L), countByRepository(ours()), "one background tree read per repository");
     assertEquals(each(2L), foldReadsNow(), "one background readContent per fold (two reads each)");
     for (String repoId : repoIds) {
@@ -268,10 +284,7 @@ public class ReleaseRequestListGateReadsTest {
     }
 
     gitHost.clearTreeReads();
-    started = System.nanoTime();
     page = page();
-    tookMs = (System.nanoTime() - started) / 1_000_000;
-    assertTrue(tookMs < PAGE_BOUND_MS, "the second page took " + tookMs + " ms");
     for (String id : open) {
       assertEquals("false", page.getString(row(id) + ".approvalRequired"), "the stored reasons: none");
       assertNotEquals("UNKNOWN", page.getString(row(id) + ".gates.find { it.kind == 'CI' }.state"));
@@ -304,22 +317,28 @@ public class ReleaseRequestListGateReadsTest {
     foldChanges.changes(
         moved,
         List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release-requests.yml", null)));
-    gitHost.treeLatency(TREE_LATENCY_MS);
-    foldChanges.readLatency(FOLD_LATENCY_MS);
+    ReadPark trees = gitHost.parkTreeReads();
+    ReadPark folds = foldChanges.parkReads();
 
-    long started = System.nanoTime();
-    releaseRequests.onMainMoved(moved, "0000000000000000000000000000000000000abc");
-    JsonPath page = page();
-    long tookMs = (System.nanoTime() - started) / 1_000_000;
+    JsonPath page =
+        whileParked(
+            () -> {
+              releaseRequests.onMainMoved(moved, "0000000000000000000000000000000000000abc");
+              return page();
+            },
+            "onMainMoved and the page after it");
 
-    assertTrue(
-        tookMs < PAGE_BOUND_MS,
-        "onMainMoved and the page after it took " + tookMs + " ms: something read on this thread");
     assertEquals("false", page.getString(row(movedRow) + ".approvalRequired"), "the stored reasons");
     assertNotEquals(
         "UNKNOWN",
         page.getString(row(movedRow) + ".gates.find { it.kind == 'CI' }.state"),
         "the stored gate set, not 'not read yet'");
+
+    // Behind them: the moved repository's gate set and its fold, re-read and still parked.
+    trees.awaitArrived(park -> park.arrived(moved) >= 1, "the moved repository's gate set");
+    folds.awaitArrived(park -> park.arrived(moved) >= 1, "the moved repository's fold");
+    gitHost.releaseTreeReads();
+    foldChanges.releaseReads();
 
     await(
         () -> {
@@ -352,7 +371,7 @@ public class ReleaseRequestListGateReadsTest {
     String repoId = repoIds.get(0);
     String sha = fold(0);
     String id = pending(repoId, sha);
-    foldChanges.readLatency(FOLD_LATENCY_MS);
+    ReadPark folds = foldChanges.parkReads();
 
     CountDownLatch go = new CountDownLatch(1);
     List<CompletableFuture<?>> asks = new ArrayList<>();
@@ -373,17 +392,22 @@ public class ReleaseRequestListGateReadsTest {
               }));
     }
     go.countDown();
-    asks.forEach(CompletableFuture::join);
+    CompletableFuture.allOf(asks.toArray(CompletableFuture[]::new))
+        .get(PAGE_TIMEOUT_SECONDS, SECONDS);
+    folds.awaitArrived(park -> park.arrived(repoId) >= 1, "the fold's read");
+    foldChanges.releaseReads();
     await(() -> storedFold(id) != null, "the fold stored");
     awaitQuiet();
     assertEquals(2, foldChanges.reads(repoId), "one readContent (two reads) for five asks");
 
     // A re-read asked for while the fold is being read follows it, once.
+    folds = foldChanges.parkReads();
     recorder.enqueue(repoId, sha);
-    await(() -> foldChanges.reads(repoId) > 2, "the second read started");
+    folds.awaitArrived(park -> park.arrived(repoId) >= 1, "the second read started");
     recorder.reread(repoId, sha);
     recorder.reread(repoId, sha);
     recorder.enqueue(repoId, sha);
+    foldChanges.releaseReads();
     awaitQuiet();
     assertEquals(6, foldChanges.reads(repoId), "the read in flight, and exactly one after it");
   }
@@ -459,9 +483,9 @@ public class ReleaseRequestListGateReadsTest {
     awaitQuiet();
     clearGateMemory();
     gitHost.clearTreeReads();
-    gitHost.treeLatency(TREE_LATENCY_MS);
+    ReadPark trees = gitHost.parkTreeReads();
 
-    JsonPath page = page();
+    JsonPath page = whileParked(this::page, "a page inside the window");
     for (String repoId : repoIds) {
       assertNotEquals(
           "UNKNOWN",
@@ -470,21 +494,26 @@ public class ReleaseRequestListGateReadsTest {
           "the stored set");
     }
     assertEquals(List.of(), ours(), "a stored set inside the window asks the git host nothing");
+    // A read it started would still be parked, and not in ours() yet.
+    assertEquals(each(0L), arrivedAt(trees), "nor behind the page");
 
     // Past the window: shown at once, refreshed once behind the pages.
     setFreshness(200);
     Thread.sleep(250);
-    long started = System.nanoTime();
-    List<CompletableFuture<List<String>>> pages = new ArrayList<>();
-    for (int count = 0; count < 3; count++) {
-      pages.add(CompletableFuture.supplyAsync(this::list));
-    }
-    pages.forEach(CompletableFuture::join);
-    long tookMs = (System.nanoTime() - started) / 1_000_000;
-    assertTrue(
-        tookMs < TREE_LATENCY_MS,
-        "three pages took " + tookMs + " ms: a stale set must not make a page wait for the read");
+    whileParked(
+        () -> {
+          List<CompletableFuture<List<String>>> pages = new ArrayList<>();
+          for (int count = 0; count < 3; count++) {
+            pages.add(CompletableFuture.supplyAsync(this::list));
+          }
+          return pages.stream().map(CompletableFuture::join).toList();
+        },
+        "three pages past the window (a stale set must not make a page wait for the read)");
+    trees.awaitArrived(
+        park -> repoIds.stream().allMatch(repoId -> park.arrived(repoId) >= 1), "the refreshes");
+    assertEquals(each(1L), arrivedAt(trees), "three pages, one parked refresh per repository");
     setFreshness(60_000);
+    gitHost.releaseTreeReads();
     awaitQuiet();
     assertEquals(
         each(1L), countByRepository(ours()), "one background refresh per repository, however many pages");
@@ -601,6 +630,31 @@ public class ReleaseRequestListGateReadsTest {
     }
   }
 
+  /**
+   * Run {@code work} off the test's thread and require it to finish while the reads are parked: a
+   * caller that waited for a parked read cannot finish until the park is released, so it times out
+   * here — whatever the machine's speed.
+   */
+  private static <T> T whileParked(Supplier<T> work, String what) throws Exception {
+    CompletableFuture<T> running = CompletableFuture.supplyAsync(work);
+    try {
+      return running.get(PAGE_TIMEOUT_SECONDS, SECONDS);
+    } catch (TimeoutException e) {
+      throw new AssertionError(
+          what
+              + " did not answer within "
+              + PAGE_TIMEOUT_SECONDS
+              + " s while the reads were parked: it waited for a read",
+          e);
+    }
+  }
+
+  /** The reads of our repositories that have arrived at {@code park}. */
+  private Map<String, Long> arrivedAt(ReadPark park) {
+    return repoIds.stream()
+        .collect(Collectors.toMap(Function.identity(), repoId -> (long) park.arrived(repoId)));
+  }
+
   private static void awaitQuietly(CountDownLatch latch) {
     try {
       latch.await();
@@ -611,13 +665,14 @@ public class ReleaseRequestListGateReadsTest {
 
   /**
    * Wait until no read of ours — tree or fold — has started for a moment: the background work
-   * settled. A read in flight makes no count move for its latency, hence the long quiet interval.
+   * settled. A read in flight moves no count until it ends, hence the long quiet interval; and a
+   * parked read never ends, so this is called only once every park is released.
    */
   private void awaitQuiet() throws InterruptedException {
     long deadline = System.currentTimeMillis() + 15_000;
     String seen = null;
     while (System.currentTimeMillis() < deadline) {
-      Thread.sleep(Math.max(TREE_LATENCY_MS, FOLD_LATENCY_MS) * 3);
+      Thread.sleep(QUIET_INTERVAL_MS);
       String now = ours().size() + "/" + foldReadsNow() + "/" + storedSnapshot();
       if (now.equals(seen)) {
         return;
