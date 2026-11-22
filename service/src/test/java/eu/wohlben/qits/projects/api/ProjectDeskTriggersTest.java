@@ -58,7 +58,17 @@ public class ProjectDeskTriggersTest {
           "events");
 
   private static final Set<String> EVENT_MEMBERS =
-      Set.of("source", "itemRef", "itemId", "label", "cause", "commentId", "eventId", "occurredAt");
+      Set.of(
+          "source",
+          "itemRef",
+          "itemId",
+          "label",
+          "cause",
+          "commentId",
+          "eventId",
+          "occurredAt",
+          "droppedAt",
+          "droppedReason");
 
   private RequestSpecification as(String user, String roles) {
     return given()
@@ -182,12 +192,57 @@ public class ProjectDeskTriggersTest {
             .body("messages[0].events[0].commentId", nullValue())
             .body("messages[0].events[0].eventId", equalTo(eventId.toString()))
             .body("messages[0].events[0].occurredAt", equalTo("2026-03-01T10:00:00Z"))
+            .body("messages[0].events[0].droppedAt", nullValue())
+            .body("messages[0].events[0].droppedReason", nullValue())
             .extract()
             .jsonPath();
     Map<String, Object> message = body.getMap("messages[0]");
     assertEquals(MESSAGE_MEMBERS, message.keySet(), "every member, the nulls included");
     Map<String, Object> event = body.getMap("messages[0].events[0]");
     assertEquals(EVENT_MEMBERS, event.keySet(), "every member of a line");
+  }
+
+  /**
+   * qits-2501: a line the sweep dropped is still answered, with when and why; a REDUNDANT window
+   * reads with its null message.
+   */
+  @Test
+  public void aDroppedLineReadsWithWhenAndWhyAndARedundantWindowWithNoMessage() {
+    String projectId = createProject();
+    UUID id = window(projectId, T0, DeskTriggerWindowState.REDUNDANT);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              DeskTriggerWindow window = DeskTriggerWindow.findById(id);
+              window.message = null;
+              for (String reason : List.of("resolved", "superseded")) {
+                var event = new DeskTriggerEvent();
+                event.id = UUID.randomUUID();
+                event.windowId = id;
+                event.source = "approval-needed";
+                event.itemRef = "qits-qits-rr-" + reason;
+                event.eventId = UUID.randomUUID();
+                event.occurredAt = T0;
+                event.admittedAt = T0;
+                event.droppedAt = T0.plusSeconds(600);
+                event.droppedReason = reason;
+                event.persist();
+              }
+            });
+
+    asAdmin()
+        .when()
+        .get(door(projectId))
+        .then()
+        .statusCode(200)
+        .body("messages", hasSize(1))
+        .body("messages[0].state", equalTo("REDUNDANT"))
+        .body("messages[0].message", nullValue())
+        .body("messages[0].events", hasSize(2))
+        .body("messages[0].events[0].itemRef", equalTo("qits-qits-rr-resolved"))
+        .body("messages[0].events[0].droppedAt", equalTo("2026-03-01T10:10:00Z"))
+        .body("messages[0].events[0].droppedReason", equalTo("resolved"))
+        .body("messages[0].events[1].droppedReason", equalTo("superseded"));
   }
 
   /** An OPEN window has no message, close or delivery yet: those members are null, not absent. */

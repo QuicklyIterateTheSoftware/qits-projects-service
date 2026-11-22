@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApprovalNotice;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -60,6 +61,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  * qits-1689 way (no arm) admitted at or after the arm is the same stall, so the change of key adds
  * nothing for a stall already told. Nothing causes a stall, so no principal: the desk's own actions
  * do not apply here.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #holds}) while the scan would still find the same stall:
+ * the request in a stalling state whose {@link #stallKey} — state, fold and arm — is the line's
+ * event id, and none of the scan's exclusions (a held deploy, a queue, an open approval) applies
+ * now. The threshold is not re-checked: a stall only grows. A newer line of the same request in a
+ * window supersedes the older ones.
  */
 @ApplicationScoped
 public class RequestStalledSource implements DeskTriggerSource {
@@ -126,6 +133,62 @@ public class RequestStalledSource implements DeskTriggerSource {
       }
     }
     return triggers;
+  }
+
+  /** A newer stall line of the same request names it at what it says last. */
+  @Override
+  public boolean supersedesOlderLinesOfItsItem() {
+    return true;
+  }
+
+  /**
+   * The scan's predicate still matches at the line's fold and arm. A request this service no
+   * longer has holds: there is nothing to read the answer from.
+   */
+  @Override
+  public boolean holds(DeskTriggerEventRow line, Instant now) {
+    if (line.itemId() == null) {
+      return true;
+    }
+    return QuarkusTransaction.requiringNew().call(() -> holdsNow(line));
+  }
+
+  private static boolean holdsNow(DeskTriggerEventRow line) {
+    ReleaseRequest row = ReleaseRequest.findById(line.itemId());
+    if (row == null) {
+      return true;
+    }
+    if (row.state == null) {
+      return false;
+    }
+    Instant arm;
+    switch (row.state) {
+      case RELEASED -> {
+        ReleasedTagPendingMerge tag =
+            ReleasedTagPendingMerge.<ReleasedTagPendingMerge>find(
+                    "releaseRequestId = ?1 order by releasedAt desc", row.id)
+                .firstResult();
+        if (heldDeploy(row, tag)) {
+          return false;
+        }
+        arm = tag != null ? tag.releasedAt : row.updatedAt;
+      }
+      case READY -> arm = row.updatedAt;
+      case PENDING -> {
+        if (row.queuedBehind != null || waitsOnApproval(row)) {
+          return false;
+        }
+        arm = row.armedAt;
+      }
+      default -> {
+        return false;
+      }
+    }
+    String state = row.state.name();
+    if (arm != null && stallKey(row.id, state, row.mergedSha, arm).equals(line.eventId())) {
+      return true;
+    }
+    return legacyStallKey(row.id, state, row.mergedSha).equals(line.eventId());
   }
 
   @Override

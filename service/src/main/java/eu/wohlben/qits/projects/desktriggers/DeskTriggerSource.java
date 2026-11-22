@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.desktriggers;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -83,6 +84,64 @@ public interface DeskTriggerSource {
    */
   default List<DeskTrigger> scan(Instant now) {
     return List.of();
+  }
+
+  /**
+   * Whether a stored {@code line} of this source still holds at {@code now} (qits-2501): a window
+   * collects for 15 minutes and is retried for hours, so what a line reported may be over before
+   * the desk reads it. {@link DeskTriggerSweep} asks on each pass over an OPEN window, at the close
+   * and before every delivery attempt, and a line that no longer holds is dropped from the message
+   * ({@code dropped_reason = resolved}), never deleted.
+   *
+   * <p>Called <b>outside any transaction</b>: a source that reads this service's rows opens one of
+   * its own, and a hop to another service holds none. A lookup that fails or cannot be made must
+   * answer {@code true} (or throw, which the sweep reads as {@code true}): a line is dropped only
+   * on evidence that it is over, never for want of an answer. True by default — news that stays
+   * news (an item moved to VERIFIED, a comment, an OOM kill, a wait's answer) always holds.
+   */
+  default boolean holds(DeskTriggerEventRow line, Instant now) {
+    return true;
+  }
+
+  /**
+   * The lines among {@code lines} — this source's live lines of one window of {@code projectId} —
+   * that no longer hold: {@link #holds} per line by default, a line whose check throws holding. A
+   * source whose answer comes from one lookup for the whole window (the active agents, the slots)
+   * overrides this to make it once. Same rules as {@link #holds}: outside any transaction, and a
+   * failed lookup resolves nothing.
+   */
+  default Set<DeskTriggerEventRow> resolved(
+      String projectId, List<DeskTriggerEventRow> lines, Instant now) {
+    Set<DeskTriggerEventRow> resolved = new HashSet<>();
+    for (DeskTriggerEventRow line : lines) {
+      try {
+        if (!holds(line, now)) {
+          resolved.add(line);
+        }
+      } catch (RuntimeException e) {
+        // Fails open: a line is dropped only on evidence that it is over.
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * Whether, inside one window, a newer live line of this source about the same item ({@code
+   * item_id}, the release request) supersedes the older ones (qits-2501): the request is named
+   * once per source, at what it says last. The older lines are dropped with {@code dropped_reason
+   * = superseded}. False by default.
+   */
+  default boolean supersedesOlderLinesOfItsItem() {
+    return false;
+  }
+
+  /**
+   * The ids of the sources whose live line about the same item ({@code item_id}) in a window
+   * supersedes every line of this source about it (qits-2501): a request waiting on the desk's
+   * approval is not also reported failed. Empty by default.
+   */
+  default Set<String> supersededBy() {
+    return Set.of();
   }
 
   /**

@@ -72,7 +72,7 @@ erDiagram
     long number "not null"
     enum outcome
     string pre_approved_by
-    int priority
+    int priority "not null"
     string project_id "not null"
     string related_to
     string repository_id

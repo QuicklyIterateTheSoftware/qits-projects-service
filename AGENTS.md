@@ -3327,8 +3327,9 @@ is the whole of it:
   owner of the pointer sentence (qits-1734): it sends the desk to `qits help guide` and states the
   **desk variant's guide-hash at the close** (`DevelopmentGuideService.renderHash("desk")`, supplied
   by `DeskTriggerSweep`), so the desk re-reads its guide only when that hash differs from the one it
-  last read. No brief file is written into the container any more. The message is stored at the
-  close, so every retry sends the same text and the same hash. The opening words `You are the
+  last read. No brief file is written into the container any more. The message is rendered at
+  the close and again before every delivery attempt (qits-2501), from the lines still live and
+  with a fresh Slots reading and hash, and stored as `message` before it is sent. The opening words `You are the
   delivery desk` are what the desk's brief keys on. A window whose every line came from a
   `requestedByDesk()` source opens instead with `A wait you declared has closed.`, the same
   `DeskBrief.pointer(hash)` and the same bounds: the desk asked, and is not called the delivery desk.
@@ -3340,6 +3341,23 @@ is the whole of it:
   `command_id`; 409 (no kept command, or a daemon too old), 429, 503 and no tunnel stay OWED with
   `attempts`, `last_status` and `last_detail`; 400 is FAILED (our bug, never retried); a window
   still OWED `give-up` after its close is FAILED before it is tried again.
+- **A line that no longer holds is dropped, never deleted** (qits-2501, V80). Each sweep pass
+  re-checks the live lines of every OPEN window, and of an OWED window before each attempt:
+  `DeskTriggerSource.holds(line, now)` (default true; batch `resolved(projectId, lines, now)` for a
+  source whose answer is one lookup), called outside any transaction, a failed or throwing lookup
+  holding (fail open). approval-needed holds while the request is PENDING at the cause's fold with
+  the label's requirement unsettled in `release_request_approval_notice`; request-failed while it
+  is in the label's state at the cause's fold (by attempt: not keyed to an older attempt);
+  request-stalled while its `stallKey` is still the scan's; agent-idle while the agent is ACTIVE,
+  not BUSY, at the key's `lastActivityAt`; wait-broken while the cause's agent is active;
+  capacity-opened while running < `max_running` (`VerifiedSlotHolders`); verified-unshipped while
+  the scan would still raise it. Within a window approval-needed, request-failed and
+  request-stalled keep only the newest line per `item_id` (`supersedesOlderLinesOfItsItem`), and a
+  live approval-needed line supersedes the request's request-failed lines (`supersededBy`). A
+  dropped line gets `dropped_at` and `dropped_reason` (`resolved`/`superseded`) under the window's
+  row lock and stays in the read door; its row keeps V65 refusing the event again. A window with
+  no live line at its close or before an attempt goes `REDUNDANT` (closed, no prompt), and the next
+  trigger opens a new OPEN window.
 
 **The source contract** is `DeskTriggerSource`: `id()` (stored in `desk_trigger_event.source` —
 storage, never rename it), `order()` (section order), `signatures()` (bus event simple names),

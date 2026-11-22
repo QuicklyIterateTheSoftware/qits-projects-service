@@ -23,11 +23,14 @@ import java.util.UUID;
  *       not when it goes quiet. At most one OPEN row per project (a partial unique index).
  *   <li><b>Closing</b> — the sweep renders {@link #message} from the window's {@link
  *       DeskTriggerEvent}s once {@link #closesAt} has passed, stamps {@link #closedAt} and makes it
- *       {@link DeskTriggerWindowState#OWED OWED}. The message is stored, so every retry sends the
- *       same text.
- *   <li><b>Delivering</b> — each attempt counts in {@link #attempts} and leaves {@link
- *       #lastStatus}/{@link #lastDetail}; an accepted one stamps {@link #acceptedAt} and {@link
- *       #commandId} (and {@link #queuePosition} when it was queued).
+ *       {@link DeskTriggerWindowState#OWED OWED}. Only the lines that still hold are rendered
+ *       (qits-2501): a line the sweep found resolved or superseded is dropped ({@code
+ *       DeskTriggerEvent#droppedAt}), and a window with no live line left closes {@link
+ *       DeskTriggerWindowState#REDUNDANT REDUNDANT} without a prompt.
+ *   <li><b>Delivering</b> — each attempt re-checks the lines and re-renders {@link #message} from
+ *       those still live, with a fresh Slots reading, before it is sent; each counts in {@link
+ *       #attempts} and leaves {@link #lastStatus}/{@link #lastDetail}; an accepted one stamps {@link
+ *       #acceptedAt} and {@link #commandId} (and {@link #queuePosition} when it was queued).
  * </ul>
  *
  * <p>{@link Uncaused}: written by a bus consumer and a sweep, where no causation scope stands —
@@ -53,7 +56,10 @@ public class DeskTriggerWindow extends PanacheEntityBase {
   @Column(nullable = false)
   public DeskTriggerWindowState state;
 
-  /** The exact text sent to the desk; null while the window is OPEN. */
+  /**
+   * The exact text last sent (or about to be sent) to the desk; null while the window is OPEN, and
+   * for a window that went REDUNDANT at its close.
+   */
   @Column public String message;
 
   @Column(name = "closed_at")

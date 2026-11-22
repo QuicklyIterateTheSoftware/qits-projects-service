@@ -222,9 +222,10 @@ public class WorkController {
       @Schema(
               nullable = true,
               description =
-                  "The ranking among siblings, on every archetype: higher sorts first, null after"
-                      + " every number, then by number. Editable at every status but DONE and"
-                      + " DROPPED (409), outside every scope freeze; null clears it. PUT"
+                  "The ranking among siblings, on every archetype: higher sorts first; 0 by"
+                      + " default, so a negative priority sorts below unranked work; then by"
+                      + " number. Editable at every status but DONE and DROPPED (409), outside"
+                      + " every scope freeze; null writes 0. PUT"
                       + " /projects/api/work/{qualifiedId}/priority ranks by drop instead.")
           Integer priority,
       @Schema(

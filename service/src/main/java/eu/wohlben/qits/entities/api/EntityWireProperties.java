@@ -117,8 +117,9 @@ public final class EntityWireProperties {
     schema.put(
         "description",
         "The ranking among siblings (a project's roots, issues excluded, or the children of one"
-            + " parent): higher sorts first, null after every number, then by number. Editable at"
-            + " every status but DONE and DROPPED, which answer 409; null clears it.");
+            + " parent): higher sorts first; 0 by default, so a negative priority sorts below"
+            + " unranked work; then by number. Editable at every status but DONE and DROPPED, which"
+            + " answer 409; null writes 0.");
     return Collections.unmodifiableMap(schema);
   }
 

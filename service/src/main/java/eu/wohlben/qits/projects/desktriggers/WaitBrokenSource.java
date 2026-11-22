@@ -4,11 +4,17 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
+import eu.wohlben.qits.projects.control.WorkspaceAgentLookup.ActiveAgent;
 import eu.wohlben.qits.projects.entity.Project;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,6 +48,11 @@ import java.util.stream.Collectors;
  * reasoning: qits-workspaces' event type is not on this classpath), registered for native-image in
  * {@code bus/EventWireReflection}. Ids are read as strings, so an id that is not a UUID is carried
  * as written rather than failing the frame.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while the agent that owned the wait — the
+ * cause's {@code agent <id8>} — is still among {@link WorkspaceAgentLookup#active()}'s agents: a
+ * broken wait of an agent that is gone needs nobody now. A list that cannot be read resolves
+ * nothing.
  */
 @ApplicationScoped
 public class WaitBrokenSource implements DeskTriggerSource {
@@ -114,6 +125,30 @@ public class WaitBrokenSource implements DeskTriggerSource {
             occurredAt,
             null,
             null));
+  }
+
+  @Inject Instance<WorkspaceAgentLookup> lookup;
+
+  /** One read of the active agents for the window's lines; a failed read resolves nothing. */
+  @Override
+  public Set<DeskTriggerEventRow> resolved(
+      String projectId, List<DeskTriggerEventRow> lines, Instant now) {
+    Map<String, ActiveAgent> active = AgentIdleSource.activeById(lookup);
+    if (active == null) {
+      return Set.of();
+    }
+    Set<DeskTriggerEventRow> resolved = new HashSet<>();
+    for (DeskTriggerEventRow line : lines) {
+      String cause = line.cause();
+      if (cause == null || !cause.startsWith("agent ")) {
+        continue;
+      }
+      String id8 = cause.substring("agent ".length()).strip();
+      if (!id8.isEmpty() && active.keySet().stream().noneMatch(id -> id.startsWith(id8))) {
+        resolved.add(line);
+      }
+    }
+    return resolved;
   }
 
   /** {@code - <item_ref>: broken wait "<label>": <reason>}. */

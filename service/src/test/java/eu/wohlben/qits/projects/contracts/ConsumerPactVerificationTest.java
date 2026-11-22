@@ -144,6 +144,13 @@ class ConsumerPactVerificationTest {
   /** The landing app's rollback version that still reads campaigns, milestones and dependsOn. */
   private static final String LANDING_ROLLBACK = "2026.1105.153734";
 
+  /** The landing app's pact that pins a work item's priority as null (qits-2496). */
+  private static final String LANDING_NULL_PRIORITY = "2026.1120.204554";
+
+  /** The reason every qits-2496 entry gives. */
+  static final String NULL_PRIORITY =
+      "qits-2496: pins priority null; every work item holds a number now, 0 by default";
+
   /** The CLI's rollback version that still reads campaigns, milestones and dependsOn. */
   private static final String CLI_ROLLBACK = "2026.1105.225130";
 
@@ -182,9 +189,30 @@ class ConsumerPactVerificationTest {
    * {@code queryFromParams}), so the briefs answer comes back empty. qits-1897 fixes the library and
    * re-records both. Each entry stays until its version is neither pinned, deployed nor a rollback
    * target.
+   *
+   * <p><b>qits-2496: every work item holds a priority now, 0 by default.</b> qits-landing-app's pact
+   * {@value #LANDING_NULL_PRIORITY} (the pact of its rollback 2026.1121.163543) pins {@code
+   * "priority": null} on every board and card read of {@code listProjectWork}; the provider answers
+   * 0. That version only sorts by the number, so 0 reads right there. Its 2026.1122.110520 matches
+   * any integer. Each entry goes once the version is neither deployed nor a rollback target.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_NULL_PRIORITY,
+              "show-project-work-board: listProjectWork",
+              NULL_PRIORITY),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_NULL_PRIORITY,
+              "show-project-work: listProjectWork",
+              NULL_PRIORITY),
+          new KnownWrong(
+              "qits-landing-app",
+              LANDING_NULL_PRIORITY,
+              "show-open-issues: listProjectWork",
+              NULL_PRIORITY),
           new KnownWrong(
               "qits-landing-app",
               "2026.1104.81059",

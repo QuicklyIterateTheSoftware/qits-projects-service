@@ -627,7 +627,8 @@ public class WorkEntityService {
     // judges it — only the row's own status does, DONE and DROPPED ranking nothing.
     if (write.touchesPriority()) {
       EntityPriorityService.requireRankable(kind.noun(), row);
-      row.priority = write.clearPriority() ? null : write.priority();
+      // A null writes 0, the default (qits-2496): no row is left unranked.
+      row.priority = write.clearPriority() || write.priority() == null ? 0 : write.priority();
     }
     // The tags (qits-634): neither scope nor a marker, and no status refuses them — a person may
     // reserve DONE work as readily as REPORTED work. Replaced whole, in place; a restated set that
