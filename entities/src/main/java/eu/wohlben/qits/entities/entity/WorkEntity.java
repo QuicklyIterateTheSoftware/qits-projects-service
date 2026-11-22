@@ -482,10 +482,10 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String relatedEntityId;
 
   /**
-   * <b>The ranking among its siblings</b> (qits-753, epics V34): higher sorts first, and a null —
-   * "nobody ranked it", what every older row holds — after every number. The siblings are a
-   * project's roots (epics and tickets together) or the children of one
-   * STRUCTURAL parent; ties and nulls fall back to {@link #number}, then {@link #id} ({@code
+   * <b>The ranking among its siblings</b> (qits-753, epics V34): higher sorts first. Never null
+   * (qits-2496, epics V44): 0 is the default, so a negative priority sorts below unranked work. The
+   * siblings are a project's roots (epics and tickets together) or the children of one STRUCTURAL
+   * parent; ties fall back to {@link #number}, then {@link #id} ({@code
    * control/SiblingPriorities#ORDER}).
    *
    * <p>Written by a patch and by the drop door ({@code control/EntityPriorityService}), on every
@@ -494,11 +494,11 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * and {@link #blocked}'s: the registry document's {@code permitted} lists are pinned by consumers,
    * and the whole-state transition would clear a registry property it was not restated in.
    *
-   * <p>Left out of the audit snapshot while null, so the rows nobody ranked snapshot as before.
+   * <p>Left out of the audit snapshot while 0, so the rows nobody ranked snapshot as before.
    */
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  @Column(name = "priority")
-  public Integer priority;
+  @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+  @Column(name = "priority", nullable = false)
+  public Integer priority = 0;
 
   /**
    * <b>The acceptance criteria</b> (qits-887, qits-934, epics V26): short Markdown statements the

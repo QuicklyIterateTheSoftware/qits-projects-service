@@ -391,7 +391,7 @@ public final class EntitySchemas {
     }
     if (name.equals(EntityWireProperties.PRIORITY)) {
       return name
-          + " is not written at create: a new item is unranked; rank it through PATCH"
+          + " is not written at create: a new item starts at 0; rank it through PATCH"
           + " /projects/api/work/{qualifiedId} or PUT /projects/api/work/{qualifiedId}/priority";
     }
     if (name.equals(EntityWireProperties.OUTCOME)) {
@@ -506,14 +506,14 @@ public final class EntitySchemas {
   }
 
   /**
-   * The complaint about a patch's {@code priority} (qits-753), or none: an integer, or null to clear
-   * it. A fraction or a number past an {@code int} is no ranking.
+   * The complaint about a patch's {@code priority} (qits-753), or none: an integer, or null, which
+   * writes 0 (qits-2496). A fraction or a number past an {@code int} is no ranking.
    */
   static Optional<String> priorityRefusal(JsonNode value) {
     if (value == null || value.isNull() || (value.isIntegralNumber() && value.canConvertToInt())) {
       return Optional.empty();
     }
-    return Optional.of(EntityWireProperties.PRIORITY + " must be an integer, or null to clear it");
+    return Optional.of(EntityWireProperties.PRIORITY + " must be an integer, or null for 0");
   }
 
   /**

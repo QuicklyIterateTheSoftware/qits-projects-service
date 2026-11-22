@@ -64,6 +64,27 @@ class SiblingPrioritiesTest {
         SiblingPriorities.sorted(rows).stream().map(Row::id).toList());
   }
 
+  /** qits-2496: work holds 0 when unranked, so a negative row sorts below it, a positive above. */
+  @Test
+  void aNegativePrioritySortsBelowTheDefaultZero() {
+    List<Row> rows = List.of(row("neg", 1, -1), row("zero-b", 3, 0), row("pos", 4, 1), row("zero-a", 2, 0));
+
+    assertEquals(
+        List.of("pos", "zero-a", "zero-b", "neg"),
+        SiblingPriorities.sorted(rows).stream().map(Row::id).toList());
+  }
+
+  /** qits-2496: a drop just above a negative row stays above it, and leaves it alone. */
+  @Test
+  void aDropAboveANegativeRowRanksAboveItAndLeavesItAlone() {
+    List<Row> rows = List.of(row("a", 1, 0), row("b", 2, -1), row("c", 3, -2));
+
+    List<Assigned> assigned = SiblingPriorities.drop(rows, find(rows, "c"), "b", Placement.ABOVE);
+
+    assertEquals(List.of(new Assigned("a", 1), new Assigned("c", 0)), assigned);
+    assertEquals(List.of("a", "c", "b"), orderAfter(rows, assigned));
+  }
+
   @Test
   void aDropToTheTopTakesOneAboveTheHighestPriority() {
     List<Row> rows = List.of(row("a", 1, 5), row("b", 2, 3), row("c", 3, null));
