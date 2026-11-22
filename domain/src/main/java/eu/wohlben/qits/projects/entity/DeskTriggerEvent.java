@@ -14,9 +14,15 @@ import java.util.UUID;
  * the desk should act on — {@link #itemRef} as the desk is shown it, {@link #label} in brackets
  * after it, {@link #cause} who or what caused it.
  *
- * <p>Insert-only. {@code (window_id, source, item_ref, label, comment_id)} is unique and the insert
- * is {@code on conflict do nothing}, so the same item reached twice in one window, or one frame
- * delivered twice, is one line. Two comments are two lines (V63).
+ * <p>Never deleted. {@code (window_id, source, item_ref, label, comment_id)} is unique and the
+ * insert is {@code on conflict do nothing}, so the same item reached twice in one window, or one
+ * frame delivered twice, is one line. Two comments are two lines (V63).
+ *
+ * <p><b>Dropped, not deleted</b> (qits-2501, V80): a line the sweep finds no longer holds — the
+ * condition it reported is over ({@link #RESOLVED}), or a newer line of the same request in the
+ * window says it better ({@link #SUPERSEDED}) — gets {@link #droppedAt} and {@link #droppedReason}
+ * and is left out of the message. The row stays, so {@code desk_trigger_event_once} (V65) still
+ * refuses the event's re-admission.
  *
  * <p>{@link Uncaused}: {@link DeskTriggerWindow}'s reasoning.
  */
@@ -57,4 +63,18 @@ public class DeskTriggerEvent extends PanacheEntityBase {
 
   @Column(name = "admitted_at", nullable = false)
   public Instant admittedAt;
+
+  /** {@link #droppedReason}: the condition the line reported no longer holds. */
+  public static final String RESOLVED = "resolved";
+
+  /** {@link #droppedReason}: a newer live line about the same request supersedes it. */
+  public static final String SUPERSEDED = "superseded";
+
+  /** When the sweep dropped the line from the message; null while it is live (qits-2501, V80). */
+  @Column(name = "dropped_at")
+  public Instant droppedAt;
+
+  /** {@link #RESOLVED} or {@link #SUPERSEDED}; null while the line is live. */
+  @Column(name = "dropped_reason")
+  public String droppedReason;
 }

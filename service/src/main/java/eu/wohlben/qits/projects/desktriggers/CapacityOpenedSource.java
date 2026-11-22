@@ -14,7 +14,9 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -67,6 +69,11 @@ import java.util.stream.Collectors;
  * is no principal. The cause is the principal when there is one, else {@code agent <id8>}. The
  * payload is a local record ({@link WaitClosedSource}'s reasoning), registered for native-image in
  * {@code bus/EventWireReflection}.
+ *
+ * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while the project runs fewer items than its
+ * {@code max_running} at the time of the check — the reading the Slots section makes ({@link
+ * VerifiedSlotHolders#read}). A slot filled again since needs no dispatch. A reading that cannot
+ * be made (the port absent or throwing, the project gone) resolves nothing.
  */
 @ApplicationScoped
 public class CapacityOpenedSource implements DeskTriggerSource {
@@ -186,6 +193,28 @@ public class CapacityOpenedSource implements DeskTriggerSource {
 
   private static String blankToNull(String value) {
     return isBlank(value) ? null : value;
+  }
+
+  @Inject VerifiedSlotHolders slots;
+
+  /** Every line of the window at once: one reading of the project's slots. */
+  @Override
+  public Set<DeskTriggerEventRow> resolved(
+      String projectId, List<DeskTriggerEventRow> lines, Instant now) {
+    try {
+      Project project =
+          QuarkusTransaction.requiringNew().call(() -> Project.<Project>findById(projectId));
+      if (project == null) {
+        return Set.of();
+      }
+      Optional<VerifiedSlotHolders.Reading> reading = slots.read(project);
+      if (reading.isEmpty() || reading.get().running() < project.deliveryMaxRunning) {
+        return Set.of();
+      }
+      return new HashSet<>(lines);
+    } catch (RuntimeException e) {
+      return Set.of();
+    }
   }
 
   @Override

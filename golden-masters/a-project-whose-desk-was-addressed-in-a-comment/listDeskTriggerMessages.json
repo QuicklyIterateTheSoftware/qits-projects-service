@@ -22,7 +22,9 @@
           "cause": "comment 16600000",
           "commentId": "00000000-0000-4000-8000-000000000004",
           "eventId": "00000000-0000-4000-8000-000000000005",
-          "occurredAt": "2026-01-01T00:00:00Z"
+          "occurredAt": "2026-01-01T00:00:00Z",
+          "droppedAt": null,
+          "droppedReason": null
         }
       ]
     }

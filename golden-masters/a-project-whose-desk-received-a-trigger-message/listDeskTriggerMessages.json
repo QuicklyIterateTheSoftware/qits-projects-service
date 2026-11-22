@@ -22,7 +22,9 @@
           "cause": "tok-workspace-agent-contract",
           "commentId": null,
           "eventId": "00000000-0000-4000-8000-000000000004",
-          "occurredAt": "2026-01-01T00:00:00Z"
+          "occurredAt": "2026-01-01T00:00:00Z",
+          "droppedAt": null,
+          "droppedReason": null
         },
         {
           "source": "approval-needed",
@@ -32,7 +34,9 @@
           "cause": "fold 5eed5eed",
           "commentId": null,
           "eventId": "00000000-0000-4000-8000-000000000006",
-          "occurredAt": "2026-01-01T00:00:00Z"
+          "occurredAt": "2026-01-01T00:00:00Z",
+          "droppedAt": null,
+          "droppedReason": null
         }
       ]
     }

@@ -24,7 +24,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * became and the lines it collected. The audit of the trigger engine ({@code desktriggers/}): an
  * OPEN window is what is collecting now, an OWED one says in {@code attempts}, {@code lastStatus}
  * and {@code lastDetail} why the desk has not taken it yet, DELIVERED or QUEUED name the desk
- * command that took it, and FAILED says it never will.
+ * command that took it, FAILED says it never will, and REDUNDANT that none of its lines still held
+ * when it was due to be sent (qits-2501). Every line is answered, the dropped ones too, with when
+ * and why the sweep dropped it from the message ({@code droppedAt}, {@code droppedReason}).
  *
  * <p>The roles match {@link ProjectReleaseRequestsController}'s: a person, an admin agent, a
  * platform service and a plain agent. The last matters most — the delivery desk's own token holds
@@ -70,7 +72,11 @@ public class ProjectDeskTriggersController {
               + " how its delivery to the delivery desk went.")
   public record Message(
       UUID id,
-      @Schema(description = "OPEN, OWED, DELIVERED, QUEUED or FAILED") String state,
+      @Schema(
+              description =
+                  "OPEN, OWED, DELIVERED, QUEUED, FAILED or REDUNDANT (closed without a prompt:"
+                      + " none of its lines still held at the close or before a delivery attempt)")
+          String state,
       @Schema(description = "When the first trigger opened the window") Instant openedAt,
       @Schema(description = "When it stops admitting; set at the open and never moved")
           Instant closesAt,
@@ -93,9 +99,16 @@ public class ProjectDeskTriggersController {
       @Schema(description = "Its place in the desk's prompt queue when QUEUED, else null",
           nullable = true)
           Integer queuePosition,
-      @Schema(description = "The exact text sent to the desk; null while OPEN", nullable = true)
+      @Schema(
+              description =
+                  "The exact text last sent, or about to be sent, to the desk: re-rendered from"
+                      + " the lines still live before every attempt. Null while OPEN, and for a"
+                      + " window that went REDUNDANT at its close",
+              nullable = true)
           String message,
-      @Schema(description = "The lines it collected, by admittedAt then itemRef")
+      @Schema(
+              description =
+                  "The lines it collected, by admittedAt then itemRef, the dropped ones included")
           List<Event> events) {
 
     static Message of(DeskTriggerHistory.Entry entry) {
@@ -122,7 +135,12 @@ public class ProjectDeskTriggersController {
       name = "DeskTriggerEvent",
       description = "One item a desk trigger source admitted into a window.")
   public record Event(
-      @Schema(description = "The source that admitted it: wait, work-verified, approval-needed, desk-mentioned, request-failed, request-stalled or capacity-opened")
+      @Schema(
+              description =
+                  "The source that admitted it: wait, work-verified, approval-needed,"
+                      + " desk-mentioned, issue-answered, request-failed, target-oom-killed,"
+                      + " request-stalled, agent-idle, verified-unshipped, wait-broken or"
+                      + " capacity-opened")
           String source,
       @Schema(description = "The item as the desk is shown it, e.g. qits-1580") String itemRef,
       @Schema(description = "The item's own id, when the source knows one; for capacity-opened, the agent's id", nullable = true)
@@ -135,7 +153,19 @@ public class ProjectDeskTriggersController {
               nullable = true)
           String commentId,
       @Schema(description = "The bus event that carried it") UUID eventId,
-      @Schema(description = "When it happened") Instant occurredAt) {
+      @Schema(description = "When it happened") Instant occurredAt,
+      @Schema(
+              description =
+                  "When the sweep dropped it from the message because it no longer held; null"
+                      + " while it is live",
+              nullable = true)
+          Instant droppedAt,
+      @Schema(
+              description =
+                  "Why it was dropped: resolved (what it reported is over) or superseded (a newer"
+                      + " line of the same request in the window says it); null while it is live",
+              nullable = true)
+          String droppedReason) {
 
     static Event of(DeskTriggerEvent event) {
       return new Event(
@@ -146,7 +176,9 @@ public class ProjectDeskTriggersController {
           event.cause,
           event.commentId,
           event.eventId,
-          event.occurredAt);
+          event.occurredAt,
+          event.droppedAt,
+          event.droppedReason);
     }
   }
 
@@ -160,9 +192,11 @@ public class ProjectDeskTriggersController {
       description =
           "Newest first by openedAt, every state: OPEN (collecting), OWED (closed, not yet taken —"
               + " attempts, lastStatus and lastDetail say why), DELIVERED or QUEUED (taken, with"
-              + " acceptedAt and commandId) and FAILED (never to be delivered). Each carries the"
-              + " lines it collected, by admittedAt then itemRef. limit defaults to 20 and may be"
-              + " 1 to 100. An unknown project is a 404.")
+              + " acceptedAt and commandId), FAILED (never to be delivered) and REDUNDANT (closed"
+              + " without a prompt: no line still held). Each carries the lines it collected, by"
+              + " admittedAt then itemRef, the dropped ones included with droppedAt and"
+              + " droppedReason. limit defaults to 20 and may be 1 to 100. An unknown project is"
+              + " a 404.")
   public Messages list(
       @PathParam("projectId") String projectId, @QueryParam("limit") Integer limit) {
     int n = limit == null ? DEFAULT_LIMIT : limit;
