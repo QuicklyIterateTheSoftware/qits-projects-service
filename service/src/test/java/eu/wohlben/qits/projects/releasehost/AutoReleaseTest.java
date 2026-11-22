@@ -279,6 +279,18 @@ public class AutoReleaseTest {
    * — which belongs to a revision — has nowhere else to be put.
    */
   private String releaseARequest(Map<String, String> tree, java.util.function.Consumer<String> atFold) {
+    return releaseARequest(tree, atFold, true);
+  }
+
+  /**
+   * The same walk, leaving the approval table alone when {@code approved} is false. The late-join
+   * cases need that: an approved fold is closed to new branches (qits-2526), so a create while its
+   * tag is cut queues behind it rather than joining. The race those cases are about stays open for
+   * a repository that needs no approval — which {@link #reactor()} is — and that is the case they
+   * stage.
+   */
+  private String releaseARequest(
+      Map<String, String> tree, java.util.function.Consumer<String> atFold, boolean approved) {
     String id = create("work");
     mergedSha = mergedShaOf(id);
     assertNotNull(mergedSha, "the create folds the sources at once");
@@ -286,7 +298,9 @@ public class AutoReleaseTest {
     atFold.accept(mergedSha);
     executor.passThrough();
     activeBuilds.answer(Optional.of(0));
-    approve(id, mergedSha);
+    if (approved) {
+      approve(id, mergedSha);
+    }
     greenVerdict(mergedSha);
     return id;
   }
@@ -914,7 +928,9 @@ public class AutoReleaseTest {
   @Test
   public void aBranchJoiningWhileTheTagIsCutIsHandedOnToAnOpenRequest() throws InterruptedException {
     RecordingReleaseGitHost.Hold held = gitHost.holdNextTag(repoId);
-    String id = releaseARequest(reactor());
+    // Unapproved: the reactor needs no approval, and an approved fold would queue the late
+    // branch instead of letting it join (qits-2526).
+    String id = releaseARequest(reactor(), fold -> {}, false);
     assertTrue(held.awaitEntered(), "the worker reached the executor");
     String tagged = mergedSha;
 
@@ -1007,7 +1023,9 @@ public class AutoReleaseTest {
   public void aJoinBeforeTheBumpCommitStopsTheReleaseAndTheRequestRegates()
       throws InterruptedException {
     RecordingReleaseExecutor.Hold held = executor.holdNextRelease();
-    String id = releaseARequest(reactor());
+    // Unapproved: the reactor needs no approval, and an approved fold would queue the late
+    // branch instead of letting it join (qits-2526).
+    String id = releaseARequest(reactor(), fold -> {}, false);
     assertTrue(held.awaitEntered(), "the worker reached the executor");
     String gated = mergedSha;
 
