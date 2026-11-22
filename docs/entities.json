@@ -2371,6 +2371,14 @@
           "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
           "kind" : "body",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -2471,6 +2479,14 @@
           "dto" : "eu.wohlben.qits.projects.agenthost.FrontDeskPrompter$Reply",
           "kind" : "body",
           "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
+          "cardinality" : "collection"
         }
       ]
     },
@@ -3598,6 +3614,14 @@
           "path" : "/work/{qualifiedId}/status",
           "dto" : "eu.wohlben.qits.entities.control.NeedRef",
           "kind" : "returns",
+          "cardinality" : "single"
+        },
+        {
+          "operationId" : "startAgent",
+          "method" : "POST",
+          "path" : "/projects/{projectId}/agents/{name}/start",
+          "dto" : "eu.wohlben.qits.projects.api.ProjectAgentsController$AgentView",
+          "kind" : "schema",
           "cardinality" : "single"
         },
         {
