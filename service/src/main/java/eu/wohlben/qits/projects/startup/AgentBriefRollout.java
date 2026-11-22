@@ -22,7 +22,9 @@ import org.jboss.logging.Logger;
  *
  * <p>qits-2156 adds the UI builder's surface ({@link AgentSurfaceDefaults#PROJECT_UI_BUILDER}): a
  * row still holding qits-2154's placeholder ({@link
- * AgentSurfaceDefaults#QITS_2154_UI_BUILDER_PROMPT}) is rewritten to its real brief.
+ * AgentSurfaceDefaults#QITS_2154_UI_BUILDER_PROMPT}) is rewritten to its real brief, and so is
+ * one still holding qits-2156's ({@link AgentSurfaceDefaults#QITS_2156_UI_BUILDER_PROMPT}, before
+ * qits-2499 made the opened-context block a paste).
  */
 @ApplicationScoped
 public class AgentBriefRollout {
@@ -72,7 +74,9 @@ public class AgentBriefRollout {
                     AgentSurfaceDefaults.QITS_1724_COMPOSED_RUN_BRIEF)));
     all.put(
         AgentSurfaceDefaults.PROJECT_UI_BUILDER,
-        List.of(AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT));
+        List.of(
+            AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT,
+            AgentSurfaceDefaults.QITS_2156_UI_BUILDER_PROMPT));
     return Map.copyOf(all);
   }
 }

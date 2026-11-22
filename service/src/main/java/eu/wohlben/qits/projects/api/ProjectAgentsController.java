@@ -35,8 +35,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 /**
  * <b>Talk to a project's named agents</b> (qits-2154): the kept Claude sessions in its front desk
  * container, by name — {@code desk} (the front desk itself) and {@code ui-builder} today, every
- * project having every one ({@link NamedAgents}). List them, hand one a prompt, read its last
- * answer. The terminal has no door of its own: the listing carries each running agent's {@code
+ * project having every one ({@link NamedAgents}). List them, start one, hand one a prompt, read its
+ * last answer. The terminal has no door of its own: the listing carries each running agent's {@code
  * commandId}, which the existing proxy {@code /projects/container/{projectId}/terminal/commands/
  * {commandId}} serves.
  *
@@ -265,6 +265,45 @@ public class ProjectAgentsController {
       Thread.currentThread().interrupt();
       return refusal(503, "Interrupted while asking the project's front desk.");
     }
+  }
+
+  @POST
+  @Path("/{name}/start")
+  @Operation(
+      operationId = "startAgent",
+      summary = "Start a named agent if it is not running; a stopped desk container is started",
+      description =
+          "Asks for the agent's session without a prompt (qits-2499): the agent's demand is"
+              + " stamped and the desk ensured, so a stopped container is started and the agent's"
+              + " session asked for. A running agent is left as it is. Answers the agent as the"
+              + " listing does, at once: STARTING while it comes up.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The agent, as the listing answers it",
+      content = @Content(schema = @Schema(implementation = AgentView.class)))
+  @APIResponse(
+      responseCode = "404",
+      description = "No such project, or no named agent of that name",
+      content = @Content(schema = @Schema(implementation = Refusal.class)))
+  public Response start(@PathParam("projectId") String projectId, @PathParam("name") String name) {
+    Response unknown = unknownProject(projectId);
+    if (unknown != null) {
+      return unknown;
+    }
+    Optional<NamedAgents.Agent> agent = NamedAgents.find(name);
+    if (agent.isEmpty()) {
+      return unknownAgent(name);
+    }
+    if (agent.get().desk()) {
+      frontDesks.ensure(projectId);
+    } else {
+      agents.start(projectId, agent.get());
+    }
+    return agents.list(projectId).stream()
+        .filter(state -> state.name().equals(name))
+        .findFirst()
+        .map(state -> Response.ok(AgentView.of(state)).build())
+        .orElseGet(() -> unknownAgent(name));
   }
 
   @GET

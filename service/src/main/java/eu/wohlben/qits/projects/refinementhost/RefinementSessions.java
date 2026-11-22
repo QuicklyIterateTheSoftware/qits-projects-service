@@ -160,6 +160,21 @@ public class RefinementSessions {
     return Duration.between(row.lastDemandAt, now).compareTo(idle) < 0;
   }
 
+  /**
+   * Whether a named agent's <b>session</b> is asked for at {@code now}: a kept agent ({@link
+   * eu.wohlben.qits.projects.control.NamedAgents#kept}, qits-2499) once it was ever started or
+   * prompted, whatever its idle window; any other while {@link #wantsRunning(NamedAgent, Instant,
+   * Duration)}. The desk container's own demand stays the idle rule. Pure.
+   */
+  public static boolean sessionWanted(NamedAgent row, Instant now, Duration idle) {
+    if (row != null
+        && row.lastDemandAt != null
+        && eu.wohlben.qits.projects.control.NamedAgents.kept(row.name)) {
+      return true;
+    }
+    return wantsRunning(row, now, idle);
+  }
+
   /** {@link #wantsRunning(NamedAgent, Instant, Duration)} under the configured idle window. */
   public boolean wantsRunning(NamedAgent row, Instant now) {
     return wantsRunning(row, now, idleTimeout);
@@ -247,7 +262,7 @@ public class RefinementSessions {
         if (agent == null
             || agent.name == null
             || agent.surface == null
-            || !wantsRunning(agent, now, idle)) {
+            || !sessionWanted(agent, now, idle)) {
           continue;
         }
         sessions.add(

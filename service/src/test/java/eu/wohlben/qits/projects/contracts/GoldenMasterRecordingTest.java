@@ -1607,6 +1607,15 @@ class GoldenMasterRecordingTest {
             "POST",
             agents + "/{name}/prompt",
             "{\"text\":\"Pitch a calmer header.\"}"));
+    // The start (qits-2499), as the landing app's agent dialog calls it on open: the running
+    // agent is left as it is and answered as the listing answers it.
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING,
+            "startAgent",
+            "POST",
+            agents + "/{name}/start",
+            null));
     all.add(
         read(
             ProviderStates.A_PROJECT_WHOSE_NAMED_AGENT_IS_RUNNING,
