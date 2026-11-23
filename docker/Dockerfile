@@ -112,8 +112,29 @@ RUN ./mvnw --version
 # service/target alone is ~237 MB.
 COPY . .
 
-# -Dnative flips quarkus.native.enabled (service/pom.xml carries its own `native` profile). Cap
-# native-image RAM so the build is deterministic on small machines.
+# -Dnative flips quarkus.native.enabled (service/pom.xml carries its own `native` profile).
+#
+# --- the memory budget, and why Maven and native-image run one after the other --------------------
+# This stage runs inside the CI builder's own buildkitd, capped at 8 GiB per build (qits-2503,
+# `BuildkitSettings.MEMORY_PER_BUILD` in qits-system-runner-daemon). native-image at `-Xmx6g` peaks
+# at ~7.7 GB RSS (the heap plus 1.6-1.9 GB of its own off-heap; measured `Peak RSS: 7.64GB`, run
+# bc45efb8), and Maven's JVM holds ~1.35 GiB beside it the whole time, waiting on that child. Together
+# that is ~9 GiB against an 8 GiB cgroup, and the OOM killer ended it with exit 137 on ws-proof
+# (qits-2584).
+#
+# Neither JVM ever sees the cap: the limit sits on buildkitd's own cgroup, a parent of this RUN's,
+# so both processes size themselves off the HOST's memory regardless (the build log says "8.6% of
+# system memory"). Bounding Maven's own heap does not help either — `-Xmx1g` with SerialGC still
+# held 1.12 GiB RSS.
+#
+# Hence `-Dquarkus.native.sources-only=true` below: Maven runs augmentation, writes
+# `service/target/native-sources/` and exits — its JVM is gone before native-image ever starts — and
+# native-image then runs alone, with the whole 8 GiB to itself. The strip and the move after it are
+# exactly what Quarkus' own `NativeImageBuildStep` does when it runs native-image itself. `6g` stays
+# (the analysis OOMed at `4g`, commit 97fab636) and the 8 GiB cap stays — do not raise either.
+#
+# It has to stay inside the SAME `RUN` as the Maven call, for the same two reasons as the Quinoa `cp`
+# below: the secret mounts are scoped to this `RUN` alone, and a second `RUN` would be a second layer.
 #
 # -DskipTests skips execution, not compilation: test sources still compile here, and `service`'s
 # testResources copy domain's committed bare git fixtures, so neither is droppable from the context.
@@ -213,6 +234,7 @@ RUN --mount=type=secret,id=qits-client-id \
     ./mvnw -B -ntp -s .qits-maven-settings.xml -pl service -am package -Dnative -DskipTests \
       -Dqits.maven.repository.url="$QITS_MAVEN_REPOSITORY_URL" \
       -Dquarkus.native.native-image-xmx=6g \
+      -Dquarkus.native.sources-only=true \
       -Dquarkus.quinoa.package-manager-install=true \
       -Dquarkus.quinoa.package-manager-install.node-version=22.22.0 \
       -Dquarkus.quinoa.package-manager-command.install=--version \
@@ -220,12 +242,30 @@ RUN --mount=type=secret,id=qits-client-id \
       -Dquarkus.quinoa.package-manager-command.build=--version \
       org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom \
       -DoutputFormat=json -DoutputName=sbom -DschemaVersion=1.6 \
-      -Dcyclonedx.skipNotDeployed=false
+      -Dcyclonedx.skipNotDeployed=false && \
+    ( set -f && cd service/target/native-sources \
+      && native-image $(cat native-image.args) \
+      && objcopy --strip-debug qits-projects \
+      && mv qits-projects ../qits-projects )
 # cyclonedx.skipNotDeployed=false is LOAD-BEARING, measured on qits-artifacts' first SBOM release
 # (2026.902.45658): the service module skips maven-deploy — it ships as this image, not as a jar —
 # and the plugin SKIPS deploy-skipping modules by default, with a green build and one INFO line. The
 # sbom stage's COPY then fails on a file nothing wrote. The property spelling matters too: the bare
 # -DskipNotDeployed=false is silently ignored; only the cyclonedx.-prefixed one reaches the plugin.
+#
+# The `( cd … && native-image … )` after `mvnw` is the second half of the split above: Maven has
+# already exited, so this runs with the whole 8 GiB cgroup to itself. `native-image` is on PATH in
+# the Mandrel builder image (`/opt/mandrel/bin`). `native-image.args` is what
+# `quarkus.native.sources-only=true` made Maven write — it already carries `-J-Xmx6g`, `-o
+# qits-projects` and `-jar qits-projects.jar` — and `$(cat native-image.args)` is deliberately
+# UNQUOTED: the file is one line of space-separated arguments with no quoting, so word-splitting it
+# is exactly the invocation Quarkus itself documents, not a quoting bug. `set -f` keeps the shell from
+# also glob-expanding them, should an argument ever carry a `*`. `objcopy --strip-debug` and
+# the `mv` into `service/target/qits-projects` are what Quarkus' own `NativeImageBuildStep` does after
+# a native-image run it drives itself; doing them by hand here is what keeps the runtime stage's
+# `COPY --from=build .../service/target/qits-projects` working unchanged. The subshell is so `set -f`
+# and the `cd` do not change the working directory of anything that follows in this `RUN` (there is nothing
+# after it today, but the next person editing this file should not have to care).
 
 # --- sbom -----------------------------------------------------------------------------------------
 # The service module's CycloneDX document, exported so the release step can PUT it to the artifacts
