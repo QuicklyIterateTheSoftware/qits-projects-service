@@ -36,6 +36,9 @@ public class EntityDispatchService {
 
   @Inject WritePatience writes;
 
+  /** The one writer of the assignee, which announces its change after the commit (qits-2518). */
+  @Inject AssigneeWrites assignees;
+
   /**
    * The row this id names, <b>of any archetype</b>, or a 404. The per-archetype services each 404 a
    * row of another kind; the one dispatch door is about every kind, so it reads through here.
@@ -143,9 +146,7 @@ public class EntityDispatchService {
             throw new ConflictException(
                 "A " + row.archetype + " has no assignee: nothing is dispatched onto one.");
           }
-          row.assignee = assignee == null || assignee.isBlank() ? null : assignee;
-          // The agent is on it, not a person (qits-2259): the next phase's press goes through.
-          row.assigneeClaimed = false;
+          assignees.dispatch(row, assignee, changedBy);
           entities.getEntityManager().flush();
           auditService.record(
               AuditEntityType.of(row.archetype),

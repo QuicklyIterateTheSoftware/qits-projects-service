@@ -135,6 +135,7 @@ public class EventWireReflectionTest {
             EntityTransitioned.class,
             EntityTransitioned.Entity.class,
             EntityCommented.class,
+            EntityAssigned.class,
             WorkNeedMet.class,
             IdeaCreated.class,
             IdeaUpdated.class,
@@ -158,7 +159,7 @@ public class EventWireReflectionTest {
         Set.of(registration.targets()),
         "the four SCM records and the five bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, ReleaseRequestStateChanged, BranchDeliveryChanged, ReleaseRequestSourceMoved, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR, EntityCommented, WorkNeedMet, the four idea events, PitchChanged and NamedAgentStateChanged out, the PUT body, the frame — one more wire type"
+            + " transition's payload PAIR, EntityCommented, EntityAssigned, WorkNeedMet, the four idea events, PitchChanged and NamedAgentStateChanged out, the PUT body, the frame — one more wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -226,6 +227,10 @@ public class EventWireReflectionTest {
         targets.contains(EntityCommented.class),
         "EntityCommentAnnouncer publishes this (qits-1660); unregistered, an @desk comment never"
             + " wakes the desk");
+    assertTrue(
+        targets.contains(EntityAssigned.class),
+        "EntityAssignAnnouncer publishes this (qits-2518); unregistered, no assignee change ever"
+            + " leaves the service");
     assertTrue(
         targets.contains(WorkNeedMet.class),
         "WorkNeedAnnouncer publishes this (qits-1903); unregistered, a desk waiting on a need"
