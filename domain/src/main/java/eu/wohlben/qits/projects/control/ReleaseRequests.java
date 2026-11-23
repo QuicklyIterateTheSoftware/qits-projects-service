@@ -1786,6 +1786,15 @@ public class ReleaseRequests {
    * explicit_join} (V55), so a reader can tell what came past the freeze from what the request
    * held when it froze; a join below the freeze, or onto a queued request (never frozen), is not
    * stamped. The placement's sentence says which.
+   *
+   * <p><b>A branch is a source of one open release request at a time</b> (qits-2510). Naming a
+   * branch that is not already a source of {@code requestId} is refused with a 409 where another
+   * unreleased request of the same repository already names it — {@code main} is exempt, since
+   * every request carries it. {@code moveSource} is the ordinary way a branch ends up elsewhere:
+   * without this check a join onto the request it left could re-add it there while the row
+   * {@code moveSource} wrote still sits on the request it was moved to, and the table's own {@code
+   * unique (request_id, kind, name)} would refuse the insert as a 500 rather than as a sentence
+   * naming where the branch already is.
    */
   public Asked join(String requestId, String branch, String actor, String priority) {
     String named = requireBranch(branch);
@@ -1840,6 +1849,23 @@ public class ReleaseRequests {
                   boolean frozen = row.queuedBehind == null && threshold.freezes(counted);
                   ReleaseRequestSource existing =
                       sources.find(row.id, ReleaseRequestSource.Kind.BRANCH, named).orElse(null);
+                  // qits-2510: a branch is a source of one open release request at a time. A join
+                  // naming a request this branch does not already sit on is refused where another
+                  // unreleased request of the repository already names it — moveSource may have
+                  // just carried it onto the request queued behind this one, say — before the
+                  // caller takes part, so a refused join leaves no trace of having been asked.
+                  if (existing == null && !named.equals(of.main())) {
+                    for (ReleaseRequest other : requests.listUnreleasedByRepo(row.repoId)) {
+                      if (other.id.equals(row.id)) {
+                        continue;
+                      }
+                      if (sources
+                          .find(other.id, ReleaseRequestSource.Kind.BRANCH, named)
+                          .isPresent()) {
+                        throw new DomainException(409, crossRequestRefusal(row, other, named));
+                      }
+                    }
+                  }
                   // A join is an ask: its caller takes part, idempotent arm included (qits-1673).
                   participants.add(row.id, actor);
                   if (existing != null) {
@@ -2029,6 +2055,29 @@ public class ReleaseRequests {
   }
 
   /**
+   * The 409 {@link #join} answers a branch that is already a source of {@code other}, an
+   * unreleased request of the same repository other than the one named (qits-2510): {@code
+   * moveSource} may have carried it onto the request queued behind {@code row}, or {@code row}
+   * may itself be the one queued behind {@code other} — named either way, by qualified id, so the
+   * caller is told exactly which request to look at rather than merely that one exists.
+   */
+  private String crossRequestRefusal(ReleaseRequest row, ReleaseRequest other, String named) {
+    String extra;
+    if (row.id.equals(other.queuedBehind)) {
+      extra = ", queued behind " + row.qualifiedId;
+    } else if (other.id.equals(row.queuedBehind)) {
+      extra = ", which " + row.qualifiedId + " is queued behind";
+    } else {
+      extra = "";
+    }
+    return named
+        + " is already a source of "
+        + other.qualifiedId
+        + extra
+        + "; a branch is a source of one open release request at a time";
+  }
+
+  /**
    * Re-state how urgently one named branch of an open request wants to be released. The request's
    * effective priority — the max over its named sources — follows on the next read.
    *
@@ -2168,6 +2217,14 @@ public class ReleaseRequests {
    *       announced ({@link ReleaseRequestSourceMoveAnnouncer}).
    * </ol>
    *
+   * <p><b>A queued request that already holds the branch is repaired, not duplicated</b>
+   * (qits-2510): the table's {@code unique (request_id, kind, name)} would otherwise 500 on a
+   * branch that somehow ended up a source of both requests — {@link #join} itself refuses the
+   * join that used to cause this, but a row made before that fix, or by some other path, still
+   * finds the queue holding one. The source still leaves this request and its automation branches
+   * still drop; only the duplicate insert onto the queue is skipped, and its existing row stands
+   * unchanged as the queue's one source of that branch.
+   *
    * <p>After the commit this request is folded again without the branch ({@link #remerge}), which
    * re-arms it to PENDING the way any refold does; approvals and waivers are keyed by the fold, so
    * they go stale by themselves. The queued request folds nothing until it is active: {@link
@@ -2270,28 +2327,39 @@ public class ReleaseRequests {
                   // fold, which carries the source that left, so the refold would take it back in.
                   // They regenerate from the new fold.
                   List<String> dropped = dropAutomationSources(row);
-                  ReleaseRequestSource carried = new ReleaseRequestSource();
-                  carried.id = UUID.randomUUID().toString();
-                  carried.requestId = queued.id;
-                  carried.kind = ReleaseRequestSource.Kind.BRANCH;
-                  carried.name = source.name;
-                  carried.priority = source.priority;
-                  carried.addedAt = source.addedAt;
-                  carried.addedBy = source.addedBy;
-                  carried.feature = source.feature;
-                  // An ordinary member of the queue: nothing joined past a freeze here.
-                  carried.explicitJoin = false;
-                  carried.label = source.label;
-                  carried.causationId = source.causationId;
-                  sources.persist(carried);
-                  // Sources fold in the order they were added, main first: it is the head the fold
-                  // starts from. The carried row keeps when it was first added, which predates the
-                  // queue's own main row, so main is set back to just before it.
-                  ReleaseRequest target = queued;
-                  sources
-                      .find(target.id, ReleaseRequestSource.Kind.BRANCH, main)
-                      .filter(mainRow -> !mainRow.addedAt.isBefore(carried.addedAt))
-                      .ifPresent(mainRow -> mainRow.addedAt = carried.addedAt.minusMillis(1));
+                  // qits-2510: the queue may already hold this branch, from a join made before
+                  // join refused one. Inserting it again breaks `unique (request_id, kind, name)`
+                  // (a 500), so the queue's existing row stands as its one source, untouched.
+                  ReleaseRequestSource already =
+                      minted
+                          ? null
+                          : sources
+                              .find(queued.id, ReleaseRequestSource.Kind.BRANCH, named)
+                              .orElse(null);
+                  if (already == null) {
+                    ReleaseRequestSource carried = new ReleaseRequestSource();
+                    carried.id = UUID.randomUUID().toString();
+                    carried.requestId = queued.id;
+                    carried.kind = ReleaseRequestSource.Kind.BRANCH;
+                    carried.name = source.name;
+                    carried.priority = source.priority;
+                    carried.addedAt = source.addedAt;
+                    carried.addedBy = source.addedBy;
+                    carried.feature = source.feature;
+                    // An ordinary member of the queue: nothing joined past a freeze here.
+                    carried.explicitJoin = false;
+                    carried.label = source.label;
+                    carried.causationId = source.causationId;
+                    sources.persist(carried);
+                    // Sources fold in the order they were added, main first: it is the head the
+                    // fold starts from. The carried row keeps when it was first added, which
+                    // predates the queue's own main row, so main is set back to just before it.
+                    ReleaseRequest target = queued;
+                    sources
+                        .find(target.id, ReleaseRequestSource.Kind.BRANCH, main)
+                        .filter(mainRow -> !mainRow.addedAt.isBefore(carried.addedAt))
+                        .ifPresent(mainRow -> mainRow.addedAt = carried.addedAt.minusMillis(1));
+                  }
                   // Its author takes part in the request that carries it now; the mover does not,
                   // so a desk's move leaves an unattended request unattended.
                   participants.add(queued.id, source.addedBy);

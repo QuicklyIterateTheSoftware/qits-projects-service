@@ -23,6 +23,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestSourceMoveDto;
 import eu.wohlben.qits.projects.entity.BranchDelivery;
 import eu.wohlben.qits.projects.entity.BranchDeliveryNotice;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
@@ -525,6 +526,116 @@ public class ReleaseRequestSourceMoveTest {
       assertTrue(message.contains("is already " + state), message);
     }
     assertTrue(names(releaseRequests.get(active)).contains(moved), "nothing moved");
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // A branch is a source of one open release request at a time (qits-2510)
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * The bug this covers: {@code join} used to check only the named request for the branch, so a
+   * branch {@code moveSource} had already carried onto the queue could be re-joined onto the
+   * request it left — ending up a source of both. The join now refuses it, naming the queue.
+   */
+  @Test
+  void aJoinNamingTheActiveRequestWhileTheQueueHoldsTheBranchIs409() {
+    String active = ask(feature(), "alice").request().id();
+    String moved = feature();
+    ask(moved, "bob");
+    String queued = releaseRequests.moveSource(active, moved, "not ready", "carol").to().id();
+    String queuedQid = releaseRequests.get(queued).qualifiedId();
+
+    String message = assertStatus(409, () -> releaseRequests.join(active, moved, "dave", null));
+
+    assertTrue(message.contains(queuedQid), message);
+    assertTrue(message.contains("one open release request at a time"), message);
+    assertFalse(
+        names(releaseRequests.get(active)).contains(moved), "the active request gains no row");
+    assertTrue(names(releaseRequests.get(queued)).contains(moved), "the queue still holds it");
+  }
+
+  @Test
+  void aRejoinOfTheNamedRequestsOwnBranchStillAnswersPresent() {
+    String active = ask(feature(), "alice").request().id();
+    String moved = feature();
+    ask(moved, "bob");
+
+    ReleaseRequests.Asked rejoined = releaseRequests.join(active, moved, "alice", null);
+
+    assertEquals("PRESENT", rejoined.placement().outcome());
+    assertTrue(names(rejoined.request()).contains(moved));
+  }
+
+  /**
+   * {@code main} is implied by every request (minted as a source at create), so an ordinary join
+   * of it always finds the PRESENT arm before the new cross-request check runs at all — the
+   * exemption exists for completeness and this is what "unaffected" means in practice.
+   */
+  @Test
+  void aJoinOfMainIsUnaffected() {
+    String active = ask(feature(), "alice").request().id();
+    String moved = feature();
+    ask(moved, "bob");
+    releaseRequests.moveSource(active, moved, "not ready", "carol");
+
+    ReleaseRequests.Asked rejoined = releaseRequests.join(active, "main", "dave", null);
+
+    assertEquals("PRESENT", rejoined.placement().outcome());
+  }
+
+  /**
+   * The other half of the bug: before {@code join} refused the duplicate, a branch could already
+   * have ended up on both requests. {@code moveSource} must repair that rather than 500 on the
+   * table's {@code unique (request_id, kind, name)} — this creates the duplicate directly, the way
+   * only a pre-existing or otherwise-made row could, since {@code join} itself no longer can.
+   */
+  @Test
+  void aMoveWhoseQueueAlreadyHoldsTheBranchSkipsTheDuplicateInsert() {
+    String active = ask(feature(), "alice").request().id();
+    String other = feature();
+    ask(other, "bob");
+    String queued = releaseRequests.moveSource(active, other, "not ready", "carol").to().id();
+    String moved = feature();
+    ask(moved, "dave");
+    assertTrue(
+        names(releaseRequests.get(active)).contains(moved), "the premise: moved sits on active");
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequestSource duplicate = new ReleaseRequestSource();
+              duplicate.id = UUID.randomUUID().toString();
+              duplicate.requestId = queued;
+              duplicate.kind = ReleaseRequestSource.Kind.BRANCH;
+              duplicate.name = moved;
+              duplicate.priority = ReleasePriority.DEFAULT;
+              duplicate.addedAt = Instant.now().minusSeconds(5);
+              duplicate.addedBy = "dave";
+              duplicate.feature = true;
+              duplicate.explicitJoin = false;
+              duplicate.persist();
+            });
+    assertEquals(
+        1L,
+        QuarkusTransaction.requiringNew()
+            .call(() -> ReleaseRequestSource.count("requestId = ?1 and name = ?2", queued, moved)),
+        "the premise: the queue already holds it once, directly");
+
+    ReleaseRequests.Moved answer = releaseRequests.moveSource(active, moved, "conflicts", "erin");
+
+    assertEquals(queued, answer.to().id());
+    assertFalse(names(answer.from()).contains(moved), "it left the active request");
+    assertEquals(
+        1L,
+        names(answer.to()).stream().filter(moved::equals).count(),
+        "exactly one row on the queue, not two");
+    assertTrue(
+        answer.to().sourceMoves().stream().anyMatch(move -> moved.equals(move.branch())),
+        "the move is listed");
+    assertTrue(
+        moves.recorded().stream()
+            .anyMatch(recorded -> moved.equals(recorded.move().branch()) && recorded.committed()),
+        "the move is announced after its commit");
   }
 
   // -------------------------------------------------------------------------------------------
