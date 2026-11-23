@@ -7321,10 +7321,14 @@ public class ReleaseRequests {
    * <p>A pending note is the platform doing something: a run is requested or in flight, or a commit
    * is about to re-fold the request, so the right thing for a reader to do is wait, and the sentence
    * names the kinds and what each is doing. A failed one is a person's turn — push, re-run or waive.
-   * Anything else is this service saying it could not establish the automations at all — no
-   * qits-maintenance configured (only ever the wrapper), one that could not be reached, an answer
-   * that would not say — and the sentence carries the reason the refresh recorded. Collapsing those
-   * would make an outage indistinguishable from work in progress.
+   * An unknown one is two cases, and the note's detail tells them apart (qits-2571). With no detail
+   * the far side did answer and some kind is still being decided — qits-maintenance answers UNKNOWN
+   * for a kind whose settle ran past its budget — so it is the pending sentence again, that kind
+   * "being settled". With a detail it is this service saying it could not establish the automations
+   * at all — no qits-maintenance configured (only ever the wrapper), one that could not be reached,
+   * an answer about another fold — and the sentence carries that reason. Collapsing those would
+   * make an outage indistinguishable from work in progress, which is exactly what qits-2571 found:
+   * a request listing its kinds RUNNING while its detail said they could not be established.
    *
    * <p>Routed through {@link #waiting} like every other holding sentence, so it is
    * idempotent-by-sentence: the sweep re-evaluates every open request every thirty seconds and
@@ -7343,12 +7347,7 @@ public class ReleaseRequests {
     }
     switch (note.state()) {
       case PENDING -> {
-        String moving =
-            note.automations().stream()
-                .filter(entry -> !AutomationLedger.holdsNothing(entry.state()))
-                .map(entry -> entry.label() + " " + doing(entry.state()))
-                .collect(Collectors.joining(", "));
-        return "Waiting for automations at " + sha + ": " + moving;
+        return "Waiting for automations at " + sha + ": " + moving(note);
       }
       case FAILED -> {
         String failed =
@@ -7362,12 +7361,27 @@ public class ReleaseRequests {
         // Fresh and still held: the evaluation read the gate before this note was written. Next pass.
         return "Waiting for automations at " + sha;
       }
+      case UNKNOWN -> {
+        // No detail: the far side answered and some kind is still being decided — waiting, not an
+        // outage (qits-2571). A detail is the reason this side recorded for having no answer.
+        return note.detail() == null
+            ? "Waiting for automations at " + sha + ": " + moving(note)
+            : "The automations could not be established for " + sha + ": " + note.detail();
+      }
       default -> {
         return "The automations could not be established for "
             + sha
             + (note.detail() == null ? "" : ": " + note.detail());
       }
     }
+  }
+
+  /** Every kind of a note that still holds something back, as {@link #doing} says it. */
+  private static String moving(AutomationLedger.Note note) {
+    return note.automations().stream()
+        .filter(entry -> !AutomationLedger.holdsNothing(entry.state()))
+        .map(entry -> entry.label() + " " + doing(entry.state()))
+        .collect(Collectors.joining(", "));
   }
 
   /** One kind's state as the hold sentence says it. */
@@ -7378,6 +7392,7 @@ public class ReleaseRequests {
       case "COMMITTED" -> "committed; the commit re-folds this request";
       case "SUPERSEDED" -> "superseded by a newer fold";
       case "WAITING" -> "waiting for the source automations";
+      case "UNKNOWN" -> "being settled";
       default -> state.toLowerCase(java.util.Locale.ROOT);
     };
   }
@@ -9106,7 +9121,8 @@ public class ReleaseRequests {
    *
    * @param applies whether the gate holds this request's repository — see {@link #automationsApply}
    * @param gate PASSED when fresh at the current fold or waived there, FAILED on a FAILED note,
-   *     UNKNOWN on an UNKNOWN one, PENDING otherwise
+   *     UNKNOWN on an UNKNOWN one that carries a reason (no answer to read), PENDING otherwise —
+   *     an UNKNOWN the far side answered included, since a kind is still being decided (qits-2571)
    * @param rows the ledger's rows as the DTO carries them, or null where nothing is on record
    */
   private record AutomationView(
@@ -9178,7 +9194,10 @@ public class ReleaseRequests {
       gate =
           switch (note.state()) {
             case FAILED -> ReleaseGates.State.FAILED;
-            case UNKNOWN -> ReleaseGates.State.UNKNOWN;
+            // An UNKNOWN the far side answered (no detail) is a kind still being decided, not an
+            // unreadable gate: PENDING, as {@link #automationDetail} says it (qits-2571).
+            case UNKNOWN ->
+                note.detail() == null ? ReleaseGates.State.PENDING : ReleaseGates.State.UNKNOWN;
             default -> ReleaseGates.State.PENDING;
           };
     } else if (row.state == ReleaseRequest.State.READY
@@ -9219,8 +9238,12 @@ public class ReleaseRequests {
     if (note != null) {
       return switch (note.state()) {
         case FAILED -> PRE_RUN_FAILED;
-        case PENDING ->
-            note.automations().stream()
+        // An UNKNOWN the far side answered is a kind still being settled beside the others
+        // (qits-2571), so a kind running there reads RUNNING as it would on a PENDING note; one
+        // this side wrote for want of an answer (a detail) knows nothing current, and stays PENDING.
+        case UNKNOWN, PENDING ->
+            (note.state() == AutomationLedger.State.PENDING || note.detail() == null)
+                    && note.automations().stream()
                     .anyMatch(
                         entry ->
                             "REQUESTED".equals(entry.state())

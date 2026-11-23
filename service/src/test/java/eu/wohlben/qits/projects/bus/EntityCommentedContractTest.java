@@ -27,11 +27,13 @@ public class EntityCommentedContractTest {
         UUID.fromString("11111111-2222-3333-4444-555555555555"),
         "c-1",
         "e-1",
+        "epic-1",
         "p-1",
         "TICKET",
         770L,
         "Desk triggers",
         "agent-uuid",
+        "Ada Lovelace",
         "qits-12",
         "tok-agent",
         List.of("desk"),
@@ -51,11 +53,13 @@ public class EntityCommentedContractTest {
         List.of(
             "commentId",
             "entityId",
+            "rootEntityId",
             "projectId",
             "archetype",
             "number",
             "title",
             "author",
+            "authorName",
             "authorAgentOf",
             "changedBy",
             "mentions",
@@ -64,6 +68,8 @@ public class EntityCommentedContractTest {
     }
     assertEquals("desk", payload.get("mentions").get(0).asText());
     assertEquals(770L, payload.get("number").asLong());
+    assertEquals("epic-1", payload.get("rootEntityId").asText());
+    assertEquals("Ada Lovelace", payload.get("authorName").asText());
     assertFalse(payload.has("body"), "the text stays on the thread");
   }
 

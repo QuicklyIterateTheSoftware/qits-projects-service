@@ -180,6 +180,29 @@ class WorkCommentNotificationTest {
     assertEquals(List.of("desk", "bob"), event.mentions());
   }
 
+  @Test
+  void aCommentOnATaskNamesTheEpicAsItsRootAndTheAuthorByName() {
+    bearer(
+            "user-7",
+            Map.of("credential_type", "cli", "name", "Ada Lovelace", "preferred_username", "ada"),
+            "qits:admin")
+        .contentType(ContentType.JSON)
+        .body(Map.of("body", "On the step."))
+        .post("/projects/api/work/" + task.id + "/comments")
+        .then()
+        .statusCode(200);
+    comment(person("alice"), ticket, "On the ticket.").statusCode(200);
+
+    List<EntityCommented> published = announced.published();
+    assertEquals(2, published.size());
+    assertEquals(task.id, published.get(0).entityId());
+    assertEquals(epic.id, published.get(0).rootEntityId(), "a task's root is its epic (qits-2518)");
+    assertEquals("Ada Lovelace", published.get(0).authorName());
+    assertEquals("ada", published.get(0).changedBy(), "the principal is the username");
+    assertEquals(ticket.id, published.get(1).rootEntityId(), "a ticket is its own root");
+    assertEquals("alice", published.get(1).authorName(), "no name claim: the principal");
+  }
+
   // --- who is told -----------------------------------------------------------------------------
 
   @Test

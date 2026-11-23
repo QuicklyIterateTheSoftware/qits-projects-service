@@ -58,7 +58,6 @@ import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
-import jakarta.json.JsonString;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -73,7 +72,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
-import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.jboss.logging.Logger;
 
 /**
@@ -853,18 +851,37 @@ public class WorkEntityDoors {
             entity.id, body, author, authorWorkId, EntitiesPrincipal.changedBy(identity));
     publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
     CommentDto written = toDto(identity, comment);
+    String root = rootOf(entity);
     try {
-      tellTheAgent(identity, entity, written, authorWorkId);
+      tellTheAgent(identity, entity, root, written, authorWorkId);
     } catch (RuntimeException e) {
       // The comment is written; nothing about telling anybody may turn that into a failure.
       LOG.warnf(e, "Could not tell anybody about comment %s", comment.id);
     }
     try {
-      commented.onCommented(entity, written, EntitiesPrincipal.changedBy(identity));
+      commented.onCommented(
+          entity,
+          root,
+          written,
+          CallerDisplayName.of(identity),
+          EntitiesPrincipal.changedBy(identity));
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce comment %s", comment.id);
     }
     return written;
+  }
+
+  /**
+   * The comment's root work item, for the turn and the event (qits-2518), or null when it could not
+   * be read: the comment is written, so nothing here may turn that into a failure.
+   */
+  private String rootOf(WorkEntity entity) {
+    try {
+      return entities.auditRootOf(entity);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not read the root work item of %s", entity.id);
+      return null;
+    }
   }
 
   /**
@@ -875,8 +892,14 @@ public class WorkEntityDoors {
    * the agent comment, which would turn it again, so the rule fails closed.
    */
   private void tellTheAgent(
-      SecurityIdentity identity, WorkEntity entity, CommentDto written, String authorWorkId) {
-    String target = entities.auditRootOf(entity);
+      SecurityIdentity identity,
+      WorkEntity entity,
+      String target,
+      CommentDto written,
+      String authorWorkId) {
+    if (target == null) {
+      return;
+    }
     if (EntitiesPrincipal.agentOf(identity).isPresent()
         && (authorWorkId == null || authorWorkId.equals(target))) {
       return;
@@ -884,33 +907,12 @@ public class WorkEntityDoors {
     String who =
         written.authorAgentOf() != null
             ? written.authorAgentOf() + "'s agent"
-            : displayName(identity);
+            : CallerDisplayName.of(identity);
     String commentedOn = read(entity).qualifiedId();
     if (commentedOn == null) {
       commentedOn = entity.id;
     }
     commentTurns.tell(target, commentedOn, CommentTurns.text(who, commentedOn));
-  }
-
-  /**
-   * Who a person or a machine is, for a turn: the token's {@code name}, else its {@code
-   * preferred_username}, else the principal name (a machine client's id), else {@code someone}.
-   */
-  static String displayName(SecurityIdentity identity) {
-    if (identity != null && identity.getPrincipal() instanceof JsonWebToken jwt) {
-      for (String claim : List.of("name", "preferred_username")) {
-        Object value = jwt.getClaim(claim);
-        String text =
-            value instanceof JsonString json
-                ? json.getString()
-                : value instanceof String plain ? plain : null;
-        if (text != null && !text.isBlank()) {
-          return text.trim();
-        }
-      }
-    }
-    String principal = EntitiesPrincipal.changedBy(identity);
-    return principal == null || principal.isBlank() ? "someone" : principal;
   }
 
   /** The comment {@code commentId}, or a 404. */

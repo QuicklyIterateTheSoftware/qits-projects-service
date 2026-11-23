@@ -25,9 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * in which every release-request test that is not about automations behaves exactly as it did
  * before the gate existed: an empty list is a FRESH note and the request releases on the same pass.
  * A test about the gate scripts kinds per repository name ({@link #answer}) — the same states for
- * the trigger and the read, at whatever fold is asked — and the five other postures are one call
+ * the trigger and the read, at whatever fold is asked — and the six other postures are one call
  * each: {@link #answerNothing()} (unreachable), {@link #answerNoStatus()} (the read alone down,
- * qits-1249), {@link #unconfigure()} (no address at all), {@link #refuseReruns} and {@link
+ * qits-1249), {@link #omitNotApplicableFromStatus()} (the read as the real far side answers it,
+ * qits-2571), {@link #unconfigure()} (no address at all), {@link #refuseReruns} and {@link
  * #leaveRerunsUnanswered} (sent and not answered in time, qits-1625).
  */
 @ApplicationScoped
@@ -80,6 +81,8 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
 
   private volatile boolean configured = true;
 
+  private volatile boolean omitNotApplicableFromStatus;
+
   private volatile Run rerunAnswer;
 
   public List<Asked> asked() {
@@ -131,6 +134,15 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     statusReadable = false;
   }
 
+  /**
+   * The status read leaves NOT_APPLICABLE kinds out from here on, while the trigger still lists
+   * them — as the real far side does: its status door lists only kinds with a row or a deferral
+   * (qits-2571). Opt-in, so every older test keeps reading the same states on both doors.
+   */
+  public void omitNotApplicableFromStatus() {
+    omitNotApplicableFromStatus = true;
+  }
+
   /** No address: the gate is not configured at all. */
   public void unconfigure() {
     configured = false;
@@ -155,6 +167,7 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     reachable = true;
     statusReadable = true;
     configured = true;
+    omitNotApplicableFromStatus = false;
     rerunAnswer = null;
   }
 
@@ -217,9 +230,19 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   @Override
   public Optional<Answer> status(String repositoryName, String requestId, String foldSha) {
     reads.add(requestId);
-    return reachable && statusReadable
-        ? Optional.of(answerAt(repositoryName, requestId, foldSha))
-        : Optional.empty();
+    if (!reachable || !statusReadable) {
+      return Optional.empty();
+    }
+    Answer answer = answerAt(repositoryName, requestId, foldSha);
+    return Optional.of(
+        omitNotApplicableFromStatus
+            ? new Answer(
+                answer.requestId(),
+                answer.foldSha(),
+                answer.automations().stream()
+                    .filter(entry -> !NOT_APPLICABLE.equals(entry.state()))
+                    .toList())
+            : answer);
   }
 
   @Override
