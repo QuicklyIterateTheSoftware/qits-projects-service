@@ -132,7 +132,7 @@ public class AutomationsGate implements ReleaseGate {
       case PENDING ->
           rows.isEmpty()
               ? "Waiting for the automations to answer"
-              : "Waiting for: " + labels(rows, "PENDING");
+              : "Waiting for: " + waitingFor(rows);
     };
   }
 
@@ -150,6 +150,22 @@ public class AutomationsGate implements ReleaseGate {
         "QA checks: "
             + deferred.stream().map(ReleaseAutomationDto::kind).collect(Collectors.joining(", "));
     return waived == null ? qa : waived + ". " + qa;
+  }
+
+  /**
+   * The kinds a PENDING gate waits on: the moving ones, and a kind the far side answered UNKNOWN —
+   * still being settled beside them, which is a wait and not an outage (qits-2571).
+   */
+  private static String waitingFor(List<ReleaseAutomationDto> rows) {
+    String named =
+        rows.stream()
+            .filter(
+                row ->
+                    ReleaseGates.State.PENDING.name().equals(checkState(row.state()))
+                        || ReleaseGates.State.UNKNOWN.name().equals(checkState(row.state())))
+            .map(row -> row.label() == null ? row.kind() : row.label())
+            .collect(Collectors.joining(", "));
+    return named.isEmpty() ? "the automations" : named;
   }
 
   private static String labels(List<ReleaseAutomationDto> rows, String checkState) {

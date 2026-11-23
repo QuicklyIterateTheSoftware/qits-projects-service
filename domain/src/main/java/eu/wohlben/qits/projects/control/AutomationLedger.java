@@ -76,7 +76,13 @@ public class AutomationLedger {
     PENDING,
     /** At least one run was red, a join was refused, or a kind did not converge. A person's turn. */
     FAILED,
-    /** It could not be established — no answer, an answer that would not say, or no port at all. */
+    /**
+     * It is not established yet. Two cases, told apart by the note's {@link Note#detail()}
+     * (qits-2571): the far side answered and some kind is still being decided — it answers UNKNOWN
+     * for a kind whose settle ran past its budget — and the detail is null, so the request reads
+     * as waiting; or there is no answer to read at all — none came, it was about another fold, or
+     * there is no port — and the detail is the reason, so the request reads as an outage.
+     */
     UNKNOWN
   }
 
