@@ -256,6 +256,7 @@
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1123.93025</qits.observability-frontend-pacts-qits-projects-service.version>
         <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1123.93148</qits.orchestrator-frontend-pacts-qits-projects-service.version>
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1123.85159</qits.system-frontend-pacts-qits-projects-service.version>
+        <qits.agents-service-pacts-qits-projects-service.version>2026.1123.194720</qits.agents-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-containers and
@@ -270,14 +271,14 @@
         <qits.maintenance-golden-masters.version>2026.1121.195220</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1120.65904</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1119.60052</qits.ci-golden-masters.version>
-        <qits.idp-golden-masters.version>2026.1122.143700</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1123.194348</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1119.141022</qits.deployments-golden-masters.version>
         <qits.containers-golden-masters.version>2026.1114.40637</qits.containers-golden-masters.version>
         <qits.projects-daemon-golden-masters.version>2026.1113.34426</qits.projects-daemon-golden-masters.version>
         <!-- qits-system's golden masters (epic qits-1481): the lease, work-volume and target doors
              targethost/HttpSystemLeases calls (contracts/consumer/SystemContract), recorded for the
              DESK tenant. The same rule: a qits-maintenance bump moves it. -->
-        <qits.system-golden-masters.version>2026.1123.24759</qits.system-golden-masters.version>
+        <qits.system-golden-masters.version>2026.1123.194748</qits.system-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -584,6 +585,13 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-system-frontend-pacts-qits-projects-service</artifactId>
                 <version>${qits.system-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-agents-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.agents-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->
