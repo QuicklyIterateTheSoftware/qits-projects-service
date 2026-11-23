@@ -424,6 +424,116 @@ public class AutomationGateTest {
   }
 
   /**
+   * <b>qits-2571.</b> qits-maintenance answered, and one kind came back UNKNOWN — it answers that
+   * for a kind whose settle ran past its own budget — beside one RUNNING. That is work in progress,
+   * not an outage: the request waits with the pending sentence, the unsettled kind "being settled",
+   * and never says its automations could not be established.
+   */
+  @Test
+  public void aKindTheFarSideIsStillSettlingWaitsAndIsNoOutage() {
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
+    automations.answer(plainName, "entity-diagram", "UNKNOWN");
+
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, merged);
+
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        "Waiting for automations at "
+            + merged.substring(0, 10)
+            + ": Screenshot baselines running, Entity diagram being settled",
+        held.getString("detail"));
+    assertFalse(held.getString("detail").contains("could not be established"));
+    assertEquals("PENDING", gateState(held, "AUTOMATIONS"));
+    assertEquals(List.of("RUNNING", "UNKNOWN"), held.getList("automations.state"));
+    assertEquals(0, executor.calls().size());
+  }
+
+  /**
+   * qits-2571: the unsettled kind settles on a later ask — RUNNING, then both FRESH — and the
+   * request says so and moves on, at the same fold.
+   */
+  @Test
+  public void aKindStillSettlingIsAskedAgainAndTheRequestMovesOn() {
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
+    automations.answer(plainName, "entity-diagram", "UNKNOWN");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    String sha = merged.substring(0, 10);
+    verdict(plainRepoId, merged);
+    assertEquals(
+        "Waiting for automations at " + sha + ": Screenshot baselines running, Entity diagram being"
+            + " settled",
+        request(plainRepoId, id).getString("detail"));
+
+    // The far side settles it: running too.
+    automations.answer(plainName, "entity-diagram", "RUNNING");
+    releaseRequests.sweep(); // the tail asks again and records PENDING
+    releaseRequests.sweep(); // which this evaluation says
+    JsonPath running = request(plainRepoId, id);
+    assertEquals("PENDING", running.getString("state"));
+    assertEquals(
+        "Waiting for automations at " + sha + ": Screenshot baselines running, Entity diagram"
+            + " running",
+        running.getString("detail"));
+    assertEquals("PENDING", gateState(running, "AUTOMATIONS"));
+
+    // Both runs end having moved nothing: fresh at this very fold.
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    automations.answer(plainName, "entity-diagram", "FRESH");
+    releaseRequests.sweep(); // held, and the tail re-reads
+    assertTrue(ledger.fresh(id, merged));
+    releaseRequests.sweep();
+    verdict(plainRepoId, merged);
+
+    awaitState(plainRepoId, id, "RELEASED");
+    assertEquals(merged, mergedShaOf(plainRepoId, id), "the same fold, released");
+    assertEquals(1, executor.calls().size());
+  }
+
+  /**
+   * <b>qits-2571.</b> The real far side's status read never lists a kind that does not apply — it
+   * lists only kinds with a row or a deferral. A PENDING note beside such a kind is still RE-READ,
+   * not re-triggered on every sweep, and the read that finds it fresh records it fresh, keeping the
+   * kind that does not apply on the request.
+   */
+  @Test
+  public void aNotApplicableKindMissingFromTheStatusReadDoesNotReTrigger() {
+    automations.omitNotApplicableFromStatus();
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
+    automations.answer(plainName, "entity-diagram", FakeReleaseRequestAutomations.NOT_APPLICABLE);
+
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    int asked = automations.askedAbout(id).size();
+    long read = automations.readsOf(id);
+
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+
+    assertEquals(asked, automations.askedAbout(id).size(), "re-read, never re-triggered");
+    assertTrue(automations.readsOf(id) > read, "the sweeps re-read the outcome");
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        "Waiting for automations at " + merged.substring(0, 10) + ": Screenshot baselines running",
+        held.getString("detail"));
+
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep();
+
+    assertTrue(ledger.fresh(id, merged), "the read alone made it fresh");
+    assertEquals(asked, automations.askedAbout(id).size(), "still never re-triggered");
+    JsonPath fresh = request(plainRepoId, id);
+    assertEquals(List.of(SCREENSHOTS, "entity-diagram"), fresh.getList("automations.kind"));
+    assertEquals(List.of("FRESH", "NOT_APPLICABLE"), fresh.getList("automations.state"));
+    assertEquals("PASSED", gateState(fresh, "AUTOMATIONS"));
+  }
+
+  /**
    * <b>A red automation run rejects</b> (qits-1199), as a red CI gate does — with the automations
    * gate as the rejecting one, no rejecting run, and the note kept so the gate and the rows go on
    * showing the failure. A person's turn: push, re-run or waive.

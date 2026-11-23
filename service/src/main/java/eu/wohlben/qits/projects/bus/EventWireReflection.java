@@ -154,6 +154,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       EntityTransitioned.class,
       EntityTransitioned.Entity.class,
       EntityCommented.class,
+      EntityAssigned.class,
       WorkNeedMet.class,
       IdeaCreated.class,
       IdeaUpdated.class,

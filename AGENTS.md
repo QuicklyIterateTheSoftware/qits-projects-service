@@ -3385,8 +3385,23 @@ listener's drops; the source makes them idempotent itself). Eleven ship:
 | `ShipMissingSource` (qits-1778) | `verified-unshipped`, 55 | no signature; `scan` reads each delivery-enabled project's running items (`VerifiedSlotHolders`, over `api/RunningItems`) and raises each VERIFIED one, VERIFIED for at least `THRESHOLD` (30m, a constant) from the later of its move into VERIFIED (the newest audit run whose snapshot says VERIFIED, else `updated_at`) and `delivery_enabled_at`, younger than `MAX_AGE` (7d), that no open request (as in the Slots section) carries. Event id `shipKey(item, VERIFIED-since)`, skipped when a row holds it: once per move into VERIFIED | `- <qid> (VERIFIED 43m; no open release request carries ticket/<qid>)`, section `VERIFIED work with no open release request:`, cause `verified <instant to the minute>`, no principal |
 
 `EntityCommented` (qits-1660) is published by `bus/EntityCommentAnnouncer` from the comment door
-(`WorkEntityDoors.addComment`) after the write: the item, its author, `changedBy` and the body's
-`@names` (`mentions`, lower case), never the body. In-service thread writers announce nothing.
+(`WorkEntityDoors.addComment`) after the write: the item, its root work item (`rootEntityId`,
+`auditRootOf` — the epic of a feature or task, the item itself otherwise), its author and the
+author's display name (`authorName`, `entities/api/CallerDisplayName`: the token's `name`, else
+`preferred_username`, else the principal), `changedBy` and the body's `@names` (`mentions`, lower
+case), never the body. In-service thread writers announce nothing.
+
+`EntityAssigned` (qits-2518) is published by `bus/EntityAssignAnnouncer` over the `entities` port
+`control/AssigneeAnnouncer`, told by `control/AssigneeWrites` — the one writer of
+`WorkEntity.assignee` (`claim` for a person's create, PATCH and PUT-shaped transition; `dispatch`
+for `EntityDispatchService.setAssignee`). Each write owes the change to the transaction's
+registry (`ReleaseRequestStates`' shape) and one after-commit synchronisation announces each row
+whose assignee ends different from the value before the first write — once per row and
+transaction, nothing for a restatement or a rollback. The payload: the item, its qualified id,
+title and status after the change, `assignee`/`previousAssignee` (null for none), `claimed`,
+`changedBy` and `changedByName` (`CallerDisplayName` of the request on that thread when it is by
+`changedBy`, else `changedBy`). A new assignee writer goes through `AssigneeWrites` or it is
+silent. The suite records through `RecordingEntityAssignAnnouncer`.
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
 The listener (`@Any Instance<DeskTriggerSource>`) subscribes to the union of the sources'

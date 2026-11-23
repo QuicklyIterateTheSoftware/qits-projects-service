@@ -34,8 +34,17 @@ public class EntityCommentAnnouncer {
 
   @Inject QitsEventBus bus;
 
-  public void onCommented(WorkEntity entity, CommentDto comment, String changedBy) {
-    publish(event(entity, comment, changedBy));
+  /**
+   * @param rootEntityId the entity's root work item ({@code WorkEntityService.auditRootOf})
+   * @param authorName the author's display name ({@code CallerDisplayName})
+   */
+  public void onCommented(
+      WorkEntity entity,
+      String rootEntityId,
+      CommentDto comment,
+      String authorName,
+      String changedBy) {
+    publish(event(entity, rootEntityId, comment, authorName, changedBy));
   }
 
   /** The bus half. Overridden by the suite's recording double, and by nothing else. */
@@ -43,16 +52,23 @@ public class EntityCommentAnnouncer {
     bus.publish(event);
   }
 
-  static EntityCommented event(WorkEntity entity, CommentDto comment, String changedBy) {
+  static EntityCommented event(
+      WorkEntity entity,
+      String rootEntityId,
+      CommentDto comment,
+      String authorName,
+      String changedBy) {
     return new EntityCommented(
         null,
         comment.id(),
         entity.id,
+        rootEntityId == null ? entity.id : rootEntityId,
         entity.projectId,
         entity.archetype == null ? null : entity.archetype.name(),
         entity.number,
         entity.title,
         comment.author(),
+        authorName,
         comment.authorAgentOf(),
         changedBy,
         mentions(comment.body()),

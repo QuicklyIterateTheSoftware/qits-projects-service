@@ -163,6 +163,9 @@ public class EntityTransitionService {
 
   @Inject WritePatience writes;
 
+  /** The one writer of the assignee, which announces its change after the commit (qits-2518). */
+  @Inject AssigneeWrites assignees;
+
   /** The quality gates (qits-887): a status they judge is never stated through this door. */
   @Inject Instance<TransitionGate> gates;
 
@@ -283,7 +286,7 @@ public class EntityTransitionService {
     Instant now = Instant.now();
     for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
       WorkEntity row = rows.get(entry.getKey());
-      write(row, entry.getValue(), scopeOf(entry.getValue(), row));
+      write(row, entry.getValue(), scopeOf(entry.getValue(), row), changedBy);
       if (!Objects.equals(statusBefore.get(entry.getKey()), row.status)) {
         // A move clears both blocks, WorkEntityService.move's rule (qits-895) on the other door
         // that moves a status. A reshape that leaves the status where it was moves no phase, so it
@@ -833,7 +836,8 @@ public class EntityTransitionService {
    * fact rather than a convention), {@code projectId} is carried, and {@code createdBy} is carried
    * or cleared depending on whether the target archetype has a slot for it.
    */
-  private static void write(WorkEntity row, EntityTransition target, String slugScope) {
+  private void write(
+      WorkEntity row, EntityTransition target, String slugScope, String changedBy) {
     row.archetype = target.archetype();
     row.title = target.title();
     row.description = blankToNull(target.description());
@@ -847,7 +851,7 @@ public class EntityTransitionService {
     row.impetus = blankToNull(target.impetus());
     // The PATCH's rule (qits-2259): a different assignee is a claim, the one the row holds restated
     // is not — this door restates the whole row on every save.
-    AssigneeClaims.write(row, target.assignee());
+    assignees.claim(row, target.assignee(), changedBy);
     row.supersededByEntityId = blankToNull(target.supersededBy());
     // Absent clears it, as every property here; a legacy DROPPED row restated without one keeps
     // the null it had (qits-248).

@@ -107,6 +107,9 @@ public class WorkEntityService {
 
   @Inject WritePatience writes;
 
+  /** The one writer of the assignee, which announces its change after the commit (qits-2518). */
+  @Inject AssigneeWrites assignees;
+
   /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
   @Inject EntityNumbers numbers;
 
@@ -442,7 +445,8 @@ public class WorkEntityService {
             projectId = parent.projectId;
             rootId = owner != null ? owner.id : ancestor(parent.id, kind(parent.archetype).depth());
           }
-          WorkEntity row = insert(kind, projectId, kind.isRoot() ? projectId : under, write, type);
+          WorkEntity row =
+              insert(kind, projectId, kind.isRoot() ? projectId : under, write, type, changedBy);
           row.createdBy =
               Archetypes.spec(archetype).permits(EntityProperty.CREATED_BY) ? changedBy : null;
           if (write.inspiredBy() != null) {
@@ -481,7 +485,12 @@ public class WorkEntityService {
    * root.
    */
   private WorkEntity insert(
-      Kind kind, String projectId, String slugScope, EntityWrite write, TicketType type) {
+      Kind kind,
+      String projectId,
+      String slugScope,
+      EntityWrite write,
+      TicketType type,
+      String changedBy) {
     WorkEntity row = new WorkEntity();
     row.id = UUID.randomUUID().toString();
     row.archetype = kind.archetype();
@@ -498,7 +507,7 @@ public class WorkEntityService {
     row.ticketType = type;
     row.impetus = write.impetus();
     // A person's create naming an assignee claims the row (qits-2259): no press dispatches onto it.
-    AssigneeClaims.write(row, write.assignee());
+    assignees.claim(row, write.assignee(), changedBy);
     row.repositoryId = write.repositoryId();
     List<String> criteria = AcceptanceCriteria.require(write.acceptanceCriteria());
     if (criteria != null) {
@@ -603,10 +612,10 @@ public class WorkEntityService {
       row.ticketType = type;
     }
     if (write.clearAssignee()) {
-      AssigneeClaims.write(row, null);
+      assignees.claim(row, null, changedBy);
     } else if (write.assignee() != null) {
       // A different assignee is a person's claim (qits-2259); the same one restated is not.
-      AssigneeClaims.write(row, write.assignee());
+      assignees.claim(row, write.assignee(), changedBy);
     }
     if (write.repositoryId() != null) {
       row.repositoryId = write.repositoryId();
@@ -1531,7 +1540,8 @@ public class WorkEntityService {
             old.projectId,
             EntityWrite.epic(old.title, old.description)
                 .withAcceptanceCriteria(List.copyOf(old.acceptanceCriteria)),
-            old.ticketType);
+            old.ticketType,
+            changedBy);
     // The successor carries the copied scope on, and with it the idea that inspired it (qits-1387).
     successorRow.inspiredByIdeaId = old.inspiredByIdeaId;
     // And its tags (qits-634): who may do the work is a fact about the work, not about one draft.

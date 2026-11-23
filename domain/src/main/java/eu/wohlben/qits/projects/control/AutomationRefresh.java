@@ -56,7 +56,11 @@ import org.jboss.logging.Logger;
  * moving — REQUESTED, RUNNING, COMMITTED (a commit that re-folds the request, so this fold never
  * ships), SUPERSEDED (the far side saw the fold move on first), WAITING (a derived kind waiting for
  * the source kinds, qits-1133) — is PENDING. No answer at all is
- * UNKNOWN. FAILED is read before UNKNOWN so that a red run is never reported as an outage.
+ * UNKNOWN. FAILED is read before UNKNOWN so that a red run is never reported as an outage. The two
+ * UNKNOWNs are told apart by the note's detail (qits-2571): one this side writes for want of an
+ * answer carries the reason, and the request reads as an outage; one the far side answered — a kind
+ * it is still settling ({@code UNKNOWN "settling: …"}, past its own budget) — carries none, and the
+ * request reads as waiting, because that is work in progress.
  *
  * <h2>Idempotence, and what the sweep re-reads</h2>
  *
@@ -74,8 +78,14 @@ import org.jboss.logging.Logger;
  * pressed on a FAILED one is read, and a green run that moved nothing is read as FRESH. The read is
  * trusted only when it lists every kind the note listed — a kind with no row at the fold is not on a
  * status read, which cannot be told apart from "fresh by plan, stored nowhere" — and otherwise the
- * trigger is asked instead. A read that could not be made leaves the note as it is: it holds either
- * way.
+ * trigger is asked instead. <b>The one exemption is a NOT_APPLICABLE kind</b> (qits-2571): the
+ * status door lists only kinds with a row or a deferral, so it never lists one, and requiring it
+ * made every PENDING note beside a kind that does not apply re-post the trigger every thirty
+ * seconds instead of being re-read — and the trigger, re-planning, often answered "settling",
+ * which read as an outage. Nothing is lost by exempting it: applicability is a property of the
+ * fold the note is keyed on, and a fold that moves is asked about afresh. The held NOT_APPLICABLE
+ * entries the read leaves out are carried into the note it writes, so the request keeps listing
+ * them. A read that could not be made leaves the note as it is: it holds either way.
  *
  * <p><b>A FRESH note is provisional until QA has been announced at its fold</b> (qits-1249), and
  * {@link #confirm} is what makes it final: one status read, made by the gate's caller just before
@@ -294,7 +304,8 @@ public class AutomationRefresh {
         return;
       }
       if (covers(read.get(), held) && read.get().foldSha() != null) {
-        AutomationLedger.Note note = noteOf(facts, previous, read.get());
+        AutomationLedger.Note note =
+            withHeldNotApplicable(noteOf(facts, previous, read.get()), held);
         if (note.state() != AutomationLedger.State.UNKNOWN) {
           record(facts, note);
           return;
@@ -329,13 +340,49 @@ public class AutomationRefresh {
     record(facts, noteOf(facts, previous, answer.get()));
   }
 
-  /** Whether a status read lists every kind the note it would replace listed. */
-  private static boolean covers(
-      ReleaseRequestAutomations.Answer read, AutomationLedger.Note held) {
+  /**
+   * Whether a status read lists every kind the note it would replace listed — every kind but a
+   * NOT_APPLICABLE one, which the status door never lists (qits-2571, see the class javadoc). A
+   * DEFERRED kind is on the read and stays required, and so does a kind fresh by plan with no row:
+   * its absence is exactly the case the trigger has to answer. An empty read never covers.
+   */
+  static boolean covers(ReleaseRequestAutomations.Answer read, AutomationLedger.Note held) {
     Set<String> listed = new HashSet<>();
     read.automations().forEach(entry -> listed.add(entry.kind()));
     return !read.automations().isEmpty()
-        && held.automations().stream().allMatch(entry -> listed.contains(entry.kind()));
+        && held.automations().stream()
+            .filter(entry -> !AutomationLedger.NOT_APPLICABLE.equals(entry.state()))
+            .allMatch(entry -> listed.contains(entry.kind()));
+  }
+
+  /**
+   * A note written from a status read, with the held NOT_APPLICABLE kinds the read left out put
+   * back (qits-2571): {@link #covers} let them be absent, and their absence is the door's, not
+   * news that they stopped applying. They hold nothing back, so the note's state is unchanged.
+   */
+  private static AutomationLedger.Note withHeldNotApplicable(
+      AutomationLedger.Note read, AutomationLedger.Note held) {
+    // In the held note's order, as confirm's merge keeps it: a kind the read lists is the read's
+    // word, a NOT_APPLICABLE one it left out stays as held, and a kind new on the read comes last.
+    Set<String> listed = new HashSet<>();
+    read.automations().forEach(entry -> listed.add(entry.kind()));
+    Map<String, AutomationLedger.Automation> merged = new LinkedHashMap<>();
+    held.automations().stream()
+        .filter(
+            entry ->
+                listed.contains(entry.kind())
+                    || AutomationLedger.NOT_APPLICABLE.equals(entry.state()))
+        .forEach(entry -> merged.put(entry.kind(), entry));
+    read.automations().forEach(entry -> merged.put(entry.kind(), entry));
+    if (merged.size() == read.automations().size()) {
+      return read;
+    }
+    return new AutomationLedger.Note(
+        read.foldSha(),
+        read.state(),
+        List.copyOf(merged.values()),
+        read.detail(),
+        read.previousFoldSha());
   }
 
   /**
