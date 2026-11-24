@@ -235,7 +235,7 @@
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
-        <qits.workspaces-service-pacts-qits-projects-service.version>2026.1108.230857</qits.workspaces-service-pacts-qits-projects-service.version>
+        <qits.workspaces-service-pacts-qits-projects-service.version>2026.1124.202359</qits.workspaces-service-pacts-qits-projects-service.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1124.121416</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1123.85114</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-monorepo-pacts-qits-projects-service.version>2026.1122.234007</qits.platform-access-monorepo-pacts-qits-projects-service.version>
@@ -268,7 +268,7 @@
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1109.41303</qits.githost-golden-masters.version>
-        <qits.workspaces-golden-masters.version>2026.1123.125658</qits.workspaces-golden-masters.version>
+        <qits.workspaces-golden-masters.version>2026.1124.202359</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1124.131229</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1120.65904</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1119.60052</qits.ci-golden-masters.version>
