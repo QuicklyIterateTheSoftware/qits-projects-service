@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.entity.WorkTag;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -221,6 +222,25 @@ public class ProviderStates {
    * is dropped against.
    */
   public static final String THREE_REPORTED_TICKETS = "three reported tickets, one with a priority";
+
+  /**
+   * Seven work items in one project, for a long-running agent's picks (qits-2595): a REPORTED BUG
+   * at priority 0, then a REPORTED epic at priority 5, then a READY_FOR_DEV IMPROVEMENT ticket at
+   * priority 5 (filed after the epic), all three unassigned and takeable; a ticket tagged
+   * RESERVED_FOR_HUMAN and a REFINED ticket, both unassigned and neither takeable; and two tickets
+   * assigned to {@code developer}, one IMPLEMENTING and one DONE. {@code
+   * ?unassigned=true&order=priority&limit=10} answers the BUG, the epic and the improvement.
+   */
+  public static final String WORK_FOR_A_LONG_RUNNING_AGENT =
+      "work for a long-running agent to take and hold";
+
+  /**
+   * {@link #WORK_FOR_A_LONG_RUNNING_AGENT}'s seven items under a second name (qits-2595), so the
+   * same seed records a second {@code listProjectWork}: a golden master is one file per state and
+   * operation. {@code ?assignee=developer&active=true} answers the IMPLEMENTING ticket alone.
+   */
+  public static final String WORK_A_LONG_RUNNING_AGENT_HOLDS =
+      "work a long-running agent holds";
   public static final String A_REFINED_TICKET = "a refined ticket";
   public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
   public static final String AN_IMPLEMENTING_TICKET = "an implementing ticket";
@@ -781,6 +801,11 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(A_PROJECT_WHOSE_WORK_HAS_WORKSPACES, this::aProjectWhoseWorkHasWorkspaces);
     states.put(THREE_REPORTED_TICKETS, this::threeReportedTickets);
+    states.put(
+        WORK_FOR_A_LONG_RUNNING_AGENT, () -> workForALongRunningAgent(WORK_FOR_A_LONG_RUNNING_AGENT));
+    states.put(
+        WORK_A_LONG_RUNNING_AGENT_HOLDS,
+        () -> workForALongRunningAgent(WORK_A_LONG_RUNNING_AGENT_HOLDS));
     states.put(A_PROJECT_WITH_IDEAS, this::aProjectWithIdeas);
     states.put(THREE_IDEAS, this::threeIdeas);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
@@ -2182,6 +2207,54 @@ public class ProviderStates {
             "qualifiedId", qualified(project, third),
             "ticketId", third),
         List.of(token));
+  }
+
+  /**
+   * {@link #WORK_FOR_A_LONG_RUNNING_AGENT} and {@link #WORK_A_LONG_RUNNING_AGENT_HOLDS}: one seed,
+   * filed in the order the backlog order's createdAt tie-break reads.
+   */
+  private Setup workForALongRunningAgent(String state) {
+    String token = token();
+    Project project = project(token, state);
+    ticket(project, "Checkout times out under load");
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Invoices in every currency", "Seeded work.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    work.update(Archetype.EPIC, epic, EntityWrite.epic(null, null).withPriority(5, false), SEEDER);
+    String feature =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket("Export the ledger as CSV", "Seeded work.", null, "IMPROVEMENT", null)
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    work.update(
+        Archetype.TICKET, feature, EntityWrite.epic(null, null).withPriority(5, false), SEEDER);
+    walk(Archetype.TICKET, feature, EntityStatus.READY_FOR_DEV);
+    String reserved = ticket(project, "Rotate the payment provider's signing key");
+    work.update(
+        Archetype.TICKET,
+        reserved,
+        EntityWrite.epic(null, null).withTags(Set.of(WorkTag.RESERVED_FOR_HUMAN)),
+        SEEDER);
+    String refined = ticket(project, "Search forgets the last filter");
+    work.transition(Archetype.TICKET, refined, "REFINED", SEEDER);
+    String held = heldTicket(project, "Totals round the wrong way");
+    walk(Archetype.TICKET, held, EntityStatus.IMPLEMENTING);
+    String done = heldTicket(project, "Receipts lose their line breaks");
+    walk(Archetype.TICKET, done, EntityStatus.DONE);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** A REPORTED BUG ticket assigned to {@code developer} from its filing on. */
+  private String heldTicket(Project project, String title) {
+    return create(
+        Archetype.TICKET,
+        project,
+        EntityWrite.ticket(title, "Seeded work.", null, "BUG", "developer")
+            .withAcceptanceCriteria(TestCriteria.CRITERIA));
   }
 
   /** A VERIFIED ticket, ready to be moved to DONE. */

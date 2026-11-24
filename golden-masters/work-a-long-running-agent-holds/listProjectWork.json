@@ -1,0 +1,36 @@
+{
+  "entities": [
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "archetype": "TICKET",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "number": 6,
+      "qualifiedId": "contract-00000001-6",
+      "title": "Totals round the wrong way",
+      "excerpt": null,
+      "slug": "totals-round-the-wrong-way",
+      "slugScope": "00000000-0000-4000-8000-000000000001",
+      "status": "IMPLEMENTING",
+      "statusBefore": null,
+      "ticketType": "BUG",
+      "impetus": "Seeded work.",
+      "assignee": "developer",
+      "createdBy": "contract-seeder",
+      "supersededBy": null,
+      "outcome": null,
+      "repositoryId": null,
+      "implementedAt": null,
+      "implementingAt": null,
+      "parent": null,
+      "position": null,
+      "priority": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "changedBy": null,
+      "blocked": false,
+      "tags": [],
+      "needs": [],
+      "unmetNeeds": 0
+    }
+  ]
+}

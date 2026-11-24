@@ -9636,6 +9636,79 @@
           }
         }
       ]
+    },
+    {
+      "name": "work a long-running agent holds",
+      "slug": "work-a-long-running-agent-holds",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "query": {
+            "assignee": "developer",
+            "active": "true"
+          },
+          "status": 200,
+          "file": "work-a-long-running-agent-holds/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "work for a long-running agent to take and hold",
+      "slug": "work-for-a-long-running-agent-to-take-and-hold",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "query": {
+            "unassigned": "true",
+            "order": "priority",
+            "limit": "10"
+          },
+          "status": 200,
+          "file": "work-for-a-long-running-agent-to-take-and-hold/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
     }
   ]
 }

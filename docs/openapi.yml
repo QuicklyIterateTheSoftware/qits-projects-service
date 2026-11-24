@@ -6456,10 +6456,13 @@ paths:
         \ archetype, one status, the direct children of one parent (qualified id or\
         \ UUID), one drop outcome, and the items naming one entity (qualified id or\
         \ UUID) as their supersededBy — what that entity closed as a duplicate, resolved\
-        \ elsewhere or superseded, and the items carrying one tag. The project is\
-        \ its id or its slug. No entry carries its description: a ticket or an epic\
-        \ answers an excerpt instead, a short plain-text lead of it, and every other\
-        \ archetype answers null."
+        \ elsewhere or superseded, and the items carrying one tag; and, for a long-running\
+        \ agent, the items assigned to one name, the work it may take (unassigned=true)\
+        \ or the unfinished ones (active=true). order=priority answers in the backlog\
+        \ order instead, and limit keeps the first rows. The project is its id or\
+        \ its slug. No entry carries its description: a ticket or an epic answers\
+        \ an excerpt instead, a short plain-text lead of it, and every other archetype\
+        \ answers null."
       operationId: listProjectWork
       parameters:
       - name: project
@@ -6467,10 +6470,37 @@ paths:
         required: true
         schema:
           type: string
+      - description: "true: only the items not VERIFIED, DONE or DROPPED."
+        schema:
+          type: boolean
+        name: active
+        in: query
       - name: archetype
         in: query
         schema:
           type: string
+      - description: "Only the items assigned to this name, matched exactly after\
+          \ trimming both. Excludes unassigned=true."
+        name: assignee
+        in: query
+        schema:
+          type: string
+      - description: "At most this many items (1 to 200), the first after filtering\
+          \ and ordering."
+        schema:
+          maximum: 200
+          minimum: 1
+          type: integer
+        name: limit
+        in: query
+      - description: "priority: the backlog order instead of tree order — bugs first,\
+          \ then priority (highest first), then oldest by createdAt, then id."
+        schema:
+          type: string
+          enum:
+          - priority
+        name: order
+        in: query
       - description: "Only the DROPPED items closed with this outcome: DUPLICATE,\
           \ RESOLVED_ELSEWHERE, SUPERSEDED, OBSOLETE, INVALID or WONT_DO."
         schema:
@@ -6497,6 +6527,14 @@ paths:
         in: query
         schema:
           type: string
+      - description: "true: only the work an agent may take — an epic or a ticket\
+          \ with no assignee, in REPORTED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED\
+          \ or VERIFYING, not blocked, tagged neither RESERVED_FOR_HUMAN nor CONDITION,\
+          \ with no unmet need. Excludes assignee."
+        schema:
+          type: boolean
+        name: unassigned
+        in: query
       responses:
         "200":
           description: The work entities
@@ -6505,7 +6543,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkList"
         "400":
-          description: "An archetype, a status, an outcome or a tag naming none"
+          description: "An archetype, a status, an outcome or a tag naming none; a\
+            \ blank assignee; assignee together with unassigned; unassigned or active\
+            \ other than true; an order other than priority; a limit outside 1 to\
+            \ 200"
         "404":
           description: "No such project, no such parent, or no such supersededBy entity"
         "401":

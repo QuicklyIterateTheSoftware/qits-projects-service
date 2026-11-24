@@ -12,6 +12,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
@@ -26,7 +27,11 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * optional {@code archetype}, {@code status} and {@code parent} (qualified id or UUID; the direct
  * children of one entity), and since qits-248 by {@code outcome} (why a DROPPED item was closed)
  * and {@code supersededBy} (qualified id or UUID; the items naming that entity as what answers for
- * them — the reverse link), and since qits-634 by {@code tag} (the items carrying it). The answer is {@code {"entities": [...]}}, each a qualified {@link
+ * them — the reverse link), and since qits-634 by {@code tag} (the items carrying it). Since qits-2595 a long-running
+ * agent narrows it by {@code assignee}, {@code unassigned=true} (work it may take, {@link
+ * eu.wohlben.qits.entities.control.Takeable}) and {@code active=true}, sorts it with {@code
+ * order=priority} ({@link eu.wohlben.qits.entities.control.BacklogOrder}) and cuts it with {@code
+ * limit}. The answer is {@code {"entities": [...]}}, each a qualified {@link
  * EntitySummary} without its description — a ticket and an epic carry its {@code excerpt} instead
  * (qits-1821), a short plain-text lead for the desk's cards, null on every other archetype. {@link
  * WorkEntityDoors#list} is the implementation,
@@ -57,7 +62,10 @@ public class ProjectWorkController {
               + " the direct children of one parent (qualified id or UUID), one drop outcome, and"
               + " the items naming one entity (qualified id or UUID) as their supersededBy — what"
               + " that entity closed as a duplicate, resolved elsewhere or superseded, and the items"
-              + " carrying one tag. The project is its id or its slug. No entry carries its"
+              + " carrying one tag; and, for a long-running agent, the items assigned to one name,"
+              + " the work it may take (unassigned=true) or the unfinished ones (active=true)."
+              + " order=priority answers in the backlog order instead, and limit keeps the first"
+              + " rows. The project is its id or its slug. No entry carries its"
               + " description: a ticket or an epic answers an excerpt instead, a short plain-text"
               + " lead of it, and every other archetype answers null.")
   @APIResponse(
@@ -69,7 +77,10 @@ public class ProjectWorkController {
               schema = @Schema(implementation = WorkList.class)))
   @APIResponse(
       responseCode = "400",
-      description = "An archetype, a status, an outcome or a tag naming none")
+      description =
+          "An archetype, a status, an outcome or a tag naming none; a blank assignee; assignee"
+              + " together with unassigned; unassigned or active other than true; an order other"
+              + " than priority; a limit outside 1 to 200")
   @APIResponse(
       responseCode = "404",
       description = "No such project, no such parent, or no such supersededBy entity")
@@ -95,9 +106,46 @@ public class ProjectWorkController {
                   "Only the items carrying this tag: RESERVED_FOR_HUMAN (any case, or its kebab"
                       + " form reserved-for-human).")
           @QueryParam("tag")
-          String tag) {
+          String tag,
+      @Parameter(
+              description =
+                  "Only the items assigned to this name, matched exactly after trimming both."
+                      + " Excludes unassigned=true.")
+          @QueryParam("assignee")
+          String assignee,
+      @Parameter(
+              description =
+                  "true: only the work an agent may take — an epic or a ticket with no assignee,"
+                      + " in REPORTED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED or VERIFYING, not"
+                      + " blocked, tagged neither RESERVED_FOR_HUMAN nor CONDITION, with no unmet"
+                      + " need. Excludes assignee.",
+              schema = @Schema(type = SchemaType.BOOLEAN))
+          @QueryParam("unassigned")
+          String unassigned,
+      @Parameter(
+              description = "true: only the items not VERIFIED, DONE or DROPPED.",
+              schema = @Schema(type = SchemaType.BOOLEAN))
+          @QueryParam("active")
+          String active,
+      @Parameter(
+              description =
+                  "priority: the backlog order instead of tree order — bugs first, then priority"
+                      + " (highest first), then oldest by createdAt, then id.",
+              schema = @Schema(enumeration = {"priority"}))
+          @QueryParam("order")
+          String order,
+      @Parameter(
+              description =
+                  "At most this many items (1 to "
+                      + WorkEntityDoors.MAX_LIST_LIMIT
+                      + "), the first after filtering and ordering.",
+              schema = @Schema(type = SchemaType.INTEGER, minimum = "1", maximum = "200"))
+          @QueryParam("limit")
+          String limit) {
     return new WorkList(
-        doors.list(project, archetype, status, parent, outcome, supersededBy, tag));
+        doors.list(
+            project, archetype, status, parent, outcome, supersededBy, tag, assignee, unassigned,
+            active, order, limit));
   }
 
   @GET

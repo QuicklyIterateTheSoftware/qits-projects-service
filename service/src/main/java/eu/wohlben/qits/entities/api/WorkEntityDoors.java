@@ -12,7 +12,9 @@ import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityPriorityService;
 import eu.wohlben.qits.entities.control.EntityProperty;
+import eu.wohlben.qits.entities.control.BacklogOrder;
 import eu.wohlben.qits.entities.control.EntitySummary;
+import eu.wohlben.qits.entities.control.Takeable;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -1431,6 +1433,112 @@ public class WorkEntityDoors {
    * a 400 for a word naming none.
    */
   public List<EntitySummary> list(
+      String projectIdOrSlug,
+      String archetype,
+      String status,
+      String parent,
+      String outcome,
+      String supersededBy,
+      String tag) {
+    return list(
+        projectIdOrSlug, archetype, status, parent, outcome, supersededBy, tag, null, null, null,
+        null, null);
+  }
+
+  /** The most rows one work list answers under {@code limit} (qits-2595); more is a 400. */
+  public static final int MAX_LIST_LIMIT = 200;
+
+  /** The statuses {@code active=true} leaves out (qits-2595): finished work. */
+  private static final Set<String> FINISHED =
+      Set.of(EntityStatus.VERIFIED.name(), EntityStatus.DONE.name(), EntityStatus.DROPPED.name());
+
+  /**
+   * {@link #list(String, String, String, String, String, String, String)}, also narrowed for a
+   * long-running agent (qits-2595): to one {@code assignee} (an exact match, both sides trimmed; a
+   * blank one is a 400), to {@code unassigned=true} — work it may take ({@link Takeable}), read
+   * after the needs are attached because it reads {@code unmetNeeds} — and to {@code active=true}
+   * (neither VERIFIED, DONE nor DROPPED). {@code order=priority} sorts in the {@link BacklogOrder}
+   * instead of tree order, and {@code limit} (1..{@value #MAX_LIST_LIMIT}) keeps the first rows
+   * after filtering and ordering. A flag naming anything but {@code true}, another order, a limit
+   * out of range, and an assignee together with {@code unassigned=true} are each a 400.
+   */
+  public List<EntitySummary> list(
+      String projectIdOrSlug,
+      String archetype,
+      String status,
+      String parent,
+      String outcome,
+      String supersededBy,
+      String tag,
+      String assignee,
+      String unassigned,
+      String active,
+      String order,
+      String limit) {
+    String holder = null;
+    if (assignee != null) {
+      holder = assignee.trim();
+      if (holder.isEmpty()) {
+        throw new BadRequestException("assignee must not be blank");
+      }
+    }
+    boolean takeable = listFlag("unassigned", unassigned);
+    if (holder != null && takeable) {
+      throw new BadRequestException("assignee and unassigned exclude each other");
+    }
+    boolean activeOnly = listFlag("active", active);
+    if (order != null && !"priority".equals(order)) {
+      throw new BadRequestException("order must be priority");
+    }
+    Integer rows = listLimit(limit);
+    List<EntitySummary> listed =
+        filtered(projectIdOrSlug, archetype, status, parent, outcome, supersededBy, tag);
+    String named = holder;
+    java.util.stream.Stream<EntitySummary> narrowed =
+        listed.stream()
+            .filter(e -> named == null || (e.assignee() != null && named.equals(e.assignee().trim())))
+            .filter(e -> !takeable || Takeable.test(e))
+            .filter(e -> !activeOnly || !FINISHED.contains(e.status()));
+    if (order != null) {
+      narrowed = narrowed.sorted(BacklogOrder.ORDER);
+    }
+    if (rows != null) {
+      narrowed = narrowed.limit(rows);
+    }
+    return narrowed.toList();
+  }
+
+  /** A listing flag (qits-2595): absent is false, {@code true} is true, anything else a 400. */
+  private static boolean listFlag(String name, String value) {
+    if (value == null) {
+      return false;
+    }
+    if ("true".equals(value)) {
+      return true;
+    }
+    throw new BadRequestException(name + " must be true");
+  }
+
+  /** {@code limit} (qits-2595): absent is null, else an integer 1..{@value #MAX_LIST_LIMIT}. */
+  private static Integer listLimit(String value) {
+    if (value == null) {
+      return null;
+    }
+    String message = "limit must be an integer from 1 to " + MAX_LIST_LIMIT;
+    int parsed;
+    try {
+      parsed = Integer.parseInt(value.trim());
+    } catch (NumberFormatException notANumber) {
+      throw new BadRequestException(message);
+    }
+    if (parsed < 1 || parsed > MAX_LIST_LIMIT) {
+      throw new BadRequestException(message);
+    }
+    return parsed;
+  }
+
+  /** The listing narrowed by the first seven filters, in tree order, needs attached. */
+  private List<EntitySummary> filtered(
       String projectIdOrSlug,
       String archetype,
       String status,
