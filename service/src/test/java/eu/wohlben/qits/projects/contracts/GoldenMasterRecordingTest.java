@@ -1053,6 +1053,19 @@ class GoldenMasterRecordingTest {
             ProviderStates.THREE_REPORTED_TICKETS,
             "listProjectWork",
             "/projects/api/projects/{projectId}/work"));
+    // A long-running agent's picks (qits-2595): the takeable work in backlog order, and the work
+    // it holds. One seed under two state names, since a golden master is one file per state and
+    // operation (the ?supersededBy= row's state is likewise its own).
+    all.add(
+        read(
+            ProviderStates.WORK_FOR_A_LONG_RUNNING_AGENT,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work?unassigned=true&order=priority&limit=10"));
+    all.add(
+        read(
+            ProviderStates.WORK_A_LONG_RUNNING_AGENT_HOLDS,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work?assignee=developer&active=true"));
     // The tags (qits-634): a scheduled ticket reserved for a person by a patch, past every freeze.
     all.add(
         write(

@@ -703,6 +703,16 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.THREE_REPORTED_TICKETS);
   }
 
+  @State(ProviderStates.WORK_FOR_A_LONG_RUNNING_AGENT)
+  Map<String, String> workForALongRunningAgent() {
+    return states.params(ProviderStates.WORK_FOR_A_LONG_RUNNING_AGENT);
+  }
+
+  @State(ProviderStates.WORK_A_LONG_RUNNING_AGENT_HOLDS)
+  Map<String, String> workALongRunningAgentHolds() {
+    return states.params(ProviderStates.WORK_A_LONG_RUNNING_AGENT_HOLDS);
+  }
+
   @State(ProviderStates.A_REFINED_TICKET)
   Map<String, String> aRefinedTicket() {
     return states.params(ProviderStates.A_REFINED_TICKET);
