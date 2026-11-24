@@ -49,7 +49,6 @@ import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.bus.EntityCommentAnnouncer;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
-import eu.wohlben.qits.projects.control.WorkspaceAgentLookup;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
@@ -69,7 +68,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jboss.logging.Logger;
@@ -191,10 +189,10 @@ public class WorkEntityDoors {
   @Inject Instance<TransitionGate> gates;
 
   /**
-   * The work item an agent works on (qits-1448), asked once when an agent comments. Absent: an
-   * agent's comment names no work item.
+   * The work item the caller's agent works on (qits-1448), asked once when an agent comments; the
+   * assignment's writer name reads the same answer (qits-2518).
    */
-  @Inject Instance<WorkspaceAgentLookup> agentLookup;
+  @Inject CallerAgents callerAgents;
 
   /** A comment through the door tells the item's agent (qits-1448), off the request thread. */
   @Inject CommentTurns commentTurns;
@@ -844,8 +842,7 @@ public class WorkEntityDoors {
   public CommentDto addComment(SecurityIdentity identity, WorkEntity entity, String body) {
     EntitiesAgentAccess.requireProject(identity, entity.projectId);
     String author = EntitiesPrincipal.commentAuthor(identity);
-    String authorWorkId =
-        EntitiesPrincipal.agentOf(identity).flatMap(this::workOfAgent).orElse(null);
+    String authorWorkId = callerAgents.workOf(identity).orElse(null);
     EntityComment comment =
         comments.addComment(
             entity.id, body, author, authorWorkId, EntitiesPrincipal.changedBy(identity));
@@ -906,7 +903,7 @@ public class WorkEntityDoors {
     }
     String who =
         written.authorAgentOf() != null
-            ? written.authorAgentOf() + "'s agent"
+            ? CallerAgents.agentName(written.authorAgentOf())
             : CallerDisplayName.of(identity);
     String commentedOn = read(entity).qualifiedId();
     if (commentedOn == null) {
@@ -1013,21 +1010,6 @@ public class WorkEntityDoors {
               }
             });
     return qualified;
-  }
-
-  /** The agent's work item, or empty: an absent port or a lookup that broke its contract. */
-  private Optional<String> workOfAgent(String agentId) {
-    if (!agentLookup.isResolvable()) {
-      return Optional.empty();
-    }
-    try {
-      Optional<String> work = agentLookup.get().workOf(agentId);
-      return work == null ? Optional.empty() : work;
-    } catch (RuntimeException e) {
-      // It promises never to throw; a throw is a bug in it and must not cost the comment.
-      LOG.warnf(e, "Could not find the work item of agent %s", agentId);
-      return Optional.empty();
-    }
   }
 
   /** Deletes a comment; {@code entity} is the comment's own, resolved before the delete. */

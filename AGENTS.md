@@ -3400,7 +3400,10 @@ whose assignee ends different from the value before the first write — once per
 transaction, nothing for a restatement or a rollback. The payload: the item, its qualified id,
 title and status after the change, `assignee`/`previousAssignee` (null for none), `claimed`,
 `changedBy` and `changedByName` (`CallerDisplayName` of the request on that thread when it is by
-`changedBy`, else `changedBy`). A new assignee writer goes through `AssigneeWrites` or it is
+`changedBy`, else `changedBy`). A workspace agent's bearer is named `<qualified id>'s agent`, its
+work item's, exactly as a comment's author: `entities/api/CallerAgents` resolves it for both, and
+`AssigneeWrites` asks it through the `AssignerNames` port inside the write and carries the name, since
+the after-commit has no request or database to read. A new assignee writer goes through `AssigneeWrites` or it is
 silent. The suite records through `RecordingEntityAssignAnnouncer`.
 
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**

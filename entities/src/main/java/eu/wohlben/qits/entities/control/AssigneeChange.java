@@ -18,6 +18,8 @@ import java.time.Instant;
  * @param previousAssignee the assignee before, null when there was none
  * @param claimed {@link eu.wohlben.qits.entities.entity.WorkEntity#assigneeClaimed} now
  * @param changedBy the principal of the (last) write
+ * @param changedByName how a reader names {@code changedBy} ({@link AssignerNames}), read inside
+ *     the write; {@code changedBy} when nothing better could be said
  * @param changedAt when the transaction committed
  */
 public record AssigneeChange(
@@ -32,4 +34,5 @@ public record AssigneeChange(
     String previousAssignee,
     boolean claimed,
     String changedBy,
+    String changedByName,
     Instant changedAt) {}

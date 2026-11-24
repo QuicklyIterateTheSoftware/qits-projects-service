@@ -1,15 +1,10 @@
 package eu.wohlben.qits.projects.bus;
 
-import eu.wohlben.qits.entities.api.CallerDisplayName;
-import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.entities.control.AssigneeAnnouncer;
 import eu.wohlben.qits.entities.control.AssigneeChange;
 import eu.wohlben.qits.eventstream.QitsEventBus;
-import io.quarkus.arc.Arc;
 import io.quarkus.arc.DefaultBean;
-import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 
 /**
@@ -18,9 +13,10 @@ import jakarta.inject.Inject;
  * transaction committed — so the create, the PATCH, the PUT-shaped transition and the dispatch are
  * all covered without any of them announcing.
  *
- * <p>{@code changedByName} is the caller's display name ({@link CallerDisplayName}) when the
- * request on this thread is by {@code changedBy} — the after-completion runs on the writer's thread,
- * inside its request — and {@code changedBy} otherwise (an in-service writer, or no request at all).
+ * <p>{@code changedByName} is the one {@code AssigneeWrites} read inside the write through {@code
+ * AssignerNames} ({@code entities/api/CallerAssignerNames}): {@code "<qualified id>'s agent"} for a
+ * workspace agent's bearer whose work item resolves, as a comment's author reads (qits-1448); the
+ * caller's display name for any other request by {@code changedBy}; {@code changedBy} otherwise.
  *
  * <p>{@code @DefaultBean}, like every announcer here: the suite's {@code
  * RecordingEntityAssignAnnouncer} overrides {@link #publish} alone, so no test reaches the bus.
@@ -31,11 +27,9 @@ public class EntityAssignAnnouncer implements AssigneeAnnouncer {
 
   @Inject QitsEventBus bus;
 
-  @Inject Instance<SecurityIdentity> identities;
-
   @Override
   public void onAssigneeChanged(AssigneeChange change) {
-    publish(event(change, nameOf(change.changedBy())));
+    publish(event(change));
   }
 
   /** The bus half. Overridden by the suite's recording double, and by nothing else. */
@@ -43,7 +37,7 @@ public class EntityAssignAnnouncer implements AssigneeAnnouncer {
     bus.publish(event);
   }
 
-  static EntityAssigned event(AssigneeChange change, String changedByName) {
+  static EntityAssigned event(AssigneeChange change) {
     return new EntityAssigned(
         null,
         change.entityId(),
@@ -57,24 +51,7 @@ public class EntityAssignAnnouncer implements AssigneeAnnouncer {
         change.previousAssignee(),
         change.claimed(),
         change.changedBy(),
-        changedByName,
+        change.changedByName() == null ? change.changedBy() : change.changedByName(),
         change.changedAt());
-  }
-
-  /** The request's display name when the request is by {@code changedBy}; else {@code changedBy}. */
-  private String nameOf(String changedBy) {
-    try {
-      if (changedBy != null
-          && Arc.container().requestContext().isActive()
-          && identities.isResolvable()) {
-        SecurityIdentity identity = identities.get();
-        if (changedBy.equals(EntitiesPrincipal.changedBy(identity))) {
-          return CallerDisplayName.of(identity);
-        }
-      }
-    } catch (RuntimeException e) {
-      // No identity to read: the principal name is still a name.
-    }
-    return changedBy;
   }
 }

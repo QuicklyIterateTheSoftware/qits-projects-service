@@ -33,7 +33,9 @@ import org.jboss.logging.Logger;
  * told at once; with no announcer assembled (this module's own suite) nothing is owed at all.
  *
  * <p>The qualified id is read when the change is first owed, inside the write — where {@link
- * EntityQualifier} is built to be called — never in the after-completion.
+ * EntityQualifier} is built to be called — never in the after-completion. So is the writer's name
+ * ({@link AssignerNames}), again whenever a later write in the transaction changes the principal:
+ * the request's identity and the database are only safely there during the write.
  */
 @ApplicationScoped
 public class AssigneeWrites {
@@ -46,6 +48,8 @@ public class AssigneeWrites {
   @Inject Instance<AssigneeAnnouncer> announcers;
 
   @Inject Instance<EntityQualifier> qualifier;
+
+  @Inject Instance<AssignerNames> names;
 
   @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
@@ -82,6 +86,8 @@ public class AssigneeWrites {
     final String before;
     String changedBy;
     String qualifiedId;
+    String changedByName;
+    boolean named;
 
     Pending(WorkEntity row, String before) {
       this.row = row;
@@ -103,6 +109,7 @@ public class AssigneeWrites {
       now.changedBy = changedBy;
       if (now.changed()) {
         now.qualifiedId = qualifiedId(row);
+        name(now);
         announce(now, Instant.now());
       }
       return;
@@ -120,9 +127,17 @@ public class AssigneeWrites {
         registry.registerInterposedSynchronization(new AfterCommit(pending));
       }
       Pending owed = pending.computeIfAbsent(row, ignored -> new Pending(row, before));
+      if (!Objects.equals(owed.changedBy, changedBy)) {
+        owed.named = false;
+      }
       owed.changedBy = changedBy;
-      if (owed.qualifiedId == null && owed.changed()) {
-        owed.qualifiedId = qualifiedId(row);
+      if (owed.changed()) {
+        if (owed.qualifiedId == null) {
+          owed.qualifiedId = qualifiedId(row);
+        }
+        if (!owed.named) {
+          name(owed);
+        }
       }
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not owe the assignee change of %s", row.id);
@@ -173,6 +188,7 @@ public class AssigneeWrites {
                   owed.before,
                   row.assigneeClaimed,
                   owed.changedBy,
+                  owed.changedByName == null ? owed.changedBy : owed.changedByName,
                   at));
     } catch (RuntimeException e) {
       // The port must not throw; the write is committed whatever happens here.
@@ -189,6 +205,20 @@ public class AssigneeWrites {
       return qualifier.get().qualifiedId(row);
     } catch (RuntimeException e) {
       return null;
+    }
+  }
+
+  /** How a reader names {@code owed}'s writer, read now, inside the write: a decoration too. */
+  private void name(Pending owed) {
+    owed.named = true;
+    owed.changedByName = null;
+    if (names.isUnsatisfied()) {
+      return;
+    }
+    try {
+      owed.changedByName = names.get().nameOf(owed.changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not name %s, who changed the assignee of %s", owed.changedBy, owed.row.id);
     }
   }
 
