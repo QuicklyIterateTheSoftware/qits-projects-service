@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.bus.EntityAssigned;
 import eu.wohlben.qits.projects.bus.RecordingEntityAssignAnnouncer;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentLookup;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.WithTestResource;
@@ -50,6 +51,7 @@ class EntityAssignedTest {
   @Inject WorkEntityService entities;
   @Inject EntityDispatchService dispatches;
   @Inject RecordingEntityAssignAnnouncer announced;
+  @Inject RecordingWorkspaceAgentLookup lookup;
 
   private String projectId;
   private WorkEntity ticket;
@@ -75,6 +77,7 @@ class EntityAssignedTest {
                 "seed")
             .entity();
     announced.reset();
+    lookup.reset();
   }
 
   /** A person's bearer named Ada Lovelace, principal {@code ada} (its preferred_username). */
@@ -91,6 +94,24 @@ class EntityAssignedTest {
                     .claim("credential_type", "cli")
                     .claim("name", "Ada Lovelace")
                     .claim("preferred_username", "ada")
+                    .mint());
+  }
+
+  /** A workspace agent's bearer: token subject {@code tok-workspace-agent-…}, its uuid claimed. */
+  private RequestSpecification agent(String agentId) {
+    return given()
+        .header(
+            "Authorization",
+            "Bearer "
+                + MockIdp.attach()
+                    .token()
+                    .subject("tok-workspace-agent-" + agentId.substring(0, 8))
+                    .audience("qits-platform")
+                    .groups("qits:agent")
+                    .claim("credential_type", "cli")
+                    .claim("context_kind", "agent-container")
+                    .claim("project", projectId)
+                    .claim("agent", agentId)
                     .mint());
   }
 
@@ -249,5 +270,50 @@ class EntityAssignedTest {
     assertFalse(event.claimed(), "the dispatch's write is no claim");
     assertEquals("desk", event.changedBy());
     assertEquals("desk", event.changedByName(), "no caller of that name: the principal");
+  }
+
+  @Test
+  void anAgentsAssignmentIsNamedByItsWorkLikeItsComments() {
+    WorkEntity epic =
+        entities
+            .create(Archetype.EPIC, projectId, EntityWrite.epic("The plan", "the pitch"), "seed")
+            .entity();
+    String agentId = UUID.randomUUID().toString();
+    lookup.stage(agentId, epic.id);
+
+    agent(agentId)
+        .contentType(ContentType.JSON)
+        .body(assignee("alice"))
+        .patch(WORK + ticket.id)
+        .then()
+        .statusCode(200);
+
+    List<EntityAssigned> events = published();
+    assertEquals(1, events.size());
+    assertEquals("alice", events.get(0).assignee());
+    assertTrue(
+        events.get(0).changedBy().startsWith("tok-workspace-agent-"),
+        "the principal stays the token subject: " + events.get(0).changedBy());
+    assertEquals(
+        QualifiedEntityIds.render(projectId, epic.number) + "'s agent",
+        events.get(0).changedByName(),
+        "named as a comment's author is, never by its token subject");
+  }
+
+  @Test
+  void anAgentWhoseWorkCannotBeResolvedIsNamedAsBefore() {
+    String agentId = UUID.randomUUID().toString();
+
+    agent(agentId)
+        .contentType(ContentType.JSON)
+        .body(assignee("alice"))
+        .patch(WORK + ticket.id)
+        .then()
+        .statusCode(200);
+
+    List<EntityAssigned> events = published();
+    assertEquals(1, events.size());
+    assertEquals(
+        events.get(0).changedBy(), events.get(0).changedByName(), "no name claim: the principal");
   }
 }
