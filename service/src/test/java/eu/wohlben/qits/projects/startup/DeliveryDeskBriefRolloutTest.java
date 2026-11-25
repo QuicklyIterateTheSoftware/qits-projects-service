@@ -728,6 +728,26 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
+   * qits-2672: an unedited brief whose step 7 resumed every item with no workspace agent rolls to
+   * the current one, which leaves a long-running project agent's items alone.
+   */
+  @Test
+  public void anUneditedQits2672PreBriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_2672_PRE_DELIVERY_DESK_PROMPT.contains("--assigned-to-me"),
+        "the qits-2672 pre text does not know the project agent");
+    stage(AgentSurfaceDefaults.QITS_2672_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the pre-2672 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("it is never orphaned, never resumed, and you"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.
    */

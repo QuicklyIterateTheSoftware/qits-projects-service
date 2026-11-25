@@ -25,6 +25,12 @@ import java.util.Optional;
  * dispatch path stamps one, and only on a desk whose project declares it. qits-1596, which gave the
  * desk the owner's coordinator's rights, kept {@code start_refined} as the owner's switch: without
  * it the desk schedules nothing.
+ *
+ * <p><b>A project agent passes on the same terms</b> (qits-2672, epic qits-2521): a project's
+ * long-running agent carrying the same declaration — the lifecycle move door stamps one only when
+ * its project declares {@code start_refined} — schedules an item of its own project that is
+ * assigned to it by name. Another's item, another project's, or any item while the switch is off
+ * is refused as any machine's move is. Every other gate still runs.
  */
 @ApplicationScoped
 public class PersonApprovalGate implements TransitionGate {
@@ -44,8 +50,17 @@ public class PersonApprovalGate implements TransitionGate {
 
   @Override
   public Optional<String> refusal(WorkEntity row, Mover mover) {
-    if (mover.isPerson() || isDeclaredOwnDesk(row, mover)) {
+    if (mover.isPerson() || isDeclaredOwnDesk(row, mover) || isDeclaredOwnAgent(row, mover)) {
       return Optional.empty();
+    }
+    if (mover.isProjectAgent()) {
+      return Optional.of(
+          "scheduling (REFINED → READY_FOR_DEV) needs a person; "
+              + mover.described()
+              + " is a machine credential — "
+              + (mover.declaredApproval() == null
+                  ? "a project agent schedules only under front_desk.delivery.start_refined"
+                  : "a project agent schedules only its own project's items assigned to it"));
     }
     return Optional.of(
         "scheduling (REFINED → READY_FOR_DEV) needs a person; "
@@ -64,5 +79,19 @@ public class PersonApprovalGate implements TransitionGate {
         && row != null
         && mover.deskProject() != null
         && mover.deskProject().equals(row.projectId);
+  }
+
+  /**
+   * A project agent stamped with its project's start-refined declaration, on its own project's row
+   * assigned to it by name (qits-2672).
+   */
+  private static boolean isDeclaredOwnAgent(WorkEntity row, Mover mover) {
+    return mover.isProjectAgent()
+        && mover.declaredApproval() != null
+        && row != null
+        && mover.agentProject() != null
+        && mover.agentProject().equals(row.projectId)
+        && mover.agentName() != null
+        && mover.agentName().equals(row.assignee);
   }
 }
