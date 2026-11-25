@@ -90,6 +90,8 @@ public class AgentWaitingService {
    * @param skew how much older than the row's activity a frame may be and still apply
    * @param derives whether the row's archetype and status derive a block at all — judged on the
    *     locked row, so a transition racing the frame is seen
+   * @param labels whether the row may show a declared wait's label where it derives no block
+   *     (qits-2520) — judged on the locked row too; see {@link #labelOnly}
    */
   public Frame record(
       String id,
@@ -99,7 +101,8 @@ public class AgentWaitingService {
       Instant at,
       Instant now,
       Duration skew,
-      Predicate<WorkEntity> derives) {
+      Predicate<WorkEntity> derives,
+      Predicate<WorkEntity> labels) {
     Duration debounce = EntityBlockState.debounce();
     Instant stamped = at == null || at.isAfter(now) ? now : at;
     return writes.hold(
@@ -116,7 +119,9 @@ public class AgentWaitingService {
           em.detach(row);
           boolean was = EntityBlockState.agentWaitingEffective(row, now, debounce);
           String wasOn = EntityBlockState.waitingOn(row);
-          if (!derives.test(row)
+          boolean deriving = derives.test(row);
+          boolean labelOnly = !deriving && labelOnly(waiting, waitingOn) && labels.test(row);
+          if ((!deriving && !labelOnly)
               || (row.agentActivityAt != null && stamped.isBefore(row.agentActivityAt.minus(skew)))) {
             return new Frame(row, false, was, was, wasOn);
           }
@@ -124,13 +129,18 @@ public class AgentWaitingService {
               row.agentActivityAt == null || stamped.isAfter(row.agentActivityAt)
                   ? stamped
                   : row.agentActivityAt;
+          // Where no block can derive, a frame only carries the label (qits-2520): the wait column
+          // stays null, so no later frame or read can ever derive a block at this status.
           Instant since =
-              !waiting ? null : row.agentWaitingSince != null ? row.agentWaitingSince : stamped;
+              !waiting || labelOnly
+                  ? null
+                  : row.agentWaitingSince != null ? row.agentWaitingSince : stamped;
           String said = waiting && cause != null && !cause.isBlank() ? cause.trim() : null;
           // The label is stored whether or not the session is waiting for a person (qits-1460): a
           // wait can be declared, or still open, while the agent is busy, and the item should keep
-          // showing it rather than losing it until the agent goes idle.
-          String on = declaredWait(cause, waitingOn);
+          // showing it rather than losing it until the agent goes idle. A label-only frame writes
+          // exactly the label it carries — an unnamed Wait frame never reaches here.
+          String on = labelOnly ? named(waitingOn) : declaredWait(cause, waitingOn);
           // Typed binds: a null bound untyped reaches postgres as bytea, which no timestamptz takes.
           em.createNativeQuery(
                   "update entity set agent_activity_at = ?1, agent_waiting_since = ?2,"
@@ -167,10 +177,28 @@ public class AgentWaitingService {
    * cause never derives a block.
    */
   static String declaredWait(String cause, String waitingOn) {
-    if (waitingOn != null && !waitingOn.isBlank()) {
-      return waitingOn.trim();
+    if (named(waitingOn) != null) {
+      return named(waitingOn);
     }
     return cause != null && DECLARED_WAIT_CAUSE.equals(cause.trim()) ? UNNAMED_DECLARED_WAIT : null;
+  }
+
+  /** {@code waitingOn} trimmed, or null when it names nothing. */
+  private static String named(String waitingOn) {
+    return waitingOn == null || waitingOn.isBlank() ? null : waitingOn.trim();
+  }
+
+  /**
+   * <b>Whether a frame may apply where no block derives</b> (qits-2520): one that names a declared
+   * wait ({@code waitingOn} not blank), which only sets the label, or one that ends the session's
+   * waiting ({@code waiting} false), which only clears it. A project agent waits most often on a
+   * person at a status that runs no phase (a REFINED item waiting for READY_FOR_DEV), and the item
+   * must still read what it waits on. Every other frame — a bare wait for a person, or an unnamed
+   * {@value #DECLARED_WAIT_CAUSE} frame — is dropped there exactly as before, and a label-only frame
+   * never records {@code agentWaitingSince}, so no derived block can stand at such a status.
+   */
+  static boolean labelOnly(boolean waiting, String waitingOn) {
+    return named(waitingOn) != null || !waiting;
   }
 
   /**

@@ -639,6 +639,100 @@ class AgentWaitingApiTest {
     }
   }
 
+  /**
+   * A project agent waiting on a person at REFINED (qits-2520): a frame naming a declared wait shows
+   * its label on the read and in the listing with no block, past the debounce too; a bare wait is
+   * still dropped there and leaves the label alone; a frame ending the wait clears it.
+   */
+  @Test
+  void aDeclaredWaitShowsAtAStatusThatRunsNoPhase() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting At Refined");
+    String ticket = EntityFixtures.ticket(project.id());
+    walk(ticket, "REFINED");
+    agents.reset();
+
+    waitOn(ticket, "qits-2570 READY_FOR_DEV");
+    assertNull(row(ticket).agentWaitingSince, "a label-only frame records no wait");
+    assertEquals("qits-2570 READY_FOR_DEV", row(ticket).agentWaitingOn);
+    read(ticket)
+        .body("status", equalTo("REFINED"))
+        .body("blocked", equalTo(false))
+        .body("waitingOn", equalTo("qits-2570 READY_FOR_DEV"))
+        .body("$", not(hasKey("blockSource")));
+    given()
+        .get("/projects/api/projects/" + project.id() + "/work")
+        .then()
+        .statusCode(200)
+        .body(inListing(ticket) + ".blocked", equalTo(false))
+        .body(inListing(ticket) + ".waitingOn", equalTo("qits-2570 READY_FOR_DEV"))
+        .body(inListing(ticket), not(hasKey("blockSource")));
+    assertEquals(1, toldBlocked(ticket, false).size(), "the wait is said at once: " + agents.calls());
+
+    // a bare wait for a person derives nothing here, and does not take the label away
+    stop(ticket);
+    report(ticket, map("waiting", true, "cause", "Wait", "sessionId", "s-1")).statusCode(204);
+    assertNull(row(ticket).agentWaitingSince, "a bare wait is still dropped at REFINED");
+    assertEquals("qits-2570 READY_FOR_DEV", row(ticket).agentWaitingOn);
+    waiting.forgetLastSweep();
+    waiting.sweep(Instant.now().plusSeconds(3600));
+    read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("blockSource")));
+    assertEquals(List.of(), toldBlocked(ticket, true), "never a block at REFINED");
+
+    report(ticket, map("waiting", false, "cause", "WaitMatched", "sessionId", "s-1"))
+        .statusCode(204);
+    assertNull(row(ticket).agentWaitingOn, "the frame ending the wait clears the label");
+    read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("waitingOn")));
+  }
+
+  /** A bare wait at REFINED is dropped on an item that never showed a label, too. */
+  @Test
+  void aBareWaitAtAStatusThatRunsNoPhaseIsStillDropped() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Bare Refined");
+    String ticket = EntityFixtures.ticket(project.id());
+    walk(ticket, "REFINED");
+    report(ticket, map("waiting", true, "cause", "Wait", "sessionId", "s-1")).statusCode(204);
+    stop(ticket);
+    WorkEntity stored = row(ticket);
+    assertNull(stored.agentWaitingSince);
+    assertNull(stored.agentWaitingOn);
+    assertNull(stored.agentWaitingCause);
+    read(ticket).body("$", not(hasKey("waitingOn"))).body("$", not(hasKey("blockSource")));
+  }
+
+  /** At VERIFIED the label shows; a move then clears it like any other status move. */
+  @Test
+  void aStatusMoveClearsALabelShownWhereNoPhaseRuns() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Verified Moves");
+    String ticket = EntityFixtures.ticket(project.id());
+    walk(ticket, "REFINED");
+    waitOn(ticket, "a person");
+    read(ticket).body("waitingOn", equalTo("a person"));
+    walk(ticket, "READY_FOR_DEV");
+    assertNull(row(ticket).agentWaitingOn, "a status move clears the label");
+    read(ticket).body("$", not(hasKey("waitingOn")));
+  }
+
+  /** DONE and DROPPED take nothing: neither a label nor a wait. */
+  @Test
+  void closedItemsTakeNoFrameAtAll() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Closed");
+    String done = EntityFixtures.ticket(project.id());
+    walk(done, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
+    PlatformDone.of(done);
+    String dropped = EntityFixtures.ticket(project.id());
+    walk(dropped, "DROPPED");
+
+    for (String id : List.of(done, dropped)) {
+      waitOn(id, "something");
+      stop(id);
+      resume(id);
+      WorkEntity stored = row(id);
+      assertNull(stored.agentWaitingOn, id + " shows no label");
+      assertNull(stored.agentWaitingSince, id + " records no wait");
+      read(id).body("$", not(hasKey("waitingOn"))).body("$", not(hasKey("blockSource")));
+    }
+  }
+
   // --- the gates read the explicit flag only -----------------------------------------------------
 
   /**

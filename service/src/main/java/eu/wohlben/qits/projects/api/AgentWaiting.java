@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.AgentWaitingService;
 import eu.wohlben.qits.entities.control.EntityBlockState;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.scheduler.Scheduled;
@@ -33,8 +34,11 @@ import org.jboss.logging.Logger;
  * <p>Only where a block could stand: {@link EntityBlocks#blockable} — a ticket or an epic at a
  * status whose phase runs (REPORTED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING), never
  * a feature, a task or an issue. A frame about any other row is
- * answered 204 and changes nothing, as is a frame older than the row's last activity less {@code
- * qits.projects.agent-waiting.skew} — frames race, and every transition stamps that activity so one
+ * answered 204 and changes nothing — except one naming a declared wait, or ending the wait, at a
+ * status that is not closed ({@link #labelable}, qits-2520): it sets or clears the label alone and
+ * never the wait, so the item reads what it waits on and still derives no block. A frame older
+ * than the row's last activity less {@code qits.projects.agent-waiting.skew} is ignored too —
+ * frames race, and every transition stamps that activity so one
  * sent before the move cannot re-derive a block at the new status.
  *
  * <h2>A wait the agent declared is not a block (qits-1153)</h2>
@@ -97,7 +101,16 @@ public class AgentWaiting {
       Instant at) {
     Instant now = Instant.now();
     AgentWaitingService.Frame frame =
-        rows.record(entity.id, waiting, cause, waitingOn, at, now, skew, EntityBlocks::blockable);
+        rows.record(
+            entity.id,
+            waiting,
+            cause,
+            waitingOn,
+            at,
+            now,
+            skew,
+            EntityBlocks::blockable,
+            AgentWaiting::labelable);
     LOG.debugf(
         "Agent session %s on %s %s: waiting=%s on=%s, %s",
         sessionId,
@@ -111,6 +124,19 @@ public class AgentWaiting {
       // declared wait that started, changed or ended.
       announce(frame.entity());
     }
+  }
+
+  /**
+   * <b>Whether a row may show a declared wait's label where it derives no block</b> (qits-2520):
+   * every status but a closed one — DONE, DROPPED, or an issue's RESOLVED/OBSOLETE — since a
+   * finished item has nothing left to wait on. Only a frame naming a label, or one ending the wait,
+   * is judged by this ({@link AgentWaitingService#labelOnly}); the derived block keeps {@link
+   * EntityBlocks#blockable}.
+   */
+  static boolean labelable(WorkEntity entity) {
+    return entity.status != null
+        && !"DROPPED".equals(entity.status)
+        && !EntityStateMachine.isTerminal(entity.status);
   }
 
   @Scheduled(
