@@ -242,6 +242,13 @@
             <artifactId>qits-http-core</artifactId>
         </dependency>
         <dependency>
+            <!-- TrustAnchors: polled by qits-trust-core on its own schedule, injected into
+                 FrontDeskSpecs for the desk's QITS_TRUST_ANCHORS env entry (qits-2637). Compile
+                 scope: it ships. -->
+            <groupId>${project.groupId}</groupId>
+            <artifactId>qits-trust-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
         </dependency>

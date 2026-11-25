@@ -15,6 +15,7 @@ import io.restassured.RestAssured;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
@@ -102,17 +103,22 @@ public class PackagedSurfaceIT {
       // The launched artifact runs the prod profile, where the machine gate now ships ON
       // (qits-1391). This class asks about the packaged surface, not about the gate —
       // TokenValidationBootstrapIT does that — so it keeps the gate off as it always ran.
-      return Map.of(
-          "qits.auth.machine.required", "false",
-          "QITS_RESOURCE_DB_URL", databaseUrl("qp_it_projects"),
-          "QITS_RESOURCE_DB_USERNAME", EmbeddedPg.USER,
-          "QITS_RESOURCE_DB_PASSWORD", EmbeddedPg.PASSWORD,
-          "QITS_RESOURCE_EPICS_URL", databaseUrl("qp_it_epics"),
-          "QITS_RESOURCE_EPICS_USERNAME", EmbeddedPg.USER,
-          "QITS_RESOURCE_EPICS_PASSWORD", EmbeddedPg.PASSWORD,
-          "QITS_RESOURCE_EVENTSTREAM_URL", databaseUrl("qp_it_eventstream"),
-          "QITS_RESOURCE_EVENTSTREAM_USERNAME", EmbeddedPg.USER,
-          "QITS_RESOURCE_EVENTSTREAM_PASSWORD", EmbeddedPg.PASSWORD);
+      // qits-trust-core polls qits-certificates for the desk's QITS_TRUST_ANCHORS bundle — off
+      // here too, like %dev/%test, so a packaged boot with QITS_DOMAIN set (example.test) makes
+      // no outbound call to a host that answers nothing.
+      Map<String, String> overrides = new LinkedHashMap<>();
+      overrides.put("qits.auth.machine.required", "false");
+      overrides.put("QITS_RESOURCE_DB_URL", databaseUrl("qp_it_projects"));
+      overrides.put("QITS_RESOURCE_DB_USERNAME", EmbeddedPg.USER);
+      overrides.put("QITS_RESOURCE_DB_PASSWORD", EmbeddedPg.PASSWORD);
+      overrides.put("QITS_RESOURCE_EPICS_URL", databaseUrl("qp_it_epics"));
+      overrides.put("QITS_RESOURCE_EPICS_USERNAME", EmbeddedPg.USER);
+      overrides.put("QITS_RESOURCE_EPICS_PASSWORD", EmbeddedPg.PASSWORD);
+      overrides.put("QITS_RESOURCE_EVENTSTREAM_URL", databaseUrl("qp_it_eventstream"));
+      overrides.put("QITS_RESOURCE_EVENTSTREAM_USERNAME", EmbeddedPg.USER);
+      overrides.put("QITS_RESOURCE_EVENTSTREAM_PASSWORD", EmbeddedPg.PASSWORD);
+      overrides.put("qits.trust.enabled", "false");
+      return overrides;
     }
 
     private static synchronized String databaseUrl(String database) {

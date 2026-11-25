@@ -69,6 +69,14 @@ class FrontDeskTest {
 
   @Inject FakeFrontDeskTokens tokens;
 
+  /**
+   * Deliberately NOT {@code @Inject}: see {@code FakeTrustAnchors}' javadoc. Set on {@link
+   * #specs} as an override through a method call on the proxy ({@link
+   * FrontDeskSpecs#anchorsOverride}), the same way {@link FrontDeskSpecs#domainOverride} already
+   * reaches the contextual instance.
+   */
+  private final FakeTrustAnchors anchors = new FakeTrustAnchors();
+
   @Inject FakeSystemLeases system;
 
   @Inject DeskLeases leases;
@@ -85,6 +93,8 @@ class FrontDeskTest {
   void arrange() {
     specs.domainOverride(DOMAIN);
     tokens.reset();
+    anchors.clear();
+    specs.anchorsOverride(anchors::get);
     system.reset();
     demand.forgetEvidence();
   }
@@ -92,6 +102,8 @@ class FrontDeskTest {
   @AfterEach
   void tidy() {
     specs.domainOverride(null);
+    specs.anchorsOverride(null);
+    anchors.clear();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -326,6 +338,47 @@ class FrontDeskTest {
     assertFalse(applied.equals(row.specHash));
     assertEquals("ALWAYS_ON", env(row, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
     assertEquals(leaseId, row.leaseId, "a roll keeps the lease");
+  }
+
+  /**
+   * A trust-anchor bundle alone never rolls or recreates a running desk (qits-2637): it applies
+   * only at the next creation (or a roll some other change already caused). The env holds it once
+   * one is held, and is absent before that and after it is lost again.
+   */
+  @Test
+  void aTrustAnchorBundleAloneNeverRollsARunningDesk() {
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+    running(projectId);
+    String applied = row(projectId).specHash;
+    // spec_json never carries the bundle at all (FrontDeskSpecs.canonicalMap strips the key from
+    // every hash and every stored json, bundle held or not — see its javadoc); the env a lease
+    // actually runs with is FrontDeskSpecsTest's claim, proven there with no CDI involved.
+    assertNull(env(row(projectId), FrontDeskSpecs.TRUST_ANCHORS_ENV), "never in the stored spec");
+
+    // Holding a bundle, then rotating it, never moves the hash and never rolls the lease.
+    anchors.hold("-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n");
+    assertEquals(0, specRoll.roll(Instant.now()), "a bundle alone never rolls");
+    assertEquals(applied, row(projectId).specHash, "the hash is unmoved");
+    assertTrue(system.rolled().isEmpty());
+
+    anchors.hold("-----BEGIN CERTIFICATE-----\nBBB\n-----END CERTIFICATE-----\n");
+    assertEquals(0, specRoll.roll(Instant.now()), "a rotation alone never rolls either");
+    assertEquals(applied, row(projectId).specHash, "the hash is still unmoved");
+    assertTrue(system.rolled().isEmpty());
+
+    // Something else changes: the roll that follows is the lifecycle flip, not the bundle.
+    setLifecycle(projectId, FrontDeskLifecycle.ALWAYS_ON);
+    assertEquals(1, specRoll.roll(Instant.now()));
+    FrontDesk rolled = row(projectId);
+    assertFalse(applied.equals(rolled.specHash), "the lifecycle flip did move the hash");
+    assertEquals("ALWAYS_ON", env(rolled, "QITS_PROJECTS_DAEMON_LIFECYCLE"));
+    assertNull(env(rolled, FrontDeskSpecs.TRUST_ANCHORS_ENV), "still never in the stored spec");
+
+    // Losing the bundle afterwards is symmetric: no roll either way.
+    anchors.clear();
+    assertEquals(0, specRoll.roll(Instant.now()), "losing the bundle alone never rolls either");
+    assertEquals(rolled.specHash, row(projectId).specHash);
   }
 
   /** The desk's agent was in use a minute ago and its rollup now says {@code state}. */
