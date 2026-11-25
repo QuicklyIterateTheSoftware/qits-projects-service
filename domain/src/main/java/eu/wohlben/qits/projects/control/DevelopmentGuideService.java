@@ -23,7 +23,7 @@ public class DevelopmentGuideService {
 
   /**
    * The variant's markdown: the variant's own part, then, for an in-platform variant, the holder's
-   * brief (see {@link #brief}) and the development flow.
+   * brief (see {@link #brief}) where it has a holder surface, and the development flow.
    */
   public String render(String variant) {
     List<String> parts = new ArrayList<>();
@@ -37,6 +37,8 @@ public class DevelopmentGuideService {
       if (!brief.isBlank()) {
         parts.add("## Your brief\n\n" + brief.strip());
       }
+    }
+    if (DevelopmentGuideDefaults.endsWithFlow(variant)) {
       String flow = text(DevelopmentGuideDefaults.FLOW_KEY);
       if (!flow.isBlank()) {
         parts.add(flow.strip());

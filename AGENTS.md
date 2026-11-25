@@ -3270,6 +3270,14 @@ desk trigger message and the front-desk prompt state the `desk` variant's, every
 turn the `agent` variant's, so a session compares the hash it is handed with the one it last read
 (or runs `qits help guide --hash-only`) and re-reads only on a change.
 
+Variants (`DevelopmentGuideDefaults.VARIANTS`): `workstation`, `agent`, `desk`, `refinement` and
+(qits-2599) `project-agent`, the long-running project agent. Detection order: `qits:desk` → desk, an
+`entity` claim → refinement, `context_kind` `project-agent` → project-agent, `qits:agent` or
+`qits:admin-agent` → agent, else workstation. Every variant but `workstation` ends with the flow;
+only a variant in `HOLDER_SURFACE` gets a "## Your brief" part, and `project-agent` has none (its
+system prompt is its own). A new variant's row enters through `KEYS`/`SHIPPED`, so the boot seed
+writes it on a running database that lacks it; it has no `PREVIOUS` history until its text changes.
+
 Contracts: the provider state `a project whose front desk is running` stands up
 `agenthost/FakeProjectDaemon` (a test-scope daemon that dials the control socket and serves the
 dial-backs, as `AgentTunnelProxyTest` does inline) behind the real tunnel, and `cleanUp` closes it;

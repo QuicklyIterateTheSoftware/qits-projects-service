@@ -16,8 +16,9 @@ import java.util.Optional;
  * and edited like a surface ({@code PUT /agent-surfaces/guide.flow}). The rows never reach the
  * agent configuration document: {@link AgentSurfaceConfigurationService#listAll} leaves them out.
  *
- * <p><b>Variants.</b> {@code workstation} is for a person on a workstation. The other three are for
- * the platform's holders: a workspace agent, the delivery desk and a refinement room. An
+ * <p><b>Variants.</b> {@code workstation} is for a person on a workstation. The others are for the
+ * platform's holders: a workspace agent, the delivery desk, a refinement room and a long-running
+ * project agent (qits-2599, which has no brief part). An
  * in-platform variant is its part, then the holder's own brief (its surface's live system prompt,
  * else its initial prompt, see {@link #HOLDER_SURFACE}) where one is set, then the shared
  * development flow ({@value #FLOW_KEY}). The
@@ -34,9 +35,11 @@ public final class DevelopmentGuideDefaults {
   public static final String AGENT = "agent";
   public static final String DESK = "desk";
   public static final String REFINEMENT = "refinement";
+  public static final String PROJECT_AGENT = "project-agent";
 
   /** The variants, in the order {@code qits help guide --list} shows them. */
-  public static final List<String> VARIANTS = List.of(WORKSTATION, AGENT, DESK, REFINEMENT);
+  public static final List<String> VARIANTS =
+      List.of(WORKSTATION, AGENT, DESK, REFINEMENT, PROJECT_AGENT);
 
   /** The key prefix of every guide row. */
   public static final String KEY_PREFIX = "guide.";
@@ -46,9 +49,14 @@ public final class DevelopmentGuideDefaults {
 
   /** Every stored part: one per variant, then the flow. */
   public static final List<String> KEYS =
-      List.of(key(WORKSTATION), key(AGENT), key(DESK), key(REFINEMENT), FLOW_KEY);
+      List.of(
+          key(WORKSTATION), key(AGENT), key(DESK), key(REFINEMENT), key(PROJECT_AGENT), FLOW_KEY);
 
-  /** The surface whose system prompt is a holder's brief. A workstation has none. */
+  /**
+   * The surface whose system prompt is a holder's brief. A workstation has none, and neither has a
+   * long-running project agent (qits-2599): its system prompt is its own, so it gets no "Your
+   * brief" part.
+   */
   public static final Map<String, String> HOLDER_SURFACE =
       Map.of(
           AGENT, AgentSurfaceDefaults.TICKET_DISPATCH,
@@ -65,7 +73,15 @@ public final class DevelopmentGuideDefaults {
           DESK,
           "The delivery desk: its brief and the development flow.",
           REFINEMENT,
-          "A refinement room: its brief and the development flow.");
+          "A refinement room: its brief and the development flow.",
+          PROJECT_AGENT,
+          "A long-running project agent: picking, holding and waiting on work, then the"
+              + " development flow.");
+
+  /** Whether a variant ends with the development flow: every in-platform variant. */
+  public static boolean endsWithFlow(String variant) {
+    return VARIANTS.contains(variant) && !WORKSTATION.equals(variant);
+  }
 
   public static String key(String variant) {
     return KEY_PREFIX + variant;
@@ -414,6 +430,59 @@ public final class DevelopmentGuideDefaults {
 
       You are an agent in a workspace container, working one epic or ticket. Your session's brief
       comes first, then how work moves from your branch to the running platform.\
+      """;
+
+  /**
+   * A long-running project agent (qits-2599): always on, holding several items, each worked by a
+   * subagent. How it picks, holds, moves and waits on work; the development flow follows.
+   */
+  public static final String PROJECT_AGENT_GUIDE =
+      """
+      # Development guide: long-running project agent
+
+      You are one of the project's long-running agents. You are always on, you hold several work items
+      at once, and you hand each one to a subagent working in that item's own worktrees, as your system
+      prompt says. This guide is the platform's half: how you pick work, keep track of it, and wait.
+      The development flow that follows applies to every item you hold.
+
+      ## Picking work
+
+      `qits work list --unassigned --by-priority --limit 10` lists what you may take, in backlog order:
+      bugs first, then priority, then oldest. Every row is an unassigned epic or ticket that is not
+      blocked, not reserved for a person, and has every need met. Take one by setting its assignee to
+      your name: `qits work update --entity <id>` with `{"assignee":"<your name>"}`. Then read
+      `qits work details --entity <id>`. If the assignee is not your name, somebody else took it
+      first: leave it and pick another. An item at REFINED is not offered, because only a person moves
+      it on.
+
+      ## Your own work
+
+      `qits work list --assigned-to-me` lists every item you hold that is not finished yet. Run it
+      after every restart and whenever you are unsure what you hold. Each item is worked on its own
+      branch, `ticket/<id>` or `epic/<id>`, as the flow below describes.
+
+      ## Moving an item
+
+      You move each item yourself. Nobody dispatches a phase to you. When a phase of an item is done,
+      transition it. The answer is that item's next phase instruction: hand it to the subagent working
+      that item. A person or the desk may also talk to you about an item. You are then told
+      `(<who> has assigned <id> to you)` or `(<who> just commented on <id>)`. Pass that on to the
+      item's subagent too.
+
+      ## Waiting
+
+      Every wait you declare names the item it is for. `qits wait work <id> ...` and
+      `qits wait branch ticket/<id> ...` (or `epic/<id>`) take the item from their own argument. Every
+      other wait takes `--work <id>`, for example `qits wait ci-run <run> --work <id>`. While an item has
+      an open wait it reads `waiting on <label>`. An item you hold with no wait and no subagent at work
+      on it looks stalled, so give every item either a subagent or a wait. `qits wait list --work <id>`
+      shows an item's waits, and `qits wait cancel <wait id>` ends one.
+
+      When a wait closes you get one line, for example
+      `(wait "ci green" for qits-123 matched BuildStatusChanged <event id>)`,
+      `(wait "<label>" for <id> timed out)` or `(wait "<label>" for <id> broke: <reason>)`. Pass it to
+      the subagent working that item. To read a matched event in full, run
+      `qits events query --filter=<Event> -o json` and take the event with that id.\
       """;
 
   /** The desk part as qits-1679 shipped it, before qits-1689 added the release-request triggers. */
@@ -3272,6 +3341,7 @@ public final class DevelopmentGuideDefaults {
           key(AGENT), AGENT_GUIDE,
           key(DESK), DESK_GUIDE,
           key(REFINEMENT), REFINEMENT_GUIDE,
+          key(PROJECT_AGENT), PROJECT_AGENT_GUIDE,
           FLOW_KEY, DEVELOPMENT_FLOW);
 
   /**

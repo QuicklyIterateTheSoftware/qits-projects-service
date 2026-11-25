@@ -15,6 +15,10 @@
     {
       "name": "refinement",
       "description": "A refinement room: its brief and the development flow."
+    },
+    {
+      "name": "project-agent",
+      "description": "A long-running project agent: picking, holding and waiting on work, then the development flow."
     }
   ]
 }

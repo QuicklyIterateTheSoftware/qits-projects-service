@@ -1446,7 +1446,7 @@ components:
       properties:
         variant:
           type: string
-          description: "workstation, agent, desk or refinement"
+          description: "workstation, agent, desk, refinement or project-agent"
         detected:
           type: boolean
           description: True when the variant was chosen from the caller's credential.

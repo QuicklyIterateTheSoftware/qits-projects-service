@@ -12,8 +12,13 @@ import eu.wohlben.qits.projects.control.DevelopmentGuideDefaults;
 import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRepository;
+import eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRevisionRepository;
+import eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository;
+import eu.wohlben.qits.projects.persistence.AgentSurfaceMcpAttachmentRepository;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import eu.wohlben.qits.projects.startup.DevelopmentGuideSeed;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.security.TestSecurity;
@@ -35,6 +40,14 @@ public class DevelopmentGuideControllerTest {
   @Inject DevelopmentGuideService guide;
 
   @Inject AgentSurfaceConfigurationService surfaces;
+
+  @Inject AgentSurfaceConfigurationRepository surfaceRows;
+
+  @Inject AgentSurfaceConfigurationRevisionRepository revisionRows;
+
+  @Inject AgentSurfaceMcpAttachmentRepository attachmentRows;
+
+  @Inject AgentSurfaceExternalMcpAttachmentRepository externalAttachmentRows;
 
   @BeforeEach
   void seeded() {
@@ -94,12 +107,105 @@ public class DevelopmentGuideControllerTest {
   }
 
   @Test
-  public void theListingNamesTheFourVariants() {
+  public void theListingNamesTheFiveVariants() {
     JsonPath answer =
         given().when().get("/projects/api/guide/variants").then().statusCode(200).extract().jsonPath();
     assertEquals(
-        List.of("workstation", "agent", "desk", "refinement"),
+        List.of("workstation", "agent", "desk", "refinement", "project-agent"),
         answer.getList("variants.name", String.class));
+  }
+
+  /** qits-2599: the long-running project agent's part, no brief, then the flow. */
+  @Test
+  public void theProjectAgentVariantIsItsPartThenTheFlowWithNoBrief() {
+    JsonPath answer = read("project-agent");
+    assertEquals("project-agent", answer.getString("variant"));
+    assertFalse(answer.getBoolean("detected"));
+    String markdown = answer.getString("markdown");
+    assertTrue(markdown.startsWith(DevelopmentGuideDefaults.PROJECT_AGENT_GUIDE), markdown);
+    assertFalse(markdown.contains("## Your brief"), markdown);
+    assertTrue(
+        markdown.endsWith(DevelopmentGuideDefaults.DEVELOPMENT_FLOW.strip() + "\n"), markdown);
+    assertEquals(
+        DevelopmentGuideDefaults.PROJECT_AGENT_GUIDE.strip()
+            + "\n\n"
+            + DevelopmentGuideDefaults.DEVELOPMENT_FLOW.strip()
+            + "\n",
+        markdown);
+    assertTrue(markdown.contains("qits work list --unassigned --by-priority --limit 10"));
+    assertTrue(markdown.contains("qits work list --assigned-to-me"));
+    assertTrue(markdown.contains("qits wait list --work <id>"));
+    assertTrue(markdown.contains("qits wait cancel <wait id>"));
+    assertEquals(
+        null,
+        DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("project-agent")),
+        "a new variant has no history");
+  }
+
+  /**
+   * qits-2599: the four variants that were there compose exactly as before, so their hashes stay
+   * (live, the agent variant's is 0661ade29a72a06e; the suite's surfaces are not the live ones, so
+   * the composition is pinned here and the hash is checked after deploy).
+   */
+  @Test
+  public void theProjectAgentVariantMovesNoOtherVariant() {
+    String flow = DevelopmentGuideDefaults.DEVELOPMENT_FLOW.strip();
+    assertEquals(
+        DevelopmentGuideDefaults.WORKSTATION_GUIDE.strip() + "\n",
+        read("workstation").getString("markdown"));
+    assertEquals(
+        DevelopmentGuideDefaults.REFINEMENT_GUIDE.strip() + "\n\n" + flow + "\n",
+        read("refinement").getString("markdown"));
+    assertEquals(
+        DevelopmentGuideDefaults.AGENT_GUIDE.strip()
+            + "\n\n## Your brief\n\n"
+            + briefOf(AgentSurfaceDefaults.TICKET_DISPATCH)
+            + "\n\n"
+            + flow
+            + "\n",
+        read("agent").getString("markdown"));
+    assertEquals(
+        DevelopmentGuideDefaults.DESK_GUIDE.strip()
+            + "\n\n## Your brief\n\n"
+            + briefOf(AgentSurfaceDefaults.PROJECT_DELIVERY)
+            + "\n\n"
+            + flow
+            + "\n",
+        read("desk").getString("markdown"));
+  }
+
+  /** A holder's brief as the guide reads it: the system prompt, else the initial prompt. */
+  private String briefOf(String surface) {
+    AgentSurfaceConfigurationDto holder = surfaces.get(surface);
+    String system = holder.systemPrompt();
+    return (system != null && !system.isBlank() ? system : holder.initialPrompt()).strip();
+  }
+
+  /** qits-2599: a running database that lacks the new row gets it on boot. */
+  @Test
+  public void aDatabaseLackingTheProjectAgentRowIsSeededOnBoot() {
+    String key = DevelopmentGuideDefaults.key("project-agent");
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              attachmentRows.delete("surfaceKey", key);
+              externalAttachmentRows.delete("surfaceKey", key);
+              revisionRows.delete("surfaceKey", key);
+              surfaceRows.deleteById(key);
+            });
+    assertFalse(hasRow(key), "the row is gone, as on a database from before qits-2599");
+    seed.run();
+    assertTrue(hasRow(key), "the boot seeds it");
+    assertEquals(DevelopmentGuideDefaults.PROJECT_AGENT_GUIDE, surfaces.get(key).systemPrompt());
+    assertTrue(
+        read("project-agent")
+            .getString("markdown")
+            .startsWith(DevelopmentGuideDefaults.PROJECT_AGENT_GUIDE));
+  }
+
+  private boolean hasRow(String key) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> surfaceRows.findByIdOptional(key).isPresent());
   }
 
   @Test
@@ -576,6 +682,17 @@ public class DevelopmentGuideControllerTest {
   }
 
   @Test
+  public void theProjectAgentVariantIsSelectableByName() {
+    given()
+        .queryParam("for", "project-agent")
+        .when()
+        .get("/projects/api/guide")
+        .then()
+        .statusCode(200);
+    assertEquals("project-agent", read(" Project-Agent ").getString("variant"));
+  }
+
+  @Test
   public void anUnknownVariantIsA400() {
     given().queryParam("for", "kiosk").when().get("/projects/api/guide").then().statusCode(400);
   }
@@ -597,6 +714,24 @@ public class DevelopmentGuideControllerTest {
             AgentTokens.token(
                 Map.of("project", project, "entity", "e-1"), "qits:agent")));
     assertEquals("workstation", detect(AgentTokens.token(Map.of(), "qits:admin")));
+    // qits-2599: a long-running project agent's token names its context kind.
+    assertEquals(
+        "project-agent",
+        detect(
+            AgentTokens.token(
+                Map.of("project", project, "context_kind", "project-agent"), "qits:agent")));
+    assertEquals(
+        "agent",
+        detect(
+            AgentTokens.token(
+                Map.of("project", project, "context_kind", "agent-container"), "qits:agent")));
+    assertEquals(
+        "desk",
+        detect(
+            AgentTokens.token(
+                Map.of("project", project, "context_kind", "desk-delivery"),
+                "qits:agent",
+                "qits:desk")));
   }
 
   private String detect(SecurityIdentity caller) {
@@ -614,6 +749,7 @@ public class DevelopmentGuideControllerTest {
       case "agent" -> "workspace agent";
       case "desk" -> "delivery desk";
       case "refinement" -> "refinement room";
+      case "project-agent" -> "long-running project agent";
       default -> "workstation";
     };
   }
