@@ -151,6 +151,10 @@ class ConsumerPactVerificationTest {
   static final String NULL_PRIORITY =
       "qits-2496: pins priority null; every work item holds a number now, 0 by default";
 
+  /** The reason every qits-2599 entry gives. */
+  static final String FOUR_GUIDE_VARIANTS =
+      "qits-2599: pins the guide variants at four; project-agent is the fifth";
+
   /** The CLI's rollback version that still reads campaigns, milestones and dependsOn. */
   private static final String CLI_ROLLBACK = "2026.1105.225130";
 
@@ -195,6 +199,13 @@ class ConsumerPactVerificationTest {
    * "priority": null} on every board and card read of {@code listProjectWork}; the provider answers
    * 0. That version only sorts by the number, so 0 reads right there. Its 2026.1122.110520 matches
    * any integer. Each entry goes once the version is neither deployed nor a rollback target.
+   *
+   * <p><b>qits-2599 adds the {@code project-agent} guide variant.</b> qits-platform-access-monorepo's
+   * pacts 2026.1122.234007 (pinned, and the pact of its rollback 2026.1124.233720) and
+   * 2026.1125.11635 (deployed) pin {@code listDevelopmentGuideVariants}' {@code variants} at
+   * exactly four entries, as the golden master recorded them; the provider answers five. The CLI
+   * only lists what it reads, so five read right there. Its next pact re-records from the new golden
+   * master. Each entry goes once its version is neither pinned, deployed nor a rollback target.
    */
   static final List<KnownWrong> KNOWN_WRONG =
       List.of(
@@ -268,6 +279,17 @@ class ConsumerPactVerificationTest {
               "show-project-work: listProjectWork",
               "a project with refined work",
               RETIRED + ": pins milestones and unmetMilestones on every entry"),
+          // qits-platform-access-monorepo's pacts from before qits-2599's fifth guide variant.
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              "2026.1122.234007",
+              "qits help guide: listDevelopmentGuideVariants",
+              FOUR_GUIDE_VARIANTS),
+          new KnownWrong(
+              "qits-platform-access-monorepo",
+              "2026.1125.11635",
+              "qits help guide: listDevelopmentGuideVariants",
+              FOUR_GUIDE_VARIANTS),
           // qits-platform-access-monorepo's rollback, the same way.
           KnownWrong.inRetiredState(
               "qits-platform-access-monorepo", CLI_ROLLBACK, "a ticket waiting on an unmet milestone"),

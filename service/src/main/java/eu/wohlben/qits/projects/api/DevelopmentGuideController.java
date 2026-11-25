@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.json.JsonString;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
@@ -26,9 +28,10 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * a refinement room. It reads the store and nothing else, so it binds no caller to a project.
  *
  * <p><b>Detection</b>, when {@code for} is absent: the delivery desk's token carries {@code
- * qits:desk}; a refinement room's carries an {@code entity} claim; any other agent's carries {@code
- * qits:agent} or {@code qits:admin-agent}; everyone else is a person on a workstation. The answer
- * says which variant it chose.
+ * qits:desk}; a refinement room's carries an {@code entity} claim; a long-running project agent's
+ * carries a {@code context_kind} of {@value #PROJECT_AGENT_CONTEXT_KIND} (qits-2599); any other
+ * agent's carries {@code qits:agent} or {@code qits:admin-agent}; everyone else is a person on a
+ * workstation. The answer says which variant it chose.
  */
 @Path("/guide")
 @Produces(MediaType.APPLICATION_JSON)
@@ -41,13 +44,19 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 })
 public class DevelopmentGuideController {
 
+  /** The {@code context_kind} claim a long-running project agent's token carries (qits-2599). */
+  static final String PROJECT_AGENT_CONTEXT_KIND = "project-agent";
+
+  /** The claim naming what a token was minted for. */
+  static final String CONTEXT_KIND_CLAIM = "context_kind";
+
   @Inject DevelopmentGuideService guide;
 
   @Inject SecurityIdentity identity;
 
   /** One variant of the guide. */
   public record GuideResponse(
-      @Schema(description = "workstation, agent, desk or refinement") String variant,
+      @Schema(description = "workstation, agent, desk, refinement or project-agent") String variant,
       @Schema(description = "True when the variant was chosen from the caller's credential.")
           boolean detected,
       @Schema(description = "The guide, as markdown.") String markdown,
@@ -114,9 +123,31 @@ public class DevelopmentGuideController {
     if (EntitiesPrincipal.entityOf(caller).isPresent()) {
       return DevelopmentGuideDefaults.REFINEMENT;
     }
+    if (PROJECT_AGENT_CONTEXT_KIND.equals(contextKindOf(caller))) {
+      return DevelopmentGuideDefaults.PROJECT_AGENT;
+    }
     if (caller.hasRole(AgentAccess.AGENT_ROLE) || caller.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
       return DevelopmentGuideDefaults.AGENT;
     }
     return DevelopmentGuideDefaults.WORKSTATION;
+  }
+
+  /**
+   * The bearer's {@code context_kind} claim, trimmed, read as {@link EntitiesPrincipal#entityOf}
+   * reads {@code entity}; null for a caller without a token or without the claim.
+   */
+  static String contextKindOf(SecurityIdentity caller) {
+    if (!(caller.getPrincipal() instanceof JsonWebToken jwt)) {
+      return null;
+    }
+    Object claim = jwt.getClaim(CONTEXT_KIND_CLAIM);
+    if (claim == null) {
+      return null;
+    }
+    String value =
+        claim instanceof JsonString json
+            ? json.getString()
+            : claim instanceof String text ? text : claim.toString();
+    return value.trim();
   }
 }
