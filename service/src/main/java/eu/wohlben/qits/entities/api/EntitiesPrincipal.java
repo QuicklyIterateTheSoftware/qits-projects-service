@@ -36,6 +36,22 @@ public final class EntitiesPrincipal {
    */
   public static final String ENTITY_CLAIM = "entity";
 
+  /**
+   * The claim qits-idp stamps on every token of a commissioned context: the commission's kind —
+   * {@code agent-container}, {@code desk-delivery}, {@code project-agent} and so on.
+   */
+  public static final String CONTEXT_KIND_CLAIM = "context_kind";
+
+  /**
+   * A long-running project agent's {@link #CONTEXT_KIND_CLAIM} (qits-2518): qits-agents-service
+   * commissions its token under the fixed subject {@value #PROJECT_AGENT_SUBJECT_PREFIX}{@code
+   * <projectSlug>-<name>}, with a {@code project} claim naming the project's id.
+   */
+  public static final String PROJECT_AGENT_CONTEXT_KIND = "project-agent";
+
+  /** What a project agent's token subject starts with, before {@code <projectSlug>-<name>}. */
+  public static final String PROJECT_AGENT_SUBJECT_PREFIX = "tok-project-agent-";
+
   private EntitiesPrincipal() {}
 
   /**
@@ -56,6 +72,25 @@ public final class EntitiesPrincipal {
             ? json.getString()
             : claim instanceof String text ? text : claim.toString();
     return Optional.of(value.trim());
+  }
+
+  /**
+   * The bearer's {@code context_kind} claim, trimmed, read as {@link #entityOf} reads {@code
+   * entity}; null for a caller without a token or without the claim.
+   */
+  public static String contextKindOf(SecurityIdentity identity) {
+    if (identity == null || !(identity.getPrincipal() instanceof JsonWebToken jwt)) {
+      return null;
+    }
+    Object claim = jwt.getClaim(CONTEXT_KIND_CLAIM);
+    if (claim == null) {
+      return null;
+    }
+    String value =
+        claim instanceof JsonString json
+            ? json.getString()
+            : claim instanceof String text ? text : claim.toString();
+    return value.trim();
   }
 
   public static String changedBy(SecurityIdentity identity) {

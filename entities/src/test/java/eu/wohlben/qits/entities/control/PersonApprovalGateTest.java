@@ -95,6 +95,109 @@ class PersonApprovalGateTest extends EntitiesTestSupport {
     assertEquals("READY_FOR_DEV", status(Archetype.TICKET, id));
   }
 
+  /** A REFINED ticket of {@code proj-1} assigned to {@code assignee}. */
+  private String refinedTicketOf(String assignee) {
+    String id =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("Filed", "it occurs", null, "BUG", assignee)
+                    .withAcceptanceCriteria(CRITERIA),
+                "t")
+            .entity()
+            .id;
+    workEntities.transition(Archetype.TICKET, id, "REFINED", "agent");
+    return id;
+  }
+
+  /**
+   * A project agent (qits-2672) schedules on the desk's terms: stamped with its project's
+   * start-refined declaration, on its own project's row assigned to it by name. Without the stamp
+   * the refusal names the switch.
+   */
+  @Test
+  void aProjectAgentSchedulesItsOwnItemUnderStartRefined() {
+    Mover agent = Mover.projectAgent("tok-project-agent-p-developer", "proj-1", "developer");
+    String own = refinedTicketOf("developer");
+    workEntities.transition(
+        Archetype.TICKET, own, "READY_FOR_DEV", agent.withDeclaredApproval("start-refined"));
+    assertEquals("READY_FOR_DEV", status(Archetype.TICKET, own));
+  }
+
+  @Test
+  void aProjectAgentIsRefusedWithStartRefinedOff() {
+    Mover agent = Mover.projectAgent("tok-project-agent-p-developer", "proj-1", "developer");
+    String own = refinedTicketOf("developer");
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.TICKET, own, "READY_FOR_DEV", agent));
+    assertTrue(
+        refusal
+            .getMessage()
+            .contains(
+                "a project agent schedules only under front_desk.delivery.start_refined"),
+        refusal.getMessage());
+    assertEquals("REFINED", status(Archetype.TICKET, own));
+  }
+
+  @Test
+  void aProjectAgentIsRefusedAnotherAssigneesItem() {
+    Mover agent =
+        Mover.projectAgent("tok-project-agent-p-developer", "proj-1", "developer")
+            .withDeclaredApproval("start-refined");
+    for (String assignee : java.util.Arrays.asList("ada", null)) {
+      String theirs = refinedTicketOf(assignee);
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () -> workEntities.transition(Archetype.TICKET, theirs, "READY_FOR_DEV", agent));
+      assertTrue(
+          refusal.getMessage().contains("a project agent schedules only its own project's items"),
+          refusal.getMessage());
+      assertEquals("REFINED", status(Archetype.TICKET, theirs));
+    }
+  }
+
+  @Test
+  void aProjectAgentIsRefusedAnotherProjectsItem() {
+    String own = refinedTicketOf("developer");
+    Mover elsewhere =
+        Mover.projectAgent("tok-project-agent-q-developer", "proj-2", "developer")
+            .withDeclaredApproval("start-refined");
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, own, "READY_FOR_DEV", elsewhere));
+    // An unbound one is nobody's project's.
+    Mover unbound =
+        Mover.projectAgent("tok-project-agent-x", null, "developer")
+            .withDeclaredApproval("start-refined");
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, own, "READY_FOR_DEV", unbound));
+    assertEquals("REFINED", status(Archetype.TICKET, own));
+  }
+
+  /** Every other gate still runs for a project agent: no criteria is still a refusal. */
+  @Test
+  void aProjectAgentStillMeetsTheOtherGates() {
+    String own = refinedTicketOf("developer");
+    workEntities.update(
+        Archetype.TICKET, own, EntityWrite.epic(null, null).withAcceptanceCriteria(List.of()), "t");
+    Mover agent =
+        Mover.projectAgent("tok-project-agent-p-developer", "proj-1", "developer")
+            .withDeclaredApproval("start-refined");
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.TICKET, own, "READY_FOR_DEV", agent));
+    assertTrue(
+        refusal.getMessage().contains("ACCEPTANCE_CRITERIA: it has no acceptance criteria"),
+        refusal.getMessage());
+    assertFalse(refusal.getMessage().contains("PERSON_APPROVAL"), refusal.getMessage());
+  }
+
   @Test
   void aPersonSchedulesAndTheMoveIsAuditedUnderThePersonsName() {
     String id = refined(Archetype.EPIC);

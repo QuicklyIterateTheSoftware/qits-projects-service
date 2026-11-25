@@ -95,6 +95,9 @@ public class WorkEntityDoors {
 
   private static final Logger LOG = Logger.getLogger(WorkEntityDoors.class);
 
+  /** The wire name of an item's assignee. */
+  private static final String ASSIGNEE = "assignee";
+
   /** RFC 7396's media type. Plain {@code application/json} is accepted beside it. */
   public static final String MERGE_PATCH_JSON = "application/merge-patch+json";
 
@@ -365,6 +368,7 @@ public class WorkEntityDoors {
     if (body != null && body.isObject() && body.has(EntitySchemas.INSPIRED_BY)) {
       EntitiesAgentAccess.requireIdeaWriter(identity);
     }
+    refuseAnotherHoldersItem(identity, current, body);
 
     // What the item needs (qits-1903), judged with the rest of the patch so one 400 lists every
     // complaint: the shape in readPatch, what each entry names here.
@@ -413,6 +417,34 @@ public class WorkEntityDoors {
       resumeIfReleased(id, changedBy);
     }
     return answered(updated.entity(), current);
+  }
+
+  /**
+   * <b>A project agent takes only unassigned work</b> (qits-2672, epic qits-2521): a long-running
+   * project agent's patch that names {@code assignee} at all — another name, or null to clear it —
+   * on an item already assigned to a name that is not its own is a 409, before the body is judged or
+   * anything written. A person, the desk and every other machine keep the write as it was.
+   */
+  private void refuseAnotherHoldersItem(
+      SecurityIdentity identity, TransitionedEntity current, JsonNode body) {
+    if (body == null
+        || !body.isObject()
+        || !body.has(ASSIGNEE)
+        || !EntityMovers.isProjectAgent(identity)) {
+      return;
+    }
+    String holder = current.assignee();
+    if (holder == null || holder.isBlank()) {
+      return;
+    }
+    if (holder.equals(movers.projectAgentName(identity, current.projectId()).orElse(null))) {
+      return;
+    }
+    String slug = projects.slugsByIds(Set.of(current.projectId())).get(current.projectId());
+    String named =
+        slug == null ? current.id() : QualifiedEntityIds.render(slug, current.number());
+    throw new ConflictException(
+        named + " is assigned to " + holder + "; a project agent takes only unassigned work");
   }
 
   /**
@@ -747,7 +779,9 @@ public class WorkEntityDoors {
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).
-    Mover mover = movers.of(identity);
+    // A project agent is stamped with its project's start_refined here, for PERSON_APPROVAL
+    // (qits-2672).
+    Mover mover = movers.ofMove(identity);
     DropOutcome drop = DropOutcome.of(outcome, entityId(blankToNull(supersededBy)));
     WorkEntityService.Transition moved =
         resolutions.transition(archetype, row.id, target, mover, drop);

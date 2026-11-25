@@ -88,6 +88,13 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * {@code setBlocked} has returned, i.e. after its own transaction committed, so no target is ever
  * told about a value a rollback undid; and it never throws, so an unreachable workspace costs a
  * marker and never the block.
+ *
+ * <h2>The bus hears it too (qits-2674)</h2>
+ *
+ * <p>Every block and unblock that changes the explicit flag is published as {@code
+ * EntityBlockChanged} after the commit — by {@code WorkEntityService.setBlocked}, which owes it to
+ * the commit through {@code BlockWrites}, so this door announces nothing itself. The stated reason
+ * travels with an unblock as well as a block (the row keeps only a block's).
  */
 @ApplicationScoped
 public class EntityBlocks {
@@ -168,7 +175,7 @@ public class EntityBlocks {
     thread.addComment(entity.id, remark(blocked, stated), changedBy);
     WorkEntity written =
         entities.setBlocked(
-            entity.archetype, entity.id, blocked, blocked ? stated : null, changedBy);
+            entity.archetype, entity.id, blocked, stated.isEmpty() ? null : stated, changedBy);
     if (was != EntityBlockState.of(written).blocked()) {
       // Ticket and epic only, never throws — AgentEntitySignals filters and swallows both.
       agents.changed(written);

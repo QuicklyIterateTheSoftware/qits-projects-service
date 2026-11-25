@@ -6,7 +6,6 @@ import eu.wohlben.qits.projects.control.DevelopmentGuideService;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
-import jakarta.json.JsonString;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -15,7 +14,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
-import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
@@ -45,10 +43,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public class DevelopmentGuideController {
 
   /** The {@code context_kind} claim a long-running project agent's token carries (qits-2599). */
-  static final String PROJECT_AGENT_CONTEXT_KIND = "project-agent";
-
-  /** The claim naming what a token was minted for. */
-  static final String CONTEXT_KIND_CLAIM = "context_kind";
+  static final String PROJECT_AGENT_CONTEXT_KIND = EntitiesPrincipal.PROJECT_AGENT_CONTEXT_KIND;
 
   @Inject DevelopmentGuideService guide;
 
@@ -123,31 +118,12 @@ public class DevelopmentGuideController {
     if (EntitiesPrincipal.entityOf(caller).isPresent()) {
       return DevelopmentGuideDefaults.REFINEMENT;
     }
-    if (PROJECT_AGENT_CONTEXT_KIND.equals(contextKindOf(caller))) {
+    if (PROJECT_AGENT_CONTEXT_KIND.equals(EntitiesPrincipal.contextKindOf(caller))) {
       return DevelopmentGuideDefaults.PROJECT_AGENT;
     }
     if (caller.hasRole(AgentAccess.AGENT_ROLE) || caller.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
       return DevelopmentGuideDefaults.AGENT;
     }
     return DevelopmentGuideDefaults.WORKSTATION;
-  }
-
-  /**
-   * The bearer's {@code context_kind} claim, trimmed, read as {@link EntitiesPrincipal#entityOf}
-   * reads {@code entity}; null for a caller without a token or without the claim.
-   */
-  static String contextKindOf(SecurityIdentity caller) {
-    if (!(caller.getPrincipal() instanceof JsonWebToken jwt)) {
-      return null;
-    }
-    Object claim = jwt.getClaim(CONTEXT_KIND_CLAIM);
-    if (claim == null) {
-      return null;
-    }
-    String value =
-        claim instanceof JsonString json
-            ? json.getString()
-            : claim instanceof String text ? text : claim.toString();
-    return value.trim();
   }
 }

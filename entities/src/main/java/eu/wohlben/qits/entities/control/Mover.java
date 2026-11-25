@@ -25,6 +25,13 @@ package eu.wohlben.qits.entities.control;
  * {@code start_refined} rule a project declared in its {@code .config/qits/project.yml}, which
  * {@link PersonApprovalGate} accepts in a person's place. Only that path sets one.
  *
+ * <p><b>A project-agent Mover is a project's long-running agent</b> (qits-2672, epic qits-2521): a
+ * machine holding a qits-idp {@code project-agent} token, bound to the project its {@code project}
+ * claim names ({@link #agentProject}) and known by its roster name ({@link #agentName}, e.g. {@code
+ * developer}). The lifecycle move door may stamp it with the same {@code start_refined}
+ * declaration as the desk, and {@link PersonApprovalGate} then lets it schedule its own items of
+ * its own project — on the same terms as the desk, nothing more.
+ *
  * @param name what the audit records as {@code changedBy} — for a person, the name the proof
  *     carries, never a header or a body field; for a machine, the caller's principal (null for an
  *     anonymous one)
@@ -32,14 +39,28 @@ package eu.wohlben.qits.entities.control;
  * @param isDesk whether the caller is a project's delivery desk ({@code qits:desk})
  * @param deskProject the project a desk is bound to, from its token's claim; null otherwise
  * @param declaredApproval the declared rule standing in for a person's approval of the scheduling,
- *     or null — set only on a desk, by the dispatch path, when the project declares it
+ *     or null — set only on a desk, by the dispatch path, or on a project agent, by the lifecycle
+ *     move door, when the project declares it
+ * @param isProjectAgent whether the caller is a project's long-running agent ({@code context_kind}
+ *     {@code project-agent})
+ * @param agentProject the project a project agent is bound to, from its token's claim; null
+ *     otherwise
+ * @param agentName a project agent's roster name, which is what it writes as an item's assignee;
+ *     null otherwise
  */
 public record Mover(
-    String name, boolean isPerson, boolean isDesk, String deskProject, String declaredApproval) {
+    String name,
+    boolean isPerson,
+    boolean isDesk,
+    String deskProject,
+    String declaredApproval,
+    boolean isProjectAgent,
+    String agentProject,
+    String agentName) {
 
   /** A person or a plain machine: no desk, no declared approval. */
   public Mover(String name, boolean isPerson) {
-    this(name, isPerson, false, null, null);
+    this(name, isPerson, false, null, null, false, null, null);
   }
 
   /** A caller nobody verified as a person: an agent, a service client, the platform itself. */
@@ -60,18 +81,30 @@ public record Mover(
    * to {@code projectId} — its token's {@code project} claim, null when it carried none.
    */
   public static Mover desk(String name, String projectId) {
-    return new Mover(name, false, true, projectId, null);
+    return new Mover(name, false, true, projectId, null, false, null, null);
   }
 
   /**
-   * This desk, carrying {@code rule} as the declared approval a person's scheduling move would
-   * otherwise need. Refused on anything but a desk: no other machine has a declaration to point at.
+   * A project's long-running agent (qits-2672): a machine under its principal {@code name}, bound
+   * to {@code projectId} — its token's {@code project} claim, null when it carried none — and known
+   * by its roster name {@code agentName}.
+   */
+  public static Mover projectAgent(String name, String projectId, String agentName) {
+    return new Mover(name, false, false, null, null, true, projectId, agentName);
+  }
+
+  /**
+   * This desk or project agent, carrying {@code rule} as the declared approval a person's
+   * scheduling move would otherwise need. Refused on anything else: no other machine has a
+   * declaration to point at.
    */
   public Mover withDeclaredApproval(String rule) {
-    if (!isDesk) {
-      throw new IllegalStateException("only a delivery desk carries a declared approval");
+    if (!isDesk && !isProjectAgent) {
+      throw new IllegalStateException(
+          "only a delivery desk or a project agent carries a declared approval");
     }
-    return new Mover(name, false, true, deskProject, rule);
+    return new Mover(
+        name, false, isDesk, deskProject, rule, isProjectAgent, agentProject, agentName);
   }
 
   /** How a refusal names the caller: its name, or "an anonymous caller". */
