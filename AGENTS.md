@@ -2405,6 +2405,12 @@ still derives a block only when `agentWaitingSince != null`, `waitingOn` is null
 passed — so a non-null `waitingOn` keeps derived blocking off exactly as it always did, whatever
 `waiting` says. `waitingOn` (NON_NULL, no debounce) is on `TransitionedEntity`, `EntitySummary` and
 `EntityDispatchStateDto`. A frame that starts, changes or ends it is announced at once.
+**The label shows where no phase runs (qits-2520).** A project agent's commonest wait is on a person
+at REFINED, so where `EntityBlocks.blockable` drops a frame, one naming a non-blank `waitingOn` still
+sets the label and one with `waiting: false` still clears it, at every status but a closed one
+(`AgentWaiting.labelable`: not DROPPED, not `EntityStateMachine.isTerminal` — DONE, and an issue's
+RESOLVED/OBSOLETE). Such a frame writes `agent_waiting_since = null`, so no derived block can stand
+there; every other frame (a bare wait, an unnamed `Wait` frame) is dropped as before.
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
