@@ -243,7 +243,7 @@
         <qits.githost-service-pacts-qits-projects-service.version>2026.1018.160706</qits.githost-service-pacts-qits-projects-service.version>
         <qits.artifacts-service-pacts-qits-projects-service.version>2026.1018.153037</qits.artifacts-service-pacts-qits-projects-service.version>
         <qits.bootstrap-cli-pacts-qits-projects-service.version>2026.1103.103841</qits.bootstrap-cli-pacts-qits-projects-service.version>
-        <qits.ci-service-pacts-qits-projects-service.version>2026.1026.93256</qits.ci-service-pacts-qits-projects-service.version>
+        <qits.ci-service-pacts-qits-projects-service.version>2026.1125.45201</qits.ci-service-pacts-qits-projects-service.version>
         <qits.orchestrator-service-pacts-qits-projects-service.version>2026.1018.172917</qits.orchestrator-service-pacts-qits-projects-service.version>
         <qits.ci-frontend-pacts-qits-projects-service.version>2026.1123.84719</qits.ci-frontend-pacts-qits-projects-service.version>
         <qits.docs-frontend-pacts-qits-projects-service.version>2026.1123.84215</qits.docs-frontend-pacts-qits-projects-service.version>
