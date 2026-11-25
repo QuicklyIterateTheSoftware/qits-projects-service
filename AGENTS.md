@@ -3420,6 +3420,14 @@ work item's, exactly as a comment's author: `entities/api/CallerAgents` resolves
 the after-commit has no request or database to read. A new assignee writer goes through `AssigneeWrites` or it is
 silent. The suite records through `RecordingEntityAssignAnnouncer`.
 
+`EntityBlockChanged` (qits-2674) is published by `bus/EntityBlockAnnouncer` over the `entities`
+port `control/BlockAnnouncer`, told by `control/BlockWrites` — `AssigneeWrites`' shape, owed to the
+commit and announced once per row whose **explicit** `blocked` flag ends the transaction different.
+Two writes tell it: `WorkEntityService.setBlocked` (the block door, `EntityBlocks.apply`; the reason
+is the stated blocker, or the unblock's stated reason) and a transition's `clearBlocks` on either
+status door (`reason` `cleared by transition to <STATUS>`). The derived agent-waiting block is never
+published. The suite records through `RecordingEntityBlockAnnouncer`.
+
 **Adding a source is one `@ApplicationScoped` bean implementing the interface, plus its tests.**
 The listener (`@Any Instance<DeskTriggerSource>`) subscribes to the union of the sources'
 signatures and the sweep renders each line through the source that admitted it, so neither
