@@ -166,6 +166,9 @@ public class EntityTransitionService {
   /** The one writer of the assignee, which announces its change after the commit (qits-2518). */
   @Inject AssigneeWrites assignees;
 
+  /** Where a change of the block flag is owed to the commit, for its announcement (qits-2674). */
+  @Inject BlockWrites blocks;
+
   /** The quality gates (qits-887): a status they judge is never stated through this door. */
   @Inject Instance<TransitionGate> gates;
 
@@ -291,6 +294,9 @@ public class EntityTransitionService {
         // A move clears both blocks, WorkEntityService.move's rule (qits-895) on the other door
         // that moves a status. A reshape that leaves the status where it was moves no phase, so it
         // leaves both alone — "a reshape says nothing about whether somebody is stuck".
+        if (row.blocked) {
+          blocks.writing(row, BlockWrites.clearedBy(row.status), changedBy);
+        }
         WorkEntityService.clearBlocks(row, now);
       }
     }

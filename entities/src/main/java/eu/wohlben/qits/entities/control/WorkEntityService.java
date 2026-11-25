@@ -110,6 +110,9 @@ public class WorkEntityService {
   /** The one writer of the assignee, which announces its change after the commit (qits-2518). */
   @Inject AssigneeWrites assignees;
 
+  /** Where a change of the block flag is owed to the commit, for its announcement (qits-2674). */
+  @Inject BlockWrites blocks;
+
   /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
   @Inject EntityNumbers numbers;
 
@@ -1087,6 +1090,9 @@ public class WorkEntityService {
         kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;
     List<Carried> carried = carryDescendants(row, statusOf(statusBefore), to, changedBy);
     row.status = to.name();
+    if (row.blocked) {
+      blocks.writing(row, BlockWrites.clearedBy(row.status), changedBy);
+    }
     clearBlocks(row, Instant.now());
     if (to == EntityStatus.DROPPED) {
       // A pre-approval (qits-1075) is for the run of work that was decided against: it does not
@@ -1361,6 +1367,8 @@ public class WorkEntityService {
         kind.label("blocked"),
         () -> {
           WorkEntity row = lookup(archetype, id);
+          blocks.writing(
+              row, reason == null || reason.isBlank() ? null : reason.trim(), changedBy);
           row.blocked = blocked;
           if (blocked) {
             row.blockedBy = changedBy;
