@@ -202,6 +202,13 @@
              metrics reach qits-observability at its edge host. Published by
              qits-integrations-quarkus, like qits-http-core above. -->
         <qits.telemetry-core.version>2026.1106.507</qits.telemetry-core.version>
+        <!-- qits-trust-core (qits-2632, epic qits-2524): TrustAnchors, the client that polls
+             qits-certificates' anchors door and hands a creator the QITS_TRUST_ANCHORS env entry.
+             First adoption here (qits-2637), so no maintenance bump carries this pin yet. Depends
+             on qits-http-core at the same version (linked); this repo keeps its own qits-http-core
+             pin above rather than bumping it for this. Published by qits-integrations-quarkus, like
+             qits-http-core and qits-telemetry-core above. -->
+        <qits.trust-core.version>2026.1125.110206</qits.trust-core.version>
 
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
@@ -417,6 +424,14 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-telemetry-core</artifactId>
                 <version>${qits.telemetry-core.version}</version>
+            </dependency>
+            <dependency>
+                <!-- TrustAnchors (qits-2632, epic qits-2524): polls qits-certificates' anchors
+                     door and hands FrontDeskSpecs the QITS_TRUST_ANCHORS env entry for a desk
+                     container. Compile scope in service, below: it ships. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-trust-core</artifactId>
+                <version>${qits.trust-core.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site, like qits-arch-rules. -->

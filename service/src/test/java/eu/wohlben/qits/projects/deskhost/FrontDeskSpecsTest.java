@@ -6,12 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.control.GitIdentity;
 import eu.wohlben.qits.projects.entity.FrontDesk;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.trust.TrustAnchors;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -304,5 +307,93 @@ class FrontDeskSpecsTest {
         eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage.VERSION,
         blank.imageVersion(),
         "a present, empty value must not become the image tag");
+  }
+
+  // --- trust anchors (qits-2637, epic qits-2524) --------------------------------------------------
+
+  /**
+   * An instance wired like the bean, but with {@code anchors} fixed to answer {@code entry} and
+   * {@code agent-configuration-path} blank, so {@link FrontDeskSpecs#compose(Project, FrontDesk)}
+   * needs nothing from {@code json}/{@code surfaces} (no CDI, no transaction) — only the trust
+   * anchors behaviour is under test here; {@link #compose(String, FrontDeskLifecycle)} above covers
+   * the rest of the spec through the pure, golden-tested method.
+   */
+  private static FrontDeskSpecs instanceSpecs(TrustAnchors anchors) {
+    FrontDeskSpecs specs = new FrontDeskSpecs();
+    specs.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
+    specs.imageVersionOverride = Optional.of("2026.1001.1");
+    specs.domain = Optional.of("example.test");
+    specs.timezone = Optional.empty();
+    specs.memoryLimit = Optional.of("4g");
+    specs.pidsLimit = Optional.empty();
+    specs.cpus = Optional.empty();
+    specs.oomScoreAdj = 800;
+    specs.user = Optional.of("1000");
+    specs.daemonApiToken = "qits-projects-daemon";
+    specs.daemonApiPort = 13338;
+    specs.daemonHooksPort = 13337;
+    specs.agentConfigurationPath = "";
+    specs.gitIdentity = new GitIdentity();
+    specs.anchors = anchors;
+    return specs;
+  }
+
+  /** A fixed answer, with no poll, no scheduler and no HTTP client (the library's own are null). */
+  private static TrustAnchors fixedAnchors(Optional<Map.Entry<String, String>> entry) {
+    return new TrustAnchors() {
+      @Override
+      public Optional<String> pem() {
+        return entry.map(Map.Entry::getValue);
+      }
+
+      @Override
+      public Optional<Map.Entry<String, String>> envEntry() {
+        return entry;
+      }
+    };
+  }
+
+  /**
+   * Done when: the env holds {@code QITS_TRUST_ANCHORS} once a bundle is held, and holds nothing
+   * of the sort while none is.
+   */
+  @Test
+  void theEnvHoldsTheBundleWhenHeldAndIsAbsentOtherwise() {
+    FrontDeskSpecs.Composed without =
+        instanceSpecs(fixedAnchors(Optional.empty()))
+            .compose(project(FrontDeskLifecycle.ON_DEMAND), row());
+    assertFalse(without.spec().env().containsKey(FrontDeskSpecs.TRUST_ANCHORS_ENV));
+
+    Map.Entry<String, String> entry = Map.entry(FrontDeskSpecs.TRUST_ANCHORS_ENV, "pem-bytes");
+    FrontDeskSpecs.Composed with =
+        instanceSpecs(fixedAnchors(Optional.of(entry)))
+            .compose(project(FrontDeskLifecycle.ON_DEMAND), row());
+    assertEquals("pem-bytes", with.spec().env().get(FrontDeskSpecs.TRUST_ANCHORS_ENV));
+  }
+
+  /**
+   * Done when: a bundle alone — held, or rotated to a new value — never moves {@code spec_hash} or
+   * {@code spec_json}, which is what keeps {@code FrontDeskSpecRoll} from ever reading a bundle
+   * change as "the desk has a new spec" ({@code FrontDeskTest#aTrustAnchorBundleAloneNeverRollsARunningDesk}
+   * is the same rule proven against the real roll).
+   */
+  @Test
+  void aBundleAloneNeverMovesTheHashOrTheStoredJson() {
+    FrontDeskSpecs.Composed without =
+        instanceSpecs(fixedAnchors(Optional.empty()))
+            .compose(project(FrontDeskLifecycle.ON_DEMAND), row());
+    FrontDeskSpecs.Composed withA =
+        instanceSpecs(fixedAnchors(Optional.of(Map.entry(FrontDeskSpecs.TRUST_ANCHORS_ENV, "AAA"))))
+            .compose(project(FrontDeskLifecycle.ON_DEMAND), row());
+    FrontDeskSpecs.Composed withB =
+        instanceSpecs(fixedAnchors(Optional.of(Map.entry(FrontDeskSpecs.TRUST_ANCHORS_ENV, "BBB"))))
+            .compose(project(FrontDeskLifecycle.ON_DEMAND), row());
+
+    assertEquals(without.hash(), withA.hash(), "holding a bundle must not move the hash");
+    assertEquals(withA.hash(), withB.hash(), "a bundle rotation must not move the hash either");
+    assertEquals(without.json(), withA.json(), "nor the stored spec_json");
+    assertFalse(withA.json().contains("AAA"), "the bundle itself never lands in spec_json");
+    assertEquals("AAA", withA.spec().env().get(FrontDeskSpecs.TRUST_ANCHORS_ENV));
+    assertEquals("BBB", withB.spec().env().get(FrontDeskSpecs.TRUST_ANCHORS_ENV));
   }
 }

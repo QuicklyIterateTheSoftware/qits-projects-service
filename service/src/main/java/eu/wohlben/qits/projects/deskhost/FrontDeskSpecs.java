@@ -12,6 +12,7 @@ import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
+import eu.wohlben.qits.trust.TrustAnchors;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -28,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.Supplier;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -79,6 +81,25 @@ public class FrontDeskSpecs {
 
   /** The failure detail of a desk whose spec cannot be composed for want of a public domain. */
   public static final String EDGE_PLANE_UNCONFIGURED = "EDGE_PLANE_UNCONFIGURED";
+
+  /**
+   * The env a held trust-anchor bundle travels as (qits-2637, epic qits-2524): {@code
+   * eu.wohlben.qits.trust.TrustAnchors#envEntry()}'s key. Left out of a {@link DeskSpec} entirely
+   * while no bundle is held yet — graceful degradation, never a failed compose — and, once held,
+   * added to {@link #compose(Project, FrontDesk)}'s env <em>after</em> the pure {@link
+   * #compose(Settings, Project, FrontDesk, Map, String)} returns, so neither the golden-tested pure
+   * method nor a consumer pact recording it ever has to know this key exists. {@link
+   * #canonicalMap(DeskSpec)} strips it back out before hashing or serializing to canonical JSON, so
+   * a bundle rotation — the poll runs every ten minutes, with nothing here driving it — changes
+   * neither {@code spec_hash} nor the stored {@code spec_json}: it can never be what {@link
+   * eu.wohlben.qits.projects.deskhost.FrontDeskSpecRoll} reads as "the desk has a new spec", and so
+   * it can never roll or recreate a running desk by itself. The env a lease actually sends the
+   * target ({@code DeskLeases#leaseSpec}, read off {@link DeskSpec#env()} directly) still carries
+   * whatever value was held at that moment — a create, or an unrelated roll the hash-compared
+   * fields did trigger, picks up the current bundle, which is exactly "it applies at the next
+   * creation" (and costs nothing extra on a roll some other change already caused).
+   */
+  public static final String TRUST_ANCHORS_ENV = "QITS_TRUST_ANCHORS";
 
   /**
    * The environment keys qits-system's slot policy owns: a lease spec naming one is FAILED by the
@@ -157,11 +178,38 @@ public class FrontDeskSpecs {
 
   @Inject ObjectMapper json;
 
+  @Inject TrustAnchors anchors;
+
   /** A suite composing for a dotted domain without restarting the application; null restores. */
   private volatile String domainOverride;
 
   public void domainOverride(String domain) {
     this.domainOverride = domain;
+  }
+
+  /**
+   * A suite's stand-in for {@link #anchors}' answer, bypassing CDI entirely; null restores the
+   * injected bean. Deliberately typed as a supplier of the *answer* rather than as a second
+   * {@code TrustAnchors} — Quarkus indexes this module's test classes in an unrestricted bean
+   * archive, so even an unannotated {@code TrustAnchors} subclass is discovered as a second bean
+   * of that type, which either wins the ambiguity and then fails every suite's boot invoking its
+   * inherited, package-private {@code start(StartupEvent)} observer across two {@code
+   * QuarkusClassLoader}s ({@code IllegalAccessError}), or loses it to an {@code
+   * AmbiguousResolutionException} at this very field — both measured here; see {@code
+   * deskhost.FakeTrustAnchors}' javadoc. A plain functional value has no type ArC would ever
+   * resolve this injection point to. Set through a method call on the injected proxy, the way
+   * {@link #domainOverride} already is, so it still reaches the contextual instance.
+   */
+  private volatile Supplier<Optional<Map.Entry<String, String>>> anchorsOverride;
+
+  public void anchorsOverride(Supplier<Optional<Map.Entry<String, String>>> override) {
+    this.anchorsOverride = override;
+  }
+
+  /** {@link #anchorsOverride} when a suite set one, else {@link #anchors}' own answer. */
+  private Optional<Map.Entry<String, String>> anchorEntry() {
+    Supplier<Optional<Map.Entry<String, String>>> override = anchorsOverride;
+    return override != null ? override.get() : anchors.envEntry();
   }
 
   /** Everything a spec is composed from that is configuration rather than the project or the row. */
@@ -270,11 +318,45 @@ public class FrontDeskSpecs {
 
   // --- composing ---------------------------------------------------------------------------------
 
-  /** The project's desk spec as it stands now. Throws {@link EdgePlaneUnconfigured}. */
+  /**
+   * The project's desk spec as it stands now, with the trust-anchor bundle added to its env when
+   * one is held ({@link #withTrustAnchors}). Throws {@link EdgePlaneUnconfigured}.
+   */
   public Composed compose(Project project, FrontDesk row) {
     Settings settings = settings();
     domainOf(settings.domain()); // refuse before building the document
-    return compose(settings, project, row, gitIdentity.envMap(), agentConfiguration(settings));
+    Composed composed =
+        compose(settings, project, row, gitIdentity.envMap(), agentConfiguration(settings));
+    return withTrustAnchors(composed);
+  }
+
+  /**
+   * {@code composed} with {@link #TRUST_ANCHORS_ENV} added to its env when {@link
+   * TrustAnchors#envEntry()} holds a bundle; {@code composed} unchanged otherwise. The json and the
+   * hash are rebuilt from the new spec, but {@link #canonicalMap(DeskSpec)} leaves the key out of
+   * both — see {@link #TRUST_ANCHORS_ENV}'s javadoc for why that is what makes a bundle rotation
+   * alone unable to roll or recreate a running desk.
+   */
+  private Composed withTrustAnchors(Composed composed) {
+    Optional<Map.Entry<String, String>> entry = anchorEntry();
+    if (entry.isEmpty()) {
+      return composed;
+    }
+    DeskSpec spec = composed.spec();
+    Map<String, String> env = new LinkedHashMap<>(spec.env());
+    env.put(entry.get().getKey(), entry.get().getValue());
+    DeskSpec withAnchors =
+        new DeskSpec(
+            spec.image(),
+            env,
+            spec.user(),
+            spec.memory(),
+            spec.memorySwap(),
+            spec.pidsLimit(),
+            spec.cpus(),
+            spec.oomScoreAdj());
+    String canonical = canonical(withAnchors);
+    return new Composed(withAnchors, canonical, sha256(canonical));
   }
 
   /** The configuration as it stands now. */
@@ -414,11 +496,19 @@ public class FrontDeskSpecs {
 
   // --- canonical JSON and the hash ---------------------------------------------------------------
 
-  /** The spec as a map with sorted keys at every level, nulls kept. */
+  /**
+   * The spec as a map with sorted keys at every level, nulls kept — {@link #TRUST_ANCHORS_ENV}
+   * excluded from {@code env} always, whether or not this exact spec carries it. That is what
+   * keeps {@link #canonical} and {@link #sha256} from ever reflecting a bundle rotation: the key
+   * travels in {@link DeskSpec#env()} for the lease that is actually sent, never in what a roll or
+   * a create is compared against.
+   */
   static Map<String, Object> canonicalMap(DeskSpec spec) {
     Map<String, Object> map = new TreeMap<>();
     map.put("image", spec.image());
-    map.put("env", new TreeMap<>(spec.env()));
+    Map<String, String> env = new TreeMap<>(spec.env());
+    env.remove(TRUST_ANCHORS_ENV);
+    map.put("env", env);
     map.put("user", spec.user());
     map.put("memory", spec.memory());
     map.put("memorySwap", spec.memorySwap());

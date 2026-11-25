@@ -140,6 +140,11 @@ public class TokenValidationBootstrapIT {
       // two stray `PUT /git/{id}/names` edges into CatalogueReviewIT's reads story (qits-1729).
       // Adoption's own names PUT is synchronous and unaffected.
       overrides.put("qits.projects.githost-names.reconcile-every", "off");
+      // qits-trust-core polls qits-certificates for the desk's QITS_TRUST_ANCHORS bundle — off in
+      // %dev/%test, but this is NORMAL mode and QITS_DOMAIN is set (example.test), so without this
+      // the launched process would reach for a host that answers nothing every poll. No story
+      // relies on a bundle being held.
+      overrides.put("qits.trust.enabled", "false");
       // THE OUTBOUND HALF, and it is what lets the catalogue stories exist at all.
       // HttpGitHostRepositories fails CLOSED: every lifecycle call to qits-githost asks
       // IdpGitHostBearer for a machine token first and throws "No machine bearer is available"
