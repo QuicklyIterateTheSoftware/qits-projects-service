@@ -460,6 +460,10 @@ public class WorkEntityService {
             requireRelatable(row, write.relatedTo());
             row.relatedEntityId = write.relatedTo();
           }
+          if (write.errorIssue() != null) {
+            requireErrorIssue(row, write.errorIssue());
+            row.errorIssue = write.errorIssue();
+          }
           requireShortIssue(row);
           requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
@@ -674,6 +678,14 @@ public class WorkEntityService {
       requireRelatable(row, write.relatedTo());
       row.relatedEntityId = write.relatedTo();
     }
+    // The error issue a ticket was made from (qits-2538): a link, like the idea, so no freeze judges
+    // it — and a ticket, the one kind that carries it, has no owner to freeze it anyway.
+    if (write.clearErrorIssue()) {
+      row.errorIssue = null;
+    } else if (write.errorIssue() != null) {
+      requireErrorIssue(row, write.errorIssue());
+      row.errorIssue = write.errorIssue();
+    }
     requireShortIssue(row);
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity updated = settled(row);
@@ -697,6 +709,26 @@ public class WorkEntityService {
               + " characters. Put the analysis on the related work item.");
     }
   }
+
+  /**
+   * A ticket's error issue (qits-2538) is a qits-observability fingerprint ({@link
+   * WorkEntity#ERROR_ISSUE_PATTERN}) on a {@link Archetype#TICKET}, else a 400. Nothing asks
+   * qits-observability whether it names an issue: it is an external string id.
+   */
+  private static void requireErrorIssue(WorkEntity row, String errorIssue) {
+    if (row.archetype != Archetype.TICKET) {
+      throw new BadRequestException(
+          "errorIssue is a ticket's alone: a " + row.archetype + " is made from no error issue");
+    }
+    if (!ERROR_ISSUE.matcher(errorIssue).matches()) {
+      throw new BadRequestException(
+          "errorIssue must be an error issue's fingerprint, 32 lower-case hex digits: "
+              + errorIssue);
+    }
+  }
+
+  private static final java.util.regex.Pattern ERROR_ISSUE =
+      java.util.regex.Pattern.compile(WorkEntity.ERROR_ISSUE_PATTERN);
 
   /** An issue's related item is another row of its project (qits-1819), else a 400. */
   private void requireRelatable(WorkEntity row, String relatedTo) {

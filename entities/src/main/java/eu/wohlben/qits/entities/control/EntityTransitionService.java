@@ -882,6 +882,11 @@ public class EntityTransitionService {
     row.slugScope = slugScope;
     // The idea it was inspired by is not stated here and is carried like the slug (qits-1387), onto
     // any kind: every archetype may carry one (qits-1792), so a reshape never drops it.
+    // The error issue a ticket was made from (qits-2538) is not stated here either: carried while
+    // the row stays a TICKET, the one kind that carries it, and cleared when it becomes another.
+    if (target.archetype() != Archetype.TICKET) {
+      row.errorIssue = null;
+    }
   }
 
   /**

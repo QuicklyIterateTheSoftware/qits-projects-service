@@ -481,6 +481,24 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   @Column(name = "related_to")
   public String relatedEntityId;
 
+  /** The shape of {@link #errorIssue}: a qits-observability fingerprint, 32 lower-case hex digits. */
+  public static final String ERROR_ISSUE_PATTERN = "^[0-9a-f]{32}$";
+
+  /**
+   * <b>The error issue a {@link Archetype#TICKET} was made from</b> (qits-2538, epics V45): the
+   * qits-observability fingerprint ({@link #ERROR_ISSUE_PATTERN}), or null. A ticket's alone, and
+   * like {@link #inspiredByIdeaId} <em>not</em> a registry property: the registry document's
+   * {@code permitted} lists are pinned by consumers. Never checked against qits-observability — an
+   * external string id, like {@link #repositoryId} read from telemetry — and one error issue may
+   * have any number of tickets.
+   *
+   * <p>Left out of the audit snapshot while null, so the rows made from no error issue snapshot as
+   * before.
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  @Column(name = "error_issue", length = 32)
+  public String errorIssue;
+
   /**
    * <b>The ranking among its siblings</b> (qits-753, epics V34): higher sorts first. Never null
    * (qits-2496, epics V44): 0 is the default, so a negative priority sorts below unranked work. The

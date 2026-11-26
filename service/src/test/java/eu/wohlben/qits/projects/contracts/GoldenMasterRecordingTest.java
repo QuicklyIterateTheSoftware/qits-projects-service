@@ -1706,6 +1706,31 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE,
             "getWork",
             "/projects/api/work/{qualifiedId}"));
+    // A ticket made from an error issue (qits-2538): the issue page files one, reads it, and lists
+    // the project's tickets made from the issue.
+    all.add(
+        new Interaction(
+            ProviderStates.A_TICKET_MADE_FROM_AN_ERROR_ISSUE,
+            "createWork",
+            "POST",
+            "/projects/api/work",
+            201,
+            null,
+            null,
+            "{\"archetype\":\"TICKET\",\"project\":\"{projectId}\","
+                + "\"title\":\"Export times out for a full year\","
+                + "\"impetus\":\"The CSV export times out when the range spans a whole year.\","
+                + "\"ticketType\":\"BUG\",\"errorIssue\":\"{errorIssue}\"}"));
+    all.add(
+        read(
+            ProviderStates.A_TICKET_MADE_FROM_AN_ERROR_ISSUE,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
+    all.add(
+        read(
+            ProviderStates.A_TICKET_MADE_FROM_AN_ERROR_ISSUE,
+            "listProjectWork",
+            "/projects/api/projects/{projectId}/work?errorIssue={errorIssue}"));
     // The branch-delivery read door (qits-1720), as qits-platform-access-cli reads where a branch
     // stands: by the branch's name alone, which is all an agent waiting on its branch holds.
     all.add(

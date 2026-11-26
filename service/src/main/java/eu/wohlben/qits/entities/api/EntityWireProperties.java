@@ -8,6 +8,7 @@ import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.control.NeedRule;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.WorkTag;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * <b>The one table from the registry's vocabulary to the wire</b> (qits-548): per {@link
@@ -232,6 +234,52 @@ public final class EntityWireProperties {
             + " REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside"
             + " every scope freeze; an empty array or null clears them. A need may not name the"
             + " item itself, an issue, an item twice, or close a cycle.");
+    return Collections.unmodifiableMap(schema);
+  }
+
+  /**
+   * The wire name of the error issue a ticket was made from (qits-2538): the qits-observability
+   * fingerprint, written by a create and by a patch (null clears it) on a TICKET alone, and read on
+   * {@code GET /work/{qualifiedId}}. <b>Not a registry property, so not a row of this table</b>,
+   * for {@link #TAGS}' reasons: the registry document's {@code permitted} lists are pinned by
+   * consumers element for element (qits-projects-frontend's pact pins TICKET's at nine), and the
+   * whole-state transition would clear it on every reshape that did not restate it. It sits beside
+   * {@code RELATED_TO}, the issue's link, in spirit; {@code EntitySchemas} adds it to a ticket's
+   * create and update schemas.
+   */
+  public static final String ERROR_ISSUE = "errorIssue";
+
+  /** The archetype a {@link #ERROR_ISSUE} is written on: a ticket, and nothing else. */
+  public static boolean hasErrorIssue(Archetype archetype) {
+    return archetype == Archetype.TICKET;
+  }
+
+  private static final Pattern ERROR_ISSUE_SHAPE =
+      Pattern.compile(WorkEntity.ERROR_ISSUE_PATTERN);
+
+  /** Whether {@code value} is an error issue's fingerprint: 32 lower-case hex digits. */
+  public static boolean isErrorIssue(String value) {
+    return value != null && ERROR_ISSUE_SHAPE.matcher(value).matches();
+  }
+
+  /** The 400 a value that is no fingerprint answers, on every door that takes one. */
+  public static String errorIssueMalformed(String value) {
+    return ERROR_ISSUE + " must be an error issue's fingerprint, 32 lower-case hex digits: " + value;
+  }
+
+  /**
+   * The JSON Schema fragment of an error issue: a string of 32 lower-case hex digits, without the
+   * nullability the update schema adds (a patch's null clears it).
+   */
+  public static Map<String, Object> errorIssueSchema() {
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "string");
+    schema.put(
+        "description",
+        "The qits-observability error issue this ticket was made from: its fingerprint, 32"
+            + " lower-case hex digits. Not checked against qits-observability; one error issue may"
+            + " have any number of tickets. A ticket's alone.");
+    schema.put("pattern", WorkEntity.ERROR_ISSUE_PATTERN);
     return Collections.unmodifiableMap(schema);
   }
 

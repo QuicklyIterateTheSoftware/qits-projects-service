@@ -63,7 +63,8 @@ public class ProjectWorkController {
               + " the items naming one entity (qualified id or UUID) as their supersededBy — what"
               + " that entity closed as a duplicate, resolved elsewhere or superseded, and the items"
               + " carrying one tag; and, for a long-running agent, the items assigned to one name,"
-              + " the work it may take (unassigned=true) or the unfinished ones (active=true)."
+              + " the work it may take (unassigned=true) or the unfinished ones (active=true),"
+              + " and the tickets made from one error issue (errorIssue)."
               + " order=priority answers in the backlog order instead, and limit keeps the first"
               + " rows. The project is its id or its slug. No entry carries its"
               + " description: a ticket or an epic answers an excerpt instead, a short plain-text"
@@ -80,7 +81,7 @@ public class ProjectWorkController {
       description =
           "An archetype, a status, an outcome or a tag naming none; a blank assignee; assignee"
               + " together with unassigned; unassigned or active other than true; an order other"
-              + " than priority; a limit outside 1 to 200")
+              + " than priority; a limit outside 1 to 200; an errorIssue that is no fingerprint")
   @APIResponse(
       responseCode = "404",
       description = "No such project, no such parent, or no such supersededBy entity")
@@ -141,11 +142,18 @@ public class ProjectWorkController {
                       + "), the first after filtering and ordering.",
               schema = @Schema(type = SchemaType.INTEGER, minimum = "1", maximum = "200"))
           @QueryParam("limit")
-          String limit) {
+          String limit,
+      @Parameter(
+              description =
+                  "Only the tickets made from this qits-observability error issue: its fingerprint,"
+                      + " 32 lower-case hex digits, matched exactly.",
+              schema = @Schema(type = SchemaType.STRING, pattern = "^[0-9a-f]{32}$"))
+          @QueryParam("errorIssue")
+          String errorIssue) {
     return new WorkList(
         doors.list(
             project, archetype, status, parent, outcome, supersededBy, tag, assignee, unassigned,
-            active, order, limit));
+            active, order, limit, errorIssue));
   }
 
   @GET

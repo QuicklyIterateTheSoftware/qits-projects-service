@@ -2668,6 +2668,18 @@ and each one is a decision rather than a simplification:
   /projects/{project}/work?outcome=&supersededBy=` (the second is the reverse link), and
   `get_ticket`'s `supersedes`. The `EntityTransitioned` event does not carry the outcome.
 
+  **A ticket names the error issue it was made from (qits-2538, epics V45).** `errorIssue`, the
+  qits-observability fingerprint (`^[0-9a-f]{32}$`, `WorkEntity.ERROR_ISSUE_PATTERN`), in
+  `entity.error_issue` with a partial index. A TICKET's alone: written by `POST /work` and `PATCH
+  /work/{qualifiedId}` (null clears it), 400 on any other archetype and for any other value, never
+  checked against qits-observability, and one issue may have any number of tickets. **Not a registry
+  property**, for the tags' reasons: qits-projects-frontend's pact pins TICKET's `permitted` list at
+  nine entries, so `EntitySchemas` adds it to the ticket's create and update schemas and
+  `EntityWireProperties.ERROR_ISSUE` names it. The PUT-shaped transition carries it while the row
+  stays a TICKET and clears it on a reshape to anything else. `getWork` answers it (absent while
+  null); the list entries do not, and `GET /projects/{project}/work?errorIssue=` is the exact-match
+  filter. Provider state `a ticket made from an error issue`.
+
   **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
   has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
   some context}"* or *"{an existing part} should be {something to introduce or improve}"* — and is

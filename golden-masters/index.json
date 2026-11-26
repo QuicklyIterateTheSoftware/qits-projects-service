@@ -6262,6 +6262,95 @@
       ]
     },
     {
+      "name": "a ticket made from an error issue",
+      "slug": "a-ticket-made-from-an-error-issue",
+      "params": {
+        "errorIssue": "0123456789abcdef0123456789abcdef",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-1"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "createWork",
+          "method": "POST",
+          "path": "/projects/api/work",
+          "body": {
+            "archetype": "TICKET",
+            "project": "{projectId}",
+            "title": "Export times out for a full year",
+            "impetus": "The CSV export times out when the range spans a whole year.",
+            "ticketType": "BUG",
+            "errorIssue": "{errorIssue}"
+          },
+          "status": 201,
+          "file": "a-ticket-made-from-an-error-issue/createWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-made-from-an-error-issue/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectWork",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/work",
+          "query": {
+            "errorIssue": "{errorIssue}"
+          },
+          "status": 200,
+          "file": "a-ticket-made-from-an-error-issue/listProjectWork.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a ticket of every type",
       "slug": "a-ticket-of-every-type",
       "params": {

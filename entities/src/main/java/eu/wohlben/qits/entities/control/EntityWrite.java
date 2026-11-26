@@ -61,7 +61,59 @@ public record EntityWrite(
     boolean clearPriority,
     Set<WorkTag> tags,
     String relatedTo,
-    boolean clearRelatedTo) {
+    boolean clearRelatedTo,
+    String errorIssue,
+    boolean clearErrorIssue) {
+
+  /**
+   * Every property but a ticket's error issue (qits-2538): the shape every surface wrote before the
+   * error issue existed. {@link #withErrorIssue} adds it.
+   */
+  public EntityWrite(
+      String title,
+      String description,
+      boolean clearDescription,
+      String impetus,
+      boolean clearImpetus,
+      String type,
+      String assignee,
+      boolean clearAssignee,
+      String repositoryId,
+      Instant implementedAt,
+      boolean clearImplementedAt,
+      Instant implementingAt,
+      List<String> acceptanceCriteria,
+      String inspiredBy,
+      boolean clearInspiredBy,
+      Integer priority,
+      boolean clearPriority,
+      Set<WorkTag> tags,
+      String relatedTo,
+      boolean clearRelatedTo) {
+    this(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        tags,
+        relatedTo,
+        clearRelatedTo,
+        null,
+        false);
+  }
 
   /** Every property but an issue's related item (qits-1819): {@link #withRelatedTo} adds it. */
   public EntityWrite(
@@ -318,7 +370,9 @@ public record EntityWrite(
         clearPriority,
         tags,
         relatedTo,
-        clearRelatedTo);
+        clearRelatedTo,
+        errorIssue,
+        clearErrorIssue);
   }
 
   /**
@@ -347,7 +401,9 @@ public record EntityWrite(
         clearPriority,
         tags,
         relatedTo,
-        clearRelatedTo);
+        clearRelatedTo,
+        errorIssue,
+        clearErrorIssue);
   }
 
   /**
@@ -376,7 +432,9 @@ public record EntityWrite(
         clear,
         tags,
         relatedTo,
-        clearRelatedTo);
+        clearRelatedTo,
+        errorIssue,
+        clearErrorIssue);
   }
 
   /**
@@ -405,7 +463,9 @@ public record EntityWrite(
         clearPriority,
         stated == null ? null : Collections.unmodifiableSet(EnumSet.copyOf(withNone(stated))),
         relatedTo,
-        clearRelatedTo);
+        clearRelatedTo,
+        errorIssue,
+        clearErrorIssue);
   }
 
   private static Set<WorkTag> withNone(Set<WorkTag> stated) {
@@ -434,6 +494,39 @@ public record EntityWrite(
         clearPriority,
         tags,
         entityId,
+        clear,
+        errorIssue,
+        clearErrorIssue);
+  }
+
+  /**
+   * This write, also stating the error issue a ticket was made from (qits-2538): {@code fingerprint}
+   * sets it, {@code clear} empties it, and neither leaves it alone. A ticket's alone; the writer
+   * judges the archetype and the shape.
+   */
+  public EntityWrite withErrorIssue(String fingerprint, boolean clear) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        acceptanceCriteria,
+        inspiredBy,
+        clearInspiredBy,
+        priority,
+        clearPriority,
+        tags,
+        relatedTo,
+        clearRelatedTo,
+        fingerprint,
         clear);
   }
 

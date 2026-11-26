@@ -172,6 +172,10 @@ public final class EntitySchemas {
     if (EntityWireProperties.hasNeeds(archetype)) {
       properties.put(EntityWireProperties.NEEDS, EntityWireProperties.needsSchema());
     }
+    // The error issue a ticket was made from (qits-2538): a ticket's, and no registry property.
+    if (EntityWireProperties.hasErrorIssue(archetype)) {
+      properties.put(EntityWireProperties.ERROR_ISSUE, EntityWireProperties.errorIssueSchema());
+    }
     return document(
         archetype,
         Door.CREATE,
@@ -206,6 +210,11 @@ public final class EntitySchemas {
     // The needs (qits-1903): the four kinds with a walk, every status, no registry property.
     if (EntityWireProperties.hasNeeds(archetype)) {
       properties.put(EntityWireProperties.NEEDS, nullable(EntityWireProperties.needsSchema()));
+    }
+    // The error issue a ticket was made from (qits-2538): a ticket's, null clears it.
+    if (EntityWireProperties.hasErrorIssue(archetype)) {
+      properties.put(
+          EntityWireProperties.ERROR_ISSUE, nullable(EntityWireProperties.errorIssueSchema()));
     }
     return document(
         archetype,
@@ -316,6 +325,9 @@ public final class EntitySchemas {
     if (EntityWireProperties.isList(property)) {
       return listRefusal(name, value);
     }
+    if (name.equals(EntityWireProperties.ERROR_ISSUE)) {
+      return errorIssueRefusal(value);
+    }
     if (!value.isTextual()) {
       return Optional.of(name + " must be a string");
     }
@@ -383,6 +395,9 @@ public final class EntitySchemas {
     }
     if (name.equals(EntityWireProperties.NEEDS)) {
       return needsNotPermitted(archetype);
+    }
+    if (name.equals(EntityWireProperties.ERROR_ISSUE)) {
+      return errorIssueNotPermitted(archetype);
     }
     for (EntityProperty owned : EntityTransitionService.SERVER_OWNED) {
       if (EntityWireProperties.wire(owned).equals(name)) {
@@ -628,6 +643,30 @@ public final class EntitySchemas {
       }
     }
     return tags;
+  }
+
+  /**
+   * The complaint about a body's {@code errorIssue} (qits-2538), or none: an error issue's
+   * fingerprint, or null — absent at create, a clear on a patch.
+   */
+  static Optional<String> errorIssueRefusal(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isTextual()) {
+      return Optional.of(EntityWireProperties.ERROR_ISSUE + " must be a string, or null to clear it");
+    }
+    return EntityWireProperties.isErrorIssue(value.textValue())
+        ? Optional.empty()
+        : Optional.of(EntityWireProperties.errorIssueMalformed(value.textValue()));
+  }
+
+  /** The 400 an {@code errorIssue} on any kind but a ticket answers (qits-2538). */
+  static String errorIssueNotPermitted(Archetype archetype) {
+    return EntityWireProperties.ERROR_ISSUE
+        + " is a ticket's alone: a "
+        + archetype
+        + " is made from no error issue";
   }
 
   /**

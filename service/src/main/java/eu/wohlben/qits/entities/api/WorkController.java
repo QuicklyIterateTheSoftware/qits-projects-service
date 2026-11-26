@@ -131,6 +131,12 @@ public class WorkController {
                   "An issue's one related work item of the same project, by qualified id or UUID.")
           String relatedTo,
       @Schema(
+              pattern = "^[0-9a-f]{32}$",
+              description =
+                  "A ticket's error issue: the qits-observability fingerprint (32 lower-case hex"
+                      + " digits) it was made from. Refused on every other archetype.")
+          String errorIssue,
+      @Schema(
               description =
                   "What an epic, a ticket, a feature or a task waits for (qits-1903): each entry"
                       + " a work item of the same project and the status it must reach. Refused on"
@@ -247,7 +253,15 @@ public class WorkController {
                       + " list: each entry a work item of the same project and the status it must"
                       + " reach. Editable at every status, outside every scope freeze; an empty"
                       + " array or null clears them. A transition never changes them.")
-          List<WorkNeedWrite> needs) {}
+          List<WorkNeedWrite> needs,
+      @Schema(
+              nullable = true,
+              pattern = "^[0-9a-f]{32}$",
+              description =
+                  "A ticket's error issue: the qits-observability fingerprint (32 lower-case hex"
+                      + " digits) it was made from; null clears it. Refused on every other"
+                      + " archetype.")
+          String errorIssue) {}
 
   /**
    * The drop door's body (qits-753): exactly one anchor. Read as a record because neither member

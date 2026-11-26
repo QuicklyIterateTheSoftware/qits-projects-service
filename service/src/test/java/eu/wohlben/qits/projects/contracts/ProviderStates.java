@@ -379,6 +379,18 @@ public class ProviderStates {
   public static final String A_PROJECT_WITH_AN_OPEN_ISSUE = "a project with an open issue";
 
   /**
+   * qits-2538: one REPORTED BUG ticket made from a qits-observability error issue, alone in its
+   * project, its {@code errorIssue} {@link #AN_ERROR_ISSUE} — the fingerprint the observability
+   * state gives its first issue, so a consumer records both sides with one id. Params {@code
+   * projectId}, {@code qualifiedId} (the ticket), {@code errorIssue}.
+   */
+  public static final String A_TICKET_MADE_FROM_AN_ERROR_ISSUE =
+      "a ticket made from an error issue";
+
+  /** The error issue {@link #A_TICKET_MADE_FROM_AN_ERROR_ISSUE}'s ticket names. */
+  public static final String AN_ERROR_ISSUE = "0123456789abcdef0123456789abcdef";
+
+  /**
    * qits-2039: two PLANNED ideas, the second ({@code ideaId}) enabled by the first ({@code
    * enablerIdeaId}), which is archived after the link was made. Params {@code projectId}, {@code
    * ideaId}, {@code enablerIdeaId}.
@@ -914,6 +926,7 @@ public class ProviderStates {
         A_PROJECT_WHOSE_DESK_WAS_ADDRESSED_IN_A_COMMENT,
         this::aProjectWhoseDeskWasAddressedInAComment);
     states.put(A_PROJECT_WITH_AN_OPEN_ISSUE, this::aProjectWithAnOpenIssue);
+    states.put(A_TICKET_MADE_FROM_AN_ERROR_ISSUE, this::aTicketMadeFromAnErrorIssue);
     states.put(AN_IDEA_ENABLED_BY_ANOTHER_IDEA, this::anIdeaEnabledByAnotherIdea);
     states.put(
         BRANCH_TICKET_QITS_9001_IS_RELEASED_IN_QITS_DEMO_SERVICE,
@@ -1365,6 +1378,38 @@ public class ProviderStates {
             .id;
     return new Setup(
         params("projectId", project.id, "qualifiedId", qualified(project, issue)),
+        List.of(token));
+  }
+
+  /**
+   * qits-2538: one REPORTED BUG ticket, filed through the work service, naming {@link
+   * #AN_ERROR_ISSUE} as the error issue it was made from. {@code qualifiedId} names it.
+   */
+  private Setup aTicketMadeFromAnErrorIssue() {
+    String token = token();
+    Project project = project(token, A_TICKET_MADE_FROM_AN_ERROR_ISSUE);
+    String ticket =
+        work.create(
+                Archetype.TICKET,
+                project.id,
+                EntityWrite.ticket(
+                        "Export answers 500 for an empty quarter",
+                        "The CSV export answers 500 when the range holds no invoice.",
+                        null,
+                        "BUG",
+                        null)
+                    .withErrorIssue(AN_ERROR_ISSUE, false),
+                SEEDER)
+            .entity()
+            .id;
+    return new Setup(
+        params(
+            "projectId",
+            project.id,
+            "qualifiedId",
+            qualified(project, ticket),
+            "errorIssue",
+            AN_ERROR_ISSUE),
         List.of(token));
   }
 

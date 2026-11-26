@@ -346,6 +346,8 @@ class EntitySchemaApiTest {
           return List.of("RESERVED_FOR_HUMAN");
         case "needs":
           return List.of(map("item", neededBy(archetype), "status", "DONE"));
+        case "errorIssue":
+          return "0123456789abcdef0123456789abcdef";
         default:
           break;
       }
@@ -443,6 +445,11 @@ class EntitySchemaApiTest {
               "additionalProperties" : false
             },
             "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
+          },
+          "errorIssue" : {
+            "type" : "string",
+            "description" : "The qits-observability error issue this ticket was made from: its fingerprint, 32 lower-case hex digits. Not checked against qits-observability; one error issue may have any number of tickets. A ticket's alone.",
+            "pattern" : "^[0-9a-f]{32}$"
           }
         },
         "required" : [ "title", "ticketType", "impetus", "project" ],
@@ -527,6 +534,11 @@ class EntitySchemaApiTest {
               "additionalProperties" : false
             },
             "description" : "What this work waits for, the whole list: each entry names a work item of the same project and the status it must reach. The desk and the dispatch hold the item at REFINED and READY_FOR_DEV while a need is unmet. Editable at every status, outside every scope freeze; an empty array or null clears them. A need may not name the item itself, an issue, an item twice, or close a cycle."
+          },
+          "errorIssue" : {
+            "type" : [ "string", "null" ],
+            "description" : "The qits-observability error issue this ticket was made from: its fingerprint, 32 lower-case hex digits. Not checked against qits-observability; one error issue may have any number of tickets. A ticket's alone.",
+            "pattern" : "^[0-9a-f]{32}$"
           }
         },
         "required" : [ ],

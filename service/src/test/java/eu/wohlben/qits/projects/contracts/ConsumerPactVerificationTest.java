@@ -942,6 +942,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_AN_OPEN_ISSUE);
   }
 
+  @State(ProviderStates.A_TICKET_MADE_FROM_AN_ERROR_ISSUE)
+  Map<String, String> aTicketMadeFromAnErrorIssue() {
+    return states.params(ProviderStates.A_TICKET_MADE_FROM_AN_ERROR_ISSUE);
+  }
+
   @State(ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA)
   Map<String, String> anIdeaEnabledByAnotherIdea() {
     return states.params(ProviderStates.AN_IDEA_ENABLED_BY_ANOTHER_IDEA);

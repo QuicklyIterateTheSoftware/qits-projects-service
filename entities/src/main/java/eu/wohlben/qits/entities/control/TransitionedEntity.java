@@ -103,6 +103,8 @@ import java.util.List;
  * @param inspiredBy the idea the work was inspired by, or null and left off the wire
  * @param tags the tags (qits-634), in declaration order — {@code []} when it has none, on every
  *     archetype and always on the wire. A transition never changes them
+ * @param errorIssue the qits-observability error issue a ticket was made from (qits-2538), its
+ *     fingerprint; null and left off the wire otherwise
  * @param needs what the entity needs (qits-1903), in the order written — each needed item, the
  *     status it must reach, the status it holds and whether that is far enough ({@link NeedRef}).
  *     Filled on the work reads and the work patch's answer (qits-1965) alone ({@link #withNeeds}),
@@ -151,6 +153,7 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) String inspiredBy,
     List<WorkTag> tags,
     @JsonInclude(JsonInclude.Include.NON_NULL) String relatedTo,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String errorIssue,
     @JsonInclude(JsonInclude.Include.NON_NULL) List<NeedRef> needs,
     @JsonInclude(JsonInclude.Include.NON_NULL) Integer unmetNeeds,
     @JsonIgnore String excerpt) {
@@ -204,6 +207,7 @@ public record TransitionedEntity(
         inspiredBy,
         tags,
         relatedTo,
+        errorIssue,
         refs,
         NeedRef.unmet(refs),
         excerpt);
@@ -250,6 +254,7 @@ public record TransitionedEntity(
         inspiredBy,
         tags,
         relatedTo,
+        errorIssue,
         needs,
         unmetNeeds,
         excerpt);
@@ -317,6 +322,7 @@ public record TransitionedEntity(
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
         row.relatedEntityId,
+        row.errorIssue,
         null,
         null,
         null);
@@ -367,6 +373,7 @@ public record TransitionedEntity(
         read.inspiredBy(),
         read.tags(),
         read.relatedTo(),
+        read.errorIssue(),
         null,
         null,
         null);
@@ -416,6 +423,7 @@ public record TransitionedEntity(
         row.inspiredByIdeaId,
         WorkTag.ordered(row.tags),
         row.relatedEntityId,
+        row.errorIssue,
         null,
         null,
         excerptOf(row));

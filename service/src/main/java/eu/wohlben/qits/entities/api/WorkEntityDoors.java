@@ -307,7 +307,8 @@ public class WorkEntityDoors {
             text(body, EntitySchemas.INSPIRED_BY),
             false)
             .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)))
-            .withRelatedTo(entityId(text(body, RELATED_TO)), false);
+            .withRelatedTo(entityId(text(body, RELATED_TO)), false)
+            .withErrorIssue(text(body, EntityWireProperties.ERROR_ISSUE), false);
     requireRepositoryIn(write.repositoryId(), projectId);
 
     Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
@@ -608,6 +609,14 @@ public class WorkEntityDoors {
         // The sibling edge is retired on every archetype (qits-1903, removed by qits-1908): needs
         // says what waits, and a body naming it is told so rather than "unknown property".
         refused.add(EntityWireProperties.DEPENDS_ON_RETIRED);
+      } else if (name.equals(EntityWireProperties.ERROR_ISSUE)) {
+        // The error issue a ticket was made from (qits-2538): a ticket's alone, no registry
+        // property; null clears it.
+        if (!EntityWireProperties.hasErrorIssue(archetype)) {
+          refused.add(EntitySchemas.errorIssueNotPermitted(archetype));
+        } else {
+          EntitySchemas.errorIssueRefusal(value).ifPresent(refused::add);
+        }
       } else if (MOVES.containsKey(name)) {
         String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
@@ -660,7 +669,10 @@ public class WorkEntityDoors {
         cleared(body, EntitySchemas.INSPIRED_BY))
         .withPriority(priority(body), cleared(body, EntityWireProperties.PRIORITY))
         .withTags(EntitySchemas.tags(body.get(EntityWireProperties.TAGS)))
-        .withRelatedTo(toId.apply(patchText(body, RELATED_TO)), cleared(body, RELATED_TO));
+        .withRelatedTo(toId.apply(patchText(body, RELATED_TO)), cleared(body, RELATED_TO))
+        .withErrorIssue(
+            patchText(body, EntityWireProperties.ERROR_ISSUE),
+            cleared(body, EntityWireProperties.ERROR_ISSUE));
   }
 
   /** The patch's priority (qits-753): null when absent or sent as null, else the integer. */
@@ -1509,6 +1521,34 @@ public class WorkEntityDoors {
       String active,
       String order,
       String limit) {
+    return list(
+        projectIdOrSlug, archetype, status, parent, outcome, supersededBy, tag, assignee,
+        unassigned, active, order, limit, null);
+  }
+
+  /**
+   * {@link #list(String, String, String, String, String, String, String, String, String, String,
+   * String, String)}, also narrowed to the tickets made from one error issue (qits-2538): {@code
+   * errorIssue} is an exact match on the fingerprint, ANDed with the rest; one that is no
+   * fingerprint is a 400.
+   */
+  public List<EntitySummary> list(
+      String projectIdOrSlug,
+      String archetype,
+      String status,
+      String parent,
+      String outcome,
+      String supersededBy,
+      String tag,
+      String assignee,
+      String unassigned,
+      String active,
+      String order,
+      String limit,
+      String errorIssue) {
+    if (errorIssue != null && !EntityWireProperties.isErrorIssue(errorIssue)) {
+      throw new BadRequestException(EntityWireProperties.errorIssueMalformed(errorIssue));
+    }
     String holder = null;
     if (assignee != null) {
       holder = assignee.trim();
@@ -1526,7 +1566,7 @@ public class WorkEntityDoors {
     }
     Integer rows = listLimit(limit);
     List<EntitySummary> listed =
-        filtered(projectIdOrSlug, archetype, status, parent, outcome, supersededBy, tag);
+        filtered(projectIdOrSlug, archetype, status, parent, outcome, supersededBy, tag, errorIssue);
     String named = holder;
     java.util.stream.Stream<EntitySummary> narrowed =
         listed.stream()
@@ -1571,7 +1611,7 @@ public class WorkEntityDoors {
     return parsed;
   }
 
-  /** The listing narrowed by the first seven filters, in tree order, needs attached. */
+  /** The listing narrowed by the first eight filters, in tree order, needs attached. */
   private List<EntitySummary> filtered(
       String projectIdOrSlug,
       String archetype,
@@ -1579,7 +1619,8 @@ public class WorkEntityDoors {
       String parent,
       String outcome,
       String supersededBy,
-      String tag) {
+      String tag,
+      String errorIssue) {
     WorkTag tagged = blank(tag) ? null : listTag(tag);
     Archetype kind = blank(archetype) ? null : listArchetype(archetype);
     String word = blank(status) ? null : listStatus(status);
@@ -1598,6 +1639,7 @@ public class WorkEntityDoors {
             .filter(entity -> closedAs == null || closedAs == entity.outcome())
             .filter(entity -> successorId == null || successorId.equals(entity.supersededBy()))
             .filter(entity -> tagged == null || entity.tags().contains(tagged))
+            .filter(entity -> errorIssue == null || errorIssue.equals(entity.errorIssue()))
             .toList();
     // What each entry needs (qits-1903): two queries for the whole project, never one per entry.
     Map<String, List<NeedRef>> needs = found.isEmpty() ? Map.of() : workNeeds.ofProject(project);
