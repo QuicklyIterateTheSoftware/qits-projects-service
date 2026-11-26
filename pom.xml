@@ -276,7 +276,7 @@
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1109.41303</qits.githost-golden-masters.version>
-        <qits.workspaces-golden-masters.version>2026.1124.202359</qits.workspaces-golden-masters.version>
+        <qits.workspaces-golden-masters.version>2026.1126.230805</qits.workspaces-golden-masters.version>
         <qits.maintenance-golden-masters.version>2026.1126.192119</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1126.183653</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1119.60052</qits.ci-golden-masters.version>
