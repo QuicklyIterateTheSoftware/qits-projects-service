@@ -241,7 +241,7 @@ public class DeskTriggerSweep {
             windowId, project.id);
         return null;
       }
-      return VerifiedSlotHolders.section(reading.get(), project.deliveryMaxRunning, now);
+      return VerifiedSlotHolders.section(reading.get(), now);
     } catch (RuntimeException e) {
       LOG.warnf(
           "Desk trigger window %s%s closes without its Slots section: the running items could not"

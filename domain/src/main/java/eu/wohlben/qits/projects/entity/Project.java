@@ -164,7 +164,10 @@ public class Project extends PanacheEntityBase implements CausedRow {
   @Column(name = "delivery_enabled_at")
   public Instant deliveryEnabledAt;
 
-  /** {@code front_desk.delivery.max_running}: how many items the loop keeps running, 1..20. */
+  /**
+   * {@code front_desk.delivery.max_running}, 1..20, as declared. Not read since qits-2573: the
+   * desk's slots are the targets' workspace capacity, derived, never configured.
+   */
   @Column(name = "delivery_max_running", nullable = false)
   public int deliveryMaxRunning = 2;
 

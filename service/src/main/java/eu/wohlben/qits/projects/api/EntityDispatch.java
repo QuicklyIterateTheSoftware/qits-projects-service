@@ -146,15 +146,21 @@ import org.jboss.logging.Logger;
  *
  * <p>A {@link Mover#isDesk() desk} mover — a {@code qits:desk} token, bound to its {@code project}
  * claim — is refused, with no side effect and before every refusal above, in this order: an item of
- * another project (403), no rule named (400), the project's loop off (409), an issue (409), the project at its {@code max_running} (409 naming the count, the
- * limit and the running items), and a REFINED item while {@code start_refined} is off (the {@link
- * #REFINED_WAITS} 409, saying so). "Running" is an epic or a ticket of the project, not DONE or
- * DROPPED, not explicitly blocked (qits-1569), not held at REFINED or READY_FOR_DEV by an unmet need
- * (qits-2053), with an assignee and an ACTIVE agent ({@link WorkspaceAgentDispatch#agentsFor}); the
- * item pressed is never counted against itself ({@link RunningItems}). A blocked
- * item waits on a person or on another item, and holding a slot for it starved the backlog — five
- * of them once stopped every dispatch for two hours. Unblocking hands the slot back, so the count
- * can briefly exceed the limit, which is fine: the desk only waits until it falls again.
+ * another project (403), no rule named (400), the project's loop off (409), an issue (409), a
+ * condition or unmet needs (409), then the slots (qits-2573, {@link DeskSlots}): an item of the
+ * project waiting for a workspace (409 naming them: {@code 1 of this project's items waits for a
+ * workspace: qits-2716. Dispatch again once its lease is granted.}), then no target able to grant a
+ * workspace lease (409: {@code No target can grant a workspace lease now (running 3 of 3): ws-proof
+ * runs its maximum of 3 WORKSPACE lease(s); localhost has no free WORKSPACE slot.}), and a REFINED
+ * item while {@code start_refined} is off (the {@link #REFINED_WAITS} 409, saying so). A capacity
+ * that cannot be read refuses nothing and warns. "Running" is an epic or a ticket of the project, not
+ * DONE or DROPPED, not explicitly blocked (qits-1569), not held at REFINED or READY_FOR_DEV by an
+ * unmet need (qits-2053), with an assignee and an ACTIVE agent ({@link
+ * WorkspaceAgentDispatch#agentsFor}) whose workspace holds its lease; the item pressed is never
+ * counted against itself ({@link RunningItems}). A blocked item waits on a person or on another
+ * item, and holding a slot for it starved the backlog — five of them once stopped every dispatch for
+ * two hours. {@code front_desk.delivery.max_running} is no longer the limit: the slots are the
+ * targets' real workspace capacity, derived, never configured.
  *
  * <p><b>Start-refined.</b> With {@code front_desk.delivery.start_refined} on, a desk's FLOW press at
  * REFINED is the scheduling, exactly as a person's is: REFINED → READY_FOR_DEV under the mover
@@ -214,7 +220,7 @@ public class EntityDispatch {
    */
   @Inject Instance<WorkspaceAgentTurns> turns;
 
-  @Inject RunningItems runningItems;
+  @Inject DeskSlots deskSlots;
 
   /** What holds an item's implementation back (qits-1903): its unmet needs. */
   @Inject UnmetNeeds unmetNeeds;
@@ -852,18 +858,7 @@ public class EntityDispatch {
     // whatever the slots, and the sentence that names why is the one the desk acts on.
     refuseCondition(entity);
     refuseUnmetNeeds(entity);
-    List<WorkEntity> running = runningBesides(entity);
-    if (running.size() >= delivery.maxRunning()) {
-      throw new DispatchRefused(
-          409,
-          "The delivery desk keeps at most "
-              + delivery.maxRunning()
-              + " items of this project running (front_desk.delivery.max_running), and "
-              + running.size()
-              + " are running: "
-              + running.stream().map(this::nameOf).collect(Collectors.joining(", "))
-              + ".");
-    }
+    refuseNoSlot(entity);
     if (nextPhaseAware(entity) && isRefined(entity)) {
       if (!delivery.startRefined()) {
         throw new DispatchRefused(
@@ -896,9 +891,44 @@ public class EntityDispatch {
         .call(() -> DeliverySettings.of(projects.get(projectId)));
   }
 
-  /** The project's running items besides {@code entity}; see {@link RunningItems}. */
-  private List<WorkEntity> runningBesides(WorkEntity entity) {
-    return runningItems.of(entity.projectId, entity.id);
+  /**
+   * The desk's slot refusals (qits-2573), in this order, from one {@link DeskSlots} reading of the
+   * project besides {@code entity}: a workspace of the project waits (K > 0), then no target can
+   * grant a workspace lease (F = 0). A capacity that cannot be read refuses nothing and warns: a
+   * dispatch that then lands QUEUED makes K = 1 and stops the next one. {@code
+   * front_desk.delivery.max_running} is not read.
+   */
+  private void refuseNoSlot(WorkEntity entity) {
+    DeskSlots.Reading slots = deskSlots.read(entity.projectId, entity.id);
+    if (!slots.waiting().isEmpty()) {
+      int waiting = slots.waiting().size();
+      throw new DispatchRefused(
+          409,
+          waiting
+              + " of this project's items "
+              + (waiting == 1 ? "waits" : "wait")
+              + " for a workspace: "
+              + slots.waiting().stream().map(this::nameOf).collect(Collectors.joining(", "))
+              + ". Dispatch again once "
+              + (waiting == 1 ? "its lease is" : "their leases are")
+              + " granted.");
+    }
+    if (!slots.known()) {
+      LOG.warnf(
+          "The desk's dispatch of %s is not checked against the targets' workspace capacity:"
+              + " it could not be read",
+          nameOf(entity));
+      return;
+    }
+    if (slots.free() == 0) {
+      String why = slots.refusals();
+      throw new DispatchRefused(
+          409,
+          "No target can grant a workspace lease now ("
+              + slots.runningText()
+              + ")"
+              + (why.isEmpty() ? "." : ": " + why + "."));
+    }
   }
 
   /** An item as a refusal names it: its qualified id, else its id. */

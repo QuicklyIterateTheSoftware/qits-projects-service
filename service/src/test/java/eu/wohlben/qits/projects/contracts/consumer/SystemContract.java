@@ -31,7 +31,10 @@ import java.util.UUID;
  *       resolvers stale (qits-2091);
  *   <li>{@code endLease} — a desk desired stopped, and a removal;
  *   <li>{@code purgeWorkVolume} — a removed desk's volume, once its lease is ENDED;
- *   <li>{@code listTargets} — a legacy desk's first lease, pinned to the target on its old node.
+ *   <li>{@code listTargets} — a legacy desk's first lease, pinned to the target on its old node;
+ *   <li>{@code getTargetCapacity} — the delivery desk's slots (qits-2573, {@code api/DeskSlots}):
+ *       how many WORKSPACE leases the targets can grant now. Pending until the pinned qits-system
+ *       golden masters record {@code a connected target with leases} for it.
  * </ul>
  *
  * <p>The create asks for a desk the state does not hold a lease for (qits-system holds one live
@@ -46,6 +49,7 @@ final class SystemContract {
   static final String A_RUNNING_DESK_LEASE = "a running desk lease";
   static final String AN_UNUSED_DESK_WORK_VOLUME = "an unused desk work volume";
   static final String A_DECLARED_TARGET = "a declared target";
+  static final String A_CONNECTED_TARGET_WITH_LEASES = "a connected target with leases";
 
   /** The desk the create asks a lease for. */
   static final String NEW_DESK = "00000000-0000-4000-8000-000000000004";
@@ -293,5 +297,33 @@ final class SystemContract {
               },
               "GET /system/api/targets answering 200 with id, name, hostname, engineId and the"
                   + " DESK reservation")
-          .withNullable("$[*].hostname", "$[*].engineId"));
+          .withNullable("$[*].hostname", "$[*].engineId"),
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "getTargetCapacity",
+              A_CONNECTED_TARGET_WITH_LEASES,
+              "GET",
+              "/system/api/targets/capacity",
+              Map.of("slotType", "WORKSPACE"),
+              null,
+              List.of(
+                  "$.grantable",
+                  "$.held",
+                  "$.queued",
+                  "$.targets[*].name",
+                  "$.targets[*].held",
+                  "$.targets[*].grantable",
+                  "$.targets[*].detail"),
+              200,
+              Trigger.schedule("DeskTriggerSweep.sweep"),
+              (base, p) -> {
+                SystemLeases.Capacity capacity =
+                    leases(base, p).capacity(SystemLeases.WORKSPACE).orElseThrow();
+                assertFalse(capacity.targets().isEmpty());
+                assertNotNull(capacity.targets().get(0).name());
+              },
+              "GET /system/api/targets/capacity?slotType=WORKSPACE answering 200 with grantable,"
+                  + " held, queued and each target's name, held, grantable and detail")
+          .withNullable("$.targets[*].detail"));
 }

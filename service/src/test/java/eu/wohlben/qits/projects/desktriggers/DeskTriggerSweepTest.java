@@ -24,6 +24,7 @@ import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentLookup;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import eu.wohlben.qits.projectsdaemon.protocol.DeskBrief;
+import eu.wohlben.qits.projects.targethost.FakeSystemLeases;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.vertx.core.Vertx;
@@ -83,6 +84,8 @@ class DeskTriggerSweepTest {
 
   @Inject RecordingWorkspaceAgentLookup agents;
 
+  @Inject FakeSystemLeases system;
+
   @TestHTTPResource("/")
   URL root;
 
@@ -101,6 +104,7 @@ class DeskTriggerSweepTest {
     }
     dispatch.reset();
     agents.reset();
+    system.reset();
     DeskTriggerFixtures.dropWork(projects);
     DeskTriggerFixtures.drop(projects);
     projects.clear();
@@ -159,6 +163,8 @@ class DeskTriggerSweepTest {
         opened.plusSeconds(2));
     reply.set(new FakeProjectDaemon.Reply(200, DELIVERED));
     connectDaemon(projectId);
+    // qits-2573: M is N plus what the targets can grant, never max_running.
+    system.willGrant(2, "target lab has no free WORKSPACE slot");
 
     sweep.sweep();
 
@@ -357,8 +363,8 @@ class DeskTriggerSweepTest {
   }
 
   /**
-   * qits-1778: a closing window of a delivery project ends with its slots — what runs against
-   * {@code max_running}, and each VERIFIED item, oldest first, with its open requests in scope.
+   * qits-1778: a closing window of a delivery project ends with its slots — what runs of N + F
+   * (qits-2573), and each VERIFIED item, oldest first, with its open requests in scope.
    */
   @Test
   void aClosingWindowEndsWithTheProjectsSlots() {
@@ -392,6 +398,7 @@ class DeskTriggerSweepTest {
         DeskTriggerFixtures.activeAgent(shipping),
         DeskTriggerFixtures.activeAgent(unasked),
         DeskTriggerFixtures.activeAgent(working));
+    system.willGrant(0, "target lab runs its maximum of 3 WORKSPACE lease(s)");
     UUID windowId = verified(projectId, "p-1", "one", now.minus(Duration.ofMinutes(20)));
 
     sweep.sweep(now);
@@ -673,6 +680,8 @@ class DeskTriggerSweepTest {
     DeskTriggerFixtures.delivery(projectId, 1, now.minus(Duration.ofMinutes(5)));
     WorkEntity working = DeskTriggerFixtures.ticket(projectId, 3, "IMPLEMENTING");
     dispatch.willFind(DeskTriggerFixtures.activeAgent(working));
+    // qits-2573: full means no target can grant a workspace lease, whatever max_running says.
+    system.willGrant(0, "target lab has no free WORKSPACE slot");
     Instant opened = now.minus(Duration.ofMinutes(20));
     UUID windowId = verified(projectId, "p-1", "informational", opened);
     line(projectId, CapacityOpenedSource.ID, "p-2", "agent-left", "agent agent-le",

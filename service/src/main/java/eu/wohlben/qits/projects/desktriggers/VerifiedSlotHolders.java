@@ -8,6 +8,7 @@ import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.AuditRepository;
+import eu.wohlben.qits.projects.api.DeskSlots;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.RunningItems;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -42,11 +43,12 @@ import java.util.stream.Collectors;
  * DeskTriggerSweep}, {@link #section}) and by the line that says an item has no request at all
  * ({@link ShipMissingSource}).
  *
- * <p><b>Running</b> is {@link RunningItems#of}, the reading the dispatch check and {@link
- * CapacityOpenedSource} make, in a transaction of its own: work items and their audit live in the
+ * <p><b>Running</b> is {@link RunningItems#read}, the reading the dispatch check and {@link
+ * CapacityOpenedSource} make through {@link DeskSlots}, with the items waiting for a workspace and
+ * the targets' workspace capacity beside it (qits-2573), in a transaction of its own: work items and their audit live in the
  * epics datasource, never in a caller's projects one (one non-XA resource per transaction).
  * {@link RunningItems} answers an empty list when the agent port is unsatisfied, which would read
- * as {@code running 0 of N}; so an unsatisfied port is {@link Optional#empty()} here, and the
+ * as {@code running 0}; so an unsatisfied port is {@link Optional#empty()} here, and the
  * caller leaves the reading out rather than claim a count nobody made. A port that throws throws
  * through: each caller decides what a failure costs it.
  *
@@ -110,12 +112,26 @@ public class VerifiedSlotHolders {
       List<OpenRequest> requests) {}
 
   /**
-   * The project's slots as they stand: how many items run, and the VERIFIED ones among them, oldest
-   * VERIFIED first.
+   * The project's slots as they stand: how many items run, how many wait for a workspace, how many
+   * more workspace leases the targets can grant ({@code free}, null when that could not be read:
+   * qits-2573, {@link DeskSlots}), and the VERIFIED running ones, oldest VERIFIED first.
    */
-  public record Reading(int running, List<Holder> verified) {}
+  public record Reading(int running, int waiting, Integer free, List<Holder> verified) {
+
+    /** M = N + F, null while F is unknown. */
+    public Integer total() {
+      return free == null ? null : running + free;
+    }
+
+    /** A slot is open: a workspace lease can be granted (F > 0) and none waits (K = 0). */
+    public boolean open() {
+      return free != null && free > 0 && waiting == 0;
+    }
+  }
 
   @Inject RunningItems running;
+
+  @Inject DeskSlots deskSlots;
 
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
 
@@ -138,17 +154,21 @@ public class VerifiedSlotHolders {
     String projectId = project.id;
     String slug = project.slug;
     String wrapperName = slug == null ? null : ProjectService.wrapperName(project);
+    int[] waiting = new int[1];
     List<Item> items =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   List<Item> read = new ArrayList<>();
-                  for (WorkEntity row : running.of(projectId, null)) {
+                  RunningItems.Slots slots = running.read(projectId, null);
+                  waiting[0] = slots.waiting().size();
+                  for (WorkEntity row : slots.running()) {
                     boolean verified = VERIFIED.equals(row.status);
                     read.add(new Item(row, verified, verified ? verifiedSince(row) : null));
                   }
                   return read;
                 });
+    Integer free = deskSlots.capacity().map(c -> Math.max(0, c.grantable())).orElse(null);
     List<Holder> holders = new ArrayList<>();
     Map<String, String> branches = new HashMap<>();
     for (Item item : items) {
@@ -183,27 +203,35 @@ public class VerifiedSlotHolders {
     }
     holders.sort(
         Comparator.comparing(Holder::verifiedSince).thenComparing(Holder::qualifiedId));
-    return Optional.of(new Reading(items.size(), List.copyOf(holders)));
+    return Optional.of(new Reading(items.size(), waiting[0], free, List.copyOf(holders)));
   }
 
   /**
    * The Slots section of a delivery trigger, exactly:
    *
    * <pre>
-   * Slots: running 5 of 5, 2 VERIFIED waiting to ship
+   * Slots: running 3 of 3, 1 waiting for a workspace, 2 VERIFIED waiting to ship
    * - qits-1774 (VERIFIED 1h 5m; qits-qits-rr-264 PENDING)
    * - qits-1769 (VERIFIED 43m; no open release request)
    * </pre>
    *
-   * With nothing VERIFIED the heading line is the whole section, without its VERIFIED clause. The
-   * duration is {@link RequestStalledSource#human}'s.
+   * {@code running N of M} (qits-2573): N the running items, M = N + F with F the workspace leases
+   * the targets can grant now ({@link DeskSlots}), so N never exceeds M; with F unknown the heading
+   * reads {@code Slots: running 3 (the targets' workspace capacity could not be read)}. The waiting
+   * clause appears only while an item waits for a workspace, the VERIFIED one only while a running
+   * item is VERIFIED; with neither the heading line is the whole section. The duration is {@link
+   * RequestStalledSource#human}'s.
    */
-  static String section(Reading reading, int maxRunning, Instant now) {
-    StringBuilder section =
-        new StringBuilder("Slots: running ")
-            .append(reading.running())
-            .append(" of ")
-            .append(maxRunning);
+  static String section(Reading reading, Instant now) {
+    StringBuilder section = new StringBuilder("Slots: running ").append(reading.running());
+    if (reading.free() == null) {
+      section.append(" (the targets' workspace capacity could not be read)");
+    } else {
+      section.append(" of ").append(reading.total());
+    }
+    if (reading.waiting() > 0) {
+      section.append(", ").append(reading.waiting()).append(" waiting for a workspace");
+    }
     if (reading.verified().isEmpty()) {
       return section.toString();
     }

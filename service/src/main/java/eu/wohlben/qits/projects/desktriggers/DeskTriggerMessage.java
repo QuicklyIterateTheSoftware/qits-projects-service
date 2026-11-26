@@ -22,7 +22,7 @@ import java.util.Map;
  * Needs your approval:
  * - qits-qits-rr-201 (Release qits-1597 wrapper; waits on manual-review: …), fold 412911eb
  *
- * Slots: running 5 of 5, 2 VERIFIED waiting to ship
+ * Slots: running 3 of 3, 1 waiting for a workspace, 2 VERIFIED waiting to ship
  * - qits-1774 (VERIFIED 1h 5m; qits-qits-rr-264 PENDING)
  * - qits-1769 (VERIFIED 43m; no open release request)
  * </pre>
@@ -35,8 +35,9 @@ import java.util.Map;
  * <p><b>The Slots section is last</b> (qits-1778), after one more blank line, and nothing follows
  * it. It is not a source's: {@link DeskTriggerSweep} reads it when the window closes ({@link
  * VerifiedSlotHolders#section}), so it is current when it is sent rather than when the first line
- * was admitted, and hands it in. It says how many items run against {@code max_running} and which
- * of them are finished work waiting for a release — without it the desk could not tell "full of
+ * was admitted, and hands it in. It says how many items run of the slots the targets can hold now
+ * ({@link eu.wohlben.qits.projects.api.DeskSlots}, qits-2573: N of N + F), how many wait for a
+ * workspace, and which of the running are finished work waiting for a release — without it the desk could not tell "full of
  * work in progress" from "full of VERIFIED work waiting for one build". It is added only under the
  * delivery preamble: the sweep hands in none for a project with delivery off or a reading that
  * failed, and a window of waits only (below) never shows one.

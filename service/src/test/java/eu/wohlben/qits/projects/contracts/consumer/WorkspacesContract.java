@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -213,6 +214,37 @@ final class WorkspacesContract {
               "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
                   + " entries[].agent rows (ACTIVE, OBSOLETE and REMOVED, at least one with a"
                   + " pushed branch)"),
+          // qits-2573: the delivery desk's slots (api/DeskSlots, through RunningItems) read whether
+          // each ACTIVE agent's workspace holds its lease. Pending until the pinned qits-workspaces
+          // golden masters record this state's references read.
+          new ConsumerRow(
+              PROVIDER,
+              APP,
+              "listAgentDispatchReferences",
+              AN_AGENT_ON_A_TICKET,
+              "GET",
+              "/workspaces/api/agent-dispatches/references",
+              Map.of("workId", "{ticketId}"),
+              null,
+              List.of(
+                  "$.entries[*].agent.agentId",
+                  "$.entries[*].agent.workspaceRowId",
+                  "$.entries[*].agent.repositoryId",
+                  "$.entries[*].agent.workId",
+                  "$.entries[*].agent.state",
+                  "$.entries[*].agent.runState",
+                  "$.entries[*].agent.slot"),
+              200,
+              Trigger.schedule("DeskTriggerSweep.sweep"),
+              (base, p) ->
+                  assertEquals(
+                      eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent.QUEUED,
+                      workspaces(new HttpWorkspaceAgentDispatch(RowClients.clients()), base)
+                          .agentsFor(List.of(p.get("ticketId")))
+                          .get(0)
+                          .slot()),
+              "param ticketId; GET .../agent-dispatches/references?workId answering 200 with"
+                  + " entries[].agent's slot (QUEUED: placed in a workspace whose lease waits)"),
           new ConsumerRow(
               PROVIDER,
               APP,

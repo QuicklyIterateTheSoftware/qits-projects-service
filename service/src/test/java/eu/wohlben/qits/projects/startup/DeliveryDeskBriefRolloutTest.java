@@ -113,7 +113,7 @@ public class DeliveryDeskBriefRolloutTest {
 
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
-    assertTrue(after.contains("A blocked item holds no slot"), after);
+    assertTrue(after.contains("not DONE or DROPPED, not blocked, whose"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
@@ -146,7 +146,7 @@ public class DeliveryDeskBriefRolloutTest {
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(
-        after.contains("qits workspaces list --project <this project> --repository"), after);
+        after.contains("K counts the items whose workspace is QUEUED"), after);
     assertFalse(after.contains("workspaces runners"), after);
     assertTrue(after.contains("also holds no-changes"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
@@ -181,7 +181,7 @@ public class DeliveryDeskBriefRolloutTest {
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(after.contains("also holds no-changes"), after);
     assertTrue(
-        after.contains("qits workspaces list --project <this project> --repository"), after);
+        after.contains("K counts the items whose workspace is QUEUED"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 
@@ -744,6 +744,27 @@ public class DeliveryDeskBriefRolloutTest {
     String after = surfaces.get(SURFACE).systemPrompt();
     assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
     assertTrue(after.contains("it is never orphaned, never resumed, and you"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /**
+   * qits-2573: an unedited brief whose step 10 counted running items against a configured
+   * max_running rolls to the current one, which reads the derived slots.
+   */
+  @Test
+  public void anUneditedQits2573PreBriefIsMigrated() {
+    assertTrue(
+        AgentSurfaceDefaults.QITS_2573_PRE_DELIVERY_DESK_PROMPT.contains("max_running"),
+        "the qits-2573 pre text counts against max_running");
+    stage(AgentSurfaceDefaults.QITS_2573_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the pre-2573 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("While N < M and K is 0"), after);
+    assertFalse(after.contains("max_running"), after);
     assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
   }
 

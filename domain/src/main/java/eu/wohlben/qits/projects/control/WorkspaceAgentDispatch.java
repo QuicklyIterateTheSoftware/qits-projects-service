@@ -217,6 +217,10 @@ public interface WorkspaceAgentDispatch {
    * @param runState the far side's run state, or {@code null}
    * @param createdAt when it was created, or {@code null}
    * @param removedAt when it was removed, or {@code null} while it is not
+   * @param slot whether its workspace holds its lease (qits-2573): {@link #HELD}, {@link #QUEUED}
+   *     (no workspace yet, or its workspace's lease waits) or {@code NONE}; {@code null} from a
+   *     qits-workspaces that predates the field, which {@link #slotOrFallback} reads from {@code
+   *     runState} and {@code workspaceRowId}
    */
   record Agent(
       String agentId,
@@ -229,10 +233,59 @@ public interface WorkspaceAgentDispatch {
       String state,
       String runState,
       Instant createdAt,
-      Instant removedAt) {
+      Instant removedAt,
+      String slot) {
 
     /** The agent works on its item: it can be spoken to and its branches are not released yet. */
     public static final String ACTIVE = "ACTIVE";
+
+    /** Its workspace holds its lease: it takes one of the desk's running slots (qits-2573). */
+    public static final String HELD = "HELD";
+
+    /** It waits for a workspace, or its workspace's lease waits: not running (qits-2573). */
+    public static final String QUEUED = "QUEUED";
+
+    /** Neither held nor waiting (qits-2573). */
+    public static final String NONE = "NONE";
+
+    /** An agent read from a far side that does not say its {@link #slot}. */
+    public Agent(
+        String agentId,
+        Long workspaceRowId,
+        String repositoryId,
+        String workId,
+        String entityId,
+        String wrapperBranch,
+        List<Branch> branches,
+        String state,
+        String runState,
+        Instant createdAt,
+        Instant removedAt) {
+      this(
+          agentId,
+          workspaceRowId,
+          repositoryId,
+          workId,
+          entityId,
+          wrapperBranch,
+          branches,
+          state,
+          runState,
+          createdAt,
+          removedAt,
+          null);
+    }
+
+    /**
+     * {@link #slot}, or — from a qits-workspaces that does not send it — {@link #QUEUED} while the
+     * agent's {@code runState} is QUEUED or it names no workspace, else {@link #HELD} (qits-2573).
+     */
+    public String slotOrFallback() {
+      if (slot != null && !slot.isBlank()) {
+        return slot;
+      }
+      return QUEUED.equals(runState) || workspaceRowId == null ? QUEUED : HELD;
+    }
 
     /** Its branches were released; it stays until the cleanup check removes it. */
     public static final String OBSOLETE = "OBSOLETE";

@@ -130,8 +130,10 @@ public record ProjectConfig(
    * is the request's own project. {@code ApprovalPolicy.admitDesk} is where the names are read.
    *
    * @param enabled whether the loop runs at all; absent is {@code false}
-   * @param maxRunning how many of the project's items the desk keeps running, {@link
-   *     #MIN_RUNNING}..{@link #MAX_RUNNING}; absent is {@link #DEFAULT_MAX_RUNNING}
+   * @param maxRunning {@code max_running}, {@link #MIN_RUNNING}..{@link #MAX_RUNNING}; absent is
+   *     {@link #DEFAULT_MAX_RUNNING}. Parsed, stored and answered, but <b>not read since
+   *     qits-2573</b>: the desk's slots are the targets' real workspace capacity ({@code
+   *     api/DeskSlots}), derived, never configured. A follow-up removes the key
    * @param startRefined whether the desk may move a REFINED item to READY_FOR_DEV itself
    * @param approves the approval requirements the desk may satisfy, never null
    */
@@ -141,10 +143,10 @@ public record ProjectConfig(
       boolean startRefined,
       Set<String> approves) {
 
-    /** The fewest running items a loop may be capped at. */
+    /** The smallest {@code max_running} the parser takes (not read since qits-2573). */
     public static final int MIN_RUNNING = 1;
 
-    /** The most running items a loop may be capped at. */
+    /** The largest {@code max_running} the parser takes (not read since qits-2573). */
     public static final int MAX_RUNNING = 20;
 
     /** {@code max_running} when absent. */

@@ -469,7 +469,8 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
         string(row.get("state")),
         string(row.get("runState")),
         instant(row.get("createdAt")),
-        instant(row.get("removedAt")));
+        instant(row.get("removedAt")),
+        string(row.get("slot")));
   }
 
   private static String string(Object value) {

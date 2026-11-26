@@ -172,6 +172,39 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
         null);
   }
 
+  /** {@code agent} as a qits-workspaces that says its {@code slot} answers it (qits-2573). */
+  public static Agent withSlot(Agent agent, String slot) {
+    return new Agent(
+        agent.agentId(),
+        agent.workspaceRowId(),
+        agent.repositoryId(),
+        agent.workId(),
+        agent.entityId(),
+        agent.wrapperBranch(),
+        agent.branches(),
+        agent.state(),
+        agent.runState(),
+        agent.createdAt(),
+        agent.removedAt(),
+        slot);
+  }
+
+  /** An ACTIVE agent still QUEUED for a workspace: no workspace row, {@code runState} QUEUED. */
+  public static Agent queued(String agentId, String repositoryId, String workId, String wrapperBranch) {
+    return new Agent(
+        agentId,
+        null,
+        repositoryId,
+        workId,
+        null,
+        wrapperBranch,
+        List.of(),
+        Agent.ACTIVE,
+        "QUEUED",
+        null,
+        null);
+  }
+
   /** An agent in {@code state} — OBSOLETE or REMOVED — removed at {@code removedAt}. */
   public static Agent inState(
       String agentId,

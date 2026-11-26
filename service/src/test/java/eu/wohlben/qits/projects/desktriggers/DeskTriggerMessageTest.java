@@ -202,7 +202,7 @@ class DeskTriggerMessageTest {
   }
 
   private static final String SLOTS =
-      "Slots: running 5 of 5, 2 VERIFIED waiting to ship\n"
+      "Slots: running 3 of 3, 1 waiting for a workspace, 2 VERIFIED waiting to ship\n"
           + "- qits-1774 (VERIFIED 1h 5m; qits-qits-rr-264 PENDING)\n"
           + "- qits-1769 (VERIFIED 43m; no open release request)";
 
@@ -249,12 +249,39 @@ class DeskTriggerMessageTest {
     assertTrue(message.endsWith(TURN_B), message);
   }
 
-  /** qits-1778: with nothing VERIFIED the heading is the whole section, with no VERIFIED clause. */
+  /**
+   * qits-1778, qits-2573: with nothing VERIFIED and nothing waiting the heading is the whole section;
+   * M is N plus the workspace leases the targets can grant, so 3 running with none to grant is 3 of
+   * 3, never "of 5".
+   */
   @Test
   void theSectionHasNoVerifiedClauseWhenNothingIsVerified() {
     assertEquals(
-        "Slots: running 3 of 5",
-        VerifiedSlotHolders.section(new Reading(3, List.of()), 5, Instant.now()));
+        "Slots: running 3 of 3",
+        VerifiedSlotHolders.section(new Reading(3, 0, 0, List.of()), Instant.now()));
+    assertEquals(
+        "Slots: running 2 of 3",
+        VerifiedSlotHolders.section(new Reading(2, 0, 1, List.of()), Instant.now()));
+  }
+
+  /** qits-2573: an item whose workspace is QUEUED is not running; the section says it waits. */
+  @Test
+  void theSectionSaysHowManyWaitForAWorkspace() {
+    assertEquals(
+        "Slots: running 1 of 1, 1 waiting for a workspace",
+        VerifiedSlotHolders.section(new Reading(1, 1, 0, List.of()), Instant.now()));
+  }
+
+  /** qits-2573: a capacity that could not be read is said, never read as 0 or as a setting. */
+  @Test
+  void theSectionSaysWhenTheCapacityCouldNotBeRead() {
+    assertEquals(
+        "Slots: running 3 (the targets' workspace capacity could not be read)",
+        VerifiedSlotHolders.section(new Reading(3, 0, null, List.of()), Instant.now()));
+    assertEquals(
+        "Slots: running 3 (the targets' workspace capacity could not be read), 2 waiting for a"
+            + " workspace",
+        VerifiedSlotHolders.section(new Reading(3, 2, null, List.of()), Instant.now()));
   }
 
   /** qits-1778: one line per VERIFIED item as handed in, its open requests comma-joined. */
@@ -264,6 +291,8 @@ class DeskTriggerMessageTest {
     Reading reading =
         new Reading(
             5,
+            0,
+            0,
             List.of(
                 new Holder(
                     "i-1774",
@@ -286,6 +315,6 @@ class DeskTriggerMessageTest {
             + "- qits-1774 (VERIFIED 1h 5m; qits-projects-service-rr-9 REJECTED,"
             + " qits-qits-rr-264 PENDING)\n"
             + "- qits-1769 (VERIFIED 43m; no open release request)",
-        VerifiedSlotHolders.section(reading, 5, now));
+        VerifiedSlotHolders.section(reading, now));
   }
 }

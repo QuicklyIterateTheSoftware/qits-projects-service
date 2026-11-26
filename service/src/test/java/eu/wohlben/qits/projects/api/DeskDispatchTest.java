@@ -26,6 +26,8 @@ import eu.wohlben.qits.projects.persistence.ProjectRepository;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.targethost.FakeSystemLeases;
+import eu.wohlben.qits.projects.targethost.SystemLeases;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -39,6 +41,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,6 +77,8 @@ public class DeskDispatchTest {
 
   @Inject RecordingWorkspaceAgentTurns turns;
 
+  @Inject FakeSystemLeases system;
+
   @Inject ProjectRepository projectRows;
 
   @Inject WorkEntityRepository entityRows;
@@ -90,6 +95,7 @@ public class DeskDispatchTest {
   void resetThePort() {
     dispatch.reset();
     turns.reset();
+    system.reset();
   }
 
   @AfterEach
@@ -179,6 +185,12 @@ public class DeskDispatchTest {
   private static WorkspaceAgentDispatch.Agent activeOn(String workId) {
     return RecordingWorkspaceAgentDispatch.active(
         "agent-" + workId, 7L, "wrapper", workId, "ticket/" + workId);
+  }
+
+  /** An ACTIVE agent of {@code workId} still waiting for a workspace (qits-2573). */
+  private static WorkspaceAgentDispatch.Agent queuedOn(String workId) {
+    return RecordingWorkspaceAgentDispatch.queued(
+        "agent-" + workId, "wrapper", workId, "ticket/" + workId);
   }
 
   // ---- the press -----------------------------------------------------------------------------
@@ -306,51 +318,165 @@ public class DeskDispatchTest {
   }
 
   /**
-   * At {@code max_running} the press is a 409 naming the count, the limit and the running items. A
-   * running item has an assignee and an ACTIVE agent; an OBSOLETE agent does not count, and neither
-   * does the item being pressed.
+   * qits-2573: while an item of the project waits for a workspace (its agent QUEUED with no
+   * workspace, or placed RUNNING in a workspace whose lease waits), the press is a 409 naming it. A
+   * waiting item is not running. An OBSOLETE agent waits for nothing, a workspace that holds its
+   * lease waits for nothing, and the item pressed never counts itself.
    */
   @Test
-  public void aDeskAtItsCapIsRefused409NamingTheRunningItems() {
+  public void aDeskIsRefusedWhileAnItemOfItsProjectWaitsForAWorkspace() {
     String projectId = createProject("Desk Cap");
-    delivery(projectId, true, 1, false);
-    String runningId = createTicket(projectId, "Already running");
+    delivery(projectId, true, 5, false);
+    String waitingId = createTicket(projectId, "Waiting for a workspace");
     String nextId = createTicket(projectId, "Next in line");
     // A person's press puts an agent on the first: the assignee is written.
     asAdmin("mallory")
         .body(Map.of("mode", "FLOW"))
         .when()
-        .post("/projects/api/work/" + runningId + "/dispatch")
+        .post("/projects/api/work/" + waitingId + "/dispatch")
         .then()
         .statusCode(200);
+    dispatch.reset();
+    dispatch.willFind(queuedOn(waitingId));
+    String waiting = qualifiedIdOf(projectId, row(waitingId));
+
+    DispatchRefused refusal = refused(desk(projectId), nextId, "FLOW", RULE);
+    assertEquals(409, refusal.statusCode());
+    assertEquals(
+        "1 of this project's items waits for a workspace: "
+            + waiting
+            + ". Dispatch again once its lease is granted.",
+        refusal.getMessage());
+    assertTrue(dispatch.calls().isEmpty());
+
+    // Placed RUNNING in a new workspace whose lease still waits: still waiting.
+    dispatch.willFind(RecordingWorkspaceAgentDispatch.withSlot(activeOn(waitingId), "QUEUED"));
+    assertEquals(409, refused(desk(projectId), nextId, "FLOW", RULE).statusCode());
+
+    // Its agent OBSOLETE: nothing waits, so the press goes through.
+    dispatch.willFind(
+        RecordingWorkspaceAgentDispatch.inState(
+            "agent-old", 7L, "wrapper", waitingId, "ticket/x", "OBSOLETE", Instant.now()));
+    doors.press(desk(projectId), nextId, "FLOW", RULE);
+    assertEquals(1, dispatch.calls().size());
+
+    // Its workspace holds its lease: running, not waiting.
+    dispatch.reset();
+    dispatch.willFind(RecordingWorkspaceAgentDispatch.withSlot(activeOn(waitingId), "HELD"));
+    doors.press(desk(projectId), createTicket(projectId, "Third"), "FLOW", RULE);
+    assertEquals(1, dispatch.calls().size());
+
+    // The item pressed never counts itself: the first again, its own agent QUEUED.
+    dispatch.reset();
+    dispatch.willFind(queuedOn(waitingId));
+    doors.press(desk(projectId), waitingId, "FLOW", RULE);
+    assertEquals(1, dispatch.calls().size());
+  }
+
+  /**
+   * qits-2573: while no target can grant a workspace lease the press is a 409 naming the slots,
+   * running N of M with M = N + 0, and why each target grants none, as qits-system's allocator says
+   * it. A waiting item comes first.
+   */
+  @Test
+  public void aDeskIsRefusedWhileNoTargetCanGrantAWorkspaceLease() {
+    String projectId = createProject("Desk No Lease");
+    delivery(projectId, true, 5, false);
+    String runningId = createTicket(projectId, "Already running");
+    String nextId = createTicket(projectId, "Next in line");
+    assigned(runningId);
+    system.willAnswerCapacity(
+        Optional.of(
+            new SystemLeases.Capacity(
+                0,
+                4,
+                0,
+                List.of(
+                    new SystemLeases.TargetCapacity(
+                        "ws-proof", 3, 0, "target ws-proof runs its maximum of 3 WORKSPACE lease(s)"),
+                    new SystemLeases.TargetCapacity(
+                        "localhost", 1, 0, "target localhost has no free WORKSPACE slot"),
+                    new SystemLeases.TargetCapacity(
+                        "workstation", 0, 0, "target workstation is not connected")))));
     dispatch.reset();
     dispatch.willFind(activeOn(runningId));
 
     DispatchRefused refusal = refused(desk(projectId), nextId, "FLOW", RULE);
     assertEquals(409, refusal.statusCode());
-    String running = qualifiedIdOf(projectId, row(runningId));
-    assertTrue(refusal.getMessage().contains("at most 1 items"), refusal.getMessage());
-    assertTrue(refusal.getMessage().contains("1 are running: " + running + "."), refusal.getMessage());
+    assertEquals(
+        "No target can grant a workspace lease now (running 1 of 1): ws-proof runs its maximum of 3"
+            + " WORKSPACE lease(s); localhost has no free WORKSPACE slot; workstation is not"
+            + " connected.",
+        refusal.getMessage());
     assertTrue(dispatch.calls().isEmpty());
 
-    // Its agent OBSOLETE: nothing runs, so the press goes through.
-    dispatch.willFind(
-        RecordingWorkspaceAgentDispatch.inState(
-            "agent-old", 7L, "wrapper", runningId, "ticket/x", "OBSOLETE", Instant.now()));
-    doors.press(desk(projectId), nextId, "FLOW", RULE);
-    assertEquals(1, dispatch.calls().size());
+    // An item waiting for a workspace is the first refusal, whatever the capacity.
+    dispatch.willFind(queuedOn(runningId));
+    assertTrue(
+        refused(desk(projectId), nextId, "FLOW", RULE)
+            .getMessage()
+            .startsWith("1 of this project's items waits for a workspace: "));
 
-    // The item pressed never counts itself: the first again, its own agent ACTIVE, cap 1.
+    // A resumed orphan is checked as every desk press is.
+    dispatch.willFind(activeOn(runningId));
+    assertEquals(409, refused(desk(projectId), nextId, "FLOW", "resume-orphaned").statusCode());
+
+    // A person's press is not.
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + nextId + "/dispatch")
+        .then()
+        .statusCode(200);
+  }
+
+  /**
+   * qits-2573: a capacity that cannot be read is no refusal: the press goes through, and a dispatch
+   * that then lands QUEUED stops the next one.
+   */
+  @Test
+  public void aDeskPressIsNotSlotCheckedWhileTheCapacityCannotBeRead() {
+    String projectId = createProject("Desk Unknown Capacity");
+    delivery(projectId, true, 5, false);
+    String runningId = createTicket(projectId, "Already running");
+    String nextId = createTicket(projectId, "Next in line");
+    assigned(runningId);
+    system.willAnswerCapacity(Optional.empty());
     dispatch.reset();
     dispatch.willFind(activeOn(runningId));
-    doors.press(desk(projectId), runningId, "FLOW", RULE);
+
+    doors.press(desk(projectId), nextId, "FLOW", RULE);
+
+    assertEquals(1, dispatch.calls().size());
+  }
+
+  /**
+   * qits-2573: {@code max_running} is no longer read. At max_running 1 with two items running, the
+   * press goes through while the targets can grant a workspace lease.
+   */
+  @Test
+  public void maxRunningIsNotTheLimitAnyMore() {
+    String projectId = createProject("Desk Max Running");
+    delivery(projectId, true, 1, false);
+    String firstId = createTicket(projectId, "Running one");
+    String secondId = createTicket(projectId, "Running two");
+    String nextId = createTicket(projectId, "Next in line");
+    assigned(firstId);
+    assigned(secondId);
+    system.willGrant(1, "target lab has no free WORKSPACE slot");
+    dispatch.reset();
+    dispatch.willFind(activeOn(firstId), activeOn(secondId));
+
+    doors.press(desk(projectId), nextId, "FLOW", RULE);
+
     assertEquals(1, dispatch.calls().size());
   }
 
   /**
    * An explicitly blocked item holds no slot (qits-1569): it waits on a person or another item, and
-   * counting it starved the backlog. At cap 1 with the only running ticket blocked, the next press
-   * goes through; unblocked, it takes its slot back and the cap refuses again.
+   * counting it starved the backlog. With the blocked ticket's agent waiting for a workspace, the
+   * next press still goes through; unblocked, it counts again and its waiting workspace refuses
+   * (qits-2573).
    */
   @Test
   public void aBlockedRunningItemDoesNotHoldADeskSlot() {
@@ -372,12 +498,12 @@ public class DeskDispatchTest {
         .statusCode(200);
     assertTrue(row(blockedId).blocked);
     dispatch.reset();
-    dispatch.willFind(activeOn(blockedId));
+    dispatch.willFind(queuedOn(blockedId));
 
     doors.press(desk(projectId), nextId, "FLOW", RULE);
     assertEquals(1, dispatch.calls().size());
 
-    // Unblocked, it holds its slot again: the next running item now counts against it.
+    // Unblocked, it counts again: its workspace waits, so the next press is refused.
     workEntities.setBlocked(Archetype.TICKET, blockedId, false, "mallory");
     String thirdId = createTicket(projectId, "Third in line");
     // The test thread's session still holds the row the first press listed, blocked; a request's
@@ -389,7 +515,7 @@ public class DeskDispatchTest {
   /**
    * The derived block keeps its slot (qits-1569): an agent waiting for a person — on its own
    * release request, say — reads as blocked (qits-895), but it is in-flight work, so only the
-   * explicit flag frees the slot and the cap still refuses.
+   * explicit flag frees the slot; its workspace waiting still refuses (qits-2573).
    */
   @Test
   public void anItemOnlyWaitingOnItsAgentStillHoldsADeskSlot() {
@@ -418,12 +544,12 @@ public class DeskDispatchTest {
     assertTrue(EntityBlockState.of(waiting).blocked(), "the derived block stands");
     assertFalse(waiting.blocked, "and the explicit flag is not set");
     dispatch.reset();
-    dispatch.willFind(activeOn(waitingId));
+    dispatch.willFind(queuedOn(waitingId));
 
     DispatchRefused refusal = refused(desk(projectId), nextId, "FLOW", RULE);
     assertEquals(409, refusal.statusCode());
     assertTrue(
-        refusal.getMessage().contains("1 are running: " + qualifiedIdOf(projectId, waiting) + "."),
+        refusal.getMessage().contains("waits for a workspace: " + qualifiedIdOf(projectId, waiting) + "."),
         refusal.getMessage());
     assertTrue(dispatch.calls().isEmpty());
   }
@@ -618,7 +744,7 @@ public class DeskDispatchTest {
     transition(heldId, "REFINED");
     assertEquals("REFINED", row(heldId).status);
     dispatch.reset();
-    dispatch.willFind(activeOn(heldId));
+    dispatch.willFind(queuedOn(heldId));
 
     EntityDispatchDto pressed = doors.press(desk(projectId), neededId, "FLOW", RULE);
 
@@ -642,7 +768,7 @@ public class DeskDispatchTest {
     transition(heldId, "READY_FOR_DEV");
     assertEquals("READY_FOR_DEV", row(heldId).status);
     dispatch.reset();
-    dispatch.willFind(activeOn(heldId));
+    dispatch.willFind(queuedOn(heldId));
 
     EntityDispatchDto pressed = doors.press(desk(projectId), neededId, "FLOW", RULE);
 
@@ -668,19 +794,19 @@ public class DeskDispatchTest {
     transition(neededId, "REFINED");
     entityRows.getEntityManager().clear();
     dispatch.reset();
-    dispatch.willFind(activeOn(heldId));
+    dispatch.willFind(queuedOn(heldId));
 
     DispatchRefused refusal = refused(desk(projectId), thirdId, "FLOW", RULE);
     assertEquals(409, refusal.statusCode());
     assertTrue(
-        refusal.getMessage().contains("1 are running: " + qualifiedIdOf(projectId, row(heldId)) + "."),
+        refusal.getMessage().contains("waits for a workspace: " + qualifiedIdOf(projectId, row(heldId)) + "."),
         refusal.getMessage());
     assertTrue(dispatch.calls().isEmpty());
   }
 
   /**
-   * A held item beside an ordinary running one: at cap 2 only the running one counts, so the press
-   * goes through; at cap 1 the 409 names the running item and not the held one.
+   * A held item beside an ordinary one (qits-2053, qits-2573): the held item's waiting workspace
+   * does not stop the desk, the ordinary item's does, and the 409 names the ordinary one only.
    */
   @Test
   public void aHeldItemBesideARunningOneCountsOnlyTheRunningOne() {
@@ -695,20 +821,20 @@ public class DeskDispatchTest {
     needs(heldId, neededId, "VERIFIED");
     transition(heldId, "REFINED");
     dispatch.reset();
-    dispatch.willFind(activeOn(runningId), activeOn(heldId));
+    dispatch.willFind(activeOn(runningId), queuedOn(heldId));
 
     doors.press(desk(projectId), nextId, "FLOW", RULE);
     assertEquals(1, dispatch.calls().size());
 
-    delivery(projectId, true, 1, false);
     String lastId = createTicket(projectId, "Last in line");
     dispatch.reset();
-    dispatch.willFind(activeOn(runningId), activeOn(heldId));
+    dispatch.willFind(queuedOn(runningId), queuedOn(heldId));
     DispatchRefused refusal = refused(desk(projectId), lastId, "FLOW", RULE);
     assertEquals(409, refusal.statusCode());
     String running = qualifiedIdOf(projectId, row(runningId));
     String held = qualifiedIdOf(projectId, row(heldId));
-    assertTrue(refusal.getMessage().contains("1 are running: " + running + "."), refusal.getMessage());
+    assertTrue(
+        refusal.getMessage().contains("waits for a workspace: " + running + "."), refusal.getMessage());
     assertFalse(refusal.getMessage().contains(held), refusal.getMessage());
     assertTrue(dispatch.calls().isEmpty());
   }

@@ -2319,15 +2319,27 @@ desk, with no side effect and before every other refusal, in this order: an item
 (403 "The delivery desk may dispatch only the items of its own project."), no rule (400 "The
 delivery desk names the rule it dispatches under."), the project's `delivery_enabled` false (409
 "The delivery loop is off for this project (front_desk.delivery.enabled in
-.config/qits/project.yml)."), an issue (409), the project at `delivery_max_running` (409 naming the count, the limit and the running
-qualified ids: an EPIC or TICKET of the project, not DONE or DROPPED, not explicitly blocked
+.config/qits/project.yml)."), an issue (409), a condition or unmet needs (409), then **the slots**
+(qits-2573, `api/DeskSlots`, one reading of the project besides the item pressed): an item of the
+project waiting for a workspace (409 `1 of this project's items waits for a workspace: qits-2716.
+Dispatch again once its lease is granted.`), then no target able to grant a workspace lease (409 `No
+target can grant a workspace lease now (running 3 of 3): ws-proof runs its maximum of 3 WORKSPACE
+lease(s); localhost has no free WORKSPACE slot; workstation is not connected.`, each clause the
+allocator's detail from qits-system's `GET /system/api/targets/capacity?slotType=WORKSPACE` with its
+leading `target ` dropped). A capacity that cannot be read refuses nothing and warns; a dispatch that
+then lands QUEUED makes K = 1 and stops the next one. Every desk press is checked, `resume-orphaned`
+included; a person's press is not. `delivery_max_running` is not read. **Running** (`api/RunningItems`)
+is an EPIC or TICKET of the project, not DONE or DROPPED, not explicitly blocked
 (qits-1569: the row's `blocked` flag only — a derived agent-waiting block keeps its slot, because
 that agent is in-flight work), not held at REFINED or READY_FOR_DEV by a need not met now (qits-2053:
 the platform refuses to start it, so it is not in-flight work; read through `NeedService.unmet`, not
 `UnmetNeeds.holding`, whose slug read is a second datasource; it counts again once its last need is
-met and `PhaseAdvance.resumeHeld` schedules it, past no cap check), with an assignee and an ACTIVE agent from
-`WorkspaceAgentDispatch.agentsFor`; the item pressed never counts itself; an unblocked item takes
-its slot back, so the count may briefly exceed the limit), and REFINED
+met and `PhaseAdvance.resumeHeld` schedules it, past no slot check), with an assignee and an ACTIVE agent from
+`WorkspaceAgentDispatch.agentsFor` **whose `slot` is HELD** (its workspace holds its lease); the
+same candidates with an agent whose `slot` is QUEUED (no workspace yet, or placed RUNNING in a
+workspace whose lease waits) are **waiting**, not running; NONE is neither; a qits-workspaces that
+predates `slot` is read from `runState` QUEUED or no `workspaceRowId` (waiting), else running
+(`Agent.slotOrFallback`). The item pressed never counts itself. Then REFINED
 while `delivery_start_refined` is off (the `REFINED_WAITS` 409 plus "start_refined is off."). With
 `start_refined` on, a desk's FLOW press at REFINED is the scheduling, exactly as a person's: REFINED
 → READY_FOR_DEV under the desk mover stamped `withDeclaredApproval`, which `PersonApprovalGate`
@@ -3345,7 +3357,10 @@ is the whole of it:
   window id and its bounds, then each source's section in `order()`, a blank line between, and
   last (qits-1778), for a delivery-enabled project under the delivery preamble only, the Slots
   section `DeskTriggerSweep` reads just before the close (`VerifiedSlotHolders`): `Slots: running
-  <N> of <max_running>[, <K> VERIFIED waiting to ship]`, then one line per VERIFIED running item,
+  <N> of <M>[, <K> waiting for a workspace][, <V> VERIFIED waiting to ship]` (qits-2573: N the
+  running items, K the waiting ones, M = N + F with F the WORKSPACE leases the targets can grant now
+  through `api/DeskSlots`, so N never exceeds M; with F unknown `Slots: running <N> (the targets'
+  workspace capacity could not be read)`), then one line per VERIFIED running item,
   oldest first, `- <qid> (VERIFIED 1h 5m; <request qid> <STATE>, … | no open release request)`
   (open = PENDING, READY, RELEASED, REJECTED, CONFLICTED; a source on the item's wrapper branch or
   `<branch>-*`, the wrapper's request last). An unsatisfied or throwing agent port is a WARN and no
@@ -3376,7 +3391,7 @@ is the whole of it:
   is in the label's state at the cause's fold (by attempt: not keyed to an older attempt);
   request-stalled while its `stallKey` is still the scan's; agent-idle while the agent is ACTIVE,
   not BUSY, at the key's `lastActivityAt`; wait-broken while the cause's agent is active;
-  capacity-opened while running < `max_running` (`VerifiedSlotHolders`); verified-unshipped while
+  capacity-opened while F > 0 and K = 0 (`VerifiedSlotHolders`; F unknown holds); verified-unshipped while
   the scan would still raise it. Within a window approval-needed, request-failed and
   request-stalled keep only the newest line per `item_id` (`supersedesOlderLinesOfItsItem`), and a
   live approval-needed line supersedes the request's request-failed lines (`supersededBy`). A
@@ -3406,7 +3421,7 @@ listener's drops; the source makes them idempotent itself). Eleven ship:
 | `RequestStalledSource` (qits-1689) | `request-stalled`, 50 | no signature; `scan` finds RELEASED not FINALIZED past `…stall.released` (from the tag) and PENDING past `…stall.pending` (from `armed_at`, not waiting on an open approval requirement or queued), younger than `…stall.max-age`. Event id `stallKey(request, state, sha)`: once per stall | `- <qualifiedId> (RELEASED <version> for 2h 5m, not FINALIZED; DEPLOYMENT gate PENDING)` or `(PENDING on fold <sha8> for 3h 1m; <detail>)`, no principal |
 | `AgentIdleSource` (qits-1756) | `agent-idle`, 55 | no signature; `scan` reads the ACTIVE agents (`WorkspaceAgentLookup.active()`, now also `activity`, `lastActivityAt` and `waits[]`) and raises each whose `activity` is not `BUSY` (null counts) and whose `lastActivityAt` is at least `THRESHOLD` (2h, a constant, not a setting) old, measured from the later of `lastActivityAt` and `delivery_enabled_at`, younger than `MAX_AGE` (7d). The item is this service's `WorkEntity` by `workId` (unknown: skipped); `item_id` is the agent id. Event id `idleKey(agent, lastActivityAt)`, skipped when a row holds it: once per idle stretch, and a new turn (a new `lastActivityAt`) is a new stretch. No migration: V65's one-per-agent index is `capacity-opened`'s only | `- <qualifiedId> (<title>; <STATUS>; idle 2h 19m since 2026-10-30T07:03Z; waits on: <label> (<subjectState or state>, expires <instant or never>)[; …] or no open wait[; blocked: <reason>])`, section `Agents idle for 2h or more:`, cause `agent <id8>`, no principal |
 | `TargetOomKilledSource` (qits-1818) | `target-oom-killed`, 45 | qits-system's `TargetOomKilled` (a target's node OOM counter rose: `nodeOomKills`, else `kernelOomKills`, by `delta`), one trigger per project in its `projectIds` (the projects leasing the target then); `delta` below 1 or no project qualifies nothing. `item_id` the target id. Event id `oomKey(event, project)`: V65's `(source, event_id, item_ref)` spans projects, so each project's line has its own key and a replay adds nothing | `- target <name>: the out-of-memory killer killed 3 processes (node counter 292 → 295)` (`kernel counter` when the node reports none; no bracket with neither), section `Out-of-memory kills on targets running your work:`, cause `oom <target id8>`, no principal |
-| `CapacityOpenedSource` (qits-1689) | `capacity-opened`, 60 | qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project now runs fewer items than `max_running` (`api/RunningItems`, the dispatch check's reading). `item_id` is the agent id: one line per agent | `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, no principal (the events name no actor) |
+| `CapacityOpenedSource` (qits-1689, qits-2573) | `capacity-opened`, 60 | **Event**: qits-workspaces' `AgentObsolete` or `AgentRemoved` whose work item's project's slots are then open — F > 0 and K = 0 (`api/DeskSlots`, the dispatch check's reading); F unknown qualifies nothing. `item_id` is the agent id: one line per agent. **Scan** (qits-2573): one capacity read per pass, estate-wide; per delivery-enabled project one line only when F > 0 and K = 0 on this pass and the previous one (in memory), no line of this source of that project admitted within `qits.projects.desk-triggers.window`, and `slotKey(project, sorted running agent ids)` — its `item_id` and event id, kept to one by V65's `(source, item_id)` index — not stored yet: once per running set. `max_running` is not read | event `- <slug>-<n> (its agent is done; running 1 of 2)`, cause `agent <id8>`, the drop's or discard's principal; scan `- <slug> (running 2 of 3; the targets can grant 1 more workspace lease: ws-proof 1)`, cause `slots`, no principal |
 | `WaitBrokenSource` (qits-1961) | `wait-broken`, 56 | qits-workspaces' `AgentWaitClosed` naming `BROKEN` (an agent's `qits wait`, not the desk's own — `MATCHED`, `TIMED_OUT` and `CANCELLED` are ignored); no project, wait id or agent id qualifies nothing. `item_ref` is the agent's work item, qualified, read by `workId` against this service's own `WorkEntity` and its project's slug (`AgentIdleSource`'s reading) when that resolves, else `agent <id8>`; `item_id` the wait id. Event id the bus event's: `item_ref` is stable per event, so V65's `(source, event_id, item_ref)` already makes a replay add nothing | `- <item_ref>: broken wait "<label>": <reason>`, section `Agents' waits that broke:`, cause `agent <id8>`, no principal |
 | `ShipMissingSource` (qits-1778) | `verified-unshipped`, 55 | no signature; `scan` reads each delivery-enabled project's running items (`VerifiedSlotHolders`, over `api/RunningItems`) and raises each VERIFIED one, VERIFIED for at least `THRESHOLD` (30m, a constant) from the later of its move into VERIFIED (the newest audit run whose snapshot says VERIFIED, else `updated_at`) and `delivery_enabled_at`, younger than `MAX_AGE` (7d), that no open request (as in the Slots section) carries. Event id `shipKey(item, VERIFIED-since)`, skipped when a row holds it: once per move into VERIFIED | `- <qid> (VERIFIED 43m; no open release request carries ticket/<qid>)`, section `VERIFIED work with no open release request:`, cause `verified <instant to the minute>`, no principal |
 

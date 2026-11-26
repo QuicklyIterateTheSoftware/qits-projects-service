@@ -10111,7 +10111,8 @@ paths:
         "409":
           description: "A status that starts no phase, a feature or a task, a blocked\
             \ entity, a project with no wrapper; for the delivery desk also its loop\
-            \ off or its cap reached"
+            \ off, an item of its project waiting for a workspace, or no target able\
+            \ to grant a workspace lease"
         "401":
           description: Not Authorized
       tags:
@@ -10716,4 +10717,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1121.170044
+  version: 2026.1126.161152

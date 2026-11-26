@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
 /**
  * The shipped {@link SystemLeases}: qits-system's doors at {@code qits.system.url} (scheme, host and
@@ -45,6 +46,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 public class HttpSystemLeases implements SystemLeases {
 
   private static final ObjectMapper JSON = new ObjectMapper();
+
+  private static final Logger LOG = Logger.getLogger(HttpSystemLeases.class);
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
 
@@ -155,6 +158,43 @@ public class HttpSystemLeases implements SystemLeases {
       }
     }
     return List.copyOf(targets);
+  }
+
+  @Override
+  public Optional<Capacity> capacity(String slotType) {
+    try {
+      JsonNode answer =
+          exchange(
+              "GET",
+              "/targets/capacity?slotType=" + URLEncoder.encode(slotType, StandardCharsets.UTF_8),
+              null,
+              "read the targets' " + slotType + " capacity");
+      if (answer == null || !answer.path("grantable").isInt()) {
+        LOG.warnf("qits-system's %s capacity answer is unreadable; the capacity is unknown", slotType);
+        return Optional.empty();
+      }
+      List<TargetCapacity> targets = new ArrayList<>();
+      for (JsonNode t : answer.path("targets")) {
+        targets.add(
+            new TargetCapacity(
+                text(t, "name"),
+                t.path("held").asInt(0),
+                t.path("grantable").asInt(0),
+                blankless(text(t, "detail"))));
+      }
+      return Optional.of(
+          new Capacity(
+              answer.path("grantable").asInt(),
+              answer.path("held").asInt(0),
+              answer.path("queued").asInt(0),
+              targets));
+    } catch (LeaseRefused refused) {
+      LOG.warnf("The targets' %s capacity is unknown: %s", slotType, refused.getMessage());
+      return Optional.empty();
+    } catch (RuntimeException unexpected) {
+      LOG.warnf(unexpected, "The targets' %s capacity is unknown", slotType);
+      return Optional.empty();
+    }
   }
 
   // --- internals --------------------------------------------------------------------------------

@@ -360,7 +360,8 @@ public class DevelopmentGuideControllerTest {
             DevelopmentGuideDefaults.QITS_1756_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1755_DESK_GUIDE,
             DevelopmentGuideDefaults.QITS_1819_DESK_GUIDE,
-            DevelopmentGuideDefaults.QITS_1899_DESK_GUIDE),
+            DevelopmentGuideDefaults.QITS_1899_DESK_GUIDE,
+            DevelopmentGuideDefaults.QITS_2573_DESK_GUIDE),
         DevelopmentGuideDefaults.PREVIOUS.get(DevelopmentGuideDefaults.key("desk")),
         "an unedited desk part rolls forward to the new text");
   }
@@ -388,6 +389,35 @@ public class DevelopmentGuideControllerTest {
 
     assertTrue(
         read("desk").getString("markdown").contains("Close finished work: an epic or feature"));
+  }
+
+  /**
+   * qits-2573: the desk variant says a slot opens when a workspace lease can be granted and none of
+   * the project's workspaces waits, not against max_running; an unedited row holding the text
+   * before it rolls forward on boot.
+   */
+  @Test
+  public void theDeskVariantSaysASlotOpensWhenALeaseCanBeGranted() {
+    assertFalse(
+        DevelopmentGuideDefaults.DESK_GUIDE.contains("max_running"),
+        DevelopmentGuideDefaults.DESK_GUIDE);
+    assertTrue(
+        DevelopmentGuideDefaults.QITS_2573_DESK_GUIDE.contains(
+            "When an agent leaves and fewer items run than `max_running`"),
+        "a kept-only-for-migration part must never be edited");
+
+    String key = DevelopmentGuideDefaults.key("desk");
+    AgentSurfaceConfigurationDto part = surfaces.get(key);
+    surfaces.save(key, withText(part, DevelopmentGuideDefaults.QITS_2573_DESK_GUIDE), null);
+
+    assertTrue(guide.rollForward() >= 1);
+
+    assertTrue(
+        read("desk")
+            .getString("markdown")
+            .contains(
+                "When a workspace lease can be granted and none of your project's workspaces"
+                    + " waits,\nyou are told a slot opened"));
   }
 
   /**

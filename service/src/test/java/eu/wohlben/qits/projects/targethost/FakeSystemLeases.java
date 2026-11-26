@@ -33,6 +33,18 @@ public class FakeSystemLeases implements SystemLeases {
   private volatile boolean slowEnd;
   private volatile boolean hideFromListing;
 
+  /**
+   * One target {@code lab} that can grant 3 more workspaces, none held or queued (qits-2573). Not the
+   * default: until a test says otherwise {@link #capacity} answers unknown, which refuses no
+   * dispatch, announces no slot and makes the sweep's scan a no-op, so a suite written before the
+   * capacity read is not handed slot lines it never asked for.
+   */
+  public static final Capacity ROOMY =
+      new Capacity(3, 0, 0, List.of(new TargetCapacity("lab", 0, 3, "target lab has no free WORKSPACE slot")));
+
+  private volatile Optional<Capacity> capacity = Optional.empty();
+  private final List<String> capacityReads = Collections.synchronizedList(new ArrayList<>());
+
   public synchronized void reset() {
     leases.clear();
     requests.clear();
@@ -47,6 +59,30 @@ public class FakeSystemLeases implements SystemLeases {
     unreachable = null;
     slowEnd = false;
     hideFromListing = false;
+    capacity = Optional.empty();
+    capacityReads.clear();
+  }
+
+  /** {@link #capacity} answers {@code answer} from now on; empty is a qits-system away. */
+  public void willAnswerCapacity(Optional<Capacity> answer) {
+    this.capacity = answer;
+  }
+
+  /** {@link #capacity} answers {@code grantable} more on one target {@code lab}, with its detail. */
+  public void willGrant(int grantable, String detail) {
+    willAnswerCapacity(
+        Optional.of(new Capacity(grantable, 0, 0, List.of(new TargetCapacity("lab", 0, grantable, detail)))));
+  }
+
+  /** Every slot type {@link #capacity} was asked about, oldest first. */
+  public List<String> capacityReads() {
+    return List.copyOf(capacityReads);
+  }
+
+  @Override
+  public Optional<Capacity> capacity(String slotType) {
+    capacityReads.add(slotType);
+    return capacity;
   }
 
   // --- scripting -----------------------------------------------------------------------------

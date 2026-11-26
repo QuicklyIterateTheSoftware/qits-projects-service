@@ -6,34 +6,58 @@ import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.AuditRepository;
 import eu.wohlben.qits.eventstream.control.EventFrame;
+import eu.wohlben.qits.projects.api.DeskSlots;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.RunningItems;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.targethost.SystemLeases;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
 /**
- * <b>An agent left, and the project now runs fewer items than it may</b> (qits-1689). The desk
- * dispatches only on its passes, while running is below {@code front_desk.delivery.max_running};
- * work-verified fires while the agent still holds its slot, so without this a freed slot waits for
- * some unrelated trigger.
+ * <b>A slot opened: a workspace lease can be granted now, and none of the project's workspaces
+ * waits</b> (qits-1689, qits-2573). The desk dispatches only on its passes, while N &lt; M and K is 0
+ * ({@link DeskSlots}: N running, M = N + F with F the workspace leases the targets can grant, K the
+ * items waiting for a workspace); work-verified fires while the agent still holds its slot, so
+ * without this a freed slot waits for some unrelated trigger. {@code front_desk.delivery.max_running}
+ * is not read.
  *
- * <p>Reads qits-workspaces' {@code AgentObsolete} (the item closed and its work released, or the
- * item was dropped: the agent stops being ACTIVE, which is when it leaves the running count) and
- * {@code AgentRemoved}. Both carry the agent's work item, which names the project. It qualifies when
- * the project's running items ({@link RunningItems}, the reading the dispatch check makes) are then
- * fewer than its {@code max_running}. The listener drops it for a project with delivery off. A
- * count that cannot be read (qits-workspaces away) reads as nothing running, so the desk gets a
- * pass it may not need rather than an idle slot. {@code WorkspaceRemoved} is not read: a workspace
- * goes only after its last agent did, which already fired, and the event names no work item.
+ * <p><b>The event path.</b> Reads qits-workspaces' {@code AgentObsolete} (the item closed and its
+ * work released, or the item was dropped: the agent stops being ACTIVE, which is when it leaves the
+ * running count) and {@code AgentRemoved}. Both carry the agent's work item, which names the
+ * project. It qualifies only when the project's slots ({@link DeskSlots#read}, the reading the
+ * dispatch check makes) are then open: F &gt; 0 and K = 0. A capacity that cannot be read qualifies
+ * nothing (AC3: a slot is announced only when a lease can actually be granted). The listener drops
+ * it for a project with delivery off. {@code WorkspaceRemoved} is not read: a workspace goes only
+ * after its last agent did, which already fired, and the event names no work item.
+ *
+ * <p><b>The scan</b> ({@link #scan}, qits-2573) covers capacity that opens with no agent leaving: a
+ * CI lease ends, a target reconnects, an owner raises slots. It reads the capacity once per sweep
+ * pass, estate-wide, and for each delivery-enabled project raises one line only when (a) its slots
+ * are open on this pass and the previous one (in memory, per project: a restart costs one pass), (b)
+ * no line of this source of that project was admitted within {@code qits.projects.desk-triggers.window},
+ * and (c) its key {@link #slotKey} — the project and the sorted ids of its running agents — is not
+ * stored yet; it is the row's {@code item_id} and {@code event_id}, which V65's one-per-{@code
+ * (source, item_id)} index keeps to one line per running set. So a CI lease flapping does not repeat
+ * it. The line is {@code - qits (running 2 of 3; the targets can grant 1 more workspace lease:
+ * ws-proof 1)}, cause {@code slots}, with no principal.
  *
  * <p><b>Only a leave that freed a slot</b> (qits-1694). Two kinds of event free none, and are
  * skipped before anything is counted:
@@ -70,13 +94,16 @@ import java.util.stream.Collectors;
  * payload is a local record ({@link WaitClosedSource}'s reasoning), registered for native-image in
  * {@code bus/EventWireReflection}.
  *
- * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while the project runs fewer items than its
- * {@code max_running} at the time of the check — the reading the Slots section makes ({@link
- * VerifiedSlotHolders#read}). A slot filled again since needs no dispatch. A reading that cannot
- * be made (the port absent or throwing, the project gone) resolves nothing.
+ * <p><b>Still holds</b> (qits-2501, {@link #resolved}) while the project's slots are open at the
+ * time of the check — the reading the Slots section makes ({@link VerifiedSlotHolders#read}): F = 0
+ * or K &gt; 0 drops every line of the window, so a lease that goes and comes back inside the window
+ * is not announced. A reading that cannot be made (the port absent or throwing, the capacity
+ * unknown, the project gone) resolves nothing.
  */
 @ApplicationScoped
 public class CapacityOpenedSource implements DeskTriggerSource {
+
+  private static final Logger LOG = Logger.getLogger(CapacityOpenedSource.class);
 
   /** Storage — see {@link DeskTriggerSource#id()}. */
   static final String ID = "capacity-opened";
@@ -100,9 +127,20 @@ public class CapacityOpenedSource implements DeskTriggerSource {
   /** The leaving agent's item as this source reads it, with who dropped it if it was dropped. */
   private record LeftItem(WorkEntity item, String droppedBy) {}
 
+  @Inject DeskSlots deskSlots;
+
   @Inject RunningItems running;
 
   @Inject AuditRepository audit;
+
+  @ConfigProperty(name = "qits.projects.desk-triggers.window", defaultValue = "PT15M")
+  Duration window;
+
+  /**
+   * Whether each delivery-enabled project's slots were open on the previous scan, by project id: the
+   * scan's two-pass debounce. In memory; a restart costs one pass.
+   */
+  private final Map<String, Boolean> openLastPass = new ConcurrentHashMap<>();
 
   @Override
   public String id() {
@@ -144,9 +182,8 @@ public class CapacityOpenedSource implements DeskTriggerSource {
     if (project == null || !project.deliveryEnabled) {
       return List.of();
     }
-    String projectId = project.id;
-    int now = QuarkusTransaction.requiringNew().call(() -> running.of(projectId, null).size());
-    if (now >= project.deliveryMaxRunning) {
+    DeskSlots.Reading slots = deskSlots.read(project.id, null);
+    if (!slots.open()) {
       return List.of();
     }
     String itemRef =
@@ -166,7 +203,7 @@ public class CapacityOpenedSource implements DeskTriggerSource {
             principal != null
                 ? principal
                 : "agent " + left.agentId().substring(0, Math.min(8, left.agentId().length())),
-            how + "; running " + now + " of " + project.deliveryMaxRunning,
+            how + "; " + slots.runningText(),
             DeskTriggerFrames.eventIdOf(frame),
             left.occurredAt() == null ? frame.occurredAt() : left.occurredAt(),
             null,
@@ -208,13 +245,100 @@ public class CapacityOpenedSource implements DeskTriggerSource {
         return Set.of();
       }
       Optional<VerifiedSlotHolders.Reading> reading = slots.read(project);
-      if (reading.isEmpty() || reading.get().running() < project.deliveryMaxRunning) {
+      if (reading.isEmpty() || reading.get().free() == null || reading.get().open()) {
         return Set.of();
       }
       return new HashSet<>(lines);
     } catch (RuntimeException e) {
       return Set.of();
     }
+  }
+
+  /**
+   * Capacity that opened with no agent leaving (qits-2573): see the class javadoc's "The scan". One
+   * capacity read per pass for every project; a capacity that cannot be read scans nothing and
+   * forgets the previous pass, so the next known pass starts the debounce again.
+   */
+  @Override
+  public List<DeskTrigger> scan(Instant now) {
+    List<Project> projects = Project.<Project>list("deliveryEnabled = true");
+    if (projects.isEmpty()) {
+      openLastPass.clear();
+      return List.of();
+    }
+    Optional<SystemLeases.Capacity> capacity = deskSlots.capacity();
+    if (capacity.isEmpty()) {
+      openLastPass.clear();
+      return List.of();
+    }
+    Set<String> seen = new HashSet<>();
+    List<DeskTrigger> triggers = new ArrayList<>();
+    for (Project project : projects) {
+      String projectId = project.id;
+      seen.add(projectId);
+      DeskSlots.Reading slots;
+      try {
+        RunningItems.Slots held =
+            QuarkusTransaction.requiringNew().call(() -> running.read(projectId, null));
+        slots = DeskSlots.of(held, capacity);
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            "The slots of project %s could not be read (%s); looked at again next pass",
+            projectId, e.toString());
+        openLastPass.remove(projectId);
+        continue;
+      }
+      boolean open = slots.open();
+      Boolean before = openLastPass.put(projectId, open);
+      if (!open || !Boolean.TRUE.equals(before)) {
+        continue;
+      }
+      if (recentLine(projectId, now)) {
+        continue;
+      }
+      UUID key = slotKey(projectId, slots.runningAgentIds());
+      if (DeskTriggerEvent.count("source = ?1 and itemId = ?2", ID, key.toString()) > 0) {
+        continue;
+      }
+      int free = slots.free();
+      triggers.add(
+          new DeskTrigger(
+              projectId,
+              project.slug == null ? projectId : project.slug,
+              key.toString(),
+              "slots",
+              slots.runningText()
+                  + "; the targets can grant "
+                  + free
+                  + " more workspace "
+                  + (free == 1 ? "lease" : "leases")
+                  + (slots.grantingTargets().isEmpty() ? "" : ": " + slots.grantingTargets()),
+              key,
+              now,
+              null,
+              null));
+    }
+    openLastPass.keySet().retainAll(seen);
+    return triggers;
+  }
+
+  /** Whether a line of this source of {@code projectId} was admitted within the window of {@code now}. */
+  private boolean recentLine(String projectId, Instant now) {
+    return DeskTriggerEvent.count(
+            "source = ?1 and admittedAt > ?2 and windowId in"
+                + " (select w.id from DeskTriggerWindow w where w.projectId = ?3)",
+            ID,
+            now.minus(window),
+            projectId)
+        > 0;
+  }
+
+  /** The scan's key: the project and the sorted ids of its running agents (qits-2573). */
+  static UUID slotKey(String projectId, List<String> runningAgentIds) {
+    List<String> sorted = new ArrayList<>(runningAgentIds);
+    Collections.sort(sorted);
+    return UUID.nameUUIDFromBytes(
+        (ID + "|" + projectId + "|" + String.join(",", sorted)).getBytes(StandardCharsets.UTF_8));
   }
 
   @Override

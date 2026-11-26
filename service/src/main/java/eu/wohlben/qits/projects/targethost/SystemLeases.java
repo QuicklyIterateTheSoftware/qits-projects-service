@@ -204,4 +204,38 @@ public interface SystemLeases {
 
   /** {@code GET /system/api/targets}. Throws when unreadable. */
   List<Target> targets();
+
+  /** The slot type a delivery desk's agents run in (qits-2573). */
+  String WORKSPACE = "WORKSPACE";
+
+  /**
+   * One target's part of a {@link Capacity}.
+   *
+   * @param held its GRANTED, RUNNING and ENDING leases of the type
+   * @param grantable how many more of the type it would grant now
+   * @param detail the allocator's refusal that stopped the count, e.g. {@code target ws-proof runs
+   *     its maximum of 3 WORKSPACE lease(s)}; null when it says none
+   */
+  record TargetCapacity(String name, int held, int grantable, String detail) {}
+
+  /**
+   * How many more leases of one slot type the targets can grant now, by qits-system's allocator's
+   * own rule over its slots, memory and queue (qits-2573).
+   *
+   * @param grantable the sum of the targets' {@code grantable}
+   * @param held the type's GRANTED, RUNNING and ENDING leases on every target
+   * @param queued the type's QUEUED leases
+   */
+  record Capacity(int grantable, int held, int queued, List<TargetCapacity> targets) {
+    public Capacity {
+      targets = targets == null ? List.of() : List.copyOf(targets);
+    }
+  }
+
+  /**
+   * {@code GET /system/api/targets/capacity?slotType=<slotType>} (qits-2573). <b>Never throws</b>:
+   * a qits-system that cannot be asked, or answers unreadably, is a warning and {@link
+   * Optional#empty()} — the capacity is unknown, never 0 and never a configured number.
+   */
+  Optional<Capacity> capacity(String slotType);
 }

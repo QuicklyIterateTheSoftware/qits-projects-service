@@ -101,7 +101,8 @@ public class WorkDispatchController {
       responseCode = "409",
       description =
           "A status that starts no phase, a feature or a task, a blocked entity, a project with no"
-              + " wrapper; for the delivery desk also its loop off or its cap reached")
+              + " wrapper; for the delivery desk also its loop off, an item of its project waiting for a"
+              + " workspace, or no target able to grant a workspace lease")
   public Response dispatch(
       @PathParam("qualifiedId") String qualifiedId, WorkDispatchRequest request) {
     String mode = request == null ? null : request.mode();

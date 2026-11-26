@@ -13,22 +13,26 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.entity.DeskTriggerEvent;
 import eu.wohlben.qits.projects.entity.Project;
+import eu.wohlben.qits.projects.targethost.FakeSystemLeases;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>capacity-opened</b> (qits-1689): an agent leaves, and the project now runs fewer items than
- * its {@code max_running}, so the desk is told a slot opened — unless the leave freed no slot, or
- * the desk caused it itself (qits-1694).
+ * <b>capacity-opened</b> (qits-1689, qits-2573): an agent leaves, and a workspace lease can now be
+ * granted with none of the project's workspaces waiting, so the desk is told a slot opened — unless
+ * the leave freed no slot, or the desk caused it itself (qits-1694). And the scan: capacity that
+ * opens with no agent leaving.
  */
 @QuarkusTest
 class CapacityOpenedSourceTest {
@@ -39,6 +43,12 @@ class CapacityOpenedSourceTest {
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
 
+  @Inject FakeSystemLeases system;
+
+  @Inject CapacityOpenedSource source;
+
+  @Inject DeskTriggerWindows windows;
+
   private final List<String> projects = new ArrayList<>();
 
   private final List<String> audited = new ArrayList<>();
@@ -48,6 +58,7 @@ class CapacityOpenedSourceTest {
   @BeforeEach
   void resetThePort() {
     dispatch.reset();
+    system.reset();
   }
 
   @AfterEach
@@ -62,11 +73,12 @@ class CapacityOpenedSourceTest {
     DeskTriggerFixtures.drop(projects);
     projects.clear();
     dispatch.reset();
+    system.reset();
   }
 
   @Test
-  void anAgentLeavingBelowMaxRunningIsOneLineBundledAndAReplayAddsNothing() {
-    String projectId = project(true, 2);
+  void anAgentLeavingWhileALeaseCanBeGrantedIsOneLineBundledAndAReplayAddsNothing() {
+    String projectId = project(true, 1);
     WorkEntity done = ticket(projectId, "Done now");
     WorkEntity still = ticket(projectId, "Still running");
     WorkEntity other = ticket(projectId, "Also done");
@@ -85,15 +97,16 @@ class CapacityOpenedSourceTest {
         lines.stream().filter(l -> l.itemId.equals("agent-" + done.id)).findFirst().orElseThrow();
     assertEquals("capacity-opened", line.source);
     assertEquals(DeskTriggerFixtures.slugOf(projectId) + "-" + done.number, line.itemRef);
-    assertEquals("its agent is done; running 1 of 2", line.label);
+    assertEquals("its agent is done; running 1 of 2", line.label, "M is N + F, never max_running");
     DeskTriggerEvent removed =
         lines.stream().filter(l -> l.itemId.equals("agent-" + other.id)).findFirst().orElseThrow();
     assertEquals("its agent was removed (DISCARDED); running 1 of 2", removed.label);
   }
 
+  /** AC3: no target can grant a workspace lease (F = 0): no slot opened. */
   @Test
-  void anAgentLeavingWhileTheProjectIsStillFullAdmitsNothing() {
-    String projectId = project(true, 1);
+  void anAgentLeavingWhileNoLeaseCanBeGrantedAdmitsNothing() {
+    String projectId = project(true, 0);
     WorkEntity done = ticket(projectId, "Done now");
     WorkEntity still = ticket(projectId, "Still running");
     dispatch.willFind(active(still));
@@ -101,6 +114,117 @@ class CapacityOpenedSourceTest {
     listener.onFrame(left("AgentObsolete", "agent-" + done.id, done.id, null));
 
     assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  /** AC3: a workspace of the project waits (K > 0): no slot opened, whatever the targets grant. */
+  @Test
+  void anAgentLeavingWhileAWorkspaceWaitsAdmitsNothing() {
+    String projectId = project(true, 3);
+    WorkEntity done = ticket(projectId, "Done now");
+    WorkEntity waiting = ticket(projectId, "Waiting for a workspace");
+    WorkEntity placed = ticket(projectId, "Placed in a workspace whose lease waits");
+    dispatch.willFind(queued(waiting));
+
+    listener.onFrame(left("AgentObsolete", "agent-" + done.id, done.id, null));
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "QUEUED with no workspace");
+
+    dispatch.willFind(RecordingWorkspaceAgentDispatch.withSlot(active(placed), "QUEUED"));
+    listener.onFrame(left("AgentRemoved", "agent-" + done.id, done.id, "DISCARDED", "dana"));
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "RUNNING in a QUEUED workspace");
+  }
+
+  /** AC3: a capacity that cannot be read announces nothing. */
+  @Test
+  void anAgentLeavingWhileTheCapacityCannotBeReadAdmitsNothing() {
+    String projectId = project(true, 2);
+    system.willAnswerCapacity(Optional.empty());
+    WorkEntity done = ticket(projectId, "Done now");
+
+    listener.onFrame(left("AgentObsolete", "agent-" + done.id, done.id, null));
+
+    assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty());
+  }
+
+  /**
+   * The re-check (qits-2501): a stored line drops once no lease can be granted or a workspace waits,
+   * and holds while the slots are open or the reading cannot be made.
+   */
+  @Test
+  void aStoredLineIsResolvedOnceNoLeaseCanBeGrantedOrAWorkspaceWaits() {
+    String projectId = project(true, 1);
+    WorkEntity done = ticket(projectId, "Done now");
+    WorkEntity other = ticket(projectId, "Next");
+    listener.onFrame(left("AgentObsolete", "agent-" + done.id, done.id, null));
+    List<DeskTriggerEventRow> lines =
+        DeskTriggerFixtures.eventsOf(projectId).stream().map(DeskTriggerEventRow::of).toList();
+    assertEquals(1, lines.size());
+    Instant now = Instant.now();
+
+    assertTrue(source.resolved(projectId, lines, now).isEmpty(), "open: holds");
+    system.willAnswerCapacity(Optional.empty());
+    assertTrue(source.resolved(projectId, lines, now).isEmpty(), "unknown: holds");
+    system.willGrant(0, "target lab has no free WORKSPACE slot");
+    assertEquals(1, source.resolved(projectId, lines, now).size(), "F = 0: resolved");
+    system.willGrant(1, null);
+    dispatch.willFind(queued(other));
+    assertEquals(1, source.resolved(projectId, lines, now).size(), "K > 0: resolved");
+  }
+
+  /**
+   * The scan (qits-2573): capacity that opens with no agent leaving is announced once it held on two
+   * passes, never within 15 minutes of another slot line, once per running set, and not at all for a
+   * project with delivery off.
+   */
+  @Test
+  void theScanAnnouncesCapacityThatHeldTwoPassesOncePerRunningSet() {
+    String projectId = project(true, 2);
+    String off = project(false, 2);
+    WorkEntity running = ticket(projectId, "Running");
+    dispatch.willFind(active(running));
+    Instant t0 = Instant.now();
+
+    assertTrue(scan(projectId, t0).isEmpty(), "one pass is not enough");
+    List<DeskTrigger> second = scan(projectId, t0.plusSeconds(30));
+    assertEquals(1, second.size());
+    DeskTrigger line = second.get(0);
+    assertEquals(DeskTriggerFixtures.slugOf(projectId), line.itemRef());
+    assertEquals("slots", line.cause());
+    assertEquals(
+        "running 1 of 3; the targets can grant 2 more workspace leases: lab 2", line.label());
+    assertEquals(null, line.principal());
+    assertEquals(line.eventId().toString(), line.itemId());
+    assertTrue(scan(off, t0.plusSeconds(30)).isEmpty(), "delivery off: never scanned");
+    QuarkusTransaction.requiringNew()
+        .run(() -> windows.admit(projectId, CapacityOpenedSource.ID, line, t0.plusSeconds(30)));
+
+    // Within 15 minutes of that line: nothing, even on a new running set.
+    WorkEntity more = ticket(projectId, "Also running");
+    dispatch.willFind(active(running), active(more));
+    assertTrue(scan(projectId, t0.plusSeconds(60)).isEmpty());
+    // Later, the same running set as the stored line: nothing; a new one: one line.
+    dispatch.willFind(active(running));
+    assertTrue(scan(projectId, t0.plus(Duration.ofMinutes(20))).isEmpty(), "one per running set");
+    dispatch.willFind(active(running), active(more));
+    assertEquals(1, scan(projectId, t0.plus(Duration.ofMinutes(21))).size());
+
+    // A pass with the slots full resets the debounce.
+    system.willGrant(0, "target lab has no free WORKSPACE slot");
+    assertTrue(scan(projectId, t0.plus(Duration.ofMinutes(22))).isEmpty());
+    system.willGrant(1, null);
+    assertTrue(scan(projectId, t0.plus(Duration.ofMinutes(23))).isEmpty(), "first open pass again");
+  }
+
+  /** The scan holds off within 15 minutes of an event-path slot line too. */
+  @Test
+  void theScanHoldsOffWithinTheWindowOfAnEventLine() {
+    String projectId = project(true, 2);
+    WorkEntity done = ticket(projectId, "Done now");
+    listener.onFrame(left("AgentObsolete", "agent-" + done.id, done.id, null));
+    assertEquals(1, DeskTriggerFixtures.eventsOf(projectId).size());
+    Instant now = Instant.now();
+
+    scan(projectId, now);
+    assertTrue(scan(projectId, now.plusSeconds(30)).isEmpty());
   }
 
   @Test
@@ -231,12 +355,26 @@ class CapacityOpenedSourceTest {
             });
   }
 
-  private String project(boolean delivery, int maxRunning) {
+  /**
+   * A project, and the targets able to grant {@code free} more workspace leases (qits-2573). Its
+   * {@code max_running} is 1, which nothing reads any more.
+   */
+  private String project(boolean delivery, int free) {
     String id = DeskTriggerFixtures.project(delivery);
     projects.add(id);
     QuarkusTransaction.requiringNew()
-        .run(() -> Project.<Project>findById(id).deliveryMaxRunning = maxRunning);
+        .run(() -> Project.<Project>findById(id).deliveryMaxRunning = 1);
+    system.willGrant(free, free == 0 ? "target lab has no free WORKSPACE slot" : null);
     return id;
+  }
+
+  /** One scan pass at {@code now}, as the sweep runs it: the triggers of {@code projectId}. */
+  private List<DeskTrigger> scan(String projectId, Instant now) {
+    return QuarkusTransaction.requiringNew()
+        .call(() -> source.scan(now))
+        .stream()
+        .filter(t -> projectId.equals(t.projectId()))
+        .toList();
   }
 
   /** A ticket of the project with an assignee, so an ACTIVE agent makes it count as running. */
@@ -266,6 +404,13 @@ class CapacityOpenedSourceTest {
       WorkEntity item) {
     return RecordingWorkspaceAgentDispatch.active(
         "agent-" + item.id, 7L, "wrapper", item.id, "ticket/" + item.slug);
+  }
+
+  /** An ACTIVE agent of {@code item} still waiting for a workspace. */
+  private static eu.wohlben.qits.projects.control.WorkspaceAgentDispatch.Agent queued(
+      WorkEntity item) {
+    return RecordingWorkspaceAgentDispatch.queued(
+        "agent-" + item.id, "wrapper", item.id, "ticket/" + item.slug);
   }
 
   /** qits-workspaces' event as the wire carries it: its type is not on this classpath. */
