@@ -135,7 +135,7 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
-        <qits.eventstream.version>2026.1125.142425</qits.eventstream.version>
+        <qits.eventstream.version>2026.1126.192104</qits.eventstream.version>
         <qits.githost-events.version>2026.1125.160922</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -146,7 +146,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.1125.163910</qits.containers-client.version>
+        <qits.containers-client.version>2026.1126.202912</qits.containers-client.version>
 
         <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
              artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
@@ -181,7 +181,7 @@
              The version moves with that repository rather than with the eventstream jar the rules
              judge — deliberately, since the rules name every type they judge as a string and depend
              on neither. -->
-        <qits.integrations-quarkus.version>2026.1125.60148</qits.integrations-quarkus.version>
+        <qits.integrations-quarkus.version>2026.1126.172511</qits.integrations-quarkus.version>
         <!-- qits-arch-rules by its own string: qits-integrations-quarkus publishes only the modules
              whose content changed, so a release can carry a new arch-rules (HttpClientRules) while
              auth-core and db-core stay where they are — one shared property would be moved to a
@@ -196,7 +196,7 @@
              stamps X-Qits-Caller. Released separately from qits-arch-rules/qits-db-core above and
              pinned on its own property because it ships out of the same reactor but is consumed by
              every class that still hand-rolls an HttpClient, not only test-scoped tooling. -->
-        <qits.http-core.version>2026.1125.110206</qits.http-core.version>
+        <qits.http-core.version>2026.1126.172511</qits.http-core.version>
         <!-- qits-telemetry-core (epic qits-428): the three OTLP/HTTP exporters as CDI beans whose
              header supplier carries the `qits` oidc client's current bearer, so spans, logs and
              metrics reach qits-observability at its edge host. Published by
@@ -208,7 +208,7 @@
              on qits-http-core at the same version (linked); this repo keeps its own qits-http-core
              pin above rather than bumping it for this. Published by qits-integrations-quarkus, like
              qits-http-core and qits-telemetry-core above. -->
-        <qits.trust-core.version>2026.1125.110206</qits.trust-core.version>
+        <qits.trust-core.version>2026.1126.172511</qits.trust-core.version>
 
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
@@ -265,6 +265,7 @@
         <qits.system-frontend-pacts-qits-projects-service.version>2026.1123.85159</qits.system-frontend-pacts-qits-projects-service.version>
         <qits.agents-service-pacts-qits-projects-service.version>2026.1123.194720</qits.agents-service-pacts-qits-projects-service.version>
         <qits.agents-daemon-pacts-qits-projects-service.version>2026.1124.114205</qits.agents-daemon-pacts-qits-projects-service.version>
+        <qits.toggles-service-pacts-qits-projects-service.version>2026.1126.203614</qits.toggles-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance, qits-events, qits-ci,
              qits-idp, qits-deployments, qits-containers and
@@ -276,8 +277,8 @@
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1109.41303</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1124.202359</qits.workspaces-golden-masters.version>
-        <qits.maintenance-golden-masters.version>2026.1124.131229</qits.maintenance-golden-masters.version>
-        <qits.events-golden-masters.version>2026.1120.65904</qits.events-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1126.192119</qits.maintenance-golden-masters.version>
+        <qits.events-golden-masters.version>2026.1126.183653</qits.events-golden-masters.version>
         <qits.ci-golden-masters.version>2026.1119.60052</qits.ci-golden-masters.version>
         <qits.idp-golden-masters.version>2026.1125.71255</qits.idp-golden-masters.version>
         <qits.deployments-golden-masters.version>2026.1126.12943</qits.deployments-golden-masters.version>
@@ -286,7 +287,7 @@
         <!-- qits-system's golden masters (epic qits-1481): the lease, work-volume and target doors
              targethost/HttpSystemLeases calls (contracts/consumer/SystemContract), recorded for the
              DESK tenant. The same rule: a qits-maintenance bump moves it. -->
-        <qits.system-golden-masters.version>2026.1123.194748</qits.system-golden-masters.version>
+        <qits.system-golden-masters.version>2026.1126.200147</qits.system-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -615,6 +616,13 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-agents-daemon-pacts-qits-projects-service</artifactId>
                 <version>${qits.agents-daemon-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-toggles-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.toggles-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->
