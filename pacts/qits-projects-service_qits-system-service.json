@@ -282,6 +282,150 @@
         "references": {
           "qits-call": {
             "app": "qits-system-service",
+            "operationId": "getTargetCapacity"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "DeskTriggerSweep.sweep"
+          }
+        }
+      },
+      "description": "DeskTriggerSweep.sweep: getTargetCapacity",
+      "key": "f0d0032f",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a connected target with leases",
+          "params": {
+            "targetId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/system/api/targets/capacity",
+        "query": {
+          "slotType": [
+            "WORKSPACE"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "grantable": 2,
+            "held": 1,
+            "queued": 0,
+            "targets": [
+              {
+                "detail": "target lab has no free WORKSPACE slot",
+                "grantable": 2,
+                "held": 1,
+                "name": "lab"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.grantable": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.held": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.queued": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.targets": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.targets[*].detail": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.targets[*].grantable": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.targets[*].held": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.targets[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-system-service",
             "operationId": "refreshLease"
           },
           "qits-trigger": {
