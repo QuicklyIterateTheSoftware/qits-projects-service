@@ -65,6 +65,7 @@ erDiagram
     string created_by
     string description
     boolean dispatch_continues "not null"
+    string error_issue "length 32"
     string impetus
     instant implemented_at
     instant implementing_at
