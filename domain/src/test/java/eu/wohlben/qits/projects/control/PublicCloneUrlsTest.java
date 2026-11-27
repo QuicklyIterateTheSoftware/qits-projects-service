@@ -19,21 +19,25 @@ class PublicCloneUrlsTest {
   void theConfiguredOriginWinsAndLosesItsTrailingSlash() {
     assertEquals(
         "https://git.example.test/git/qits/qits-ci-service",
-        urls("https://git.example.test/", "qits.wohlben.eu").cloneUrl("qits", "qits-ci-service"));
+        urls("https://git.example.test/", "wohlben.eu").cloneUrl("qits", "qits-ci-service"));
   }
 
+  /**
+   * QITS_DOMAIN is the bare domain (wohlben.eu), and the git host answers on githost.qits.<domain>;
+   * githost.<domain> answered 404 (qits-2743).
+   */
   @Test
-  void withoutOneTheGitHostOfTheDomainIsUsed() {
+  void withoutOneTheGitHostOfThePlatformProjectIsUsed() {
     assertEquals(
         "https://githost.qits.wohlben.eu/git/qits/qits-ci-service",
-        urls(null, "qits.wohlben.eu").cloneUrl("qits", "qits-ci-service"));
+        urls(null, "wohlben.eu").cloneUrl("qits", "qits-ci-service"));
   }
 
   @Test
   void withNeitherOrWithoutANameThereIsNoUrl() {
     assertNull(urls(null, null).cloneUrl("qits", "qits-ci-service"));
     assertNull(urls(" ", " ").cloneUrl("qits", "qits-ci-service"));
-    assertNull(urls(null, "qits.wohlben.eu").cloneUrl("qits", null));
-    assertNull(urls(null, "qits.wohlben.eu").cloneUrl(null, "qits-ci-service"));
+    assertNull(urls(null, "wohlben.eu").cloneUrl("qits", null));
+    assertNull(urls(null, "wohlben.eu").cloneUrl(null, "qits-ci-service"));
   }
 }
