@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
  */
 class DeliveryEnabledAtTest {
 
-  private static final DeliverySettings ON = new DeliverySettings(true, 2, false, Set.of());
+  private static final DeliverySettings ON = new DeliverySettings(true, false, Set.of());
 
   @Test
   void turningDeliveryOnStampsIt() {
@@ -41,7 +41,7 @@ class DeliveryEnabledAtTest {
     Instant stamped = Instant.parse("2026-10-20T08:00:00Z");
     project.deliveryEnabledAt = stamped;
 
-    new DeliverySettings(true, 5, true, Set.of("manual-review")).applyTo(project);
+    new DeliverySettings(true, true, Set.of("manual-review")).applyTo(project);
     assertEquals(stamped, project.deliveryEnabledAt, "still on: another key moved");
 
     DeliverySettings.OFF.applyTo(project);

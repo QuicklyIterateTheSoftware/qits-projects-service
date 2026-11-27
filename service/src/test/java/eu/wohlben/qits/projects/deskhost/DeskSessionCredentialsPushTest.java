@@ -173,7 +173,7 @@ class DeskSessionCredentialsPushTest {
   }
 
   private static ProjectConfig.DeliverySettings delivery(boolean enabled) {
-    return new ProjectConfig.DeliverySettings(enabled, 2, false, Set.of());
+    return new ProjectConfig.DeliverySettings(enabled, false, Set.of());
   }
 
   private List<SessionCredentials> frames() {

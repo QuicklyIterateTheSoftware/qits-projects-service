@@ -164,7 +164,6 @@ class ProjectConfigParserTest {
     }
     assertEquals(DeliverySettings.OFF, ProjectConfig.DEFAULT.delivery());
     assertFalse(DeliverySettings.OFF.enabled());
-    assertEquals(2, DeliverySettings.OFF.maxRunning());
     assertFalse(DeliverySettings.OFF.startRefined());
     assertEquals(Set.of(), DeliverySettings.OFF.approves());
   }
@@ -174,7 +173,7 @@ class ProjectConfigParserTest {
   void anEnabledLoopTakesTheDefaultsItDoesNotState() {
     DeliverySettings delivery =
         parser.parse("front_desk:\n  delivery:\n    enabled: true\n    later-key: 1\n").delivery();
-    assertEquals(new DeliverySettings(true, 2, false, Set.of()), delivery);
+    assertEquals(new DeliverySettings(true, false, Set.of()), delivery);
   }
 
   /**
@@ -191,16 +190,39 @@ class ProjectConfigParserTest {
                   "front_desk:\n"
                       + "  delivery:\n"
                       + "    enabled: true\n"
-                      + "    max_running: 3\n"
                       + "    interval: "
                       + interval
                       + "\n")
               .delivery();
-      assertEquals(new DeliverySettings(true, 3, false, Set.of()), delivery, interval);
+      assertEquals(new DeliverySettings(true, false, Set.of()), delivery, interval);
     }
     assertEquals(
         DeliverySettings.OFF,
         parser.parse("front_desk:\n  delivery:\n    interval: PT10M\n").delivery());
+  }
+
+  /**
+   * qits-2728 retired {@code max_running}, the slot limit qits-2573 replaced with the targets'
+   * derived capacity: a project.yml that still carries it parses without error and reads exactly as
+   * the same file without the key, whatever it holds — a value the old parser accepted (the qits
+   * wrapper said 5), one it refused, or the wrong type entirely.
+   */
+  @Test
+  void aLeftoverMaxRunningIsIgnored() {
+    String rest = "    enabled: true\n    start_refined: true\n    approves: [manual-review]\n";
+    DeliverySettings without = parser.parse("front_desk:\n  delivery:\n" + rest).delivery();
+    assertEquals(new DeliverySettings(true, true, Set.of("manual-review")), without);
+    for (String maxRunning :
+        new String[] {"5", "1", "20", "0", "21", "-1", "2.5", "'two'", "[3]", "{a: 1}"}) {
+      DeliverySettings delivery =
+          parser
+              .parse("front_desk:\n  delivery:\n    max_running: " + maxRunning + "\n" + rest)
+              .delivery();
+      assertEquals(without, delivery, maxRunning);
+    }
+    assertEquals(
+        DeliverySettings.OFF,
+        parser.parse("front_desk:\n  delivery:\n    max_running: 5\n").delivery());
   }
 
   @Test
@@ -211,21 +233,17 @@ class ProjectConfigParserTest {
                 + "  lifecycle: ALWAYS_ON\n"
                 + "  delivery:\n"
                 + "    enabled: true\n"
-                + "    max_running: 20\n"
                 + "    start_refined: true\n"
                 + "    approves: [manual-review, artifact-declarations]\n");
     assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
     assertEquals(
-        new DeliverySettings(true, 20, true, Set.of("artifact-declarations", "manual-review")),
+        new DeliverySettings(true, true, Set.of("artifact-declarations", "manual-review")),
         config.delivery());
     assertEquals("artifact-declarations manual-review", config.delivery().approvesColumn());
   }
 
   @Test
-  void theBoundsAreInclusive() {
-    DeliverySettings low =
-        parser.parse("front_desk:\n  delivery:\n    max_running: 1\n").delivery();
-    assertEquals(1, low.maxRunning());
+  void anEmptyApprovesIsNone() {
     assertEquals(Set.of(), parser.parse("front_desk:\n  delivery:\n    approves: []\n").delivery().approves());
   }
 
@@ -243,11 +261,6 @@ class ProjectConfigParserTest {
       {"front_desk:\n  delivery:\n    enabled: 'true'\n", "front_desk.delivery.enabled"},
       {"front_desk:\n  delivery:\n    enabled: yes-please\n", "front_desk.delivery.enabled"},
       {"front_desk:\n  delivery:\n    enabled: 1\n", "front_desk.delivery.enabled"},
-      {"front_desk:\n  delivery:\n    max_running: 0\n", "front_desk.delivery.max_running"},
-      {"front_desk:\n  delivery:\n    max_running: 21\n", "front_desk.delivery.max_running"},
-      {"front_desk:\n  delivery:\n    max_running: -1\n", "front_desk.delivery.max_running"},
-      {"front_desk:\n  delivery:\n    max_running: 2.5\n", "front_desk.delivery.max_running"},
-      {"front_desk:\n  delivery:\n    max_running: 'two'\n", "front_desk.delivery.max_running"},
       {"front_desk:\n  delivery:\n    start_refined: 'false'\n", "front_desk.delivery.start_refined"},
       {"front_desk:\n  delivery:\n    approves: manual-review\n", "front_desk.delivery.approves"},
       {"front_desk:\n  delivery:\n    approves: [recorded]\n", "front_desk.delivery.approves"},
@@ -360,7 +373,7 @@ class ProjectConfigParserTest {
         DeliverySettings.approvesOf("artifact-declarations manual-review"));
     assertEquals(
         "artifact-declarations manual-review",
-        new DeliverySettings(true, 2, false, Set.of("manual-review", "artifact-declarations"))
+        new DeliverySettings(true, false, Set.of("manual-review", "artifact-declarations"))
             .approvesColumn());
   }
 

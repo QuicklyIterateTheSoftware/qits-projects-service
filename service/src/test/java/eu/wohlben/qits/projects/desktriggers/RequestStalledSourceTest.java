@@ -277,7 +277,7 @@ class RequestStalledSourceTest {
     QuarkusTransaction.requiringNew()
         .run(
             () ->
-                new ProjectConfig.DeliverySettings(true, 2, false, java.util.Set.of())
+                new ProjectConfig.DeliverySettings(true, false, java.util.Set.of())
                     .applyTo(Project.<Project>findById(projectId)));
     sweep.sweep(Instant.now());
     assertTrue(DeskTriggerFixtures.windows(projectId).isEmpty(), "no burst when delivery goes on");
