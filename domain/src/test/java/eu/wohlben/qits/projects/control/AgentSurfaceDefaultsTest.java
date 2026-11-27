@@ -6633,6 +6633,40 @@ public class AgentSurfaceDefaultsTest {
     assertNotEquals(kept, AgentSurfaceDefaults.UI_BUILDER_PROMPT, "the migration would be a no-op");
   }
 
+  /**
+   * qits-2734: the brief has the agent file a platform error as one BUG, or comment on the open
+   * one for the same failure, between Filing and the opened context.
+   */
+  @Test
+  public void theUiBuilderBriefFilesPlatformErrors() {
+    String prompt = AgentSurfaceDefaults.UI_BUILDER_PROMPT;
+    for (String part :
+        List.of(
+            "Platform errors.",
+            "--archetype ticket -o json",
+            ".status!=\"DONE\" and .status!=\"DROPPED\"",
+            "| qits work comment create --entity <qualified id>",
+            "ticketType:\"BUG\"",
+            "| qits work create --archetype ticket",
+            "/etc/qits-cli-version",
+            "do not retry")) {
+      assertTrue(prompt.contains(part), part);
+    }
+    int filing = prompt.indexOf("Never move a ticket's status.");
+    int errors = prompt.indexOf("Platform errors.");
+    int context = prompt.indexOf("The opened context.");
+    assertTrue(filing < errors && errors < context, "after Filing, before the opened context");
+  }
+
+  /** qits-2734: qits-2499's brief is kept for the rollout, and differs from the brief. */
+  @Test
+  public void theQits2499BriefIsKeptForTheRollout() {
+    String kept = AgentSurfaceDefaults.QITS_2499_UI_BUILDER_PROMPT;
+    assertTrue(kept.contains("Insert page context"));
+    assertFalse(kept.contains("Platform errors."));
+    assertNotEquals(kept, AgentSurfaceDefaults.UI_BUILDER_PROMPT, "the migration would be a no-op");
+  }
+
   /** The placeholder is kept byte for byte for the boot migration, and differs from the brief. */
   @Test
   public void theQits2154PlaceholderIsKeptForTheRollout() {

@@ -127,6 +127,19 @@ public class AgentBriefRolloutTest {
         AgentSurfaceDefaults.UI_BUILDER_PROMPT, prompt(AgentSurfaceDefaults.PROJECT_UI_BUILDER));
   }
 
+  /** qits-2734: a row still holding qits-2499's brief rolls forward to the one that files bugs. */
+  @Test
+  public void anUneditedQits2499UiBuilderBriefRollsForward() {
+    stage(
+        AgentSurfaceDefaults.PROJECT_UI_BUILDER, AgentSurfaceDefaults.QITS_2499_UI_BUILDER_PROMPT);
+
+    assertTrue(rollout.rollOut() >= 1, "the staged row rolls");
+
+    assertEquals(
+        AgentSurfaceDefaults.UI_BUILDER_PROMPT, prompt(AgentSurfaceDefaults.PROJECT_UI_BUILDER));
+    assertEquals(0, rollout.rollOut(), "idempotent");
+  }
+
   @Test
   public void anEditedUiBuilderBriefStays() {
     String edited = AgentSurfaceDefaults.QITS_2154_UI_BUILDER_PROMPT + " Edited.";
