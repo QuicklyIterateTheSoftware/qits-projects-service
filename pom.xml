@@ -258,11 +258,11 @@
         <qits.githost-frontend-pacts-qits-projects-service.version>2026.1127.103513</qits.githost-frontend-pacts-qits-projects-service.version>
         <qits.maintenance-frontend-pacts-qits-projects-service.version>2026.1127.103337</qits.maintenance-frontend-pacts-qits-projects-service.version>
         <qits.artifacts-frontend-pacts-qits-projects-service.version>2026.1127.103146</qits.artifacts-frontend-pacts-qits-projects-service.version>
-        <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1123.103719</qits.deployments-frontend-pacts-qits-projects-service.version>
-        <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1125.185740</qits.mirror-frontend-pacts-qits-projects-service.version>
+        <qits.deployments-frontend-pacts-qits-projects-service.version>2026.1127.120653</qits.deployments-frontend-pacts-qits-projects-service.version>
+        <qits.mirror-frontend-pacts-qits-projects-service.version>2026.1127.120749</qits.mirror-frontend-pacts-qits-projects-service.version>
         <qits.observability-frontend-pacts-qits-projects-service.version>2026.1127.103338</qits.observability-frontend-pacts-qits-projects-service.version>
         <qits.orchestrator-frontend-pacts-qits-projects-service.version>2026.1127.103423</qits.orchestrator-frontend-pacts-qits-projects-service.version>
-        <qits.system-frontend-pacts-qits-projects-service.version>2026.1123.85159</qits.system-frontend-pacts-qits-projects-service.version>
+        <qits.system-frontend-pacts-qits-projects-service.version>2026.1127.120732</qits.system-frontend-pacts-qits-projects-service.version>
         <qits.agents-service-pacts-qits-projects-service.version>2026.1123.194720</qits.agents-service-pacts-qits-projects-service.version>
         <qits.agents-daemon-pacts-qits-projects-service.version>2026.1124.114205</qits.agents-daemon-pacts-qits-projects-service.version>
         <qits.toggles-service-pacts-qits-projects-service.version>2026.1127.64618</qits.toggles-service-pacts-qits-projects-service.version>
