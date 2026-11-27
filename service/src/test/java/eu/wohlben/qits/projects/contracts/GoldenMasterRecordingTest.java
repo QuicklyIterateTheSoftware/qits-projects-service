@@ -1025,6 +1025,36 @@ class GoldenMasterRecordingTest {
             null,
             "{\"archetype\":\"TICKET\",\"project\":\"{projectId}\","
                 + "\"title\":\"Faster builds\",\"ticketType\":\"IMPROVEMENT\"}"));
+    // A MAINTENANCE ticket filed with a description, as a platform service files one
+    // (qits-2723: qits-toggles' retirement run files "remove toggle <slug>").
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_EXISTS,
+            "createWork",
+            "POST",
+            "/projects/api/work",
+            201,
+            null,
+            null,
+            "{\"archetype\":\"TICKET\",\"project\":\"{projectId}\","
+                + "\"ticketType\":\"MAINTENANCE\","
+                + "\"title\":\"remove toggle checkout-v2\","
+                + "\"impetus\":\"No deployed consumer's pact has used toggle `checkout-v2` since"
+                + " 2026-01-01T00:00:00Z.\","
+                + "\"description\":\"Toggle `checkout-v2` is declared in qits-toggles-service."
+                + " Delete its declaration and release qits-toggles-service.\"}"));
+    // A ticket dropped as OBSOLETE (qits-2723: qits-toggles' retirement run drops its removal
+    // ticket when the toggle is used again).
+    all.add(
+        new Interaction(
+            ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL,
+            "setWorkStatus",
+            "POST",
+            "/projects/api/work/{qualifiedId}/status",
+            200,
+            null,
+            null,
+            "{\"target\":\"DROPPED\",\"outcome\":\"OBSOLETE\"}"));
     all.add(
         write(
             ProviderStates.A_REPORTED_TICKET,

@@ -1,0 +1,33 @@
+{
+  "id": "00000000-0000-4000-8000-00000000000b",
+  "archetype": "TICKET",
+  "projectId": "00000000-0000-4000-8000-00000000000e",
+  "number": 11,
+  "qualifiedId": "contract-00000001-11",
+  "title": "Release request for billing-service is stuck",
+  "slug": "release-request-for-billing-service-is-stuck",
+  "slugScope": "00000000-0000-4000-8000-00000000000e",
+  "description": null,
+  "status": "DROPPED",
+  "statusBefore": "REPORTED",
+  "ticketType": "MAINTENANCE",
+  "impetus": "The release request for billing-service has waited on its gates for 6 hours.",
+  "assignee": null,
+  "createdBy": "contract-seeder",
+  "supersededBy": null,
+  "outcome": "OBSOLETE",
+  "repositoryId": null,
+  "implementedAt": null,
+  "implementingAt": null,
+  "parent": null,
+  "position": null,
+  "priority": 0,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "changedBy": "dev",
+  "blocked": false,
+  "acceptanceCriteria": [
+    "It does what it says."
+  ],
+  "tags": []
+}
