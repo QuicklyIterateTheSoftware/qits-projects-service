@@ -131,13 +131,12 @@ public class DeskDispatchTest {
   }
 
   /** The project's stored delivery settings, as the reconcile would have written them. */
-  private void delivery(String projectId, boolean enabled, int maxRunning, boolean startRefined) {
+  private void delivery(String projectId, boolean enabled, boolean startRefined) {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               var project = projectRows.findById(projectId);
               project.deliveryEnabled = enabled;
-              project.deliveryMaxRunning = maxRunning;
               project.deliveryStartRefined = startRefined;
             });
   }
@@ -199,7 +198,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskDispatchesAReportedTicketOfItsOwnProject() {
     String projectId = createProject("Desk Dispatch");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String ticketId = createTicket(projectId, "For the desk");
 
     EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
@@ -222,7 +221,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskPressUnderTheOldBacklogRuleIsStillAccepted() {
     String projectId = createProject("Desk Dispatch Old Rule");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String ticketId = createTicket(projectId, "For the desk, old rule");
 
     EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", OLD_RULE);
@@ -240,8 +239,8 @@ public class DeskDispatchTest {
   public void aDeskWithAnotherProjectsClaimIsRefused403() {
     String projectId = createProject("Desk Own");
     String otherId = createProject("Desk Other");
-    delivery(projectId, true, 2, false);
-    delivery(otherId, true, 2, false);
+    delivery(projectId, true, false);
+    delivery(otherId, true, false);
     String ticketId = createTicket(projectId, "Not the other desk's");
 
     DispatchRefused refusal = refused(desk(otherId), ticketId, "FLOW", RULE);
@@ -293,7 +292,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskPressOnAClaimedItemIsRefused409() {
     String projectId = createProject("Desk Claimed");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String reportedId = createTicket(projectId, "Dana has it");
     String refinedId = createTicket(projectId, "Dana plans it");
     transition(refinedId, "REFINED");
@@ -326,7 +325,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskIsRefusedWhileAnItemOfItsProjectWaitsForAWorkspace() {
     String projectId = createProject("Desk Cap");
-    delivery(projectId, true, 5, false);
+    delivery(projectId, true, false);
     String waitingId = createTicket(projectId, "Waiting for a workspace");
     String nextId = createTicket(projectId, "Next in line");
     // A person's press puts an agent on the first: the assignee is written.
@@ -381,7 +380,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskIsRefusedWhileNoTargetCanGrantAWorkspaceLease() {
     String projectId = createProject("Desk No Lease");
-    delivery(projectId, true, 5, false);
+    delivery(projectId, true, false);
     String runningId = createTicket(projectId, "Already running");
     String nextId = createTicket(projectId, "Next in line");
     assigned(runningId);
@@ -437,35 +436,13 @@ public class DeskDispatchTest {
   @Test
   public void aDeskPressIsNotSlotCheckedWhileTheCapacityCannotBeRead() {
     String projectId = createProject("Desk Unknown Capacity");
-    delivery(projectId, true, 5, false);
+    delivery(projectId, true, false);
     String runningId = createTicket(projectId, "Already running");
     String nextId = createTicket(projectId, "Next in line");
     assigned(runningId);
     system.willAnswerCapacity(Optional.empty());
     dispatch.reset();
     dispatch.willFind(activeOn(runningId));
-
-    doors.press(desk(projectId), nextId, "FLOW", RULE);
-
-    assertEquals(1, dispatch.calls().size());
-  }
-
-  /**
-   * qits-2573: {@code max_running} is no longer read. At max_running 1 with two items running, the
-   * press goes through while the targets can grant a workspace lease.
-   */
-  @Test
-  public void maxRunningIsNotTheLimitAnyMore() {
-    String projectId = createProject("Desk Max Running");
-    delivery(projectId, true, 1, false);
-    String firstId = createTicket(projectId, "Running one");
-    String secondId = createTicket(projectId, "Running two");
-    String nextId = createTicket(projectId, "Next in line");
-    assigned(firstId);
-    assigned(secondId);
-    system.willGrant(1, "target lab has no free WORKSPACE slot");
-    dispatch.reset();
-    dispatch.willFind(activeOn(firstId), activeOn(secondId));
 
     doors.press(desk(projectId), nextId, "FLOW", RULE);
 
@@ -481,7 +458,7 @@ public class DeskDispatchTest {
   @Test
   public void aBlockedRunningItemDoesNotHoldADeskSlot() {
     String projectId = createProject("Desk Blocked Slot");
-    delivery(projectId, true, 1, false);
+    delivery(projectId, true, false);
     String blockedId = createTicket(projectId, "Waiting on the owner");
     String nextId = createTicket(projectId, "Next in line");
     asAdmin("mallory")
@@ -520,7 +497,7 @@ public class DeskDispatchTest {
   @Test
   public void anItemOnlyWaitingOnItsAgentStillHoldsADeskSlot() {
     String projectId = createProject("Desk Waiting Slot");
-    delivery(projectId, true, 1, false);
+    delivery(projectId, true, false);
     String waitingId = createTicket(projectId, "Agent waiting");
     String nextId = createTicket(projectId, "Next in line");
     asAdmin("mallory")
@@ -558,7 +535,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskAtRefinedWithStartRefinedOffIsRefused409() {
     String projectId = createProject("Desk Refined Off");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String ticketId = createTicket(projectId, "Refined, waiting");
     transition(ticketId, "REFINED");
 
@@ -579,7 +556,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskAtRefinedWithStartRefinedOnSchedulesAndDispatches() {
     String projectId = createProject("Desk Refined On");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "Refined, ready");
     transition(ticketId, "REFINED");
 
@@ -641,7 +618,7 @@ public class DeskDispatchTest {
   @Test
   public void anUnmetNeedRefusesTheImplementPressAndAMetOneDispatches() {
     String projectId = createProject("Desk Needs");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String waiting = createTicket(projectId, "Waits for the other");
     String needed = createTicket(projectId, "Comes first");
     needs(waiting, needed, "REFINED");
@@ -673,7 +650,7 @@ public class DeskDispatchTest {
   @Test
   public void anUnmetNeedDoesNotHoldTheRefinePress() {
     String projectId = createProject("Desk Needs Refine");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String waiting = createTicket(projectId, "Refined first");
     String needed = createTicket(projectId, "Not even refined");
     needs(waiting, needed, "VERIFIED");
@@ -689,7 +666,7 @@ public class DeskDispatchTest {
   @Test
   public void aConditionIsRefusedEveryPress() {
     String projectId = createProject("Desk Condition");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String condition = createTicket(projectId, "Bootstrap test node");
     tagged(condition, "CONDITION");
     assertFalse(dispatchable(condition), "a condition is not dispatchable");
@@ -736,7 +713,7 @@ public class DeskDispatchTest {
   @Test
   public void anItemHeldAtRefinedByAnUnmetNeedDoesNotHoldADeskSlot() {
     String projectId = createProject("Desk Held Refined");
-    delivery(projectId, true, 1, false);
+    delivery(projectId, true, false);
     String heldId = createTicket(projectId, "Held by its need");
     String neededId = createTicket(projectId, "What it needs");
     assigned(heldId);
@@ -759,7 +736,7 @@ public class DeskDispatchTest {
   @Test
   public void anItemHeldAtReadyForDevByAnUnmetNeedDoesNotHoldADeskSlot() {
     String projectId = createProject("Desk Held Ready");
-    delivery(projectId, true, 1, false);
+    delivery(projectId, true, false);
     String heldId = createTicket(projectId, "Held by its need");
     String neededId = createTicket(projectId, "What it needs");
     assigned(heldId);
@@ -783,7 +760,7 @@ public class DeskDispatchTest {
   @Test
   public void aHeldItemWhoseNeedIsMetHoldsItsSlotAgain() {
     String projectId = createProject("Desk Held Met");
-    delivery(projectId, true, 1, false);
+    delivery(projectId, true, false);
     String heldId = createTicket(projectId, "Held by its need");
     String neededId = createTicket(projectId, "What it needs");
     String thirdId = createTicket(projectId, "Third in line");
@@ -811,7 +788,7 @@ public class DeskDispatchTest {
   @Test
   public void aHeldItemBesideARunningOneCountsOnlyTheRunningOne() {
     String projectId = createProject("Desk Held Beside");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String runningId = createTicket(projectId, "Already running");
     String heldId = createTicket(projectId, "Held by its need");
     String neededId = createTicket(projectId, "What it needs");
@@ -852,7 +829,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskStartRefinedPressOnARunningAgentHandsItTheImplementTurn() {
     String projectId = createProject("Desk Refined Running");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "Refined, agent running");
     transition(ticketId, "REFINED");
     dispatch.willAnswer(skippedRunning());
@@ -881,7 +858,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskStartRefinedPressWhoseTurnCannotBeHandedOnStillMovesTheItem() {
     String projectId = createProject("Desk Refined Running Unheard");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "Refined, agent deaf");
     transition(ticketId, "REFINED");
     dispatch.willAnswer(skippedRunning());
@@ -912,7 +889,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskFlowPressAtReportedUnderStartRefinedPreApprovesTheScheduling() {
     String projectId = createProject("Desk Pre-approves");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "All the way, on the declaration");
 
     EntityDispatchDto pressed = doors.press(desk(projectId), ticketId, "FLOW", RULE);
@@ -925,7 +902,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskFlowPressAtReportedWithStartRefinedOffWritesNoPreApproval() {
     String projectId = createProject("Desk No Pre-approval");
-    delivery(projectId, true, 2, false);
+    delivery(projectId, true, false);
     String ticketId = createTicket(projectId, "Waits for the owner once refined");
 
     doors.press(desk(projectId), ticketId, "FLOW", RULE);
@@ -937,7 +914,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskPhasePressClearsADeskPreApproval() {
     String projectId = createProject("Desk Phase Clears");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "One phase only");
     dispatchEntities.setPreApprovedBy(ticketId, EntityDispatch.DESK_PRE_APPROVAL, "tok-desk");
 
@@ -953,7 +930,7 @@ public class DeskDispatchTest {
   @Test
   public void aDeskPressLeavesAPersonsPreApprovalAlone() {
     String projectId = createProject("Desk Leaves Persons");
-    delivery(projectId, true, 5, true);
+    delivery(projectId, true, true);
     String flowId = createTicket(projectId, "Dana's, pressed FLOW by the desk");
     String phaseId = createTicket(projectId, "Dana's, pressed PHASE by the desk");
     dispatchEntities.setPreApprovedBy(flowId, "dana", "dana");
@@ -970,7 +947,7 @@ public class DeskDispatchTest {
   @Test
   public void anotherMachineAtRefinedIsUnchangedByTheDeclaration() {
     String projectId = createProject("Desk Other Machine");
-    delivery(projectId, true, 2, true);
+    delivery(projectId, true, true);
     String ticketId = createTicket(projectId, "Refined, not the desk");
     transition(ticketId, "REFINED");
 

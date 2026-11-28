@@ -83,13 +83,12 @@ final class DeskTriggerFixtures {
     return windows(projectId).stream().flatMap(w -> events(w.id).stream()).toList();
   }
 
-  /** The project's {@code max_running} and {@code delivery_enabled_at} (null: no clamp). */
-  static void delivery(String projectId, int maxRunning, Instant enabledAt) {
+  /** The project's {@code delivery_enabled_at} (null: no clamp). */
+  static void delivery(String projectId, Instant enabledAt) {
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               Project project = Project.findById(projectId);
-              project.deliveryMaxRunning = maxRunning;
               project.deliveryEnabledAt = enabledAt;
             });
   }

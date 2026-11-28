@@ -2380,9 +2380,6 @@ components:
       properties:
         enabled:
           type: boolean
-        maxRunning:
-          type: integer
-          format: int32
         startRefined:
           type: boolean
         approves:
@@ -10717,4 +10714,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1126.161152
+  version: 2026.1127.150619

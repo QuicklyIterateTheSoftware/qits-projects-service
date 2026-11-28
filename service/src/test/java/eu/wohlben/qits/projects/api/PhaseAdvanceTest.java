@@ -221,7 +221,6 @@ public class PhaseAdvanceTest {
             () -> {
               var project = projectRows.findById(projectId);
               project.deliveryEnabled = enabled;
-              project.deliveryMaxRunning = 2;
               project.deliveryStartRefined = startRefined;
             });
   }

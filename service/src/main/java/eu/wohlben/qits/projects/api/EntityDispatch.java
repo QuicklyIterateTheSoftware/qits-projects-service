@@ -159,8 +159,8 @@ import org.jboss.logging.Logger;
  * WorkspaceAgentDispatch#agentsFor}) whose workspace holds its lease; the item pressed is never
  * counted against itself ({@link RunningItems}). A blocked item waits on a person or on another
  * item, and holding a slot for it starved the backlog — five of them once stopped every dispatch for
- * two hours. {@code front_desk.delivery.max_running} is no longer the limit: the slots are the
- * targets' real workspace capacity, derived, never configured.
+ * two hours. The slots are the targets' real workspace capacity, derived, never configured
+ * (qits-2573); the {@code max_running} setting that used to cap them is gone (qits-2728).
  *
  * <p><b>Start-refined.</b> With {@code front_desk.delivery.start_refined} on, a desk's FLOW press at
  * REFINED is the scheduling, exactly as a person's is: REFINED → READY_FOR_DEV under the mover
@@ -895,8 +895,7 @@ public class EntityDispatch {
    * The desk's slot refusals (qits-2573), in this order, from one {@link DeskSlots} reading of the
    * project besides {@code entity}: a workspace of the project waits (K > 0), then no target can
    * grant a workspace lease (F = 0). A capacity that cannot be read refuses nothing and warns: a
-   * dispatch that then lands QUEUED makes K = 1 and stops the next one. {@code
-   * front_desk.delivery.max_running} is not read.
+   * dispatch that then lands QUEUED makes K = 1 and stops the next one.
    */
   private void refuseNoSlot(WorkEntity entity) {
     DeskSlots.Reading slots = deskSlots.read(entity.projectId, entity.id);

@@ -16,7 +16,6 @@ import java.util.TreeSet;
  *       lifecycle: ALWAYS_ON
  *       delivery:
  *         enabled: true
- *         max_running: 2
  *         start_refined: false
  *         approves: [manual-review]
  *     release_requests:
@@ -116,8 +115,10 @@ public record ProjectConfig(
 
   /**
    * The front desk's delivery loop (epic qits-1440), {@code front_desk.delivery} in {@code
-   * project.yml}: whether the desk runs it, how many items it keeps running at once, whether it may
-   * start a REFINED item itself, and which approval requirements it may satisfy.
+   * project.yml}: whether the desk runs it, whether it may start a REFINED item itself, and which
+   * approval requirements it may satisfy. How many items it runs at once is not declared: the
+   * desk's slots are the targets' real workspace capacity ({@code api/DeskSlots}, qits-2573), and
+   * the {@code max_running} key that used to say it went in qits-2728.
    *
    * <p>{@code approves} is a subset of {@link #APPROVABLE} — never {@code recorded}, which the desk
    * may never satisfy. The parser refuses anything else, so a record holding one was built by hand.
@@ -130,27 +131,13 @@ public record ProjectConfig(
    * is the request's own project. {@code ApprovalPolicy.admitDesk} is where the names are read.
    *
    * @param enabled whether the loop runs at all; absent is {@code false}
-   * @param maxRunning {@code max_running}, {@link #MIN_RUNNING}..{@link #MAX_RUNNING}; absent is
-   *     {@link #DEFAULT_MAX_RUNNING}. Parsed, stored and answered, but <b>not read since
-   *     qits-2573</b>: the desk's slots are the targets' real workspace capacity ({@code
-   *     api/DeskSlots}), derived, never configured. A follow-up removes the key
    * @param startRefined whether the desk may move a REFINED item to READY_FOR_DEV itself
    * @param approves the approval requirements the desk may satisfy, never null
    */
   public record DeliverySettings(
       boolean enabled,
-      int maxRunning,
       boolean startRefined,
       Set<String> approves) {
-
-    /** The smallest {@code max_running} the parser takes (not read since qits-2573). */
-    public static final int MIN_RUNNING = 1;
-
-    /** The largest {@code max_running} the parser takes (not read since qits-2573). */
-    public static final int MAX_RUNNING = 20;
-
-    /** {@code max_running} when absent. */
-    public static final int DEFAULT_MAX_RUNNING = 2;
 
     /** {@code approves} naming every {@code automation:<kind>} requirement (qits-1517). */
     public static final String AUTOMATION = "automation";
@@ -194,7 +181,7 @@ public record ProjectConfig(
 
     /** No {@code front_desk.delivery}: everything off, every value at its default. */
     public static final DeliverySettings OFF =
-        new DeliverySettings(false, DEFAULT_MAX_RUNNING, false, Set.of());
+        new DeliverySettings(false, false, Set.of());
 
     public DeliverySettings {
       approves = approves == null ? Set.of() : Set.copyOf(approves);
@@ -204,7 +191,6 @@ public record ProjectConfig(
     public static DeliverySettings of(Project project) {
       return new DeliverySettings(
           project.deliveryEnabled,
-          project.deliveryMaxRunning,
           project.deliveryStartRefined,
           approvesOf(project.deliveryApproves));
     }
@@ -219,7 +205,6 @@ public record ProjectConfig(
         project.deliveryEnabledAt = Instant.now();
       }
       project.deliveryEnabled = enabled;
-      project.deliveryMaxRunning = maxRunning;
       project.deliveryStartRefined = startRefined;
       project.deliveryApproves = approvesColumn();
     }

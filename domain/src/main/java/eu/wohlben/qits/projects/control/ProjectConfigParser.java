@@ -43,7 +43,10 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * <p><b>An unknown key is ignored</b>, so a reader that predates a key added later still answers,
  * and a file written for a newer platform does not brick an older one. So is a key removed later:
  * {@code front_desk.delivery.interval}, the delivery desk's tick until qits-1597 retired it, is
- * read past without a word in a file that still carries it.
+ * read past without a word in a file that still carries it, and so is {@code
+ * front_desk.delivery.max_running}, the slot limit qits-2573 replaced with the targets' derived
+ * workspace capacity and qits-2728 retired: any value it holds, one this parser used to refuse
+ * included, reads as if the key were not there.
  */
 @ApplicationScoped
 public class ProjectConfigParser {
@@ -69,9 +72,6 @@ public class ProjectConfigParser {
 
   /** Under {@link #DELIVERY}: a boolean, default {@code false}. */
   public static final String DELIVERY_ENABLED = "enabled";
-
-  /** Under {@link #DELIVERY}: an integer 1..20, default 2. */
-  public static final String DELIVERY_MAX_RUNNING = "max_running";
 
   /** Under {@link #DELIVERY}: a boolean, default {@code false}. */
   public static final String DELIVERY_START_REFINED = "start_refined";
@@ -218,7 +218,6 @@ public class ProjectConfigParser {
     }
     return new DeliverySettings(
         booleanAt(loop, DELIVERY_ENABLED, false),
-        maxRunningOf(loop.get(DELIVERY_MAX_RUNNING)),
         booleanAt(loop, DELIVERY_START_REFINED, false),
         approvesOf(loop.get(DELIVERY_APPROVES)));
   }
@@ -273,24 +272,6 @@ public class ProjectConfigParser {
       throw invalid(key, "a boolean", value);
     }
     return flag;
-  }
-
-  private static int maxRunningOf(Object value) {
-    if (value == null) {
-      return DeliverySettings.DEFAULT_MAX_RUNNING;
-    }
-    if (!(value instanceof Integer count)
-        || count < DeliverySettings.MIN_RUNNING
-        || count > DeliverySettings.MAX_RUNNING) {
-      throw invalid(
-          DELIVERY_MAX_RUNNING,
-          "an integer from "
-              + DeliverySettings.MIN_RUNNING
-              + " to "
-              + DeliverySettings.MAX_RUNNING,
-          value);
-    }
-    return count;
   }
 
   private static Set<String> approvesOf(Object value) {

@@ -9,10 +9,8 @@ import java.util.List;
  * default.
  *
  * @param enabled whether the desk runs the loop
- * @param maxRunning the declared {@code max_running}, 1..20; not read since qits-2573, which derives
- *     the desk's slots from the targets' workspace capacity
  * @param startRefined whether the desk may move a REFINED item to READY_FOR_DEV itself
  * @param approves the approval requirements the desk may satisfy, sorted; empty is none
  */
 public record ProjectDeliveryDto(
-    boolean enabled, int maxRunning, boolean startRefined, List<String> approves) {}
+    boolean enabled, boolean startRefined, List<String> approves) {}

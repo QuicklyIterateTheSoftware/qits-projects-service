@@ -377,8 +377,9 @@ public class WrapperProjectConfigReconcileTest {
   /**
    * The reconcile applies every delivery value, hands the port the settings once per change, and
    * announces nothing for it — {@code ProjectChanged} carries no delivery fact. Disabling is a
-   * change too. The file still carries {@code interval}, the tick qits-1597 retired: it is read past
-   * like any unknown key, and the reconcile stores the rest as if it were absent.
+   * change too. The file still carries {@code interval}, the tick qits-1597 retired, and {@code
+   * max_running}, the slot limit qits-2728 retired: each is read past like any unknown key, and the
+   * reconcile stores the rest as if they were absent.
    */
   @Test
   public void theDeliverySettingsAreStoredAndHandedToThePortOnlyOnAChange() throws Exception {
@@ -392,7 +393,7 @@ public class WrapperProjectConfigReconcileTest {
     reconcileService.reconcileProjectConfig(project.id);
 
     ProjectConfig.DeliverySettings expected =
-        new ProjectConfig.DeliverySettings(true, 3, true, java.util.Set.of("manual-review"));
+        new ProjectConfig.DeliverySettings(true, true, java.util.Set.of("manual-review"));
     assertEquals(expected, storedDeliveryOf(project.id));
     Project row =
         io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
@@ -427,6 +428,41 @@ public class WrapperProjectConfigReconcileTest {
 
     assertTrue(storedDeliveryOf(project.id).enabled(), "a typo may not switch the loop off");
     assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
+  }
+
+  /**
+   * qits-2728: a wrapper that changes or drops {@code max_running} moves no delivery setting, so it
+   * hands the port nothing and rolls no desk; a value the old parser refused reads the same. A
+   * setting that is still read moves as before.
+   */
+  @Test
+  public void aMovedMaxRunningMovesNothing() throws Exception {
+    Project project = greenfield("projcfg-delivery-maxrunning");
+    String rest = "    enabled: true\n    start_refined: true\n    approves: [manual-review]\n";
+    projectYml.commit(wrapperOf(project), "front_desk:\n  delivery:\n    max_running: 5\n" + rest);
+    reconcileService.reconcileProjectConfig(project.id);
+    ProjectConfig.DeliverySettings stored = storedDeliveryOf(project.id);
+    lifecycleListener.clear();
+
+    for (String file :
+        new String[] {
+          "front_desk:\n  delivery:\n    max_running: 2\n" + rest,
+          "front_desk:\n  delivery:\n    max_running: 0\n" + rest,
+          "front_desk:\n  delivery:\n" + rest
+        }) {
+      projectYml.commit(wrapperOf(project), file);
+      reconcileService.reconcileProjectConfig(project.id);
+      assertEquals(stored, storedDeliveryOf(project.id), file);
+    }
+    assertEquals(List.of(), lifecycleListener.deliveryCallsOf(project.id));
+
+    projectYml.commit(
+        wrapperOf(project),
+        "front_desk:\n  delivery:\n    max_running: 5\n    enabled: true\n"
+            + "    approves: [manual-review]\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    assertFalse(storedDeliveryOf(project.id).startRefined());
+    assertEquals(1, lifecycleListener.deliveryCallsOf(project.id).size());
   }
 
   // -------------------------------------------------------------------------------------------

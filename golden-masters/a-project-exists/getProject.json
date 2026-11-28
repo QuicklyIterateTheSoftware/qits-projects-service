@@ -12,7 +12,6 @@
     "frontDeskLifecycle": "ON_DEMAND",
     "delivery": {
       "enabled": false,
-      "maxRunning": 2,
       "startRefined": false,
       "approves": []
     }

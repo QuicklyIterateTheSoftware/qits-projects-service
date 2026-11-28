@@ -97,7 +97,7 @@ class CapacityOpenedSourceTest {
         lines.stream().filter(l -> l.itemId.equals("agent-" + done.id)).findFirst().orElseThrow();
     assertEquals("capacity-opened", line.source);
     assertEquals(DeskTriggerFixtures.slugOf(projectId) + "-" + done.number, line.itemRef);
-    assertEquals("its agent is done; running 1 of 2", line.label, "M is N + F, never max_running");
+    assertEquals("its agent is done; running 1 of 2", line.label, "M is N + F");
     DeskTriggerEvent removed =
         lines.stream().filter(l -> l.itemId.equals("agent-" + other.id)).findFirst().orElseThrow();
     assertEquals("its agent was removed (DISCARDED); running 1 of 2", removed.label);
@@ -355,15 +355,10 @@ class CapacityOpenedSourceTest {
             });
   }
 
-  /**
-   * A project, and the targets able to grant {@code free} more workspace leases (qits-2573). Its
-   * {@code max_running} is 1, which nothing reads any more.
-   */
+  /** A project, and the targets able to grant {@code free} more workspace leases (qits-2573). */
   private String project(boolean delivery, int free) {
     String id = DeskTriggerFixtures.project(delivery);
     projects.add(id);
-    QuarkusTransaction.requiringNew()
-        .run(() -> Project.<Project>findById(id).deliveryMaxRunning = 1);
     system.willGrant(free, free == 0 ? "target lab has no free WORKSPACE slot" : null);
     return id;
   }

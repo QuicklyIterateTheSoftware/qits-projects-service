@@ -36,8 +36,7 @@ import org.jboss.logging.Logger;
  * waits</b> (qits-1689, qits-2573). The desk dispatches only on its passes, while N &lt; M and K is 0
  * ({@link DeskSlots}: N running, M = N + F with F the workspace leases the targets can grant, K the
  * items waiting for a workspace); work-verified fires while the agent still holds its slot, so
- * without this a freed slot waits for some unrelated trigger. {@code front_desk.delivery.max_running}
- * is not read.
+ * without this a freed slot waits for some unrelated trigger.
  *
  * <p><b>The event path.</b> Reads qits-workspaces' {@code AgentObsolete} (the item closed and its
  * work released, or the item was dropped: the agent stops being ACTIVE, which is when it leaves the

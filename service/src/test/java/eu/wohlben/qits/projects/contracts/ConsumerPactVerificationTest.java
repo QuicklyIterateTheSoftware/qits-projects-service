@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 import au.com.dius.pact.core.model.Interaction;
 import au.com.dius.pact.core.model.Pact;
 import au.com.dius.pact.core.model.ProviderState;
+import au.com.dius.pact.provider.VerificationFailureType;
+import au.com.dius.pact.provider.VerificationResult;
 import au.com.dius.pact.provider.junit5.HttpTestTarget;
 import au.com.dius.pact.provider.junit5.PactVerificationContext;
 import au.com.dius.pact.provider.junit5.PactVerificationInvocationContextProvider;
@@ -423,9 +425,31 @@ class ConsumerPactVerificationTest {
     try {
       asTheConsumerSendsIt(context, request);
       context.verifyInteraction();
+    } catch (AssertionError failed) {
+      throw new AssertionError(failed.getMessage() + mismatches(context), failed);
     } finally {
       states.cleanUp();
     }
+  }
+
+  /**
+   * What pact-jvm's own message leaves out (qits-2728): each failure of this interaction, so a red
+   * run names the path and the two values in the test report rather than "enable the console
+   * reporter". A CI run keeps the report, not the console.
+   */
+  private static String mismatches(PactVerificationContext context) {
+    StringBuilder found = new StringBuilder();
+    for (VerificationResult.Failed result : context.getTestExecutionResult()) {
+      for (var entry : result.getFailures().entrySet()) {
+        for (VerificationFailureType failure : entry.getValue()) {
+          found.append(System.lineSeparator()).append("  - ").append(failure.description());
+          if (failure.hasException() && failure.getException() != null) {
+            found.append(" (").append(failure.getException()).append(')');
+          }
+        }
+      }
+    }
+    return found.length() == 0 ? "" : System.lineSeparator() + "Mismatches:" + found;
   }
 
   /** The two things done to the prepared request — see the class comment. Nothing else. */

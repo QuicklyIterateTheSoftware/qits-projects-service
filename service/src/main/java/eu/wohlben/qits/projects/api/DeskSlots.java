@@ -29,8 +29,6 @@ import org.jboss.logging.Logger;
  *   <li><b>M, total</b> = N + F, so N never exceeds M; null with F.
  * </ul>
  *
- * <p>{@code front_desk.delivery.max_running} is read by nothing that counts slots (qits-2573).
- *
  * <p>Asked on demand, never cached across calls and never rebuilt here from lease events: the
  * figure is the allocator's own rule over the whole queue and memory, and a second copy of it would
  * drift.

@@ -149,7 +149,7 @@ class ShipMissingSourceTest {
   void itIsMeasuredFromWhenDeliveryCameOnAndAWeekOldMoveIsNotRaised() {
     String projectId = project(true);
     String slug = DeskTriggerFixtures.slugOf(projectId);
-    DeskTriggerFixtures.delivery(projectId, 5, now.minus(Duration.ofMinutes(10)));
+    DeskTriggerFixtures.delivery(projectId, now.minus(Duration.ofMinutes(10)));
     WorkEntity item = running(projectId, 5);
     DeskTriggerFixtures.audited(item, "VERIFIED", now.minus(Duration.ofHours(2)));
     String old = project(true);

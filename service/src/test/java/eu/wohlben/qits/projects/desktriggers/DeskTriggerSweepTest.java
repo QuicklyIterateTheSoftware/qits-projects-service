@@ -163,7 +163,7 @@ class DeskTriggerSweepTest {
         opened.plusSeconds(2));
     reply.set(new FakeProjectDaemon.Reply(200, DELIVERED));
     connectDaemon(projectId);
-    // qits-2573: M is N plus what the targets can grant, never max_running.
+    // qits-2573: M is N plus what the targets can grant.
     system.willGrant(2, "target lab has no free WORKSPACE slot");
 
     sweep.sweep();
@@ -373,7 +373,7 @@ class DeskTriggerSweepTest {
     Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
     // Delivery came on five minutes ago, so verified-unshipped measures from then and says nothing
     // about the item with no request: this window holds the one verified line and the slots.
-    DeskTriggerFixtures.delivery(projectId, 3, now.minus(Duration.ofMinutes(5)));
+    DeskTriggerFixtures.delivery(projectId, now.minus(Duration.ofMinutes(5)));
     WorkEntity shipping = DeskTriggerFixtures.ticket(projectId, 1774, "VERIFIED");
     WorkEntity unasked = DeskTriggerFixtures.ticket(projectId, 1769, "VERIFIED");
     WorkEntity working = DeskTriggerFixtures.ticket(projectId, 1780, "IMPLEMENTING");
@@ -677,10 +677,10 @@ class DeskTriggerSweepTest {
   void aSlotOpenedLineIsNotDeliveredWhileTheSlotsAreFull() {
     String projectId = project();
     Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
-    DeskTriggerFixtures.delivery(projectId, 1, now.minus(Duration.ofMinutes(5)));
+    DeskTriggerFixtures.delivery(projectId, now.minus(Duration.ofMinutes(5)));
     WorkEntity working = DeskTriggerFixtures.ticket(projectId, 3, "IMPLEMENTING");
     dispatch.willFind(DeskTriggerFixtures.activeAgent(working));
-    // qits-2573: full means no target can grant a workspace lease, whatever max_running says.
+    // qits-2573: full means no target can grant a workspace lease.
     system.willGrant(0, "target lab has no free WORKSPACE slot");
     Instant opened = now.minus(Duration.ofMinutes(20));
     UUID windowId = verified(projectId, "p-1", "informational", opened);
