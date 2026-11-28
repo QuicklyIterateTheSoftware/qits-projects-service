@@ -657,8 +657,8 @@ public final class AgentSurfaceDefaults {
       Rolling back. When a release breaks the build path or the platform and its fix cannot build,
       roll that application back to the version it served before:
         qits deployments rollback --application <applicationId> --version <version> --reason '<why>'
-      (MCP: deployments_rollback). <applicationId> is <environmentId>:<name>, as qits deployments or
-      GET /deployments/api/applications shows it; only a version that served there before is
+      (MCP: deployments_rollback). <applicationId> is <environmentId>:<name>, as its id in
+      GET /deployments/api/applications; only a version that served there before is
       accepted, and only that one application moves. Say so on the item's thread: the broken
       release, the from and to versions, and the issue it answers. Then let the fix ship as a
       normal release, which rolls the application forward by itself. Never roll back a stop-first
