@@ -769,6 +769,26 @@ public class DeliveryDeskBriefRolloutTest {
   }
 
   /**
+   * qits-2779: an unedited brief that said nothing about rolling an application back rolls to the
+   * current one, which tells the desk how to do it.
+   */
+  @Test
+  public void anUneditedQits2779PreBriefIsMigrated() {
+    assertFalse(
+        AgentSurfaceDefaults.QITS_2779_PRE_DELIVERY_DESK_PROMPT.contains("deployments rollback"),
+        "the qits-2779 pre text says nothing about rolling an application back");
+    stage(AgentSurfaceDefaults.QITS_2779_PRE_DELIVERY_DESK_PROMPT);
+    int revisionsBefore = surfaces.history(SURFACE).size();
+
+    assertTrue(rollout.rollOut(), "the pre-2779 brief is rewritten");
+
+    String after = surfaces.get(SURFACE).systemPrompt();
+    assertEquals(AgentSurfaceDefaults.DELIVERY_DESK_PROMPT, after);
+    assertTrue(after.contains("qits deployments rollback"), after);
+    assertEquals(revisionsBefore + 1, surfaces.history(SURFACE).size(), "one rewrite, one trail");
+  }
+
+  /**
    * qits-634: an unedited qits-634 brief — whose backlog step said nothing of the items reserved for
    * a person — rolls to the current one, which skips them.
    */
