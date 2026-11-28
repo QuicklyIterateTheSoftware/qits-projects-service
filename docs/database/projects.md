@@ -13,7 +13,6 @@ erDiagram
     string delivery_approves "not null"
     boolean delivery_enabled "not null"
     instant delivery_enabled_at
-    int delivery_max_running "not null"
     boolean delivery_start_refined "not null"
     string description
     string dns_domain
