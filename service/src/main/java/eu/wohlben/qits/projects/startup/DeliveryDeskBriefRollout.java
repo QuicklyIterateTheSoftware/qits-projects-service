@@ -62,7 +62,9 @@ import org.jboss.logging.Logger;
  * holds the text qits-2672 replaced, whose step 7 resumed a project agent's items ({@link
  * AgentSurfaceDefaults#QITS_2672_PRE_DELIVERY_DESK_PROMPT}), and one the qits-2672 rollout reached
  * holds the text qits-2573 replaced, whose step 10 counted against a configured max_running ({@link
- * AgentSurfaceDefaults#QITS_2573_PRE_DELIVERY_DESK_PROMPT}).
+ * AgentSurfaceDefaults#QITS_2573_PRE_DELIVERY_DESK_PROMPT}), and one the qits-2573 rollout reached
+ * holds the text qits-2779 replaced, which said nothing about rolling an application back ({@link
+ * AgentSurfaceDefaults#QITS_2779_PRE_DELIVERY_DESK_PROMPT}).
  * Each is compared in turn, and the first that matches is rewritten straight to the current text.
  *
  * <p><b>Exact equality is the whole safety.</b> A stored prompt that is byte for byte one previous
@@ -109,7 +111,8 @@ public class DeliveryDeskBriefRollout {
           AgentSurfaceDefaults.QITS_2089_PRE_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_2496_PRE_DELIVERY_DESK_PROMPT,
           AgentSurfaceDefaults.QITS_2672_PRE_DELIVERY_DESK_PROMPT,
-          AgentSurfaceDefaults.QITS_2573_PRE_DELIVERY_DESK_PROMPT);
+          AgentSurfaceDefaults.QITS_2573_PRE_DELIVERY_DESK_PROMPT,
+          AgentSurfaceDefaults.QITS_2779_PRE_DELIVERY_DESK_PROMPT);
 
   @Inject AgentSurfaceConfigurationService surfaces;
 
